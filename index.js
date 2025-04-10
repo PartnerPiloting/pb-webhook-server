@@ -4,16 +4,11 @@ const bodyParser = require("body-parser");
 const app = express();
 app.use(bodyParser.json());
 
-// Example route for receiving data from a PB phantom like LinkedIn Search Export
+// Simple test route: no Airtable logic, just log what we receive
 app.post("/pb-webhook/scrapeLeads", (req, res) => {
-  console.log("Received data:", req.body);
-
-  // TODO: Insert logic here to:
-  // 1) Save data to Airtable
-  // 2) Call GPT if desired
-  // For now, we'll just log the data and respond.
-
-  res.status(200).json({ message: "Received successfully" });
+  console.log("Test data received:", req.body);
+  // Respond with a simple success message
+  res.status(200).json({ message: "Test received successfully" });
 });
 
 const PORT = process.env.PORT || 3000;
