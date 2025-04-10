@@ -1,20 +1,37 @@
-require("dotenv").config(); // For local development
+require("dotenv").config(); // Load local .env variables
 
 const express = require("express");
 const bodyParser = require("body-parser");
 const Airtable = require("airtable");
 
-// 1. Configure Airtable using environment variables
+// Airtable setup using environment variables
 Airtable.configure({
   apiKey: process.env.AIRTABLE_API_KEY
 });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
-const TABLE_NAME = "Leads"; // Change if your Airtable table has a different name
+const TABLE_NAME = "Leads";
 
 const app = express();
 app.use(bodyParser.json({ limit: "10mb" }));
 
+// ✅ TEST ROUTE: Simple read from Airtable
+app.get("/test-airtable", async (req, res) => {
+  try {
+    const records = await base(TABLE_NAME).select({ maxRecords: 3 }).firstPage();
+
+    records.forEach(record => {
+      console.log("Found record:", record.fields["LinkedIn Profile URL"]);
+    });
+
+    res.status(200).json({ message: "Airtable read test passed", records: records.length });
+  } catch (error) {
+    console.error("Error reading from Airtable:", error);
+    res.status(500).json({ error: "Failed to read from Airtable" });
+  }
+});
+
+// ✅ MAIN ROUTE: Upsert from PhantomBuster (or Postman)
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
     const leads = req.body;
@@ -29,18 +46,17 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         lastName = "",
         linkedinHeadline = "",
         location = "",
-        profileUrl = "", // This maps to "LinkedIn Profile URL"
+        profileUrl = "",
         refreshedAt = "",
         ...rest
       } = lead;
 
-      // Set your default field values
       const linkedInConnectionStatus = "To Be Sent";
       const status = "In Process";
       const dateConnectionRequestSent = "";
       const aiProfileAssessment = "";
 
-      // 2. Search for existing record with matching LinkedIn Profile URL
+      // Upsert logic: check for existing record by LinkedIn Profile URL
       const existingRecords = await base(TABLE_NAME)
         .select({
           filterByFormula: `{LinkedIn Profile URL} = "${profileUrl}"`
@@ -48,7 +64,6 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         .firstPage();
 
       if (existingRecords.length > 0) {
-        // 3. Update existing record
         const recordId = existingRecords[0].id;
         console.log(`Updating record for: ${profileUrl}`);
 
@@ -71,7 +86,6 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           }
         ]);
       } else {
-        // 4. Create new record
         console.log(`Creating new record for: ${profileUrl}`);
 
         await base(TABLE_NAME).create([
@@ -101,6 +115,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   }
 });
 
+// Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
