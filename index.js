@@ -59,7 +59,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 
       const linkedInConnectionStatus = "To Be Sent";
       const status = "In Process";
-      const dateConnectionRequestSent = "";
+      const dateConnectionRequestSent = null; // ✅ Use null instead of an empty string
       const aiProfileAssessment = "";
 
       // Airtable upsert: find record by LinkedIn Profile URL
@@ -69,48 +69,28 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         })
         .firstPage();
 
+      const fields = {
+        "LinkedIn Profile URL": profileUrl,
+        "First Name": firstName,
+        "Last Name": lastName,
+        "Headline": linkedinHeadline,
+        "Location": location,
+        "LinkedIn Connection Status": linkedInConnectionStatus,
+        "Status": status,
+        "Date Connection Request Sent": dateConnectionRequestSent || null,
+        "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
+        "AI Profile Assessment": aiProfileAssessment,
+        "Raw Profile Data": JSON.stringify(rest)
+      };
+
       if (existingRecords.length > 0) {
         const recordId = existingRecords[0].id;
         console.log(`Updating record for: ${profileUrl}`);
 
-        await base(TABLE_NAME).update([
-          {
-            id: recordId,
-            fields: {
-              "LinkedIn Profile URL": profileUrl,
-              "First Name": firstName,
-              "Last Name": lastName,
-              "Headline": linkedinHeadline,
-              "Location": location,
-              "LinkedIn Connection Status": linkedInConnectionStatus,
-              "Status": status,
-              "Date Connection Request Sent": dateConnectionRequestSent,
-              "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
-              "AI Profile Assessment": aiProfileAssessment,
-              "Raw Profile Data": JSON.stringify(rest)
-            }
-          }
-        ]);
+        await base(TABLE_NAME).update([{ id: recordId, fields }]);
       } else {
         console.log(`Creating new record for: ${profileUrl}`);
-
-        await base(TABLE_NAME).create([
-          {
-            fields: {
-              "LinkedIn Profile URL": profileUrl,
-              "First Name": firstName,
-              "Last Name": lastName,
-              "Headline": linkedinHeadline,
-              "Location": location,
-              "LinkedIn Connection Status": linkedInConnectionStatus,
-              "Status": status,
-              "Date Connection Request Sent": dateConnectionRequestSent,
-              "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
-              "AI Profile Assessment": aiProfileAssessment,
-              "Raw Profile Data": JSON.stringify(rest)
-            }
-          }
-        ]);
+        await base(TABLE_NAME).create([{ fields }]);
       }
     }
 
