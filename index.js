@@ -4,17 +4,18 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const Airtable = require("airtable");
 
-// Airtable setup
+// 1. Configure Airtable
 Airtable.configure({
   apiKey: process.env.AIRTABLE_API_KEY
 });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 const TABLE_NAME = "Leads";
 
+// 2. Create Express app
 const app = express();
 app.use(bodyParser.json({ limit: "10mb" }));
 
-// A quick GET route for verifying Airtable connectivity
+// 3. Simple GET route for verifying Airtable connectivity
 app.get("/test-airtable", async (req, res) => {
   try {
     const records = await base(TABLE_NAME).select({ maxRecords: 1 }).firstPage();
@@ -23,6 +24,7 @@ app.get("/test-airtable", async (req, res) => {
     }
     const fieldNames = Object.keys(records[0].fields);
     console.log("Fields found in Airtable:", fieldNames);
+
     res.status(200).json({
       message: "Fields retrieved successfully",
       fields: fieldNames
@@ -33,7 +35,7 @@ app.get("/test-airtable", async (req, res) => {
   }
 });
 
-// Main POST route to upsert leads
+// 4. Main POST route to upsert leads with 2-tiered lookup + job history + about + source logic
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
     const leads = req.body;
@@ -42,18 +44,17 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
     }
 
     for (const lead of leads) {
-      // Extract known fields
+      // Extract fields we plan to store
       const {
-        // Basic fields
         firstName = "",
         lastName = "",
         linkedinHeadline = "",
         linkedinJobTitle = "",
         linkedinCompanyName = "",
-        linkedinDescription = "",
+        linkedinDescription = "", // we'll map this to "About"
         connectionDegree = "",
+        // We'll do the "Pending" check if lead.linkedinConnectionStatus === "Pending"
         refreshedAt = "",
-        // URN & URL
         linkedinProfileUrn = "",
         linkedinProfileUrl = "",
         profileUrl: fallbackProfileUrl = "",
@@ -63,11 +64,11 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         // Previous job details
         linkedinPreviousJobDateRange = "",
         linkedinPreviousJobDescription = "",
-        // Everything else
+        // Everything else goes in rest
         ...rest
       } = lead;
 
-      // Build a 'Job History' multiline string
+      // Build "Job History" multiline
       const jobHistoryParts = [];
       if (linkedinJobDateRange || linkedinJobDescription) {
         jobHistoryParts.push(
@@ -81,7 +82,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
       }
       const combinedJobHistory = jobHistoryParts.join("\n");
 
-      // Normalize the profile URL (remove trailing slash if any)
+      // Normalise the URL (remove trailing slash)
       let finalUrl = linkedinProfileUrl || fallbackProfileUrl || "";
       finalUrl = finalUrl.replace(/\/$/, "");
 
@@ -91,7 +92,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         continue;
       }
 
-      // (1) Attempt lookup by URN
+      // (1) Lookup by URN
       let recordFound = null;
       if (linkedinProfileUrn) {
         const urnQuery = await base(TABLE_NAME)
@@ -106,7 +107,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         }
       }
 
-      // (2) If no record found, fallback to URL
+      // (2) If not found, fallback to URL
       if (!recordFound && finalUrl) {
         const urlQuery = await base(TABLE_NAME)
           .select({
@@ -120,38 +121,38 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         }
       }
 
-      // Determine "LinkedIn Connection Status" based on the logic you described
+      // Determine LinkedIn Connection Status
       let connectionStatus = "";
       // If '1st' => 'Connected'
       if (connectionDegree === "1st") {
         connectionStatus = "Connected";
       }
-      // If we see some property indicating 'Pending'
+      // If the JSON has something like lead.linkedinConnectionStatus === "Pending"
       else if (lead.linkedinConnectionStatus === "Pending") {
         connectionStatus = "Pending";
       }
-      // Otherwise => 'To Be Sent'
+      // Otherwise => "To Be Sent"
       else {
         connectionStatus = "To Be Sent";
       }
 
-      // Build the fields to upsert
+      // Build fields to upsert
       const fieldsToUpsert = {
         "LinkedIn Profile URN": linkedinProfileUrn || null,
         "LinkedIn Profile URL": finalUrl || null,
         "First Name": firstName,
         "Last Name": lastName,
+        "Headline": linkedinHeadline,
         "Job Title": linkedinJobTitle,
         "Company Name": linkedinCompanyName,
-        "About": linkedinDescription, // "About" field in Airtable
-        "Headline": linkedinHeadline,
+        "About": linkedinDescription,
         "Job History": combinedJobHistory,
         "LinkedIn Connection Status": connectionStatus,
         "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
         "Raw Profile Data": JSON.stringify(rest)
       };
 
-      // Update if found, else create
+      // If we found a record, we do not overwrite "Source"
       if (recordFound) {
         console.log(
           `Updating record (Airtable ID: ${recordFound.id}) for URN="${linkedinProfileUrn}" URL="${finalUrl}"`
@@ -163,6 +164,15 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           }
         ]);
       } else {
+        // Brand new record => set a "Source" based on connectionDegree
+        let sourceValue = "";
+        if (connectionDegree === "1st") {
+          sourceValue = "Existing";
+        } else {
+          sourceValue = "2nd level leads from PB";
+        }
+        fieldsToUpsert["Source"] = sourceValue;
+
         console.log(`Creating new record for URN="${linkedinProfileUrn}" URL="${finalUrl}"`);
         await base(TABLE_NAME).create([{ fields: fieldsToUpsert }]);
       }
@@ -175,7 +185,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   }
 });
 
-// Start the server
+// 5. Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
