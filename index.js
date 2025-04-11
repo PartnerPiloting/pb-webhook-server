@@ -52,15 +52,23 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         lastName = "",
         linkedinHeadline = "",
         location = "",
-        profileUrl = "",
+        linkedinProfileUrl = "",
+        profileUrl: fallbackProfileUrl = "",
         refreshedAt = "",
         ...rest
       } = lead;
 
+      const profileUrl = linkedinProfileUrl || fallbackProfileUrl || "";
+
       const linkedInConnectionStatus = "To Be Sent";
       const status = "In Process";
-      const dateConnectionRequestSent = null; // ✅ Use null instead of an empty string
+      const dateConnectionRequestSent = null;
       const aiProfileAssessment = "";
+
+      if (!profileUrl) {
+        console.log("Skipping lead with missing profile URL:", lead);
+        continue;
+      }
 
       // Airtable upsert: find record by LinkedIn Profile URL
       const existingRecords = await base(TABLE_NAME)
@@ -90,6 +98,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         await base(TABLE_NAME).update([{ id: recordId, fields }]);
       } else {
         console.log(`Creating new record for: ${profileUrl}`);
+
         await base(TABLE_NAME).create([{ fields }]);
       }
     }
