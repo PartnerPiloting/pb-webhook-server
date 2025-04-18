@@ -360,12 +360,10 @@ async function upsertLead(
     await base("Leads").update(existing[0].id, fields);
     if (TEST_MODE) console.log("🔄 Updated", firstName, lastName);
   } else {
-    // ▼▼▼ HERE'S THE CHANGE ▼▼▼
     fields["Source"] =
       connectionDegree === "1st"
         ? "Existing Connection Added by PB"
         : "2nd level leads from PB";
-    // ▲▲▲ END CHANGE ▲▲▲
     await base("Leads").create(fields);
     if (TEST_MODE) console.log("➕ Created", firstName, lastName);
   }
@@ -432,7 +430,15 @@ app.post("/pb-webhook/connections", async (req, res) => {
       return res.status(401).send("Invalid secret");
     }
 
-    const conns = Array.isArray(req.body) ? req.body : [];
+    const conns =
+      Array.isArray(req.body)
+        ? req.body
+        : Array.isArray(req.body.resultObject)
+            ? req.body.resultObject
+            : Array.isArray(req.body.results)
+                ? req.body.results
+                : [];
+
     let processed = 0;
 
     for (const c of conns) {
@@ -441,9 +447,7 @@ app.post("/pb-webhook/connections", async (req, res) => {
           ...c,
           connectionDegree: "1st",
           linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
-          // ▼▼▼ UPDATED LINE
           linkedinProfileUrn: c.linkedinProfileUrn || c.profileUrn || "",
-          // ▲▲▲ END UPDATE
         },
         0,
         "",
