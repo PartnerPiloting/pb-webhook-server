@@ -430,14 +430,13 @@ app.post("/pb-webhook/connections", async (req, res) => {
       return res.status(401).send("Invalid secret");
     }
 
+    // Expanded fallback logic for connection arrays
     const conns =
-      Array.isArray(req.body)
-        ? req.body
-        : Array.isArray(req.body.resultObject)
-            ? req.body.resultObject
-            : Array.isArray(req.body.results)
-                ? req.body.results
-                : [];
+      Array.isArray(req.body)                     ? req.body
+    : Array.isArray(req.body.resultObject)        ? req.body.resultObject
+    : Array.isArray(req.body.resultObject?.data)  ? req.body.resultObject.data
+    : Array.isArray(req.body.results)             ? req.body.results
+    : [];
 
     let processed = 0;
 
