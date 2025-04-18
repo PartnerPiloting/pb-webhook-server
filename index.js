@@ -6,14 +6,14 @@ const express = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable = require("airtable");
 
-// 0) Optional shared‑secret for webhooks  ────────────────────────
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
-
 // 1) Toggle debug logs  ──────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
+
+// Simple health‑check route
+app.get("/health", (req, res) => res.send("ok"));
 
 // 2) OpenAI + Airtable Setup  ────────────────────────────────────
 const configuration = new Configuration({
@@ -269,7 +269,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (updated)
+   7)  upsertLead  (unchanged)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -426,10 +426,6 @@ app.post("/api/test-score", async (req, res) => {
 ==================================================================*/
 app.post("/pb-webhook/connections", async (req, res) => {
   try {
-    if (WEBHOOK_SECRET && req.query.secret !== WEBHOOK_SECRET) {
-      return res.status(401).send("Invalid secret");
-    }
-
     // Expanded fallback logic for connection arrays
     const conns =
       Array.isArray(req.body)                     ? req.body
@@ -468,10 +464,6 @@ app.post("/pb-webhook/connections", async (req, res) => {
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
-    if (WEBHOOK_SECRET && req.query.secret !== WEBHOOK_SECRET) {
-      return res.status(401).send("Invalid secret");
-    }
-
     const leads = Array.isArray(req.body) ? req.body : [];
     if (!leads.length)
       return res.status(400).json({ error: "Expected an array of profiles" });
