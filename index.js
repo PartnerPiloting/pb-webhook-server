@@ -13,7 +13,7 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || "";
 const TEST_MODE = process.env.TEST_MODE === "true";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 // 2) OpenAI + Airtable Setup  ────────────────────────────────────
 const configuration = new Configuration({
