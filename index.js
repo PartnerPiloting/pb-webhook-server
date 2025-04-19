@@ -453,7 +453,9 @@ app.get("/pb-pull/connections", async (_req, res) => {
       // 2️⃣  Fetch that run’s output
       const outURL = `https://api.phantombuster.com/api/v2/containers/fetch-output?containerId=${run.id}`;
       const out = await (await fetch(outURL, { headers })).json();
-      const conns = await (await fetch(out.jsonUrl)).json();
+      const jsonUrl = out.data?.output?.jsonUrl;
+      if (!jsonUrl) throw new Error("jsonUrl missing in fetch‑output response");
+      const conns = await (await fetch(jsonUrl)).json();
 
       // 3️⃣  Upsert each profile
       for (const c of conns) {
