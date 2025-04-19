@@ -416,17 +416,24 @@ app.get("/pb-pull/connections", async (_req, res) => {
     for (const run of runs) {
       if (Number(run.id) <= lastRunId) continue; // already handled
 
-      // 2️⃣  Fetch that run’s output
-      const outURL = `https://api.phantombuster.com/api/v2/containers/fetch-output?containerId=${run.id}`;
-      const out = await (await fetch(outURL, { headers })).json();
+      // 2️⃣  Fetch that run’s output via POST
+      const outURL =
+        "https://api.phantombuster.com/api/v2/containers/fetch-output";
 
-      // ➜ TEMP: log the first 400 chars so we can see the keys
-      console.log("DEBUG fetch‑output:", JSON.stringify(out).slice(0, 400));
+      const outResp = await fetch(outURL, {
+        method: "POST",
+        headers: {
+          "X-Phantombuster-Key-1": process.env.PB_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: run.id }),
+      });
+      const out = await outResp.json();
 
       const jsonUrl =
-        out.data?.output?.jsonUrl ||          // old variant
-        out.data?.output?.default?.jsonUrl || // newer variant
-        out.output?.jsonUrl ||                // legacy
+        out.data?.output?.jsonUrl ||
+        out.data?.output?.default?.jsonUrl ||
+        out.output?.jsonUrl ||
         null;
 
       if (!jsonUrl) throw new Error("jsonUrl missing in fetch‑output response");
