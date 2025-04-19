@@ -416,18 +416,19 @@ app.get("/pb-pull/connections", async (_req, res) => {
     for (const run of runs) {
       if (Number(run.id) <= lastRunId) continue; // already handled
 
-      // 2️⃣  Fetch that run’s result‑object (structured JSON with jsonUrl)
+      // 2️⃣  Fetch that run’s structured result (GET)
       const resultResp = await fetch(
         `https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`,
         { headers }
       );
       const resultObj = await resultResp.json();
 
+      // Extract jsonUrl (primary → fallbacks)
       const jsonUrl =
-        resultObj.resultObject?.jsonUrl ||
-        resultObj.jsonUrl ||
-        resultObj.data?.resultObject?.jsonUrl ||
-        null;
+        resultObj.data?.output?.jsonUrl ||          // most Phantoms
+        resultObj.data?.resultObject?.jsonUrl ||    // legacy
+        resultObj.output?.jsonUrl ||                // edge cases
+        resultObj.resultObject?.jsonUrl || null;
 
       if (!jsonUrl) throw new Error("jsonUrl missing in result‑object response");
       const conns = await (await fetch(jsonUrl)).json();
@@ -441,17 +442,14 @@ app.get("/pb-pull/connections", async (_req, res) => {
             linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
             linkedinProfileUrn: c.linkedinProfileUrn || c.profileUrn || "",
           },
-          0,
-          "",
-          "",
-          ""
+          0, "", "", ""
         );
         total++;
       }
       lastRunId = Number(run.id); // advance bookmark
     }
 
-    // 4️⃣  Save bookmark so restarts don’t repeat work
+    // 4️⃣  Save bookmark
     fs.writeFileSync("lastRun.txt", String(lastRunId));
 
     res.json({ message: `Upserted/updated ${total} profiles` });
@@ -486,10 +484,7 @@ app.post("/pb-webhook/connections", async (req, res) => {
           linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
           linkedinProfileUrn: c.linkedinProfileUrn || c.profileUrn || "",
         },
-        0,
-        "",
-        "",
-        ""
+        0, "", "", ""
       );
       processed++;
     }
