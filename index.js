@@ -416,33 +416,20 @@ app.get("/pb-pull/connections", async (_req, res) => {
     for (const run of runs) {
       if (Number(run.id) <= lastRunId) continue; // already handled
 
-      // 2️⃣  Fetch that run’s output via POST
-      const outURL =
-        "https://api.phantombuster.com/api/v2/containers/fetch-output";
-
-      const outResp = await fetch(outURL, {
-        method: "POST",
-        headers: {
-          "X-Phantombuster-Key-1": process.env.PB_API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ id: run.id }),
-      });
-      const out = await outResp.json();
-
-      // TEMP — show first 600 chars so we can inspect payload keys
-      console.log(
-        "DEBUG fetch‑output:",
-        JSON.stringify(out).slice(0, 600)
+      // 2️⃣  Fetch that run’s result‑object (structured JSON with jsonUrl)
+      const resultResp = await fetch(
+        `https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`,
+        { headers }
       );
+      const resultObj = await resultResp.json();
 
       const jsonUrl =
-        out.data?.output?.jsonUrl ||
-        out.data?.output?.default?.jsonUrl ||
-        out.output?.jsonUrl ||
+        resultObj.resultObject?.jsonUrl ||
+        resultObj.jsonUrl ||
+        resultObj.data?.resultObject?.jsonUrl ||
         null;
 
-      if (!jsonUrl) throw new Error("jsonUrl missing in fetch‑output response");
+      if (!jsonUrl) throw new Error("jsonUrl missing in result‑object response");
       const conns = await (await fetch(jsonUrl)).json();
 
       // 3️⃣  Upsert each profile
