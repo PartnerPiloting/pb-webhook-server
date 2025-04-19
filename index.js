@@ -5,7 +5,7 @@ require("dotenv").config();
 const express   = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable  = require("airtable");
-const fs        = require("fs");          // file bookmark for pull‑runs
+const fs        = require("fs");          // bookmark file for pull‑runs
 
 // 1) Toggle debug logs  ──────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
@@ -44,7 +44,6 @@ function computeFinalScore(
   let disqualified = false;
   let disqualifyReason = null;
 
-  // (A) Fallback for "I" if missing
   if (
     dictionaryPositives["I"] &&
     !unscored_attributes.includes("I") &&
@@ -53,19 +52,14 @@ function computeFinalScore(
     positive_scores["I"] = 0;
   }
 
-  // (B) Denominator
   let baseDenominator = 0;
   for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
-    if (!unscored_attributes.includes(attrID)) {
-      baseDenominator += pInfo.maxPoints;
-    }
+    if (!unscored_attributes.includes(attrID)) baseDenominator += pInfo.maxPoints;
   }
 
-  // (C) Raw score
   let rawScore = 0;
   for (const pts of Object.values(positive_scores || {})) rawScore += pts;
 
-  // (D) Min‑qualify check
   for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
     if (pInfo.minQualify > 0) {
       const awarded = positive_scores[attrID] || 0;
@@ -84,7 +78,6 @@ function computeFinalScore(
     }
   }
 
-  // (E) Disqualifying negatives
   for (const [negID, penalty] of Object.entries(negative_scores || {})) {
     if (dictionaryNegatives[negID]?.disqualifying) {
       disqualified = true;
@@ -99,7 +92,6 @@ function computeFinalScore(
     }
   }
 
-  // (F) Apply negative penalties
   for (const penalty of Object.values(negative_scores || {})) rawScore += penalty;
   if (rawScore < 0) rawScore = 0;
 
@@ -147,18 +139,9 @@ function parseMarkdownTables(markdown) {
 
   for (const line of lines) {
     const t = line.trim();
-    if (/^#{2,}\s*Positive Attributes/i.test(t)) {
-      section = "pos";
-      continue;
-    }
-    if (/^#{2,}\s*Negative Attributes/i.test(t)) {
-      section = "neg";
-      continue;
-    }
-    if (/^#{2,}/.test(t)) {
-      section = null;
-      continue;
-    }
+    if (/^#{2,}\s*Positive Attributes/i.test(t)) { section = "pos"; continue; }
+    if (/^#{2,}\s*Negative Attributes/i.test(t)) { section = "neg"; continue; }
+    if (/^#{2,}/.test(t)) { section = null; continue; }
     if (!section || t.startsWith("|----") || /^\|\s*ID\s*\|/i.test(t)) continue;
 
     if (section === "pos") {
@@ -246,9 +229,7 @@ function buildAttributeBreakdown(
   lines.push("**Positive Attributes**:");
   for (const [id, info] of Object.entries(dictionaryPositives)) {
     if (unscoredAttrs.includes(id)) {
-      lines.push(
-        `- ${id} (${info.label}): UNRECOGNISED (max ${info.maxPoints})`
-      );
+      lines.push(`- ${id} (${info.label}): UNRECOGNISED (max ${info.maxPoints})`);
       continue;
     }
     const pts = positiveScores[id] || 0;
@@ -314,10 +295,7 @@ async function upsertLead(
     .filter(Boolean)
     .join("\n");
 
-  const finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(
-    /\/$/,
-    ""
-  );
+  const finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
 
   let connectionStatus = "To Be Sent";
   if (connectionDegree === "1st") connectionStatus = "Connected";
@@ -346,14 +324,9 @@ async function upsertLead(
   };
 
   let filter;
-  if (linkedinProfileUrn) {
-    filter = `{LinkedIn Profile URN} = "${linkedinProfileUrn}"`;
-  } else if (finalUrl) {
-    filter = `{LinkedIn Profile URL} = "${finalUrl}"`;
-  } else {
-    if (TEST_MODE) console.log("No URN or URL—skipping lead.");
-    return;
-  }
+  if (linkedinProfileUrn) filter = `{LinkedIn Profile URN} = "${linkedinProfileUrn}"`;
+  else if (finalUrl) filter = `{LinkedIn Profile URL} = "${finalUrl}"`;
+  else { if (TEST_MODE) console.log("No URN or URL—skipping lead."); return; }
 
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
@@ -364,9 +337,7 @@ async function upsertLead(
     if (TEST_MODE) console.log("🔄 Updated", firstName, lastName);
   } else {
     fields["Source"] =
-      connectionDegree === "1st"
-        ? "Existing Connection Added by PB"
-        : "2nd level leads from PB";
+      connectionDegree === "1st" ? "Existing Connection Added by PB" : "2nd level leads from PB";
     await base("Leads").create(fields);
     if (TEST_MODE) console.log("➕ Created", firstName, lastName);
   }
@@ -378,8 +349,7 @@ async function upsertLead(
 app.post("/api/test-score", async (req, res) => {
   try {
     const lead = req.body;
-    const { truncatedInstructions, positives, negatives } =
-      await getScoringData();
+    const { truncatedInstructions, positives, negatives } = await getScoringData();
 
     const gpt = await callGptScoring(truncatedInstructions, lead);
     const {
@@ -413,11 +383,7 @@ app.post("/api/test-score", async (req, res) => {
       disqualifyReason
     );
 
-    res.json({
-      finalPct: percentage,
-      breakdown,
-      gptRaw: gpt,
-    });
+    res.json({ finalPct: percentage, breakdown, gptRaw: gpt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -453,7 +419,16 @@ app.get("/pb-pull/connections", async (_req, res) => {
       // 2️⃣  Fetch that run’s output
       const outURL = `https://api.phantombuster.com/api/v2/containers/fetch-output?containerId=${run.id}`;
       const out = await (await fetch(outURL, { headers })).json();
-      const jsonUrl = out.data?.output?.jsonUrl;
+
+      // ➜ TEMP: log the first 400 chars so we can see the keys
+      console.log("DEBUG fetch‑output:", JSON.stringify(out).slice(0, 400));
+
+      const jsonUrl =
+        out.data?.output?.jsonUrl ||          // old variant
+        out.data?.output?.default?.jsonUrl || // newer variant
+        out.output?.jsonUrl ||                // legacy
+        null;
+
       if (!jsonUrl) throw new Error("jsonUrl missing in fetch‑output response");
       const conns = await (await fetch(jsonUrl)).json();
 
@@ -476,7 +451,7 @@ app.get("/pb-pull/connections", async (_req, res) => {
       lastRunId = Number(run.id); // advance bookmark
     }
 
-    // 4️⃣  Save bookmark to disk so restarts don’t repeat work
+    // 4️⃣  Save bookmark so restarts don’t repeat work
     fs.writeFileSync("lastRun.txt", String(lastRunId));
 
     res.json({ message: `Upserted/updated ${total} profiles` });
@@ -491,7 +466,6 @@ app.get("/pb-pull/connections", async (_req, res) => {
 ==================================================================*/
 app.post("/pb-webhook/connections", async (req, res) => {
   try {
-    // Expanded fallback logic for connection arrays
     const conns =
       Array.isArray(req.body)
         ? req.body
@@ -504,7 +478,6 @@ app.post("/pb-webhook/connections", async (req, res) => {
         : [];
 
     let processed = 0;
-
     for (const c of conns) {
       await upsertLead(
         {
@@ -537,13 +510,11 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
     if (!leads.length)
       return res.status(400).json({ error: "Expected an array of profiles" });
 
-    const { truncatedInstructions, passMark, positives, negatives } =
-      await getScoringData();
+    const { truncatedInstructions, passMark, positives, negatives } = await getScoringData();
     let processed = 0;
 
     for (const lead of leads) {
       const gpt = await callGptScoring(truncatedInstructions, lead);
-
       const {
         positive_scores = {},
         negative_scores = {},
@@ -569,7 +540,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
       );
 
       const finalPct = Math.round(percentage * 100) / 100;
-      if (finalPct < passMark) continue; // optional filter
+      if (finalPct < passMark) continue;
 
       const breakdown = TEST_MODE
         ? buildAttributeBreakdown(
@@ -585,13 +556,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           )
         : "";
 
-      await upsertLead(
-        lead,
-        finalPct,
-        aiProfileAssessment,
-        aiScoreReasoning,
-        breakdown
-      );
+      await upsertLead(lead, finalPct, aiProfileAssessment, aiScoreReasoning, breakdown);
       processed++;
     }
 
