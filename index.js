@@ -270,7 +270,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (modified: Date Connected)
+   7)  upsertLead  (synthetic‑URN + Date Connected logic added)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -298,6 +298,7 @@ async function upsertLead(
     linkedinConnectionStatus,
     emailAddress = "",
     phoneNumber = "",
+    connectionSince,
     ...rest
   } = lead;
 
@@ -314,12 +315,19 @@ async function upsertLead(
 
   const finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
 
+  // Fallback URN: use real one if present, otherwise url:<slug>
+  const syntheticUrn = linkedinProfileUrn
+    ? linkedinProfileUrn
+    : finalUrl
+    ? `url:${finalUrl.replace(/^https?:\/\//, "").toLowerCase()}`
+    : null;
+
   let connectionStatus = "To Be Sent";
   if (connectionDegree === "1st") connectionStatus = "Connected";
   else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
   const fields = {
-    "LinkedIn Profile URN": linkedinProfileUrn || null,
+    "LinkedIn Profile URN": syntheticUrn,
     "LinkedIn Profile URL": finalUrl || null,
     "First Name": firstName,
     "Last Name": lastName,
@@ -329,7 +337,9 @@ async function upsertLead(
     About: linkedinDescription,
     "Job History": jobHistory,
     "LinkedIn Connection Status": connectionStatus,
-    "Date Connected": lead.connectedAt || null,
+    "Date Connected": connectionSince
+      ? new Date(connectionSince)
+      : lead.connectedAt || null,
     Email: emailAddress,
     Phone: phoneNumber,
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
@@ -340,10 +350,16 @@ async function upsertLead(
     "AI Attribute Breakdown": attributeBreakdown || "",
   };
 
+  /* ------------------ lookup filter ------------------ */
   let filter;
-  if (linkedinProfileUrn) filter = `{LinkedIn Profile URN} = "${linkedinProfileUrn}"`;
-  else if (finalUrl) filter = `{LinkedIn Profile URL} = "${finalUrl}"`;
-  else { if (TEST_MODE) console.log("No URN or URL—skipping lead."); return; }
+  if (syntheticUrn) {
+    filter = `{LinkedIn Profile URN} = "${syntheticUrn}"`;
+  } else if (finalUrl) {
+    filter = `{LinkedIn Profile URL} = "${finalUrl}"`;
+  } else {
+    if (TEST_MODE) console.log("No URN or URL—skipping lead.");
+    return;
+  }
 
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
@@ -417,7 +433,7 @@ try {
   lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
 } catch {}
 
-app.get("/pb-pull/connections", async (_req, res) => {
+app.get("/pb-pull/connections", async (req, res) => {
   try {
     const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
     const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
@@ -462,6 +478,10 @@ app.get("/pb-pull/connections", async (_req, res) => {
       } else {
         throw new Error("No jsonUrl and no inline resultObject array");
       }
+
+      // Apply ?limit=N during testing to process only the first N profiles
+      const testLimit = req.query.limit ? Number(req.query.limit) : null;
+      if (testLimit) conns = conns.slice(0, testLimit);
 
       // 3️⃣  Upsert each profile
       for (const c of conns) {
