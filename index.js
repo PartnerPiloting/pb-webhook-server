@@ -7,6 +7,23 @@ const { Configuration, OpenAIApi } = require("openai");
 const Airtable  = require("airtable");
 const fs        = require("fs");          // bookmark file for pull‑runs
 
+/* ------------------------------------------------------------------
+   helper: getJsonUrl  (structured checks → regex fallback)
+------------------------------------------------------------------*/
+function getJsonUrl(obj = {}) {
+  return (
+    obj?.data?.output?.jsonUrl ||
+    obj?.data?.resultObject?.jsonUrl ||
+    obj?.data?.resultObject?.output?.jsonUrl ||
+    obj?.output?.jsonUrl ||
+    obj?.resultObject?.jsonUrl ||
+    (() => {
+      const m = JSON.stringify(obj).match(/https?:\/\/[^"'\s]+\/result\.json/i);
+      return m ? m[0] : null;
+    })()
+  );
+}
+
 // 1) Toggle debug logs  ──────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
 
@@ -423,13 +440,7 @@ app.get("/pb-pull/connections", async (_req, res) => {
       );
       const resultObj = await resultResp.json();
 
-      // Extract jsonUrl (primary → fallbacks)
-      const jsonUrl =
-        resultObj.data?.output?.jsonUrl ||          // most Phantoms
-        resultObj.data?.resultObject?.jsonUrl ||    // legacy
-        resultObj.output?.jsonUrl ||                // edge cases
-        resultObj.resultObject?.jsonUrl || null;
-
+      const jsonUrl = getJsonUrl(resultObj);
       if (!jsonUrl) throw new Error("jsonUrl missing in result‑object response");
       const conns = await (await fetch(jsonUrl)).json();
 
