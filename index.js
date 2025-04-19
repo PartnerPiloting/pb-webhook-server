@@ -441,8 +441,27 @@ app.get("/pb-pull/connections", async (_req, res) => {
       const resultObj = await resultResp.json();
 
       const jsonUrl = getJsonUrl(resultObj);
-      if (!jsonUrl) throw new Error("jsonUrl missing in result‑object response");
-      const conns = await (await fetch(jsonUrl)).json();
+      let conns;
+
+      if (jsonUrl) {
+        conns = await (await fetch(jsonUrl)).json();
+      } else if (Array.isArray(resultObj.resultObject)) {
+        conns = resultObj.resultObject;
+      } else if (Array.isArray(resultObj.data?.resultObject)) {
+        conns = resultObj.data.resultObject;
+      } else if (
+        typeof resultObj.resultObject === "string" &&
+        resultObj.resultObject.trim().startsWith("[")
+      ) {
+        conns = JSON.parse(resultObj.resultObject);
+      } else if (
+        typeof resultObj.data?.resultObject === "string" &&
+        resultObj.data.resultObject.trim().startsWith("[")
+      ) {
+        conns = JSON.parse(resultObj.data.resultObject);
+      } else {
+        throw new Error("No jsonUrl and no inline resultObject array");
+      }
 
       // 3️⃣  Upsert each profile
       for (const c of conns) {
