@@ -584,4 +584,9 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
    12)  Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
+
+console.log(
+  `▶︎ Server starting – commit ${process.env.RENDER_GIT_COMMIT || "local"} – ${new Date().toISOString()}`
+);
+
 app.listen(port, () => console.log(`Server running on ${port}`));
