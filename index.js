@@ -430,6 +430,12 @@ app.get("/pb-pull/connections", async (_req, res) => {
       });
       const out = await outResp.json();
 
+      // TEMP — show first 600 chars so we can inspect payload keys
+      console.log(
+        "DEBUG fetch‑output:",
+        JSON.stringify(out).slice(0, 600)
+      );
+
       const jsonUrl =
         out.data?.output?.jsonUrl ||
         out.data?.output?.default?.jsonUrl ||
