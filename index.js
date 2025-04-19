@@ -440,7 +440,9 @@ app.get("/pb-pull/connections", async (_req, res) => {
     const listURL = `https://api.phantombuster.com/api/v2/containers?agentId=${process.env.PB_AGENT_ID}&limit=25`;
 
     // 1️⃣  Get the last 25 successful runs, oldest → newest
-    const runs = (await (await fetch(listURL, { headers })).json())
+    const listResp = await fetch(listURL, { headers });
+    const listJson = await listResp.json();
+    const runs = (listJson.data || [])                 // <-- grab the array
       .filter((r) => r.status === "success")
       .sort((a, b) => a.executionId - b.executionId);
 
