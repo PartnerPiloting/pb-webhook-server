@@ -270,7 +270,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (unchanged)
+   7)  upsertLead  (modified: Date Connected)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -329,7 +329,7 @@ async function upsertLead(
     About: linkedinDescription,
     "Job History": jobHistory,
     "LinkedIn Connection Status": connectionStatus,
-    "Connected At": lead.connectedAt || null,
+    "Date Connected": lead.connectedAt || null,
     Email: emailAddress,
     Phone: phoneNumber,
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
