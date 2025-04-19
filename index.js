@@ -2,20 +2,23 @@
   LinkedIn → Airtable  (Scoring + 1st‑degree sync)
 ***************************************************************/
 require("dotenv").config();
-const express = require("express");
+const express   = require("express");
 const { Configuration, OpenAIApi } = require("openai");
-const Airtable = require("airtable");
+const Airtable  = require("airtable");
+const fs        = require("fs");          // ⬅️ add this
 
 // 1) Toggle debug logs  ──────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: "2mb" }));
 
 // Simple health‑check route
-app.get("/health", (req, res) => res.send("ok"));
+app.get("/health", (_req, res) => res.send("ok"));
 
-// 2) OpenAI + Airtable Setup  ────────────────────────────────────
+/* ------------------------------------------------------------------
+   2)  OpenAI + Airtable Setup
+------------------------------------------------------------------*/
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -113,7 +116,7 @@ function computeFinalScore(
 }
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & parsing helpers  (unchanged)
+   4)  getScoringData & helpers  (unchanged)
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const records = await base(SCORING_TABLE)
@@ -325,10 +328,10 @@ async function upsertLead(
     "LinkedIn Profile URL": finalUrl || null,
     "First Name": firstName,
     "Last Name": lastName,
-    "Headline": linkedinHeadline,
+    Headline: linkedinHeadline,
     "Job Title": linkedinJobTitle,
     "Company Name": linkedinCompanyName,
-    "About": linkedinDescription,
+    About: linkedinDescription,
     "Job History": jobHistory,
     "LinkedIn Connection Status": connectionStatus,
     "Connected At": lead.connectedAt || null,
@@ -422,17 +425,79 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ==================================================================
-   9)  NEW ROUTE – /pb‑webhook/connections  (1st‑degree import)
+   9)  /pb‑pull/connections  — multi‑run, persistent bookmark
+==================================================================*/
+
+// ▶︎  Load bookmark at startup (0 if file missing)
+let lastRunId = 0;
+try {
+  lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
+} catch {}
+
+app.get("/pb-pull/connections", async (_req, res) => {
+  try {
+    const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
+    const listURL = `https://api.phantombuster.com/api/v2/containers?agentId=${process.env.PB_AGENT_ID}&limit=25`;
+
+    // 1️⃣  Get the last 25 successful runs, oldest → newest
+    const runs = (await (await fetch(listURL, { headers })).json())
+      .filter((r) => r.status === "success")
+      .sort((a, b) => a.executionId - b.executionId);
+
+    let total = 0;
+    for (const run of runs) {
+      if (run.executionId <= lastRunId) continue; // already handled
+
+      // 2️⃣  Fetch that run’s output
+      const outURL = `https://api.phantombuster.com/api/v2/containers/fetch-output?containerId=${run.id}`;
+      const out = await (await fetch(outURL, { headers })).json();
+      const conns = await (await fetch(out.jsonUrl)).json();
+
+      // 3️⃣  Upsert each profile
+      for (const c of conns) {
+        await upsertLead(
+          {
+            ...c,
+            connectionDegree: "1st",
+            linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
+            linkedinProfileUrn: c.linkedinProfileUrn || c.profileUrn || "",
+          },
+          0,
+          "",
+          "",
+          ""
+        );
+        total++;
+      }
+      lastRunId = run.executionId; // advance bookmark
+    }
+
+    // 4️⃣  Save bookmark to disk so restarts don’t repeat work
+    fs.writeFileSync("lastRun.txt", String(lastRunId));
+
+    res.json({ message: `Upserted/updated ${total} profiles` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ==================================================================
+   10)  /pb‑webhook/connections  (1st‑degree import)
 ==================================================================*/
 app.post("/pb-webhook/connections", async (req, res) => {
   try {
     // Expanded fallback logic for connection arrays
     const conns =
-      Array.isArray(req.body)                     ? req.body
-    : Array.isArray(req.body.resultObject)        ? req.body.resultObject
-    : Array.isArray(req.body.resultObject?.data)  ? req.body.resultObject.data
-    : Array.isArray(req.body.results)             ? req.body.results
-    : [];
+      Array.isArray(req.body)
+        ? req.body
+        : Array.isArray(req.body.resultObject)
+        ? req.body.resultObject
+        : Array.isArray(req.body.resultObject?.data)
+        ? req.body.resultObject.data
+        : Array.isArray(req.body.results)
+        ? req.body.results
+        : [];
 
     let processed = 0;
 
@@ -460,7 +525,7 @@ app.post("/pb-webhook/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   10)  /pb‑webhook/scrapeLeads  (unchanged, GPT scoring)
+   11)  /pb‑webhook/scrapeLeads  (unchanged, GPT scoring)
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -484,15 +549,20 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         aiScoreReasoning = "",
       } = gpt;
 
-      const { rawScore, denominator, percentage, disqualified, disqualifyReason } =
-        computeFinalScore(
-          positive_scores,
-          positives,
-          negative_scores,
-          negatives,
-          contact_readiness,
-          unscored_attributes
-        );
+      const {
+        rawScore,
+        denominator,
+        percentage,
+        disqualified,
+        disqualifyReason,
+      } = computeFinalScore(
+        positive_scores,
+        positives,
+        negative_scores,
+        negatives,
+        contact_readiness,
+        unscored_attributes
+      );
 
       const finalPct = Math.round(percentage * 100) / 100;
       if (finalPct < passMark) continue; // optional filter
@@ -529,7 +599,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  Start server
+   12)  Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Server running on ${port}`));
