@@ -5,7 +5,7 @@ require("dotenv").config();
 const express   = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable  = require("airtable");
-const fs        = require("fs");          // ⬅️ add this
+const fs        = require("fs");          // file bookmark for pull‑runs
 
 // 1) Toggle debug logs  ──────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
@@ -437,18 +437,18 @@ try {
 app.get("/pb-pull/connections", async (_req, res) => {
   try {
     const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
-    const listURL = `https://api.phantombuster.com/api/v2/containers?agentId=${process.env.PB_AGENT_ID}&limit=25`;
+    const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
 
     // 1️⃣  Get the last 25 successful runs, oldest → newest
     const listResp = await fetch(listURL, { headers });
     const listJson = await listResp.json();
-    const runs = (listJson.data || [])                 // <-- grab the array
-      .filter((r) => r.status === "success")
-      .sort((a, b) => a.executionId - b.executionId);
+    const runs = (listJson.data || [])
+      .filter((r) => r.lastEndStatus === "success")
+      .sort((a, b) => Number(a.id) - Number(b.id));
 
     let total = 0;
     for (const run of runs) {
-      if (run.executionId <= lastRunId) continue; // already handled
+      if (Number(run.id) <= lastRunId) continue; // already handled
 
       // 2️⃣  Fetch that run’s output
       const outURL = `https://api.phantombuster.com/api/v2/containers/fetch-output?containerId=${run.id}`;
@@ -471,7 +471,7 @@ app.get("/pb-pull/connections", async (_req, res) => {
         );
         total++;
       }
-      lastRunId = run.executionId; // advance bookmark
+      lastRunId = Number(run.id); // advance bookmark
     }
 
     // 4️⃣  Save bookmark to disk so restarts don’t repeat work
