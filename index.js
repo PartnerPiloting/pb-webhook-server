@@ -426,7 +426,7 @@ app.get("/pb-pull/connections", async (_req, res) => {
           "X-Phantombuster-Key-1": process.env.PB_API_KEY,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ containerId: run.id }),
+        body: JSON.stringify({ id: run.id }),
       });
       const out = await outResp.json();
 
