@@ -49,7 +49,7 @@ const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "10mb" }));        // ⬅ increased body‑size limit
 
 // Simple health‑check route
 app.get("/health", (_req, res) => res.send("ok"));
@@ -374,9 +374,9 @@ async function upsertLead(
   };
 
   /* ─── new flags ─── */
-  if (auFlag !== null)            fields["AU"] = !!auFlag;
-  if (aiExcluded !== null)        fields["AI Excluded"] = aiExcluded;
-  if (excludeDetails !== null)    fields["Exclude Details"] = excludeDetails;
+  if (auFlag !== null)         fields["AU"]          = !!auFlag;
+  if (aiExcluded !== null)     fields["AI_Excluded"] = (aiExcluded === "Yes");
+  if (excludeDetails !== null) fields["Exclude Details"] = excludeDetails;
 
   /* ------------------ lookup filter ------------------ */
   const filter = `{Profile Key} = "${profileKey}"`;
