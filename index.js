@@ -336,9 +336,21 @@ async function upsertLead(
     .filter(Boolean)
     .join("\n");
 
-  const finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
+  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
+
+  /* 🔹 Fallback – synthesise a LinkedIn URL if missing */
   if (!finalUrl) {
-    if (TEST_MODE) console.log("No profile URL—skipping lead.");
+    const slug = lead.publicId || lead.publicIdentifier;
+    const mid  = lead.memberId || lead.profileId;
+    if (slug) {
+      finalUrl = `https://www.linkedin.com/in/${slug}/`;
+    } else if (mid) {
+      finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
+    }
+  }
+
+  if (!finalUrl) {
+    if (TEST_MODE) console.log("No profile URL—skipping lead.", lead);
     return;
   }
 
