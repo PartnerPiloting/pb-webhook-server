@@ -1,5 +1,5 @@
 /***************************************************************
-  LinkedIn → Airtable  (Scoring + 1st‑degree sync)
+  LinkedIn → Airtable  (Scoring + 1st‑degree & LH sync)
 ***************************************************************/
 require("dotenv").config();
 const express   = require("express");
@@ -34,8 +34,19 @@ function canonicalUrl(url = "") {
     .toLowerCase();
 }
 
+/* ------------------------------------------------------------------
+   helper: isAustralian  – quick AU location check
+------------------------------------------------------------------*/
+function isAustralian(loc = "") {
+  return /(australia|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)$/i.test(
+    loc.trim()
+  );
+}
+
 // 1) Toggle debug logs  ──────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
+const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
+const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -280,14 +291,17 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (now uses Profile Key, drops URN logic)
+   7)  upsertLead  (Profile Key + new flags)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
   finalScore,
   aiProfileAssessment,
   aiScoreReasoning,
-  attributeBreakdown
+  attributeBreakdown,
+  auFlag = null,
+  aiExcluded = null,
+  excludeDetails = null
 ) {
   const {
     firstName = "",
@@ -307,6 +321,7 @@ async function upsertLead(
     linkedinConnectionStatus,
     emailAddress = "",
     phoneNumber = "",
+    locationName = "",
     connectionSince,
     ...rest
   } = lead;
@@ -339,17 +354,18 @@ async function upsertLead(
     "LinkedIn Profile URL": finalUrl,
     "First Name": firstName,
     "Last Name": lastName,
-    Headline: linkedinHeadline,
-    "Job Title": linkedinJobTitle,
-    "Company Name": linkedinCompanyName,
-    About: linkedinDescription,
+    Headline: linkedinHeadline || lead.headline || "",
+    "Job Title": linkedinJobTitle || "",
+    "Company Name": linkedinCompanyName || "",
+    About: linkedinDescription || "",
     "Job History": jobHistory,
     "LinkedIn Connection Status": connectionStatus,
+    Location: locationName || "",
     "Date Connected": connectionSince
       ? new Date(connectionSince)
       : lead.connectedAt || null,
-    Email: emailAddress,
-    Phone: phoneNumber,
+    Email: emailAddress || lead.email || lead.workEmail || "",
+    Phone: phoneNumber || lead.phone || ((lead.phoneNumbers || [])[0]?.value || ""),
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
     "Raw Profile Data": JSON.stringify(rest),
     "AI Profile Assessment": aiProfileAssessment || "",
@@ -357,6 +373,11 @@ async function upsertLead(
     "AI Score": Math.round(finalScore * 100) / 100,
     "AI Attribute Breakdown": attributeBreakdown || "",
   };
+
+  /* ─── new flags ─── */
+  if (auFlag !== null)            fields["AU"] = !!auFlag;
+  if (aiExcluded !== null)        fields["AI Excluded"] = aiExcluded;
+  if (excludeDetails !== null)    fields["Exclude Details"] = excludeDetails;
 
   /* ------------------ lookup filter ------------------ */
   const filter = `{Profile Key} = "${profileKey}"`;
@@ -611,7 +632,106 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12)  Start server
+   12)  /lh‑webhook/scrapeLeads  (Linked Helper import + scoring)
+------------------------------------------------------------------*/
+app.post("/lh-webhook/scrapeLeads", async (req, res) => {
+  try {
+    const raw = Array.isArray(req.body) ? req.body : [req.body];
+    if (!raw.length) return res.status(400).json({ error: "Empty payload" });
+
+    const { truncatedInstructions, positives, negatives } = await getScoringData();
+
+    let processed = 0;
+
+    for (const lh of raw) {
+      /* ── map to generic lead shape ── */
+      const lead = {
+        firstName: lh.firstName,
+        lastName: lh.lastName,
+        headline: lh.headline,
+        locationName: lh.locationName,
+        linkedinProfileUrl: lh.profileUrl,
+        email: lh.email || lh.workEmail,
+        phone: (lh.phoneNumbers || [])[0]?.value || "",
+        raw: lh,
+      };
+
+      /* ── GPT score ── */
+      const gpt = await callGptScoring(truncatedInstructions, lead);
+      const {
+        positive_scores = {},
+        negative_scores = {},
+        contact_readiness = false,
+        unscored_attributes = [],
+        aiProfileAssessment = "",
+        aiScoreReasoning = "",
+      } = gpt;
+
+      const { rawScore, denominator, percentage } = computeFinalScore(
+        positive_scores,
+        positives,
+        negative_scores,
+        negatives,
+        contact_readiness,
+        unscored_attributes
+      );
+      const finalPct = Math.round(percentage * 100) / 100;
+
+      /* ── Filter logic ── */
+      const auFlag = isAustralian(lead.locationName || "");
+      const passesScore = finalPct >= MIN_SCORE;
+      const positiveChat = true; // placeholder until inbox sentiment
+      const passesFilters = auFlag && passesScore && positiveChat;
+
+      const aiExcluded = passesFilters ? "No" : "Yes";
+      const excludeDetails = passesFilters
+        ? ""
+        : !auFlag
+            ? `Non‑AU location "${lead.locationName || ""}"`
+            : `Score ${finalPct} < ${MIN_SCORE}`;
+
+      /* Skip or save? */
+      if (!passesFilters && SAVE_FILTERED_ONLY) {
+        if (TEST_MODE)
+          console.log("SKIP (filters)", lead.linkedinProfileUrl, excludeDetails);
+        continue;
+      }
+
+      /* Breakdown only during TEST_MODE to save tokens */
+      const breakdown = TEST_MODE
+        ? buildAttributeBreakdown(
+            positive_scores,
+            positives,
+            negative_scores,
+            negatives,
+            unscored_attributes,
+            rawScore,
+            denominator
+          )
+        : "";
+
+      await upsertLead(
+        lead,
+        finalPct,
+        aiProfileAssessment,
+        aiScoreReasoning,
+        breakdown,
+        auFlag,
+        aiExcluded,
+        excludeDetails
+      );
+      processed++;
+    }
+
+    res.json({ message: `Processed ${processed} LH profiles` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ------------------------------------------------------------------
+   13)  Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 
