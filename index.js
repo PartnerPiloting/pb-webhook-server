@@ -35,12 +35,11 @@ function canonicalUrl(url = "") {
 }
 
 /* ------------------------------------------------------------------
-   helper: isAustralian  – quick AU location check
+   helper: isAustralian – matches “Greater Sydney Area”, “Brisbane QLD”, etc.
 ------------------------------------------------------------------*/
 function isAustralian(loc = "") {
-  return /(australia|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)$/i.test(
-    loc.trim()
-  );
+  return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i
+    .test(loc);
 }
 
 // 1) Toggle debug logs  ──────────────────────────────────────────
