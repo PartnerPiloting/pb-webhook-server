@@ -291,7 +291,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (Profile Key + new flags)
+   7)  upsertLead  (Profile Key lookup only)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -350,7 +350,6 @@ async function upsertLead(
   else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
   const fields = {
-    "Profile Key": profileKey,
     "LinkedIn Profile URL": finalUrl,
     "First Name": firstName,
     "Last Name": lastName,
