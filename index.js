@@ -24,6 +24,16 @@ function getJsonUrl(obj = {}) {
   );
 }
 
+/* ------------------------------------------------------------------
+   helper: canonicalUrl  – lower‑cases, strips protocol & trailing slash
+------------------------------------------------------------------*/
+function canonicalUrl(url = "") {
+  return url
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/$/, "")
+    .toLowerCase();
+}
+
 // 1) Toggle debug logs  ──────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
 
@@ -270,7 +280,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (synthetic‑URN + Date Connected logic added)
+   7)  upsertLead  (now uses Profile Key, drops URN logic)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -287,7 +297,6 @@ async function upsertLead(
     linkedinCompanyName = "",
     linkedinDescription = "",
     linkedinProfileUrl = "",
-    linkedinProfileUrn = "",
     connectionDegree = "",
     linkedinJobDateRange = "",
     linkedinJobDescription = "",
@@ -314,21 +323,20 @@ async function upsertLead(
     .join("\n");
 
   const finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
+  if (!finalUrl) {
+    if (TEST_MODE) console.log("No profile URL—skipping lead.");
+    return;
+  }
 
-  // Fallback URN: use real one if present, otherwise url:<slug>
-  const syntheticUrn = linkedinProfileUrn
-    ? linkedinProfileUrn
-    : finalUrl
-    ? `url:${finalUrl.replace(/^https?:\/\//, "").toLowerCase()}`
-    : null;
+  const profileKey = canonicalUrl(finalUrl);
 
   let connectionStatus = "To Be Sent";
   if (connectionDegree === "1st") connectionStatus = "Connected";
   else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
   const fields = {
-    "LinkedIn Profile URN": syntheticUrn,
-    "LinkedIn Profile URL": finalUrl || null,
+    "Profile Key": profileKey,
+    "LinkedIn Profile URL": finalUrl,
     "First Name": firstName,
     "Last Name": lastName,
     Headline: linkedinHeadline,
@@ -351,15 +359,7 @@ async function upsertLead(
   };
 
   /* ------------------ lookup filter ------------------ */
-  let filter;
-  if (syntheticUrn) {
-    filter = `{LinkedIn Profile URN} = "${syntheticUrn}"`;
-  } else if (finalUrl) {
-    filter = `{LinkedIn Profile URL} = "${finalUrl}"`;
-  } else {
-    if (TEST_MODE) console.log("No URN or URL—skipping lead.");
-    return;
-  }
+  const filter = `{Profile Key} = "${profileKey}"`;
 
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
@@ -490,7 +490,6 @@ app.get("/pb-pull/connections", async (req, res) => {
             ...c,
             connectionDegree: "1st",
             linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
-            linkedinProfileUrn: c.linkedinProfileUrn || c.profileUrn || "",
           },
           0, "", "", ""
         );
@@ -532,7 +531,6 @@ app.post("/pb-webhook/connections", async (req, res) => {
           ...c,
           connectionDegree: "1st",
           linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
-          linkedinProfileUrn: c.linkedinProfileUrn || c.profileUrn || "",
         },
         0, "", "", ""
       );
