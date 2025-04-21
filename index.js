@@ -642,13 +642,22 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
     let processed = 0;
 
     for (const lh of raw) {
+      /* 🔹 NEW — build a reliable LinkedIn URL */
+      const rawUrl =
+        lh.profileUrl ||
+        (lh.publicId
+          ? `https://www.linkedin.com/in/${lh.publicId}/`
+          : lh.memberId
+          ? `https://www.linkedin.com/profile/view?id=${lh.memberId}`
+          : "");
+
       /* ── map to generic lead shape ── */
       const lead = {
         firstName: lh.firstName,
         lastName: lh.lastName,
         headline: lh.headline,
         locationName: lh.locationName,
-        linkedinProfileUrl: lh.profileUrl,
+        linkedinProfileUrl: rawUrl,   // ← use the synthesised link
         email: lh.email || lh.workEmail,
         phone: (lh.phoneNumbers || [])[0]?.value || "",
         raw: lh,
