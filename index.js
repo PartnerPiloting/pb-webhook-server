@@ -290,7 +290,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (extra fallback + file dump when URL missing)
+   7)  upsertLead  (URL fallbacks + debug dump; updated assessment/score lines)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -412,8 +412,8 @@ async function upsertLead(
     Phone: phoneNumber || lead.phone || ((lead.phoneNumbers || [])[0]?.value || ""),
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
     "Raw Profile Data": JSON.stringify(rest),
-    "AI Profile Assessment": aiProfileAssessment || "",
-    "AI Score Reasoning": aiScoreReasoning || "",
+    "AI Profile Assessment": aiProfileAssessment == null ? "" : String(aiProfileAssessment),
+    "AI Score Reasoning":   aiScoreReasoning   == null ? "" : String(aiScoreReasoning),
     "AI Score": Math.round(finalScore * 100) / 100,
     "AI Attribute Breakdown": attributeBreakdown || "",
   };
