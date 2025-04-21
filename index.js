@@ -290,7 +290,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (Profile Key lookup only)
+   7)  upsertLead  (now with detailed debug when URL missing)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -349,8 +349,20 @@ async function upsertLead(
     }
   }
 
+  /* 🔸 If still no URL, dump debug info and bail */
   if (!finalUrl) {
-    if (TEST_MODE) console.log("No profile URL—skipping lead.", lead);
+    console.warn("No profile URL—skipping lead.");
+    console.warn("» present keys:", Object.keys(lead));
+    console.warn("» identifiers:", {
+      profileUrl: linkedinProfileUrl,
+      fallbackProfileUrl,
+      publicId: lead.publicId || lead.publicIdentifier,
+      memberId: lead.memberId || lead.profileId,
+    });
+    if (TEST_MODE) {
+      const snippet = JSON.stringify(lead).slice(0, 800);
+      console.warn("» lead snippet:", snippet, snippet.length === 800 ? "...(truncated)" : "");
+    }
     return;
   }
 
