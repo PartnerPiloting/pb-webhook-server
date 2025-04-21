@@ -48,7 +48,7 @@ const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));        // ⬅ increased body‑size limit
+app.use(express.json({ limit: "10mb" }));
 
 // Simple health‑check route
 app.get("/health", (_req, res) => res.send("ok"));
@@ -290,7 +290,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (URL fallbacks + debug dump; updated assessment/score lines)
+   7)  upsertLead  (unchanged)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -338,7 +338,6 @@ async function upsertLead(
 
   let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
 
-  /* 🔹 Fallback – synthesise a LinkedIn URL if missing */
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
     const mid  = lead.memberId || lead.profileId;
@@ -349,7 +348,6 @@ async function upsertLead(
     }
   }
 
-  /* 🆕 Last‑chance fallback – check inside lead.raw */
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
     if (typeof r.profile_url === "string" && r.profile_url.trim()) {
@@ -361,7 +359,6 @@ async function upsertLead(
     }
   }
 
-  /* 🔸 If still no URL, dump debug info and bail */
   if (!finalUrl) {
     console.warn("No profile URL—skipping lead.");
     console.warn("» present keys:", Object.keys(lead));
@@ -375,8 +372,6 @@ async function upsertLead(
       const snippet = JSON.stringify(lead).slice(0, 800);
       console.warn("» lead snippet:", snippet, snippet.length === 800 ? "...(truncated)" : "");
     }
-
-    /* 📂 Write full skipped lead to disk for post‑mortem */
     try {
       fs.writeFileSync(
         "skipped-lead-" + Date.now() + ".json",
@@ -418,12 +413,11 @@ async function upsertLead(
     "AI Attribute Breakdown": attributeBreakdown || "",
   };
 
-  /* ─── new flags ─── */
+  /* flags */
   if (auFlag !== null)         fields["AU"]          = !!auFlag;
   if (aiExcluded !== null)     fields["AI_Excluded"] = (aiExcluded === "Yes");
   if (excludeDetails !== null) fields["Exclude Details"] = excludeDetails;
 
-  /* ------------------ lookup filter ------------------ */
   const filter = `{Profile Key} = "${profileKey}"`;
 
   const existing = await base("Leads")
@@ -491,8 +485,6 @@ app.post("/api/test-score", async (req, res) => {
 /* ==================================================================
    9)  /pb‑pull/connections  — multi‑run, persistent bookmark
 ==================================================================*/
-
-// ▶︎  Load bookmark at startup (0 if file missing)
 let lastRunId = 0;
 try {
   lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
@@ -503,7 +495,6 @@ app.get("/pb-pull/connections", async (req, res) => {
     const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
     const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
 
-    // 1️⃣  Get the last 25 successful runs, oldest → newest
     const listResp = await fetch(listURL, { headers });
     const listJson = await listResp.json();
     const runs = (listJson.data || [])
@@ -512,9 +503,8 @@ app.get("/pb-pull/connections", async (req, res) => {
 
     let total = 0;
     for (const run of runs) {
-      if (Number(run.id) <= lastRunId) continue; // already handled
+      if (Number(run.id) <= lastRunId) continue;
 
-      // 2️⃣  Fetch that run’s structured result (GET)
       const resultResp = await fetch(
         `https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`,
         { headers }
@@ -544,11 +534,9 @@ app.get("/pb-pull/connections", async (req, res) => {
         throw new Error("No jsonUrl and no inline resultObject array");
       }
 
-      // Apply ?limit=N during testing to process only the first N profiles
       const testLimit = req.query.limit ? Number(req.query.limit) : null;
       if (testLimit) conns = conns.slice(0, testLimit);
 
-      // 3️⃣  Upsert each profile
       for (const c of conns) {
         await upsertLead(
           {
@@ -560,10 +548,9 @@ app.get("/pb-pull/connections", async (req, res) => {
         );
         total++;
       }
-      lastRunId = Number(run.id); // advance bookmark
+      lastRunId = Number(run.id);
     }
 
-    // 4️⃣  Save bookmark
     fs.writeFileSync("lastRun.txt", String(lastRunId));
 
     res.json({ message: `Upserted/updated ${total} profiles` });
@@ -574,7 +561,7 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ==================================================================
-   10)  /pb‑webhook/connections  (1st‑degree import)
+   10)  /pb‑webhook/connections  (unchanged)
 ==================================================================*/
 app.post("/pb-webhook/connections", async (req, res) => {
   try {
@@ -610,7 +597,7 @@ app.post("/pb-webhook/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  /pb‑webhook/scrapeLeads  (unchanged, GPT scoring)
+   11)  /pb‑webhook/scrapeLeads  (unchanged)
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -676,7 +663,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12)  /lh‑webhook/scrapeLeads  (Linked Helper import + scoring)
+   12)  /lh‑webhook/scrapeLeads  (mapper block)
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -688,7 +675,6 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
     let processed = 0;
 
     for (const lh of raw) {
-      /* 🔹 NEW — build a reliable LinkedIn URL */
       const rawUrl =
         lh.profileUrl ||
         (lh.publicId
@@ -697,19 +683,37 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           ? `https://www.linkedin.com/profile/view?id=${lh.memberId}`
           : "");
 
-      /* ── map to generic lead shape ── */
+      const exp      = Array.isArray(lh.experience) ? lh.experience : [];
+      const current  = exp[0] || {};
+      const previous = exp[1] || {};
+
       const lead = {
-        firstName: lh.firstName,
-        lastName: lh.lastName,
-        headline: lh.headline,
-        locationName: lh.locationName,
-        linkedinProfileUrl: rawUrl,   // ← use the synthesised link
-        email: lh.email || lh.workEmail,
-        phone: (lh.phoneNumbers || [])[0]?.value || "",
+        firstName:  lh.firstName  || lh.first_name || "",
+        lastName:   lh.lastName   || lh.last_name  || "",
+        headline:   lh.headline   || "",
+        locationName: lh.locationName || lh.location || "",
+        email:  lh.email || lh.workEmail || "",
+        phone:  (lh.phoneNumbers || [])[0]?.value || "",
+
+        linkedinProfileUrl: rawUrl,
+
+        linkedinJobTitle:     lh.headline || lh.occupation || lh.position || current.title || "",
+        linkedinCompanyName:  lh.companyName ||
+                              (lh.company ? lh.company.name : "") ||
+                              current.company || "",
+
+        linkedinDescription: lh.summary || lh.bio || "",
+
+        linkedinJobDateRange:          current.dateRange   || current.dates || "",
+        linkedinJobDescription:        current.description || "",
+        linkedinPreviousJobDateRange:  previous.dateRange  || previous.dates || "",
+        linkedinPreviousJobDescription: previous.description || "",
+
+        connectionSince: lh.connectionDate || null,
+
         raw: lh,
       };
 
-      /* ── GPT score ── */
       const gpt = await callGptScoring(truncatedInstructions, lead);
       const {
         positive_scores = {},
@@ -730,10 +734,9 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       );
       const finalPct = Math.round(percentage * 100) / 100;
 
-      /* ── Filter logic ── */
       const auFlag = isAustralian(lead.locationName || "");
       const passesScore = finalPct >= MIN_SCORE;
-      const positiveChat = true; // placeholder until inbox sentiment
+      const positiveChat = true;
       const passesFilters = auFlag && passesScore && positiveChat;
 
       const aiExcluded = passesFilters ? "No" : "Yes";
@@ -743,14 +746,12 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
             ? `Non‑AU location "${lead.locationName || ""}"`
             : `Score ${finalPct} < ${MIN_SCORE}`;
 
-      /* Skip or save? */
       if (!passesFilters && SAVE_FILTERED_ONLY) {
         if (TEST_MODE)
           console.log("SKIP (filters)", lead.linkedinProfileUrl, excludeDetails);
         continue;
       }
 
-      /* Breakdown only during TEST_MODE to save tokens */
       const breakdown = TEST_MODE
         ? buildAttributeBreakdown(
             positive_scores,
