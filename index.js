@@ -18,9 +18,7 @@ function getJsonUrl(obj = {}) {
     obj?.output?.jsonUrl ||
     obj?.resultObject?.jsonUrl ||
     (() => {
-      const m = JSON.stringify(obj).match(
-        /https?:\/\/[^"'\s]+\/result\.json/i
-      );
+      const m = JSON.stringify(obj).match(/https?:\/\/[^"'\s]+\/result\.json/i);
       return m ? m[0] : null;
     })()
   );
@@ -40,6 +38,40 @@ function isAustralian(loc = "") {
   return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i.test(
     loc
   );
+}
+
+/* ------------------------------------------------------------------
+   helper: safeDate – turns "2025.04.19" or ISO into a real Date()
+------------------------------------------------------------------*/
+function safeDate(d) {
+  if (!d) return null;
+  if (d instanceof Date) return isNaN(d) ? null : d;
+
+  // Linked Helper sometimes uses dots instead of dashes
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(d)) {
+    const iso = d.replace(/\./g, "-"); // 2025.04.19 → 2025-04-19
+    return new Date(iso + "T00:00:00Z");
+  }
+  // Fallback: let the runtime try (works for ISO strings)
+  const dt = new Date(d);
+  return isNaN(dt) ? null : dt;
+}
+
+/* ------------------------------------------------------------------
+   helper: getLastTwoOrgs – returns a simple job‑history string
+------------------------------------------------------------------*/
+function getLastTwoOrgs(lh = {}) {
+  const out = [];
+  for (let i = 1; i <= 2; i++) {
+    const org = lh[`organization_${i}`];
+    const title = lh[`organization_title_${i}`];
+    const sr = lh[`organization_start_${i}`];
+    const er = lh[`organization_end_${i}`];
+    if (!org && !title) continue;
+    const range = sr || er ? `(${sr || "?"} – ${er || "Present"})` : "";
+    out.push(`${title || "Unknown Role"} at ${org || "Unknown"} ${range}`);
+  }
+  return out.join("\n");
 }
 
 // 1) Toggle debug logs  ──────────────────────────────────────────
@@ -287,13 +319,18 @@ function buildAttributeBreakdown(
     lines.push(`- ${id} (${info.label}): ${pen}`);
   }
 
-  if (TEST_MODE && denominator > 0) {
+  if (denominator > 0) {
     const pct = (rawScore / denominator) * 100;
-    lines.push(`\nTotal: ${rawScore} / ${denominator} => ${pct.toFixed(2)}%`);
+    lines.push(`\nTotal: ${rawScore} / ${denominator} ⇒ ${pct.toFixed(2)} %`);
   }
-  if (disqualified && disqualifyReason) {
-    lines.push(`\n**DISQUALIFIED** – ${disqualifyReason}`);
+
+  if (rawScore === 0) {
+    lines.push(
+      "\nTotal score is **0** → profile did not meet any positive criteria."
+    );
+    if (disqualified) lines.push("*(also disqualified – see above)*");
   }
+
   return lines.join("\n");
 }
 
@@ -333,16 +370,23 @@ async function upsertLead(
     ...rest
   } = lead;
 
-  const jobHistory = [
-    linkedinJobDateRange || linkedinJobDescription
+  /* ---------- Job‑History ---------- */
+  let jobHistory = [
+    linkedinJobDateRange
       ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}`
       : "",
-    linkedinPreviousJobDateRange || linkedinPreviousJobDescription
-      ? `\nPrevious:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}`
+    linkedinPreviousJobDateRange
+      ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}`
       : "",
   ]
     .filter(Boolean)
     .join("\n");
+
+  // If still blank, take last two organisations scraped by helper
+  if (!jobHistory && lead.raw) {
+    const hist = getLastTwoOrgs(lead.raw);
+    if (hist) jobHistory = hist;
+  }
 
   let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(
     /\/$/,
@@ -421,15 +465,14 @@ async function upsertLead(
     "Job History": jobHistory,
     "LinkedIn Connection Status": connectionStatus,
     Location: locationName || "",
-    "Date Connected": connectionSince
-      ? new Date(connectionSince)
-      : lead.connectedAt || null,
-    Email:
-      emailAddress || lead.email || lead.workEmail || "",
+    "Date Connected":
+      safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
+    Email: emailAddress || lead.email || lead.workEmail || "",
     Phone:
       phoneNumber ||
       lead.phone ||
-      ((lead.phoneNumbers || [])[0]?.value || ""),
+      (lead.phoneNumbers || [])[0]?.value ||
+      "",
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
     "Raw Profile Data": JSON.stringify(rest),
     "AI Profile Assessment":
@@ -698,7 +741,13 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           )
         : "";
 
-      await upsertLead(lead, finalPct, aiProfileAssessment, aiScoreReasoning, breakdown);
+      await upsertLead(
+        lead,
+        finalPct,
+        aiProfileAssessment,
+        aiScoreReasoning,
+        breakdown
+      );
       processed++;
     }
 
@@ -736,35 +785,52 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       const current = exp[0] || {};
       const previous = exp[1] || {};
 
+      // recognise first‑degree even when LH sends "member_distance":"DISTANCE_1"
+      const numericDist =
+        (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
+        (typeof lh.member_distance === "string" &&
+          lh.member_distance.endsWith("_1"))
+          ? 1
+          : lh.distance;
+
       const lead = {
         /* core contact fields */
         firstName: lh.firstName || lh.first_name || "",
         lastName: lh.lastName || lh.last_name || "",
         headline: lh.headline || "",
-        locationName: lh.locationName || lh.location || "",
+        locationName:
+          lh.locationName || lh.location_name || lh.location || "",
+        /* phones: LH provides phone_1 / phone_2 for scraped numbers */
+        phone:
+          (lh.phoneNumbers || [])[0]?.value ||
+          lh.phone_1 ||
+          lh.phone_2 ||
+          "",
+
         email: lh.email || lh.workEmail || "",
-        phone: (lh.phoneNumbers || [])[0]?.value || "",
 
         /* profile URL */
         linkedinProfileUrl: rawUrl,
 
-        /* job / company */
+        /* job / company (fallback sequence) */
         linkedinJobTitle:
           lh.headline ||
           lh.occupation ||
           lh.position ||
           current.title ||
           "",
+
         linkedinCompanyName:
           lh.companyName ||
           (lh.company ? lh.company.name : "") ||
           current.company ||
+          lh.organization_1 ||
           "",
 
         /* about / summary */
         linkedinDescription: lh.summary || lh.bio || "",
 
-        /* current & previous roles for Job‑History column */
+        /* current & previous roles – for Job‑History column */
         linkedinJobDateRange: current.dateRange || current.dates || "",
         linkedinJobDescription: current.description || "",
         linkedinPreviousJobDateRange: previous.dateRange || previous.dates || "",
@@ -773,8 +839,13 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         /* 1st‑degree info from LH (NEW) */
         connectionDegree:
           lh.connectionDegree ||
-          (lh.degree === 1 || lh.distance === 1 ? "1st" : ""),
-        connectionSince: lh.connectionDate || null,
+          (lh.degree === 1 || numericDist === 1 ? "1st" : ""),
+        connectionSince:
+          lh.connectionDate ||
+          lh.connected_at_iso ||
+          lh.connected_at ||
+          lh.invited_date_iso ||
+          null,
 
         /* raw payload for debugging */
         raw: lh,
@@ -857,6 +928,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-  `▶︎ Server starting – commit ${process.env.RENDER_GIT_COMMIT || "local"} – ${new Date().toISOString()}`
+  `▶︎ Server starting – commit ${
+    process.env.RENDER_GIT_COMMIT || "local"
+  } – ${new Date().toISOString()}`
 );
 app.listen(port, () => console.log(`Server running on ${port}`));
