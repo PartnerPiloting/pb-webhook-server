@@ -290,7 +290,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (now with detailed debug when URL missing + file dump)
+   7)  upsertLead  (extra fallback + file dump when URL missing)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -346,6 +346,18 @@ async function upsertLead(
       finalUrl = `https://www.linkedin.com/in/${slug}/`;
     } else if (mid) {
       finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
+    }
+  }
+
+  /* 🆕 Last‑chance fallback – check inside lead.raw */
+  if (!finalUrl && lead.raw) {
+    const r = lead.raw;
+    if (typeof r.profile_url === "string" && r.profile_url.trim()) {
+      finalUrl = r.profile_url.trim().replace(/\/$/, "");
+    } else if (r.public_id) {
+      finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
+    } else if (r.member_id) {
+      finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
     }
   }
 
