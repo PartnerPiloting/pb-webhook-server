@@ -290,7 +290,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (now with detailed debug when URL missing)
+   7)  upsertLead  (now with detailed debug when URL missing + file dump)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -362,6 +362,16 @@ async function upsertLead(
     if (TEST_MODE) {
       const snippet = JSON.stringify(lead).slice(0, 800);
       console.warn("» lead snippet:", snippet, snippet.length === 800 ? "...(truncated)" : "");
+    }
+
+    /* 📂 Write full skipped lead to disk for post‑mortem */
+    try {
+      fs.writeFileSync(
+        "skipped-lead-" + Date.now() + ".json",
+        JSON.stringify(lead, null, 2)
+      );
+    } catch (e) {
+      console.error("Failed to write skipped lead:", e.message);
     }
     return;
   }
