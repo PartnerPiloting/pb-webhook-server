@@ -32,7 +32,7 @@ function canonicalUrl(url = "") {
 }
 
 /* ------------------------------------------------------------------
-   helper: isAustralian – matches “Greater Sydney Area”, “Brisbane QLD”, etc.
+   helper: isAustralian – matches Australian keywords
 ------------------------------------------------------------------*/
 function isAustralian(loc = "") {
   return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i.test(
@@ -41,7 +41,7 @@ function isAustralian(loc = "") {
 }
 
 /* ------------------------------------------------------------------
-   helper: safeDate – turns "2025.04.19" or ISO into a real Date()
+   helper: safeDate – turns "2025.04.19" or ISO into Date()
 ------------------------------------------------------------------*/
 function safeDate(d) {
   if (!d) return null;
@@ -55,7 +55,7 @@ function safeDate(d) {
 }
 
 /* ------------------------------------------------------------------
-   helper: getLastTwoOrgs – returns a simple job‑history string
+   helper: getLastTwoOrgs – simple job‑history fallback
 ------------------------------------------------------------------*/
 function getLastTwoOrgs(lh = {}) {
   const out = [];
@@ -71,7 +71,7 @@ function getLastTwoOrgs(lh = {}) {
   return out.join("\n");
 }
 
-// 1) Toggle debug logs
+// ────────────────────────────────────────────────────────────────
 const TEST_MODE = process.env.TEST_MODE === "true";
 const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
@@ -153,7 +153,7 @@ function computeFinalScore(
     }
   }
 
-  for (const penalty of Object.values(negative_scores || {})) rawScore += penalty;
+  for (const pen of Object.values(negative_scores || {})) rawScore += pen;
   if (rawScore < 0) rawScore = 0;
 
   const percentage =
@@ -255,7 +255,8 @@ ${dictionaryText}
 Return JSON:
 - positive_scores, negative_scores
 - contact_readiness, unscored_attributes
-- aiProfileAssessment, attribute_reasoning
+- aiProfileAssessment (string, 2‑4 sentence written summary – **never a number**)
+- attribute_reasoning (string, per‑attribute narrative)
 ${extraFields}`.trim();
 
   const usrPrompt = `Lead:\n${JSON.stringify(lead, null, 2)}`;
@@ -472,6 +473,17 @@ app.post("/api/test-score", async (req, res) => {
       attribute_reasoning = "",
     } = gpt;
 
+    // ---------- guarantee correct field types -----------
+    let cleanAssessment = aiProfileAssessment;
+    let cleanReasoning = attribute_reasoning || "";
+
+    if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
+      cleanAssessment = cleanReasoning
+        ? "[auto‑moved] " + cleanReasoning.split("\n")[0].trim()
+        : "Candidate suitability narrative unavailable.";
+      cleanReasoning = attribute_reasoning;
+    }
+
     const {
       rawScore,
       denominator,
@@ -502,8 +514,8 @@ app.post("/api/test-score", async (req, res) => {
     res.json({
       finalPct: percentage,
       breakdown,
-      assessment: aiProfileAssessment,
-      reasoning: attribute_reasoning,
+      assessment: cleanAssessment,
+      reasoning: cleanReasoning,
     });
   } catch (err) {
     console.error(err);
@@ -639,6 +651,16 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = "",
       } = gpt;
 
+      // ---------- guarantee correct field types -----------
+      let cleanAssessment = aiProfileAssessment;
+      let cleanReasoning = attribute_reasoning || "";
+      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
+        cleanAssessment = cleanReasoning
+          ? "[auto‑moved] " + cleanReasoning.split("\n")[0].trim()
+          : "Candidate suitability narrative unavailable.";
+        cleanReasoning = attribute_reasoning;
+      }
+
       const {
         rawScore,
         denominator,
@@ -674,8 +696,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
       await upsertLead(
         lead,
         finalPct,
-        aiProfileAssessment,
-        attribute_reasoning,
+        cleanAssessment,
+        cleanReasoning,
         breakdown
       );
       processed++;
@@ -772,12 +794,22 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = "",
       } = gpt;
 
+      // ---------- guarantee correct field types -----------
+      let cleanAssessment = aiProfileAssessment;
+      let cleanReasoning = attribute_reasoning || "";
+      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
+        cleanAssessment = cleanReasoning
+          ? "[auto‑moved] " + cleanReasoning.split("\n")[0].trim()
+          : "Candidate suitability narrative unavailable.";
+        cleanReasoning = attribute_reasoning;
+      }
+
       const {
         rawScore,
         denominator,
         percentage,
         disqualified,
-        disqualifyReason
+        disqualifyReason,
       } = computeFinalScore(
         positive_scores,
         positives,
@@ -786,7 +818,6 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         contact_readiness,
         unscored_attributes
       );
-
       const finalPct = Math.round(percentage * 100) / 100;
 
       const auFlag = isAustralian(lead.locationName || "");
@@ -820,8 +851,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       await upsertLead(
         lead,
         finalPct,
-        aiProfileAssessment,
-        attribute_reasoning,
+        cleanAssessment,
+        cleanReasoning,
         breakdown,
         auFlag,
         aiExcluded,
