@@ -383,22 +383,18 @@ async function upsertLead(
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
     const mid = lead.memberId || lead.profileId;
-    if (slug) {
-      finalUrl = `https://www.linkedin.com/in/${slug}/`;
-    } else if (mid) {
+    if (slug) finalUrl = `https://www.linkedin.com/in/${slug}/`;
+    else if (mid)
       finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
-    }
   }
 
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
-    if (typeof r.profile_url === "string" && r.profile_url.trim()) {
+    if (typeof r.profile_url === "string" && r.profile_url.trim())
       finalUrl = r.profile_url.trim().replace(/\/$/, "");
-    } else if (r.public_id) {
-      finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
-    } else if (r.member_id) {
+    else if (r.public_id) finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
+    else if (r.member_id)
       finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
-    }
   }
 
   if (!finalUrl) return;
@@ -447,9 +443,8 @@ async function upsertLead(
     .select({ filterByFormula: filter, maxRecords: 1 })
     .firstPage();
 
-  if (existing.length) {
-    await base("Leads").update(existing[0].id, fields);
-  } else {
+  if (existing.length) await base("Leads").update(existing[0].id, fields);
+  else {
     fields["Source"] =
       connectionDegree === "1st"
         ? "Existing Connection Added by PB"
@@ -547,7 +542,6 @@ app.get("/pb-pull/connections", async (req, res) => {
 
       const jsonUrl = getJsonUrl(resultObj);
       let conns;
-
       if (jsonUrl) conns = await (await fetch(jsonUrl)).json();
       else if (Array.isArray(resultObj.resultObject))
         conns = resultObj.resultObject;
@@ -783,7 +777,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         denominator,
         percentage,
         disqualified,
-        disqualifyReason,
+        disqualifyReason
       } = computeFinalScore(
         positive_scores,
         positives,
@@ -792,6 +786,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         contact_readiness,
         unscored_attributes
       );
+
       const finalPct = Math.round(percentage * 100) / 100;
 
       const auFlag = isAustralian(lead.locationName || "");
