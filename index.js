@@ -32,7 +32,7 @@ function canonicalUrl(url = "") {
 }
 
 /* ------------------------------------------------------------------
-   helper: isAustralian – matches Australian keywords
+   helper: isAustralian
 ------------------------------------------------------------------*/
 function isAustralian(loc = "") {
   return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i.test(
@@ -41,7 +41,7 @@ function isAustralian(loc = "") {
 }
 
 /* ------------------------------------------------------------------
-   helper: safeDate – turns "2025.04.19" or ISO into Date()
+   helper: safeDate
 ------------------------------------------------------------------*/
 function safeDate(d) {
   if (!d) return null;
@@ -55,7 +55,7 @@ function safeDate(d) {
 }
 
 /* ------------------------------------------------------------------
-   helper: getLastTwoOrgs – simple job‑history fallback
+   helper: getLastTwoOrgs
 ------------------------------------------------------------------*/
 function getLastTwoOrgs(lh = {}) {
   const out = [];
@@ -71,7 +71,9 @@ function getLastTwoOrgs(lh = {}) {
   return out.join("\n");
 }
 
-// ────────────────────────────────────────────────────────────────
+/* ------------------------------------------------------------------
+   1)  Globals & Express
+------------------------------------------------------------------*/
 const TEST_MODE = process.env.TEST_MODE === "true";
 const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
@@ -306,7 +308,10 @@ function buildAttributeBreakdown(
   lines.push("\n**Negative Attributes**:");
   for (const [id, info] of Object.entries(dictionaryNegatives)) {
     const pen = negativeScores[id] || 0;
-    lines.push(`- ${id} (${info.label}): ${pen}`);
+    const triggered = pen !== 0;
+    const status = triggered ? "Triggered" : "Not triggered";
+    const displayPen = `${pen} / ${info.penalty} max`;
+    lines.push(`- ${id} (${info.label}): ${displayPen} — ${status}`);
   }
 
   if (denominator > 0) {
@@ -319,6 +324,10 @@ function buildAttributeBreakdown(
       "\nTotal score is **0** → profile did not meet any positive criteria."
     );
     if (disqualified) lines.push("*(also disqualified – see above)*");
+  }
+
+  if (disqualified && disqualifyReason) {
+    lines.push(`\n**Disqualified ➜** ${disqualifyReason}`);
   }
 
   return lines.join("\n");
@@ -473,10 +482,12 @@ app.post("/api/test-score", async (req, res) => {
       attribute_reasoning = "",
     } = gpt;
 
-    // ---------- guarantee correct field types -----------
+    if (gpt.contact_readiness) {
+      positive_scores.I = positives?.I?.maxPoints || 3;
+    }
+
     let cleanAssessment = aiProfileAssessment;
     let cleanReasoning = attribute_reasoning || "";
-
     if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
       cleanAssessment = cleanReasoning
         ? "[auto‑moved] " + cleanReasoning.split("\n")[0].trim()
@@ -651,7 +662,10 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = "",
       } = gpt;
 
-      // ---------- guarantee correct field types -----------
+      if (gpt.contact_readiness) {
+        positive_scores.I = positives?.I?.maxPoints || 3;
+      }
+
       let cleanAssessment = aiProfileAssessment;
       let cleanReasoning = attribute_reasoning || "";
       if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
@@ -794,7 +808,10 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = "",
       } = gpt;
 
-      // ---------- guarantee correct field types -----------
+      if (gpt.contact_readiness) {
+        positive_scores.I = positives?.I?.maxPoints || 3;
+      }
+
       let cleanAssessment = aiProfileAssessment;
       let cleanReasoning = attribute_reasoning || "";
       if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
