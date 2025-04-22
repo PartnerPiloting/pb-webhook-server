@@ -8,7 +8,7 @@ const Airtable = require("airtable");
 const fs = require("fs");
 
 /* ------------------------------------------------------------------
-   helper: getJsonUrl  (structured checks → regex fallback)
+   helper: getJsonUrl
 ------------------------------------------------------------------*/
 function getJsonUrl(obj = {}) {
   return (
@@ -25,7 +25,7 @@ function getJsonUrl(obj = {}) {
 }
 
 /* ------------------------------------------------------------------
-   helper: canonicalUrl – lower‑cases, strips protocol & trailing slash
+   helper: canonicalUrl
 ------------------------------------------------------------------*/
 function canonicalUrl(url = "") {
   return url.replace(/^https?:\/\//i, "").replace(/\/$/, "").toLowerCase();
@@ -242,7 +242,8 @@ function parseMarkdownTables(markdown) {
 ------------------------------------------------------------------*/
 async function callGptScoring(dictionaryText, lead) {
   const extraFields = `
-- attribute_reasoning (object) – per‑attribute narrative
+- attribute_reasoning (object) – per‑attribute narrative **for ALL attributes
+  (keys = A, B, … L1, N1 …)**
 ${TEST_MODE ? "- debug_breakdown (string) – raw JSON for dev only" : ""}
 `.trim();
 
@@ -260,7 +261,7 @@ Return JSON:
 - positive_scores, negative_scores
 - contact_readiness, unscored_attributes
 - aiProfileAssessment (string, 2‑4 sentence written summary – **never a number**)
-- attribute_reasoning (object, keys = attribute IDs)
+- attribute_reasoning (object, per‑attribute narrative for positives **and** negatives)
 ${extraFields}`.trim();
 
   const usrPrompt = `Lead:\n${JSON.stringify(lead, null, 2)}`;
@@ -292,9 +293,9 @@ function buildAttributeBreakdown(
   unscoredAttrs,
   rawScore,
   denominator,
+  attributeReasoning = {},
   disqualified = false,
-  disqualifyReason = null,
-  attributeReasoning = {}
+  disqualifyReason = null
 ) {
   const lines = [];
 
@@ -314,10 +315,10 @@ function buildAttributeBreakdown(
   lines.push("\n**Negative Attributes**:");
   for (const [id, info] of Object.entries(dictionaryNegatives)) {
     const pen = negativeScores[id] || 0;
-    const triggered = pen !== 0;
-    const status = triggered ? "Triggered" : "Not triggered";
-    const displayPen = `${pen} / ${info.penalty} max`;
-    lines.push(`- ${id} (${info.label}): ${displayPen} — ${status}`);
+    const status = pen !== 0 ? "Triggered" : "Not triggered";
+    const display = `${pen} / ${info.penalty} max`;
+    const reasonTxt = attributeReasoning[id] || "No signals detected.";
+    lines.push(`- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${reasonTxt}`);
   }
 
   if (denominator > 0) {
@@ -492,7 +493,6 @@ app.post("/api/test-score", async (req, res) => {
     }
 
     let cleanAssessment = aiProfileAssessment;
-
     if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
       cleanAssessment = "[auto‑moved] No summary provided.";
     }
@@ -520,9 +520,9 @@ app.post("/api/test-score", async (req, res) => {
       unscored_attributes,
       rawScore,
       denominator,
+      attribute_reasoning,
       disqualified,
-      disqualifyReason,
-      attribute_reasoning
+      disqualifyReason
     );
 
     res.json({
@@ -537,73 +537,7 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb‑pull/connections
-------------------------------------------------------------------*/
-let lastRunId = 0;
-try {
-  lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
-} catch {}
-
-app.get("/pb-pull/connections", async (req, res) => {
-  try {
-    const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
-    const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
-
-    const listResp = await fetch(listURL, { headers });
-    const listJson = await listResp.json();
-    const runs = (listJson.data || [])
-      .filter((r) => r.lastEndStatus === "success")
-      .sort((a, b) => Number(a.id) - Number(b.id));
-
-    let total = 0;
-    for (const run of runs) {
-      if (Number(run.id) <= lastRunId) continue;
-
-      const resultResp = await fetch(
-        `https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`,
-        { headers }
-      );
-      const resultObj = await resultResp.json();
-
-      const jsonUrl = getJsonUrl(resultObj);
-      let conns;
-      if (jsonUrl) conns = await (await fetch(jsonUrl)).json();
-      else if (Array.isArray(resultObj.resultObject))
-        conns = resultObj.resultObject;
-      else if (Array.isArray(resultObj.data?.resultObject))
-        conns = resultObj.data.resultObject;
-      else throw new Error("No jsonUrl and no inline resultObject array");
-
-      const testLimit = req.query.limit ? Number(req.query.limit) : null;
-      if (testLimit) conns = conns.slice(0, testLimit);
-
-      for (const c of conns) {
-        await upsertLead(
-          {
-            ...c,
-            connectionDegree: "1st",
-            linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
-          },
-          0,
-          "",
-          "",
-          ""
-        );
-        total++;
-      }
-      lastRunId = Number(run.id);
-    }
-
-    fs.writeFileSync("lastRun.txt", String(lastRunId));
-    res.json({ message: `Upserted/updated ${total} profiles` });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ------------------------------------------------------------------
-   10)  /pb‑webhook/scrapeLeads
+   9)  /pb‑webhook/scrapeLeads
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -662,9 +596,9 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
             unscored_attributes,
             rawScore,
             denominator,
+            attribute_reasoning,
             disqualified,
-            disqualifyReason,
-            attribute_reasoning
+            disqualifyReason
           )
         : "";
 
@@ -686,7 +620,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  /lh‑webhook/scrapeLeads
+   10)  /lh‑webhook/scrapeLeads
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -817,9 +751,9 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
             unscored_attributes,
             rawScore,
             denominator,
+            attribute_reasoning,
             disqualified,
-            disqualifyReason,
-            attribute_reasoning
+            disqualifyReason
           )
         : "";
 
