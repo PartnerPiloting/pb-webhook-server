@@ -174,7 +174,9 @@ function computeFinalScore(
    4)  getScoringData & helpers
 ------------------------------------------------------------------*/
 async function getScoringData() {
-  const records = await base(SCORING_TABLE).select({ maxRecords: 1 }).firstPage();
+  const records = await base(SCORING_TABLE)
+    .select({ maxRecords: 1 })
+    .firstPage();
   if (!records.length) throw new Error("Scoring table not found.");
   const record = records[0];
   const md = record.fields["Dictionary Markdown"] || "";
@@ -240,7 +242,7 @@ function parseMarkdownTables(markdown) {
 ------------------------------------------------------------------*/
 async function callGptScoring(dictionaryText, lead) {
   const extraFields = `
-- attribute_reasoning (string) – full per‑attribute narrative
+- attribute_reasoning (object) – per‑attribute narrative
 ${TEST_MODE ? "- debug_breakdown (string) – raw JSON for dev only" : ""}
 `.trim();
 
@@ -258,7 +260,7 @@ Return JSON:
 - positive_scores, negative_scores
 - contact_readiness, unscored_attributes
 - aiProfileAssessment (string, 2‑4 sentence written summary – **never a number**)
-- attribute_reasoning (string, per‑attribute narrative)
+- attribute_reasoning (object, keys = attribute IDs)
 ${extraFields}`.trim();
 
   const usrPrompt = `Lead:\n${JSON.stringify(lead, null, 2)}`;
@@ -291,7 +293,8 @@ function buildAttributeBreakdown(
   rawScore,
   denominator,
   disqualified = false,
-  disqualifyReason = null
+  disqualifyReason = null,
+  attributeReasoning = {}
 ) {
   const lines = [];
 
@@ -303,6 +306,9 @@ function buildAttributeBreakdown(
     }
     const pts = positiveScores[id] || 0;
     lines.push(`- ${id} (${info.label}): ${pts} / ${info.maxPoints}`);
+    if (attributeReasoning[id]) {
+      lines.push(`  ↳ ${attributeReasoning[id]}`);
+    }
   }
 
   lines.push("\n**Negative Attributes**:");
@@ -438,7 +444,6 @@ async function upsertLead(
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
     "Raw Profile Data": JSON.stringify(rest),
     "AI Profile Assessment": String(aiProfileAssessment || ""),
-    "AI Score Reasoning": String(attributeReasoning || ""),
     "AI Score": Math.round(finalScore * 100) / 100,
     "AI Attribute Breakdown": attributeBreakdown || "",
   };
@@ -479,7 +484,7 @@ app.post("/api/test-score", async (req, res) => {
       contact_readiness = false,
       unscored_attributes = [],
       aiProfileAssessment = "",
-      attribute_reasoning = "",
+      attribute_reasoning = {},
     } = gpt;
 
     if (gpt.contact_readiness) {
@@ -487,12 +492,9 @@ app.post("/api/test-score", async (req, res) => {
     }
 
     let cleanAssessment = aiProfileAssessment;
-    let cleanReasoning = attribute_reasoning || "";
+
     if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
-      cleanAssessment = cleanReasoning
-        ? "[auto‑moved] " + cleanReasoning.split("\n")[0].trim()
-        : "Candidate suitability narrative unavailable.";
-      cleanReasoning = attribute_reasoning;
+      cleanAssessment = "[auto‑moved] No summary provided.";
     }
 
     const {
@@ -519,14 +521,14 @@ app.post("/api/test-score", async (req, res) => {
       rawScore,
       denominator,
       disqualified,
-      disqualifyReason
+      disqualifyReason,
+      attribute_reasoning
     );
 
     res.json({
       finalPct: percentage,
       breakdown,
       assessment: cleanAssessment,
-      reasoning: cleanReasoning,
     });
   } catch (err) {
     console.error(err);
@@ -534,9 +536,9 @@ app.post("/api/test-score", async (req, res) => {
   }
 });
 
-/* ==================================================================
+/* ------------------------------------------------------------------
    9)  /pb‑pull/connections
-==================================================================*/
+------------------------------------------------------------------*/
 let lastRunId = 0;
 try {
   lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
@@ -600,46 +602,8 @@ app.get("/pb-pull/connections", async (req, res) => {
   }
 });
 
-/* ==================================================================
-   10)  /pb‑webhook/connections
-==================================================================*/
-app.post("/pb-webhook/connections", async (req, res) => {
-  try {
-    const conns = Array.isArray(req.body)
-      ? req.body
-      : Array.isArray(req.body.resultObject)
-      ? req.body.resultObject
-      : Array.isArray(req.body.resultObject?.data)
-      ? req.body.resultObject.data
-      : Array.isArray(req.body.results)
-      ? req.body.results
-      : [];
-
-    let processed = 0;
-    for (const c of conns) {
-      await upsertLead(
-        {
-          ...c,
-          connectionDegree: "1st",
-          linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
-        },
-        0,
-        "",
-        "",
-        ""
-      );
-      processed++;
-    }
-
-    res.json({ message: `Upserted ${processed} connections` });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 /* ------------------------------------------------------------------
-   11)  /pb‑webhook/scrapeLeads
+   10)  /pb‑webhook/scrapeLeads
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -659,7 +623,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         contact_readiness = false,
         unscored_attributes = [],
         aiProfileAssessment = "",
-        attribute_reasoning = "",
+        attribute_reasoning = {},
       } = gpt;
 
       if (gpt.contact_readiness) {
@@ -667,12 +631,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
       }
 
       let cleanAssessment = aiProfileAssessment;
-      let cleanReasoning = attribute_reasoning || "";
       if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
-        cleanAssessment = cleanReasoning
-          ? "[auto‑moved] " + cleanReasoning.split("\n")[0].trim()
-          : "Candidate suitability narrative unavailable.";
-        cleanReasoning = attribute_reasoning;
+        cleanAssessment = "[auto‑moved] No summary provided.";
       }
 
       const {
@@ -703,7 +663,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
             rawScore,
             denominator,
             disqualified,
-            disqualifyReason
+            disqualifyReason,
+            attribute_reasoning
           )
         : "";
 
@@ -711,7 +672,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         lead,
         finalPct,
         cleanAssessment,
-        cleanReasoning,
+        attribute_reasoning,
         breakdown
       );
       processed++;
@@ -725,7 +686,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12)  /lh‑webhook/scrapeLeads
+   11)  /lh‑webhook/scrapeLeads
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -805,7 +766,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         contact_readiness = false,
         unscored_attributes = [],
         aiProfileAssessment = "",
-        attribute_reasoning = "",
+        attribute_reasoning = {},
       } = gpt;
 
       if (gpt.contact_readiness) {
@@ -813,12 +774,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       }
 
       let cleanAssessment = aiProfileAssessment;
-      let cleanReasoning = attribute_reasoning || "";
       if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
-        cleanAssessment = cleanReasoning
-          ? "[auto‑moved] " + cleanReasoning.split("\n")[0].trim()
-          : "Candidate suitability narrative unavailable.";
-        cleanReasoning = attribute_reasoning;
+        cleanAssessment = "[auto‑moved] No summary provided.";
       }
 
       const {
@@ -861,7 +818,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
             rawScore,
             denominator,
             disqualified,
-            disqualifyReason
+            disqualifyReason,
+            attribute_reasoning
           )
         : "";
 
@@ -869,7 +827,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         lead,
         finalPct,
         cleanAssessment,
-        cleanReasoning,
+        attribute_reasoning,
         breakdown,
         auFlag,
         aiExcluded,
