@@ -142,7 +142,7 @@ function computeFinalScore(
   }
 
   for (const [negID, penalty] of Object.entries(negative_scores || {})) {
-    if (dictionaryNegatives[negID]?.disqualifying) {
+    if (dictionaryNegatives[negID]?.disqualifying && penalty !== 0) {
       disqualified = true;
       disqualifyReason = `Disqualifying negative attribute ${negID} triggered`;
       return {
@@ -177,7 +177,6 @@ async function getScoringData() {
   const records = await base(SCORING_TABLE)
     .select({ maxRecords: 1 })
     .firstPage();
-  if (!records.length) throw new Error("Scoring table not found.");
   const record = records[0];
   const md = record.fields["Dictionary Markdown"] || "";
   const passMark = record.fields["Pass Mark"] || 0;
@@ -537,14 +536,11 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb‑webhook/scrapeLeads
+   9)  /pb-webhook/scrapeLeads
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
     const leads = Array.isArray(req.body) ? req.body : [];
-    if (!leads.length)
-      return res.status(400).json({ error: "Expected an array of profiles" });
-
     const { truncatedInstructions, passMark, positives, negatives } =
       await getScoringData();
     let processed = 0;
@@ -620,13 +616,11 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   10)  /lh‑webhook/scrapeLeads
+   10)  /lh-webhook/scrapeLeads
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
     const raw = Array.isArray(req.body) ? req.body : [req.body];
-    if (!raw.length) return res.status(400).json({ error: "Empty payload" });
-
     const { truncatedInstructions, positives, negatives } =
       await getScoringData();
     let processed = 0;
@@ -778,7 +772,73 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   13)  Start server
+   11)  /pb-pull/connections
+------------------------------------------------------------------*/
+let lastRunId = 0;
+try {
+  lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
+} catch {}
+
+app.get("/pb-pull/connections", async (req, res) => {
+  try {
+    const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
+    const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
+
+    const listResp = await fetch(listURL, { headers });
+    const listJson = await listResp.json();
+    const runs = (listJson.data || [])
+      .filter((r) => r.lastEndStatus === "success")
+      .sort((a, b) => Number(a.id) - Number(b.id));
+
+    let total = 0;
+    for (const run of runs) {
+      if (Number(run.id) <= lastRunId) continue;
+
+      const resultResp = await fetch(
+        `https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`,
+        { headers }
+      );
+      const resultObj = await resultResp.json();
+
+      const jsonUrl = getJsonUrl(resultObj);
+      let conns;
+      if (jsonUrl) conns = await (await fetch(jsonUrl)).json();
+      else if (Array.isArray(resultObj.resultObject))
+        conns = resultObj.resultObject;
+      else if (Array.isArray(resultObj.data?.resultObject))
+        conns = resultObj.data.resultObject;
+      else throw new Error("No jsonUrl and no inline resultObject array");
+
+      const testLimit = req.query.limit ? Number(req.query.limit) : null;
+      if (testLimit) conns = conns.slice(0, testLimit);
+
+      for (const c of conns) {
+        await upsertLead(
+          {
+            ...c,
+            connectionDegree: "1st",
+            linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
+          },
+          0,
+          "",
+          "",
+          ""
+        );
+        total++;
+      }
+      lastRunId = Number(run.id);
+    }
+
+    fs.writeFileSync("lastRun.txt", String(lastRunId));
+    res.json({ message: `Upserted/updated ${total} profiles` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ------------------------------------------------------------------
+   12)  Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
