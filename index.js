@@ -1,11 +1,12 @@
 /***************************************************************
-  LinkedIn → Airtable  (Scoring + 1st‑degree & LH sync)
+  LinkedIn → Airtable  (Scoring + 1st-degree & LH sync)
 ***************************************************************/
 require("dotenv").config();
 const express = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable = require("airtable");
 const fs = require("fs");
+const { buildPrompt } = require("./promptBuilder");   // NEW
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -79,6 +80,7 @@ const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
+require("./promptApi")(app);   // NEW – mounts /prompt & /attribute routes
 app.use(express.json({ limit: "10mb" }));
 app.get("/health", (_req, res) => res.send("ok"));
 
@@ -174,15 +176,22 @@ function computeFinalScore(
    4)  getScoringData & helpers
 ------------------------------------------------------------------*/
 async function getScoringData() {
-  const records = await base(SCORING_TABLE)
-    .select({ maxRecords: 1 })
-    .firstPage();
-  const record = records[0];
-  const md = record.fields["Dictionary Markdown"] || "";
-  const passMark = record.fields["Pass Mark"] || 0;
+  // 1) Build the fresh Markdown blob from Airtable rows
+  const md = await buildPrompt();
+
+  // 2) If you store Pass Mark elsewhere, fetch it; else use 0
+  const passMark = 0;
+
+  // 3) Re-use your existing Markdown-table parser
   const truncated = md.replace(/```python[\s\S]*?```/g, "");
   const { positives, negatives } = parseMarkdownTables(truncated);
-  return { truncatedInstructions: truncated, passMark, positives, negatives };
+
+  return {
+    truncatedInstructions: truncated,   // what the GPT sees
+    passMark,
+    positives,
+    negatives,
+  };
 }
 
 function parseMarkdownTables(markdown) {
@@ -241,8 +250,8 @@ function parseMarkdownTables(markdown) {
 ------------------------------------------------------------------*/
 async function callGptScoring(dictionaryText, lead) {
   const extraFields = `
-- attribute_reasoning (object) – per‑attribute narrative **for ALL attributes
-  (keys = A, B, … L1, N1 …)**
+- attribute_reasoning (object) – per-attribute narrative **for ALL attributes
+  (keys = A, B, … L1, N1 …)**
 ${TEST_MODE ? "- debug_breakdown (string) – raw JSON for dev only" : ""}
 `.trim();
 
@@ -255,12 +264,12 @@ ${dictionaryText}
 ### Rules
 - Score positives A–K up to their max.
 - Apply negative penalties L1, N1–N5. If disqualifying, final = 0.
-- Respect Min‑Qualify.
+- Respect Min-Qualify.
 Return JSON:
 - positive_scores, negative_scores
 - contact_readiness, unscored_attributes
-- aiProfileAssessment (string, 2‑4 sentence written summary – **never a number**)
-- attribute_reasoning (object, per‑attribute narrative for positives **and** negatives)
+- aiProfileAssessment (string, 2-4 sentence written summary – **never a number**)
+- attribute_reasoning (object, per-attribute narrative for positives **and** negatives)
 ${extraFields}`.trim();
 
   const usrPrompt = `Lead:\n${JSON.stringify(lead, null, 2)}`;
@@ -314,10 +323,10 @@ function buildAttributeBreakdown(
   lines.push("\n**Negative Attributes**:");
   for (const [id, info] of Object.entries(dictionaryNegatives)) {
     const pen = negativeScores[id] || 0;
-    const status = pen !== 0 ? "Triggered" : "Not triggered";
-    const display = `${pen} / ${info.penalty} max`;
+    const status = pen !== 0 ? "Triggered" : "Not triggered";
+    const display = `${pen} / ${info.penalty} max`;
     const reasonTxt = attributeReasoning[id] || "No signals detected.";
-    lines.push(`- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${reasonTxt}`);
+    lines.push(`- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${reasonTxt}`);
   }
 
   if (denominator > 0) {
@@ -493,7 +502,7 @@ app.post("/api/test-score", async (req, res) => {
 
     let cleanAssessment = aiProfileAssessment;
     if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
-      cleanAssessment = "[auto‑moved] No summary provided.";
+      cleanAssessment = "[auto-moved] No summary provided.";
     }
 
     const {
@@ -562,7 +571,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 
       let cleanAssessment = aiProfileAssessment;
       if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
-        cleanAssessment = "[auto‑moved] No summary provided.";
+        cleanAssessment = "[auto-moved] No summary provided.";
       }
 
       const {
@@ -703,7 +712,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 
       let cleanAssessment = aiProfileAssessment;
       if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
-        cleanAssessment = "[auto‑moved] No summary provided.";
+        cleanAssessment = "[auto-moved] No summary provided.";
       }
 
       const {
@@ -731,7 +740,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       const excludeDetails = passesFilters
         ? ""
         : !auFlag
-        ? `Non‑AU location "${lead.locationName || ""}"`
+        ? `Non-AU location "${lead.locationName || ""}"`
         : `Score ${finalPct} < ${MIN_SCORE}`;
 
       if (!passesFilters && SAVE_FILTERED_ONLY) continue;
