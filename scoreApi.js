@@ -1,10 +1,10 @@
 /***************************************************************
   scoreApi.js  –  POST /calcScore → updates AI Score on a Lead
-  Works with the global Airtable.configure() already run in index.js
+  Uses the global Airtable.configure() call from index.js
 ***************************************************************/
 require("dotenv").config();
 const express  = require("express");
-const Airtable = require("airtable");           // inherits global config
+const Airtable = require("airtable");           // global config already set
 const { computeFinalScore } = require("./scoring");
 
 module.exports = function (app) {
@@ -23,7 +23,7 @@ module.exports = function (app) {
       /* --------------------------------------------------------
          2. Table handles
       -------------------------------------------------------- */
-      const base  = Airtable.base(process.env.AIRTABLE_BASE_ID); // uses global key
+      const base  = Airtable.base(process.env.AIRTABLE_BASE_ID);
       const leads = base("Leads");
 
       /* --------------------------------------------------------
@@ -33,17 +33,12 @@ module.exports = function (app) {
       const total = computeFinalScore(attributeScores, { pos, neg, meta });
 
       /* --------------------------------------------------------
-         4. Persist results on the lead
+         4. Persist results (single-record update)
       -------------------------------------------------------- */
-      await leads.update([
-        {
-          id,
-          fields: {
-            "AI Score":               total,
-            "AI Attribute Breakdown": JSON.stringify(attributeScores),
-          },
-        },
-      ]);
+      await leads.update(id, {
+        "AI Score":               total,
+        "AI Attribute Breakdown": JSON.stringify(attributeScores),
+      });
 
       console.log("calcScore ✓", id, "→", total, "%");
       res.json({ id, total });
