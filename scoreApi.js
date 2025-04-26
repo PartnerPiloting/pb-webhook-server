@@ -1,10 +1,10 @@
 /***************************************************************
   scoreApi.js  –  POST /calcScore → updates AI Score on a Lead
-  Uses the global Airtable.configure() call from index.js
+  Uses global Airtable.configure() from index.js
 ***************************************************************/
 require("dotenv").config();
 const express  = require("express");
-const Airtable = require("airtable");           // global config already set
+const Airtable = require("airtable");           // inherits global config
 const { computeFinalScore } = require("./scoring");
 
 module.exports = function (app) {
@@ -53,12 +53,12 @@ module.exports = function (app) {
    helper: getDictionaries – fetch JSON blobs from row 0
 ------------------------------------------------------------------*/
 async function getDictionaries(base) {
-  const records = await base("Attributes")
+  const records = await base("Scoring Attributes")   // ← correct table name
     .select({ maxRecords: 1 })
     .firstPage();
 
   if (!records.length) {
-    throw new Error("Attributes table empty — cannot build dictionaries");
+    throw new Error("Scoring Attributes table empty — cannot build dictionaries");
   }
 
   const row = records[0];
