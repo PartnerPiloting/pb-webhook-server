@@ -81,6 +81,7 @@ const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
 require("./promptApi")(app);   // NEW – mounts /prompt & /attribute routes
+require("./recordApi")(app);   // NEW – mounts /record routes
 app.use(express.json({ limit: "10mb" }));
 app.get("/health", (_req, res) => res.send("ok"));
 
