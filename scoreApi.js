@@ -1,6 +1,7 @@
 /***************************************************************
   scoreApi.js  –  POST /calcScore → updates AI Score on a Lead
-  Uses global Airtable.configure() from index.js
+  Expects body: { id, positive_scores, negative_scores,
+                  contact_readiness?, unscored_attributes? }
 ***************************************************************/
 require("dotenv").config();
 const express  = require("express");
@@ -13,11 +14,16 @@ module.exports = function (app) {
       /* --------------------------------------------------------
          1. Validate body
       -------------------------------------------------------- */
-      const { id, attributeScores } = req.body || {};
-      if (!id || !attributeScores) {
-        return res
-          .status(400)
-          .json({ error: "Body must include { id, attributeScores }" });
+      const {
+        id,
+        positive_scores = {},
+        negative_scores = {},
+        contact_readiness = false,
+        unscored_attributes = [],
+      } = req.body || {};
+
+      if (!id) {
+        return res.status(400).json({ error: "Body must include { id }" });
       }
 
       /* --------------------------------------------------------
@@ -30,14 +36,26 @@ module.exports = function (app) {
          3. Build dictionaries + compute total
       -------------------------------------------------------- */
       const { pos, neg, meta } = await getDictionaries(base);
-      const total = computeFinalScore(attributeScores, { pos, neg, meta });
+      const total = computeFinalScore(
+        positive_scores,
+        pos,
+        negative_scores,
+        neg,
+        contact_readiness,
+        unscored_attributes
+      );
 
       /* --------------------------------------------------------
          4. Persist results (single-record update)
       -------------------------------------------------------- */
       await leads.update(id, {
         "AI Score":               total,
-        "AI Attribute Breakdown": JSON.stringify(attributeScores),
+        "AI Attribute Breakdown": JSON.stringify({
+          positive_scores,
+          negative_scores,
+          contact_readiness,
+          unscored_attributes,
+        }),
       });
 
       console.log("calcScore ✓", id, "→", total, "%");
@@ -53,7 +71,7 @@ module.exports = function (app) {
    helper: getDictionaries – fetch JSON blobs from row 0
 ------------------------------------------------------------------*/
 async function getDictionaries(base) {
-  const records = await base("Scoring Attributes")   // ← correct table name
+  const records = await base("Scoring Attributes")   // table name exact
     .select({ maxRecords: 1 })
     .firstPage();
 
