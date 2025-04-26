@@ -1,10 +1,11 @@
 /***************************************************************
   scoreApi.js  –  POST /calcScore → updates AI Score on a Lead
+  Works with the global Airtable.configure() already run in index.js
 ***************************************************************/
 require("dotenv").config();
 const express  = require("express");
-const Airtable = require("airtable");
-const { computeFinalScore } = require("./scoring");  // shared logic
+const Airtable = require("airtable");           // inherits global config
+const { computeFinalScore } = require("./scoring");
 
 module.exports = function (app) {
   app.post("/calcScore", async (req, res) => {
@@ -20,11 +21,10 @@ module.exports = function (app) {
       }
 
       /* --------------------------------------------------------
-         2. Connect to Airtable
+         2. Table handles
       -------------------------------------------------------- */
-      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-        .base(process.env.AIRTABLE_BASE_ID);
-      const leads = base("Leads");              // ← fixed
+      const base  = Airtable.base(process.env.AIRTABLE_BASE_ID); // uses global key
+      const leads = base("Leads");
 
       /* --------------------------------------------------------
          3. Build dictionaries + compute total
@@ -60,7 +60,7 @@ module.exports = function (app) {
 async function getDictionaries(base) {
   const records = await base("Attributes")
     .select({ maxRecords: 1 })
-    .firstPage();             // Node SDK returns a Promise here
+    .firstPage();
 
   if (!records.length) {
     throw new Error("Attributes table empty — cannot build dictionaries");
