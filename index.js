@@ -451,6 +451,7 @@ async function upsertLead(
       (lead.phoneNumbers || [])[0]?.value ||
       "",
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
+    "Profile Full JSON": JSON.stringify(lead),   // ← NEW: whole blob
     "Raw Profile Data": JSON.stringify(rest),
     "AI Profile Assessment": String(aiProfileAssessment || ""),
     "AI Score": Math.round(finalScore * 100) / 100,
