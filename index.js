@@ -6,8 +6,10 @@ const express = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable = require("airtable");
 const fs = require("fs");
-const { buildPrompt } = require("./promptBuilder");   // NEW
-const mountPointerApi = require("./pointerApi");      // NEW
+const { buildPrompt } = require("./promptBuilder");
+
+const mountPointerApi = require("./pointerApi");     // /pointer
+const mountLatestLead = require("./latestLeadApi");  // /latest-lead
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -62,10 +64,10 @@ function safeDate(d) {
 function getLastTwoOrgs(lh = {}) {
   const out = [];
   for (let i = 1; i <= 2; i++) {
-    const org = lh[`organization_${i}`];
+    const org   = lh[`organization_${i}`];
     const title = lh[`organization_title_${i}`];
-    const sr = lh[`organization_start_${i}`];
-    const er = lh[`organization_end_${i}`];
+    const sr    = lh[`organization_start_${i}`];
+    const er    = lh[`organization_end_${i}`];
     if (!org && !title) continue;
     const range = sr || er ? `(${sr || "?"} – ${er || "Present"})` : "";
     out.push(`${title || "Unknown Role"} at ${org || "Unknown"} ${range}`);
@@ -76,33 +78,35 @@ function getLastTwoOrgs(lh = {}) {
 /* ------------------------------------------------------------------
    1)  Globals & Express
 ------------------------------------------------------------------*/
-const TEST_MODE = process.env.TEST_MODE === "true";
-const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
+const TEST_MODE          = process.env.TEST_MODE === "true";
+const MIN_SCORE          = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
-require("./promptApi")(app);   // NEW – mounts /prompt & /attribute routes
-require("./recordApi")(app);   // NEW – mounts /record routes
-require("./scoreApi")(app);    // NEW – mounts /score routes
+
+require("./promptApi")(app);
+require("./recordApi")(app);
+require("./scoreApi")(app);
 app.get("/health", (_req, res) => res.send("ok"));
 
 /* ------------------------------------------------------------------
-   2)  OpenAI + Airtable Setup
+   2)  OpenAI + Airtable setup
 ------------------------------------------------------------------*/
 const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
-const openai = new OpenAIApi(configuration);
+const openai        = new OpenAIApi(configuration);
 
 Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
-const SCORING_TABLE = "tblzphTYVTTQC7zG5";
 
 /* ------------------------------------------------------------------
-   2.5)  Pointer redirect – Custom GPT URL from env
+   2.5)  Pointer + latest-lead routes
 ------------------------------------------------------------------*/
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL;
-if (!GPT_CHAT_URL) throw new Error("Missing GPT_CHAT_URL environment variable");
-mountPointerApi(app, base, GPT_CHAT_URL);   // NEW – mounts /pointer route
+if (!GPT_CHAT_URL) throw new Error("Missing GPT_CHAT_URL env var");
+
+mountPointerApi(app, base, GPT_CHAT_URL);
+mountLatestLead(app, base);
 
 /* ------------------------------------------------------------------
    3)  computeFinalScore
@@ -137,11 +141,12 @@ function computeFinalScore(
 
   for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
     if (pInfo.minQualify > 0) {
-      const awarded = positive_scores[attrID] || 0;
+      const awarded    = positive_scores[attrID] || 0;
       const isUnscored = unscored_attributes.includes(attrID);
       if (isUnscored || awarded < pInfo.minQualify) {
-        disqualified = true;
-        disqualifyReason = `Min qualification not met for ${attrID} (needed ${pInfo.minQualify}, got ${awarded})`;
+        disqualified     = true;
+        disqualifyReason =
+          `Min qualification not met for ${attrID} (needed ${pInfo.minQualify}, got ${awarded})`;
         return {
           rawScore: 0,
           denominator: baseDenominator,
@@ -155,7 +160,7 @@ function computeFinalScore(
 
   for (const [negID, penalty] of Object.entries(negative_scores || {})) {
     if (dictionaryNegatives[negID]?.disqualifying && penalty !== 0) {
-      disqualified = true;
+      disqualified     = true;
       disqualifyReason = `Disqualifying negative attribute ${negID} triggered`;
       return {
         rawScore: 0,
@@ -186,18 +191,14 @@ function computeFinalScore(
    4)  getScoringData & helpers
 ------------------------------------------------------------------*/
 async function getScoringData() {
-  // 1) Build the fresh Markdown blob from Airtable rows
   const md = await buildPrompt();
-
-  // 2) If you store Pass Mark elsewhere, fetch it; else use 0
   const passMark = 0;
 
-  // 3) Re-use your existing Markdown-table parser
   const truncated = md.replace(/```python[\s\S]*?```/g, "");
   const { positives, negatives } = parseMarkdownTables(truncated);
 
   return {
-    truncatedInstructions: truncated,   // what the GPT sees
+    truncatedInstructions: truncated,
     passMark,
     positives,
     negatives,
@@ -207,8 +208,8 @@ async function getScoringData() {
 function parseMarkdownTables(markdown) {
   const positives = {};
   const negatives = {};
-  const lines = markdown.split("\n");
-  let section = null;
+  const lines     = markdown.split("\n");
+  let section     = null;
   const posRow =
     /^\|\s*([A-Z])\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|?$/;
   const negRow =
@@ -216,18 +217,9 @@ function parseMarkdownTables(markdown) {
 
   for (const line of lines) {
     const t = line.trim();
-    if (/^#{2,}\s*Positive Attributes/i.test(t)) {
-      section = "pos";
-      continue;
-    }
-    if (/^#{2,}\s*Negative Attributes/i.test(t)) {
-      section = "neg";
-      continue;
-    }
-    if (/^#{2,}/.test(t)) {
-      section = null;
-      continue;
-    }
+    if (/^#{2,}\s*Positive Attributes/i.test(t)) { section = "pos"; continue; }
+    if (/^#{2,}\s*Negative Attributes/i.test(t)) { section = "neg"; continue; }
+    if (/^#{2,}/.test(t))                      { section = null;  continue; }
     if (!section || t.startsWith("|----") || /^\|\s*ID\s*\|/i.test(t)) continue;
 
     if (section === "pos") {
@@ -235,20 +227,20 @@ function parseMarkdownTables(markdown) {
       if (!m) continue;
       const [, id, label, maxRaw, minRaw, notes] = m;
       positives[id] = {
-        label: label.trim(),
-        maxPoints: parseInt(maxRaw.replace(/[^\d]/g, ""), 10) || 0,
+        label:      label.trim(),
+        maxPoints:  parseInt(maxRaw.replace(/[^\d]/g, ""), 10) || 0,
         minQualify: parseInt(minRaw.replace(/[^\d]/g, ""), 10) || 0,
-        notes: notes.trim(),
+        notes:      notes.trim(),
       };
     } else {
       const m = t.match(negRow);
       if (!m) continue;
       const [, id, label, penRaw, disqRaw, notes] = m;
       negatives[id] = {
-        label: label.trim(),
-        penalty: parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
-        disqualifying: /yes/i.test(disqRaw.trim()),
-        notes: notes.trim(),
+        label:        label.trim(),
+        penalty:      parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
+        disqualifying:/yes/i.test(disqRaw.trim()),
+        notes:        notes.trim(),
       };
     }
   }
@@ -260,13 +252,10 @@ function parseMarkdownTables(markdown) {
 ------------------------------------------------------------------*/
 async function callGptScoring(dictionaryText, lead) {
   const extraFields = `
-- attribute_reasoning (object) – per-attribute narrative **for ALL attributes
-  (keys = A, B, … L1, N1 …)**
-${TEST_MODE ? "- debug_breakdown (string) – raw JSON for dev only" : ""}
-`.trim();
+- attribute_reasoning (object) – per-attribute narrative for **ALL** attributes
+${TEST_MODE ? "- debug_breakdown (string)" : ""}`;
 
-  const sysPrompt = `
-You are an AI trained to apply the ASH Candidate Attribute Scoring Framework.
+  const sysPrompt = `You are an AI trained to apply the ASH Candidate Attribute Scoring Framework.
 
 ### Framework:
 ${dictionaryText}
@@ -278,9 +267,8 @@ ${dictionaryText}
 Return JSON:
 - positive_scores, negative_scores
 - contact_readiness, unscored_attributes
-- aiProfileAssessment (string, 2-4 sentence written summary – **never a number**)
-- attribute_reasoning (object, per-attribute narrative for positives **and** negatives)
-${extraFields}`.trim();
+- aiProfileAssessment (string, 2–4 sentence summary – **never a number**)
+- attribute_reasoning (object)${extraFields}`;
 
   const usrPrompt = `Lead:\n${JSON.stringify(lead, null, 2)}`;
 
@@ -288,16 +276,16 @@ ${extraFields}`.trim();
     model: "gpt-4o",
     messages: [
       { role: "system", content: sysPrompt },
-      { role: "user", content: usrPrompt },
+      { role: "user",    content: usrPrompt },
     ],
     temperature: 0.2,
   });
 
   let out = resp.data.choices[0].message.content.trim();
-  const fence = out.match(/```json\s*([\s\S]*?)```/i);
-  if (fence) out = fence[1].trim();
-  const j = out.match(/\{[\s\S]*\}$/);
-  return j ? JSON.parse(j[0]) : {};
+  const fenced = out.match(/```json\s*([\s\S]*?)```/i);
+  if (fenced) out = fenced[1].trim();
+  const jsonMatch = out.match(/\{[\s\S]*\}$/);
+  return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 }
 
 /* ------------------------------------------------------------------
@@ -325,9 +313,7 @@ function buildAttributeBreakdown(
     }
     const pts = positiveScores[id] || 0;
     lines.push(`- ${id} (${info.label}): ${pts} / ${info.maxPoints}`);
-    if (attributeReasoning[id]) {
-      lines.push(`  ↳ ${attributeReasoning[id]}`);
-    }
+    if (attributeReasoning[id]) lines.push(`  ↳ ${attributeReasoning[id]}`);
   }
 
   lines.push("\n**Negative Attributes**:");
@@ -335,8 +321,11 @@ function buildAttributeBreakdown(
     const pen = negativeScores[id] || 0;
     const status = pen !== 0 ? "Triggered" : "Not triggered";
     const display = `${pen} / ${info.penalty} max`;
-    const reasonTxt = attributeReasoning[id] || "No signals detected.";
-    lines.push(`- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${reasonTxt}`);
+    lines.push(
+      `- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${
+        attributeReasoning[id] || "No signals detected."
+      }`
+    );
   }
 
   if (denominator > 0) {
@@ -351,9 +340,8 @@ function buildAttributeBreakdown(
     if (disqualified) lines.push("*(also disqualified – see above)*");
   }
 
-  if (disqualified && disqualifyReason) {
+  if (disqualified && disqualifyReason)
     lines.push(`\n**Disqualified ➜** ${disqualifyReason}`);
-  }
 
   return lines.join("\n");
 }
@@ -417,17 +405,17 @@ async function upsertLead(
 
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
-    const mid = lead.memberId || lead.profileId;
+    const mid  = lead.memberId || lead.profileId;
     if (slug) finalUrl = `https://www.linkedin.com/in/${slug}/`;
-    else if (mid)
-      finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
+    else if (mid) finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
   }
 
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
     if (typeof r.profile_url === "string" && r.profile_url.trim())
       finalUrl = r.profile_url.trim().replace(/\/$/, "");
-    else if (r.public_id) finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
+    else if (r.public_id)
+      finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
     else if (r.member_id)
       finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
   }
@@ -438,8 +426,7 @@ async function upsertLead(
 
   let connectionStatus = "To Be Sent";
   if (connectionDegree === "1st") connectionStatus = "Connected";
-  else if (linkedinConnectionStatus === "Pending")
-    connectionStatus = "Pending";
+  else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
   const fields = {
     "LinkedIn Profile URL": finalUrl,
@@ -461,15 +448,15 @@ async function upsertLead(
       (lead.phoneNumbers || [])[0]?.value ||
       "",
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
-    "Profile Full JSON": JSON.stringify(lead),   // ← NEW: whole blob
+    "Profile Full JSON": JSON.stringify(lead),
     "Raw Profile Data": JSON.stringify(rest),
     "AI Profile Assessment": String(aiProfileAssessment || ""),
     "AI Score": Math.round(finalScore * 100) / 100,
     "AI Attribute Breakdown": attributeBreakdown || "",
   };
 
-  if (auFlag !== null) fields["AU"] = !!auFlag;
-  if (aiExcluded !== null) fields["AI_Excluded"] = aiExcluded === "Yes";
+  if (auFlag      !== null) fields["AU"]           = !!auFlag;
+  if (aiExcluded  !== null) fields["AI_Excluded"]  = aiExcluded === "Yes";
   if (excludeDetails !== null) fields["Exclude Details"] = excludeDetails;
 
   const filter = `{Profile Key} = "${profileKey}"`;
@@ -507,14 +494,12 @@ app.post("/api/test-score", async (req, res) => {
       attribute_reasoning = {},
     } = gpt;
 
-    if (gpt.contact_readiness) {
+    if (gpt.contact_readiness)
       positive_scores.I = positives?.I?.maxPoints || 3;
-    }
 
     let cleanAssessment = aiProfileAssessment;
-    if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
+    if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
       cleanAssessment = "[auto-moved] No summary provided.";
-    }
 
     const {
       rawScore,
@@ -576,14 +561,12 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = {},
       } = gpt;
 
-      if (gpt.contact_readiness) {
+      if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
-      }
 
       let cleanAssessment = aiProfileAssessment;
-      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
+      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
         cleanAssessment = "[auto-moved] No summary provided.";
-      }
 
       const {
         rawScore,
@@ -636,7 +619,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   10)  /lh-webhook/scrapeLeads
+   10) /lh-webhook/scrapeLeads
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -667,8 +650,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 
       const lead = {
         firstName: lh.firstName || lh.first_name || "",
-        lastName: lh.lastName || lh.last_name || "",
-        headline: lh.headline || "",
+        lastName:  lh.lastName  || lh.last_name  || "",
+        headline:  lh.headline  || "",
         locationName:
           lh.locationName || lh.location_name || lh.location || "",
         phone:
@@ -717,14 +700,12 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = {},
       } = gpt;
 
-      if (gpt.contact_readiness) {
+      if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
-      }
 
       let cleanAssessment = aiProfileAssessment;
-      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
+      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
         cleanAssessment = "[auto-moved] No summary provided.";
-      }
 
       const {
         rawScore,
@@ -792,7 +773,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  /pb-pull/connections
+   11) /pb-pull/connections
 ------------------------------------------------------------------*/
 let lastRunId = 0;
 try {
@@ -858,7 +839,7 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11.5)  DEBUG – returns the GPT URL stored in env (for troubleshooting)
+   11.5) DEBUG – return the GPT URL stored in env
 ------------------------------------------------------------------*/
 app.get("/debug-gpt", (_req, res) => res.send(process.env.GPT_CHAT_URL));
 
