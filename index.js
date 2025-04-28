@@ -6,8 +6,8 @@ const express = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable = require("airtable");
 const fs = require("fs");
-const { buildPrompt } = require("./promptBuilder");     // NEW
-const mountPointerApi = require("./pointerApi");        // NEW
+const { buildPrompt } = require("./promptBuilder");   // NEW
+const mountPointerApi = require("./pointerApi");      // NEW
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -62,10 +62,10 @@ function safeDate(d) {
 function getLastTwoOrgs(lh = {}) {
   const out = [];
   for (let i = 1; i <= 2; i++) {
-    const org   = lh[`organization_${i}`];
+    const org = lh[`organization_${i}`];
     const title = lh[`organization_title_${i}`];
-    const sr    = lh[`organization_start_${i}`];
-    const er    = lh[`organization_end_${i}`];
+    const sr = lh[`organization_start_${i}`];
+    const er = lh[`organization_end_${i}`];
     if (!org && !title) continue;
     const range = sr || er ? `(${sr || "?"} – ${er || "Present"})` : "";
     out.push(`${title || "Unknown Role"} at ${org || "Unknown"} ${range}`);
@@ -76,34 +76,33 @@ function getLastTwoOrgs(lh = {}) {
 /* ------------------------------------------------------------------
    1)  Globals & Express
 ------------------------------------------------------------------*/
-const TEST_MODE          = process.env.TEST_MODE === "true";
-const MIN_SCORE          = Number(process.env.MIN_SCORE || 0);
+const TEST_MODE = process.env.TEST_MODE === "true";
+const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
-require("./promptApi")(app);      // mounts /prompt & /attribute
-require("./recordApi")(app);      // mounts /record routes
-require("./scoreApi")(app);       // mounts /score routes
+require("./promptApi")(app);   // NEW – mounts /prompt & /attribute routes
+require("./recordApi")(app);   // NEW – mounts /record routes
+require("./scoreApi")(app);    // NEW – mounts /score routes
 app.get("/health", (_req, res) => res.send("ok"));
 
 /* ------------------------------------------------------------------
    2)  OpenAI + Airtable Setup
 ------------------------------------------------------------------*/
 const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
-const openai        = new OpenAIApi(configuration);
+const openai = new OpenAIApi(configuration);
 
 Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
+const SCORING_TABLE = "tblzphTYVTTQC7zG5";
 
 /* ------------------------------------------------------------------
-   2.5)  Pointer redirect – Custom GPT URL from env-var
+   2.5)  Pointer redirect – Custom GPT URL from env
 ------------------------------------------------------------------*/
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL;
-if (!GPT_CHAT_URL)
-  throw new Error("Missing GPT_CHAT_URL environment variable");
-
-mountPointerApi(app, base, GPT_CHAT_URL);   // mounts /pointer route
+if (!GPT_CHAT_URL) throw new Error("Missing GPT_CHAT_URL environment variable");
+mountPointerApi(app, base, GPT_CHAT_URL);   // NEW – mounts /pointer route
 
 /* ------------------------------------------------------------------
    3)  computeFinalScore
@@ -187,12 +186,22 @@ function computeFinalScore(
    4)  getScoringData & helpers
 ------------------------------------------------------------------*/
 async function getScoringData() {
-  const md = await buildPrompt();                            // fresh Markdown
-  const passMark = 0;                                        // tweak if stored
+  // 1) Build the fresh Markdown blob from Airtable rows
+  const md = await buildPrompt();
+
+  // 2) If you store Pass Mark elsewhere, fetch it; else use 0
+  const passMark = 0;
+
+  // 3) Re-use your existing Markdown-table parser
   const truncated = md.replace(/```python[\s\S]*?```/g, "");
   const { positives, negatives } = parseMarkdownTables(truncated);
 
-  return { truncatedInstructions: truncated, passMark, positives, negatives };
+  return {
+    truncatedInstructions: truncated,   // what the GPT sees
+    passMark,
+    positives,
+    negatives,
+  };
 }
 
 function parseMarkdownTables(markdown) {
@@ -253,10 +262,11 @@ async function callGptScoring(dictionaryText, lead) {
   const extraFields = `
 - attribute_reasoning (object) – per-attribute narrative **for ALL attributes
   (keys = A, B, … L1, N1 …)**
-${TEST_MODE ? "- debug_breakdown (string) – raw JSON for dev only" : ""}`.trim();
+${TEST_MODE ? "- debug_breakdown (string) – raw JSON for dev only" : ""}
+`.trim();
 
-  const sysPrompt
-    = `You are an AI trained to apply the ASH Candidate Attribute Scoring Framework.
+  const sysPrompt = `
+You are an AI trained to apply the ASH Candidate Attribute Scoring Framework.
 
 ### Framework:
 ${dictionaryText}
@@ -270,7 +280,7 @@ Return JSON:
 - contact_readiness, unscored_attributes
 - aiProfileAssessment (string, 2-4 sentence written summary – **never a number**)
 - attribute_reasoning (object, per-attribute narrative for positives **and** negatives)
-${extraFields}`;
+${extraFields}`.trim();
 
   const usrPrompt = `Lead:\n${JSON.stringify(lead, null, 2)}`;
 
@@ -315,16 +325,18 @@ function buildAttributeBreakdown(
     }
     const pts = positiveScores[id] || 0;
     lines.push(`- ${id} (${info.label}): ${pts} / ${info.maxPoints}`);
-    if (attributeReasoning[id]) lines.push(`  ↳ ${attributeReasoning[id]}`);
+    if (attributeReasoning[id]) {
+      lines.push(`  ↳ ${attributeReasoning[id]}`);
+    }
   }
 
   lines.push("\n**Negative Attributes**:");
   for (const [id, info] of Object.entries(dictionaryNegatives)) {
-    const pen   = negativeScores[id] || 0;
+    const pen = negativeScores[id] || 0;
     const status = pen !== 0 ? "Triggered" : "Not triggered";
-    const disp   = `${pen} / ${info.penalty} max`;
-    const reason = attributeReasoning[id] || "No signals detected.";
-    lines.push(`- ${id} (${info.label}): ${disp} — ${status}\n  ↳ ${reason}`);
+    const display = `${pen} / ${info.penalty} max`;
+    const reasonTxt = attributeReasoning[id] || "No signals detected.";
+    lines.push(`- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${reasonTxt}`);
   }
 
   if (denominator > 0) {
@@ -405,28 +417,29 @@ async function upsertLead(
 
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
-    const mid  = lead.memberId || lead.profileId;
+    const mid = lead.memberId || lead.profileId;
     if (slug) finalUrl = `https://www.linkedin.com/in/${slug}/`;
-    else if (mid) finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
+    else if (mid)
+      finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
   }
 
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
     if (typeof r.profile_url === "string" && r.profile_url.trim())
       finalUrl = r.profile_url.trim().replace(/\/$/, "");
-    else if (r.public_id)
-      finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
+    else if (r.public_id) finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
     else if (r.member_id)
       finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
   }
 
-  if (!finalUrl) return;          // can’t continue without a URL
+  if (!finalUrl) return;
 
   const profileKey = canonicalUrl(finalUrl);
 
   let connectionStatus = "To Be Sent";
   if (connectionDegree === "1st") connectionStatus = "Connected";
-  else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
+  else if (linkedinConnectionStatus === "Pending")
+    connectionStatus = "Pending";
 
   const fields = {
     "LinkedIn Profile URL": finalUrl,
@@ -448,7 +461,7 @@ async function upsertLead(
       (lead.phoneNumbers || [])[0]?.value ||
       "",
     "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
-    "Profile Full JSON": JSON.stringify(lead),   // whole blob
+    "Profile Full JSON": JSON.stringify(lead),   // ← NEW: whole blob
     "Raw Profile Data": JSON.stringify(rest),
     "AI Profile Assessment": String(aiProfileAssessment || ""),
     "AI Score": Math.round(finalScore * 100) / 100,
@@ -494,12 +507,14 @@ app.post("/api/test-score", async (req, res) => {
       attribute_reasoning = {},
     } = gpt;
 
-    if (gpt.contact_readiness)
+    if (gpt.contact_readiness) {
       positive_scores.I = positives?.I?.maxPoints || 3;
+    }
 
     let cleanAssessment = aiProfileAssessment;
-    if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
+    if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
       cleanAssessment = "[auto-moved] No summary provided.";
+    }
 
     const {
       rawScore,
@@ -561,12 +576,14 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = {},
       } = gpt;
 
-      if (gpt.contact_readiness)
+      if (gpt.contact_readiness) {
         positive_scores.I = positives?.I?.maxPoints || 3;
+      }
 
       let cleanAssessment = aiProfileAssessment;
-      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
+      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
         cleanAssessment = "[auto-moved] No summary provided.";
+      }
 
       const {
         rawScore,
@@ -638,8 +655,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           : "");
 
       const exp = Array.isArray(lh.experience) ? lh.experience : [];
-      const current   = exp[0] || {};
-      const previous  = exp[1] || {};
+      const current = exp[0] || {};
+      const previous = exp[1] || {};
 
       const numericDist =
         (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
@@ -650,8 +667,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 
       const lead = {
         firstName: lh.firstName || lh.first_name || "",
-        lastName:  lh.lastName  || lh.last_name  || "",
-        headline:  lh.headline  || "",
+        lastName: lh.lastName || lh.last_name || "",
+        headline: lh.headline || "",
         locationName:
           lh.locationName || lh.location_name || lh.location || "",
         phone:
@@ -673,9 +690,9 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           current.company ||
           lh.organization_1 ||
           "",
-        linkedinDescription:          lh.summary || lh.bio || "",
-        linkedinJobDateRange:         current.dateRange || current.dates || "",
-        linkedinJobDescription:       current.description || "",
+        linkedinDescription: lh.summary || lh.bio || "",
+        linkedinJobDateRange: current.dateRange || current.dates || "",
+        linkedinJobDescription: current.description || "",
         linkedinPreviousJobDateRange: previous.dateRange || previous.dates || "",
         linkedinPreviousJobDescription: previous.description || "",
         connectionDegree:
@@ -700,12 +717,14 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         attribute_reasoning = {},
       } = gpt;
 
-      if (gpt.contact_readiness)
+      if (gpt.contact_readiness) {
         positive_scores.I = positives?.I?.maxPoints || 3;
+      }
 
       let cleanAssessment = aiProfileAssessment;
-      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
+      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment)) {
         cleanAssessment = "[auto-moved] No summary provided.";
+      }
 
       const {
         rawScore,
@@ -723,12 +742,12 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       );
       const finalPct = Math.round(percentage * 100) / 100;
 
-      const auFlag       = isAustralian(lead.locationName || "");
-      const passesScore  = finalPct >= MIN_SCORE;
+      const auFlag = isAustralian(lead.locationName || "");
+      const passesScore = finalPct >= MIN_SCORE;
       const positiveChat = true;
       const passesFilters = auFlag && passesScore && positiveChat;
 
-      const aiExcluded    = passesFilters ? "No" : "Yes";
+      const aiExcluded = passesFilters ? "No" : "Yes";
       const excludeDetails = passesFilters
         ? ""
         : !auFlag
@@ -837,6 +856,11 @@ app.get("/pb-pull/connections", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+/* ------------------------------------------------------------------
+   11.5)  DEBUG – returns the GPT URL stored in env (for troubleshooting)
+------------------------------------------------------------------*/
+app.get("/debug-gpt", (_req, res) => res.send(process.env.GPT_CHAT_URL));
 
 /* ------------------------------------------------------------------
    12)  Start server
