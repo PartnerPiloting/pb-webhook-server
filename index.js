@@ -8,8 +8,9 @@ const Airtable = require("airtable");
 const fs = require("fs");
 const { buildPrompt } = require("./promptBuilder");
 
-const mountPointerApi = require("./pointerApi");     // /pointer
-const mountLatestLead = require("./latestLeadApi");  // /latest-lead
+const mountPointerApi  = require("./pointerApi");     // /pointer
+const mountLatestLead  = require("./latestLeadApi");  // /latest-lead
+const mountUpdateLead  = require("./updateLeadApi");  // NEW
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -107,6 +108,7 @@ if (!GPT_CHAT_URL) throw new Error("Missing GPT_CHAT_URL env var");
 
 mountPointerApi(app, base, GPT_CHAT_URL);
 mountLatestLead(app, base);
+mountUpdateLead(app, base);                           // NEW
 
 /* ------------------------------------------------------------------
    3)  computeFinalScore
