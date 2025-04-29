@@ -1,7 +1,5 @@
 /****************************************************************
   queueDispatcher.js  – mounts on existing Express app
-  • /enqueue stores jobs in RAM
-  • 30-s heartbeat launches PB one-at-a-time (2-try retry)
 ****************************************************************/
 require("dotenv").config();
 const express = require("express");
@@ -10,7 +8,7 @@ const fetch   = (...a) => import("node-fetch").then(({ default: f }) => f(...a))
 module.exports = function mountDispatcher(app) {
   /* ── Airtable helpers ─────────────────────────────────────── */
   const AT_BASE  = process.env.AIRTABLE_BASE_ID || process.env.AT_BASE_ID;
-  const AT_KEY   = process.env.AT_API_KEY;
+  const AT_KEY   = process.env.AIRTABLE_API_KEY  || process.env.AT_API_KEY; // ← fixed
   const AT_TABLE = "Leads";
 
   const AT = (path, opt = {}) =>
@@ -24,7 +22,7 @@ module.exports = function mountDispatcher(app) {
 
   async function markStatus(id, status, err = "", runId = null) {
     const fields = {
-      "Message Status": { name: status },          // single-select
+      "Message Status": { name: status },
       "PB Error Message": err
     };
     if (runId)               fields["PB Run ID"]            = runId;
@@ -34,11 +32,11 @@ module.exports = function mountDispatcher(app) {
       method: "PATCH",
       body: JSON.stringify({
         records: [{ id, fields }],
-        typecast: true                           // allow select-by-name
+        typecast: true
       })
     });
 
-    console.log("Airtable PATCH result:", JSON.stringify(result)); // debug
+    console.log("Airtable PATCH result:", JSON.stringify(result));
     return result;
   }
 
@@ -112,5 +110,5 @@ module.exports = function mountDispatcher(app) {
       await markStatus(job.recordId, "Error", msg);
       console.log(`Final failure for record ${job.recordId}: ${msg}`);
     }
-  }, 30_000);   // 30-second tick
+  }, 30_000); // 30-second tick
 };
