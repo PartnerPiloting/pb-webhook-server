@@ -1,21 +1,20 @@
 /****************************************************************
-  queueDispatcher.js   (router version — mounts on existing app)
+  queueDispatcher.js   (router version – mounts on existing app)
+  • POST /enqueue stores jobs in RAM
+  • 30-s heartbeat launches Phantom 1-at-a-time with 2-try retry
 ****************************************************************/
 require("dotenv").config();
 const express = require("express");
-const fetch   = (...args) => import("node-fetch").then(({default: f}) => f(...args));
+const fetch   = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-/**
- * Mounts /enqueue and starts the single-launch heartbeat.
- * @param {import('express').Express} app
- */
 module.exports = function mountDispatcher(app) {
-  /* -----------------------------------------------------------
+  /* -------------------------------------------------------------
      1) Airtable helpers
-  ----------------------------------------------------------- */
+  ------------------------------------------------------------- */
   const AT_BASE  = process.env.AT_BASE_ID;
   const AT_KEY   = process.env.AT_API_KEY;
-  const AT_TABLE = "Leads";                      // change if your table differs
+  const AT_TABLE = "Leads";
+
   const AT = (path, opt = {}) =>
     fetch(`https://api.airtable.com/v0/${AT_BASE}/${encodeURIComponent(path)}`, {
       headers: {
@@ -40,28 +39,30 @@ module.exports = function mountDispatcher(app) {
     });
   }
 
-  /* -----------------------------------------------------------
+  /* -------------------------------------------------------------
      2) In-memory queue & /enqueue endpoint
-  ----------------------------------------------------------- */
-  const queue = [];          // [{recordId, agentId, pbKey, sessionCookie, userAgent, message, profileUrl}, …]
+  ------------------------------------------------------------- */
+  const queue = [];   // [{recordId,…, tries}]  -- tries defaults to 0
 
   app.post("/enqueue", express.json({ limit: "2mb" }), (req, res) => {
-    try {
-      queue.push(req.body);
-      return res.json({ queued: true, size: queue.length });
-    } catch (e) {
-      return res.status(400).json({ queued: false, error: e.message });
-    }
+    queue.push({ ...req.body, tries: 0 });
+    return res.json({ queued: true, size: queue.length });
   });
 
-  /* -----------------------------------------------------------
+  /* -------------------------------------------------------------
      3) Phantom helpers
-  ----------------------------------------------------------- */
+  ------------------------------------------------------------- */
+  async function safeJson(res) {
+    const txt = await res.text();
+    try   { return JSON.parse(txt); }
+    catch { return { error: { message: `PB non-JSON: ${txt.slice(0,120)}…` } }; }
+  }
+
   async function phantomBusy(agentId, pbKey) {
     const info = await fetch(
       `https://api.phantombuster.com/api/v2/agents/fetch?id=${agentId}`,
       { headers: { "X-Phantombuster-Key-1": pbKey } }
-    ).then(r => r.json());
+    ).then(safeJson);
     return info?.agent?.lastExec?.status === "running";
   }
 
@@ -69,44 +70,53 @@ module.exports = function mountDispatcher(app) {
     const payload = {
       id: job.agentId,
       argument: {
-        sessionCookie:           job.sessionCookie,
-        userAgent:               job.userAgent,
-        profilesPerLaunch:       10,
-        message:                 job.message,
-        spreadsheetUrl:          job.profileUrl,
+        sessionCookie: job.sessionCookie,
+        userAgent:     job.userAgent,
+        profilesPerLaunch: 10,
+        message:       job.message,
+        spreadsheetUrl: job.profileUrl,
         spreadsheetUrlExclusionList: []
       }
     };
+
     return fetch(
       "https://api.phantombuster.com/api/v2/agents/launch",
       {
-        method:  "POST",
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Phantombuster-Key-1": job.pbKey
         },
         body: JSON.stringify(payload)
       }
-    ).then(r => r.json());
+    ).then(safeJson);
   }
 
-  /* -----------------------------------------------------------
-     4) Heartbeat loop — one launch at a time
-  ----------------------------------------------------------- */
+  /* -------------------------------------------------------------
+     4) Heartbeat – single-launch, 2-try retry logic
+  ------------------------------------------------------------- */
+  const MAX_TRIES = 2;
+
   setInterval(async () => {
-    if (!queue.length) return;             // nothing waiting
+    if (!queue.length) return;                       // nothing waiting
 
-    const job = queue[0];                  // peek first job
-    if (await phantomBusy(job.agentId, job.pbKey)) return;  // PB still running
+    const job = queue[0];                            // peek
+    if (await phantomBusy(job.agentId, job.pbKey)) return; // PB still running
 
-    queue.shift();                         // take the job off the queue
+    queue.shift();                                   // take job off
+    job.tries += 1;
+
     const res = await launchPhantom(job);
 
-    if (res?.containerId) {
+    if (res?.containerId) {                          // SUCCESS
       await markStatus(job.recordId, "Sent", "");
-    } else {
+    } else if (job.tries < MAX_TRIES) {              // RETRY
+      queue.push(job);
+      console.log(`Retry ${job.tries}/${MAX_TRIES} — ${res?.error?.message || "unknown PB error"}`);
+    } else {                                         // FAIL after retries
       const msg = res?.error?.message || "Launch failed";
       await markStatus(job.recordId, "Error", msg);
+      console.log(`Final failure for record ${job.recordId}: ${msg}`);
     }
   }, 30_000);   // 30-second tick
 };
