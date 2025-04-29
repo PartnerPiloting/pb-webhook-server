@@ -89,6 +89,7 @@ app.use(express.json({ limit: "10mb" }));
 require("./promptApi")(app);
 require("./recordApi")(app);
 require("./scoreApi")(app);
+require("./queueDispatcher")(app);   // NEW – mounts /enqueue + heartbeat
 app.get("/health", (_req, res) => res.send("ok"));
 
 /* ------------------------------------------------------------------
@@ -241,7 +242,7 @@ function parseMarkdownTables(markdown) {
       negatives[id] = {
         label:        label.trim(),
         penalty:      parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
-        disqualifying:/yes/i.test(disqRaw.trim()),
+        disqualifying:/yes/i.test(disqRaw.trim() ),
         notes:        notes.trim(),
       };
     }
