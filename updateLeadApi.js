@@ -1,15 +1,15 @@
 /****************************************************************
   POST /update-lead
-  Body: { nextMessage: string, sendAt?: string }
+  Body: { nextMessage: string, sendAt?: string, messageStatus?: string }
   - Reads the record ID stored in Credentials → Record ID for Chat
-  - Updates “Message To Be Sent” and (optionally) “Send At”
+  - Updates “Message To Be Sent”, (optionally) “Send At”, and (optionally) “Message Status”
 *****************************************************************/
 const { DateTime } = require("luxon");   // already in Render image
 
 module.exports = function updateLeadApi(app, base) {
   app.post("/update-lead", async (req, res) => {
     try {
-      const { nextMessage, sendAt } = req.body || {};
+      const { nextMessage, sendAt, messageStatus } = req.body || {};
 
       if (typeof nextMessage !== "string" || !nextMessage.trim()) {
         return res.status(400).json({ error: "nextMessage required" });
@@ -28,9 +28,16 @@ module.exports = function updateLeadApi(app, base) {
 
       if (sendAt) {
         // accept natural ISO or RFC-2822; store as JS Date (UTC)
-        const iso = DateTime.fromISO(sendAt) || DateTime.fromRFC2822(sendAt);
+        const iso =
+          DateTime.fromISO(sendAt).isValid
+            ? DateTime.fromISO(sendAt)
+            : DateTime.fromRFC2822(sendAt);
         if (!iso.isValid) throw new Error("Invalid sendAt date-time");
         fields["Send At"] = iso.toJSDate();
+      }
+
+      if (typeof messageStatus === "string" && messageStatus.trim()) {
+        fields["Message Status"] = messageStatus.trim();
       }
 
       // 3️⃣ update the Lead
