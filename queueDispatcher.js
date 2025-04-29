@@ -8,7 +8,7 @@ const fetch   = (...a) => import("node-fetch").then(({ default: f }) => f(...a))
 module.exports = function mountDispatcher(app) {
   /* ── Airtable helpers ─────────────────────────────────────── */
   const AT_BASE  = process.env.AIRTABLE_BASE_ID || process.env.AT_BASE_ID;
-  const AT_KEY   = process.env.AIRTABLE_API_KEY  || process.env.AT_API_KEY; // ← fixed
+  const AT_KEY   = process.env.AIRTABLE_API_KEY  || process.env.AT_API_KEY;
   const AT_TABLE = "Leads";
 
   const AT = (path, opt = {}) =>
@@ -20,14 +20,9 @@ module.exports = function mountDispatcher(app) {
       ...opt
     }).then(r => r.json());
 
-  /**
-   * Update Airtable with status / error / run-ID info.
-   * “Message Status” is now sent as a **plain string** so it
-   * parses for both text and single-select fields.
-   */
   async function markStatus(id, status, err = "", runId = null) {
     const fields = {
-      "Message Status": status,           // ← changed (was { name: status })
+      "Message Status": status,
       "PB Error Message": err
     };
     if (runId)               fields["PB Run ID"]            = runId;
@@ -37,7 +32,7 @@ module.exports = function mountDispatcher(app) {
       method: "PATCH",
       body: JSON.stringify({
         records: [{ id, fields }],
-        typecast: true          // still OK for single-select options
+        typecast: true
       })
     });
 
@@ -64,7 +59,10 @@ module.exports = function mountDispatcher(app) {
       `https://api.phantombuster.com/api/v2/agents/fetch?id=${agentId}`,
       { headers: { "X-Phantombuster-Key-1": key } }
     ).then(safeJson);
-    return info?.agent?.lastExec?.status === "running";
+
+    const state = info?.agent?.lastExec?.status;
+    // Treat anything except “success” as busy
+    return state && state !== "success";
   }
 
   async function launchPhantom(job) {
@@ -92,12 +90,16 @@ module.exports = function mountDispatcher(app) {
     ).then(safeJson);
   }
 
-  /* ── Heartbeat loop (single-launch, 2-try retry) ─────────── */
-  const MAX_TRIES = 2;
+  /* ── Heartbeat loop (single-launch, retry with back-off) ─── */
+  const MAX_TRIES     = 5;           // ↑ from 2 → 5
+  const TICK_INTERVAL = 60_000;      // ↑ from 30 000 → 60 000 ms
+
   setInterval(async () => {
     if (!queue.length) return;
 
     const job = queue[0];
+
+    // Wait while agent is busy (running OR starting)
     if (await phantomBusy(job.agentId, job.pbKey)) return;
 
     queue.shift();
@@ -109,11 +111,13 @@ module.exports = function mountDispatcher(app) {
       await markStatus(job.recordId, "Sent", "", res.containerId);
     } else if (job.tries < MAX_TRIES) {                  // RETRY
       queue.push(job);
-      console.log(`Retry ${job.tries}/${MAX_TRIES} — ${res?.error?.message || "PB error"}`);
+      console.log(
+        `Retry ${job.tries}/${MAX_TRIES} — ${res?.error?.message || "PB error"}`
+      );
     } else {                                             // FAIL
       const msg = res?.error?.message || "Launch failed";
       await markStatus(job.recordId, "Error", msg);
       console.log(`Final failure for record ${job.recordId}: ${msg}`);
     }
-  }, 30_000); // 30-second tick
+  }, TICK_INTERVAL);
 };
