@@ -20,9 +20,14 @@ module.exports = function mountDispatcher(app) {
       ...opt
     }).then(r => r.json());
 
+  /**
+   * Update Airtable with status / error / run-ID info.
+   * “Message Status” is now sent as a **plain string** so it
+   * parses for both text and single-select fields.
+   */
   async function markStatus(id, status, err = "", runId = null) {
     const fields = {
-      "Message Status": { name: status },
+      "Message Status": status,           // ← changed (was { name: status })
       "PB Error Message": err
     };
     if (runId)               fields["PB Run ID"]            = runId;
@@ -32,7 +37,7 @@ module.exports = function mountDispatcher(app) {
       method: "PATCH",
       body: JSON.stringify({
         records: [{ id, fields }],
-        typecast: true
+        typecast: true          // still OK for single-select options
       })
     });
 
@@ -87,7 +92,7 @@ module.exports = function mountDispatcher(app) {
     ).then(safeJson);
   }
 
-  /* ── Heartbeat loop (single-launch, 2-try retry) ──────────── */
+  /* ── Heartbeat loop (single-launch, 2-try retry) ─────────── */
   const MAX_TRIES = 2;
   setInterval(async () => {
     if (!queue.length) return;
