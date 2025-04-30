@@ -1,16 +1,22 @@
 /***************************************************************
-  LinkedIn → Airtable  (Scoring + 1st-degree & LH sync)
+  LinkedIn → Airtable  (Scoring + 1st-degree sync)
+  --------------------------------------------------------------
+  • All original routes retained
+  • NEW  /lh-webhook/upsertLeadOnly  (upsert only, no GPT)
+  • “Null-patch” so existing AI-scoring columns are preserved
 ***************************************************************/
 require("dotenv").config();
-const express = require("express");
+const express    = require("express");
 const { Configuration, OpenAIApi } = require("openai");
-const Airtable = require("airtable");
-const fs = require("fs");
+const Airtable   = require("airtable");
+const fs         = require("fs");
+const fetch      = (...args) => import("node-fetch").then(({default: f}) => f(...args));
 const { buildPrompt } = require("./promptBuilder");
 
-const mountPointerApi  = require("./pointerApi");     // /pointer
-const mountLatestLead  = require("./latestLeadApi");  // /latest-lead
-const mountUpdateLead  = require("./updateLeadApi");  // NEW
+const mountPointerApi = require("./pointerApi");
+const mountLatestLead = require("./latestLeadApi");
+const mountUpdateLead = require("./updateLeadApi");
+const mountQueue      = require("./queueDispatcher");
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -40,9 +46,8 @@ function canonicalUrl(url = "") {
    helper: isAustralian
 ------------------------------------------------------------------*/
 function isAustralian(loc = "") {
-  return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i.test(
-    loc
-  );
+  return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i
+    .test(loc);
 }
 
 /* ------------------------------------------------------------------
@@ -86,10 +91,12 @@ const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+/* mount miscellaneous sub-APIs */
 require("./promptApi")(app);
 require("./recordApi")(app);
 require("./scoreApi")(app);
-require("./queueDispatcher")(app);   // NEW – mounts /enqueue + heartbeat
+mountQueue(app);
+
 app.get("/health", (_req, res) => res.send("ok"));
 
 /* ------------------------------------------------------------------
@@ -109,7 +116,7 @@ if (!GPT_CHAT_URL) throw new Error("Missing GPT_CHAT_URL env var");
 
 mountPointerApi(app, base, GPT_CHAT_URL);
 mountLatestLead(app, base);
-mountUpdateLead(app, base);                           // NEW
+mountUpdateLead(app, base);
 
 /* ------------------------------------------------------------------
    3)  computeFinalScore
@@ -350,21 +357,22 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead
+   7)  upsertLead  (AI fields written only if argument ≠ null)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
-  finalScore,
-  aiProfileAssessment,
-  attributeReasoning,
-  attributeBreakdown,
-  auFlag = null,
-  aiExcluded = null,
-  excludeDetails = null
+  finalScore          = null,
+  aiProfileAssessment = null,
+  attributeReasoning  = null,
+  attributeBreakdown  = null,
+  auFlag              = null,
+  aiExcluded          = null,
+  excludeDetails      = null
 ) {
   const {
     firstName = "",
     lastName = "",
+    headline: lhHeadline = "",
     linkedinHeadline = "",
     linkedinJobTitle = "",
     linkedinCompanyName = "",
@@ -385,6 +393,7 @@ async function upsertLead(
     ...rest
   } = lead;
 
+  /* ---- build job history ---- */
   let jobHistory = [
     linkedinJobDateRange
       ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}`
@@ -401,6 +410,7 @@ async function upsertLead(
     if (hist) jobHistory = hist;
   }
 
+  /* ---- canonical LinkedIn URL ---- */
   let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(
     /\/$/,
     ""
@@ -409,8 +419,8 @@ async function upsertLead(
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
     const mid  = lead.memberId || lead.profileId;
-    if (slug) finalUrl = `https://www.linkedin.com/in/${slug}/`;
-    else if (mid) finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
+    if (slug)      finalUrl = `https://www.linkedin.com/in/${slug}/`;
+    else if (mid)  finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
   }
 
   if (!finalUrl && lead.raw) {
@@ -422,54 +432,63 @@ async function upsertLead(
     else if (r.member_id)
       finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
   }
-
   if (!finalUrl) return;
 
   const profileKey = canonicalUrl(finalUrl);
 
+  /* ---- connection status ---- */
   let connectionStatus = "To Be Sent";
-  if (connectionDegree === "1st") connectionStatus = "Connected";
+  if (connectionDegree === "1st")            connectionStatus = "Connected";
   else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
+  /* ---- map fields ---- */
   const fields = {
     "LinkedIn Profile URL": finalUrl,
-    "First Name": firstName,
-    "Last Name": lastName,
-    Headline: linkedinHeadline || lead.headline || "",
-    "Job Title": linkedinJobTitle || "",
-    "Company Name": linkedinCompanyName || "",
-    About: linkedinDescription || "",
-    "Job History": jobHistory,
+    "First Name"          : firstName,
+    "Last Name"           : lastName,
+    Headline              : linkedinHeadline || lhHeadline,
+    "Job Title"           : linkedinJobTitle,
+    "Company Name"        : linkedinCompanyName,
+    About                 : linkedinDescription || "",
+    "Job History"         : jobHistory,
     "LinkedIn Connection Status": connectionStatus,
-    Location: locationName || "",
-    "Date Connected":
-      safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
-    Email: emailAddress || lead.email || lead.workEmail || "",
-    Phone:
-      phoneNumber ||
-      lead.phone ||
-      (lead.phoneNumbers || [])[0]?.value ||
-      "",
-    "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
-    "Profile Full JSON": JSON.stringify(lead),
-    "Raw Profile Data": JSON.stringify(rest),
-    "AI Profile Assessment": String(aiProfileAssessment || ""),
-    "AI Score": Math.round(finalScore * 100) / 100,
-    "AI Attribute Breakdown": attributeBreakdown || "",
+    Location              : locationName || "",
+    "Date Connected"      : safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
+    Email                 : emailAddress || lead.email || lead.workEmail || "",
+    Phone                 : phoneNumber || lead.phone || (lead.phoneNumbers || [])[0]?.value || "",
+    "Refreshed At"        : refreshedAt ? new Date(refreshedAt) : null,
+    "Profile Full JSON"   : JSON.stringify(lead),
+    "Raw Profile Data"    : JSON.stringify(rest),
   };
 
-  if (auFlag      !== null) fields["AU"]           = !!auFlag;
-  if (aiExcluded  !== null) fields["AI_Excluded"]  = aiExcluded === "Yes";
-  if (excludeDetails !== null) fields["Exclude Details"] = excludeDetails;
+  /* ---- optional AI/scoring fields only when value NOT null ---- */
+  if (finalScore !== null)
+    fields["AI Score"] = Math.round(finalScore * 100) / 100;
 
+  if (aiProfileAssessment !== null)
+    fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
+
+  if (attributeBreakdown !== null)
+    fields["AI Attribute Breakdown"] = attributeBreakdown;
+
+  if (auFlag !== null)
+    fields["AU"] = !!auFlag;
+
+  if (aiExcluded !== null)
+    fields["AI_Excluded"] = aiExcluded === "Yes";
+
+  if (excludeDetails !== null)
+    fields["Exclude Details"] = excludeDetails;
+
+  /* ---- upsert ---- */
   const filter = `{Profile Key} = "${profileKey}"`;
-
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
     .firstPage();
 
-  if (existing.length) await base("Leads").update(existing[0].id, fields);
-  else {
+  if (existing.length) {
+    await base("Leads").update(existing[0].id, fields);
+  } else {
     fields["Source"] =
       connectionDegree === "1st"
         ? "Existing Connection Added by PB"
@@ -479,7 +498,7 @@ async function upsertLead(
 }
 
 /* ------------------------------------------------------------------
-   8)  /api/test-score
+   8)  /api/test-score  (unchanged)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
   try {
@@ -533,9 +552,9 @@ app.post("/api/test-score", async (req, res) => {
     );
 
     res.json({
-      finalPct: percentage,
-      breakdown,
-      assessment: cleanAssessment,
+      finalPct   : percentage,
+      breakdown  : breakdown,
+      assessment : cleanAssessment,
     });
   } catch (err) {
     console.error(err);
@@ -544,7 +563,7 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb-webhook/scrapeLeads
+   9)  /pb-webhook/scrapeLeads  (unchanged)
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -621,8 +640,100 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   }
 });
 
+/* ================================================================
+   10)  NEW  /lh-webhook/upsertLeadOnly
+   ---------------------------------------------------------------
+   • No GPT, passes nulls so scoring columns stay untouched
+================================================================ */
+app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
+  try {
+    const raw = Array.isArray(req.body) ? req.body : [req.body];
+    let processed = 0;
+
+    for (const lh of raw) {
+      const rawUrl =
+        lh.profileUrl ||
+        (lh.publicId
+          ? `https://www.linkedin.com/in/${lh.publicId}/`
+          : lh.memberId
+          ? `https://www.linkedin.com/profile/view?id=${lh.memberId}`
+          : "");
+
+      const exp      = Array.isArray(lh.experience) ? lh.experience : [];
+      const current  = exp[0] || {};
+      const previous = exp[1] || {};
+
+      const numericDist =
+        (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
+        (typeof lh.member_distance === "string" &&
+          lh.member_distance.endsWith("_1"))
+          ? 1
+          : lh.distance;
+
+      const lead = {
+        firstName: lh.firstName || lh.first_name || "",
+        lastName:  lh.lastName  || lh.last_name  || "",
+        headline:  lh.headline  || "",
+        locationName:
+          lh.locationName || lh.location_name || lh.location || "",
+        phone:
+          (lh.phoneNumbers || [])[0]?.value ||
+          lh.phone_1 ||
+          lh.phone_2 ||
+          "",
+        email: lh.email || lh.workEmail || "",
+        linkedinProfileUrl: rawUrl,
+        linkedinJobTitle:
+          lh.headline ||
+          lh.occupation ||
+          lh.position ||
+          current.title ||
+          "",
+        linkedinCompanyName:
+          lh.companyName ||
+          (lh.company ? lh.company.name : "") ||
+          current.company ||
+          lh.organization_1 ||
+          "",
+        linkedinDescription: lh.summary || lh.bio || "",
+        linkedinJobDateRange: current.dateRange || current.dates || "",
+        linkedinJobDescription: current.description || "",
+        linkedinPreviousJobDateRange: previous.dateRange || previous.dates || "",
+        linkedinPreviousJobDescription: previous.description || "",
+        connectionDegree:
+          lh.connectionDegree ||
+          (lh.degree === 1 || numericDist === 1 ? "1st" : ""),
+        connectionSince:
+          lh.connectionDate ||
+          lh.connected_at_iso ||
+          lh.connected_at ||
+          lh.invited_date_iso ||
+          null,
+        raw: lh,
+      };
+
+      await upsertLead(
+        lead,
+        null,  // finalScore
+        null,  // aiProfileAssessment
+        null,  // attributeReasoning
+        null,  // attributeBreakdown
+        null,  // auFlag
+        null,  // aiExcluded
+        null   // excludeDetails
+      );
+      processed++;
+    }
+
+    res.json({ message: `Upserted ${processed} LH profiles` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ------------------------------------------------------------------
-   10) /lh-webhook/scrapeLeads
+   11)  /lh-webhook/scrapeLeads  (original GPT route, unchanged)
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -776,7 +887,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11) /pb-pull/connections
+   12)  /pb-pull/connections  (unchanged)
 ------------------------------------------------------------------*/
 let lastRunId = 0;
 try {
@@ -842,17 +953,15 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11.5) DEBUG – return the GPT URL stored in env
+   12.5) DEBUG – return GPT URL
 ------------------------------------------------------------------*/
 app.get("/debug-gpt", (_req, res) => res.send(process.env.GPT_CHAT_URL));
 
 /* ------------------------------------------------------------------
-   12)  Start server
+   13)  Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-  `▶︎ Server starting – commit ${
-    process.env.RENDER_GIT_COMMIT || "local"
-  } – ${new Date().toISOString()}`
+  `▶︎ Server starting – commit ${process.env.RENDER_GIT_COMMIT || "local"} – ${new Date().toISOString()}`
 );
 app.listen(port, () => console.log(`Server running on ${port}`));
