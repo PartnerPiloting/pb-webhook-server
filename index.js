@@ -1,11 +1,12 @@
 /***************************************************************
   LinkedIn → Airtable  (Scoring + 1st-degree sync)
   --------------------------------------------------------------
-  • /lh-webhook/upsertLeadOnly now sets:
+  • /lh-webhook/upsertLeadOnly sets:
         - LinkedIn Connection Status = "Candidate"
         - Scoring Status            = "To Be Scored"
-  • upsertLead() defaults new 2nd-degree contacts to "Candidate"
-    and writes Scoring Status
+  • upsertLead() defaults new 2nd-degree contacts to "Candidate",
+    writes Scoring Status, and now also sets
+        Status = "In Process"
 ***************************************************************/
 require("dotenv").config();
 const express    = require("express");
@@ -121,7 +122,7 @@ mountLatestLead(app, base);
 mountUpdateLead(app, base);
 
 /* ------------------------------------------------------------------
-   3)  computeFinalScore   (unchanged)
+   3)  computeFinalScore
 ------------------------------------------------------------------*/
 function computeFinalScore(
   positive_scores,
@@ -131,7 +132,6 @@ function computeFinalScore(
   contact_readiness = false,
   unscored_attributes = []
 ) {
-  /* ... original scoring math stays exactly the same ... */
   let disqualified = false;
   let disqualifyReason = null;
 
@@ -201,7 +201,7 @@ function computeFinalScore(
 }
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & helpers   (unchanged)
+   4)  getScoringData & helpers
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const md = await buildPrompt();
@@ -217,8 +217,8 @@ async function getScoringData() {
     negatives,
   };
 }
+
 function parseMarkdownTables(markdown) {
-  /* ... unchanged table-parsing helper ... */
   const positives = {};
   const negatives = {};
   const lines     = markdown.split("\n");
@@ -261,12 +261,12 @@ function parseMarkdownTables(markdown) {
 }
 
 /* ------------------------------------------------------------------
-   5)  callGptScoring   (unchanged)
+   5)  callGptScoring
 ------------------------------------------------------------------*/
 async function callGptScoring(dictionaryText, lead) {
-  /* ... unchanged GPT call helper ... */
   const extraFields = `
-- attribute_reasoning (object) – per-attribute narrative for **ALL** attributes`;
+- attribute_reasoning (object) – per-attribute narrative for **ALL** attributes
+${TEST_MODE ? "- debug_breakdown (string)" : ""}`;
 
   const sysPrompt = `You are an AI trained to apply the ASH Candidate Attribute Scoring Framework.
 
@@ -302,7 +302,7 @@ Return JSON:
 }
 
 /* ------------------------------------------------------------------
-   6)  buildAttributeBreakdown   (unchanged)
+   6)  buildAttributeBreakdown
 ------------------------------------------------------------------*/
 function buildAttributeBreakdown(
   positiveScores,
@@ -316,7 +316,6 @@ function buildAttributeBreakdown(
   disqualified = false,
   disqualifyReason = null
 ) {
-  /* ... unchanged breakdown formatter ... */
   const lines = [];
 
   lines.push("**Positive Attributes**:");
@@ -361,7 +360,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  **CHANGED**
+   7)  upsertLead  (AI fields written only if argument ≠ null)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -394,11 +393,11 @@ async function upsertLead(
     phoneNumber = "",
     locationName = "",
     connectionSince,
-    scoringStatus = undefined,     // NEW
+    scoringStatus = undefined,
     ...rest
   } = lead;
 
-  /* build job history (unchanged) */
+  /* ---- build job history ---- */
   let jobHistory = [
     linkedinJobDateRange
       ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}`
@@ -415,14 +414,19 @@ async function upsertLead(
     if (hist) jobHistory = hist;
   }
 
-  /* canonical LinkedIn URL (unchanged) */
-  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
+  /* ---- canonical LinkedIn URL ---- */
+  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(
+    /\/$/,
+    ""
+  );
+
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
     const mid  = lead.memberId || lead.profileId;
     if (slug)      finalUrl = `https://www.linkedin.com/in/${slug}/`;
     else if (mid)  finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
   }
+
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
     if (typeof r.profile_url === "string" && r.profile_url.trim())
@@ -436,12 +440,12 @@ async function upsertLead(
 
   const profileKey = canonicalUrl(finalUrl);
 
-  /* connection status – DEFAULT NOW "Candidate" */
+  /* ---- connection status ---- */
   let connectionStatus = "Candidate";
   if (connectionDegree === "1st")                  connectionStatus = "Connected";
   else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
-  /* map fields ---------------------------------------------------- */
+  /* ---- map fields ---- */
   const fields = {
     "LinkedIn Profile URL"     : finalUrl,
     "First Name"               : firstName,
@@ -452,7 +456,8 @@ async function upsertLead(
     About                      : linkedinDescription || "",
     "Job History"              : jobHistory,
     "LinkedIn Connection Status": connectionStatus,
-    "Scoring Status"           : scoringStatus,          // NEW
+    Status                      : "In Process",
+    "Scoring Status"           : scoringStatus,
     Location                   : locationName || "",
     "Date Connected"           : safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
     Email                      : emailAddress || lead.email || lead.workEmail || "",
@@ -462,21 +467,26 @@ async function upsertLead(
     "Raw Profile Data"         : JSON.stringify(rest),
   };
 
-  /* optional AI / scoring columns (unchanged) */
+  /* ---- optional AI/scoring fields only when value NOT null ---- */
   if (finalScore !== null)
     fields["AI Score"] = Math.round(finalScore * 100) / 100;
+
   if (aiProfileAssessment !== null)
     fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
+
   if (attributeBreakdown !== null)
     fields["AI Attribute Breakdown"] = attributeBreakdown;
+
   if (auFlag !== null)
     fields["AU"] = !!auFlag;
+
   if (aiExcluded !== null)
     fields["AI_Excluded"] = aiExcluded === "Yes";
+
   if (excludeDetails !== null)
     fields["Exclude Details"] = excludeDetails;
 
-  /* upsert -------------------------------------------------------- */
+  /* ---- upsert ---- */
   const filter = `{Profile Key} = "${profileKey}"`;
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
@@ -488,16 +498,15 @@ async function upsertLead(
     fields["Source"] =
       connectionDegree === "1st"
         ? "Existing Connection Added by PB"
-        : "SalesNav + LH Scrape";          // clearer provenance
+        : "SalesNav + LH Scrape";
     await base("Leads").create(fields);
   }
 }
 
 /* ------------------------------------------------------------------
-   8)  /api/test-score   (unchanged)
+   8)  /api/test-score  (unchanged)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
-  /* ... original test-score route ... */
   try {
     const lead = req.body;
     const { truncatedInstructions, positives, negatives } =
@@ -560,10 +569,9 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb-webhook/scrapeLeads   (unchanged)
+   9)  /pb-webhook/scrapeLeads  (unchanged)
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
-  /* full original block retained exactly as before */
   try {
     const leads = Array.isArray(req.body) ? req.body : [];
     const { truncatedInstructions, passMark, positives, negatives } =
@@ -571,7 +579,6 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
     let processed = 0;
 
     for (const lead of leads) {
-      /* ... entire original processing logic unchanged ... */
       const gpt = await callGptScoring(truncatedInstructions, lead);
       const {
         positive_scores = {},
@@ -640,7 +647,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ================================================================
-   10)  /lh-webhook/upsertLeadOnly   **CHANGED**
+   10)  /lh-webhook/upsertLeadOnly
 ================================================================ */
 app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
   try {
@@ -708,7 +715,6 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
           null,
         raw: lh,
 
-        /* NEW FLAGS */
         scoringStatus: "To Be Scored",
       };
 
@@ -733,10 +739,9 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  /lh-webhook/scrapeLeads   (unchanged GPT-scoring route)
+   11)  /lh-webhook/scrapeLeads  (unchanged GPT route)
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
-  /* entire original GPT scoring route left untouched */
   try {
     const raw = Array.isArray(req.body) ? req.body : [req.body];
     const { truncatedInstructions, positives, negatives } =
@@ -744,7 +749,6 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
     let processed = 0;
 
     for (const lh of raw) {
-      /* ... original GPT scoring logic (unchanged) ... */
       const rawUrl =
         lh.profileUrl ||
         (lh.publicId
@@ -889,14 +893,13 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12)  /pb-pull/connections   (unchanged)
+   12)  /pb-pull/connections  (unchanged)
 ------------------------------------------------------------------*/
 let lastRunId = 0;
 try {
   lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
 } catch {}
 app.get("/pb-pull/connections", async (req, res) => {
-  /* ... entire original Phantombuster pull logic unchanged ... */
   try {
     const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
     const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
@@ -955,7 +958,7 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12.5) DEBUG route
+   12.5) DEBUG – return GPT URL
 ------------------------------------------------------------------*/
 app.get("/debug-gpt", (_req, res) => res.send(process.env.GPT_CHAT_URL));
 
