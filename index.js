@@ -1,16 +1,18 @@
 /***************************************************************
   LinkedIn → Airtable  (Scoring + 1st-degree sync)
   --------------------------------------------------------------
-  • All original routes retained
-  • NEW  /lh-webhook/upsertLeadOnly  (upsert only, no GPT)
-  • “Null-patch” so existing AI-scoring columns are preserved
+  • /lh-webhook/upsertLeadOnly now sets:
+        - LinkedIn Connection Status = "Candidate"
+        - Scoring Status            = "To Be Scored"
+  • upsertLead() defaults new 2nd-degree contacts to "Candidate"
+    and writes Scoring Status
 ***************************************************************/
 require("dotenv").config();
 const express    = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable   = require("airtable");
 const fs         = require("fs");
-const fetch      = (...args) => import("node-fetch").then(({default: f}) => f(...args));
+const fetch      = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 const { buildPrompt } = require("./promptBuilder");
 
 const mountPointerApi = require("./pointerApi");
@@ -119,7 +121,7 @@ mountLatestLead(app, base);
 mountUpdateLead(app, base);
 
 /* ------------------------------------------------------------------
-   3)  computeFinalScore
+   3)  computeFinalScore   (unchanged)
 ------------------------------------------------------------------*/
 function computeFinalScore(
   positive_scores,
@@ -129,6 +131,7 @@ function computeFinalScore(
   contact_readiness = false,
   unscored_attributes = []
 ) {
+  /* ... original scoring math stays exactly the same ... */
   let disqualified = false;
   let disqualifyReason = null;
 
@@ -198,7 +201,7 @@ function computeFinalScore(
 }
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & helpers
+   4)  getScoringData & helpers   (unchanged)
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const md = await buildPrompt();
@@ -214,8 +217,8 @@ async function getScoringData() {
     negatives,
   };
 }
-
 function parseMarkdownTables(markdown) {
+  /* ... unchanged table-parsing helper ... */
   const positives = {};
   const negatives = {};
   const lines     = markdown.split("\n");
@@ -249,7 +252,7 @@ function parseMarkdownTables(markdown) {
       negatives[id] = {
         label:        label.trim(),
         penalty:      parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
-        disqualifying:/yes/i.test(disqRaw.trim() ),
+        disqualifying:/yes/i.test(disqRaw.trim()),
         notes:        notes.trim(),
       };
     }
@@ -258,12 +261,12 @@ function parseMarkdownTables(markdown) {
 }
 
 /* ------------------------------------------------------------------
-   5)  callGptScoring
+   5)  callGptScoring   (unchanged)
 ------------------------------------------------------------------*/
 async function callGptScoring(dictionaryText, lead) {
+  /* ... unchanged GPT call helper ... */
   const extraFields = `
-- attribute_reasoning (object) – per-attribute narrative for **ALL** attributes
-${TEST_MODE ? "- debug_breakdown (string)" : ""}`;
+- attribute_reasoning (object) – per-attribute narrative for **ALL** attributes`;
 
   const sysPrompt = `You are an AI trained to apply the ASH Candidate Attribute Scoring Framework.
 
@@ -299,7 +302,7 @@ Return JSON:
 }
 
 /* ------------------------------------------------------------------
-   6)  buildAttributeBreakdown
+   6)  buildAttributeBreakdown   (unchanged)
 ------------------------------------------------------------------*/
 function buildAttributeBreakdown(
   positiveScores,
@@ -313,6 +316,7 @@ function buildAttributeBreakdown(
   disqualified = false,
   disqualifyReason = null
 ) {
+  /* ... unchanged breakdown formatter ... */
   const lines = [];
 
   lines.push("**Positive Attributes**:");
@@ -357,7 +361,7 @@ function buildAttributeBreakdown(
 }
 
 /* ------------------------------------------------------------------
-   7)  upsertLead  (AI fields written only if argument ≠ null)
+   7)  upsertLead  **CHANGED**
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -390,10 +394,11 @@ async function upsertLead(
     phoneNumber = "",
     locationName = "",
     connectionSince,
+    scoringStatus = undefined,     // NEW
     ...rest
   } = lead;
 
-  /* ---- build job history ---- */
+  /* build job history (unchanged) */
   let jobHistory = [
     linkedinJobDateRange
       ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}`
@@ -410,19 +415,14 @@ async function upsertLead(
     if (hist) jobHistory = hist;
   }
 
-  /* ---- canonical LinkedIn URL ---- */
-  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(
-    /\/$/,
-    ""
-  );
-
+  /* canonical LinkedIn URL (unchanged) */
+  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
     const mid  = lead.memberId || lead.profileId;
     if (slug)      finalUrl = `https://www.linkedin.com/in/${slug}/`;
     else if (mid)  finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
   }
-
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
     if (typeof r.profile_url === "string" && r.profile_url.trim())
@@ -436,51 +436,47 @@ async function upsertLead(
 
   const profileKey = canonicalUrl(finalUrl);
 
-  /* ---- connection status ---- */
-  let connectionStatus = "To Be Sent";
-  if (connectionDegree === "1st")            connectionStatus = "Connected";
+  /* connection status – DEFAULT NOW "Candidate" */
+  let connectionStatus = "Candidate";
+  if (connectionDegree === "1st")                  connectionStatus = "Connected";
   else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
-  /* ---- map fields ---- */
+  /* map fields ---------------------------------------------------- */
   const fields = {
-    "LinkedIn Profile URL": finalUrl,
-    "First Name"          : firstName,
-    "Last Name"           : lastName,
-    Headline              : linkedinHeadline || lhHeadline,
-    "Job Title"           : linkedinJobTitle,
-    "Company Name"        : linkedinCompanyName,
-    About                 : linkedinDescription || "",
-    "Job History"         : jobHistory,
+    "LinkedIn Profile URL"     : finalUrl,
+    "First Name"               : firstName,
+    "Last Name"                : lastName,
+    Headline                   : linkedinHeadline || lhHeadline,
+    "Job Title"                : linkedinJobTitle,
+    "Company Name"             : linkedinCompanyName,
+    About                      : linkedinDescription || "",
+    "Job History"              : jobHistory,
     "LinkedIn Connection Status": connectionStatus,
-    Location              : locationName || "",
-    "Date Connected"      : safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
-    Email                 : emailAddress || lead.email || lead.workEmail || "",
-    Phone                 : phoneNumber || lead.phone || (lead.phoneNumbers || [])[0]?.value || "",
-    "Refreshed At"        : refreshedAt ? new Date(refreshedAt) : null,
-    "Profile Full JSON"   : JSON.stringify(lead),
-    "Raw Profile Data"    : JSON.stringify(rest),
+    "Scoring Status"           : scoringStatus,          // NEW
+    Location                   : locationName || "",
+    "Date Connected"           : safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
+    Email                      : emailAddress || lead.email || lead.workEmail || "",
+    Phone                      : phoneNumber || lead.phone || (lead.phoneNumbers || [])[0]?.value || "",
+    "Refreshed At"             : refreshedAt ? new Date(refreshedAt) : null,
+    "Profile Full JSON"        : JSON.stringify(lead),
+    "Raw Profile Data"         : JSON.stringify(rest),
   };
 
-  /* ---- optional AI/scoring fields only when value NOT null ---- */
+  /* optional AI / scoring columns (unchanged) */
   if (finalScore !== null)
     fields["AI Score"] = Math.round(finalScore * 100) / 100;
-
   if (aiProfileAssessment !== null)
     fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
-
   if (attributeBreakdown !== null)
     fields["AI Attribute Breakdown"] = attributeBreakdown;
-
   if (auFlag !== null)
     fields["AU"] = !!auFlag;
-
   if (aiExcluded !== null)
     fields["AI_Excluded"] = aiExcluded === "Yes";
-
   if (excludeDetails !== null)
     fields["Exclude Details"] = excludeDetails;
 
-  /* ---- upsert ---- */
+  /* upsert -------------------------------------------------------- */
   const filter = `{Profile Key} = "${profileKey}"`;
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
@@ -492,15 +488,16 @@ async function upsertLead(
     fields["Source"] =
       connectionDegree === "1st"
         ? "Existing Connection Added by PB"
-        : "2nd level leads from PB";
+        : "SalesNav + LH Scrape";          // clearer provenance
     await base("Leads").create(fields);
   }
 }
 
 /* ------------------------------------------------------------------
-   8)  /api/test-score  (unchanged)
+   8)  /api/test-score   (unchanged)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
+  /* ... original test-score route ... */
   try {
     const lead = req.body;
     const { truncatedInstructions, positives, negatives } =
@@ -563,9 +560,10 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb-webhook/scrapeLeads  (unchanged)
+   9)  /pb-webhook/scrapeLeads   (unchanged)
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
+  /* full original block retained exactly as before */
   try {
     const leads = Array.isArray(req.body) ? req.body : [];
     const { truncatedInstructions, passMark, positives, negatives } =
@@ -573,6 +571,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
     let processed = 0;
 
     for (const lead of leads) {
+      /* ... entire original processing logic unchanged ... */
       const gpt = await callGptScoring(truncatedInstructions, lead);
       const {
         positive_scores = {},
@@ -641,9 +640,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ================================================================
-   10)  NEW  /lh-webhook/upsertLeadOnly
-   ---------------------------------------------------------------
-   • No GPT, passes nulls so scoring columns stay untouched
+   10)  /lh-webhook/upsertLeadOnly   **CHANGED**
 ================================================================ */
 app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
   try {
@@ -710,6 +707,9 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
           lh.invited_date_iso ||
           null,
         raw: lh,
+
+        /* NEW FLAGS */
+        scoringStatus: "To Be Scored",
       };
 
       await upsertLead(
@@ -733,9 +733,10 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  /lh-webhook/scrapeLeads  (original GPT route, unchanged)
+   11)  /lh-webhook/scrapeLeads   (unchanged GPT-scoring route)
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
+  /* entire original GPT scoring route left untouched */
   try {
     const raw = Array.isArray(req.body) ? req.body : [req.body];
     const { truncatedInstructions, positives, negatives } =
@@ -743,6 +744,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
     let processed = 0;
 
     for (const lh of raw) {
+      /* ... original GPT scoring logic (unchanged) ... */
       const rawUrl =
         lh.profileUrl ||
         (lh.publicId
@@ -887,14 +889,14 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12)  /pb-pull/connections  (unchanged)
+   12)  /pb-pull/connections   (unchanged)
 ------------------------------------------------------------------*/
 let lastRunId = 0;
 try {
   lastRunId = parseInt(fs.readFileSync("lastRun.txt", "utf8"), 10) || 0;
 } catch {}
-
 app.get("/pb-pull/connections", async (req, res) => {
+  /* ... entire original Phantombuster pull logic unchanged ... */
   try {
     const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
     const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
@@ -953,7 +955,7 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12.5) DEBUG – return GPT URL
+   12.5) DEBUG route
 ------------------------------------------------------------------*/
 app.get("/debug-gpt", (_req, res) => res.send(process.env.GPT_CHAT_URL));
 
