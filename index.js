@@ -157,6 +157,8 @@ app.get("/score-lead", async (req, res) => {
     const finalPct = Math.round(percentage * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
+      disqualified,
+      disqualifyReason
       positive_scores,
       positives,
       negative_scores,
