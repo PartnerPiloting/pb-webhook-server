@@ -143,6 +143,7 @@ app.get("/score-lead", async (req, res) => {
       contact_readiness   = false,
       unscored_attributes = [],
       aiProfileAssessment = "",
+      attribute_reasoning  = {},
     } = gpt;
     if (contact_readiness)
       positive_scores.I = positives?.I?.maxPoints || 3;
@@ -153,11 +154,12 @@ app.get("/score-lead", async (req, res) => {
       contact_readiness, unscored_attributes
     );
 
-    const finalPct  = Math.round(percentage * 100) / 100;
+    const breakdown = buildAttributeBreakdown(
     const breakdown = buildAttributeBreakdown(
       positive_scores, positives,
       negative_scores, negatives,
-      unscored_attributes,
+      rawScore, denominator,
+      attribute_reasoning
       rawScore, denominator
     );
 
