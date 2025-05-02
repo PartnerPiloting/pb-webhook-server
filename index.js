@@ -167,7 +167,7 @@ app.get("/score-lead", async (req, res) => {
       "AI Profile Assessment" : aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
-      "Date Scored"           : new Date(),
+      "Date Scored"           : new Date().toISOString().split("T")[0],
     });
 
     /* 4 ─ respond with JSON */
