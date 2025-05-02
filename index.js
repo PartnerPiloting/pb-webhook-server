@@ -166,7 +166,6 @@ app.get("/score-lead", async (req, res) => {
       unscored_attributes
     );
 
-    /* Use disqualification values from computeFinalScore */
     const finalDisqualified     = calcDisq;
     const finalDisqualifyReason = calcDisqReason;
 
@@ -251,25 +250,6 @@ function computeFinalScore(
 
   let rawScore = 0;
   for (const pts of Object.values(positive_scores || {})) rawScore += pts;
-
-  for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
-    if (pInfo.minQualify > 0) {
-      const awarded    = positive_scores[attrID] || 0;
-      const isUnscored = unscored_attributes.includes(attrID);
-      if (isUnscored || awarded < pInfo.minQualify) {
-        disqualified     = true;
-        disqualifyReason =
-          `Min qualification not met for ${attrID} (needed ${pInfo.minQualify}, got ${awarded})`;
-        return {
-          rawScore: 0,
-          denominator: baseDenominator,
-          percentage: 0,
-          disqualified,
-          disqualifyReason,
-        };
-      }
-    }
-  }
 
   for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
     if (pInfo.minQualify > 0) {
@@ -438,7 +418,9 @@ function buildAttributeBreakdown(
   const lines = [];
 
   lines.push("**Positive Attributes**:");
-  for (const [id, info] of Object.entries(dictionaryPositives)) {
+  /* -------------- alphabetic ordering (A–K) ------------------- */
+  for (const id of Object.keys(dictionaryPositives).sort()) {
+    const info = dictionaryPositives[id];
     if (unscoredAttrs.includes(id)) {
       lines.push(`- ${id} (${info.label}): UNRECOGNISED (max ${info.maxPoints})`);
       continue;
