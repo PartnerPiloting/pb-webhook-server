@@ -143,22 +143,36 @@ app.get("/score-lead", async (req, res) => {
       contact_readiness   = false,
       unscored_attributes = [],
       aiProfileAssessment = "",
-      attribute_reasoning  = {},
+      attribute_reasoning = {},
+      disqualified        = false,
+      disqualifyReason    = null,
     } = gpt;
+
     if (contact_readiness)
       positive_scores.I = positives?.I?.maxPoints || 3;
 
-    const { rawScore, denominator, percentage } = computeFinalScore(
-      positive_scores, positives,
-      negative_scores, negatives,
-      contact_readiness, unscored_attributes
+    const {
+      rawScore,
+      denominator,
+      percentage,
+      disqualified: calcDisq,
+      disqualifyReason: calcDisqReason,
+    } = computeFinalScore(
+      positive_scores,
+      positives,
+      negative_scores,
+      negatives,
+      contact_readiness,
+      unscored_attributes
     );
+
+    /* Use disqualification values from computeFinalScore */
+    const finalDisqualified     = calcDisq;
+    const finalDisqualifyReason = calcDisqReason;
 
     const finalPct = Math.round(percentage * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
-      disqualified,
-      disqualifyReason
       positive_scores,
       positives,
       negative_scores,
@@ -166,7 +180,9 @@ app.get("/score-lead", async (req, res) => {
       unscored_attributes,
       rawScore,
       denominator,
-      attribute_reasoning
+      attribute_reasoning,
+      finalDisqualified,
+      finalDisqualifyReason
     );
 
     /* 3 ─ update Airtable */
@@ -235,6 +251,25 @@ function computeFinalScore(
 
   let rawScore = 0;
   for (const pts of Object.values(positive_scores || {})) rawScore += pts;
+
+  for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
+    if (pInfo.minQualify > 0) {
+      const awarded    = positive_scores[attrID] || 0;
+      const isUnscored = unscored_attributes.includes(attrID);
+      if (isUnscored || awarded < pInfo.minQualify) {
+        disqualified     = true;
+        disqualifyReason =
+          `Min qualification not met for ${attrID} (needed ${pInfo.minQualify}, got ${awarded})`;
+        return {
+          rawScore: 0,
+          denominator: baseDenominator,
+          percentage: 0,
+          disqualified,
+          disqualifyReason,
+        };
+      }
+    }
+  }
 
   for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
     if (pInfo.minQualify > 0) {
