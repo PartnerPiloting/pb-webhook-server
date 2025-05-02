@@ -1,63 +1,3 @@
-/* ------------------------------------------------------------------
-   ONE-OFF LEAD SCORER
-   Call:  /score-lead?recordId=recXXXXXXXX
-------------------------------------------------------------------*/
-app.get("/score-lead", async (req, res) => {
-  try {
-    const id = req.query.recordId;
-    if (!id) {
-      return res.status(400).json({ error: "recordId query param required" });
-    }
-
-    /* 1 ─ fetch Airtable row */
-    const record = await base("Leads").find(id);
-    const lead   = JSON.parse(record.get("Profile Full JSON") || "{}");
-
-    /* 2 ─ run GPT-4o scoring */
-    const sysPrompt = await buildPrompt();
-    const gpt       = await callGptScoring(sysPrompt, lead);
-
-    const { positives, negatives } = await getScoringData();
-    const {
-      positive_scores     = {},
-      negative_scores     = {},
-      contact_readiness   = false,
-      unscored_attributes = [],
-      aiProfileAssessment = "",
-    } = gpt;
-    if (contact_readiness)
-      positive_scores.I = positives?.I?.maxPoints || 3;
-
-    const { rawScore, denominator, percentage } = computeFinalScore(
-      positive_scores, positives,
-      negative_scores, negatives,
-      contact_readiness, unscored_attributes
-    );
-
-    const finalPct  = Math.round(percentage * 100) / 100;
-    const breakdown = buildAttributeBreakdown(
-      positive_scores, positives,
-      negative_scores, negatives,
-      unscored_attributes,
-      rawScore, denominator
-    );
-
-    /* 3 ─ update Airtable */
-    await base("Leads").update(id, {
-      "AI Score"              : finalPct,
-      "AI Profile Assessment" : aiProfileAssessment,
-      "AI Attribute Breakdown": breakdown,
-      "Scoring Status"        : "Scored",
-      "Date Scored"           : new Date(),
-    });
-
-    /* 4 ─ respond with JSON */
-    res.json({ id, finalPct, aiProfileAssessment, breakdown });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
 /***************************************************************
   LinkedIn → Airtable  (Scoring + 1st-degree sync)
   --------------------------------------------------------------
@@ -80,7 +20,7 @@ const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue      = require("./queueDispatcher");
-const batchScorer     = require("./batchScorer");   // ← NEW
+const batchScorer     = require("./batchScorer");   // ← single import
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -175,6 +115,67 @@ app.get("/run-batch-score", async (req, res) => {
     .then(() => console.log(`Batch scoring (limit ${limit}) complete`))
     .catch(console.error);
   res.send(`Batch scoring for up to ${limit} leads has started.`);
+});
+
+/* ------------------------------------------------------------------
+   ONE-OFF LEAD SCORER
+   Call:  /score-lead?recordId=recXXXXXXXX
+------------------------------------------------------------------*/
+app.get("/score-lead", async (req, res) => {
+  try {
+    const id = req.query.recordId;
+    if (!id) {
+      return res.status(400).json({ error: "recordId query param required" });
+    }
+
+    /* 1 ─ fetch Airtable row */
+    const record = await base("Leads").find(id);
+    const lead   = JSON.parse(record.get("Profile Full JSON") || "{}");
+
+    /* 2 ─ run GPT-4o scoring */
+    const sysPrompt = await buildPrompt();
+    const gpt       = await callGptScoring(sysPrompt, lead);
+
+    const { positives, negatives } = await getScoringData();
+    const {
+      positive_scores     = {},
+      negative_scores     = {},
+      contact_readiness   = false,
+      unscored_attributes = [],
+      aiProfileAssessment = "",
+    } = gpt;
+    if (contact_readiness)
+      positive_scores.I = positives?.I?.maxPoints || 3;
+
+    const { rawScore, denominator, percentage } = computeFinalScore(
+      positive_scores, positives,
+      negative_scores, negatives,
+      contact_readiness, unscored_attributes
+    );
+
+    const finalPct  = Math.round(percentage * 100) / 100;
+    const breakdown = buildAttributeBreakdown(
+      positive_scores, positives,
+      negative_scores, negatives,
+      unscored_attributes,
+      rawScore, denominator
+    );
+
+    /* 3 ─ update Airtable */
+    await base("Leads").update(id, {
+      "AI Score"              : finalPct,
+      "AI Profile Assessment" : aiProfileAssessment,
+      "AI Attribute Breakdown": breakdown,
+      "Scoring Status"        : "Scored",
+      "Date Scored"           : new Date(),
+    });
+
+    /* 4 ─ respond with JSON */
+    res.json({ id, finalPct, aiProfileAssessment, breakdown });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* ------------------------------------------------------------------
@@ -1044,5 +1045,4 @@ const port = process.env.PORT || 3000;
 console.log(
   `▶︎ Server starting – commit ${process.env.RENDER_GIT_COMMIT || "local"} – ${new Date().toISOString()}`
 );
-const batchScorer     = require("./batchScorer");   // ← NEW
 app.listen(port, () => console.log(`Server running on ${port}`));
