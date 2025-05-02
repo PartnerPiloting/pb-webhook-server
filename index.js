@@ -20,6 +20,7 @@ const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue      = require("./queueDispatcher");
+const batchScorer     = require("./batchScorer");   // ← NEW
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -100,7 +101,21 @@ require("./recordApi")(app);
 require("./scoreApi")(app);
 mountQueue(app);
 
+/* ------------------------------------------------------------------
+   1.5)  health check + manual batch route
+------------------------------------------------------------------*/
 app.get("/health", (_req, res) => res.send("ok"));
+
+/* ---------------------------------------------------------------
+   MANUAL TRIGGER  –  /run-batch-score?limit=10
+----------------------------------------------------------------- */
+app.get("/run-batch-score", async (req, res) => {
+  const limit = Number(req.query.limit) || 500;
+  batchScorer.run(limit)
+    .then(() => console.log(`Batch scoring (limit ${limit}) complete`))
+    .catch(console.error);
+  res.send(`Batch scoring for up to ${limit} leads has started.`);
+});
 
 /* ------------------------------------------------------------------
    2)  OpenAI + Airtable setup
@@ -893,7 +908,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12)  /pb-pull/connections  (unchanged)
+   12)  /pb-pull/connections
 ------------------------------------------------------------------*/
 let lastRunId = 0;
 try {
@@ -958,7 +973,7 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12.5) DEBUG – return GPT URL
+   12.5)  DEBUG – return GPT URL
 ------------------------------------------------------------------*/
 app.get("/debug-gpt", (_req, res) => res.send(process.env.GPT_CHAT_URL));
 
