@@ -1,32 +1,27 @@
 /* ===================================================================
-   attributeLoader.js – dynamic attribute dictionary for scoring
-   -------------------------------------------------------------------
-   • Reads the “Scoring Attributes” Airtable table and converts each row
-     into the dictionaries GPT and the server use.
-   • Caches the result for 10 minutes to minimise API calls.
-   • Falls back to a hard-coded list if Airtable is unreachable.
-   • Exports:  loadAttributes()  →  { positives, negatives }
+   attributeLoader.js – dynamic attribute list (matches your table)
+   ------------------------------------------------------------------
+   • Reads the “Scoring Attributes” Airtable table
+   • Converts each row into { positives, negatives } dictionaries
+   • 10-minute in-memory cache to minimise API calls
+   • Falls back to a hard-coded list if Airtable is unreachable
 =================================================================== */
 require("dotenv").config();
 const Airtable = require("airtable");
 
-/* ---------- config ---------------------------------------------- */
+/* ---------- configuration -------------------------------------- */
 const TABLE_NAME = process.env.ATTR_TABLE_NAME || "Scoring Attributes";
-const BASE_ID    = process.env.AIRTABLE_BASE_ID;
-const API_KEY    = process.env.AIRTABLE_API_KEY;
+Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
-/* ---------- Airtable setup --------------------------------------- */
-Airtable.configure({ apiKey: API_KEY });
-const base = Airtable.base(BASE_ID);
-
-/* ---------- in-memory cache (10-min TTL) ------------------------- */
-let cache      = null;
+/* ---------- simple cache (10-min TTL) --------------------------- */
+let cache = null;
 let cacheUntil = 0;
 
 /* ---------- public: loadAttributes ------------------------------ */
 async function loadAttributes () {
   const now = Date.now();
-  if (cache && now < cacheUntil) return cache;        // serve from cache
+  if (cache && now < cacheUntil) return cache;          // serve cached copy
 
   try {
     const rows = await base(TABLE_NAME).select().all();
@@ -34,37 +29,44 @@ async function loadAttributes () {
     const negatives = {};
 
     rows.forEach(r => {
-      const id     = String(r.get("ID")    || "").trim();
-      const type   = String(r.get("Type")  || "").toLowerCase();
-      const label  = String(r.get("Label") || "").trim();
-      if (!id || !label || !type) return;              // skip bad rows
+      /* --- map your column names exactly ------------------------ */
+      const id     = String(r.get("Attribute Id") || "").trim();
+      const cat    = String(r.get("Category")     || "").toLowerCase(); // positive / negative
+      const label  = String(r.get("Heading")      || "").trim();
 
-      if (type === "positive") {
+      if (!id || !label) return;                               // skip bad rows
+
+      if (cat === "positive") {
         positives[id] = {
           label,
-          maxPoints : Number(r.get("Max / Penalty") || 0),
-          minQualify: Number(r.get("MinQualify")    || 0),
+          maxPoints : Number(r.get("Max Points")      || 0),
+          minQualify: Number(r.get("Min To Qualify")  || 0),
         };
-      } else if (type === "negative") {
+      } else if (cat === "negative") {
+        const penalty = Number(r.get("Penalty") || 0);
         negatives[id] = {
           label,
-          penalty      : Number(r.get("Max / Penalty") || 0),
-          disqualifying: !!r.get("Disqualify"),
+          penalty      : penalty <= 0 ? penalty : -penalty,   // ensure negative
+          disqualifying: !!r.get("Disqualifying"),
         };
       }
     });
 
     cache = { positives, negatives };
-    cacheUntil = now + 10 * 60 * 1000;      // refresh in 10 minutes
-    console.log(`• Loaded ${rows.length} attributes from Airtable`);
+    cacheUntil = now + 10 * 60 * 1000;                      // 10-minute cache
+    console.log(
+      `• Loaded ${rows.length} rows  →  ` +
+      `${Object.keys(positives).length} positives, ` +
+      `${Object.keys(negatives).length} negatives`
+    );
     return cache;
   } catch (err) {
     console.error("⚠︎ Attribute fetch failed – using fallback list", err);
-    return fallbackAttributes();            // keep service running
+    return fallbackAttributes();
   }
 }
 
-/* ---------- fallback constants ---------------------------------- */
+/* ---------- fallback list (same defaults as before) ------------- */
 function fallbackAttributes () {
   const positives = {
     A: { label:"Founder / Co-Founder",     maxPoints:5, minQualify:0 },
