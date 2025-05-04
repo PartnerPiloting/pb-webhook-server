@@ -1,13 +1,9 @@
 /* ===================================================================
-   batchScorer.js  –  GPT-4o flex-window batch scorer
-   -------------------------------------------------------------------
-   • Pulls Airtable leads where Scoring Status = “To Be Scored”
-   • Builds JSONL  (custom_id + method + url + body)
-   • Submits /v1/batches  (completion_window:"24h")
-   • Polls until finished; writes AI fields back to Airtable
-   • Defensive strip: removes big `raw` if it’s still present
+   batchScorer.js  –  GPT-4o flex-window batch scorer  ✱ DIAG EDITION
 =================================================================== */
 require("dotenv").config();
+console.log("▶︎ batchScorer module loaded");          // ← NEW (import-time)
+
 const fs       = require("fs");
 const path     = require("path");
 const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
@@ -21,7 +17,7 @@ const { AIRTABLE_BASE_ID: AIRTABLE_BASE,
         OPENAI_API_KEY  : OPENAI_KEY } = process.env;
 
 const MODEL          = "gpt-4o";
-const COMPLETION_WIN = "24h";              // flex window (1h also works)
+const COMPLETION_WIN = "24h";
 const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 /* ------------------------------------------------------------------ */
 
@@ -50,6 +46,7 @@ async function fetchCandidates(limit) {
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
+  console.log(`• JSONL prepared → ${lines.length} lines`);
 
   const form = new FormData();
   form.append("purpose", "batch");
@@ -94,13 +91,15 @@ async function pollBatch(id) {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
     }).then(r => r.json());
 
+    console.log(`  ↻ status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`);
+
     if (["failed", "expired"].includes(j.status))
-      console.error("Batch failed details:", JSON.stringify(j, null, 2));
+      console.error("⨯ Batch failed details:", JSON.stringify(j, null, 2));
 
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
+    await new Promise(r => setTimeout(r, 60_000));
   }
 }
 
@@ -115,7 +114,7 @@ async function downloadResult(j) {
 
 /* ---------- build JSONL line (defensive trim of `raw`) ------------- */
 function buildPromptLine(prompt, leadJson, recordId) {
-  if (leadJson.raw) delete leadJson.raw;        // strip heavy blob if present
+  if (leadJson.raw) delete leadJson.raw;
   return JSON.stringify({
     custom_id: recordId,
     method   : "POST",
@@ -132,54 +131,61 @@ function buildPromptLine(prompt, leadJson, recordId) {
 
 /* ---------- main runner ------------------------------------------- */
 async function run(limit = MAX_PER_RUN) {
-  const recs = await fetchCandidates(limit);
-  if (!recs.length) {
-    console.log("No records need scoring – exit.");
-    return;
+  console.log("▶︎ batchScorer.run entered");           // ← NEW (function-entry)
+
+  try {
+    const recs = await fetchCandidates(limit);
+    if (!recs.length) {
+      console.log("No records need scoring – exit.");
+      return;
+    }
+    console.log(`Scoring ${recs.length} leads…`);
+
+    const prompt = await buildPrompt();
+    const lines  = [];
+    const ids    = [];
+
+    for (const r of recs) {
+      const slim = JSON.parse(r.get("Profile Full JSON") || "{}");
+      lines.push(buildPromptLine(prompt, slim, r.id));
+      ids.push(r.id);
+    }
+
+    const batchId = await submitBatch(await uploadJSONL(lines));
+    console.log("Batch ID:", batchId);
+
+    let result = await pollBatch(batchId);
+    if (["expired", "failed"].includes(result.status)) {
+      console.log("⚠︎ Batch failed/expired – retrying once.");
+      result = await pollBatch(await submitBatch(await uploadJSONL(lines)));
+    }
+    if (!["completed", "completed_with_errors"].includes(result.status))
+      throw new Error("Batch did not complete: " + result.status);
+
+    console.log(`✔︎ Batch finished (${result.status}) – downloading results`);
+    const rows  = await downloadResult(result);
+    let updated = 0;
+
+    for (const o of rows) {
+      if (o.error) continue;
+      const idx = ids.indexOf(o.custom_id);
+      if (idx === -1) continue;
+
+      await base("Leads").update(ids[idx], {
+        "AI Score"              : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
+        "AI Profile Assessment" : o.aiProfileAssessment || "",
+        "AI Attribute Breakdown": o.attribute_breakdown  || "",
+        "Scoring Status"        : "Scored",
+        "Date Scored"           : new Date(),
+        "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
+        "Exclude Details"       : o.exclude_details || "",
+      });
+      updated++;
+    }
+    console.log(`✔︎ Updated ${updated} Airtable row(s).`);
+  } catch (err) {
+    console.error("⨯ batchScorer fatal:", err);
   }
-  console.log(`Scoring ${recs.length} leads…`);
-
-  const prompt = await buildPrompt();
-  const lines  = [];
-  const ids    = [];
-
-  for (const r of recs) {
-    const slim = JSON.parse(r.get("Profile Full JSON") || "{}");
-    lines.push(buildPromptLine(prompt, slim, r.id));
-    ids.push(r.id);
-  }
-
-  const batchId = await submitBatch(await uploadJSONL(lines));
-  console.log("Batch ID:", batchId);
-
-  let result = await pollBatch(batchId);
-  if (["expired", "failed"].includes(result.status)) {
-    console.log("Batch failed/expired – retry once.");
-    result = await pollBatch(await submitBatch(await uploadJSONL(lines)));
-  }
-  if (!["completed", "completed_with_errors"].includes(result.status))
-    throw new Error("Batch did not complete: " + result.status);
-
-  const rows  = await downloadResult(result);
-  let updated = 0;
-
-  for (const o of rows) {
-    if (o.error) continue;
-    const idx = ids.indexOf(o.custom_id);
-    if (idx === -1) continue;
-
-    await base("Leads").update(ids[idx], {
-      "AI Score"              : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
-      "AI Profile Assessment" : o.aiProfileAssessment || "",
-      "AI Attribute Breakdown": o.attribute_breakdown  || "",
-      "Scoring Status"        : "Scored",
-      "Date Scored"           : new Date(),
-      "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
-      "Exclude Details"       : o.exclude_details || "",
-    });
-    updated++;
-  }
-  console.log(`Updated ${updated} Airtable rows.`);
 }
 
 module.exports = { run };
