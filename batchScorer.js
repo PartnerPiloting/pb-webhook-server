@@ -1,9 +1,5 @@
 /* ===================================================================
    batchScorer.js  –  GPT-4o flex-window batch scorer
-   -------------------------------------------------------------------
-   • Pulls Airtable leads where Scoring Status = “To Be Scored”
-   • Builds JSONL, submits /v1/batches (completion_window:"24h")
-   • Polls until finished; writes AI fields back to Airtable
 =================================================================== */
 require("dotenv").config();
 const fs       = require("fs");
@@ -18,15 +14,15 @@ const { AIRTABLE_BASE_ID: AIRTABLE_BASE,
         AIRTABLE_API_KEY: AIRTABLE_KEY,
         OPENAI_API_KEY  : OPENAI_KEY } = process.env;
 
-const MODEL          = "gpt-4o";   // per-line
-const COMPLETION_WIN = "24h";      // flex window
+const MODEL          = "gpt-4o";
+const COMPLETION_WIN = "24h";
 const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 /* ------------------------------------------------------------------ */
 
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- fetch leads needing scoring --------------------------- */
+/* ---------- fetch leads ------------------------------------------ */
 async function fetchCandidates(limit) {
   const out = [];
   await base("Leads")
@@ -44,7 +40,7 @@ async function fetchCandidates(limit) {
   return out;
 }
 
-/* ---------- upload JSONL ------------------------------------------ */
+/* ---------- upload JSONL ----------------------------------------- */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -64,12 +60,12 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit batch ------------------------------------------ */
+/* ---------- submit batch ----------------------------------------- */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
     endpoint         : "/v1/chat/completions",
-    completion_window: COMPLETION_WIN,
+    completion_window: COMPLETION_WIN
   };
 
   const res = await fetch("https://api.openai.com/v1/batches", {
@@ -85,7 +81,7 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll until terminal state (logs on fail/expire) ------- */
+/* ---------- poll (logs failure object) --------------------------- */
 async function pollBatch(id) {
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
@@ -99,11 +95,11 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
+    await new Promise(r => setTimeout(r, 60_000));
   }
 }
 
-/* ---------- download output --------------------------------------- */
+/* ---------- download output -------------------------------------- */
 async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
@@ -112,18 +108,19 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build one JSONL line ---------------------------------- */
-function buildPromptLine(prompt, lead) {
+/* ---------- build JSONL line (NOW WITH custom_id) ---------------- */
+function buildPromptLine(prompt, leadJson, recordId) {
   return JSON.stringify({
-    model   : MODEL,
-    messages: [
+    custom_id: recordId,          // ← required by new Batch API
+    model    : MODEL,
+    messages : [
       { role: "system", content: prompt },
-      { role: "user",   content: `Lead:\n${JSON.stringify(lead, null, 2)}` },
+      { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` },
     ],
   });
 }
 
-/* ---------- main runner ------------------------------------------- */
+/* ---------- main runner ------------------------------------------ */
 async function run(limit = MAX_PER_RUN) {
   const recs = await fetchCandidates(limit);
   if (!recs.length) {
@@ -137,7 +134,8 @@ async function run(limit = MAX_PER_RUN) {
   const ids    = [];
 
   for (const r of recs) {
-    lines.push(buildPromptLine(prompt, JSON.parse(r.get("Profile Full JSON") || "{}")));
+    const raw = JSON.parse(r.get("Profile Full JSON") || "{}");
+    lines.push(buildPromptLine(prompt, raw, r.id));
     ids.push(r.id);
   }
 
@@ -155,11 +153,12 @@ async function run(limit = MAX_PER_RUN) {
   const rows  = await downloadResult(result);
   let updated = 0;
 
-  for (let i = 0; i < rows.length; i++) {
-    const o = rows[i];
+  for (const o of rows) {
     if (o.error) continue;                 // skip errored entries
+    const idx = ids.indexOf(o.custom_id); // lookup by custom_id
+    if (idx === -1) continue;
 
-    await base("Leads").update(ids[i], {
+    await base("Leads").update(ids[idx], {
       "AI Score"              : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
       "AI Profile Assessment" : o.aiProfileAssessment || "",
       "AI Attribute Breakdown": o.attribute_breakdown  || "",
