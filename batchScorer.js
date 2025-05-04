@@ -1,11 +1,10 @@
 /* ===================================================================
    batchScorer.js  –  GPT-4o flex-window batch scorer
-   (pull “To Be Scored” leads, submit /v1/batches, write AI fields back)
 =================================================================== */
 require("dotenv").config();
-const fs       = require("fs");
-const path     = require("path");
-const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+const fs = require("fs");
+const path = require("path");
+const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
 const FormData = require("form-data");
 const Airtable = require("airtable");
 const { buildPrompt } = require("./promptBuilder");
@@ -15,7 +14,7 @@ const AIRTABLE_BASE = process.env.AIRTABLE_BASE_ID;
 const AIRTABLE_KEY  = process.env.AIRTABLE_API_KEY;
 const OPENAI_KEY    = process.env.OPENAI_API_KEY;
 
-const MODEL          = "gpt-4o";   // per-line now, not in envelope
+const MODEL          = "gpt-4o";
 const COMPLETION_WIN = "24h";
 const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 /* ------------------------------------------------------------------ */
@@ -23,7 +22,7 @@ const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- pull leads with Scoring Status = “To Be Scored” ------- */
+/* ---------- fetch candidates -------------------------------------- */
 async function fetchCandidates(limit) {
   const out = [];
   await base("Leads")
@@ -41,7 +40,7 @@ async function fetchCandidates(limit) {
   return out;
 }
 
-/* ---------- upload JSONL to OpenAI -------------------------------- */
+/* ---------- upload JSONL ------------------------------------------ */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -61,13 +60,12 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit the batch job ---------------------------------- */
+/* ---------- submit batch  (type removed) -------------------------- */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
-    endpoint         : "/v1/chat/completions",   // required
-    type             : "jsonl",
-    completion_window: COMPLETION_WIN,
+    endpoint         : "/v1/chat/completions",
+    completion_window: COMPLETION_WIN
   };
 
   const res = await fetch("https://api.openai.com/v1/batches", {
@@ -83,7 +81,7 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll until finished ----------------------------------- */
+/* ---------- poll --------------------------------------------------- */
 async function pollBatch(id) {
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
@@ -97,42 +95,40 @@ async function pollBatch(id) {
   }
 }
 
-/* ---------- download output file ---------------------------------- */
-async function downloadResult(batchJson) {
-  const fileId = batchJson.output_file_id;
-  const url    = `https://api.openai.com/v1/files/${fileId}/content`;
-  const txt    = await fetch(url, {
+/* ---------- download output --------------------------------------- */
+async function downloadResult(j) {
+  const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
+  const txt = await fetch(url, {
     headers: { Authorization: `Bearer ${OPENAI_KEY}` },
   }).then(r => r.text());
-
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build one JSONL line ---------------------------------- */
-function buildPromptLine(prompt, leadObj) {
+/* ---------- JSONL line builder ------------------------------------ */
+function buildPromptLine(prompt, lead) {
   return JSON.stringify({
     model   : MODEL,
     messages: [
       { role: "system", content: prompt },
-      { role: "user",   content: `Lead:\n${JSON.stringify(leadObj, null, 2)}` },
+      { role: "user",   content: `Lead:\n${JSON.stringify(lead, null, 2)}` },
     ],
   });
 }
 
 /* ---------- main runner ------------------------------------------- */
 async function run(limit = MAX_PER_RUN) {
-  const records = await fetchCandidates(limit);
-  if (records.length === 0) {
+  const recs = await fetchCandidates(limit);
+  if (!recs.length) {
     console.log("No records need scoring – exit.");
     return;
   }
-  console.log(`Scoring ${records.length} leads…`);
+  console.log(`Scoring ${recs.length} leads…`);
 
   const prompt = await buildPrompt();
   const lines  = [];
   const ids    = [];
 
-  for (const r of records) {
+  for (const r of recs) {
     lines.push(buildPromptLine(prompt, JSON.parse(r.get("Profile Full JSON") || "{}")));
     ids.push(r.id);
   }
@@ -142,7 +138,7 @@ async function run(limit = MAX_PER_RUN) {
 
   let result = await pollBatch(batchId);
   if (["expired", "failed"].includes(result.status)) {
-    console.log("Batch failed/expired – retrying once.");
+    console.log("Batch failed/expired – retry once.");
     result = await pollBatch(await submitBatch(await uploadJSONL(lines)));
   }
   if (!["completed", "completed_with_errors"].includes(result.status))
@@ -150,19 +146,18 @@ async function run(limit = MAX_PER_RUN) {
 
   const rows  = await downloadResult(result);
   let updated = 0;
-
   for (let i = 0; i < rows.length; i++) {
-    const out = rows[i];
-    if (out.error) continue;
+    const o = rows[i];
+    if (o.error) continue;
 
     await base("Leads").update(ids[i], {
-      "AI Score"             : Math.round((out.final_score || out.finalPct || 0) * 100) / 100,
-      "AI Profile Assessment": out.aiProfileAssessment || "",
-      "AI Attribute Breakdown": out.attribute_breakdown || "",
+      "AI Score"             : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
+      "AI Profile Assessment": o.aiProfileAssessment || "",
+      "AI Attribute Breakdown": o.attribute_breakdown || "",
       "Scoring Status"       : "Scored",
       "Date Scored"          : new Date(),
-      "AI_Excluded"          : (out.ai_excluded || "No") === "Yes",
-      "Exclude Details"      : out.exclude_details || "",
+      "AI_Excluded"          : (o.ai_excluded || "No") === "Yes",
+      "Exclude Details"      : o.exclude_details || "",
     });
     updated++;
   }
