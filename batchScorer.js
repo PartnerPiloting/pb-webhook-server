@@ -15,28 +15,25 @@ require("dotenv").config();
 const fs       = require("fs");
 const path     = require("path");
 const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
-const FormData = require("form-data");       // ← for file uploads
+const FormData = require("form-data");     // for file uploads
 const Airtable = require("airtable");
 const { buildPrompt } = require("./promptBuilder");
 
 /* ---------- config ------------------------------------------------ */
-const AIRTABLE_BASE   = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_KEY    = process.env.AIRTABLE_API_KEY;
-const OPENAI_KEY      = process.env.OPENAI_API_KEY;
+const AIRTABLE_BASE = process.env.AIRTABLE_BASE_ID;
+const AIRTABLE_KEY  = process.env.AIRTABLE_API_KEY;
+const OPENAI_KEY    = process.env.OPENAI_API_KEY;
 
-const MODEL           = "gpt-4o";   // batch-capable model
-const COMPLETION_WIN  = "24h";      // flex window (≈50 % cheaper)
-const MAX_PER_RUN     = Number(process.env.MAX_BATCH || 500);  // safety cap
+const MODEL          = "gpt-4o";   // batch-capable model
+const COMPLETION_WIN = "24h";      // flex window (≈50 % cheaper)
+const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);  // safety cap
 /* ------------------------------------------------------------------ */
 
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
 /* ------------------------------------------------------------------
-   FETCH CANDIDATES
-   ------------------------------------------------------------------
-   ― changed to server-side formula filtering so there’s ZERO dependency
-     on a specific view name. It returns at most `limit` Airtable records.
+   FETCH CANDIDATES  –  no view dependency
 ------------------------------------------------------------------ */
 async function fetchCandidates(limit) {
   const out = [];
@@ -65,28 +62,30 @@ async function uploadJSONL(lines) {
   form.append("file", fs.createReadStream(tmp));
 
   const res = await fetch("https://api.openai.com/v1/files", {
-    method: "POST",
+    method : "POST",
     headers: { Authorization: `Bearer ${OPENAI_KEY}` },
-    body: form,
+    body   : form,
   }).then(r => r.json());
 
   fs.unlinkSync(tmp);
   if (!res.id) throw new Error("File upload failed: " + JSON.stringify(res));
   return res.id;
 }
+
 /* ------------------------------------------------------------------ */
 async function submitBatch(fileId) {
   const body = {
-    input_file_id   : fileId,
-    model           : MODEL,
-    type            : "jsonl",
+    input_file_id    : fileId,
+    model            : MODEL,
+    type             : "jsonl",
     completion_window: COMPLETION_WIN,
+    endpoint         : "/v1/chat/completions",   // ← NEW, required by API
   };
 
   const res = await fetch("https://api.openai.com/v1/batches", {
     method : "POST",
     headers: {
-      Authorization: `Bearer ${OPENAI_KEY}`,
+      Authorization : `Bearer ${OPENAI_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -95,6 +94,7 @@ async function submitBatch(fileId) {
   if (!res.id) throw new Error("Batch submit failed: " + JSON.stringify(res));
   return res.id;
 }
+
 /* ------------------------------------------------------------------ */
 async function pollBatch(id) {
   while (true) {
@@ -108,6 +108,7 @@ async function pollBatch(id) {
     await new Promise(r => setTimeout(r, 60_000));  // poll every minute
   }
 }
+
 /* ------------------------------------------------------------------ */
 async function downloadResult(batchJson) {
   const fileId = batchJson.output_file_id;
@@ -118,6 +119,7 @@ async function downloadResult(batchJson) {
 
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
+
 /* ------------------------------------------------------------------ */
 function buildPromptLine(prompt, leadObj) {
   return JSON.stringify({
@@ -127,6 +129,7 @@ function buildPromptLine(prompt, leadObj) {
     ],
   });
 }
+
 /* ------------------------------------------------------------------ */
 async function run(limit = MAX_PER_RUN) {
   const candidates = await fetchCandidates(limit);
@@ -136,9 +139,9 @@ async function run(limit = MAX_PER_RUN) {
   }
   console.log(`Scoring ${candidates.length} leads…`);
 
-  const prompt  = await buildPrompt();           // ~2 500-token rules
+  const prompt  = await buildPrompt();      // ~2 500-token rules
   const lines   = [];
-  const idMap   = [];                            // Airtable recordIDs (same order)
+  const idMap   = [];                       // Airtable recordIDs (same order)
 
   for (const r of candidates) {
     const raw = JSON.parse(r.get("Profile Full JSON") || "{}");
@@ -161,19 +164,19 @@ async function run(limit = MAX_PER_RUN) {
   if (!["completed", "completed_with_errors"].includes(result.status))
     throw new Error("Batch did not complete: " + result.status);
 
-  const rows   = await downloadResult(result);
-  let updated  = 0;
+  const rows  = await downloadResult(result);
+  let updated = 0;
 
   for (let i = 0; i < rows.length; i++) {
     const out = rows[i];
     if (out.error) continue;          // skip errored rows entirely
 
     const {
-      aiProfileAssessment     = "",
-      final_score             = out.final_score || out.finalPct || 0,
-      attribute_breakdown     = out.attribute_breakdown || "",
-      ai_excluded             = out.ai_excluded || "No",
-      exclude_details         = out.exclude_details || "",
+      aiProfileAssessment = "",
+      final_score         = out.final_score || out.finalPct || 0,
+      attribute_breakdown = out.attribute_breakdown || "",
+      ai_excluded         = out.ai_excluded || "No",
+      exclude_details     = out.exclude_details || "",
     } = out;
 
     const fields = {
