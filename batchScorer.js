@@ -1,5 +1,10 @@
 /* ===================================================================
    batchScorer.js  –  GPT-4o flex-window batch scorer
+   -------------------------------------------------------------------
+   • Pulls Airtable leads where Scoring Status = “To Be Scored”
+   • Builds JSONL with custom_id + method + body
+   • Submits /v1/batches  (completion_window:"24h")
+   • Polls until finished; writes AI fields back to Airtable
 =================================================================== */
 require("dotenv").config();
 const fs       = require("fs");
@@ -22,7 +27,7 @@ const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- fetch leads ------------------------------------------ */
+/* ---------- fetch leads that need scoring ------------------------- */
 async function fetchCandidates(limit) {
   const out = [];
   await base("Leads")
@@ -40,7 +45,7 @@ async function fetchCandidates(limit) {
   return out;
 }
 
-/* ---------- upload JSONL ----------------------------------------- */
+/* ---------- upload JSONL file ------------------------------------- */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -60,7 +65,7 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit batch ----------------------------------------- */
+/* ---------- submit batch job -------------------------------------- */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
@@ -81,25 +86,24 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll (logs failure object) --------------------------- */
+/* ---------- poll until terminal state (log on fail/expire) -------- */
 async function pollBatch(id) {
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
     }).then(r => r.json());
 
-    if (["failed", "expired"].includes(j.status)) {
+    if (["failed", "expired"].includes(j.status))
       console.error("Batch failed details:", JSON.stringify(j, null, 2));
-    }
 
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));
+    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
   }
 }
 
-/* ---------- download output -------------------------------------- */
+/* ---------- download output --------------------------------------- */
 async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
@@ -108,19 +112,22 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build JSONL line (NOW WITH custom_id) ---------------- */
+/* ---------- build one JSONL line  (custom_id + method + body) ----- */
 function buildPromptLine(prompt, leadJson, recordId) {
   return JSON.stringify({
-    custom_id: recordId,          // ← required by new Batch API
-    model    : MODEL,
-    messages : [
-      { role: "system", content: prompt },
-      { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` },
-    ],
+    custom_id: recordId,          // maps result back to Airtable row
+    method   : "POST",
+    body     : {
+      model   : MODEL,
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` }
+      ]
+    }
   });
 }
 
-/* ---------- main runner ------------------------------------------ */
+/* ---------- main runner ------------------------------------------- */
 async function run(limit = MAX_PER_RUN) {
   const recs = await fetchCandidates(limit);
   if (!recs.length) {
@@ -145,7 +152,9 @@ async function run(limit = MAX_PER_RUN) {
   let result = await pollBatch(batchId);
   if (["expired", "failed"].includes(result.status)) {
     console.log("Batch failed/expired – retry once.");
-    result = await pollBatch(await submitBatch(await uploadJSONL(lines)));
+    result = await pollBatch(
+      await submitBatch(await uploadJSONL(lines))
+    );
   }
   if (!["completed", "completed_with_errors"].includes(result.status))
     throw new Error("Batch did not complete: " + result.status);
@@ -155,8 +164,8 @@ async function run(limit = MAX_PER_RUN) {
 
   for (const o of rows) {
     if (o.error) continue;                 // skip errored entries
-    const idx = ids.indexOf(o.custom_id); // lookup by custom_id
-    if (idx === -1) continue;
+    const idx = ids.indexOf(o.custom_id);
+    if (idx === -1) continue;              // shouldn't happen
 
     await base("Leads").update(ids[idx], {
       "AI Score"              : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
