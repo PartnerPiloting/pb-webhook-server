@@ -1,14 +1,8 @@
 /* ===================================================================
    batchScorer.js  –  GPT-4o flex-window batch scorer  (stable edition)
-   -------------------------------------------------------------------
-   • Pulls Airtable leads where Scoring Status = “To Be Scored”
-   • Builds JSONL  (custom_id + method + url + body)
-   • Submits /v1/batches  (completion_window:"24h")
-   • Polls until finished; writes AI fields back to Airtable
-   • Logs every stage so Render is never silent
 =================================================================== */
 require("dotenv").config();
-console.log("▶︎ batchScorer module loaded");          // import-time ping
+console.log("▶︎ batchScorer module loaded");
 
 const fs       = require("fs");
 const path     = require("path");
@@ -32,7 +26,6 @@ const base = Airtable.base(AIRTABLE_BASE);
 
 /* ---------- fetch leads needing scoring --------------------------- */
 async function fetchCandidates(limit) {
-  // One-shot query: grabs up to <limit> rows in a single request (no hang)
   const records = await base("Leads")
     .select({
       maxRecords      : limit,
@@ -106,7 +99,7 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
+    await new Promise(r => setTimeout(r, 60_000));
   }
 }
 
@@ -119,7 +112,7 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build JSONL line (defensive trim of `raw`) ------------- */
+/* ---------- build JSONL line -------------------------------------- */
 function buildPromptLine(prompt, leadJson, recordId) {
   if (leadJson.raw) delete leadJson.raw;
   return JSON.stringify({
@@ -183,7 +176,7 @@ async function run(limit = MAX_PER_RUN) {
         "AI Profile Assessment" : o.aiProfileAssessment || "",
         "AI Attribute Breakdown": o.attribute_breakdown  || "",
         "Scoring Status"        : "Scored",
-        "Date Scored"           : new Date(),
+        "Date Scored"           : new Date().toISOString().split("T")[0], // ← fixed
         "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
         "Exclude Details"       : o.exclude_details || "",
       });
