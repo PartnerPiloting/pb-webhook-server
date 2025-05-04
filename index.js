@@ -393,6 +393,11 @@ Return JSON:
     temperature: 0.2,
   });
 
+  /* -------- TOKEN LOG (added line) -------- */
+  const usage = resp.data.usage || {};
+  console.log(`GPT usage → prompt ${usage.prompt_tokens}, completion ${usage.completion_tokens}, total ${usage.total_tokens}`);
+  /* ---------------------------------------- */
+
   let out = resp.data.choices[0].message.content.trim();
   const fenced = out.match(/```json\s*([\s\S]*?)```/i);
   if (fenced) out = fenced[1].trim();
