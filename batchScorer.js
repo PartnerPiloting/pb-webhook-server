@@ -1,28 +1,32 @@
 /* ===================================================================
    batchScorer.js  –  GPT-4o flex-window batch scorer
+   -------------------------------------------------------------------
+   • Pulls Airtable leads where Scoring Status = “To Be Scored”
+   • Builds JSONL, submits /v1/batches (completion_window:"24h")
+   • Polls until finished; writes AI fields back to Airtable
 =================================================================== */
 require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
-const fetch = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+const fs       = require("fs");
+const path     = require("path");
+const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
 const FormData = require("form-data");
 const Airtable = require("airtable");
 const { buildPrompt } = require("./promptBuilder");
 
 /* ---------- config ------------------------------------------------ */
-const AIRTABLE_BASE = process.env.AIRTABLE_BASE_ID;
-const AIRTABLE_KEY  = process.env.AIRTABLE_API_KEY;
-const OPENAI_KEY    = process.env.OPENAI_API_KEY;
+const { AIRTABLE_BASE_ID: AIRTABLE_BASE,
+        AIRTABLE_API_KEY: AIRTABLE_KEY,
+        OPENAI_API_KEY  : OPENAI_KEY } = process.env;
 
-const MODEL          = "gpt-4o";
-const COMPLETION_WIN = "24h";
+const MODEL          = "gpt-4o";   // per-line
+const COMPLETION_WIN = "24h";      // flex window
 const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 /* ------------------------------------------------------------------ */
 
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- fetch candidates -------------------------------------- */
+/* ---------- fetch leads needing scoring --------------------------- */
 async function fetchCandidates(limit) {
   const out = [];
   await base("Leads")
@@ -60,12 +64,12 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit batch  (type removed) -------------------------- */
+/* ---------- submit batch ------------------------------------------ */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
     endpoint         : "/v1/chat/completions",
-    completion_window: COMPLETION_WIN
+    completion_window: COMPLETION_WIN,
   };
 
   const res = await fetch("https://api.openai.com/v1/batches", {
@@ -81,17 +85,21 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll --------------------------------------------------- */
+/* ---------- poll until terminal state (logs on fail/expire) ------- */
 async function pollBatch(id) {
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
     }).then(r => r.json());
 
+    if (["failed", "expired"].includes(j.status)) {
+      console.error("Batch failed details:", JSON.stringify(j, null, 2));
+    }
+
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));
+    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
   }
 }
 
@@ -104,7 +112,7 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- JSONL line builder ------------------------------------ */
+/* ---------- build one JSONL line ---------------------------------- */
 function buildPromptLine(prompt, lead) {
   return JSON.stringify({
     model   : MODEL,
@@ -146,18 +154,19 @@ async function run(limit = MAX_PER_RUN) {
 
   const rows  = await downloadResult(result);
   let updated = 0;
+
   for (let i = 0; i < rows.length; i++) {
     const o = rows[i];
-    if (o.error) continue;
+    if (o.error) continue;                 // skip errored entries
 
     await base("Leads").update(ids[i], {
-      "AI Score"             : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
-      "AI Profile Assessment": o.aiProfileAssessment || "",
-      "AI Attribute Breakdown": o.attribute_breakdown || "",
-      "Scoring Status"       : "Scored",
-      "Date Scored"          : new Date(),
-      "AI_Excluded"          : (o.ai_excluded || "No") === "Yes",
-      "Exclude Details"      : o.exclude_details || "",
+      "AI Score"              : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
+      "AI Profile Assessment" : o.aiProfileAssessment || "",
+      "AI Attribute Breakdown": o.attribute_breakdown  || "",
+      "Scoring Status"        : "Scored",
+      "Date Scored"           : new Date(),
+      "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
+      "Exclude Details"       : o.exclude_details || "",
     });
     updated++;
   }
