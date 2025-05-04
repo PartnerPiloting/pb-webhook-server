@@ -1,8 +1,14 @@
 /* ===================================================================
-   batchScorer.js  –  GPT-4o flex-window batch scorer  ✱ DIAG EDITION
+   batchScorer.js  –  GPT-4o flex-window batch scorer  (stable edition)
+   -------------------------------------------------------------------
+   • Pulls Airtable leads where Scoring Status = “To Be Scored”
+   • Builds JSONL  (custom_id + method + url + body)
+   • Submits /v1/batches  (completion_window:"24h")
+   • Polls until finished; writes AI fields back to Airtable
+   • Logs every stage so Render is never silent
 =================================================================== */
 require("dotenv").config();
-console.log("▶︎ batchScorer module loaded");          // ← NEW (import-time)
+console.log("▶︎ batchScorer module loaded");          // import-time ping
 
 const fs       = require("fs");
 const path     = require("path");
@@ -26,27 +32,24 @@ const base = Airtable.base(AIRTABLE_BASE);
 
 /* ---------- fetch leads needing scoring --------------------------- */
 async function fetchCandidates(limit) {
-  const out = [];
-  await base("Leads")
+  // One-shot query: grabs up to <limit> rows in a single request (no hang)
+  const records = await base("Leads")
     .select({
-      pageSize       : 100,
-      filterByFormula: '{Scoring Status} = "To Be Scored"',
+      maxRecords      : limit,
+      pageSize        : limit,
+      filterByFormula : '{Scoring Status} = "To Be Scored"',
     })
-    .eachPage((records, next) => {
-      for (const r of records) {
-        if (out.length >= limit) return;
-        out.push(r);
-      }
-      if (out.length < limit) next();
-    });
-  return out;
+    .firstPage();
+
+  console.log(`• Airtable returned ${records.length} candidate(s)`);
+  return records;
 }
 
 /* ---------- upload JSONL ------------------------------------------ */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
-  console.log(`• JSONL prepared → ${lines.length} lines`);
+  console.log(`• JSONL prepared → ${lines.length} line(s)`);
 
   const form = new FormData();
   form.append("purpose", "batch");
@@ -60,6 +63,7 @@ async function uploadJSONL(lines) {
 
   fs.unlinkSync(tmp);
   if (!res.id) throw new Error("File upload failed: " + JSON.stringify(res));
+  console.log(`✔︎ JSONL uploaded → fileId ${res.id}`);
   return res.id;
 }
 
@@ -68,7 +72,7 @@ async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
     endpoint         : "/v1/chat/completions",
-    completion_window: COMPLETION_WIN
+    completion_window: COMPLETION_WIN,
   };
 
   const res = await fetch("https://api.openai.com/v1/batches", {
@@ -81,17 +85,20 @@ async function submitBatch(fileId) {
   }).then(r => r.json());
 
   if (!res.id) throw new Error("Batch submit failed: " + JSON.stringify(res));
+  console.log(`✔︎ Batch submitted → batchId ${res.id} (status: ${res.status})`);
   return res.id;
 }
 
 /* ---------- poll until terminal state ----------------------------- */
 async function pollBatch(id) {
+  let pollCount = 0;
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
     }).then(r => r.json());
 
-    console.log(`  ↻ status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`);
+    pollCount++;
+    console.log(`  ↻ Poll #${pollCount} – status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`);
 
     if (["failed", "expired"].includes(j.status))
       console.error("⨯ Batch failed details:", JSON.stringify(j, null, 2));
@@ -99,7 +106,7 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));
+    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
   }
 }
 
@@ -131,7 +138,7 @@ function buildPromptLine(prompt, leadJson, recordId) {
 
 /* ---------- main runner ------------------------------------------- */
 async function run(limit = MAX_PER_RUN) {
-  console.log("▶︎ batchScorer.run entered");           // ← NEW (function-entry)
+  console.log("▶︎ batchScorer.run entered");
 
   try {
     const recs = await fetchCandidates(limit);
