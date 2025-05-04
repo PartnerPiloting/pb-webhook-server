@@ -1,5 +1,10 @@
 /* ===================================================================
-   batchScorer.js  –  GPT-4o flex-window batch scorer  (stable edition)
+   batchScorer.js — GPT-4o Flex batch scorer (dynamic attributes)
+   -------------------------------------------------------------------
+   • Fetches “To Be Scored” leads (one-shot Airtable query, no hang)
+   • Builds JSONL with slim JSON + compact JSON framework prompt
+   • Submits /v1/batches, polls, then writes scores back to Airtable
+   • Uses live attribute dictionaries from attributeLoader.js
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -9,22 +14,25 @@ const path     = require("path");
 const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
 const FormData = require("form-data");
 const Airtable = require("airtable");
-const { buildPrompt } = require("./promptBuilder");
+const { buildPrompt, slimLead } = require("./promptBuilder");
+const { loadAttributes }        = require("./attributeLoader");   // NEW
+const { computeFinalScore }     = require("./scoring");           // existing helper
 
-/* ---------- config ------------------------------------------------ */
-const { AIRTABLE_BASE_ID: AIRTABLE_BASE,
-        AIRTABLE_API_KEY: AIRTABLE_KEY,
-        OPENAI_API_KEY  : OPENAI_KEY } = process.env;
+/* ---------- configuration --------------------------------------- */
+const {
+  AIRTABLE_BASE_ID: AIRTABLE_BASE,
+  AIRTABLE_API_KEY: AIRTABLE_KEY,
+  OPENAI_API_KEY  : OPENAI_KEY
+} = process.env;
 
 const MODEL          = "gpt-4o";
 const COMPLETION_WIN = "24h";
 const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
-/* ------------------------------------------------------------------ */
 
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- fetch leads needing scoring --------------------------- */
+/* ---------- fetch leads needing scoring ------------------------- */
 async function fetchCandidates(limit) {
   const records = await base("Leads")
     .select({
@@ -38,7 +46,7 @@ async function fetchCandidates(limit) {
   return records;
 }
 
-/* ---------- upload JSONL ------------------------------------------ */
+/* ---------- upload JSONL ---------------------------------------- */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -60,7 +68,7 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit batch job -------------------------------------- */
+/* ---------- submit batch job ------------------------------------ */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
@@ -82,7 +90,7 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll until terminal state ----------------------------- */
+/* ---------- poll until terminal state --------------------------- */
 async function pollBatch(id) {
   let pollCount = 0;
   while (true) {
@@ -103,7 +111,7 @@ async function pollBatch(id) {
   }
 }
 
-/* ---------- download output --------------------------------------- */
+/* ---------- download output ------------------------------------- */
 async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
@@ -112,9 +120,8 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build JSONL line -------------------------------------- */
+/* ---------- build JSONL line ------------------------------------ */
 function buildPromptLine(prompt, leadJson, recordId) {
-  if (leadJson.raw) delete leadJson.raw;
   return JSON.stringify({
     custom_id: recordId,
     method   : "POST",
@@ -129,10 +136,9 @@ function buildPromptLine(prompt, leadJson, recordId) {
   });
 }
 
-/* ---------- main runner ------------------------------------------- */
+/* ---------- main runner ----------------------------------------- */
 async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
-
   try {
     const recs = await fetchCandidates(limit);
     if (!recs.length) {
@@ -141,12 +147,13 @@ async function run(limit = MAX_PER_RUN) {
     }
     console.log(`Scoring ${recs.length} leads…`);
 
-    const prompt = await buildPrompt();
-    const lines  = [];
-    const ids    = [];
+    const prompt                   = await buildPrompt();
+    const { positives, negatives } = await loadAttributes();     // NEW
 
+    const lines = [], ids = [];
     for (const r of recs) {
-      const slim = JSON.parse(r.get("Profile Full JSON") || "{}");
+      const full = JSON.parse(r.get("Profile Full JSON") || "{}");
+      const slim = slimLead(full);
       lines.push(buildPromptLine(prompt, slim, r.id));
       ids.push(r.id);
     }
@@ -171,12 +178,26 @@ async function run(limit = MAX_PER_RUN) {
       const idx = ids.indexOf(o.custom_id);
       if (idx === -1) continue;
 
+      /* ---------- derive finalPct if GPT omitted it ------------- */
+      let finalPct = o.finalPct;
+      if (finalPct === undefined) {
+        const { percentage } = computeFinalScore(
+          o.positive_scores || {},
+          positives,
+          o.negative_scores || {},
+          negatives,
+          o.contact_readiness,
+          o.unscored_attributes || []
+        );
+        finalPct = Math.round(percentage * 100) / 100;
+      }
+
       await base("Leads").update(ids[idx], {
-        "AI Score"              : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
+        "AI Score"              : finalPct,
         "AI Profile Assessment" : o.aiProfileAssessment || "",
         "AI Attribute Breakdown": o.attribute_breakdown  || "",
         "Scoring Status"        : "Scored",
-        "Date Scored"           : new Date().toISOString().split("T")[0], // ← fixed
+        "Date Scored"           : new Date().toISOString().split("T")[0],
         "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
         "Exclude Details"       : o.exclude_details || "",
       });
