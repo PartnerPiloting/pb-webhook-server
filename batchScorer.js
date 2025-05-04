@@ -27,17 +27,24 @@ const OPENAI_KEY      = process.env.OPENAI_API_KEY;
 const MODEL           = "gpt-4o";   // batch-capable model
 const COMPLETION_WIN  = "24h";      // flex window (≈50 % cheaper)
 const MAX_PER_RUN     = Number(process.env.MAX_BATCH || 500);  // safety cap
-const VIEW_NAME       = "🔍 Needs Scoring";   // Scoring Status = To Be Scored
 /* ------------------------------------------------------------------ */
 
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------
+   FETCH CANDIDATES
+   ------------------------------------------------------------------
+   ― changed to server-side formula filtering so there’s ZERO dependency
+     on a specific view name. It returns at most `limit` Airtable records.
+------------------------------------------------------------------ */
 async function fetchCandidates(limit) {
   const out = [];
   await base("Leads")
-    .select({ view: VIEW_NAME, pageSize: 100 })
+    .select({
+      pageSize       : 100,
+      filterByFormula: '{Scoring Status} = "To Be Scored"',
+    })
     .eachPage((records, fetchNext) => {
       for (const r of records) {
         if (out.length >= limit) return;
@@ -47,6 +54,7 @@ async function fetchCandidates(limit) {
     });
   return out;
 }
+
 /* ------------------------------------------------------------------ */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
