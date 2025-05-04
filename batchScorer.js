@@ -1,9 +1,10 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex batch scorer (dynamic attributes)
+   batchScorer.js — GPT-4o Flex batch scorer (dynamic attributes, slim prompt)
    -------------------------------------------------------------------
-   • Fetches “To Be Scored” leads (one-shot Airtable query, no hang)
-   • Builds JSONL with slim JSON + compact JSON framework prompt
-   • Submits /v1/batches, polls, then writes scores back to Airtable
+   • Pulls Airtable leads where Scoring Status = “To Be Scored”
+   • Builds JSONL with:   slimLead() + compact JSON framework prompt
+   • Submits /v1/batches  (24-h flex window) and polls until done
+   • Writes scores back to Airtable
    • Uses live attribute dictionaries from attributeLoader.js
 =================================================================== */
 require("dotenv").config();
@@ -15,10 +16,10 @@ const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a)
 const FormData = require("form-data");
 const Airtable = require("airtable");
 const { buildPrompt, slimLead } = require("./promptBuilder");
-const { loadAttributes }        = require("./attributeLoader");   // NEW
-const { computeFinalScore }     = require("./scoring");           // existing helper
+const { loadAttributes }        = require("./attributeLoader");  // dynamic list
+const { computeFinalScore }     = require("./scoring");          // your helper
 
-/* ---------- configuration --------------------------------------- */
+/* ---------- config ------------------------------------------------ */
 const {
   AIRTABLE_BASE_ID: AIRTABLE_BASE,
   AIRTABLE_API_KEY: AIRTABLE_KEY,
@@ -29,12 +30,13 @@ const MODEL          = "gpt-4o";
 const COMPLETION_WIN = "24h";
 const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 
+/* ---------- Airtable connection ---------------------------------- */
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- fetch leads needing scoring ------------------------- */
+/* ---------- fetchCandidates (one-shot, no hang) ------------------ */
 async function fetchCandidates(limit) {
-  const records = await base("Leads")
+  const recs = await base("Leads")
     .select({
       maxRecords      : limit,
       pageSize        : limit,
@@ -42,11 +44,27 @@ async function fetchCandidates(limit) {
     })
     .firstPage();
 
-  console.log(`• Airtable returned ${records.length} candidate(s)`);
-  return records;
+  console.log(`• Airtable returned ${recs.length} candidate(s)`);
+  return recs;
 }
 
-/* ---------- upload JSONL ---------------------------------------- */
+/* ---------- helper: build one JSONL line ------------------------- */
+function buildPromptLine(prompt, leadJson, recId) {
+  return JSON.stringify({
+    custom_id: recId,
+    method   : "POST",
+    url      : "/v1/chat/completions",
+    body     : {
+      model   : MODEL,
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` }
+      ]
+    }
+  });
+}
+
+/* ---------- upload JSONL file ------------------------------------ */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -68,7 +86,7 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit batch job ------------------------------------ */
+/* ---------- submit batch job ------------------------------------- */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
@@ -90,16 +108,16 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll until terminal state --------------------------- */
+/* ---------- poll batch until terminal state ---------------------- */
 async function pollBatch(id) {
-  let pollCount = 0;
+  let poll = 0;
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
     }).then(r => r.json());
 
-    pollCount++;
-    console.log(`  ↻ Poll #${pollCount} – status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`);
+    poll++;
+    console.log(`  ↻ Poll #${poll} – status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`);
 
     if (["failed", "expired"].includes(j.status))
       console.error("⨯ Batch failed details:", JSON.stringify(j, null, 2));
@@ -111,7 +129,7 @@ async function pollBatch(id) {
   }
 }
 
-/* ---------- download output ------------------------------------- */
+/* ---------- download output -------------------------------------- */
 async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
@@ -120,25 +138,12 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build JSONL line ------------------------------------ */
-function buildPromptLine(prompt, leadJson, recordId) {
-  return JSON.stringify({
-    custom_id: recordId,
-    method   : "POST",
-    url      : "/v1/chat/completions",
-    body     : {
-      model   : MODEL,
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` }
-      ]
-    }
-  });
-}
-
-/* ---------- main runner ----------------------------------------- */
+/* ------------------------------------------------------------------
+   main runner
+------------------------------------------------------------------ */
 async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
+
   try {
     const recs = await fetchCandidates(limit);
     if (!recs.length) {
@@ -148,7 +153,7 @@ async function run(limit = MAX_PER_RUN) {
     console.log(`Scoring ${recs.length} leads…`);
 
     const prompt                   = await buildPrompt();
-    const { positives, negatives } = await loadAttributes();     // NEW
+    const { positives, negatives } = await loadAttributes();   // live dicts
 
     const lines = [], ids = [];
     for (const r of recs) {
