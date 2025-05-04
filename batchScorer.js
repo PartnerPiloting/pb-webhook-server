@@ -2,9 +2,10 @@
    batchScorer.js  –  GPT-4o flex-window batch scorer
    -------------------------------------------------------------------
    • Pulls Airtable leads where Scoring Status = “To Be Scored”
-   • Builds JSONL   (custom_id + method + url + body)
+   • Builds JSONL  (custom_id + method + url + body)
    • Submits /v1/batches  (completion_window:"24h")
    • Polls until finished; writes AI fields back to Airtable
+   • Defensive strip: removes big `raw` if it’s still present
 =================================================================== */
 require("dotenv").config();
 const fs       = require("fs");
@@ -20,7 +21,7 @@ const { AIRTABLE_BASE_ID: AIRTABLE_BASE,
         OPENAI_API_KEY  : OPENAI_KEY } = process.env;
 
 const MODEL          = "gpt-4o";
-const COMPLETION_WIN = "24h";
+const COMPLETION_WIN = "24h";              // flex window (1h also works)
 const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 /* ------------------------------------------------------------------ */
 
@@ -69,7 +70,7 @@ async function uploadJSONL(lines) {
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
-    endpoint         : "/v1/chat/completions",     // envelope endpoint
+    endpoint         : "/v1/chat/completions",
     completion_window: COMPLETION_WIN
   };
 
@@ -86,7 +87,7 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll until terminal state (log on fail/expire) -------- */
+/* ---------- poll until terminal state ----------------------------- */
 async function pollBatch(id) {
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
@@ -99,7 +100,7 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));
+    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
   }
 }
 
@@ -112,8 +113,9 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build JSON-L line (custom_id + method + url + body) --- */
+/* ---------- build JSONL line (defensive trim of `raw`) ------------- */
 function buildPromptLine(prompt, leadJson, recordId) {
+  if (leadJson.raw) delete leadJson.raw;        // strip heavy blob if present
   return JSON.stringify({
     custom_id: recordId,
     method   : "POST",
@@ -142,8 +144,8 @@ async function run(limit = MAX_PER_RUN) {
   const ids    = [];
 
   for (const r of recs) {
-    const raw = JSON.parse(r.get("Profile Full JSON") || "{}");
-    lines.push(buildPromptLine(prompt, raw, r.id));
+    const slim = JSON.parse(r.get("Profile Full JSON") || "{}");
+    lines.push(buildPromptLine(prompt, slim, r.id));
     ids.push(r.id);
   }
 
@@ -153,9 +155,7 @@ async function run(limit = MAX_PER_RUN) {
   let result = await pollBatch(batchId);
   if (["expired", "failed"].includes(result.status)) {
     console.log("Batch failed/expired – retry once.");
-    result = await pollBatch(
-      await submitBatch(await uploadJSONL(lines))
-    );
+    result = await pollBatch(await submitBatch(await uploadJSONL(lines)));
   }
   if (!["completed", "completed_with_errors"].includes(result.status))
     throw new Error("Batch did not complete: " + result.status);
