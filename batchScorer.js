@@ -1,11 +1,10 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex batch scorer (dynamic attributes, slim prompt)
+   batchScorer.js — GPT-4o Flex scorer with auto token-chunking
    -------------------------------------------------------------------
-   • Pulls Airtable leads where Scoring Status = “To Be Scored”
-   • Builds JSONL with:   slimLead() + compact JSON framework prompt
-   • Submits /v1/batches  (24-h flex window) and polls until done
-   • Writes scores back to Airtable
-   • Uses live attribute dictionaries from attributeLoader.js
+   • Fetches Airtable leads (Scoring Status = "To Be Scored")
+   • Splits them into ≤ 80 000-token sub-batches
+   • Submits each chunk, retries if the 90 k queue gate is closed
+   • Writes results back to Airtable
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -15,26 +14,44 @@ const path     = require("path");
 const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
 const FormData = require("form-data");
 const Airtable = require("airtable");
-const { buildPrompt, slimLead } = require("./promptBuilder");
-const { loadAttributes }        = require("./attributeLoader");  // dynamic list
-const { computeFinalScore }     = require("./scoring");          // your helper
 
-/* ---------- config ------------------------------------------------ */
+const { buildPrompt, slimLead } = require("./promptBuilder");
+const { loadAttributes }        = require("./attributeLoader");
+const { computeFinalScore }     = require("./scoring");
+
+/* ---------- env & config ---------------------------------------- */
 const {
   AIRTABLE_BASE_ID: AIRTABLE_BASE,
   AIRTABLE_API_KEY: AIRTABLE_KEY,
   OPENAI_API_KEY  : OPENAI_KEY
 } = process.env;
 
-const MODEL          = "gpt-4o";
-const COMPLETION_WIN = "24h";
-const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
+const MODEL              = "gpt-4o";
+const COMPLETION_WINDOW  = "24h";
+const MAX_PER_RUN        = Number(process.env.MAX_BATCH || 500);
+
+const TOKENS_PER_LEAD    = 4300;      // prompt estimate (4 281 + cushion)
+const MAX_BATCH_TOKENS   = 80000;     // keep well under 90 000
 
 /* ---------- Airtable connection ---------------------------------- */
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- fetchCandidates (one-shot, no hang) ------------------ */
+/* ---------- helper: split by token budget ------------------------ */
+function chunkByTokens(records) {
+  const chunks = [];
+  let current  = [];
+  records.forEach(r => {
+    if (current.length * TOKENS_PER_LEAD >= MAX_BATCH_TOKENS) {
+      chunks.push(current); current = [];
+    }
+    current.push(r);
+  });
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+/* ---------- fetch candidates ------------------------------------- */
 async function fetchCandidates(limit) {
   const recs = await base("Leads")
     .select({
@@ -48,7 +65,7 @@ async function fetchCandidates(limit) {
   return recs;
 }
 
-/* ---------- helper: build one JSONL line ------------------------- */
+/* ---------- build one JSONL line --------------------------------- */
 function buildPromptLine(prompt, leadJson, recId) {
   return JSON.stringify({
     custom_id: recId,
@@ -64,11 +81,10 @@ function buildPromptLine(prompt, leadJson, recId) {
   });
 }
 
-/* ---------- upload JSONL file ------------------------------------ */
+/* ---------- upload JSONL to OpenAI --------------------------------*/
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
-  console.log(`• JSONL prepared → ${lines.length} line(s)`);
 
   const form = new FormData();
   form.append("purpose", "batch");
@@ -82,16 +98,15 @@ async function uploadJSONL(lines) {
 
   fs.unlinkSync(tmp);
   if (!res.id) throw new Error("File upload failed: " + JSON.stringify(res));
-  console.log(`✔︎ JSONL uploaded → fileId ${res.id}`);
   return res.id;
 }
 
-/* ---------- submit batch job ------------------------------------- */
+/* ---------- submit a batch job ----------------------------------- */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
     endpoint         : "/v1/chat/completions",
-    completion_window: COMPLETION_WIN,
+    completion_window: COMPLETION_WINDOW,
   };
 
   const res = await fetch("https://api.openai.com/v1/batches", {
@@ -104,11 +119,10 @@ async function submitBatch(fileId) {
   }).then(r => r.json());
 
   if (!res.id) throw new Error("Batch submit failed: " + JSON.stringify(res));
-  console.log(`✔︎ Batch submitted → batchId ${res.id} (status: ${res.status})`);
   return res.id;
 }
 
-/* ---------- poll batch until terminal state ---------------------- */
+/* ---------- poll until batch finishes ---------------------------- */
 async function pollBatch(id) {
   let poll = 0;
   while (true) {
@@ -125,11 +139,11 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));
+    await new Promise(r => setTimeout(r, 60000));
   }
 }
 
-/* ---------- download output -------------------------------------- */
+/* ---------- download batch output -------------------------------- */
 async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
@@ -138,79 +152,89 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ------------------------------------------------------------------
-   main runner
------------------------------------------------------------------- */
+/* ---------- process one sub-batch -------------------------------- */
+async function processOneBatch(records, positives, negatives, prompt) {
+  const lines = [], ids = [];
+  for (const r of records) {
+    const full = JSON.parse(r.get("Profile Full JSON") || "{}");
+    const slim = slimLead(full);
+    lines.push(buildPromptLine(prompt, slim, r.id));
+    ids.push(r.id);
+  }
+
+  const batchId = await submitBatch(await uploadJSONL(lines));
+  console.log(`✔︎ Batch submitted (${records.length} leads) → ${batchId}`);
+
+  let result = await pollBatch(batchId);
+  if (["expired", "failed"].includes(result.status))
+    throw new Error(`Batch ${batchId} failed: ${result.status}`);
+
+  const rows = await downloadResult(result);
+  let updated = 0;
+
+  for (const o of rows) {
+    if (o.error) continue;
+    const idx = ids.indexOf(o.custom_id);
+    if (idx === -1) continue;
+
+    let finalPct = o.finalPct;
+    if (finalPct === undefined) {
+      const { percentage } = computeFinalScore(
+        o.positive_scores || {},
+        positives,
+        o.negative_scores || {},
+        negatives,
+        o.contact_readiness,
+        o.unscored_attributes || []
+      );
+      finalPct = Math.round(percentage * 100) / 100;
+    }
+
+    await base("Leads").update(ids[idx], {
+      "AI Score"              : finalPct,
+      "AI Profile Assessment" : o.aiProfileAssessment || "",
+      "AI Attribute Breakdown": o.attribute_breakdown  || "",
+      "Scoring Status"        : "Scored",
+      "Date Scored"           : new Date().toISOString().split("T")[0],
+      "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
+      "Exclude Details"       : o.exclude_details || "",
+    });
+    updated++;
+  }
+  console.log(`✔︎ Updated ${updated} Airtable row(s).`);
+}
+
+/* ---------- main runner ------------------------------------------ */
 async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
 
-  try {
-    const recs = await fetchCandidates(limit);
-    if (!recs.length) {
-      console.log("No records need scoring – exit.");
-      return;
-    }
-    console.log(`Scoring ${recs.length} leads…`);
+  const recs = await fetchCandidates(limit);
+  if (!recs.length) { console.log("No records need scoring – exit."); return; }
 
-    const prompt                   = await buildPrompt();
-    const { positives, negatives } = await loadAttributes();   // live dicts
+  const prompt                   = await buildPrompt();
+  const { positives, negatives } = await loadAttributes();
 
-    const lines = [], ids = [];
-    for (const r of recs) {
-      const full = JSON.parse(r.get("Profile Full JSON") || "{}");
-      const slim = slimLead(full);
-      lines.push(buildPromptLine(prompt, slim, r.id));
-      ids.push(r.id);
-    }
+  const chunks = chunkByTokens(recs);
+  console.log(`Scoring ${recs.length} leads in ${chunks.length} sub-batch(es)…`);
 
-    const batchId = await submitBatch(await uploadJSONL(lines));
-    console.log("Batch ID:", batchId);
+  for (let i = 0; i < chunks.length; i++) {
+    const list = chunks[i];
+    console.log(`→ Sub-batch ${i + 1}/${chunks.length} (${list.length} leads)`);
 
-    let result = await pollBatch(batchId);
-    if (["expired", "failed"].includes(result.status)) {
-      console.log("⚠︎ Batch failed/expired – retrying once.");
-      result = await pollBatch(await submitBatch(await uploadJSONL(lines)));
-    }
-    if (!["completed", "completed_with_errors"].includes(result.status))
-      throw new Error("Batch did not complete: " + result.status);
-
-    console.log(`✔︎ Batch finished (${result.status}) – downloading results`);
-    const rows  = await downloadResult(result);
-    let updated = 0;
-
-    for (const o of rows) {
-      if (o.error) continue;
-      const idx = ids.indexOf(o.custom_id);
-      if (idx === -1) continue;
-
-      /* ---------- derive finalPct if GPT omitted it ------------- */
-      let finalPct = o.finalPct;
-      if (finalPct === undefined) {
-        const { percentage } = computeFinalScore(
-          o.positive_scores || {},
-          positives,
-          o.negative_scores || {},
-          negatives,
-          o.contact_readiness,
-          o.unscored_attributes || []
-        );
-        finalPct = Math.round(percentage * 100) / 100;
+    let done = false;
+    while (!done) {
+      try {
+        await processOneBatch(list, positives, negatives, prompt);
+        done = true;
+      } catch (err) {
+        if (String(err).includes("token_limit_exceeded")) {
+          console.log("Queue is full → waiting 60 s before retrying this chunk…");
+          await new Promise(r => setTimeout(r, 60000));
+        } else {
+          throw err;   // other errors bubble up and abort
+        }
       }
-
-      await base("Leads").update(ids[idx], {
-        "AI Score"              : finalPct,
-        "AI Profile Assessment" : o.aiProfileAssessment || "",
-        "AI Attribute Breakdown": o.attribute_breakdown  || "",
-        "Scoring Status"        : "Scored",
-        "Date Scored"           : new Date().toISOString().split("T")[0],
-        "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
-        "Exclude Details"       : o.exclude_details || "",
-      });
-      updated++;
     }
-    console.log(`✔︎ Updated ${updated} Airtable row(s).`);
-  } catch (err) {
-    console.error("⨯ batchScorer fatal:", err);
   }
 }
 
