@@ -15,6 +15,7 @@ const Airtable   = require("airtable");
 const fs         = require("fs");
 const fetch      = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 const { buildPrompt } = require("./promptBuilder");
+const { loadAttributes } = require("./attributeLoader");   // NEW – dynamic list
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
@@ -141,7 +142,9 @@ app.get("/score-lead", async (req, res) => {
     const sysPrompt = await buildPrompt();
     const gpt       = await callGptScoring(sysPrompt, lead);
 
-    const { positives, negatives } = await getScoringData();
+    // ─── dynamic attribute dictionaries ────────────────────────────────
+    const { positives, negatives } = await loadAttributes();    // NEW
+
     const {
       positive_scores     = {},
       negative_scores     = {},
@@ -174,7 +177,11 @@ app.get("/score-lead", async (req, res) => {
     const finalDisqualified     = calcDisq;
     const finalDisqualifyReason = calcDisqReason;
 
-    const finalPct = Math.round(percentage * 100) / 100;
+    /* 3 ─ fallback math for finalPct if GPT omitted it */
+    let finalPct = gpt.finalPct;
+    if (finalPct === undefined) {
+      finalPct = Math.round(percentage * 100) / 100;
+    }
 
     const breakdown = buildAttributeBreakdown(
       positive_scores,
@@ -189,7 +196,7 @@ app.get("/score-lead", async (req, res) => {
       finalDisqualifyReason
     );
 
-    /* 3 ─ update Airtable */
+    /* 4 ─ update Airtable */
     await base("Leads").update(id, {
       "AI Score"              : finalPct,
       "AI Profile Assessment" : aiProfileAssessment,
@@ -198,7 +205,7 @@ app.get("/score-lead", async (req, res) => {
       "Date Scored"           : new Date().toISOString().split("T")[0],
     });
 
-    /* 4 ─ respond with JSON */
+    /* 5 ─ respond with JSON */
     res.json({ id, finalPct, aiProfileAssessment, breakdown });
   } catch (err) {
     console.error(err);
