@@ -351,7 +351,7 @@ function parseMarkdownTables(markdown) {
       negatives[id] = {
         label:        label.trim(),
         penalty:      parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
-        disqualifying:/yes/i.test(disqRaw.trim()),
+        disqualifying:/yes/i.test(disqRaw.trim() ),
         notes:        notes.trim(),
       };
     }
@@ -478,32 +478,41 @@ async function upsertLead(
   aiExcluded          = null,
   excludeDetails      = null
 ) {
+/* ---------- NEW upsertLead body (trims heavy JSON) -------------- */
   const {
     firstName = "",
-    lastName = "",
+    lastName  = "",
     headline: lhHeadline = "",
+
     linkedinHeadline = "",
     linkedinJobTitle = "",
     linkedinCompanyName = "",
     linkedinDescription = "",
+
     linkedinProfileUrl = "",
-    connectionDegree = "",
-    linkedinJobDateRange = "",
-    linkedinJobDescription = "",
-    linkedinPreviousJobDateRange = "",
-    linkedinPreviousJobDescription = "",
+    connectionDegree   = "",
+
+    linkedinJobDateRange          = "",
+    linkedinJobDescription        = "",
+    linkedinPreviousJobDateRange  = "",
+    linkedinPreviousJobDescription= "",
+
     refreshedAt = "",
     profileUrl: fallbackProfileUrl = "",
     linkedinConnectionStatus,
+
     emailAddress = "",
-    phoneNumber = "",
+    phoneNumber  = "",
     locationName = "",
     connectionSince,
+
     scoringStatus = undefined,
+
+    /* everything else (including `raw`) */
     ...rest
   } = lead;
 
-  /* ---- build job history ---- */
+  /* ---------- 1.  build jobHistory exactly as before ------------- */
   let jobHistory = [
     linkedinJobDateRange
       ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}`
@@ -520,79 +529,76 @@ async function upsertLead(
     if (hist) jobHistory = hist;
   }
 
-  /* ---- canonical LinkedIn URL ---- */
-  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(
-    /\/$/,
-    ""
-  );
-
+  /* ---------- 2. canonical LinkedIn URL  (unchanged logic) ------- */
+  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
     const mid  = lead.memberId || lead.profileId;
-    if (slug)      finalUrl = `https://www.linkedin.com/in/${slug}/`;
+    if      (slug) finalUrl = `https://www.linkedin.com/in/${slug}/`;
     else if (mid)  finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
   }
-
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
-    if (typeof r.profile_url === "string" && r.profile_url.trim())
-      finalUrl = r.profile_url.trim().replace(/\/$/, "");
-    else if (r.public_id)
-      finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
-    else if (r.member_id)
-      finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
+    if      (typeof r.profile_url === "string" && r.profile_url.trim()) finalUrl = r.profile_url.trim().replace(/\/$/, "");
+    else if (r.public_id)  finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
+    else if (r.member_id)  finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
   }
-  if (!finalUrl) return;
+  if (!finalUrl) return;                            // safety-bail
 
   const profileKey = canonicalUrl(finalUrl);
 
-  /* ---- connection status ---- */
+  /* ---------- 3. connection-status logic (unchanged) ------------- */
   let connectionStatus = "Candidate";
-  if (connectionDegree === "1st")                  connectionStatus = "Connected";
-  else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
+  if      (connectionDegree === "1st")                 connectionStatus = "Connected";
+  else if (linkedinConnectionStatus === "Pending")     connectionStatus = "Pending";
 
-  /* ---- map fields ---- */
-  const fields = {
-    "LinkedIn Profile URL"     : finalUrl,
-    "First Name"               : firstName,
-    "Last Name"                : lastName,
-    Headline                   : linkedinHeadline || lhHeadline,
-    "Job Title"                : linkedinJobTitle,
-    "Company Name"             : linkedinCompanyName,
-    About                      : linkedinDescription || "",
-    "Job History"              : jobHistory,
-    "LinkedIn Connection Status": connectionStatus,
-    Status                      : "In Process",
-    "Scoring Status"           : scoringStatus,
-    Location                   : locationName || "",
-    "Date Connected"           : safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
-    Email                      : emailAddress || lead.email || lead.workEmail || "",
-    Phone                      : phoneNumber || lead.phone || (lead.phoneNumbers || [])[0]?.value || "",
-    "Refreshed At"             : refreshedAt ? new Date(refreshedAt) : null,
-    "Profile Full JSON"        : JSON.stringify(lead),
-    "Raw Profile Data"         : JSON.stringify(rest),
+  /* ---------- 4.  **Slim JSON** for GPT ------------------------- */
+  const slim = {
+    firstName,
+    lastName,
+    headline   : lhHeadline || linkedinHeadline,
+    summary    : linkedinDescription || "",
+    locationName,
+    experience : Array.isArray(lead.raw?.experience)
+                   ? lead.raw.experience.slice(0, 2)   // only 2 recs
+                   : undefined,
   };
 
-  /* ---- optional AI/scoring fields only when value NOT null ---- */
-  if (finalScore !== null)
-    fields["AI Score"] = Math.round(finalScore * 100) / 100;
+  /* ---------- 5. Airtable field-map ----------------------------- */
+  const fields = {
+    "LinkedIn Profile URL"      : finalUrl,
+    "First Name"                : firstName,
+    "Last Name"                 : lastName,
+    Headline                    : linkedinHeadline || lhHeadline,
+    "Job Title"                 : linkedinJobTitle,
+    "Company Name"              : linkedinCompanyName,
+    About                       : linkedinDescription || "",
+    "Job History"               : jobHistory,
+    "LinkedIn Connection Status": connectionStatus,
+    Status                      : "In Process",
+    "Scoring Status"            : scoringStatus,
+    Location                    : locationName || "",
+    "Date Connected"            : safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
+    Email                       : emailAddress || lead.email || lead.workEmail || "",
+    Phone                       : phoneNumber || lead.phone || (lead.phoneNumbers || [])[0]?.value || "",
+    "Refreshed At"              : refreshedAt ? new Date(refreshedAt) : null,
 
-  if (aiProfileAssessment !== null)
-    fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
+    /* 🔹 store lightweight JSON here */
+    "Profile Full JSON"         : JSON.stringify(slim),
 
-  if (attributeBreakdown !== null)
-    fields["AI Attribute Breakdown"] = attributeBreakdown;
+    /* 🔹 keep the full dump (incl. raw) here for debugging */
+    "Raw Profile Data"          : JSON.stringify(rest),
+  };
 
-  if (auFlag !== null)
-    fields["AU"] = !!auFlag;
+  /* ---- optional AI fields (unchanged) ---- */
+  if (finalScore          !== null) fields["AI Score"]              = Math.round(finalScore * 100) / 100;
+  if (aiProfileAssessment !== null) fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
+  if (attributeBreakdown  !== null) fields["AI Attribute Breakdown"] = attributeBreakdown;
+  if (auFlag              !== null) fields["AU"]                    = !!auFlag;
+  if (aiExcluded          !== null) fields["AI_Excluded"]           = aiExcluded === "Yes";
+  if (excludeDetails      !== null) fields["Exclude Details"]       = excludeDetails;
 
-  if (aiExcluded !== null)
-    fields["AI_Excluded"] = aiExcluded === "Yes";
-
-  if (excludeDetails !== null)
-    fields["Exclude Details"] = excludeDetails;
-
-  /* ---- upsert ---- */
+  /* ---------- 6. upsert (same formula) --------------------------- */
   const filter = `{Profile Key} = "${profileKey}"`;
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
@@ -607,7 +613,7 @@ async function upsertLead(
         : "SalesNav + LH Scrape";
     await base("Leads").create(fields);
   }
-}
+}   // ← END upsertLead
 
 /* ------------------------------------------------------------------
    8)  /api/test-score  (unchanged)
