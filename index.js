@@ -111,9 +111,14 @@ app.get("/health", (_req, res) => res.send("ok"));
 ----------------------------------------------------------------- */
 app.get("/run-batch-score", async (req, res) => {
   const limit = Number(req.query.limit) || 500;
+  console.log(`▶︎ /run-batch-score hit – limit ${limit}`);   // ← always logs
+
   batchScorer.run(limit)
     .then(() => console.log(`Batch scoring (limit ${limit}) complete`))
-    .catch(console.error);
+    .catch(err => {
+      console.error("batchScorer error:", err);
+    });
+
   res.send(`Batch scoring for up to ${limit} leads has started.`);
 });
 
