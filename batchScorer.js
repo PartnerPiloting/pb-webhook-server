@@ -4,7 +4,7 @@
    • Fetches Airtable leads (Scoring Status = "To Be Scored")
    • Splits them into ≤ 80 000-token sub-batches
    • Submits each chunk, retries if the 90 k queue gate is closed
-   • Writes results back to Airtable
+   • Opens each Batch-API “wrapper” before writing results to Airtable
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -139,7 +139,7 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60000));
+    await new Promise(r => setTimeout(r, 60000)); // wait 60 s
   }
 }
 
@@ -165,43 +165,62 @@ async function processOneBatch(records, positives, negatives, prompt) {
   const batchId = await submitBatch(await uploadJSONL(lines));
   console.log(`✔︎ Batch submitted (${records.length} leads) → ${batchId}`);
 
-  let result = await pollBatch(batchId);
+  const result = await pollBatch(batchId);
   if (["expired", "failed"].includes(result.status))
     throw new Error(`Batch ${batchId} failed: ${result.status}`);
 
-  const rows = await downloadResult(result);
-  let updated = 0;
+  const rows    = await downloadResult(result);
+  let updated   = 0;
+  let unparsable = 0;
 
   for (const o of rows) {
-    if (o.error) continue;
-    const idx = ids.indexOf(o.custom_id);
-    if (idx === -1) continue;
+    if (o.error) continue;                       // OpenAI-level error
 
-    let finalPct = o.finalPct;
+    const idx = ids.indexOf(o.custom_id);
+    if (idx === -1) continue;                   // shouldn’t happen
+
+    // -------- unwrap the Batch-API “cup” --------------------------
+    const raw = o.response?.body?.choices?.[0]?.message?.content;
+    if (!raw) { unparsable++; continue; }
+
+    let data;
+    try {
+      data = JSON.parse(raw.trim());
+    } catch (err) {
+      console.warn(`⚠️  Lead ${o.custom_id} – content not JSON`);
+      unparsable++; continue;
+    }
+
+    // -------- compute score if GPT didn’t include finalPct --------
+    let finalPct = data.finalPct;
     if (finalPct === undefined) {
       const { percentage } = computeFinalScore(
-        o.positive_scores || {},
+        data.positive_scores || {},
         positives,
-        o.negative_scores || {},
+        data.negative_scores || {},
         negatives,
-        o.contact_readiness,
-        o.unscored_attributes || []
+        data.contact_readiness,
+        data.unscored_attributes || []
       );
       finalPct = Math.round(percentage * 100) / 100;
     }
 
+    // -------- write back to Airtable ------------------------------
     await base("Leads").update(ids[idx], {
       "AI Score"              : finalPct,
-      "AI Profile Assessment" : o.aiProfileAssessment || "",
-      "AI Attribute Breakdown": o.attribute_breakdown  || "",
+      "AI Profile Assessment" : data.aiProfileAssessment  || data.ai_profile_assessment || "",
+      "AI Attribute Breakdown": data.attribute_breakdown  || data.aiAttributeBreakdown  || "",
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
-      "AI_Excluded"           : (o.ai_excluded || "No") === "Yes",
-      "Exclude Details"       : o.exclude_details || "",
+      "AI_Excluded"           : (data.ai_excluded || "No") === "Yes",
+      "Exclude Details"       : data.exclude_details || "",
     });
     updated++;
   }
+
   console.log(`✔︎ Updated ${updated} Airtable row(s).`);
+  if (unparsable)
+    console.warn(`⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`);
 }
 
 /* ---------- main runner ------------------------------------------ */
