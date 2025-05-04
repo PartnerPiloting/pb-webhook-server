@@ -2,7 +2,7 @@
    batchScorer.js  –  GPT-4o flex-window batch scorer
    -------------------------------------------------------------------
    • Pulls Airtable leads where Scoring Status = “To Be Scored”
-   • Builds JSONL with custom_id + method + body
+   • Builds JSONL   (custom_id + method + url + body)
    • Submits /v1/batches  (completion_window:"24h")
    • Polls until finished; writes AI fields back to Airtable
 =================================================================== */
@@ -27,7 +27,7 @@ const MAX_PER_RUN    = Number(process.env.MAX_BATCH || 500);
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- fetch leads that need scoring ------------------------- */
+/* ---------- fetch leads needing scoring --------------------------- */
 async function fetchCandidates(limit) {
   const out = [];
   await base("Leads")
@@ -45,7 +45,7 @@ async function fetchCandidates(limit) {
   return out;
 }
 
-/* ---------- upload JSONL file ------------------------------------- */
+/* ---------- upload JSONL ------------------------------------------ */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -69,7 +69,7 @@ async function uploadJSONL(lines) {
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
-    endpoint         : "/v1/chat/completions",
+    endpoint         : "/v1/chat/completions",     // envelope endpoint
     completion_window: COMPLETION_WIN
   };
 
@@ -99,7 +99,7 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60_000));   // poll every minute
+    await new Promise(r => setTimeout(r, 60_000));
   }
 }
 
@@ -112,11 +112,12 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- build one JSONL line  (custom_id + method + body) ----- */
+/* ---------- build JSON-L line (custom_id + method + url + body) --- */
 function buildPromptLine(prompt, leadJson, recordId) {
   return JSON.stringify({
-    custom_id: recordId,          // maps result back to Airtable row
+    custom_id: recordId,
     method   : "POST",
+    url      : "/v1/chat/completions",
     body     : {
       model   : MODEL,
       messages: [
@@ -163,9 +164,9 @@ async function run(limit = MAX_PER_RUN) {
   let updated = 0;
 
   for (const o of rows) {
-    if (o.error) continue;                 // skip errored entries
+    if (o.error) continue;
     const idx = ids.indexOf(o.custom_id);
-    if (idx === -1) continue;              // shouldn't happen
+    if (idx === -1) continue;
 
     await base("Leads").update(ids[idx], {
       "AI Score"              : Math.round((o.final_score || o.finalPct || 0) * 100) / 100,
