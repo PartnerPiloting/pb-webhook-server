@@ -1,5 +1,5 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex scorer  (uses the shared parser)
+   batchScorer.js — GPT-4o Flex scorer  (shared parser + reason text)
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -10,10 +10,11 @@ const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a)
 const FormData = require("form-data");
 const Airtable = require("airtable");
 
-const { buildPrompt, slimLead } = require("./promptBuilder");
-const { loadAttributes }        = require("./attributeLoader");
-const { computeFinalScore }     = require("./scoring");
-const { callGptScoring }        = require("./callGptScoring");   // ← shared parser
+const { buildPrompt, slimLead }    = require("./promptBuilder");
+const { loadAttributes }           = require("./attributeLoader");
+const { computeFinalScore }        = require("./scoring");
+const { buildAttributeBreakdown }  = require("./index");          // NEW
+const { callGptScoring }           = require("./callGptScoring"); // shared parser
 
 /* ---------- env & config ---------------------------------------- */
 const {
@@ -187,9 +188,9 @@ async function processOneBatch(records, positives, negatives, prompt) {
     /* recompute finalPct if missing OR NaN */
     if (parsed.finalPct === undefined || Number.isNaN(parsed.finalPct)) {
       const { percentage } = computeFinalScore(
-        parsed.positive_scores || {},
+        parsed.positive_scores,
         positives,
-        parsed.negative_scores || {},
+        parsed.negative_scores,
         negatives,
         parsed.contact_readiness,
         parsed.unscored_attributes || []
@@ -197,10 +198,25 @@ async function processOneBatch(records, positives, negatives, prompt) {
       parsed.finalPct = Math.round(percentage * 100) / 100;
     }
 
+    /* build fallback breakdown if GPT omitted it */
+    const breakdown =
+      parsed.attribute_breakdown ||
+      buildAttributeBreakdown(
+        parsed.positive_scores,
+        positives,
+        parsed.negative_scores,
+        negatives,
+        parsed.unscored_attributes || [],
+        0, 0,
+        parsed.attribute_reasoning || {},
+        false,
+        null
+      );
+
     await base("Leads").update(ids[idx], {
       "AI Score"              : parsed.finalPct,
       "AI Profile Assessment" : parsed.aiProfileAssessment  || "",
-      "AI Attribute Breakdown": parsed.attribute_breakdown  || "",
+      "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
       "AI_Excluded"           : (parsed.ai_excluded || "No") === "Yes",
@@ -229,7 +245,7 @@ async function run(limit = MAX_PER_RUN) {
 
   for (let i = 0; i < chunks.length; i++) {
     const list = chunks[i];
-    console.log(`→ Sub-batch ${i + 1}/${chunks.length} (${list.length} leads)`);
+    console.log(`→ Sub-batch ${i + 1}/${chunks.length} (${list.length} leads)©`);
 
     let done = false;
     while (!done) {
