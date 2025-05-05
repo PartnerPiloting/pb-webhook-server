@@ -1,5 +1,5 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex batch scorer (deterministic, full breakdown)
+   batchScorer.js — GPT-4o Flex scorer  (shared parser + reason text)
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -13,8 +13,8 @@ const Airtable = require("airtable");
 const { buildPrompt, slimLead }   = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
 const { computeFinalScore }       = require("./scoring");
-const { buildAttributeBreakdown } = require("./breakdown");
-const { callGptScoring }          = require("./callGptScoring");
+const { buildAttributeBreakdown } = require("./breakdown");       // ← no circular import
+const { callGptScoring }          = require("./callGptScoring");  // shared parser
 
 /* ---------- env & config ---------------------------------------- */
 const {
@@ -24,7 +24,6 @@ const {
 } = process.env;
 
 const MODEL             = "gpt-4o";
-const TEMPERATURE       = 0;
 const COMPLETION_WINDOW = "24h";
 const MAX_PER_RUN       = Number(process.env.MAX_BATCH || 500);
 
@@ -70,9 +69,8 @@ function buildPromptLine(prompt, leadJson, recId) {
     method   : "POST",
     url      : "/v1/chat/completions",
     body     : {
-      model       : MODEL,
-      temperature : TEMPERATURE,
-      messages    : [
+      model   : MODEL,
+      messages: [
         { role: "system", content: prompt },
         { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` }
       ]
@@ -130,9 +128,7 @@ async function pollBatch(id) {
     }).then(r => r.json());
 
     poll++;
-    console.log(
-      `  ↻ Poll #${poll} – status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`
-    );
+    console.log(`  ↻ Poll #${poll} – status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`);
 
     if (["failed", "expired"].includes(j.status))
       console.error("⨯ Batch failed details:", JSON.stringify(j, null, 2));
@@ -189,17 +185,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
       unparsable++; continue;
     }
 
-    /* ----- compute rawScore (positives − negatives) -------------- */
-    const rawScore =
-      Object.values(parsed.positive_scores || {}).reduce((s, v) => s + v, 0) +
-      Object.values(parsed.negative_scores || {}).reduce((s, v) => {
-        const n = typeof v === "number" ? v : v?.score ?? 0;
-        return s + n;
-      }, 0);
-
-    /* ----- always recompute percentage --------------------------- */
-    delete parsed.finalPct;
-
+    /* -------- ALWAYS compute our own finalPct -------------------- */
     const { percentage } = computeFinalScore(
       parsed.positive_scores,
       positives,
@@ -210,19 +196,20 @@ async function processOneBatch(records, positives, negatives, prompt) {
     );
     parsed.finalPct = Math.round(percentage * 100) / 100;
 
-    /* build breakdown with real rawScore ------------------------- */
-    const breakdown = buildAttributeBreakdown(
-      parsed.positive_scores,
-      positives,
-      parsed.negative_scores,
-      negatives,
-      parsed.unscored_attributes || [],
-      rawScore,
-      0,
-      parsed.attribute_reasoning || {},
-      parsed.disqualified,
-      parsed.disqualifyReason
-    );
+    /* -------- build fallback breakdown if GPT omitted it --------- */
+    const breakdown =
+      parsed.attribute_breakdown ||
+      buildAttributeBreakdown(
+        parsed.positive_scores,
+        positives,
+        parsed.negative_scores,
+        negatives,
+        parsed.unscored_attributes || [],
+        0, 0,
+        parsed.attribute_reasoning || {},
+        false,
+        null
+      );
 
     await base("Leads").update(ids[idx], {
       "AI Score"              : parsed.finalPct,
@@ -238,9 +225,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
 
   console.log(`✔︎ Updated ${updated} Airtable row(s).`);
   if (unparsable)
-    console.warn(
-      `⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`
-    );
+    console.warn(`⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`);
 }
 
 /* ---------- main runner ------------------------------------------ */
@@ -248,16 +233,13 @@ async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
 
   const recs = await fetchCandidates(limit);
-  if (!recs.length) {
-    console.log("No records need scoring – exit.");
-    return;
-  }
+  if (!recs.length) { console.log("No records need scoring – exit."); return; }
 
   const prompt                   = await buildPrompt();
   const { positives, negatives } = await loadAttributes();
 
   const chunks = chunkByTokens(recs);
-  console.log(`Scoring ${recs.length} leads in ${chunks.length} суб-батч(es)…`);
+  console.log(`Scoring ${recs.length} leads in ${chunks.length} sub-batch(es)…`);
 
   for (let i = 0; i < chunks.length; i++) {
     const list = chunks[i];
