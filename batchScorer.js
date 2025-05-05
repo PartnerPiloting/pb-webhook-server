@@ -1,12 +1,12 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex scorer with auto token-chunking
+   batchScorer.js — GPT-4o Flex scorer  (uses the same parser as manual)
    -------------------------------------------------------------------
    • Fetches Airtable leads (Scoring Status = "To Be Scored")
    • Splits them into ≤ 80 000-token sub-batches
    • Submits each chunk, retries if the 90 k queue gate is closed
    • Downloads the output, unwraps the Batch-API envelope,
-     tolerates minor key-name variations, and writes results to Airtable
-     — now also logs the first 300 chars of every GPT reply
+     parses replies with **callGptScoring()** (same as manual route),
+     then writes results to Airtable
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -20,6 +20,7 @@ const Airtable = require("airtable");
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { loadAttributes }        = require("./attributeLoader");
 const { computeFinalScore }     = require("./scoring");
+const { callGptScoring }        = require("./callGptScoring");   // ← same parser used by /score-one-lead
 
 /* ------------------------------------------------------------------
    env & config
@@ -197,7 +198,6 @@ async function processOneBatch(records, positives, negatives, prompt) {
 
   for (const o of rows) {
     if (o.error) continue;                 // OpenAI-level error
-
     const idx = ids.indexOf(o.custom_id);
     if (idx === -1) continue;              // shouldn’t happen
 
@@ -205,49 +205,37 @@ async function processOneBatch(records, positives, negatives, prompt) {
     const raw = o.response?.body?.choices?.[0]?.message?.content;
     if (!raw) { unparsable++; continue; }
 
-    /*  NEW: log the first 300 chars so we can see field names  */
-    console.log(`RAW ${o.custom_id}:`, raw.slice(0, 300));
-
-    let data;
+    /*  Parse with the same logic the manual route uses  */
+    let parsed;
     try {
-      data = JSON.parse(raw.trim());
+      parsed = callGptScoring(raw);
     } catch (err) {
-      console.warn(`⚠️  Lead ${o.custom_id} – reply not JSON`);
+      console.warn(`⚠️  Lead ${o.custom_id} – parser threw: ${err.message}`);
       unparsable++; continue;
     }
 
-    /* -------- tolerate minor key-name variations ----------------- */
-    const aiScore   = data.finalPct            ?? data.final_pct;
-    const profile   = data.aiProfileAssessment ?? data.ai_profile_assessment;
-    const breakdown = data.attribute_breakdown ?? data.aiAttributeBreakdown;
-
-    if (aiScore === undefined) {
-      console.warn(`⚠️  ${o.custom_id} – parser still saw no score`);
-    }
-
-    /* -------- fallback: recompute score if GPT omitted it -------- */
-    let finalPct = aiScore;
-    if (finalPct === undefined) {
+    /*  If GPT omitted finalPct, compute it here  */
+    if (parsed.finalPct === undefined) {
       const { percentage } = computeFinalScore(
-        data.positive_scores || {},
+        parsed.positive_scores || parsed.positives || {},
         positives,
-        data.negative_scores || {},
+        parsed.negative_scores || parsed.negatives || {},
         negatives,
-        data.contact_readiness,
-        data.unscored_attributes || []
+        parsed.contact_readiness,
+        parsed.unscored_attributes || []
       );
-      finalPct = Math.round(percentage * 100) / 100;
+      parsed.finalPct = Math.round(percentage * 100) / 100;
     }
 
     /* -------- write back to Airtable ----------------------------- */
     await base("Leads").update(ids[idx], {
-      "AI Score"              : finalPct,
-      "AI Profile Assessment" : profile   || "",
-      "AI Attribute Breakdown": breakdown || "",
+      "AI Score"              : parsed.finalPct,
+      "AI Profile Assessment" : parsed.aiProfileAssessment  || "",
+      "AI Attribute Breakdown": parsed.attribute_breakdown  || "",
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
-      "AI_Excluded"           : (data.ai_excluded || "No") === "Yes",
-      "Exclude Details"       : data.exclude_details || "",
+      "AI_Excluded"           : (parsed.ai_excluded || "No") === "Yes",
+      "Exclude Details"       : parsed.exclude_details || "",
     });
     updated++;
   }
