@@ -24,7 +24,7 @@ const {
 } = process.env;
 
 const MODEL             = "gpt-4o";
-const TEMPERATURE       = 0;          // ← deterministic output
+const TEMPERATURE       = 0;
 const COMPLETION_WINDOW = "24h";
 const MAX_PER_RUN       = Number(process.env.MAX_BATCH || 500);
 
@@ -71,7 +71,7 @@ function buildPromptLine(prompt, leadJson, recId) {
     url      : "/v1/chat/completions",
     body     : {
       model       : MODEL,
-      temperature : TEMPERATURE,                    // ← deterministic
+      temperature : TEMPERATURE,
       messages    : [
         { role: "system", content: prompt },
         { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` }
@@ -197,7 +197,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
         return s + n;
       }, 0);
 
-    /* force recompute percentage from rawScore -------------------- */
+    /* ----- always recompute percentage --------------------------- */
     delete parsed.finalPct;
 
     const { percentage } = computeFinalScore(
@@ -217,7 +217,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
       parsed.negative_scores,
       negatives,
       parsed.unscored_attributes || [],
-      rawScore,                // real numerator
+      rawScore,
       0,
       parsed.attribute_reasoning || {},
       parsed.disqualified,
@@ -238,7 +238,9 @@ async function processOneBatch(records, positives, negatives, prompt) {
 
   console.log(`✔︎ Updated ${updated} Airtable row(s).`);
   if (unparsable)
-    console.warn(`⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`);
+    console.warn(
+      `⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`
+    );
 }
 
 /* ---------- main runner ------------------------------------------ */
@@ -246,13 +248,16 @@ async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
 
   const recs = await fetchCandidates(limit);
-  if (!recs.length) { console.log("No records need scoring – exit."); return; }
+  if (!recs.length) {
+    console.log("No records need scoring – exit.");
+    return;
+  }
 
   const prompt                   = await buildPrompt();
   const { positives, negatives } = await loadAttributes();
 
   const chunks = chunkByTokens(recs);
-  console.log(`Scoring ${recs.length} leads in ${chunks.length} sub-batch(es)…`);
+  console.log(`Scoring ${recs.length} leads in ${chunks.length} суб-батч(es)…`);
 
   for (let i = 0; i < chunks.length; i++) {
     const list = chunks[i];

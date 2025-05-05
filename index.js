@@ -139,6 +139,9 @@ app.get("/score-lead", async (req, res) => {
     const raw = await scoreLeadNow(fullLead);
     const gpt = await callGptScoring(raw);
 
+    // NEW: ignore GPT’s own percentage and force a fresh calculation
+    delete gpt.finalPct;
+
     const { positives, negatives } = await loadAttributes();
 
     const {
