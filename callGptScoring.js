@@ -1,5 +1,5 @@
 /* ===================================================================
-   callGptScoring.js – shared parser  (with TEMP debug print)
+   callGptScoring.js – single shared parser for BOTH routes
 =================================================================== */
 
 function stripToJson(text = "") {
@@ -14,10 +14,17 @@ function stripToJson(text = "") {
     const nums = {}, why = {};
     for (const [k, v] of Object.entries(map)) {
       if (typeof v === "object" && v !== null) {
-        nums[k] = Object.values(v).find(n => typeof n === "number") ?? 0;
-        why[k]  = v.reason ?? v.explanation ?? "";
+        /* -------- NUMBER (score / penalty) ----------------- */
+        if ("triggered" in v && !v.triggered) {
+          nums[k] = 0;                         // not triggered ➜ no penalty
+        } else {
+          nums[k] = Object.values(v).find(n => typeof n === "number") ?? 0;
+        }
+        /* -------- REASON (first string found) -------------- */
+        const firstStr = Object.values(v).find(x => typeof x === "string");
+        why[k] = firstStr ?? "";
       } else {
-        nums[k] = v;
+        nums[k] = v;            // GPT already gave a plain number
       }
     }
     return { nums, why };
@@ -25,13 +32,6 @@ function stripToJson(text = "") {
   
   function callGptScoring(rawText = "") {
     const data = stripToJson(rawText);
-  
-    /* ---------- TEMP DEBUG ---------------------------------------- */
-    if (process.env.DEBUG_PARSE === "true") {
-      const rawPos = data.positive_scores ?? data.positives ?? {};
-      console.log("DBG-RAW-POS", JSON.stringify(rawPos, null, 2));
-    }
-    /* -------------------------------------------------------------- */
   
     /* normalise top-level keys */
     data.finalPct            = data.finalPct            ?? data.final_pct;
@@ -56,7 +56,7 @@ function stripToJson(text = "") {
     data.contact_readiness  = data.contact_readiness  ?? data.contactReadiness;
     data.unscored_attributes= data.unscored_attributes?? data.unscoredAttributes;
   
-    return data;
+    return data;          // finalPct left as-is; routes recompute if needed
   }
   
   module.exports = { callGptScoring };
