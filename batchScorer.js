@@ -6,6 +6,7 @@
    • Submits each chunk, retries if the 90 k queue gate is closed
    • Downloads the output, unwraps the Batch-API envelope,
      tolerates minor key-name variations, and writes results to Airtable
+     — now also logs the first 300 chars of every GPT reply
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -203,6 +204,9 @@ async function processOneBatch(records, positives, negatives, prompt) {
     /* -------- unwrap the Batch-API envelope ---------------------- */
     const raw = o.response?.body?.choices?.[0]?.message?.content;
     if (!raw) { unparsable++; continue; }
+
+    /*  NEW: log the first 300 chars so we can see field names  */
+    console.log(`RAW ${o.custom_id}:`, raw.slice(0, 300));
 
     let data;
     try {
