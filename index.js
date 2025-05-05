@@ -15,15 +15,16 @@ const Airtable   = require("airtable");
 const fs         = require("fs");
 const fetch      = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 const { buildPrompt }   = require("./promptBuilder");
-const { loadAttributes } = require("./attributeLoader");        // NEW – dynamic dicts
-const { callGptScoring } = require("./callGptScoring");         // shared GPT scorer
+const { loadAttributes } = require("./attributeLoader");        // dynamic dicts
+const { callGptScoring } = require("./callGptScoring");         // GPT scorer
 const { buildAttributeBreakdown } = require("./breakdown");     // shared breakdown
+const { scoreLeadNow } = require("./singleScorer");             // NEW single-lead scorer
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue      = require("./queueDispatcher");
-const batchScorer     = require("./batchScorer");               // single import
+const batchScorer     = require("./batchScorer");               // batch scorer
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -133,13 +134,12 @@ app.get("/score-lead", async (req, res) => {
 
     const record   = await base("Leads").find(id);
     const fullLead = JSON.parse(record.get("Profile Full JSON") || "{}");
-    const slimLead = require("./promptBuilder").slimLead(fullLead);
 
-    const sysPrompt                = await buildPrompt();
-    const { positives, negatives } = await loadAttributes();      // NEW
+    // NEW: use shared singleScorer + callGptScoring
+    const raw = await scoreLeadNow(fullLead);
+    const gpt = await callGptScoring(raw);
 
-    const gpt = await callGptScoring(sysPrompt, slimLead);
-    console.log("GPT finalPct:", gpt.finalPct);
+    const { positives, negatives } = await loadAttributes();
 
     const {
       positive_scores     = {},
@@ -210,7 +210,7 @@ mountLatestLead(app, base);
 mountUpdateLead(app, base);
 
 /* ------------------------------------------------------------------
-   3)  computeFinalScore
+   3)  computeFinalScore  (unchanged)
 ------------------------------------------------------------------*/
 function computeFinalScore(
   positive_scores,
@@ -289,7 +289,7 @@ function computeFinalScore(
 }
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & helpers (legacy parser – retained for safety)
+   4)  getScoringData & helpers  (legacy parser – retained for safety)
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const md = await buildPrompt();
@@ -491,7 +491,7 @@ app.post("/api/test-score", async (req, res) => {
     const lead = req.body;
 
     const sysPrompt                = await buildPrompt();
-    const { positives, negatives } = await loadAttributes();    // NEW
+    const { positives, negatives } = await loadAttributes();
 
     const gpt = await callGptScoring(sysPrompt, lead);
     console.log("GPT finalPct:", gpt.finalPct);
@@ -540,8 +540,8 @@ app.post("/api/test-score", async (req, res) => {
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
     const leads = Array.isArray(req.body) ? req.body : [];
-    const { positives, negatives } = await loadAttributes();    // NEW
-    const passMark = 0;                                         // same threshold
+    const { positives, negatives } = await loadAttributes();
+    const passMark = 0;
     let processed = 0;
 
     for (const lead of leads) {
@@ -687,7 +687,7 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
     const raw = Array.isArray(req.body) ? req.body : [req.body];
-    const { positives, negatives } = await loadAttributes();    // NEW
+    const { positives, negatives } = await loadAttributes();
     let processed = 0;
 
     for (const lh of raw) {
