@@ -1,5 +1,5 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex scorer  (now uses the shared parser)
+   batchScorer.js — GPT-4o Flex scorer  (uses the shared parser)
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -184,7 +184,8 @@ async function processOneBatch(records, positives, negatives, prompt) {
       unparsable++; continue;
     }
 
-    if (parsed.finalPct === undefined) {
+    /* recompute finalPct if missing OR NaN */
+    if (parsed.finalPct === undefined || Number.isNaN(parsed.finalPct)) {
       const { percentage } = computeFinalScore(
         parsed.positive_scores || {},
         positives,
