@@ -2,8 +2,8 @@
   LinkedIn → Airtable  (Scoring + 1st-degree sync)
   --------------------------------------------------------------
   • /lh-webhook/upsertLeadOnly sets:
-        - LinkedIn Connection Status = "Candidate"
-        - Scoring Status            = "To Be Scored"
+        – LinkedIn Connection Status = "Candidate"
+        – Scoring Status            = "To Be Scored"
   • upsertLead() defaults new 2nd-degree contacts to "Candidate",
     writes Scoring Status, and now also sets
         Status = "In Process"
@@ -14,17 +14,17 @@ const { Configuration, OpenAIApi } = require("openai");
 const Airtable   = require("airtable");
 const fs         = require("fs");
 const fetch      = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
-const { buildPrompt }            = require("./promptBuilder");
-const { loadAttributes }         = require("./attributeLoader");     // dynamic dicts
-const { callGptScoring }         = require("./callGptScoring");      // GPT scorer
-const { buildAttributeBreakdown } = require("./breakdown");          // shared breakdown
-const { scoreLeadNow }           = require("./singleScorer");        // single-lead scorer
+const { buildPrompt }             = require("./promptBuilder");
+const { loadAttributes }          = require("./attributeLoader");   // dynamic dicts
+const { callGptScoring }          = require("./callGptScoring");    // GPT scorer
+const { buildAttributeBreakdown } = require("./breakdown");         // shared breakdown
+const { scoreLeadNow }            = require("./singleScorer");      // single-lead scorer
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue      = require("./queueDispatcher");
-const batchScorer     = require("./batchScorer");                    // batch scorer
+const batchScorer     = require("./batchScorer");                   // batch scorer
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -139,7 +139,7 @@ app.get("/score-lead", async (req, res) => {
     const raw    = await scoreLeadNow(fullLead);
     const parsed = await callGptScoring(raw);
 
-    // ignore GPT’s own percentage and force fresh calculation
+    // Ignore GPT’s own percentage and force recompute
     delete parsed.finalPct;
 
     const { positives, negatives } = await loadAttributes();
@@ -173,7 +173,7 @@ app.get("/score-lead", async (req, res) => {
       );
       finalPct = Math.round(percentage * 100) / 100;
     }
-    parsed.finalPct = finalPct;        // keep fresh value in object
+    parsed.finalPct = finalPct;             // keep fresh value in object
 
     const breakdown = buildAttributeBreakdown(
       positive_scores,
@@ -189,7 +189,7 @@ app.get("/score-lead", async (req, res) => {
     );
 
     await base("Leads").update(id, {
-      "AI Score"              : parsed.finalPct,       // ← replacement line
+      "AI Score"              : parsed.finalPct,        // fresh %
       "AI Profile Assessment" : parsed.aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
@@ -362,7 +362,7 @@ function parseMarkdownTables(markdown) {
 }
 
 /* ------------------------------------------------------------------
-   5)  upsertLead  (AI fields written only if argument ≠ null)
+   5)  upsertLead  (writes AI fields only if arg ≠ null)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -497,7 +497,7 @@ async function upsertLead(
 }   // ← END upsertLead
 
 /* ------------------------------------------------------------------
-   6)  /api/test-score  (returns JSON for a single lead payload)
+   6)  /api/test-score  (returns JSON but doesn’t write Airtable)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
   try {
@@ -569,8 +569,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 
     for (const lead of leads) {
       const sysPrompt = await buildPrompt();
-      const parsed    = await callGptScoring(sysPrompt, lead);
-      console.log("GPT finalPct:", parsed.finalPct);
+      const gpt       = await callGptScoring(sysPrompt, lead);
+      console.log("GPT finalPct:", gpt.finalPct);
 
       const {
         positive_scores     = {},
@@ -579,9 +579,9 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes = [],
         aiProfileAssessment = "",
         attribute_reasoning = {},
-      } = parsed;
+      } = gpt;
 
-      if (parsed.contact_readiness)
+      if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
       /* -------- compute rawScore (pos – neg) -------- */
@@ -601,7 +601,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes
       );
       const finalPct = Math.round(percentage * 100) / 100;
-      parsed.finalPct = finalPct;
+      gpt.finalPct   = finalPct;
 
       if (finalPct < passMark) continue;
 
@@ -735,7 +735,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 
       const exp      = Array.isArray(lh.experience) ? lh.experience : [];
       const current  = exp[0] || {};
-      const previous = exp[1] || {};
+      const_previous = exp[1] || {};
 
       const numericDist =
         (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
@@ -787,8 +787,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       };
 
       const sysPrompt = await buildPrompt();
-      const parsed    = await callGptScoring(sysPrompt, lead);
-      console.log("GPT finalPct:", parsed.finalPct);
+      const gpt       = await callGptScoring(sysPrompt, lead);
+      console.log("GPT finalPct:", gpt.finalPct);
 
       const {
         positive_scores     = {},
@@ -797,9 +797,9 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes = [],
         aiProfileAssessment = "",
         attribute_reasoning = {},
-      } = parsed;
+      } = gpt;
 
-      if (parsed.contact_readiness)
+      if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
       /* -------- compute rawScore (pos – neg) -------- */
@@ -819,7 +819,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes
       );
       const finalPct = Math.round(percentage * 100) / 100;
-      parsed.finalPct = finalPct;
+      gpt.finalPct = finalPct;
 
       const auFlag        = isAustralian(lead.locationName || "");
       const passesScore   = finalPct >= MIN_SCORE;

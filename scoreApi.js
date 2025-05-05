@@ -1,88 +1,104 @@
-/***************************************************************
-  scoreApi.js  –  POST /calcScore → updates AI Score on a Lead
-  Expects body: { id, positive_scores, negative_scores,
-                  contact_readiness?, unscored_attributes? }
-***************************************************************/
+/* ===================================================================
+   scoreApi.js – small helper API used by front-end tests
+   -------------------------------------------------------------------
+   • POST /api/test-score   (request body = raw lead JSON)
+=================================================================== */
 require("dotenv").config();
 const express  = require("express");
-const Airtable = require("airtable");           // inherits global config
-const { computeFinalScore } = require("./scoring");
+const Airtable = require("airtable");
+const {
+  buildPrompt,
+  slimLead
+} = require("./promptBuilder");
+const {
+  loadAttributes
+} = require("./attributeLoader");
+const {
+  computeFinalScore
+} = require("./scoring");
+const {
+  buildAttributeBreakdown
+} = require("./breakdown");
+const {
+  callGptScoring
+} = require("./callGptScoring");
+const {
+  scoreLeadNow
+} = require("./singleScorer");
 
-module.exports = function (app) {
-  app.post("/calcScore", async (req, res) => {
-    try {
-      /* --------------------------------------------------------
-         1. Validate body
-      -------------------------------------------------------- */
-      const {
-        id,
-        positive_scores = {},
-        negative_scores = {},
-        contact_readiness = false,
-        unscored_attributes = [],
-      } = req.body || {};
+const router = express.Router();
 
-      if (!id) {
-        return res.status(400).json({ error: "Body must include { id }" });
-      }
-
-      /* --------------------------------------------------------
-         2. Table handles
-      -------------------------------------------------------- */
-      const base  = Airtable.base(process.env.AIRTABLE_BASE_ID);
-      const leads = base("Leads");
-
-      /* --------------------------------------------------------
-         3. Build dictionaries + compute total
-      -------------------------------------------------------- */
-      const { pos, neg, meta } = await getDictionaries(base);
-      const total = computeFinalScore(
-        positive_scores,
-        pos,
-        negative_scores,
-        neg,
-        contact_readiness,
-        unscored_attributes
-      );
-
-      /* --------------------------------------------------------
-         4. Persist results (single-record update)
-      -------------------------------------------------------- */
-      await leads.update(id, {
-        "AI Score":               total,
-        "AI Attribute Breakdown": JSON.stringify({
-          positive_scores,
-          negative_scores,
-          contact_readiness,
-          unscored_attributes,
-        }),
-      });
-
-      console.log("calcScore ✓", id, "→", total, "%");
-      res.json({ id, total });
-    } catch (err) {
-      console.error("calcScore ❌", err);
-      res.status(500).json({ error: err.message || "Server error" });
-    }
-  });
-};
+/* ---------- Airtable connection ---------------------------------- */
+Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
 /* ------------------------------------------------------------------
-   helper: getDictionaries – fetch JSON blobs from row 0
+   POST /api/test-score
 ------------------------------------------------------------------*/
-async function getDictionaries(base) {
-  const records = await base("Scoring Attributes")   // table name exact
-    .select({ maxRecords: 1 })
-    .firstPage();
+router.post("/api/test-score", async (req, res) => {
+  try {
+    const lead = req.body || {};
 
-  if (!records.length) {
-    throw new Error("Scoring Attributes table empty — cannot build dictionaries");
+    /* --- build prompt & call GPT -------------------------------- */
+    const sysPrompt                = await buildPrompt();
+    const { positives, negatives } = await loadAttributes();
+
+    // use the same deterministic path as /score-lead
+    const raw    = await scoreLeadNow(lead);
+    const parsed = callGptScoring(raw);
+
+    /* --- always recompute percentage ---------------------------- */
+    delete parsed.finalPct;
+
+    const { percentage } = computeFinalScore(
+      parsed.positive_scores,
+      positives,
+      parsed.negative_scores,
+      negatives,
+      parsed.contact_readiness,
+      parsed.unscored_attributes || []
+    );
+    parsed.finalPct = Math.round(percentage * 100) / 100;
+
+    /* --- build human-readable breakdown ------------------------- */
+    const breakdown = buildAttributeBreakdown(
+      parsed.positive_scores,
+      positives,
+      parsed.negative_scores,
+      negatives,
+      parsed.unscored_attributes || [],
+      Object.values(parsed.positive_scores).reduce((s, v) => s + v, 0) +
+        Object.values(parsed.negative_scores).reduce((s, v) => {
+          const n = typeof v === "number" ? v : v?.score ?? 0;
+          return s + n;
+        }, 0),
+      0,
+      parsed.attribute_reasoning || {},
+      parsed.disqualified,
+      parsed.disqualifyReason
+    );
+
+    /* --- OPTIONAL: write to Airtable if recordId provided ------- */
+    if (req.query.recordId) {
+      await base("Leads").update(req.query.recordId, {
+        // --------------- FIXED LINE ------------------------------
+        "AI Score"              : parsed.finalPct,  // ← now correct %
+        //----------------------------------------------------------
+        "AI Profile Assessment" : parsed.aiProfileAssessment,
+        "AI Attribute Breakdown": breakdown,
+      });
+    }
+
+    /* --- respond ------------------------------------------------ */
+    res.json({
+      finalPct: parsed.finalPct,   // returns 60.2 %, not 100
+      breakdown,
+      assessment: parsed.aiProfileAssessment
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
+});
 
-  const row = records[0];
-  return {
-    pos:  JSON.parse(row.get("Positive Dict")   || "{}"),
-    neg:  JSON.parse(row.get("Negative Dict")   || "{}"),
-    meta: JSON.parse(row.get("Global Settings") || "{}"),
-  };
-}
+module.exports = (app) => app.use(router);
