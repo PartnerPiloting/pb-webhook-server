@@ -14,17 +14,17 @@ const { Configuration, OpenAIApi } = require("openai");
 const Airtable   = require("airtable");
 const fs         = require("fs");
 const fetch      = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
-const { buildPrompt }   = require("./promptBuilder");
-const { loadAttributes } = require("./attributeLoader");        // dynamic dicts
-const { callGptScoring } = require("./callGptScoring");         // GPT scorer
-const { buildAttributeBreakdown } = require("./breakdown");     // shared breakdown
-const { scoreLeadNow } = require("./singleScorer");             // single-lead scorer
+const { buildPrompt }            = require("./promptBuilder");
+const { loadAttributes }         = require("./attributeLoader");     // dynamic dicts
+const { callGptScoring }         = require("./callGptScoring");      // GPT scorer
+const { buildAttributeBreakdown } = require("./breakdown");          // shared breakdown
+const { scoreLeadNow }           = require("./singleScorer");        // single-lead scorer
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue      = require("./queueDispatcher");
-const batchScorer     = require("./batchScorer");               // batch scorer
+const batchScorer     = require("./batchScorer");                    // batch scorer
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -90,7 +90,7 @@ function getLastTwoOrgs(lh = {}) {
 }
 
 /* ------------------------------------------------------------------
-   1) Globals & Express
+   1)  Globals & Express
 ------------------------------------------------------------------*/
 const TEST_MODE          = process.env.TEST_MODE === "true";
 const MIN_SCORE          = Number(process.env.MIN_SCORE || 0);
@@ -135,11 +135,11 @@ app.get("/score-lead", async (req, res) => {
     const record   = await base("Leads").find(id);
     const fullLead = JSON.parse(record.get("Profile Full JSON") || "{}");
 
-    // shared singleScorer + GPT
+    /* ---------- GPT scoring ---------- */
     const raw    = await scoreLeadNow(fullLead);
     const parsed = await callGptScoring(raw);
 
-    // NEW: ignore GPT’s own percentage and force a fresh calculation
+    // ignore GPT’s own percentage and force fresh calculation
     delete parsed.finalPct;
 
     const { positives, negatives } = await loadAttributes();
@@ -153,7 +153,7 @@ app.get("/score-lead", async (req, res) => {
       attribute_reasoning = {},
     } = parsed;
 
-    /* -------- compute rawScore (pos – neg) -------- */
+    /* ---------- compute rawScore (pos – neg) ---------- */
     const rawScore =
       Object.values(positive_scores).reduce((s, v) => s + v, 0) +
       Object.values(negative_scores).reduce((s, v) => {
@@ -173,7 +173,7 @@ app.get("/score-lead", async (req, res) => {
       );
       finalPct = Math.round(percentage * 100) / 100;
     }
-    parsed.finalPct = finalPct;               // keep fresh % on the object
+    parsed.finalPct = finalPct;        // keep fresh value in object
 
     const breakdown = buildAttributeBreakdown(
       positive_scores,
@@ -189,7 +189,7 @@ app.get("/score-lead", async (req, res) => {
     );
 
     await base("Leads").update(id, {
-      "AI Score"              : parsed.finalPct,          // ← fresh value
+      "AI Score"              : parsed.finalPct,       // ← replacement line
       "AI Profile Assessment" : parsed.aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
