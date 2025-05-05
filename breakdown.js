@@ -1,11 +1,17 @@
 /* ===================================================================
-   breakdown.js — human-readable markdown
+   breakdown.js — human-readable markdown breakdown
    -------------------------------------------------------------------
-   • Works whether negative_scores are numbers  *or*  { score, reason } objects
+   • Always lists EVERY attribute in alphabetical order
+   • Shows 0 / max (positives) or 0 (negatives) when GPT gave no score
+   • Includes GPT reason or fallback message
+   • Appends Total line with rawScore / denominator ⇒ % and qual status
 =================================================================== */
-function fmtOne(id, label, score, max, reason) {
-    const str = max ? `${score} / ${max}` : `${score}`;
-    return `- **${id} (${label})**: ${str}\n  ↳ ${reason || "_No reason provided_"}\n`;
+function fmtPos(id, label, score, max, reason) {
+    const scoreStr = `${score} / ${max}`;
+    return `- **${id} (${label})**: ${scoreStr}\n  ↳ ${reason}\n`;
+  }
+  function fmtNeg(id, label, score, reason) {
+    return `- **${id} (${label})**: ${score}\n  ↳ ${reason}\n`;
   }
   
   function buildAttributeBreakdown(
@@ -14,56 +20,57 @@ function fmtOne(id, label, score, max, reason) {
     negative_scores,
     negativesDict,
     unscored = [],
-    _pct = 0,
-    _dummy = 0,
+    finalPct = 0,
+    rawScore = 0,
     attribute_reasoning = {},
-    _includeReadiness = false,
-    _readiness = null
+    disqualified = false,
+    disqualifyReason = null
   ) {
     let out = "";
   
     /* ---------- positives ----------------------------------------- */
     out += "**Positive Attributes**:\n";
-    for (const id of Object.keys(positive_scores).sort()) {
-      const def    = positivesDict[id] || {};
-      const max    = def.maxPoints     || null;
-      const label  = def.label         || id;
-      const score  = positive_scores[id];
-      const reason = attribute_reasoning[id] || "";
-      out += fmtOne(id, label, score, max, reason);
+    for (const id of Object.keys(positivesDict).sort()) {
+      const def    = positivesDict[id];
+      const max    = def.maxPoints;
+      const score  =
+        typeof positive_scores[id] === "number" ? positive_scores[id] : 0;
+      const reason =
+        attribute_reasoning[id] ||
+        (def.notes ? `_GPT could not score this attribute_` : "");
+      out += fmtPos(id, def.label, score, max, reason);
     }
   
     /* ---------- negatives ----------------------------------------- */
-    const negIds = Object.keys(negative_scores)
-      .filter((id) => {
-        const entry = negative_scores[id];
-        return typeof entry === "number"
-          ? entry < 0
-          : (entry?.score ?? 0) < 0;
-      })
-      .sort();
-  
-    if (negIds.length) {
-      out += "\n**Negative Attributes**:\n";
-      for (const id of negIds) {
-        const def    = negativesDict[id] || {};
-        const max    = def.maxPoints     || null;
-        const label  = def.label         || id;
-        const entry  = negative_scores[id];
-        const score  =
-          typeof entry === "number" ? entry : entry.score ?? 0;
-        const reason =
-          (typeof entry === "object" ? entry.reason : null) ||
-          attribute_reasoning[id] ||
-          "";
-        out += fmtOne(id, label, score, max, reason);
-      }
+    out += "\n**Negative Attributes**:\n";
+    for (const id of Object.keys(negativesDict).sort()) {
+      const def    = negativesDict[id];
+      const entry  = negative_scores[id];
+      const score  =
+        typeof entry === "number"
+          ? entry
+          : typeof entry === "object" && entry !== null
+          ? entry.score ?? 0
+          : 0;
+      const reason =
+        (typeof entry === "object" ? entry.reason : null) ||
+        attribute_reasoning[id] ||
+        "_GPT could not score this attribute_";
+      out += fmtNeg(id, def.label, score, reason);
     }
   
-    /* ---------- un-scored ----------------------------------------- */
-    if (unscored.length) {
-      out += "\n**Unscored / Missing Attributes**:\n";
-      out += unscored.sort().map((id) => `- ${id}`).join("\n") + "\n";
+    /* ---------- total line ---------------------------------------- */
+    const line =
+      rawScore !== null && rawScore !== undefined
+        ? `**Total:** ${rawScore} / ${positivesDict.__denominator} ⇒ ${finalPct.toFixed(
+            1
+          )} %`
+        : `**Total:** ${finalPct.toFixed(1)} %`;
+  
+    if (disqualified && disqualifyReason) {
+      out += `\n\n${line} — Disqualified: ${disqualifyReason}`;
+    } else {
+      out += `\n\n${line} — Qualified`;
     }
   
     return out.trim();
