@@ -1,108 +1,93 @@
 /* ===================================================================
-   callGptScoring.js – robust GPT-response parser  (with DBG-NEG dump)
+   callGptScoring.js — parse GPT-4o scoring reply
    -------------------------------------------------------------------
-   • Finds the first balanced {...} block even if GPT adds text after
-   • If DEBUG_PARSE=true, prints the raw negatives map
+   • Keeps “reason” text for every attribute
+   • Filters negative_scores so only attributes whose score < 0
+     appear (therefore only truly negative items penalise)
 =================================================================== */
-
-/* ------------------------------------------------------------------
-   stripToJson  –  extract the first balanced { … } block
------------------------------------------------------------------- */
-function stripToJson(txt = "") {
-    const start = txt.indexOf("{");
-    if (start === -1) throw new Error("No '{' found in GPT response");
+function safeJsonParse(str) {
+    try { return JSON.parse(str); } catch (_) { return null; }
+  }
   
-    let depth = 0;
-    for (let i = start; i < txt.length; i++) {
-      const ch = txt[i];
-      if (ch === "{") depth++;
-      else if (ch === "}") {
-        depth--;
-        if (depth === 0) {
-          // Found the matching closing brace for the first '{'
-          const slice = txt.slice(start, i + 1);
-          try {
-            return JSON.parse(slice.trim());
-          } catch (err) {
-            // Fall through to throw at end
-          }
-          break;
+  /* ---------- extract a JSON object from a chat response ------------ */
+  function extractJson(raw) {
+    // 1. If the whole thing is JSON, great.
+    const direct = safeJsonParse(raw);
+    if (direct && typeof direct === "object") return direct;
+  
+    // 2. Look for a fenced ```json … ``` block.
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]+?)\s*```/i);
+    if (fenceMatch) {
+      const fenced = safeJsonParse(fenceMatch[1]);
+      if (fenced && typeof fenced === "object") return fenced;
+    }
+  
+    // 3. Last-ditch effort: take the first {...} that parses.
+    const braceMatch = raw.match(/\{[\s\S]+/);
+    if (braceMatch) {
+      try {
+        /* eslint-disable no-constant-condition */
+        let depth = 0, end = -1;
+        for (let i = 0; i < braceMatch[0].length; i++) {
+          if (braceMatch[0][i] === "{") depth++;
+          if (braceMatch[0][i] === "}") depth--;
+          if (depth === 0) { end = i + 1; break; }
         }
-      }
+        if (end !== -1) {
+          const obj = safeJsonParse(braceMatch[0].slice(0, end));
+          if (obj && typeof obj === "object") return obj;
+        }
+      } catch (_) { /* ignore */ }
     }
-    throw new Error("Could not parse JSON block from GPT response");
+    throw new Error("Unable to parse GPT response as JSON");
   }
   
-  /* ------------------------------------------------------------------
-     splitScoreMap  –  separate numeric scores and reason strings
-  ------------------------------------------------------------------ */
-  function splitScoreMap(map = {}) {
-    const nums = {}, why = {};
-    for (const [k, v] of Object.entries(map)) {
-      if (typeof v === "object" && v !== null) {
-        // NUMBER: look for 'score' key first, else first numeric value
-        nums[k] =
-          typeof v.score === "number"
-            ? v.score
-            : Object.values(v).find((n) => typeof n === "number") ?? 0;
+  /* ---------- main export ------------------------------------------ */
+  function callGptScoring(raw) {
+    const j = extractJson(raw);
   
-        // REASON: prefer 'reason' key, else first string value
-        why[k] =
-          typeof v.reason === "string"
-            ? v.reason
-            : Object.values(v).find((s) => typeof s === "string") || "";
+    /* -------- ensure required properties exist --------------------- */
+    const out = {
+      positive_scores     : j.positive_scores      || {},
+      negative_scores     : {},
+      contact_readiness   : !!j.contact_readiness,
+      unscored_attributes : Array.isArray(j.unscored_attributes) ? j.unscored_attributes : [],
+      aiProfileAssessment : j.aiProfileAssessment  || "",
+      finalPct            : typeof j.finalPct === "number" ? j.finalPct : undefined,
+      ai_excluded         : j.ai_excluded          || "No",
+      exclude_details     : j.exclude_details      || "",
+      attribute_reasoning : {},
+    };
+  
+    /* ---- copy over positives + reasoning -------------------------- */
+    for (const [id, val] of Object.entries(out.positive_scores)) {
+      if (val && typeof val === "object") {
+        // { score, reason } form
+        out.attribute_reasoning[id] = val.reason || "";
+        out.positive_scores[id] = Number(val.score) || 0;
       } else {
-        nums[k] = v; // GPT already gave a plain number
+        // simple number, no explicit reason
+        out.positive_scores[id] = Number(val) || 0;
       }
     }
-    return { nums, why };
-  }
   
-  /* ------------------------------------------------------------------
-     callGptScoring  –  main entry
-  ------------------------------------------------------------------ */
-  function callGptScoring(rawText = "") {
-    let data;
-    try {
-      data = stripToJson(rawText);
-    } catch (err) {
-      console.error("❌ Failed to parse GPT response:\n", rawText);
-      throw err;
+    /* ---- copy over negatives only when score < 0 ------------------ */
+    const negativesIn = j.negative_scores || {};
+    for (const [id, val] of Object.entries(negativesIn)) {
+      let score, reason = "";
+      if (val && typeof val === "object") {
+        score  = Number(val.score)  || 0;
+        reason = String(val.reason || "");
+      } else {
+        score = Number(val) || 0;
+      }
+      if (score < 0) {
+        out.negative_scores[id]   = { score, reason };
+        out.attribute_reasoning[id] = reason;           // keep reason text
+      }
     }
   
-    /* ---------- TEMP DEBUG PRINT ----------------------------------- */
-    if (process.env.DEBUG_PARSE === "true") {
-      console.log(
-        "DBG-NEG",
-        JSON.stringify(data.negative_scores ?? data.negatives ?? {}, null, 2)
-      );
-    }
-    /* --------------------------------------------------------------- */
-  
-    /* ---------- Normalise top-level keys --------------------------- */
-    data.finalPct            = data.finalPct            ?? data.final_pct;
-    data.aiProfileAssessment = data.aiProfileAssessment ?? data.ai_profile_assessment;
-    data.attribute_breakdown = data.attribute_breakdown ?? data.aiAttributeBreakdown;
-  
-    /* ---------- Split positives & negatives ------------------------ */
-    const { nums: posNums, why: posWhy } = splitScoreMap(
-      data.positive_scores ?? data.positives ?? {}
-    );
-    const { nums: negNums, why: negWhy } = splitScoreMap(
-      data.negative_scores ?? data.negatives ?? {}
-    );
-  
-    data.positive_scores     = posNums;
-    data.negative_scores     = negNums;
-    data.attribute_reasoning = { ...posWhy, ...negWhy };
-  
-    /* ---------- Pass-through flags --------------------------------- */
-    data.ai_excluded         = data.ai_excluded         ?? data.aiExcluded;
-    data.exclude_details     = data.exclude_details     ?? data.excludeDetails;
-    data.contact_readiness   = data.contact_readiness   ?? data.contactReadiness;
-    data.unscored_attributes = data.unscored_attributes ?? data.unscoredAttributes;
-  
-    return data; // finalPct handled by caller
+    return out;
   }
   
   module.exports = { callGptScoring };

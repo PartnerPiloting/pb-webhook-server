@@ -1,58 +1,64 @@
-/* breakdown.js – single source of buildAttributeBreakdown */
-function buildAttributeBreakdown(
-    positiveScores,
-    dictionaryPositives,
-    negativeScores,
-    dictionaryNegatives,
-    unscoredAttrs,
-    rawScore,
-    denominator,
-    attributeReasoning = {},
-    disqualified = false,
-    disqualifyReason = null
+/* ===================================================================
+   breakdown.js — turn raw scores into a human-readable markdown
+   -------------------------------------------------------------------
+   • Alphabetical ordering of attributes (A…Z)
+   • Shows reason text for every attribute (positive & negative)
+=================================================================== */
+function fmtOne(id, label, score, max, reason) {
+    const scoreStr = max ? `${score} / ${max}` : `${score}`;
+    return `- **${id} (${label})**: ${scoreStr}\n  ↳ ${reason || "_No reason provided_"}\n`;
+  }
+  
+  function buildAttributeBreakdown(
+    positive_scores,
+    positivesDict,
+    negative_scores,
+    negativesDict,
+    unscored = [],
+    _pct = 0,           // deprecated – retained for signature compatibility
+    _dummy = 0,         // "
+    attribute_reasoning = {},
+    _includeReadiness = false,
+    _readiness = null
   ) {
-    const lines = [];
+    let txt = "";
   
-    lines.push("**Positive Attributes**:");
-    for (const id of Object.keys(dictionaryPositives).sort()) {
-      const info = dictionaryPositives[id];
-      if (unscoredAttrs.includes(id)) {
-        lines.push(`- ${id} (${info.label}): UNRECOGNISED (max ${info.maxPoints})`);
-        continue;
+    /* -------- positives ------------------------------------------- */
+    txt += "**Positive Attributes**:\n";
+    for (const id of Object.keys(positive_scores).sort()) {
+      const def   = positivesDict[id] || {};
+      const max   = def.maxPoints     || null;
+      const label = def.label         || id;
+      const score = positive_scores[id];
+      const reason = attribute_reasoning[id] || "";
+      txt += fmtOne(id, label, score, max, reason);
+    }
+  
+    /* -------- negatives ------------------------------------------- */
+    const negIds = Object.keys(negative_scores)
+      .filter(id => negative_scores[id]?.score < 0)
+      .sort();
+  
+    if (negIds.length) {
+      txt += "\n**Negative Attributes**:\n";
+      for (const id of negIds) {
+        const def    = negativesDict[id] || {};
+        const max    = def.maxPoints     || null;
+        const label  = def.label         || id;
+        const entry  = negative_scores[id];
+        const score  = entry.score;
+        const reason = entry.reason || attribute_reasoning[id] || "";
+        txt += fmtOne(id, label, score, max, reason);
       }
-      const pts = positiveScores[id] || 0;
-      lines.push(`- ${id} (${info.label}): ${pts} / ${info.maxPoints}`);
-      if (attributeReasoning[id]) lines.push(`  ↳ ${attributeReasoning[id]}`);
     }
   
-    lines.push("\n**Negative Attributes**:");
-    for (const [id, info] of Object.entries(dictionaryNegatives)) {
-      const pen = negativeScores[id] || 0;
-      const status = pen !== 0 ? "Triggered" : "Not triggered";
-      const display = `${pen} / ${info.penalty} max`;
-      lines.push(
-        `- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${
-          attributeReasoning[id] || "No signals detected."
-        }`
-      );
+    /* -------- unscored -------------------------------------------- */
+    if (unscored.length) {
+      txt += "\n**Unscored / Missing Attributes**:\n";
+      txt += unscored.sort().map(id => `- ${id}`).join("\n") + "\n";
     }
   
-    if (denominator > 0) {
-      const pct = (rawScore / denominator) * 100;
-      lines.push(`\nTotal: ${rawScore} / ${denominator} ⇒ ${pct.toFixed(2)} %`);
-    }
-  
-    if (rawScore === 0) {
-      lines.push(
-        "\nTotal score is **0** → profile did not meet any positive criteria."
-      );
-      if (disqualified) lines.push("*(also disqualified – see above)*");
-    }
-  
-    if (disqualified && disqualifyReason)
-      lines.push(`\n**Disqualified ➜** ${disqualifyReason}`);
-  
-    return lines.join("\n");
+    return txt.trim();
   }
   
   module.exports = { buildAttributeBreakdown };
