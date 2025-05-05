@@ -4,7 +4,8 @@
    • Fetches Airtable leads (Scoring Status = "To Be Scored")
    • Splits them into ≤ 80 000-token sub-batches
    • Submits each chunk, retries if the 90 k queue gate is closed
-   • Opens each Batch-API “wrapper” before writing results to Airtable
+   • Downloads the output, unwraps the Batch-API envelope,
+     tolerates minor key-name variations, and writes results to Airtable
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -19,25 +20,31 @@ const { buildPrompt, slimLead } = require("./promptBuilder");
 const { loadAttributes }        = require("./attributeLoader");
 const { computeFinalScore }     = require("./scoring");
 
-/* ---------- env & config ---------------------------------------- */
+/* ------------------------------------------------------------------
+   env & config
+------------------------------------------------------------------ */
 const {
   AIRTABLE_BASE_ID: AIRTABLE_BASE,
   AIRTABLE_API_KEY: AIRTABLE_KEY,
   OPENAI_API_KEY  : OPENAI_KEY
 } = process.env;
 
-const MODEL              = "gpt-4o";
-const COMPLETION_WINDOW  = "24h";
-const MAX_PER_RUN        = Number(process.env.MAX_BATCH || 500);
+const MODEL             = "gpt-4o";
+const COMPLETION_WINDOW = "24h";
+const MAX_PER_RUN       = Number(process.env.MAX_BATCH || 500);
 
-const TOKENS_PER_LEAD    = 4300;      // prompt estimate (4 281 + cushion)
-const MAX_BATCH_TOKENS   = 80000;     // keep well under 90 000
+const TOKENS_PER_LEAD   = 4300;      // prompt estimate (4 281 + buffer)
+const MAX_BATCH_TOKENS  = 80000;     // stay well under 90 000
 
-/* ---------- Airtable connection ---------------------------------- */
+/* ------------------------------------------------------------------
+   Airtable connection
+------------------------------------------------------------------ */
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- helper: split by token budget ------------------------ */
+/* ------------------------------------------------------------------
+   helper: split by token budget
+------------------------------------------------------------------ */
 function chunkByTokens(records) {
   const chunks = [];
   let current  = [];
@@ -51,7 +58,9 @@ function chunkByTokens(records) {
   return chunks;
 }
 
-/* ---------- fetch candidates ------------------------------------- */
+/* ------------------------------------------------------------------
+   fetch candidates
+------------------------------------------------------------------ */
 async function fetchCandidates(limit) {
   const recs = await base("Leads")
     .select({
@@ -65,7 +74,9 @@ async function fetchCandidates(limit) {
   return recs;
 }
 
-/* ---------- build one JSONL line --------------------------------- */
+/* ------------------------------------------------------------------
+   build one JSONL line for the Batch API
+------------------------------------------------------------------ */
 function buildPromptLine(prompt, leadJson, recId) {
   return JSON.stringify({
     custom_id: recId,
@@ -81,7 +92,9 @@ function buildPromptLine(prompt, leadJson, recId) {
   });
 }
 
-/* ---------- upload JSONL to OpenAI --------------------------------*/
+/* ------------------------------------------------------------------
+   upload JSONL file to OpenAI
+------------------------------------------------------------------ */
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -101,7 +114,9 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit a batch job ----------------------------------- */
+/* ------------------------------------------------------------------
+   submit a batch job
+------------------------------------------------------------------ */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
@@ -122,7 +137,9 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll until batch finishes ---------------------------- */
+/* ------------------------------------------------------------------
+   poll until batch finishes
+------------------------------------------------------------------ */
 async function pollBatch(id) {
   let poll = 0;
   while (true) {
@@ -143,7 +160,9 @@ async function pollBatch(id) {
   }
 }
 
-/* ---------- download batch output -------------------------------- */
+/* ------------------------------------------------------------------
+   download batch output
+------------------------------------------------------------------ */
 async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
@@ -152,7 +171,9 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- process one sub-batch -------------------------------- */
+/* ------------------------------------------------------------------
+   process one sub-batch
+------------------------------------------------------------------ */
 async function processOneBatch(records, positives, negatives, prompt) {
   const lines = [], ids = [];
   for (const r of records) {
@@ -169,17 +190,17 @@ async function processOneBatch(records, positives, negatives, prompt) {
   if (["expired", "failed"].includes(result.status))
     throw new Error(`Batch ${batchId} failed: ${result.status}`);
 
-  const rows    = await downloadResult(result);
-  let updated   = 0;
-  let unparsable = 0;
+  const rows      = await downloadResult(result);
+  let updated     = 0;
+  let unparsable  = 0;
 
   for (const o of rows) {
-    if (o.error) continue;                       // OpenAI-level error
+    if (o.error) continue;                 // OpenAI-level error
 
     const idx = ids.indexOf(o.custom_id);
-    if (idx === -1) continue;                   // shouldn’t happen
+    if (idx === -1) continue;              // shouldn’t happen
 
-    // -------- unwrap the Batch-API “cup” --------------------------
+    /* -------- unwrap the Batch-API envelope ---------------------- */
     const raw = o.response?.body?.choices?.[0]?.message?.content;
     if (!raw) { unparsable++; continue; }
 
@@ -187,12 +208,21 @@ async function processOneBatch(records, positives, negatives, prompt) {
     try {
       data = JSON.parse(raw.trim());
     } catch (err) {
-      console.warn(`⚠️  Lead ${o.custom_id} – content not JSON`);
+      console.warn(`⚠️  Lead ${o.custom_id} – reply not JSON`);
       unparsable++; continue;
     }
 
-    // -------- compute score if GPT didn’t include finalPct --------
-    let finalPct = data.finalPct;
+    /* -------- tolerate minor key-name variations ----------------- */
+    const aiScore   = data.finalPct            ?? data.final_pct;
+    const profile   = data.aiProfileAssessment ?? data.ai_profile_assessment;
+    const breakdown = data.attribute_breakdown ?? data.aiAttributeBreakdown;
+
+    if (aiScore === undefined) {
+      console.warn(`⚠️  ${o.custom_id} – parser still saw no score`);
+    }
+
+    /* -------- fallback: recompute score if GPT omitted it -------- */
+    let finalPct = aiScore;
     if (finalPct === undefined) {
       const { percentage } = computeFinalScore(
         data.positive_scores || {},
@@ -205,11 +235,11 @@ async function processOneBatch(records, positives, negatives, prompt) {
       finalPct = Math.round(percentage * 100) / 100;
     }
 
-    // -------- write back to Airtable ------------------------------
+    /* -------- write back to Airtable ----------------------------- */
     await base("Leads").update(ids[idx], {
       "AI Score"              : finalPct,
-      "AI Profile Assessment" : data.aiProfileAssessment  || data.ai_profile_assessment || "",
-      "AI Attribute Breakdown": data.attribute_breakdown  || data.aiAttributeBreakdown  || "",
+      "AI Profile Assessment" : profile   || "",
+      "AI Attribute Breakdown": breakdown || "",
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
       "AI_Excluded"           : (data.ai_excluded || "No") === "Yes",
@@ -223,7 +253,9 @@ async function processOneBatch(records, positives, negatives, prompt) {
     console.warn(`⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`);
 }
 
-/* ---------- main runner ------------------------------------------ */
+/* ------------------------------------------------------------------
+   main runner
+------------------------------------------------------------------ */
 async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
 
