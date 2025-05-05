@@ -1,5 +1,5 @@
 /* ===================================================================
-   callGptScoring.js – single shared parser for BOTH routes
+   callGptScoring.js – shared parser  (with TEMP debug print)
 =================================================================== */
 
 function stripToJson(text = "") {
@@ -14,12 +14,10 @@ function stripToJson(text = "") {
     const nums = {}, why = {};
     for (const [k, v] of Object.entries(map)) {
       if (typeof v === "object" && v !== null) {
-        /* pick the first numeric field (score / points / value / …) */
         nums[k] = Object.values(v).find(n => typeof n === "number") ?? 0;
-        /* keep any explanation text */
         why[k]  = v.reason ?? v.explanation ?? "";
       } else {
-        nums[k] = v;    // GPT already gave a plain number
+        nums[k] = v;
       }
     }
     return { nums, why };
@@ -28,12 +26,19 @@ function stripToJson(text = "") {
   function callGptScoring(rawText = "") {
     const data = stripToJson(rawText);
   
+    /* ---------- TEMP DEBUG ---------------------------------------- */
+    if (process.env.DEBUG_PARSE === "true") {
+      const rawPos = data.positive_scores ?? data.positives ?? {};
+      console.log("DBG-RAW-POS", JSON.stringify(rawPos, null, 2));
+    }
+    /* -------------------------------------------------------------- */
+  
     /* normalise top-level keys */
     data.finalPct            = data.finalPct            ?? data.final_pct;
     data.aiProfileAssessment = data.aiProfileAssessment ?? data.ai_profile_assessment;
     data.attribute_breakdown = data.attribute_breakdown ?? data.aiAttributeBreakdown;
   
-    /* positive & negative scores → numbers + reasons */
+    /* numbers + reasons */
     const { nums: posNums, why: posWhy } = splitScoreMap(
       data.positive_scores ?? data.positives ?? {}
     );
@@ -45,13 +50,13 @@ function stripToJson(text = "") {
     data.negative_scores     = negNums;
     data.attribute_reasoning = { ...posWhy, ...negWhy };
   
-    /* pass through optional flags */
+    /* pass-through flags */
     data.ai_excluded        = data.ai_excluded        ?? data.aiExcluded;
     data.exclude_details    = data.exclude_details    ?? data.excludeDetails;
     data.contact_readiness  = data.contact_readiness  ?? data.contactReadiness;
     data.unscored_attributes= data.unscored_attributes?? data.unscoredAttributes;
   
-    return data;          // finalPct left as-is; routes recompute if needed
+    return data;
   }
   
   module.exports = { callGptScoring };
