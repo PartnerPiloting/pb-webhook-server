@@ -1,5 +1,5 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex batch scorer (shared parser + breakdown)
+   batchScorer.js — GPT-4o Flex batch scorer (deterministic, full breakdown)
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -20,10 +20,11 @@ const { callGptScoring }          = require("./callGptScoring");
 const {
   AIRTABLE_BASE_ID: AIRTABLE_BASE,
   AIRTABLE_API_KEY: AIRTABLE_KEY,
-  OPENAI_API_KEY  : OPENAI_KEY,
+  OPENAI_API_KEY  : OPENAI_KEY
 } = process.env;
 
 const MODEL             = "gpt-4o";
+const TEMPERATURE       = 0;          // ← deterministic output
 const COMPLETION_WINDOW = "24h";
 const MAX_PER_RUN       = Number(process.env.MAX_BATCH || 500);
 
@@ -38,10 +39,9 @@ const base = Airtable.base(AIRTABLE_BASE);
 function chunkByTokens(records) {
   const chunks = [];
   let current  = [];
-  records.forEach((r) => {
+  records.forEach(r => {
     if (current.length * TOKENS_PER_LEAD >= MAX_BATCH_TOKENS) {
-      chunks.push(current);
-      current = [];
+      chunks.push(current); current = [];
     }
     current.push(r);
   });
@@ -70,12 +70,13 @@ function buildPromptLine(prompt, leadJson, recId) {
     method   : "POST",
     url      : "/v1/chat/completions",
     body     : {
-      model   : MODEL,
-      messages: [
+      model       : MODEL,
+      temperature : TEMPERATURE,                    // ← deterministic
+      messages    : [
         { role: "system", content: prompt },
-        { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` },
-      ],
-    },
+        { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` }
+      ]
+    }
   });
 }
 
@@ -92,7 +93,7 @@ async function uploadJSONL(lines) {
     method : "POST",
     headers: { Authorization: `Bearer ${OPENAI_KEY}` },
     body   : form,
-  }).then((r) => r.json());
+  }).then(r => r.json());
 
   fs.unlinkSync(tmp);
   if (!res.id) throw new Error("File upload failed: " + JSON.stringify(res));
@@ -114,7 +115,7 @@ async function submitBatch(fileId) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
-  }).then((r) => r.json());
+  }).then(r => r.json());
 
   if (!res.id) throw new Error("Batch submit failed: " + JSON.stringify(res));
   return res.id;
@@ -126,7 +127,7 @@ async function pollBatch(id) {
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
-    }).then((r) => r.json());
+    }).then(r => r.json());
 
     poll++;
     console.log(
@@ -139,7 +140,7 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise((r) => setTimeout(r, 60000));
+    await new Promise(r => setTimeout(r, 60000));
   }
 }
 
@@ -148,14 +149,13 @@ async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
     headers: { Authorization: `Bearer ${OPENAI_KEY}` },
-  }).then((r) => r.text());
-  return txt.trim().split("\n").map((l) => JSON.parse(l));
+  }).then(r => r.text());
+  return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
 /* ---------- process one sub-batch -------------------------------- */
 async function processOneBatch(records, positives, negatives, prompt) {
-  const lines = [],
-    ids = [];
+  const lines = [], ids = [];
   for (const r of records) {
     const full = JSON.parse(r.get("Profile Full JSON") || "{}");
     const slim = slimLead(full);
@@ -180,21 +180,16 @@ async function processOneBatch(records, positives, negatives, prompt) {
     if (idx === -1) continue;
 
     const raw = o.response?.body?.choices?.[0]?.message?.content;
-    if (!raw) {
-      unparsable++;
-      continue;
-    }
+    if (!raw) { unparsable++; continue; }
 
     let parsed;
-    try {
-      parsed = callGptScoring(raw);
-    } catch (err) {
+    try { parsed = callGptScoring(raw); }
+    catch (err) {
       console.warn(`⚠️  Lead ${o.custom_id} – parser threw: ${err.message}`);
-      unparsable++;
-      continue;
+      unparsable++; continue;
     }
 
-    /* ----- compute rawScore (positives – negatives) -------------- */
+    /* ----- compute rawScore (positives − negatives) -------------- */
     const rawScore =
       Object.values(parsed.positive_scores || {}).reduce((s, v) => s + v, 0) +
       Object.values(parsed.negative_scores || {}).reduce((s, v) => {
@@ -202,18 +197,18 @@ async function processOneBatch(records, positives, negatives, prompt) {
         return s + n;
       }, 0);
 
-    /* recompute finalPct if missing OR NaN ------------------------ */
-    if (parsed.finalPct === undefined || Number.isNaN(parsed.finalPct)) {
-      const { percentage } = computeFinalScore(
-        parsed.positive_scores,
-        positives,
-        parsed.negative_scores,
-        negatives,
-        parsed.contact_readiness,
-        parsed.unscored_attributes || []
-      );
-      parsed.finalPct = Math.round(percentage * 100) / 100;
-    }
+    /* force recompute percentage from rawScore -------------------- */
+    delete parsed.finalPct;
+
+    const { percentage } = computeFinalScore(
+      parsed.positive_scores,
+      positives,
+      parsed.negative_scores,
+      negatives,
+      parsed.contact_readiness,
+      parsed.unscored_attributes || []
+    );
+    parsed.finalPct = Math.round(percentage * 100) / 100;
 
     /* build breakdown with real rawScore ------------------------- */
     const breakdown = buildAttributeBreakdown(
@@ -222,7 +217,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
       parsed.negative_scores,
       negatives,
       parsed.unscored_attributes || [],
-      rawScore, // real numerator
+      rawScore,                // real numerator
       0,
       parsed.attribute_reasoning || {},
       parsed.disqualified,
@@ -231,7 +226,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
 
     await base("Leads").update(ids[idx], {
       "AI Score"              : parsed.finalPct,
-      "AI Profile Assessment" : parsed.aiProfileAssessment || "",
+      "AI Profile Assessment" : parsed.aiProfileAssessment  || "",
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
@@ -243,9 +238,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
 
   console.log(`✔︎ Updated ${updated} Airtable row(s).`);
   if (unparsable)
-    console.warn(
-      `⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`
-    );
+    console.warn(`⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`);
 }
 
 /* ---------- main runner ------------------------------------------ */
@@ -253,10 +246,7 @@ async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
 
   const recs = await fetchCandidates(limit);
-  if (!recs.length) {
-    console.log("No records need scoring – exit.");
-    return;
-  }
+  if (!recs.length) { console.log("No records need scoring – exit."); return; }
 
   const prompt                   = await buildPrompt();
   const { positives, negatives } = await loadAttributes();
@@ -276,7 +266,7 @@ async function run(limit = MAX_PER_RUN) {
       } catch (err) {
         if (String(err).includes("token_limit_exceeded")) {
           console.log("Queue is full → waiting 60 s before retrying this chunk…");
-          await new Promise((r) => setTimeout(r, 60000));
+          await new Promise(r => setTimeout(r, 60000));
         } else {
           throw err;
         }
