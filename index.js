@@ -15,13 +15,14 @@ const Airtable   = require("airtable");
 const fs         = require("fs");
 const fetch      = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 const { buildPrompt } = require("./promptBuilder");
-const { loadAttributes } = require("./attributeLoader");   // NEW – dynamic list
+const { loadAttributes } = require("./attributeLoader");   // NEW – dynamic dicts
+const { callGptScoring } = require("./callGptScoring");    // NEW – shared parser
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue      = require("./queueDispatcher");
-const batchScorer     = require("./batchScorer");   // ← single import
+const batchScorer     = require("./batchScorer");          // ← single import
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -112,38 +113,32 @@ app.get("/health", (_req, res) => res.send("ok"));
 ----------------------------------------------------------------- */
 app.get("/run-batch-score", async (req, res) => {
   const limit = Number(req.query.limit) || 500;
-  console.log(`▶︎ /run-batch-score hit – limit ${limit}`);   // ← always logs
+  console.log(`▶︎ /run-batch-score hit – limit ${limit}`);
 
   batchScorer.run(limit)
     .then(() => console.log(`Batch scoring (limit ${limit}) complete`))
-    .catch(err => {
-      console.error("batchScorer error:", err);
-    });
+    .catch(err => console.error("batchScorer error:", err));
 
   res.send(`Batch scoring for up to ${limit} leads has started.`);
 });
 
 /* ------------------------------------------------------------------
-   ONE-OFF LEAD SCORER
-   Call:  /score-lead?recordId=recXXXXXXXX
+   ONE-OFF LEAD SCORER  –  /score-lead?recordId=recXXXXXXXX
 ------------------------------------------------------------------*/
 app.get("/score-lead", async (req, res) => {
   try {
     const id = req.query.recordId;
-    if (!id) {
-      return res.status(400).json({ error: "recordId query param required" });
-    }
+    if (!id) return res.status(400).json({ error: "recordId query param required" });
 
-    /* 1 ─ fetch Airtable row */
-    const record = await base("Leads").find(id);
-    const lead   = JSON.parse(record.get("Profile Full JSON") || "{}");
+    const record   = await base("Leads").find(id);
+    const fullLead = JSON.parse(record.get("Profile Full JSON") || "{}");
+    const slimLead = require("./promptBuilder").slimLead(fullLead);
 
-    /* 2 ─ run GPT-4o scoring */
-    const sysPrompt = await buildPrompt();
-    const gpt       = await callGptScoring(sysPrompt, lead);
+    const sysPrompt                = await buildPrompt();
+    const { positives, negatives } = await loadAttributes();      // NEW
 
-    // ─── dynamic attribute dictionaries ────────────────────────────────
-    const { positives, negatives } = await loadAttributes();    // NEW
+    const gpt = await callGptScoring(sysPrompt, slimLead);
+    console.log("GPT finalPct:", gpt.finalPct);
 
     const {
       positive_scores     = {},
@@ -152,34 +147,18 @@ app.get("/score-lead", async (req, res) => {
       unscored_attributes = [],
       aiProfileAssessment = "",
       attribute_reasoning = {},
-      disqualified        = false,
-      disqualifyReason    = null,
     } = gpt;
 
-    if (contact_readiness)
-      positive_scores.I = positives?.I?.maxPoints || 3;
-
-    const {
-      rawScore,
-      denominator,
-      percentage,
-      disqualified: calcDisq,
-      disqualifyReason: calcDisqReason,
-    } = computeFinalScore(
-      positive_scores,
-      positives,
-      negative_scores,
-      negatives,
-      contact_readiness,
-      unscored_attributes
-    );
-
-    const finalDisqualified     = calcDisq;
-    const finalDisqualifyReason = calcDisqReason;
-
-    /* 3 ─ fallback math for finalPct if GPT omitted it */
     let finalPct = gpt.finalPct;
     if (finalPct === undefined) {
+      const { percentage } = computeFinalScore(
+        positive_scores,
+        positives,
+        negative_scores,
+        negatives,
+        contact_readiness,
+        unscored_attributes
+      );
       finalPct = Math.round(percentage * 100) / 100;
     }
 
@@ -189,14 +168,12 @@ app.get("/score-lead", async (req, res) => {
       negative_scores,
       negatives,
       unscored_attributes,
-      rawScore,
-      denominator,
+      0, 0,
       attribute_reasoning,
-      finalDisqualified,
-      finalDisqualifyReason
+      false,
+      null
     );
 
-    /* 4 ─ update Airtable */
     await base("Leads").update(id, {
       "AI Score"              : finalPct,
       "AI Profile Assessment" : aiProfileAssessment,
@@ -205,7 +182,6 @@ app.get("/score-lead", async (req, res) => {
       "Date Scored"           : new Date().toISOString().split("T")[0],
     });
 
-    /* 5 ─ respond with JSON */
     res.json({ id, finalPct, aiProfileAssessment, breakdown });
   } catch (err) {
     console.error(err);
@@ -312,7 +288,7 @@ function computeFinalScore(
 }
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & helpers
+   4)  getScoringData & helpers  (legacy parser – retained for safety)
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const md = await buildPrompt();
@@ -343,7 +319,7 @@ function parseMarkdownTables(markdown) {
     const t = line.trim();
     if (/^#{2,}\s*Positive Attributes/i.test(t)) { section = "pos"; continue; }
     if (/^#{2,}\s*Negative Attributes/i.test(t)) { section = "neg"; continue; }
-    if (/^#{2,}/.test(t))                      { section = null;  continue; }
+    if (/^#{2,}/.test(t))                       { section = null;  continue; }
     if (!section || t.startsWith("|----") || /^\|\s*ID\s*\|/i.test(t)) continue;
 
     if (section === "pos") {
@@ -363,58 +339,12 @@ function parseMarkdownTables(markdown) {
       negatives[id] = {
         label:        label.trim(),
         penalty:      parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
-        disqualifying:/yes/i.test(disqRaw.trim() ),
+        disqualifying:/yes/i.test(disqRaw.trim()),
         notes:        notes.trim(),
       };
     }
   }
   return { positives, negatives };
-}
-
-/* ------------------------------------------------------------------
-   5)  callGptScoring
-------------------------------------------------------------------*/
-async function callGptScoring(dictionaryText, lead) {
-  const extraFields = `
-- attribute_reasoning (object) – per-attribute narrative for **ALL** attributes
-${TEST_MODE ? "- debug_breakdown (string)" : ""}`;
-
-  const sysPrompt = `You are an AI trained to apply the ASH Candidate Attribute Scoring Framework.
-
-### Framework:
-${dictionaryText}
-
-### Rules
-- Score positives A–K up to their max.
-- Apply negative penalties L1, N1–N5. If disqualifying, final = 0.
-- Respect Min-Qualify.
-Return JSON:
-- positive_scores, negative_scores
-- contact_readiness, unscored_attributes
-- aiProfileAssessment (string, 2–4 sentence summary – **never a number**)
-- attribute_reasoning (object)${extraFields}`;
-
-  const usrPrompt = `Lead:\n${JSON.stringify(lead, null, 2)}`;
-
-  const resp = await openai.createChatCompletion({
-    model: "gpt-4o",
-    messages: [
-      { role: "system", content: sysPrompt },
-      { role: "user",    content: usrPrompt },
-    ],
-    temperature: 0.2,
-  });
-
-  /* -------- TOKEN LOG (added line) -------- */
-  const usage = resp.data.usage || {};
-  console.log(`GPT usage → prompt ${usage.prompt_tokens}, completion ${usage.completion_tokens}, total ${usage.total_tokens}`);
-  /* ---------------------------------------- */
-
-  let out = resp.data.choices[0].message.content.trim();
-  const fenced = out.match(/```json\s*([\s\S]*?)```/i);
-  if (fenced) out = fenced[1].trim();
-  const jsonMatch = out.match(/\{[\s\S]*\}$/);
-  return jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 }
 
 /* ------------------------------------------------------------------
@@ -435,7 +365,6 @@ function buildAttributeBreakdown(
   const lines = [];
 
   lines.push("**Positive Attributes**:");
-  /* -------------- alphabetic ordering (A–K) ------------------- */
   for (const id of Object.keys(dictionaryPositives).sort()) {
     const info = dictionaryPositives[id];
     if (unscoredAttrs.includes(id)) {
@@ -490,7 +419,6 @@ async function upsertLead(
   aiExcluded          = null,
   excludeDetails      = null
 ) {
-/* ---------- NEW upsertLead body (trims heavy JSON) -------------- */
   const {
     firstName = "",
     lastName  = "",
@@ -520,11 +448,9 @@ async function upsertLead(
 
     scoringStatus = undefined,
 
-    /* everything else (including `raw`) */
     ...rest
   } = lead;
 
-  /* ---------- 1.  build jobHistory exactly as before ------------- */
   let jobHistory = [
     linkedinJobDateRange
       ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}`
@@ -532,16 +458,13 @@ async function upsertLead(
     linkedinPreviousJobDateRange
       ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}`
       : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter(Boolean).join("\n");
 
   if (!jobHistory && lead.raw) {
     const hist = getLastTwoOrgs(lead.raw);
     if (hist) jobHistory = hist;
   }
 
-  /* ---------- 2. canonical LinkedIn URL  (unchanged logic) ------- */
   let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
@@ -555,16 +478,14 @@ async function upsertLead(
     else if (r.public_id)  finalUrl = `https://www.linkedin.com/in/${r.public_id}/`;
     else if (r.member_id)  finalUrl = `https://www.linkedin.com/profile/view?id=${r.member_id}`;
   }
-  if (!finalUrl) return;                            // safety-bail
+  if (!finalUrl) return;
 
   const profileKey = canonicalUrl(finalUrl);
 
-  /* ---------- 3. connection-status logic (unchanged) ------------- */
   let connectionStatus = "Candidate";
   if      (connectionDegree === "1st")                 connectionStatus = "Connected";
   else if (linkedinConnectionStatus === "Pending")     connectionStatus = "Pending";
 
-  /* ---------- 4.  **Slim JSON** for GPT ------------------------- */
   const slim = {
     firstName,
     lastName,
@@ -572,11 +493,10 @@ async function upsertLead(
     summary    : linkedinDescription || "",
     locationName,
     experience : Array.isArray(lead.raw?.experience)
-                   ? lead.raw.experience.slice(0, 2)   // only 2 recs
+                   ? lead.raw.experience.slice(0, 2)
                    : undefined,
   };
 
-  /* ---------- 5. Airtable field-map ----------------------------- */
   const fields = {
     "LinkedIn Profile URL"      : finalUrl,
     "First Name"                : firstName,
@@ -594,15 +514,10 @@ async function upsertLead(
     Email                       : emailAddress || lead.email || lead.workEmail || "",
     Phone                       : phoneNumber || lead.phone || (lead.phoneNumbers || [])[0]?.value || "",
     "Refreshed At"              : refreshedAt ? new Date(refreshedAt) : null,
-
-    /* 🔹 store lightweight JSON here */
     "Profile Full JSON"         : JSON.stringify(slim),
-
-    /* 🔹 keep the full dump (incl. raw) here for debugging */
     "Raw Profile Data"          : JSON.stringify(rest),
   };
 
-  /* ---- optional AI fields (unchanged) ---- */
   if (finalScore          !== null) fields["AI Score"]              = Math.round(finalScore * 100) / 100;
   if (aiProfileAssessment !== null) fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
   if (attributeBreakdown  !== null) fields["AI Attribute Breakdown"] = attributeBreakdown;
@@ -610,7 +525,6 @@ async function upsertLead(
   if (aiExcluded          !== null) fields["AI_Excluded"]           = aiExcluded === "Yes";
   if (excludeDetails      !== null) fields["Exclude Details"]       = excludeDetails;
 
-  /* ---------- 6. upsert (same formula) --------------------------- */
   const filter = `{Profile Key} = "${profileKey}"`;
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
@@ -628,38 +542,28 @@ async function upsertLead(
 }   // ← END upsertLead
 
 /* ------------------------------------------------------------------
-   8)  /api/test-score  (unchanged)
+   8)  /api/test-score  (returns JSON for a single lead payload)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
   try {
     const lead = req.body;
-    const { truncatedInstructions, positives, negatives } =
-      await getScoringData();
 
-    const gpt = await callGptScoring(truncatedInstructions, lead);
+    const sysPrompt                = await buildPrompt();
+    const { positives, negatives } = await loadAttributes();    // NEW
+
+    const gpt = await callGptScoring(sysPrompt, lead);
+    console.log("GPT finalPct:", gpt.finalPct);
+
     const {
-      positive_scores = {},
-      negative_scores = {},
-      contact_readiness = false,
+      positive_scores     = {},
+      negative_scores     = {},
+      contact_readiness   = false,
       unscored_attributes = [],
       aiProfileAssessment = "",
       attribute_reasoning = {},
     } = gpt;
 
-    if (gpt.contact_readiness)
-      positive_scores.I = positives?.I?.maxPoints || 3;
-
-    let cleanAssessment = aiProfileAssessment;
-    if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
-      cleanAssessment = "[auto-moved] No summary provided.";
-
-    const {
-      rawScore,
-      denominator,
-      percentage,
-      disqualified,
-      disqualifyReason,
-    } = computeFinalScore(
+    const { percentage } = computeFinalScore(
       positive_scores,
       positives,
       negative_scores,
@@ -667,6 +571,7 @@ app.post("/api/test-score", async (req, res) => {
       contact_readiness,
       unscored_attributes
     );
+    const finalPct = Math.round(percentage * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
       positive_scores,
@@ -674,18 +579,13 @@ app.post("/api/test-score", async (req, res) => {
       negative_scores,
       negatives,
       unscored_attributes,
-      rawScore,
-      denominator,
+      0, 0,
       attribute_reasoning,
-      disqualified,
-      disqualifyReason
+      false,
+      null
     );
 
-    res.json({
-      finalPct   : percentage,
-      breakdown  : breakdown,
-      assessment : cleanAssessment,
-    });
+    res.json({ finalPct, breakdown, assessment: aiProfileAssessment });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -693,21 +593,24 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb-webhook/scrapeLeads  (unchanged)
+   9)  /pb-webhook/scrapeLeads  –  Phantombuster array
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
     const leads = Array.isArray(req.body) ? req.body : [];
-    const { truncatedInstructions, passMark, positives, negatives } =
-      await getScoringData();
+    const { positives, negatives } = await loadAttributes();    // NEW
+    const passMark = 0;                                         // same threshold
     let processed = 0;
 
     for (const lead of leads) {
-      const gpt = await callGptScoring(truncatedInstructions, lead);
+      const sysPrompt = await buildPrompt();
+      const gpt       = await callGptScoring(sysPrompt, lead);
+      console.log("GPT finalPct:", gpt.finalPct);
+
       const {
-        positive_scores = {},
-        negative_scores = {},
-        contact_readiness = false,
+        positive_scores     = {},
+        negative_scores     = {},
+        contact_readiness   = false,
         unscored_attributes = [],
         aiProfileAssessment = "",
         attribute_reasoning = {},
@@ -716,17 +619,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
-      let cleanAssessment = aiProfileAssessment;
-      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
-        cleanAssessment = "[auto-moved] No summary provided.";
-
-      const {
-        rawScore,
-        denominator,
-        percentage,
-        disqualified,
-        disqualifyReason,
-      } = computeFinalScore(
+      const { percentage } = computeFinalScore(
         positive_scores,
         positives,
         negative_scores,
@@ -734,31 +627,25 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         contact_readiness,
         unscored_attributes
       );
-
       const finalPct = Math.round(percentage * 100) / 100;
       if (finalPct < passMark) continue;
-
-      const breakdown = TEST_MODE
-        ? buildAttributeBreakdown(
-            positive_scores,
-            positives,
-            negative_scores,
-            negatives,
-            unscored_attributes,
-            rawScore,
-            denominator,
-            attribute_reasoning,
-            disqualified,
-            disqualifyReason
-          )
-        : "";
 
       await upsertLead(
         lead,
         finalPct,
-        cleanAssessment,
+        aiProfileAssessment,
         attribute_reasoning,
-        breakdown
+        buildAttributeBreakdown(
+          positive_scores,
+          positives,
+          negative_scores,
+          negatives,
+          unscored_attributes,
+          0, 0,
+          attribute_reasoning,
+          false,
+          null
+        )
       );
       processed++;
     }
@@ -800,8 +687,8 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
       const lead = {
         firstName: lh.firstName || lh.first_name || "",
-        lastName:  lh.lastName  || lh.last_name  || "",
-        headline:  lh.headline  || "",
+        lastName : lh.lastName  || lh.last_name  || "",
+        headline : lh.headline  || "",
         locationName:
           lh.locationName || lh.location_name || lh.location || "",
         phone:
@@ -838,20 +725,10 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
           lh.invited_date_iso ||
           null,
         raw: lh,
-
         scoringStatus: "To Be Scored",
       };
 
-      await upsertLead(
-        lead,
-        null,  // finalScore
-        null,  // aiProfileAssessment
-        null,  // attributeReasoning
-        null,  // attributeBreakdown
-        null,  // auFlag
-        null,  // aiExcluded
-        null   // excludeDetails
-      );
+      await upsertLead(lead);
       processed++;
     }
 
@@ -863,13 +740,12 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  /lh-webhook/scrapeLeads  (unchanged GPT route)
+   11)  /lh-webhook/scrapeLeads  –  Linked Helper array
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
     const raw = Array.isArray(req.body) ? req.body : [req.body];
-    const { truncatedInstructions, positives, negatives } =
-      await getScoringData();
+    const { positives, negatives } = await loadAttributes();    // NEW
     let processed = 0;
 
     for (const lh of raw) {
@@ -881,8 +757,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           ? `https://www.linkedin.com/profile/view?id=${lh.memberId}`
           : "");
 
-      const exp = Array.isArray(lh.experience) ? lh.experience : [];
-      const current = exp[0] || {};
+      const exp      = Array.isArray(lh.experience) ? lh.experience : [];
+      const current  = exp[0] || {};
       const previous = exp[1] || {};
 
       const numericDist =
@@ -894,8 +770,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 
       const lead = {
         firstName: lh.firstName || lh.first_name || "",
-        lastName:  lh.lastName  || lh.last_name  || "",
-        headline:  lh.headline  || "",
+        lastName : lh.lastName  || lh.last_name  || "",
+        headline : lh.headline  || "",
         locationName:
           lh.locationName || lh.location_name || lh.location || "",
         phone:
@@ -934,11 +810,14 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         raw: lh,
       };
 
-      const gpt = await callGptScoring(truncatedInstructions, lead);
+      const sysPrompt = await buildPrompt();
+      const gpt       = await callGptScoring(sysPrompt, lead);
+      console.log("GPT finalPct:", gpt.finalPct);
+
       const {
-        positive_scores = {},
-        negative_scores = {},
-        contact_readiness = false,
+        positive_scores     = {},
+        negative_scores     = {},
+        contact_readiness   = false,
         unscored_attributes = [],
         aiProfileAssessment = "",
         attribute_reasoning = {},
@@ -947,17 +826,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
-      let cleanAssessment = aiProfileAssessment;
-      if (/^\s*-?\d+(\.\d+)?\s*$/.test(cleanAssessment))
-        cleanAssessment = "[auto-moved] No summary provided.";
-
-      const {
-        rawScore,
-        denominator,
-        percentage,
-        disqualified,
-        disqualifyReason,
-      } = computeFinalScore(
+      const { percentage } = computeFinalScore(
         positive_scores,
         positives,
         negative_scores,
@@ -967,9 +836,9 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       );
       const finalPct = Math.round(percentage * 100) / 100;
 
-      const auFlag = isAustralian(lead.locationName || "");
-      const passesScore = finalPct >= MIN_SCORE;
-      const positiveChat = true;
+      const auFlag        = isAustralian(lead.locationName || "");
+      const passesScore   = finalPct >= MIN_SCORE;
+      const positiveChat  = true;
       const passesFilters = auFlag && passesScore && positiveChat;
 
       const aiExcluded = passesFilters ? "No" : "Yes";
@@ -981,27 +850,22 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 
       if (!passesFilters && SAVE_FILTERED_ONLY) continue;
 
-      const breakdown = TEST_MODE
-        ? buildAttributeBreakdown(
-            positive_scores,
-            positives,
-            negative_scores,
-            negatives,
-            unscored_attributes,
-            rawScore,
-            denominator,
-            attribute_reasoning,
-            disqualified,
-            disqualifyReason
-          )
-        : "";
-
       await upsertLead(
         lead,
         finalPct,
-        cleanAssessment,
+        aiProfileAssessment,
         attribute_reasoning,
-        breakdown,
+        buildAttributeBreakdown(
+          positive_scores,
+          positives,
+          negative_scores,
+          negatives,
+          unscored_attributes,
+          0, 0,
+          attribute_reasoning,
+          false,
+          null
+        ),
         auFlag,
         aiExcluded,
         excludeDetails
