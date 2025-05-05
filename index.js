@@ -18,7 +18,7 @@ const { buildPrompt }   = require("./promptBuilder");
 const { loadAttributes } = require("./attributeLoader");        // dynamic dicts
 const { callGptScoring } = require("./callGptScoring");         // GPT scorer
 const { buildAttributeBreakdown } = require("./breakdown");     // shared breakdown
-const { scoreLeadNow } = require("./singleScorer");             // NEW single-lead scorer
+const { scoreLeadNow } = require("./singleScorer");             // single-lead scorer
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
@@ -135,7 +135,7 @@ app.get("/score-lead", async (req, res) => {
     const record   = await base("Leads").find(id);
     const fullLead = JSON.parse(record.get("Profile Full JSON") || "{}");
 
-    // NEW: use shared singleScorer + callGptScoring
+    // shared singleScorer + GPT
     const raw = await scoreLeadNow(fullLead);
     const gpt = await callGptScoring(raw);
 
@@ -149,6 +149,14 @@ app.get("/score-lead", async (req, res) => {
       aiProfileAssessment = "",
       attribute_reasoning = {},
     } = gpt;
+
+    /* -------- compute rawScore (pos – neg) -------- */
+    const rawScore =
+      Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
+      Object.values(negative_scores || {}).reduce((s, v) => {
+        const n = typeof v === "number" ? v : v?.score ?? 0;
+        return s + n;
+      }, 0);
 
     let finalPct = gpt.finalPct;
     if (finalPct === undefined) {
@@ -169,7 +177,8 @@ app.get("/score-lead", async (req, res) => {
       negative_scores,
       negatives,
       unscored_attributes,
-      0, 0,
+      rawScore,               // real numerator
+      0,
       attribute_reasoning,
       false,
       null
@@ -505,6 +514,14 @@ app.post("/api/test-score", async (req, res) => {
       attribute_reasoning = {},
     } = gpt;
 
+    /* -------- compute rawScore (pos – neg) -------- */
+    const rawScore =
+      Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
+      Object.values(negative_scores || {}).reduce((s, v) => {
+        const n = typeof v === "number" ? v : v?.score ?? 0;
+        return s + n;
+      }, 0);
+
     const { percentage } = computeFinalScore(
       positive_scores,
       positives,
@@ -521,7 +538,8 @@ app.post("/api/test-score", async (req, res) => {
       negative_scores,
       negatives,
       unscored_attributes,
-      0, 0,
+      rawScore,
+      0,
       attribute_reasoning,
       false,
       null
@@ -561,6 +579,14 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
+      /* -------- compute rawScore (pos – neg) -------- */
+      const rawScore =
+        Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
+        Object.values(negative_scores || {}).reduce((s, v) => {
+          const n = typeof v === "number" ? v : v?.score ?? 0;
+          return s + n;
+        }, 0);
+
       const { percentage } = computeFinalScore(
         positive_scores,
         positives,
@@ -583,7 +609,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           negative_scores,
           negatives,
           unscored_attributes,
-          0, 0,
+          rawScore,
+          0,
           attribute_reasoning,
           false,
           null
@@ -768,6 +795,14 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
+      /* -------- compute rawScore (pos – neg) -------- */
+      const rawScore =
+        Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
+        Object.values(negative_scores || {}).reduce((s, v) => {
+          const n = typeof v === "number" ? v : v?.score ?? 0;
+          return s + n;
+        }, 0);
+
       const { percentage } = computeFinalScore(
         positive_scores,
         positives,
@@ -803,7 +838,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           negative_scores,
           negatives,
           unscored_attributes,
-          0, 0,
+          rawScore,
+          0,
           attribute_reasoning,
           false,
           null
