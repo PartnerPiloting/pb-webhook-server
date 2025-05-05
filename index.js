@@ -90,7 +90,7 @@ function getLastTwoOrgs(lh = {}) {
 }
 
 /* ------------------------------------------------------------------
-   1)  Globals & Express
+   1) Globals & Express
 ------------------------------------------------------------------*/
 const TEST_MODE          = process.env.TEST_MODE === "true";
 const MIN_SCORE          = Number(process.env.MIN_SCORE || 0);
@@ -136,11 +136,11 @@ app.get("/score-lead", async (req, res) => {
     const fullLead = JSON.parse(record.get("Profile Full JSON") || "{}");
 
     // shared singleScorer + GPT
-    const raw = await scoreLeadNow(fullLead);
-    const gpt = await callGptScoring(raw);
+    const raw    = await scoreLeadNow(fullLead);
+    const parsed = await callGptScoring(raw);
 
     // NEW: ignore GPT’s own percentage and force a fresh calculation
-    delete gpt.finalPct;
+    delete parsed.finalPct;
 
     const { positives, negatives } = await loadAttributes();
 
@@ -151,17 +151,17 @@ app.get("/score-lead", async (req, res) => {
       unscored_attributes = [],
       aiProfileAssessment = "",
       attribute_reasoning = {},
-    } = gpt;
+    } = parsed;
 
     /* -------- compute rawScore (pos – neg) -------- */
     const rawScore =
-      Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
-      Object.values(negative_scores || {}).reduce((s, v) => {
+      Object.values(positive_scores).reduce((s, v) => s + v, 0) +
+      Object.values(negative_scores).reduce((s, v) => {
         const n = typeof v === "number" ? v : v?.score ?? 0;
         return s + n;
       }, 0);
 
-    let finalPct = gpt.finalPct;
+    let finalPct = parsed.finalPct;
     if (finalPct === undefined) {
       const { percentage } = computeFinalScore(
         positive_scores,
@@ -173,6 +173,7 @@ app.get("/score-lead", async (req, res) => {
       );
       finalPct = Math.round(percentage * 100) / 100;
     }
+    parsed.finalPct = finalPct;               // keep fresh % on the object
 
     const breakdown = buildAttributeBreakdown(
       positive_scores,
@@ -180,7 +181,7 @@ app.get("/score-lead", async (req, res) => {
       negative_scores,
       negatives,
       unscored_attributes,
-      rawScore,               // real numerator
+      rawScore,
       0,
       attribute_reasoning,
       false,
@@ -188,14 +189,14 @@ app.get("/score-lead", async (req, res) => {
     );
 
     await base("Leads").update(id, {
-      "AI Score"              : finalPct,
-      "AI Profile Assessment" : aiProfileAssessment,
+      "AI Score"              : parsed.finalPct,          // ← fresh value
+      "AI Profile Assessment" : parsed.aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
     });
 
-    res.json({ id, finalPct, aiProfileAssessment, breakdown });
+    res.json({ id, finalPct: parsed.finalPct, aiProfileAssessment, breakdown });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -250,7 +251,7 @@ function computeFinalScore(
   }
 
   let rawScore = 0;
-  for (const pts of Object.values(positive_scores || {})) rawScore += pts;
+  for (const pts of Object.values(positive_scores)) rawScore += pts;
 
   for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
     if (pInfo.minQualify > 0) {
@@ -271,7 +272,7 @@ function computeFinalScore(
     }
   }
 
-  for (const [negID, penalty] of Object.entries(negative_scores || {})) {
+  for (const [negID, penalty] of Object.entries(negative_scores)) {
     if (dictionaryNegatives[negID]?.disqualifying && penalty !== 0) {
       disqualified     = true;
       disqualifyReason = `Disqualifying negative attribute ${negID} triggered`;
@@ -285,7 +286,7 @@ function computeFinalScore(
     }
   }
 
-  for (const pen of Object.values(negative_scores || {})) rawScore += pen;
+  for (const pen of Object.values(negative_scores)) rawScore += pen;
   if (rawScore < 0) rawScore = 0;
 
   const percentage =
@@ -505,8 +506,8 @@ app.post("/api/test-score", async (req, res) => {
     const sysPrompt                = await buildPrompt();
     const { positives, negatives } = await loadAttributes();
 
-    const gpt = await callGptScoring(sysPrompt, lead);
-    console.log("GPT finalPct:", gpt.finalPct);
+    const parsed = await callGptScoring(sysPrompt, lead);
+    console.log("GPT finalPct:", parsed.finalPct);
 
     const {
       positive_scores     = {},
@@ -515,12 +516,12 @@ app.post("/api/test-score", async (req, res) => {
       unscored_attributes = [],
       aiProfileAssessment = "",
       attribute_reasoning = {},
-    } = gpt;
+    } = parsed;
 
     /* -------- compute rawScore (pos – neg) -------- */
     const rawScore =
-      Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
-      Object.values(negative_scores || {}).reduce((s, v) => {
+      Object.values(positive_scores).reduce((s, v) => s + v, 0) +
+      Object.values(negative_scores).reduce((s, v) => {
         const n = typeof v === "number" ? v : v?.score ?? 0;
         return s + n;
       }, 0);
@@ -534,6 +535,7 @@ app.post("/api/test-score", async (req, res) => {
       unscored_attributes
     );
     const finalPct = Math.round(percentage * 100) / 100;
+    parsed.finalPct = finalPct;
 
     const breakdown = buildAttributeBreakdown(
       positive_scores,
@@ -567,8 +569,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 
     for (const lead of leads) {
       const sysPrompt = await buildPrompt();
-      const gpt       = await callGptScoring(sysPrompt, lead);
-      console.log("GPT finalPct:", gpt.finalPct);
+      const parsed    = await callGptScoring(sysPrompt, lead);
+      console.log("GPT finalPct:", parsed.finalPct);
 
       const {
         positive_scores     = {},
@@ -577,15 +579,15 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes = [],
         aiProfileAssessment = "",
         attribute_reasoning = {},
-      } = gpt;
+      } = parsed;
 
-      if (gpt.contact_readiness)
+      if (parsed.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
       /* -------- compute rawScore (pos – neg) -------- */
       const rawScore =
-        Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
-        Object.values(negative_scores || {}).reduce((s, v) => {
+        Object.values(positive_scores).reduce((s, v) => s + v, 0) +
+        Object.values(negative_scores).reduce((s, v) => {
           const n = typeof v === "number" ? v : v?.score ?? 0;
           return s + n;
         }, 0);
@@ -599,6 +601,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes
       );
       const finalPct = Math.round(percentage * 100) / 100;
+      parsed.finalPct = finalPct;
+
       if (finalPct < passMark) continue;
 
       await upsertLead(
@@ -783,8 +787,8 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       };
 
       const sysPrompt = await buildPrompt();
-      const gpt       = await callGptScoring(sysPrompt, lead);
-      console.log("GPT finalPct:", gpt.finalPct);
+      const parsed    = await callGptScoring(sysPrompt, lead);
+      console.log("GPT finalPct:", parsed.finalPct);
 
       const {
         positive_scores     = {},
@@ -793,15 +797,15 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes = [],
         aiProfileAssessment = "",
         attribute_reasoning = {},
-      } = gpt;
+      } = parsed;
 
-      if (gpt.contact_readiness)
+      if (parsed.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
       /* -------- compute rawScore (pos – neg) -------- */
       const rawScore =
-        Object.values(positive_scores || {}).reduce((s, v) => s + v, 0) +
-        Object.values(negative_scores || {}).reduce((s, v) => {
+        Object.values(positive_scores).reduce((s, v) => s + v, 0) +
+        Object.values(negative_scores).reduce((s, v) => {
           const n = typeof v === "number" ? v : v?.score ?? 0;
           return s + n;
         }, 0);
@@ -815,6 +819,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         unscored_attributes
       );
       const finalPct = Math.round(percentage * 100) / 100;
+      parsed.finalPct = finalPct;
 
       const auFlag        = isAustralian(lead.locationName || "");
       const passesScore   = finalPct >= MIN_SCORE;
