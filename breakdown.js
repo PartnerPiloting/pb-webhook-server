@@ -1,12 +1,11 @@
 /* ===================================================================
-   breakdown.js — turn raw scores into a human-readable markdown
+   breakdown.js — human-readable markdown
    -------------------------------------------------------------------
-   • Alphabetical ordering of attributes (A…Z)
-   • Shows reason text for every attribute (positive & negative)
+   • Works whether negative_scores are numbers  *or*  { score, reason } objects
 =================================================================== */
 function fmtOne(id, label, score, max, reason) {
-    const scoreStr = max ? `${score} / ${max}` : `${score}`;
-    return `- **${id} (${label})**: ${scoreStr}\n  ↳ ${reason || "_No reason provided_"}\n`;
+    const str = max ? `${score} / ${max}` : `${score}`;
+    return `- **${id} (${label})**: ${str}\n  ↳ ${reason || "_No reason provided_"}\n`;
   }
   
   function buildAttributeBreakdown(
@@ -15,50 +14,59 @@ function fmtOne(id, label, score, max, reason) {
     negative_scores,
     negativesDict,
     unscored = [],
-    _pct = 0,           // deprecated – retained for signature compatibility
-    _dummy = 0,         // "
+    _pct = 0,
+    _dummy = 0,
     attribute_reasoning = {},
     _includeReadiness = false,
     _readiness = null
   ) {
-    let txt = "";
+    let out = "";
   
-    /* -------- positives ------------------------------------------- */
-    txt += "**Positive Attributes**:\n";
+    /* ---------- positives ----------------------------------------- */
+    out += "**Positive Attributes**:\n";
     for (const id of Object.keys(positive_scores).sort()) {
-      const def   = positivesDict[id] || {};
-      const max   = def.maxPoints     || null;
-      const label = def.label         || id;
-      const score = positive_scores[id];
+      const def    = positivesDict[id] || {};
+      const max    = def.maxPoints     || null;
+      const label  = def.label         || id;
+      const score  = positive_scores[id];
       const reason = attribute_reasoning[id] || "";
-      txt += fmtOne(id, label, score, max, reason);
+      out += fmtOne(id, label, score, max, reason);
     }
   
-    /* -------- negatives ------------------------------------------- */
+    /* ---------- negatives ----------------------------------------- */
     const negIds = Object.keys(negative_scores)
-      .filter(id => negative_scores[id]?.score < 0)
+      .filter((id) => {
+        const entry = negative_scores[id];
+        return typeof entry === "number"
+          ? entry < 0
+          : (entry?.score ?? 0) < 0;
+      })
       .sort();
   
     if (negIds.length) {
-      txt += "\n**Negative Attributes**:\n";
+      out += "\n**Negative Attributes**:\n";
       for (const id of negIds) {
         const def    = negativesDict[id] || {};
         const max    = def.maxPoints     || null;
         const label  = def.label         || id;
         const entry  = negative_scores[id];
-        const score  = entry.score;
-        const reason = entry.reason || attribute_reasoning[id] || "";
-        txt += fmtOne(id, label, score, max, reason);
+        const score  =
+          typeof entry === "number" ? entry : entry.score ?? 0;
+        const reason =
+          (typeof entry === "object" ? entry.reason : null) ||
+          attribute_reasoning[id] ||
+          "";
+        out += fmtOne(id, label, score, max, reason);
       }
     }
   
-    /* -------- unscored -------------------------------------------- */
+    /* ---------- un-scored ----------------------------------------- */
     if (unscored.length) {
-      txt += "\n**Unscored / Missing Attributes**:\n";
-      txt += unscored.sort().map(id => `- ${id}`).join("\n") + "\n";
+      out += "\n**Unscored / Missing Attributes**:\n";
+      out += unscored.sort().map((id) => `- ${id}`).join("\n") + "\n";
     }
   
-    return txt.trim();
+    return out.trim();
   }
   
   module.exports = { buildAttributeBreakdown };
