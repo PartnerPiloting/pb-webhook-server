@@ -1,12 +1,5 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex scorer  (uses the same parser as manual)
-   -------------------------------------------------------------------
-   • Fetches Airtable leads (Scoring Status = "To Be Scored")
-   • Splits them into ≤ 80 000-token sub-batches
-   • Submits each chunk, retries if the 90 k queue gate is closed
-   • Downloads the output, unwraps the Batch-API envelope,
-     parses replies with **callGptScoring()** (same as manual route),
-     then writes results to Airtable
+   batchScorer.js — GPT-4o Flex scorer  (now uses the shared parser)
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -20,11 +13,9 @@ const Airtable = require("airtable");
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { loadAttributes }        = require("./attributeLoader");
 const { computeFinalScore }     = require("./scoring");
-const { callGptScoring }        = require("./callGptScoring");   // ← same parser used by /score-one-lead
+const { callGptScoring }        = require("./callGptScoring");   // ← shared parser
 
-/* ------------------------------------------------------------------
-   env & config
------------------------------------------------------------------- */
+/* ---------- env & config ---------------------------------------- */
 const {
   AIRTABLE_BASE_ID: AIRTABLE_BASE,
   AIRTABLE_API_KEY: AIRTABLE_KEY,
@@ -35,18 +26,14 @@ const MODEL             = "gpt-4o";
 const COMPLETION_WINDOW = "24h";
 const MAX_PER_RUN       = Number(process.env.MAX_BATCH || 500);
 
-const TOKENS_PER_LEAD   = 4300;      // prompt estimate (4 281 + buffer)
-const MAX_BATCH_TOKENS  = 80000;     // stay well under 90 000
+const TOKENS_PER_LEAD   = 4300;
+const MAX_BATCH_TOKENS  = 80000;
 
-/* ------------------------------------------------------------------
-   Airtable connection
------------------------------------------------------------------- */
+/* ---------- Airtable connection ---------------------------------- */
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ------------------------------------------------------------------
-   helper: split by token budget
------------------------------------------------------------------- */
+/* ---------- helper: split by token budget ------------------------ */
 function chunkByTokens(records) {
   const chunks = [];
   let current  = [];
@@ -60,9 +47,7 @@ function chunkByTokens(records) {
   return chunks;
 }
 
-/* ------------------------------------------------------------------
-   fetch candidates
------------------------------------------------------------------- */
+/* ---------- fetch candidates ------------------------------------- */
 async function fetchCandidates(limit) {
   const recs = await base("Leads")
     .select({
@@ -76,9 +61,7 @@ async function fetchCandidates(limit) {
   return recs;
 }
 
-/* ------------------------------------------------------------------
-   build one JSONL line for the Batch API
------------------------------------------------------------------- */
+/* ---------- build one JSONL line --------------------------------- */
 function buildPromptLine(prompt, leadJson, recId) {
   return JSON.stringify({
     custom_id: recId,
@@ -94,9 +77,7 @@ function buildPromptLine(prompt, leadJson, recId) {
   });
 }
 
-/* ------------------------------------------------------------------
-   upload JSONL file to OpenAI
------------------------------------------------------------------- */
+/* ---------- upload JSONL to OpenAI --------------------------------*/
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -116,9 +97,7 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ------------------------------------------------------------------
-   submit a batch job
------------------------------------------------------------------- */
+/* ---------- submit a batch job ----------------------------------- */
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
@@ -139,9 +118,7 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ------------------------------------------------------------------
-   poll until batch finishes
------------------------------------------------------------------- */
+/* ---------- poll until batch finishes ---------------------------- */
 async function pollBatch(id) {
   let poll = 0;
   while (true) {
@@ -158,13 +135,11 @@ async function pollBatch(id) {
     if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
       return j;
 
-    await new Promise(r => setTimeout(r, 60000)); // wait 60 s
+    await new Promise(r => setTimeout(r, 60000));
   }
 }
 
-/* ------------------------------------------------------------------
-   download batch output
------------------------------------------------------------------- */
+/* ---------- download batch output -------------------------------- */
 async function downloadResult(j) {
   const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
   const txt = await fetch(url, {
@@ -173,9 +148,7 @@ async function downloadResult(j) {
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ------------------------------------------------------------------
-   process one sub-batch
------------------------------------------------------------------- */
+/* ---------- process one sub-batch -------------------------------- */
 async function processOneBatch(records, positives, negatives, prompt) {
   const lines = [], ids = [];
   for (const r of records) {
@@ -197,29 +170,25 @@ async function processOneBatch(records, positives, negatives, prompt) {
   let unparsable  = 0;
 
   for (const o of rows) {
-    if (o.error) continue;                 // OpenAI-level error
+    if (o.error) continue;
     const idx = ids.indexOf(o.custom_id);
-    if (idx === -1) continue;              // shouldn’t happen
+    if (idx === -1) continue;
 
-    /* -------- unwrap the Batch-API envelope ---------------------- */
     const raw = o.response?.body?.choices?.[0]?.message?.content;
     if (!raw) { unparsable++; continue; }
 
-    /*  Parse with the same logic the manual route uses  */
     let parsed;
-    try {
-      parsed = callGptScoring(raw);
-    } catch (err) {
+    try { parsed = callGptScoring(raw); }
+    catch (err) {
       console.warn(`⚠️  Lead ${o.custom_id} – parser threw: ${err.message}`);
       unparsable++; continue;
     }
 
-    /*  If GPT omitted finalPct, compute it here  */
     if (parsed.finalPct === undefined) {
       const { percentage } = computeFinalScore(
-        parsed.positive_scores || parsed.positives || {},
+        parsed.positive_scores || {},
         positives,
-        parsed.negative_scores || parsed.negatives || {},
+        parsed.negative_scores || {},
         negatives,
         parsed.contact_readiness,
         parsed.unscored_attributes || []
@@ -227,7 +196,6 @@ async function processOneBatch(records, positives, negatives, prompt) {
       parsed.finalPct = Math.round(percentage * 100) / 100;
     }
 
-    /* -------- write back to Airtable ----------------------------- */
     await base("Leads").update(ids[idx], {
       "AI Score"              : parsed.finalPct,
       "AI Profile Assessment" : parsed.aiProfileAssessment  || "",
@@ -245,9 +213,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
     console.warn(`⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`);
 }
 
-/* ------------------------------------------------------------------
-   main runner
------------------------------------------------------------------- */
+/* ---------- main runner ------------------------------------------ */
 async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
 
@@ -274,7 +240,7 @@ async function run(limit = MAX_PER_RUN) {
           console.log("Queue is full → waiting 60 s before retrying this chunk…");
           await new Promise(r => setTimeout(r, 60000));
         } else {
-          throw err;   // other errors bubble up and abort
+          throw err;
         }
       }
     }
