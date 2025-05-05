@@ -1,9 +1,9 @@
 /* ===================================================================
    singleScorer.js – ONE-OFF GPT scorer used by /score-lead
    -------------------------------------------------------------------
-   • Builds the same prompt the batch job uses
-   • Calls GPT-4o synchronously and returns raw text
-   • DEBUG: prints the entire GPT reply so we can copy it
+   • Builds the prompt
+   • Calls GPT-4o with temperature 0 (deterministic)
+   • DEBUG: prints the full prompt and raw GPT reply
 =================================================================== */
 require("dotenv").config();
 const { Configuration, OpenAIApi } = require("openai");
@@ -16,24 +16,28 @@ const openai = new OpenAIApi(
 const MODEL = "gpt-4o";
 
 async function scoreLeadNow(fullLead = {}) {
-  /* 1️⃣  Build the system prompt + slimmed-down lead  */
+  /* 1️⃣  Build prompt + slimmed profile */
   const sysPrompt = await buildPrompt();
   const userLead  = slimLead(fullLead);
 
-  /* 2️⃣  Call GPT-4o */
+  /* 2️⃣  Call GPT-4o – deterministic */
   const completion = await openai.createChatCompletion({
     model: MODEL,
+    temperature: 0,                 // ← lock randomness
     messages: [
       { role: "system", content: sysPrompt },
       { role: "user",   content: `Lead:\n${JSON.stringify(userLead, null, 2)}` }
     ],
   });
 
-  /* 3️⃣  DEBUG – print exactly what GPT sends back */
-  console.log("RAW-GPT\n", completion.data.choices?.[0]?.message?.content);
+  const rawText = completion.data.choices?.[0]?.message?.content || "";
 
-  /* 4️⃣  Return raw text so index.js can parse it */
-  return completion.data.choices?.[0]?.message?.content || "";
+  /* === DEEP DEBUG ============================================== */
+  console.log("DBG-PROMPT\n", sysPrompt);        // full instructions
+  console.log("DBG-RAW-GPT\n", rawText);         // raw JSON reply
+  /* ============================================================= */
+
+  return rawText;   // downstream parser will handle it
 }
 
 module.exports = { scoreLeadNow };
