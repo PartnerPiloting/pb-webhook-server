@@ -19,10 +19,14 @@ async function buildPrompt() {
 Return **only** a valid JSON object exactly like this:
 
 {
-  "positive_scores": { "A": 15, "B": 12, ... },
+  "positive_scores": {
+    "A": { "score": 15, "reason": "…" },
+    "B": { "score": 12, "reason": "…" },
+    ...
+  },
   "negative_scores": {
-    "N1": { "score": 0,  "reason": "..." },
-    "N2": { "score": -5, "reason": "..." },
+    "N1": { "score": 0,  "reason": "…" },
+    "N2": { "score": -5, "reason": "…" },
     ...
   },
   "contact_readiness": false,
@@ -32,10 +36,12 @@ Return **only** a valid JSON object exactly like this:
 }
 
 Rules:
-• If you cannot score an attribute, omit it from "positive_scores" / "negative_scores"
+• If you cannot score an attribute, omit it from "positive_scores"/"negative_scores"
   and list its ID in "unscored_attributes".
 • A negative is **not triggered** when "score": 0.
-• Provide a 25–40-word "reason" for **every** attribute you include.
+• **Every attribute object in BOTH maps must contain:**
+    • "score"  – a number (≥ 0 for positives, ≤ 0 for negatives)
+    • "reason" – 25-40 words explaining why you awarded that score.
 • Do NOT wrap the JSON in \`\`\` fences or add extra commentary.
 `;
 
