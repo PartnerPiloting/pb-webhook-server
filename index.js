@@ -14,15 +14,16 @@ const { Configuration, OpenAIApi } = require("openai");
 const Airtable   = require("airtable");
 const fs         = require("fs");
 const fetch      = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
-const { buildPrompt } = require("./promptBuilder");
-const { loadAttributes } = require("./attributeLoader");   // NEW – dynamic dicts
-const { callGptScoring } = require("./callGptScoring");    // NEW – shared parser
+const { buildPrompt }   = require("./promptBuilder");
+const { loadAttributes } = require("./attributeLoader");        // NEW – dynamic dicts
+const { callGptScoring } = require("./callGptScoring");         // shared GPT scorer
+const { buildAttributeBreakdown } = require("./breakdown");     // shared breakdown
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue      = require("./queueDispatcher");
-const batchScorer     = require("./batchScorer");          // ← single import
+const batchScorer     = require("./batchScorer");               // single import
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -288,7 +289,7 @@ function computeFinalScore(
 }
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & helpers  (legacy parser – retained for safety)
+   4)  getScoringData & helpers (legacy parser – retained for safety)
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const md = await buildPrompt();
@@ -348,66 +349,7 @@ function parseMarkdownTables(markdown) {
 }
 
 /* ------------------------------------------------------------------
-   6)  buildAttributeBreakdown
-------------------------------------------------------------------*/
-function buildAttributeBreakdown(
-  positiveScores,
-  dictionaryPositives,
-  negativeScores,
-  dictionaryNegatives,
-  unscoredAttrs,
-  rawScore,
-  denominator,
-  attributeReasoning = {},
-  disqualified = false,
-  disqualifyReason = null
-) {
-  const lines = [];
-
-  lines.push("**Positive Attributes**:");
-  for (const id of Object.keys(dictionaryPositives).sort()) {
-    const info = dictionaryPositives[id];
-    if (unscoredAttrs.includes(id)) {
-      lines.push(`- ${id} (${info.label}): UNRECOGNISED (max ${info.maxPoints})`);
-      continue;
-    }
-    const pts = positiveScores[id] || 0;
-    lines.push(`- ${id} (${info.label}): ${pts} / ${info.maxPoints}`);
-    if (attributeReasoning[id]) lines.push(`  ↳ ${attributeReasoning[id]}`);
-  }
-
-  lines.push("\n**Negative Attributes**:");
-  for (const [id, info] of Object.entries(dictionaryNegatives)) {
-    const pen = negativeScores[id] || 0;
-    const status = pen !== 0 ? "Triggered" : "Not triggered";
-    const display = `${pen} / ${info.penalty} max`;
-    lines.push(
-      `- ${id} (${info.label}): ${display} — ${status}\n  ↳ ${
-        attributeReasoning[id] || "No signals detected."
-      }`
-    );
-  }
-
-  if (denominator > 0) {
-    const pct = (rawScore / denominator) * 100;
-    lines.push(`\nTotal: ${rawScore} / ${denominator} ⇒ ${pct.toFixed(2)} %`);
-  }
-
-  if (rawScore === 0) {
-    lines.push(
-      "\nTotal score is **0** → profile did not meet any positive criteria."
-    );
-    if (disqualified) lines.push("*(also disqualified – see above)*");
-  }
-
-  if (disqualified && disqualifyReason)
-    lines.push(`\n**Disqualified ➜** ${disqualifyReason}`);
-
-  return lines.join("\n");
-}
-
-/* ------------------------------------------------------------------
-   7)  upsertLead  (AI fields written only if argument ≠ null)
+   5)  upsertLead  (AI fields written only if argument ≠ null)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -542,7 +484,7 @@ async function upsertLead(
 }   // ← END upsertLead
 
 /* ------------------------------------------------------------------
-   8)  /api/test-score  (returns JSON for a single lead payload)
+   6)  /api/test-score  (returns JSON for a single lead payload)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
   try {
@@ -593,7 +535,7 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb-webhook/scrapeLeads  –  Phantombuster array
+   7)  /pb-webhook/scrapeLeads  –  Phantombuster array
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -658,7 +600,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ================================================================
-   10)  /lh-webhook/upsertLeadOnly
+   8)  /lh-webhook/upsertLeadOnly
 ================================================================ */
 app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
   try {
@@ -740,7 +682,7 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11)  /lh-webhook/scrapeLeads  –  Linked Helper array
+   9)  /lh-webhook/scrapeLeads  –  Linked Helper array
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
@@ -881,7 +823,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12)  /pb-pull/connections
+   10)  /pb-pull/connections
 ------------------------------------------------------------------*/
 let lastRunId = 0;
 try {
@@ -946,12 +888,12 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   12.5)  DEBUG – return GPT URL
+   10.5)  DEBUG – return GPT URL
 ------------------------------------------------------------------*/
 app.get("/debug-gpt", (_req, res) => res.send(process.env.GPT_CHAT_URL));
 
 /* ------------------------------------------------------------------
-   13)  Start server
+   11)  Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(

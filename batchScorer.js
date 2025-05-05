@@ -10,11 +10,11 @@ const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a)
 const FormData = require("form-data");
 const Airtable = require("airtable");
 
-const { buildPrompt, slimLead }    = require("./promptBuilder");
-const { loadAttributes }           = require("./attributeLoader");
-const { computeFinalScore }        = require("./scoring");
-const { buildAttributeBreakdown }  = require("./index");          // NEW
-const { callGptScoring }           = require("./callGptScoring"); // shared parser
+const { buildPrompt, slimLead }   = require("./promptBuilder");
+const { loadAttributes }          = require("./attributeLoader");
+const { computeFinalScore }       = require("./scoring");
+const { buildAttributeBreakdown } = require("./breakdown");       // ← no circular import
+const { callGptScoring }          = require("./callGptScoring");  // shared parser
 
 /* ---------- env & config ---------------------------------------- */
 const {
@@ -245,7 +245,7 @@ async function run(limit = MAX_PER_RUN) {
 
   for (let i = 0; i < chunks.length; i++) {
     const list = chunks[i];
-    console.log(`→ Sub-batch ${i + 1}/${chunks.length} (${list.length} leads)©`);
+    console.log(`→ Sub-batch ${i + 1}/${chunks.length} (${list.length} leads)`);
 
     let done = false;
     while (!done) {
