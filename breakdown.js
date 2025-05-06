@@ -1,38 +1,37 @@
-/***********************************************************************
-  breakdown.js — builds the Markdown block shown in “AI Attribute Breakdown”
-  ----------------------------------------------------------------------
-  • Works for both manual and batch routes.
-  • Always lists every attribute in alphabetical order.
-  • Drops GPT’s own formatting and instead inserts GPT’s 25-word reasons
-    (attribute_reasoning) into a deterministic template.
-  • The “Total” line is driven by *our* maths (earned / max ⇒ pct),
-    so it can never drift from the value stored in the “AI Score” field.
-***********************************************************************/
+/********************************************************************
+  breakdown.js — hybrid Markdown builder
+  -------------------------------------------------------------------
+  • ALWAYS lists every positive (A-K, I) and every negative (L1, N1–N5)
+  • Accepts numeric scores *or* objects { score, reason }
+  • Inserts GPT’s 25-word reason when present (attribute_reasoning[id])
+  • Total line uses the earned / denominator values we pass in
+********************************************************************/
 
-function pct(earned, max) {
-    if (!max) return 0;
-    return (earned / max) * 100;
+/* helper for consistent bullet formatting */
+function fmt(id, label, scoreStr, reason) {
+    return `- **${id} (${label})**: ${scoreStr}\n  ↳ ${reason}\n`;
   }
   
   /**
-   * Build the full Markdown breakdown.
-   *
-   * @param {object} posScores      – { A: { score, reason }, … }
-   * @param {object} positives      – full positives dictionary (labels, maxPoints)
-   * @param {object} negScores      – { N1: { score, reason }, … }
-   * @param {object} negatives      – full negatives dictionary (labels, penalty)
-   * @param {array}  unscored       – attribute IDs GPT said it couldn’t score
-   * @param {number} earned         – total points after penalties (our maths)
-   * @param {number} max            – denominator (sum of all maxPoints)
-   * @param {object} reasoning      – GPT’s attribute_reasoning map
-   * @param {boolean} showZeros     – if false, hide positives/negatives with 0
-   * @param {string|null} header    – optional extra heading line
+   * buildAttributeBreakdown
+   * -----------------------
+   * @param  {Object} posScores        – e.g. { A:15, B:{score:7,reason:"…"} }
+   * @param  {Object} positivesDict    – Airtable dict (labels, maxPoints)
+   * @param  {Object} negScores        – e.g. { N2:-5, N5:{score:-5,reason:"…"} }
+   * @param  {Object} negativesDict    – Airtable dict (labels, penalty)
+   * @param  {Array}  unscored         – attr IDs GPT couldn’t score
+   * @param  {Number} earned           – rawScore from computeFinalScore
+   * @param  {Number} max              – denominator from computeFinalScore
+   * @param  {Object} reasoning        – GPT’s attribute_reasoning map
+   * @param  {Boolean} showZeros       – list 0-scores? (default false)
+   * @param  {String|null} header      – optional extra heading line
+   * @returns {String}   Markdown block
    */
   function buildAttributeBreakdown(
     posScores,
-    positives,
+    positivesDict,
     negScores,
-    negatives,
+    negativesDict,
     unscored,
     earned,
     max,
@@ -41,51 +40,68 @@ function pct(earned, max) {
     header = null
   ) {
     const lines = [];
-  
     if (header) lines.push(header);
   
-    /* ---------- Positives (A … K) ----------------------------------- */
+    /* ---------- positives ---------------------------------------- */
     lines.push("**Positive Attributes**:");
-    for (const id of Object.keys(positives).sort()) {
-      const scoreObj = posScores[id] || { score: 0 };
-      if (!showZeros && scoreObj.score === 0) continue;
+    for (const id of Object.keys(positivesDict).sort()) {
+      const def   = positivesDict[id];
+      const entry = posScores[id];
+      const score =
+        typeof entry === "number"
+          ? entry
+          : typeof entry === "object" && entry !== null
+          ? entry.score ?? 0
+          : 0;
   
-      const info   = positives[id];
-      const score  = scoreObj.score || 0;
-      const reason = reasoning[id]?.reason || scoreObj.reason || "(no reason)";
+      if (!showZeros && score === 0) continue;
   
-      lines.push(`- **${id} (${info.label})**: ${score} / ${info.maxPoints}`);
-      lines.push(`  ↳ ${reason}`);
+      const reason =
+        reasoning[id]?.reason ||
+        (typeof entry === "object" && entry?.reason) ||
+        "(no reason)";
+  
+      lines.push(fmt(id, def.label, `${score} / ${def.maxPoints}`, reason));
     }
   
-    /* ---------- Negatives (L / N…) ---------------------------------- */
+    /* ---------- negatives ---------------------------------------- */
     lines.push("\n**Negative Attributes**:");
-    for (const id of Object.keys(negatives).sort()) {
-      const scoreObj = negScores[id] || { score: 0 };
-      if (!showZeros && scoreObj.score === 0) continue;
+    for (const id of Object.keys(negativesDict).sort()) {
+      const def   = negativesDict[id];
+      const entry = negScores[id];
+      const score =
+        typeof entry === "number"
+          ? entry
+          : typeof entry === "object" && entry !== null
+          ? entry.score ?? 0
+          : 0;
   
-      const info   = negatives[id];
-      const score  = scoreObj.score || 0;
-      const reason = reasoning[id]?.reason || scoreObj.reason || "(no reason)";
+      if (!showZeros && score === 0) continue;
   
-      lines.push(`- **${id} (${info.label})**: ${score} / ${info.penalty}`);
-      lines.push(`  ↳ ${reason}`);
+      const reason =
+        reasoning[id]?.reason ||
+        (typeof entry === "object" && entry?.reason) ||
+        "(no reason)";
+  
+      lines.push(fmt(id, def.label, `${score} / ${def.penalty}`, reason));
     }
   
-    /* ---------- Unscored -------------------------------------------- */
+    /* ---------- unscored list ------------------------------------ */
     if (unscored.length) {
       lines.push(
-        `\n_Unscored attributes:_ ${unscored.map((id) => `**${id}**`).join(", ")}`
+        `\n_Unscored attributes:_ ${unscored
+          .map((id) => `**${id}**`)
+          .join(", ")}`
       );
     }
   
-    /* ---------- Total Line ------------------------------------------ */
-    const percentage = pct(earned, max).toFixed(1);
+    /* ---------- total line --------------------------------------- */
+    const pct = max ? (earned / max) * 100 : 0;
     lines.push(
-      `\n**Total:** ${earned} / ${max} ⇒ ${percentage} % — Not Disqualified`
+      `\n**Total:** ${earned} / ${max} ⇒ ${pct.toFixed(1)} % — Not Disqualified`
     );
   
-    return lines.join("\n");
+    return lines.join("\n").trim();
   }
   
   module.exports = { buildAttributeBreakdown };
