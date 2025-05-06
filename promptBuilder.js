@@ -1,55 +1,44 @@
 /* ===================================================================
-   promptBuilder.js – builds the compact JSON scoring prompt
+   promptBuilder.js — builds the compact JSON scoring prompt
    -------------------------------------------------------------------
-   • Embeds the positive & negative attribute dictionaries
-   • Adds the strict response schema
+   • Embeds the full attribute dictionaries (now with Instructions /
+     Examples / Signals already cleaned by attributeLoader.js)
+   • Adds strict response schema + partial-credit guidance
    • Sends the first 5 experience entries (was 2)
 =================================================================== */
 const { loadAttributes } = require("./attributeLoader");
 
 /* ------------------------------------------------------------------
-   buildPrompt  –  returns the system prompt for GPT-4o
+   buildPrompt  –  returns the system prompt string for GPT-4o
 ------------------------------------------------------------------ */
 async function buildPrompt() {
   const dicts = await loadAttributes();
 
+  /* ---------- use minified JSON for token efficiency ------------- */
+  const dictJson = JSON.stringify(dicts); // no pretty indent
+
   const schema = `
 Return **only** a valid JSON object exactly like this:
-
-{
-  "positive_scores": { "A": { "score": 15, "reason": "..." }, ... },
-  "negative_scores": { "N1": { "score": 0, "reason": "..." }, ... },
-  "contact_readiness": false,
-  "unscored_attributes": [],
-  "aiProfileAssessment": "Single-paragraph assessment",
-  "finalPct": 72.5
-}
+{ "positive_scores": { "A": { "score": 15, "reason": "..." }, ... }, ... }
 
 Rules:
-• If you cannot score an attribute, omit it from "positive_scores"/"negative_scores"
-  and list its ID in "unscored_attributes".
+• If evidence is weak or partial, award partial credit
+  (e.g. 5 / 10 / 15 or 2 / 5 / 8 / 10 for 10-point max).
+• Prefer scoring every attribute (or 0 with a reason); use
+  "unscored_attributes" only when no clue exists.
 • A negative is **not triggered** when "score": 0.
-• **Every attribute object in BOTH maps must contain:**
-    • "score"  – number (≥ 0 for positives, ≤ 0 for negatives)
-    • "reason" – 25–40 words explaining why you awarded that score.
+• Each object needs "score" and a 25–40-word "reason".
 • Do NOT wrap the JSON in \`\`\` fences or add extra commentary.
 `;
 
-  /* ---------------------------------------------------------------
-     Assemble the full system prompt
-  --------------------------------------------------------------- */
-  const prompt = `${JSON.stringify(dicts, null, 2)}\n\n${schema}`;
+  const prompt = `${dictJson}\n\n${schema.trim()}`;
 
-  /* ---------------------------------------------------------------
-     DEBUG: print instructions + token estimate when enabled
-  --------------------------------------------------------------- */
+  /* ---------- optional debug output ------------------------------ */
   if (process.env.DEBUG_PROMPT === "true") {
-    // ╭─ token estimate (≈ 4 chars per token heuristic) ───────────╮
-    const tokenEstimate = Math.ceil(prompt.length / 4);
-    // ╰─────────────────────────────────────────────────────────────╯
+    const tok = Math.ceil(prompt.length / 4); // ≈ token estimate
     console.log("\n───────── Assembled GPT System Prompt ─────────\n");
     console.log(prompt);
-    console.log(`\nApprox. tokens in system prompt: ${tokenEstimate}\n`);
+    console.log(`\nApprox. tokens in system prompt: ${tok}\n`);
     console.log("───────────────────────────────────────────────\n");
   }
 
@@ -67,8 +56,8 @@ function slimLead(full = {}) {
     summary     : full.summary   || full.linkedinDescription || "",
     locationName: full.locationName || "",
     experience  : Array.isArray(full.experience)
-                   ? full.experience.slice(0, 5)   // ← now 5 jobs
-                   : undefined,
+                   ? full.experience.slice(0, 5)   // first 5 roles
+                   : undefined
   };
 }
 
