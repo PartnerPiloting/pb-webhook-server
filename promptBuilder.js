@@ -35,7 +35,25 @@ Rules:
 • Do NOT wrap the JSON in \`\`\` fences or add extra commentary.
 `;
 
-  return `${JSON.stringify(dicts, null, 2)}\n\n${schema}`;
+  /* ---------------------------------------------------------------
+     Assemble the full system prompt
+  --------------------------------------------------------------- */
+  const prompt = `${JSON.stringify(dicts, null, 2)}\n\n${schema}`;
+
+  /* ---------------------------------------------------------------
+     DEBUG: print instructions + token estimate when enabled
+  --------------------------------------------------------------- */
+  if (process.env.DEBUG_PROMPT === "true") {
+    // ╭─ token estimate (≈ 4 chars per token heuristic) ───────────╮
+    const tokenEstimate = Math.ceil(prompt.length / 4);
+    // ╰─────────────────────────────────────────────────────────────╯
+    console.log("\n───────── Assembled GPT System Prompt ─────────\n");
+    console.log(prompt);
+    console.log(`\nApprox. tokens in system prompt: ${tokenEstimate}\n`);
+    console.log("───────────────────────────────────────────────\n");
+  }
+
+  return prompt;
 }
 
 /* ------------------------------------------------------------------
