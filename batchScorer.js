@@ -1,5 +1,8 @@
 /* ===================================================================
    batchScorer.js — GPT-4o Flex scorer  (shared parser + reason text)
+   ------------------------------------------------------------------
+   • Adds terminal-status check for "cancelled"
+   • Aborts polling after 180 s (3 min) to avoid endless loops
 =================================================================== */
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
@@ -120,23 +123,34 @@ async function submitBatch(fileId) {
 }
 
 /* ---------- poll until batch finishes ---------------------------- */
-async function pollBatch(id) {
+async function pollBatch(id, timeoutMs = 180000, intervalMs = 15000) {
   let poll = 0;
+  const start = Date.now();
+  const terminal = ["completed", "completed_with_errors", "failed", "expired", "cancelled"];
+
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
     }).then(r => r.json());
 
     poll++;
-    console.log(`  ↻ Poll #${poll} – status ${j.status}, ok ${j.num_completed}, err ${j.num_failed}`);
+    const ok  = j.request_counts?.completed ?? j.num_completed ?? "undef";
+    const err = j.request_counts?.failed    ?? j.num_failed     ?? "undef";
+    console.log(`  ↻ Poll #${poll} – status ${j.status}, ok ${ok}, err ${err}`);
 
     if (["failed", "expired"].includes(j.status))
       console.error("⨯ Batch failed details:", JSON.stringify(j, null, 2));
 
-    if (["completed", "completed_with_errors", "failed", "expired"].includes(j.status))
-      return j;
+    if (terminal.includes(j.status)) return j;
 
-    await new Promise(r => setTimeout(r, 60000));
+    const elapsed = Date.now() - start;
+    if (elapsed > timeoutMs) {
+      console.error(`⏰ Batch ${id} timed out after ${(elapsed / 1000).toFixed(0)} s`);
+      j.status = "timeout";
+      return j;
+    }
+
+    await new Promise(r => setTimeout(r, intervalMs));
   }
 }
 
@@ -163,8 +177,8 @@ async function processOneBatch(records, positives, negatives, prompt) {
   console.log(`✔︎ Batch submitted (${records.length} leads) → ${batchId}`);
 
   const result = await pollBatch(batchId);
-  if (["expired", "failed"].includes(result.status))
-    throw new Error(`Batch ${batchId} failed: ${result.status}`);
+  if (["expired", "failed", "cancelled", "timeout"].includes(result.status))
+    throw new Error(`Batch ${batchId} ended with status: ${result.status}`);
 
   const rows      = await downloadResult(result);
   let updated     = 0;
