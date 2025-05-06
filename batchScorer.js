@@ -1,10 +1,11 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o batch scorer  (hybrid breakdown version)
+   batchScorer.js — GPT-4o batch scorer  (hybrid breakdown, show zeros)
    ------------------------------------------------------------------
-   • Uses slimLead() to trim profiles
-   • Submits JSONL to OpenAI Batch API
-   • Polls with timeout (3 min) and exits on “cancelling”
-   • Builds Markdown breakdown with our helper, inserting GPT’s reasons
+   • Trims profiles with slimLead()
+   • Submits JSONL to the OpenAI Batch API
+   • Polls with a 3-minute timeout (exits on “cancelling”)
+   • Recomputes scores with computeFinalScore()
+   • Builds Markdown via buildAttributeBreakdown(showZeros = true)
 =================================================================== */
 
 require("dotenv").config();
@@ -17,42 +18,51 @@ const Airtable = require("airtable");
 const { buildPrompt, slimLead }   = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
 const { computeFinalScore }       = require("./scoring");
-const { buildAttributeBreakdown } = require("./breakdown");      // hybrid builder
+const { buildAttributeBreakdown } = require("./breakdown");
 const { callGptScoring }          = require("./callGptScoring");
 
-/* ---------- env & config ---------------------------------------- */
+/* ------------------------------------------------------------------
+   ENV & CONFIG
+------------------------------------------------------------------*/
 const {
   AIRTABLE_BASE_ID: AIRTABLE_BASE,
   AIRTABLE_API_KEY: AIRTABLE_KEY,
-  OPENAI_API_KEY  : OPENAI_KEY
+  OPENAI_API_KEY  : OPENAI_KEY,
 } = process.env;
 
 const MODEL             = "gpt-4o";
 const COMPLETION_WINDOW = "24h";
-const MAX_PER_RUN       = Number(process.env.MAX_BATCH || 500);
+const MAX_PER_RUN       = Number(process.env.MAX_BATCH || 500);  // manual ?limit= sets lower cap
 
-const TOKENS_PER_LEAD   = 4300;
-const MAX_BATCH_TOKENS  = 80000;
+const TOKENS_PER_LEAD   = 4300;   // rough upper bound for prompt & response
+const MAX_BATCH_TOKENS  = 80_000; // OpenAI Batch limit
 
-/* ---------- Airtable connection ---------------------------------- */
+/* ------------------------------------------------------------------
+   Airtable setup
+------------------------------------------------------------------*/
 Airtable.configure({ apiKey: AIRTABLE_KEY });
 const base = Airtable.base(AIRTABLE_BASE);
 
-/* ---------- helper: split by token budget ------------------------ */
+/* ------------------------------------------------------------------
+   helper: chunkByTokens  (splits Airtable records into size-safe chunks)
+------------------------------------------------------------------*/
 function chunkByTokens(records) {
   const chunks = [];
   let current  = [];
-  records.forEach(r => {
+  for (const r of records) {
     if (current.length * TOKENS_PER_LEAD >= MAX_BATCH_TOKENS) {
-      chunks.push(current); current = [];
+      chunks.push(current);
+      current = [];
     }
     current.push(r);
-  });
+  }
   if (current.length) chunks.push(current);
   return chunks;
 }
 
-/* ---------- fetch candidates ------------------------------------- */
+/* ------------------------------------------------------------------
+   helper: fetchCandidates  ("To Be Scored" leads from Airtable)
+------------------------------------------------------------------*/
 async function fetchCandidates(limit) {
   const recs = await base("Leads")
     .select({
@@ -66,7 +76,9 @@ async function fetchCandidates(limit) {
   return recs;
 }
 
-/* ---------- build one JSONL line --------------------------------- */
+/* ------------------------------------------------------------------
+   helper: buildPromptLine  (one JSONL line per lead)
+------------------------------------------------------------------*/
 function buildPromptLine(prompt, leadJson, recId) {
   return JSON.stringify({
     custom_id: recId,
@@ -83,7 +95,9 @@ function buildPromptLine(prompt, leadJson, recId) {
   });
 }
 
-/* ---------- upload JSONL to OpenAI --------------------------------*/
+/* ------------------------------------------------------------------
+   helper: uploadJSONL  (returns file_id)
+------------------------------------------------------------------*/
 async function uploadJSONL(lines) {
   const tmp = path.join(__dirname, "batch.jsonl");
   fs.writeFileSync(tmp, lines.join("\n"));
@@ -103,7 +117,9 @@ async function uploadJSONL(lines) {
   return res.id;
 }
 
-/* ---------- submit a batch job ----------------------------------- */
+/* ------------------------------------------------------------------
+   helper: submitBatch  (returns batch_id)
+------------------------------------------------------------------*/
 async function submitBatch(fileId) {
   const body = {
     input_file_id    : fileId,
@@ -124,15 +140,17 @@ async function submitBatch(fileId) {
   return res.id;
 }
 
-/* ---------- poll until batch finishes ---------------------------- */
-async function pollBatch(id, timeoutMs = 180000, intervalMs = 15000) {
+/* ------------------------------------------------------------------
+   helper: pollBatch  (waits until batch reaches a terminal status)
+------------------------------------------------------------------*/
+async function pollBatch(id, timeoutMs = 180_000, intervalMs = 15_000) {
   const terminal = [
     "completed",
     "completed_with_errors",
     "failed",
     "expired",
     "cancelled",
-    "cancelling"            // treat cancelling as terminal
+    "cancelling",
   ];
   const start = Date.now();
   let poll = 0;
@@ -153,7 +171,7 @@ async function pollBatch(id, timeoutMs = 180000, intervalMs = 15000) {
     if (terminal.includes(j.status)) return j;
 
     if (Date.now() - start > timeoutMs) {
-      console.error(`⏰ Batch ${id} timed out after ${(timeoutMs/1000)} s`);
+      console.error(`⏰ Batch ${id} timed out after ${timeoutMs / 1000} s`);
       j.status = "timeout";
       return j;
     }
@@ -161,18 +179,24 @@ async function pollBatch(id, timeoutMs = 180000, intervalMs = 15000) {
   }
 }
 
-/* ---------- download batch output -------------------------------- */
-async function downloadResult(j) {
-  const url = `https://api.openai.com/v1/files/${j.output_file_id}/content`;
+/* ------------------------------------------------------------------
+   helper: downloadResult  (returns array of result objects)
+------------------------------------------------------------------*/
+async function downloadResult(batchJson) {
+  const url = `https://api.openai.com/v1/files/${batchJson.output_file_id}/content`;
   const txt = await fetch(url, {
     headers: { Authorization: `Bearer ${OPENAI_KEY}` },
   }).then(r => r.text());
   return txt.trim().split("\n").map(l => JSON.parse(l));
 }
 
-/* ---------- process one sub-batch -------------------------------- */
+/* ------------------------------------------------------------------
+   processOneBatch  (single sub-batch of Airtable records)
+------------------------------------------------------------------*/
 async function processOneBatch(records, positives, negatives, prompt) {
-  const lines = [], ids = [];
+  const lines = [];
+  const ids   = [];
+
   for (const r of records) {
     const full = JSON.parse(r.get("Profile Full JSON") || "{}");
     const slim = slimLead(full);
@@ -206,12 +230,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
       unparsable++; continue;
     }
 
-    /* -------- compute single-source totals ----------------------- */
-    const {
-      percentage,
-      rawScore: earned,
-      denominator: max
-    } = computeFinalScore(
+    const { percentage, rawScore: earned, denominator: max } = computeFinalScore(
       parsed.positive_scores,
       positives,
       parsed.negative_scores,
@@ -221,7 +240,6 @@ async function processOneBatch(records, positives, negatives, prompt) {
     );
     parsed.finalPct = Math.round(percentage * 100) / 100;
 
-    /* -------- build hybrid breakdown ----------------------------- */
     const breakdown = buildAttributeBreakdown(
       parsed.positive_scores,
       positives,
@@ -231,7 +249,7 @@ async function processOneBatch(records, positives, negatives, prompt) {
       earned,
       max,
       parsed.attribute_reasoning || {},
-      false,
+      true,         // SHOW zero-score attributes
       null
     );
 
@@ -252,7 +270,9 @@ async function processOneBatch(records, positives, negatives, prompt) {
     console.warn(`⚠️  ${unparsable} result line(s) could not be parsed – see logs above.`);
 }
 
-/* ---------- main runner ------------------------------------------ */
+/* ------------------------------------------------------------------
+   main runner  (called by /run-batch-score)
+------------------------------------------------------------------*/
 async function run(limit = MAX_PER_RUN) {
   console.log("▶︎ batchScorer.run entered");
 
@@ -277,7 +297,7 @@ async function run(limit = MAX_PER_RUN) {
       } catch (err) {
         if (String(err).includes("token_limit_exceeded")) {
           console.log("Queue full → waiting 60 s before retrying this chunk…");
-          await new Promise(r => setTimeout(r, 60000));
+          await new Promise(r => setTimeout(r, 60_000));
         } else {
           throw err;
         }
