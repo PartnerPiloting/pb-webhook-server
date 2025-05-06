@@ -5,10 +5,17 @@
 /**
  * computeFinalScore
  *
+ * @param {Object} positiveScores   e.g. { A: 15, B: 7 }
+ * @param {Object} positivesDict    Airtable positives dictionary
+ * @param {Object} negativeScores   e.g. { N2: -5 } or { N2:{score:-5} }
+ * @param {Object} negativesDict    Airtable negatives dictionary
+ * @param {boolean} contactReady    GPT flag for I – Contact Readiness
+ * @param {Array}   unscored        Attribute IDs GPT couldn’t score
+ *
  * @return {Object} {
- *   percentage,   // 0-100, rounded to 0.01
- *   rawScore,     // earned points after penalties
- *   denominator   // Σ maxPoints of every positive attribute
+ *   percentage,   // 0-100 (2-dp)
+ *   rawScore,     // earned points
+ *   denominator   // Σ maxPoints
  * }
  */
 function computeFinalScore(
@@ -19,12 +26,12 @@ function computeFinalScore(
   contactReady   = false,
   _unscored      = []
 ) {
-  /* 1. Auto-award “I – Contact Readiness” when flagged */
+  /* ---------- Auto-award “I” if GPT set contactReady ------------ */
   if (contactReady && positivesDict.I && !positiveScores.I) {
     positiveScores.I = positivesDict.I.maxPoints;
   }
 
-  /* 2. rawScore = Σ positives + Σ negatives */
+  /* ---------- rawScore = Σ positives + Σ negatives ------------- */
   let rawScore = 0;
 
   for (const id in positiveScores) {
@@ -42,13 +49,17 @@ function computeFinalScore(
     rawScore += val;
   }
 
-  /* 3. denominator = Σ maxPoints of ALL positives (robust to “15 pts”) */
-  const denominator = Object.values(positivesDict).reduce(
-    (sum, def) => sum + (parseInt(def.maxPoints, 10) || 0),
-    0
-  );
+  /* ---------- Denominator (robust to “15 pts”, field name drift) - */
+  const denominator = Object.values(positivesDict).reduce((sum, def) => {
+    const raw =
+      def.maxPoints ??   // preferred field
+      def.max_points ??  // alt snake_case
+      def.max ??         // legacy field
+      0;
+    return sum + (parseInt(String(raw), 10) || 0);
+  }, 0);
 
-  /* 4. Percentage (guard against /0) */
+  /* ---------- Percentage (guard ÷0) ----------------------------- */
   const percentage = denominator ? (rawScore / denominator) * 100 : 0;
 
   return {

@@ -1,10 +1,10 @@
 /********************************************************************
   breakdown.js — hybrid Markdown builder
   -------------------------------------------------------------------
-  • Always lists every positive (A–K, I) and every negative (L1, N1–N5)
-  • Accepts scores as plain numbers *or* objects { score, reason }
-  • Inserts GPT’s narrative bullets when available
-  • Total line is driven by our own maths (earned / denominator)
+  • Lists every positive (A-K, I) and negative (L1, N1-N5)
+  • Accepts scores as numbers or { score, reason }
+  • Prints GPT reasons when available
+  • If showZeros = true, hides “Unscored attributes” line
 ********************************************************************/
 
 function fmt(id, label, scoreStr, reason) {
@@ -45,7 +45,7 @@ function fmt(id, label, scoreStr, reason) {
           ? reasoning[id]
           : reasoning[id]?.reason ||
             (typeof entry === "object" && entry?.reason) ||
-            "(no reason)";
+            "_GPT could not score this attribute_";
   
       lines.push(fmt(id, def.label, `${score} / ${def.maxPoints}`, reason));
     }
@@ -69,13 +69,13 @@ function fmt(id, label, scoreStr, reason) {
           ? reasoning[id]
           : reasoning[id]?.reason ||
             (typeof entry === "object" && entry?.reason) ||
-            "(no reason)";
+            "_GPT could not score this attribute_";
   
       lines.push(fmt(id, def.label, `${score} / ${def.penalty}`, reason));
     }
   
-    /* ---------- Unscored list ------------------------------------ */
-    if (unscored.length) {
+    /* ---------- Unscored list (only when zeros hidden) ----------- */
+    if (unscored.length && !showZeros) {
       lines.push(
         `\n_Unscored attributes:_ ${unscored
           .map((id) => `**${id}**`)
