@@ -1,32 +1,16 @@
 /********************************************************************
   breakdown.js — hybrid Markdown builder
   -------------------------------------------------------------------
-  • ALWAYS lists every positive (A-K, I) and every negative (L1, N1–N5)
-  • Accepts numeric scores *or* objects { score, reason }
-  • Inserts GPT’s 25-word reason when present (attribute_reasoning[id])
-  • Total line uses the earned / denominator values we pass in
+  • Always lists every positive (A–K, I) and every negative (L1, N1–N5)
+  • Accepts scores as plain numbers *or* objects { score, reason }
+  • Inserts GPT’s narrative bullets when available
+  • Total line is driven by our own maths (earned / denominator)
 ********************************************************************/
 
-/* helper for consistent bullet formatting */
 function fmt(id, label, scoreStr, reason) {
     return `- **${id} (${label})**: ${scoreStr}\n  ↳ ${reason}\n`;
   }
   
-  /**
-   * buildAttributeBreakdown
-   * -----------------------
-   * @param  {Object} posScores        – e.g. { A:15, B:{score:7,reason:"…"} }
-   * @param  {Object} positivesDict    – Airtable dict (labels, maxPoints)
-   * @param  {Object} negScores        – e.g. { N2:-5, N5:{score:-5,reason:"…"} }
-   * @param  {Object} negativesDict    – Airtable dict (labels, penalty)
-   * @param  {Array}  unscored         – attr IDs GPT couldn’t score
-   * @param  {Number} earned           – rawScore from computeFinalScore
-   * @param  {Number} max              – denominator from computeFinalScore
-   * @param  {Object} reasoning        – GPT’s attribute_reasoning map
-   * @param  {Boolean} showZeros       – list 0-scores? (default false)
-   * @param  {String|null} header      – optional extra heading line
-   * @returns {String}   Markdown block
-   */
   function buildAttributeBreakdown(
     posScores,
     positivesDict,
@@ -42,7 +26,7 @@ function fmt(id, label, scoreStr, reason) {
     const lines = [];
     if (header) lines.push(header);
   
-    /* ---------- positives ---------------------------------------- */
+    /* ---------- Positive Attributes ------------------------------ */
     lines.push("**Positive Attributes**:");
     for (const id of Object.keys(positivesDict).sort()) {
       const def   = positivesDict[id];
@@ -57,14 +41,16 @@ function fmt(id, label, scoreStr, reason) {
       if (!showZeros && score === 0) continue;
   
       const reason =
-        reasoning[id]?.reason ||
-        (typeof entry === "object" && entry?.reason) ||
-        "(no reason)";
+        typeof reasoning[id] === "string"
+          ? reasoning[id]
+          : reasoning[id]?.reason ||
+            (typeof entry === "object" && entry?.reason) ||
+            "(no reason)";
   
       lines.push(fmt(id, def.label, `${score} / ${def.maxPoints}`, reason));
     }
   
-    /* ---------- negatives ---------------------------------------- */
+    /* ---------- Negative Attributes ------------------------------ */
     lines.push("\n**Negative Attributes**:");
     for (const id of Object.keys(negativesDict).sort()) {
       const def   = negativesDict[id];
@@ -79,14 +65,16 @@ function fmt(id, label, scoreStr, reason) {
       if (!showZeros && score === 0) continue;
   
       const reason =
-        reasoning[id]?.reason ||
-        (typeof entry === "object" && entry?.reason) ||
-        "(no reason)";
+        typeof reasoning[id] === "string"
+          ? reasoning[id]
+          : reasoning[id]?.reason ||
+            (typeof entry === "object" && entry?.reason) ||
+            "(no reason)";
   
       lines.push(fmt(id, def.label, `${score} / ${def.penalty}`, reason));
     }
   
-    /* ---------- unscored list ------------------------------------ */
+    /* ---------- Unscored list ------------------------------------ */
     if (unscored.length) {
       lines.push(
         `\n_Unscored attributes:_ ${unscored
@@ -95,7 +83,7 @@ function fmt(id, label, scoreStr, reason) {
       );
     }
   
-    /* ---------- total line --------------------------------------- */
+    /* ---------- Total line --------------------------------------- */
     const pct = max ? (earned / max) * 100 : 0;
     lines.push(
       `\n**Total:** ${earned} / ${max} ⇒ ${pct.toFixed(1)} % — Not Disqualified`
