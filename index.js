@@ -182,7 +182,7 @@ app.get("/score-lead", async (req, res) => {
       rawScore,
       0,
       attribute_reasoning,
-      false,
+      true,                 // show zero-score attributes
       null
     );
 
@@ -544,7 +544,7 @@ app.post("/api/test-score", async (req, res) => {
       rawScore,
       0,
       attribute_reasoning,
-      false,
+      true,               // show zero-score attributes
       null
     );
 
@@ -616,7 +616,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           rawScore,
           0,
           attribute_reasoning,
-          false,
+          true,           // show zero-score attributes
           null
         )
       );
@@ -845,7 +845,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           rawScore,
           0,
           attribute_reasoning,
-          false,
+          true,        // show zero-score attributes
           null
         ),
         auFlag,
