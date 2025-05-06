@@ -2,8 +2,8 @@
    singleScorer.js – ONE-OFF GPT scorer used by /score-lead
    -------------------------------------------------------------------
    • Builds the system prompt
-   • Calls GPT-4o with temperature 0   (deterministic)
-   • DEBUG: prints temperature, full prompt, and raw GPT reply
+   • Calls GPT-4o with temperature 0  (deterministic)
+   • Logs token usage and raw GPT reply
 =================================================================== */
 require("dotenv").config();
 const { Configuration, OpenAIApi } = require("openai");
@@ -13,11 +13,11 @@ const openai = new OpenAIApi(
   new Configuration({ apiKey: process.env.OPENAI_API_KEY })
 );
 
-const MODEL        = "gpt-4o";
-const TEMPERATURE  = 0;            // ← hard-coded, deterministic
+const MODEL       = "gpt-4o";
+const TEMPERATURE = 0;   // deterministic
 
 async function scoreLeadNow(fullLead = {}) {
-  /* 1️⃣  Build prompt + slimmed profile */
+  /* 1️⃣  Build system prompt + trim profile */
   const sysPrompt = await buildPrompt();
   const userLead  = slimLead(fullLead);
 
@@ -33,13 +33,20 @@ async function scoreLeadNow(fullLead = {}) {
 
   const rawText = completion.data.choices?.[0]?.message?.content || "";
 
-  /* === DEBUG OUTPUT ============================================= */
-  console.log("DBG-TEMP", TEMPERATURE);      // should print 0 every run
-  console.log("DBG-PROMPT\n", sysPrompt);    // full instructions sent
-  console.log("DBG-RAW-GPT\n", rawText);     // raw JSON reply
-  /* =============================================================== */
+  /* === LOG TOKEN USAGE ========================================= */
+  const u = completion.data.usage || {};
+  console.log(
+    "TOKENS single lead – prompt:",
+    u.prompt_tokens ?? "?", "completion:",
+    u.completion_tokens ?? "?", "total:",
+    u.total_tokens ?? "?"
+  );
 
-  return rawText;   // downstream parser handles JSON
+  /* === DEBUG OUTPUT ============================================ */
+  console.log("DBG-RAW-GPT\n", rawText);
+  /* ============================================================= */
+
+  return rawText;   // JSON; parsed downstream
 }
 
 module.exports = { scoreLeadNow };
