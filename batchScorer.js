@@ -1,12 +1,13 @@
 /* ===================================================================
-   batchScorer.js — GPT-4o Flex scorer  (shared parser + reason text)
+   batchScorer.js — GPT-4o batch scorer  (hybrid breakdown version)
    ------------------------------------------------------------------
-   • Adds terminal-status check for "cancelled"
-   • Aborts polling after 180 s (3 min) to avoid endless loops
+   • Uses slimLead() to trim profiles
+   • Submits JSONL to OpenAI Batch API
+   • Polls with timeout (3 min) and exits on “cancelling”
+   • Builds Markdown breakdown with our helper, inserting GPT’s reasons
 =================================================================== */
-require("dotenv").config();
-console.log("▶︎ batchScorer module loaded");
 
+require("dotenv").config();
 const fs       = require("fs");
 const path     = require("path");
 const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
@@ -16,8 +17,8 @@ const Airtable = require("airtable");
 const { buildPrompt, slimLead }   = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
 const { computeFinalScore }       = require("./scoring");
-const { buildAttributeBreakdown } = require("./breakdown");       // ← no circular import
-const { callGptScoring }          = require("./callGptScoring");  // shared parser
+const { buildAttributeBreakdown } = require("./breakdown");      // hybrid builder
+const { callGptScoring }          = require("./callGptScoring");
 
 /* ---------- env & config ---------------------------------------- */
 const {
@@ -72,7 +73,8 @@ function buildPromptLine(prompt, leadJson, recId) {
     method   : "POST",
     url      : "/v1/chat/completions",
     body     : {
-      model   : MODEL,
+      model: MODEL,
+      temperature: 0.2,
       messages: [
         { role: "system", content: prompt },
         { role: "user",   content: `Lead:\n${JSON.stringify(leadJson, null, 2)}` }
@@ -124,9 +126,16 @@ async function submitBatch(fileId) {
 
 /* ---------- poll until batch finishes ---------------------------- */
 async function pollBatch(id, timeoutMs = 180000, intervalMs = 15000) {
-  let poll = 0;
+  const terminal = [
+    "completed",
+    "completed_with_errors",
+    "failed",
+    "expired",
+    "cancelled",
+    "cancelling"            // treat cancelling as terminal
+  ];
   const start = Date.now();
-  const terminal = ["completed", "completed_with_errors", "failed", "expired", "cancelled"];
+  let poll = 0;
 
   while (true) {
     const j = await fetch(`https://api.openai.com/v1/batches/${id}`, {
@@ -143,13 +152,11 @@ async function pollBatch(id, timeoutMs = 180000, intervalMs = 15000) {
 
     if (terminal.includes(j.status)) return j;
 
-    const elapsed = Date.now() - start;
-    if (elapsed > timeoutMs) {
-      console.error(`⏰ Batch ${id} timed out after ${(elapsed / 1000).toFixed(0)} s`);
+    if (Date.now() - start > timeoutMs) {
+      console.error(`⏰ Batch ${id} timed out after ${(timeoutMs/1000)} s`);
       j.status = "timeout";
       return j;
     }
-
     await new Promise(r => setTimeout(r, intervalMs));
   }
 }
@@ -199,8 +206,12 @@ async function processOneBatch(records, positives, negatives, prompt) {
       unparsable++; continue;
     }
 
-    /* -------- ALWAYS compute our own finalPct -------------------- */
-    const { percentage } = computeFinalScore(
+    /* -------- compute single-source totals ----------------------- */
+    const {
+      percentage,
+      rawScore: earned,
+      denominator: max
+    } = computeFinalScore(
       parsed.positive_scores,
       positives,
       parsed.negative_scores,
@@ -210,24 +221,23 @@ async function processOneBatch(records, positives, negatives, prompt) {
     );
     parsed.finalPct = Math.round(percentage * 100) / 100;
 
-    /* -------- build fallback breakdown if GPT omitted it --------- */
-    const breakdown =
-      parsed.attribute_breakdown ||
-      buildAttributeBreakdown(
-        parsed.positive_scores,
-        positives,
-        parsed.negative_scores,
-        negatives,
-        parsed.unscored_attributes || [],
-        0, 0,
-        parsed.attribute_reasoning || {},
-        false,
-        null
-      );
+    /* -------- build hybrid breakdown ----------------------------- */
+    const breakdown = buildAttributeBreakdown(
+      parsed.positive_scores,
+      positives,
+      parsed.negative_scores,
+      negatives,
+      parsed.unscored_attributes || [],
+      earned,
+      max,
+      parsed.attribute_reasoning || {},
+      false,
+      null
+    );
 
     await base("Leads").update(ids[idx], {
       "AI Score"              : parsed.finalPct,
-      "AI Profile Assessment" : parsed.aiProfileAssessment  || "",
+      "AI Profile Assessment" : parsed.aiProfileAssessment || "",
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
@@ -266,7 +276,7 @@ async function run(limit = MAX_PER_RUN) {
         done = true;
       } catch (err) {
         if (String(err).includes("token_limit_exceeded")) {
-          console.log("Queue is full → waiting 60 s before retrying this chunk…");
+          console.log("Queue full → waiting 60 s before retrying this chunk…");
           await new Promise(r => setTimeout(r, 60000));
         } else {
           throw err;

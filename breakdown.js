@@ -1,73 +1,91 @@
-/* ===================================================================
-   breakdown.js — human-readable markdown breakdown
-   -------------------------------------------------------------------
-   • ALWAYS lists every positive (A-K, I, etc.) and every negative (N1-N… + L1)
-   • Shows "score / max"   for positives
-     and  "score / penalty" for negatives
-   • If GPT gave no score ⇒ score = 0   and reason = "_GPT could not score…_"
-   • Computes denominator internally and prints Total line
-=================================================================== */
-function totalPositivePoints(dict) {
-    return Object.values(dict).reduce((s, d) => s + (d.maxPoints || 0), 0);
-  }
-  function fmt(id, label, scoreStr, reason) {
-    return `- **${id} (${label})**: ${scoreStr}\n  ↳ ${reason}\n`;
+/***********************************************************************
+  breakdown.js — builds the Markdown block shown in “AI Attribute Breakdown”
+  ----------------------------------------------------------------------
+  • Works for both manual and batch routes.
+  • Always lists every attribute in alphabetical order.
+  • Drops GPT’s own formatting and instead inserts GPT’s 25-word reasons
+    (attribute_reasoning) into a deterministic template.
+  • The “Total” line is driven by *our* maths (earned / max ⇒ pct),
+    so it can never drift from the value stored in the “AI Score” field.
+***********************************************************************/
+
+function pct(earned, max) {
+    if (!max) return 0;
+    return (earned / max) * 100;
   }
   
+  /**
+   * Build the full Markdown breakdown.
+   *
+   * @param {object} posScores      – { A: { score, reason }, … }
+   * @param {object} positives      – full positives dictionary (labels, maxPoints)
+   * @param {object} negScores      – { N1: { score, reason }, … }
+   * @param {object} negatives      – full negatives dictionary (labels, penalty)
+   * @param {array}  unscored       – attribute IDs GPT said it couldn’t score
+   * @param {number} earned         – total points after penalties (our maths)
+   * @param {number} max            – denominator (sum of all maxPoints)
+   * @param {object} reasoning      – GPT’s attribute_reasoning map
+   * @param {boolean} showZeros     – if false, hide positives/negatives with 0
+   * @param {string|null} header    – optional extra heading line
+   */
   function buildAttributeBreakdown(
-    posScores,            // e.g. { A: 15, … }
-    positivesDict,        // Airtable dictionary for positives
-    negScores,            // e.g. { N2: { score:-5,reason:"…" }, N5:0, … }
-    negativesDict,        // Airtable dictionary for negatives
-    _unused = [],         // kept for API compatibility
-    rawScore = 0,         // you now pass a real value
-    _dummy = 0,           // deprecated
-    attribute_reasoning = {},
-    disqualified = false,
-    disqualifyReason = null
+    posScores,
+    positives,
+    negScores,
+    negatives,
+    unscored,
+    earned,
+    max,
+    reasoning = {},
+    showZeros = false,
+    header = null
   ) {
-    let out = "";
+    const lines = [];
   
-    /* --------- Positive Attributes ------------------------------- */
-    out += "**Positive Attributes**:\n";
-    for (const id of Object.keys(positivesDict).sort()) {
-      const def    = positivesDict[id];
-      const max    = def.maxPoints;
-      const score  =
-        typeof posScores[id] === "number" ? posScores[id] : 0;
-      const reason =
-        attribute_reasoning[id] || "_GPT could not score this attribute_";
-      out += fmt(id, def.label, `${score} / ${max}`, reason);
+    if (header) lines.push(header);
+  
+    /* ---------- Positives (A … K) ----------------------------------- */
+    lines.push("**Positive Attributes**:");
+    for (const id of Object.keys(positives).sort()) {
+      const scoreObj = posScores[id] || { score: 0 };
+      if (!showZeros && scoreObj.score === 0) continue;
+  
+      const info   = positives[id];
+      const score  = scoreObj.score || 0;
+      const reason = reasoning[id]?.reason || scoreObj.reason || "(no reason)";
+  
+      lines.push(`- **${id} (${info.label})**: ${score} / ${info.maxPoints}`);
+      lines.push(`  ↳ ${reason}`);
     }
   
-    /* --------- Negative Attributes ------------------------------- */
-    out += "\n**Negative Attributes**:\n";
-    for (const id of Object.keys(negativesDict).sort()) {
-      const def    = negativesDict[id];
-      const entry  = negScores[id];
-      const score  =
-        typeof entry === "number"
-          ? entry
-          : typeof entry === "object" && entry !== null
-          ? entry.score ?? 0
-          : 0;
-      const reason =
-        (typeof entry === "object" ? entry.reason : null) ||
-        attribute_reasoning[id] ||
-        "_GPT could not score this attribute_";
-      out += fmt(id, def.label, `${score} / ${def.penalty}`, reason);
+    /* ---------- Negatives (L / N…) ---------------------------------- */
+    lines.push("\n**Negative Attributes**:");
+    for (const id of Object.keys(negatives).sort()) {
+      const scoreObj = negScores[id] || { score: 0 };
+      if (!showZeros && scoreObj.score === 0) continue;
+  
+      const info   = negatives[id];
+      const score  = scoreObj.score || 0;
+      const reason = reasoning[id]?.reason || scoreObj.reason || "(no reason)";
+  
+      lines.push(`- **${id} (${info.label})**: ${score} / ${info.penalty}`);
+      lines.push(`  ↳ ${reason}`);
     }
   
-    /* --------- Total line ---------------------------------------- */
-    const denom = totalPositivePoints(positivesDict);
-    const pct   = denom ? (rawScore / denom) * 100 : 0;
-    const line  = `**Total:** ${rawScore} / ${denom} ⇒ ${pct.toFixed(1)} %`;
+    /* ---------- Unscored -------------------------------------------- */
+    if (unscored.length) {
+      lines.push(
+        `\n_Unscored attributes:_ ${unscored.map((id) => `**${id}**`).join(", ")}`
+      );
+    }
   
-    out += disqualified && disqualifyReason
-      ? `\n\n${line} — Disqualified: ${disqualifyReason}`
-      : `\n\n${line} — Qualified`;
+    /* ---------- Total Line ------------------------------------------ */
+    const percentage = pct(earned, max).toFixed(1);
+    lines.push(
+      `\n**Total:** ${earned} / ${max} ⇒ ${percentage} % — Not Disqualified`
+    );
   
-    return out.trim();
+    return lines.join("\n");
   }
   
   module.exports = { buildAttributeBreakdown };
