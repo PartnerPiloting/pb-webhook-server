@@ -12,13 +12,14 @@ const express = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable = require("airtable");
 const fs = require("fs");
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: f }) => f(...args));
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
+
 const { buildPrompt }             = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");   // dynamic dicts
 const { callGptScoring }          = require("./callGptScoring");    // GPT scorer
 const { buildAttributeBreakdown } = require("./breakdown");         // shared breakdown
 const { scoreLeadNow }            = require("./singleScorer");      // single-lead scorer
+const { computeFinalScore }       = require("./scoring");           // unified scorer
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
@@ -139,9 +140,6 @@ app.get("/score-lead", async (req, res) => {
     const raw    = await scoreLeadNow(fullLead);
     const parsed = await callGptScoring(raw);
 
-    // force fresh calculation
-    delete parsed.finalPct;
-
     const { positives, negatives } = await loadAttributes();
 
     const {
@@ -153,25 +151,20 @@ app.get("/score-lead", async (req, res) => {
       attribute_reasoning = {},
     } = parsed;
 
-    /* compute rawScore */
-    const rawScore =
-      Object.values(positive_scores).reduce((s, v) => s + v, 0) +
-      Object.values(negative_scores).reduce((s, v) => {
-        const n = typeof v === "number" ? v : v?.score ?? 0;
-        return s + n;
-      }, 0);
+    const {
+      percentage,
+      rawScore: earned,
+      denominator: max,
+    } = computeFinalScore(
+      positive_scores,
+      positives,
+      negative_scores,
+      negatives,
+      contact_readiness,
+      unscored_attributes
+    );
 
-    if (parsed.finalPct === undefined) {
-      const { percentage } = computeFinalScore(
-        positive_scores,
-        positives,
-        negative_scores,
-        negatives,
-        contact_readiness,
-        unscored_attributes
-      );
-      parsed.finalPct = Math.round(percentage * 100) / 100;
-    }
+    parsed.finalPct = Math.round(percentage * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
       positive_scores,
@@ -179,10 +172,10 @@ app.get("/score-lead", async (req, res) => {
       negative_scores,
       negatives,
       unscored_attributes,
-      rawScore,
-      0,
+      earned,
+      max,
       attribute_reasoning,
-      true,                 // show zero-score attributes
+      true,          // show zero-score attributes
       null
     );
 
@@ -219,86 +212,6 @@ if (!GPT_CHAT_URL) throw new Error("Missing GPT_CHAT_URL env var");
 mountPointerApi(app, base, GPT_CHAT_URL);
 mountLatestLead(app, base);
 mountUpdateLead(app, base);
-
-/* ------------------------------------------------------------------
-   3)  computeFinalScore (denominator loop fixed)
-------------------------------------------------------------------*/
-function computeFinalScore(
-  positive_scores,
-  dictionaryPositives,
-  negative_scores,
-  dictionaryNegatives,
-  contact_readiness = false,
-  unscored_attributes = []
-) {
-  let disqualified = false;
-  let disqualifyReason = null;
-
-  if (
-    dictionaryPositives["I"] &&
-    !unscored_attributes.includes("I") &&
-    !("I" in positive_scores)
-  ) {
-    positive_scores["I"] = 0;
-  }
-
-  /* ---------- new denominator builder ---------- */
-  let baseDenominator = 0;
-  for (const pInfo of Object.values(dictionaryPositives)) {
-    baseDenominator += pInfo.maxPoints;   // always count every positive attribute
-  }
-
-  /* ---------- rawScore ---------- */
-  let rawScore = 0;
-  for (const pts of Object.values(positive_scores)) rawScore += pts;
-
-  for (const [attrID, pInfo] of Object.entries(dictionaryPositives)) {
-    if (pInfo.minQualify > 0) {
-      const awarded    = positive_scores[attrID] || 0;
-      const isUnscored = unscored_attributes.includes(attrID);
-      if (isUnscored || awarded < pInfo.minQualify) {
-        disqualified     = true;
-        disqualifyReason =
-          `Min qualification not met for ${attrID} (needed ${pInfo.minQualify}, got ${awarded})`;
-        return {
-          rawScore: 0,
-          denominator: baseDenominator,
-          percentage: 0,
-          disqualified,
-          disqualifyReason,
-        };
-      }
-    }
-  }
-
-  for (const [negID, penalty] of Object.entries(negative_scores)) {
-    if (dictionaryNegatives[negID]?.disqualifying && penalty !== 0) {
-      disqualified     = true;
-      disqualifyReason = `Disqualifying negative attribute ${negID} triggered`;
-      return {
-        rawScore: 0,
-        denominator: baseDenominator,
-        percentage: 0,
-        disqualified,
-        disqualifyReason,
-      };
-    }
-  }
-
-  for (const pen of Object.values(negative_scores)) rawScore += pen;
-  if (rawScore < 0) rawScore = 0;
-
-  const percentage =
-    baseDenominator === 0 ? 0 : (rawScore / baseDenominator) * 100;
-
-  return {
-    rawScore,
-    denominator: baseDenominator,
-    percentage,
-    disqualified,
-    disqualifyReason,
-  };
-}
 
 /* ------------------------------------------------------------------
    4)  getScoringData & helpers  (legacy parser – retained for safety)
@@ -517,15 +430,11 @@ app.post("/api/test-score", async (req, res) => {
       attribute_reasoning = {},
     } = parsed;
 
-    /* compute rawScore */
-    const rawScore =
-      Object.values(positive_scores).reduce((s, v) => s + v, 0) +
-      Object.values(negative_scores).reduce((s, v) => {
-        const n = typeof v === "number" ? v : v?.score ?? 0;
-        return s + n;
-      }, 0);
-
-    const { percentage } = computeFinalScore(
+    const {
+      percentage,
+      rawScore: earned,
+      denominator: max,
+    } = computeFinalScore(
       positive_scores,
       positives,
       negative_scores,
@@ -533,6 +442,7 @@ app.post("/api/test-score", async (req, res) => {
       contact_readiness,
       unscored_attributes
     );
+
     parsed.finalPct = Math.round(percentage * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
@@ -541,10 +451,10 @@ app.post("/api/test-score", async (req, res) => {
       negative_scores,
       negatives,
       unscored_attributes,
-      rawScore,
-      0,
+      earned,
+      max,
       attribute_reasoning,
-      true,               // show zero-score attributes
+      true,         // show zero-score attributes
       null
     );
 
@@ -582,15 +492,11 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
-      /* compute rawScore */
-      const rawScore =
-        Object.values(positive_scores).reduce((s, v) => s + v, 0) +
-        Object.values(negative_scores).reduce((s, v) => {
-          const n = typeof v === "number" ? v : v?.score ?? 0;
-          return s + n;
-        }, 0);
-
-      const { percentage } = computeFinalScore(
+      const {
+        percentage,
+        rawScore: earned,
+        denominator: max,
+      } = computeFinalScore(
         positive_scores,
         positives,
         negative_scores,
@@ -598,8 +504,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         contact_readiness,
         unscored_attributes
       );
-      gpt.finalPct = Math.round(percentage * 100) / 100;
 
+      gpt.finalPct = Math.round(percentage * 100) / 100;
       if (gpt.finalPct < passMark) continue;
 
       await upsertLead(
@@ -613,10 +519,10 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           negative_scores,
           negatives,
           unscored_attributes,
-          rawScore,
-          0,
+          earned,
+          max,
           attribute_reasoning,
-          true,           // show zero-score attributes
+          true,        // show zero-score attributes
           null
         )
       );
@@ -799,15 +705,11 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
-      /* compute rawScore */
-      const rawScore =
-        Object.values(positive_scores).reduce((s, v) => s + v, 0) +
-        Object.values(negative_scores).reduce((s, v) => {
-          const n = typeof v === "number" ? v : v?.score ?? 0;
-          return s + n;
-        }, 0);
-
-      const { percentage } = computeFinalScore(
+      const {
+        percentage,
+        rawScore: earned,
+        denominator: max,
+      } = computeFinalScore(
         positive_scores,
         positives,
         negative_scores,
@@ -815,6 +717,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
         contact_readiness,
         unscored_attributes
       );
+
       gpt.finalPct = Math.round(percentage * 100) / 100;
 
       const auFlag        = isAustralian(lead.locationName || "");
@@ -842,10 +745,10 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           negative_scores,
           negatives,
           unscored_attributes,
-          rawScore,
-          0,
+          earned,
+          max,
           attribute_reasoning,
-          true,        // show zero-score attributes
+          true,     // show zero-score attributes
           null
         ),
         auFlag,
