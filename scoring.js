@@ -1,41 +1,31 @@
 /********************************************************************
-  scoring.js  –  SINGLE SOURCE OF TRUTH for final-score math
+  scoring.js  –  SINGLE SOURCE OF TRUTH for final-score maths
   -------------------------------------------------------------------
-  • Shared by every scoring route (manual, batch, Linked-Helper, etc.)
-  • Accepts:
-        positiveScores   – raw points GPT awarded for A…K, I (object)
-        positivesDict    – full positives dictionary from Airtable
-        negativeScores   – raw penalties GPT awarded for L1 / N1…N5
-        negativesDict    – full negatives dictionary from Airtable
-        contactReady     – Boolean flag: if GPT says lead is “ready
-                           to be contacted”, we auto-award I points
-        unscored         – array (currently unused, kept for future)
-  • Returns ONE object with three keys:
-        {
-          percentage,    // 0-100, rounded to 0.01
-          rawScore,      // earned points after penalties
-          denominator    // always sum of ALL positive maxPoints
-        }
-  -------------------------------------------------------------------
-  Why we do the math here (and NOT trust GPT’s own “finalPct”):
-  1. We guarantee the Total line in the Markdown list ALWAYS matches
-     the AI Score field in Airtable (single source of truth).
-  2. We add / remove attributes later without editing prompts — the
-     maths updates automatically because it reads Airtable.
-  3. We protect against model quirks (e.g. GPT mis-adds or forgets
-     an attribute) by recomputing everything server-side.
+  Why this exists
+  ---------------    
+  • Every scoring route (manual, batch, Linked-Helper, Phantombuster,
+    /api/test-score) calls ONE function so the % can never drift.
+  • We recalculate the percentage ourselves instead of trusting
+    GPT’s “finalPct”, protecting against rounding or logic slips.
+  • Contact-readiness (“I”) and negative penalties are handled here,
+    so no route has to remember special cases.
 ********************************************************************/
 
 /**
  * computeFinalScore
  * -----------------
- * @param  {Object} positiveScores – e.g. { A:15, B:7, … }
- * @param  {Object} positivesDict  – Airtable dict with maxPoints
- * @param  {Object} negativeScores – e.g. { N2:-5, N5:{score:-5} }
- * @param  {Object} negativesDict  – Airtable dict with penalty
- * @param  {Boolean} contactReady  – flag from GPT
- * @param  {Array} unscored        – not used yet
- * @return {Object} { percentage, rawScore, denominator }
+ * @param {Object} positiveScores  { A: 15, B: 7, … } or numbers
+ * @param {Object} positivesDict   full positives dictionary (Airtable)
+ * @param {Object} negativeScores  { N2: -5, N5:{score:-5} } etc.
+ * @param {Object} negativesDict   full negatives dictionary (Airtable)
+ * @param {Boolean} contactReady   if GPT flagged “contact_readiness”
+ * @param {Array}   unscored       array (kept for future use)
+ *
+ * @return {Object} {
+ *           percentage,      // 0-100, rounded to 0.01
+ *           rawScore,        // earned points after penalties
+ *           denominator      // Σ maxPoints of every positive attr
+ *         }
  */
 function computeFinalScore(
   positiveScores = {},
@@ -45,25 +35,20 @@ function computeFinalScore(
   contactReady   = false,
   _unscored      = []
 ) {
-  /* ------------------------------------------------------------- *
-   * 1. Auto-award “I – Contact Readiness” when GPT flags it
-   * ------------------------------------------------------------- */
+  /* ---------- 1. Auto-award “I – Contact Readiness” ------------- */
   if (contactReady && positivesDict.I && !positiveScores.I) {
-    positiveScores.I = positivesDict.I.maxPoints; // full 3 points
+    positiveScores.I = positivesDict.I.maxPoints;   // full 3 points
   }
 
-  /* ------------------------------------------------------------- *
-   * 2. rawScore = Σ positives  +  Σ negatives
-   *    (negatives are negative numbers, so we just add them)
-   * ------------------------------------------------------------- */
+  /* ---------- 2. rawScore = Σ positives + Σ negatives ----------- */
   let rawScore = 0;
 
-  // Positives
+  // 2a. positives
   for (const id in positiveScores) {
     rawScore += Number(positiveScores[id]) || 0;
   }
 
-  // Negatives
+  // 2b. negatives (each value may be number OR { score, reason })
   for (const id in negativeScores) {
     const entry = negativeScores[id];
     const val =
@@ -75,27 +60,20 @@ function computeFinalScore(
     rawScore += val;
   }
 
-  /* ------------------------------------------------------------- *
-   * 3. Denominator = Σ maxPoints of every positive attribute
-   *    (A…K, I); this never changes based on GPT output.
-   * ------------------------------------------------------------- */
+  /* ---------- 3. denominator = Σ maxPoints of ALL positives ----- */
   const denominator = Object.values(positivesDict).reduce(
-    (sum, def) => sum + (def.maxPoints || 0),
+    (sum, def) => sum + Number(def.maxPoints || 0),
     0
   );
 
-  /* ------------------------------------------------------------- *
-   * 4. Percentage (0-100). Guard against divide-by-zero (unlikely).
-   * ------------------------------------------------------------- */
+  /* ---------- 4. Percentage (guard against /0) ------------------ */
   const percentage = denominator ? (rawScore / denominator) * 100 : 0;
 
-  /* ------------------------------------------------------------- *
-   * 5. Return nicely rounded results
-   * ------------------------------------------------------------- */
+  /* ---------- 5. Return tidy object ----------------------------- */
   return {
-    percentage: Math.round(percentage * 100) / 100, // 2-dp tidy
-    rawScore,
-    denominator,
+    percentage: Math.round(percentage * 100) / 100,  // tidy 2-dp
+    rawScore,                                        // “earned”
+    denominator,                                     // “max”
   };
 }
 
