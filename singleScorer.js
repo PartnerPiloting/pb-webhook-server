@@ -3,11 +3,22 @@
    -------------------------------------------------------------------
    • Builds the system prompt
    • Calls GPT-4o with temperature 0  (deterministic)
-   • Logs token usage and raw GPT reply
+   • Logs per-section token usage (system vs lead) and raw GPT reply
 =================================================================== */
 require("dotenv").config();
 const { Configuration, OpenAIApi } = require("openai");
 const { buildPrompt, slimLead }    = require("./promptBuilder");
+
+/* tiktoken – optional lightweight encoder for accurate counts
+   (npm i @dqbd/tiktoken --save) */
+let encode;
+try {
+  // eslint-disable-next-line node/no-missing-require
+  const { encoding_for_model } = require("@dqbd/tiktoken");
+  encode = encoding_for_model("gpt-4o-mini");
+} catch {
+  console.warn("tiktoken not installed — per-section token counts disabled");
+}
 
 const openai = new OpenAIApi(
   new Configuration({ apiKey: process.env.OPENAI_API_KEY })
@@ -21,7 +32,17 @@ async function scoreLeadNow(fullLead = {}) {
   const sysPrompt = await buildPrompt();
   const userLead  = slimLead(fullLead);
 
-  /* 2️⃣  Call GPT-4o */
+  /* Optional exact token split ----------------------------------- */
+  let sysTokens = null;
+  let leadTokens = null;
+  if (encode) {
+    try {
+      sysTokens  = encode.encode(sysPrompt).length;
+      leadTokens = encode.encode(JSON.stringify(userLead)).length;
+    } catch {}
+  }
+
+  /* 2️⃣  Call GPT-4o --------------------------------------------- */
   const completion = await openai.createChatCompletion({
     model: MODEL,
     temperature: TEMPERATURE,
@@ -36,7 +57,9 @@ async function scoreLeadNow(fullLead = {}) {
   /* === LOG TOKEN USAGE ========================================= */
   const u = completion.data.usage || {};
   console.log(
-    "TOKENS single lead – prompt:",
+    "TOKENS single lead – system:",
+    sysTokens ?? "?", "lead:",
+    leadTokens ?? "?", "prompt:",
     u.prompt_tokens ?? "?", "completion:",
     u.completion_tokens ?? "?", "total:",
     u.total_tokens ?? "?"
