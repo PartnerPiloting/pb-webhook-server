@@ -1,16 +1,14 @@
 /* ===================================================================
    batchScorer.js — GPT-4o FLEX bulk scorer  (chunk mode)
    -------------------------------------------------------------------
-   • Fetches “To Be Scored” leads from Airtable in CHUNK_SIZE batches
-   • Sends slimmed JSON to GPT-4o, parses, writes results back
-   • Handles time-outs, empty replies, parser errors safely
+   • Skips any lead whose Profile JSON has no "about" section
+   • Updates skipped rows with AI Score = 0, Status = "Skipped – No About"
+   • Sends only scorable leads to GPT, preventing array mis-alignment
 =================================================================== */
 
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
 
-const fs         = require("fs");
-const path       = require("path");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable   = require("airtable");
 const fetch      = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
@@ -24,7 +22,7 @@ const { callGptScoring }           = require("./callGptScoring");
 
 /* ---------- ENV & CONSTANTS ------------------------------------- */
 const MODEL           = process.env.GPT_MODEL || "gpt-4o";
-const CHUNK_SIZE      = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10));
+const CHUNK_SIZE      = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "30", 10));
 const GPT_TIMEOUT_MS  = Math.max(30000, parseInt(process.env.GPT_TIMEOUT_MS || "120000", 10));
 const TOKEN_SOFT_CAP  = 7500;
 const ADMIN_EMAIL     = process.env.ADMIN_EMAIL || "";
@@ -37,42 +35,6 @@ const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
 /* ---------- helpers --------------------------------------------- */
 const tokens = (s = "") => Math.ceil(s.length / 4);
-
-/* parse array helper (tolerant) ---------------------------------- */
-function extractJsonArray(raw) {
-  /* 1 — pure JSON array? */
-  try {
-    const j = JSON.parse(raw);
-    if (Array.isArray(j)) return j;
-  } catch (_) { /* fall-through */ }
-
-  /* 2 — ```json fenced block */
-  const fence = raw.match(/```(?:json)?\s*([\s\S]+?)\s*```/i);
-  if (fence) {
-    try {
-      const j = JSON.parse(fence[1]);
-      if (Array.isArray(j)) return j;
-    } catch (_) { /* fall-through */ }
-  }
-
-  /* 3 — first [...] slice */
-  const brace = raw.match(/\[[\s\S]+/);
-  if (brace) {
-    let depth = 0, end = -1;
-    for (let i = 0; i < brace[0].length; i++) {
-      if (brace[0][i] === "[") depth++;
-      if (brace[0][i] === "]") depth--;
-      if (depth === 0) { end = i + 1; break; }
-    }
-    if (end !== -1) {
-      try {
-        const j = JSON.parse(brace[0].slice(0, end));
-        if (Array.isArray(j)) return j;
-      } catch (_) { /* ignore */ }
-    }
-  }
-  throw new Error("Unable to parse GPT reply as JSON array");
-}
 
 /* ---------- Mailgun alert helper -------------------------------- */
 async function alertAdmin(subject, text) {
@@ -100,7 +62,6 @@ function gptWithTimeout(messages) {
 /* ---------- simple queue ---------------------------------------- */
 const queue = [];
 let running = false;
-
 async function enqueue(recs) {
   queue.push(recs);
   if (!running) {
@@ -129,67 +90,93 @@ async function fetchLeads(limit) {
   return records;
 }
 
-/* ---------- chunk scorer ---------------------------------------- */
+/* =================================================================
+   scoreChunk  –  main worker
+=================================================================== */
 async function scoreChunk(records) {
-  const prompt   = await buildPrompt();
-  const slimJSON = JSON.stringify({ leads: records.map(r => slimLead(JSON.parse(r.get("Profile Full JSON") || "{}"))) });
-  const sys      = { role: "system", content: prompt };
-  const usr      = { role: "user",   content: "Return an array of results in the same order:\n" + slimJSON };
 
-  /* split if token cap exceeded ---------------------------------- */
-  if (tokens(prompt) + tokens(slimJSON) > TOKEN_SOFT_CAP && records.length > 1) {
+  /* ---------- skip leads that lack an About section ------------- */
+  const scorable   = [];
+  for (const rec of records) {
+    const profile = JSON.parse(rec.get("Profile Full JSON") || "{}");
+    if (!profile.about || !profile.about.trim()) {
+      await base("Leads").update(rec.id, {
+        "AI Score"       : 0,
+        "Scoring Status" : "Skipped – No About",
+        "AI Profile Assessment"  : "",
+        "AI Attribute Breakdown" : ""
+      });
+      continue;                        // don’t send to GPT
+    }
+    scorable.push({ rec, profile });
+  }
+
+  /* no scorable leads? nothing to do ----------------------------- */
+  if (!scorable.length) return;
+
+  /* ---------- build prompt & user message ----------------------- */
+  const prompt = await buildPrompt();
+  const slim   = scorable.map(({ profile }) => slimLead(profile));
+  const userMsg = JSON.stringify({ leads: slim });
+
+  /* token split guard -------------------------------------------- */
+  if (tokens(prompt) + tokens(userMsg) > TOKEN_SOFT_CAP && scorable.length > 1) {
     const mid = Math.ceil(records.length / 2);
     await enqueue(records.slice(0, mid));
     await enqueue(records.slice(mid));
     return;
   }
 
-  const resp       = await gptWithTimeout([sys, usr]);
+  /* ---------- chat call ----------------------------------------- */
+  const resp       = await gptWithTimeout([
+    { role: "system", content: prompt },
+    { role: "user",   content: "Return an array of results in the same order:\n" + userMsg }
+  ]);
   const rawContent = resp.data.choices[0].message.content || "";
 
+  /* ---------- tolerant top-level parse -------------------------- */
   let output;
-  try { output = extractJsonArray(rawContent); }
-  catch (err) {
-    throw new Error("Top-level parse failed: " + err.message);
+  try { output = JSON.parse(rawContent); }
+  catch (_) {
+    const fence = rawContent.match(/```(?:json)?\s*([\s\S]+?)\s*```/i);
+    if (fence) output = JSON.parse(fence[1]);
+    else throw new Error("Top-level parse failed: Unable to parse GPT reply as JSON array");
+  }
+  if (!Array.isArray(output)) throw new Error("Top-level parse failed: GPT did not return an array");
+
+  /* length mismatch → enqueue solos ------------------------------ */
+  if (output.length !== scorable.length) {
+    console.warn(`⚠️ GPT returned ${output.length} of ${scorable.length} objects`);
+    for (let i = 0; i < scorable.length; i++) {
+      if (!output[i]) await enqueue([scorable[i].rec]);   // solo retry
+    }
   }
 
   const { positives, negatives } = await loadAttributes();
-  let unparsable = 0;
 
-  for (let i = 0; i < records.length; i++) {
-    const rec  = records[i];
-    const raw  = JSON.stringify(output[i]);
+  /* ---------- walk results in parallel -------------------------- */
+  for (let i = 0; i < output.length; i++) {
+    const rec  = scorable[i].rec;
+    const raw  = JSON.stringify(output[i] || {});
     let gpt;
-
     try { gpt = callGptScoring(raw); }
     catch (err) {
-      console.warn(`⚠️  Lead ${rec.id} – parser error: ${err.message}`);
-      unparsable++;
+      console.warn(`⚠️ Lead ${rec.id} — parser error: ${err.message}`);
       await base("Leads").update(rec.id, { "Scoring Status": "Failed" });
       continue;
     }
 
-    const { percentage, rawScore: earned, denominator: max } = computeFinalScore(
-      gpt.positive_scores,
-      positives,
-      gpt.negative_scores,
-      negatives,
-      gpt.contact_readiness,
-      gpt.unscored_attributes
-    );
+    const { percentage, rawScore: earned, denominator: max } =
+      computeFinalScore(gpt.positive_scores, positives,
+                        gpt.negative_scores, negatives,
+                        gpt.contact_readiness, gpt.unscored_attributes);
     gpt.finalPct = Math.round((gpt.finalPct ?? percentage) * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
-      gpt.positive_scores,
-      positives,
-      gpt.negative_scores,
-      negatives,
-      gpt.unscored_attributes,
-      earned,
-      max,
-      gpt.attribute_reasoning,
-      false,
-      null
+      gpt.positive_scores, positives,
+      gpt.negative_scores, negatives,
+      gpt.unscored_attributes, earned, max,
+      gpt.attribute_reasoning, false, null
     );
 
     await base("Leads").update(rec.id, {
@@ -202,9 +189,6 @@ async function scoreChunk(records) {
       "Exclude Details"       : gpt.exclude_details
     });
   }
-
-  if (unparsable)
-    console.warn(`⚠️  ${unparsable} profile(s) could not be parsed in this chunk.`);
 }
 
 /* ---------- public runner --------------------------------------- */
@@ -225,7 +209,7 @@ async function run(req, res) {
     for (const c of chunks) await enqueue(c);
 
     res?.json?.({ ok: true, message: "Batch queued", leads: leads.length });
-    await alertAdmin("[Scorer] Batch finished OK", `${leads.length} leads scored`);
+    await alertAdmin("[Scorer] Batch finished OK", `${leads.length} leads processed`);
   } catch (err) {
     console.error("Batch fatal:", err);
     res?.status?.(500)?.json?.({ ok: false, error: String(err) });

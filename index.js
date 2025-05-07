@@ -134,10 +134,24 @@ app.get("/score-lead", async (req, res) => {
     if (!id) return res.status(400).json({ error: "recordId query param required" });
 
     const record   = await base("Leads").find(id);
-    const fullLead = JSON.parse(record.get("Profile Full JSON") || "{}");
+    const profile  = JSON.parse(record.get("Profile Full JSON") || "{}");
+
+    /* ────────────────────────────────────────────────────────────
+       🔧 skip if no About section
+    ──────────────────────────────────────────────────────────── */
+    if (!profile.about || !profile.about.trim()) {
+      await base("Leads").update(record.id, {
+        "AI Score"              : 0,
+        "Scoring Status"        : "Skipped – No About",
+        "AI Profile Assessment" : "",
+        "AI Attribute Breakdown": ""
+      });
+      res.json({ ok: true, skipped: true, reason: "No About section" });
+      return;
+    }
 
     // GPT scoring
-    const raw    = await scoreLeadNow(fullLead);
+    const raw    = await scoreLeadNow(profile);
     const parsed = await callGptScoring(raw);
 
     const { positives, negatives } = await loadAttributes();
