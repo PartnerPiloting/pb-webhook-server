@@ -7,6 +7,9 @@
      markdown stripped and whitespace collapsed
    • 10-minute in-memory cache to minimise API calls
    • Falls back to a hard-coded list if Airtable is unreachable
+   • NEW (token trims):
+        – removes empty examples keys
+        – strips redundant “Scoring Range …” banner from instructions
 =================================================================== */
 require("dotenv").config();
 const Airtable = require("airtable");
@@ -28,7 +31,10 @@ function clean(text = "") {
 let cache = null;
 let cacheUntil = 0;
 
-/* ---------- public: loadAttributes ------------------------------ */
+/* ----------------------------------------------------------------
+   loadAttributes – fetches Airtable rows (or fallback) and builds
+   { positives, negatives } with token-saving clean-ups
+----------------------------------------------------------------- */
 async function loadAttributes() {
   const now = Date.now();
   if (cache && now < cacheUntil) return cache;      // serve cached copy
@@ -46,12 +52,20 @@ async function loadAttributes() {
 
       if (!id || !label) return;                           // skip bad rows
 
+      /* ------------- shared fields ----------------------------- */
+      let instructions = clean(r.get("Instructions") || "");
+      /* TOKEN TRIM ① – remove “Scoring Range …” banner */
+      instructions = instructions.replace(/Scoring Range[\s\S]*?\bpts?\b[^]*?(?=\s[A-Z0-9]{1,2}\b|$)/i, "").trim();
+
       const common = {
         label,
-        instructions: clean(r.get("Instructions") || ""),
-        examples    : clean(r.get("Examples")     || ""),
-        signals     : clean(r.get("Signals")      || "")
+        instructions,
+        examples : clean(r.get("Examples")     || ""),
+        signals  : clean(r.get("Signals")      || "")
       };
+
+      /* TOKEN TRIM ② – drop empty examples */
+      if (!common.examples) delete common.examples;
 
       if (cat === "positive") {
         positives[id] = {
@@ -83,7 +97,7 @@ async function loadAttributes() {
   }
 }
 
-/* ---------- fallback list (same defaults as before) ------------- */
+/* ---------- fallback list (unchanged) -------------------------- */
 function fallbackAttributes() {
   const positives = {
     A: { label:"Founder / Co-Founder",     maxPoints:5, minQualify:0,
