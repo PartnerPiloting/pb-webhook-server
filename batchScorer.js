@@ -25,9 +25,8 @@ const { callGptScoring }           = require("./callGptScoring");
 /* ---------- ENV & CONSTANTS ------------------------------------- */
 const MODEL           = process.env.GPT_MODEL || "gpt-4o";
 const CHUNK_SIZE      = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10));
-const GPT_TIMEOUT_MS  = Math.max(30000, parseInt(process.env.GPT_TIMEOUT_MS || "120000", 10));   // 2-min default
+const GPT_TIMEOUT_MS  = Math.max(30000, parseInt(process.env.GPT_TIMEOUT_MS || "120000", 10));
 const TOKEN_SOFT_CAP  = 7500;
-const MAX_RETRIES     = 3;
 const ADMIN_EMAIL     = process.env.ADMIN_EMAIL || "";
 const FROM_EMAIL      = process.env.FROM_EMAIL  || "";
 
@@ -38,6 +37,42 @@ const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
 /* ---------- helpers --------------------------------------------- */
 const tokens = (s = "") => Math.ceil(s.length / 4);
+
+/* parse array helper (tolerant) ---------------------------------- */
+function extractJsonArray(raw) {
+  /* 1 — pure JSON array? */
+  try {
+    const j = JSON.parse(raw);
+    if (Array.isArray(j)) return j;
+  } catch (_) { /* fall-through */ }
+
+  /* 2 — ```json fenced block */
+  const fence = raw.match(/```(?:json)?\s*([\s\S]+?)\s*```/i);
+  if (fence) {
+    try {
+      const j = JSON.parse(fence[1]);
+      if (Array.isArray(j)) return j;
+    } catch (_) { /* fall-through */ }
+  }
+
+  /* 3 — first [...] slice */
+  const brace = raw.match(/\[[\s\S]+/);
+  if (brace) {
+    let depth = 0, end = -1;
+    for (let i = 0; i < brace[0].length; i++) {
+      if (brace[0][i] === "[") depth++;
+      if (brace[0][i] === "]") depth--;
+      if (depth === 0) { end = i + 1; break; }
+    }
+    if (end !== -1) {
+      try {
+        const j = JSON.parse(brace[0].slice(0, end));
+        if (Array.isArray(j)) return j;
+      } catch (_) { /* ignore */ }
+    }
+  }
+  throw new Error("Unable to parse GPT reply as JSON array");
+}
 
 /* ---------- Mailgun alert helper -------------------------------- */
 async function alertAdmin(subject, text) {
@@ -66,13 +101,13 @@ function gptWithTimeout(messages) {
 const queue = [];
 let running = false;
 
-async function enqueue(records) {
-  queue.push(records);
+async function enqueue(recs) {
+  queue.push(recs);
   if (!running) {
     running = true;
     while (queue.length) {
       const batch = queue.shift();
-      try   { await scoreChunk(batch); }
+      try { await scoreChunk(batch); }
       catch (err) {
         console.error("Chunk fatal:", err);
         await alertAdmin("[Scorer] Chunk failed", String(err));
@@ -82,7 +117,7 @@ async function enqueue(records) {
   }
 }
 
-/* ---------- fetch “To Be Scored” leads (no view) ---------------- */
+/* ---------- fetch leads ----------------------------------------- */
 async function fetchLeads(limit) {
   const records = [];
   await base("Leads")
@@ -90,7 +125,7 @@ async function fetchLeads(limit) {
       maxRecords     : limit,
       filterByFormula: `{Scoring Status} = 'To Be Scored'`
     })
-    .eachPage((page, next) => { records.push(...page); next(); });
+    .eachPage((p, next) => { records.push(...p); next(); });
   return records;
 }
 
@@ -109,8 +144,14 @@ async function scoreChunk(records) {
     return;
   }
 
-  const resp   = await gptWithTimeout([sys, usr]);
-  const output = JSON.parse(resp.data.choices[0].message.content || "[]");
+  const resp       = await gptWithTimeout([sys, usr]);
+  const rawContent = resp.data.choices[0].message.content || "";
+
+  let output;
+  try { output = extractJsonArray(rawContent); }
+  catch (err) {
+    throw new Error("Top-level parse failed: " + err.message);
+  }
 
   const { positives, negatives } = await loadAttributes();
   let unparsable = 0;
