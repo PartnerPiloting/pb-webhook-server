@@ -25,9 +25,9 @@ const { callGptScoring }           = require("./callGptScoring");
 /* ---------- ENV & CONSTANTS ------------------------------------- */
 const MODEL           = process.env.GPT_MODEL || "gpt-4o";
 const CHUNK_SIZE      = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10));
-const GPT_TIMEOUT_MS  = Math.max(30000, parseInt(process.env.GPT_TIMEOUT_MS || "120000", 10));   // 2 min default
-const TOKEN_SOFT_CAP  = 7500;        // leave ~800 tokens head-room
-const MAX_RETRIES     = 3;           // queue retry limit
+const GPT_TIMEOUT_MS  = Math.max(30000, parseInt(process.env.GPT_TIMEOUT_MS || "120000", 10));   // 2-min default
+const TOKEN_SOFT_CAP  = 7500;
+const MAX_RETRIES     = 3;
 const ADMIN_EMAIL     = process.env.ADMIN_EMAIL || "";
 const FROM_EMAIL      = process.env.FROM_EMAIL  || "";
 
@@ -39,7 +39,7 @@ const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 /* ---------- helpers --------------------------------------------- */
 const tokens = (s = "") => Math.ceil(s.length / 4);
 
-/* ---------- Mailgun alert helper (simple) ----------------------- */
+/* ---------- Mailgun alert helper -------------------------------- */
 async function alertAdmin(subject, text) {
   if (!process.env.MAILGUN_API_KEY || !ADMIN_EMAIL) return;
   const form = new (require("form-data"))();
@@ -82,19 +82,15 @@ async function enqueue(records) {
   }
 }
 
-/* ---------- fetch “To Be Scored” leads -------------------------- */
+/* ---------- fetch “To Be Scored” leads (no view) ---------------- */
 async function fetchLeads(limit) {
   const records = [];
   await base("Leads")
     .select({
-      view      : "Grid view",
-      maxRecords: limit,
+      maxRecords     : limit,
       filterByFormula: `{Scoring Status} = 'To Be Scored'`
     })
-    .eachPage((page, next) => {
-      records.push(...page);
-      next();
-    });
+    .eachPage((page, next) => { records.push(...page); next(); });
   return records;
 }
 
@@ -124,7 +120,6 @@ async function scoreChunk(records) {
     const raw  = JSON.stringify(output[i]);
     let gpt;
 
-    /* ----- robust parse w/ guard -------------------------------- */
     try { gpt = callGptScoring(raw); }
     catch (err) {
       console.warn(`⚠️  Lead ${rec.id} – parser error: ${err.message}`);
@@ -133,7 +128,6 @@ async function scoreChunk(records) {
       continue;
     }
 
-    /* ----- recompute finalPct ----------------------------------- */
     const { percentage, rawScore: earned, denominator: max } = computeFinalScore(
       gpt.positive_scores,
       positives,
@@ -144,7 +138,6 @@ async function scoreChunk(records) {
     );
     gpt.finalPct = Math.round((gpt.finalPct ?? percentage) * 100) / 100;
 
-    /* ----- build rich breakdown -------------------------------- */
     const breakdown = buildAttributeBreakdown(
       gpt.positive_scores,
       positives,
@@ -158,7 +151,6 @@ async function scoreChunk(records) {
       null
     );
 
-    /* ----- write back to Airtable ------------------------------ */
     await base("Leads").update(rec.id, {
       "AI Score"              : gpt.finalPct,
       "AI Profile Assessment" : gpt.aiProfileAssessment,
@@ -174,17 +166,16 @@ async function scoreChunk(records) {
     console.warn(`⚠️  ${unparsable} profile(s) could not be parsed in this chunk.`);
 }
 
-/* ---------- public runner (Express handler style) -------------- */
+/* ---------- public runner --------------------------------------- */
 async function run(req, res) {
   try {
-    const limit   = Number(req?.query?.limit) || 1000;
-    const leads   = await fetchLeads(limit);
+    const limit = Number(req?.query?.limit) || 1000;
+    const leads = await fetchLeads(limit);
     if (!leads.length) {
       res?.json?.({ ok: true, message: "No leads to score" });
       return;
     }
 
-    /* split into CHUNK_SIZE pieces ------------------------------ */
     const chunks = [];
     for (let i = 0; i < leads.length; i += CHUNK_SIZE)
       chunks.push(leads.slice(i, i + CHUNK_SIZE));
