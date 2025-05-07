@@ -1,62 +1,60 @@
 /* ===================================================================
-   batchScorer.js – fast chunk-mode scorer (chat API)
+   batchScorer.js — GPT-4o FLEX bulk scorer  (chunk mode)
    -------------------------------------------------------------------
-   • Pulls un-scored leads     (/run-batch-score?limit=N)
-   • Slices into CHUNK_SIZE chunks (env, default 40)
-   • One chunk at a time; 60-s timeout, 3 retries
-   • Token-overflow guard (≈ len/4 heuristic)
-   • Mailgun email on timeout/error (+ optional success ping)
-   • Computes finalPct & hybrid breakdown locally
+   • Fetches “To Be Scored” leads from Airtable in CHUNK_SIZE batches
+   • Sends slimmed JSON to GPT-4o, parses, writes results back
+   • Handles time-outs, empty replies, parser errors safely
 =================================================================== */
-require("dotenv").config();
-const { Configuration, OpenAIApi } = require("openai");
-const Airtable  = require("airtable");
-const fetch     = (...a) => import("node-fetch").then(({ default:f }) => f(...a));
 
+require("dotenv").config();
+console.log("▶︎ batchScorer module loaded");
+
+const fs         = require("fs");
+const path       = require("path");
+const { Configuration, OpenAIApi } = require("openai");
+const Airtable   = require("airtable");
+const fetch      = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+
+/* ---------- local modules --------------------------------------- */
 const { buildPrompt, slimLead }    = require("./promptBuilder");
 const { loadAttributes }           = require("./attributeLoader");
 const { computeFinalScore }        = require("./scoring");
 const { buildAttributeBreakdown }  = require("./breakdown");
 const { callGptScoring }           = require("./callGptScoring");
 
-/* ---------- ENV & CONSTANTS ------------------------------------ */
+/* ---------- ENV & CONSTANTS ------------------------------------- */
 const MODEL           = process.env.GPT_MODEL || "gpt-4o";
 const CHUNK_SIZE      = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10));
-const GPT_TIMEOUT_MS  = Math.max(10000, parseInt(process.env.GPT_TIMEOUT_MS || "60000", 10));
-const TOKEN_SOFT_CAP  = 7500;      // stay safely below 8 192
-const MAX_RETRIES     = 3;
+const GPT_TIMEOUT_MS  = Math.max(30000, parseInt(process.env.GPT_TIMEOUT_MS || "120000", 10));   // 2 min default
+const TOKEN_SOFT_CAP  = 7500;        // leave ~800 tokens head-room
+const MAX_RETRIES     = 3;           // queue retry limit
+const ADMIN_EMAIL     = process.env.ADMIN_EMAIL || "";
+const FROM_EMAIL      = process.env.FROM_EMAIL  || "";
 
-/* ---------- OpenAI & Airtable setup ---------------------------- */
+/* ---------- OpenAI & Airtable ----------------------------------- */
 const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
 Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
-/* ---------- simple token estimator ----------------------------- */
-const tokens = (s = "") => Math.ceil(s.length / 4);   // rough but safe
+/* ---------- helpers --------------------------------------------- */
+const tokens = (s = "") => Math.ceil(s.length / 4);
 
-/* ---------- Mailgun alert helper ------------------------------- */
-async function alertAdmin(subject, body, kind = "error") {
-  if (kind === "success" && process.env.ALERT_VERBOSE !== "true") return;
-
-  const { MAILGUN_API_KEY: key, MAILGUN_DOMAIN: dom, ALERT_EMAIL: to } = process.env;
-  if (!key || !dom || !to) return;
-
-  const auth = Buffer.from(`api:${key}`).toString("base64");
-  const msg  = new URLSearchParams({
-    from   : `AI Scorer <noreply@${dom}>`,
-    to,
-    subject,
-    text   : body.slice(0, 2000)
-  });
-
-  await fetch(`https://api.mailgun.net/v3/${dom}/messages`, {
+/* ---------- Mailgun alert helper (simple) ----------------------- */
+async function alertAdmin(subject, text) {
+  if (!process.env.MAILGUN_API_KEY || !ADMIN_EMAIL) return;
+  const form = new (require("form-data"))();
+  form.append("from", FROM_EMAIL);
+  form.append("to", ADMIN_EMAIL);
+  form.append("subject", subject);
+  form.append("text", text);
+  await fetch(`https://api.mailgun.net/v3/${process.env.MAILGUN_DOMAIN}/messages`, {
     method : "POST",
-    headers: { Authorization: `Basic ${auth}` },
-    body   : msg
-  }).catch(() => {});
+    headers: { Authorization: "Basic " + Buffer.from("api:" + process.env.MAILGUN_API_KEY).toString("base64") },
+    body   : form
+  });
 }
 
-/* ---------- GPT call with timeout ------------------------------ */
+/* ---------- GPT call with time-out ------------------------------ */
 function gptWithTimeout(messages) {
   const call  = openai.createChatCompletion({ model: MODEL, temperature: 0, messages });
   const timer = new Promise((_, rej) =>
@@ -64,136 +62,143 @@ function gptWithTimeout(messages) {
   return Promise.race([call, timer]);
 }
 
-/* ---------- Queue machinery ------------------------------------ */
-let pending = [];
-let busy    = false;
+/* ---------- simple queue ---------------------------------------- */
+const queue = [];
+let running = false;
 
-async function enqueue(chunk, attempt = 1) {
-  pending.push({ chunk, attempt });
-  runQueue();
-}
-
-async function runQueue() {
-  if (busy) return;
-  const job = pending.shift();
-  if (!job) return;
-
-  busy = true;
-  try {
-    await scoreChunk(job.chunk);
-  } catch (err) {
-    console.error("Chunk error:", err.message);
-    await alertAdmin("Chunk scoring error", err.stack || String(err));
-    if (job.attempt < MAX_RETRIES) {
-      pending.unshift({ chunk: job.chunk, attempt: job.attempt + 1 });
-    } else {
-      await Promise.all(
-        job.chunk.map(r =>
-          base("Leads").update(r.id, { "Scoring Status": "Failed" })
-        )
-      );
+async function enqueue(records) {
+  queue.push(records);
+  if (!running) {
+    running = true;
+    while (queue.length) {
+      const batch = queue.shift();
+      try   { await scoreChunk(batch); }
+      catch (err) {
+        console.error("Chunk fatal:", err);
+        await alertAdmin("[Scorer] Chunk failed", String(err));
+      }
     }
-  } finally {
-    busy = false;
-    if (!pending.length) {
-      await alertAdmin("Batch finished OK",
-        `All chunks processed at ${new Date().toISOString()}`, "success");
-    }
-    runQueue();
+    running = false;
   }
 }
 
-/* ---------- Core scorer for one chunk -------------------------- */
-async function scoreChunk(records) {
-  const prompt = await buildPrompt();
-  const slim   = records.map(r =>
-    slimLead(JSON.parse(r.get("Profile Full JSON") || "{}"))
-  );
-  const userMsg = JSON.stringify({ leads: slim });
+/* ---------- fetch “To Be Scored” leads -------------------------- */
+async function fetchLeads(limit) {
+  const records = [];
+  await base("Leads")
+    .select({
+      view      : "Grid view",
+      maxRecords: limit,
+      filterByFormula: `{Scoring Status} = 'To Be Scored'`
+    })
+    .eachPage((page, next) => {
+      records.push(...page);
+      next();
+    });
+  return records;
+}
 
-  /* Split chunk if token budget blown */
-  if (tokens(prompt) + tokens(userMsg) > TOKEN_SOFT_CAP && records.length > 1) {
+/* ---------- chunk scorer ---------------------------------------- */
+async function scoreChunk(records) {
+  const prompt   = await buildPrompt();
+  const slimJSON = JSON.stringify({ leads: records.map(r => slimLead(JSON.parse(r.get("Profile Full JSON") || "{}"))) });
+  const sys      = { role: "system", content: prompt };
+  const usr      = { role: "user",   content: "Return an array of results in the same order:\n" + slimJSON };
+
+  /* split if token cap exceeded ---------------------------------- */
+  if (tokens(prompt) + tokens(slimJSON) > TOKEN_SOFT_CAP && records.length > 1) {
     const mid = Math.ceil(records.length / 2);
     await enqueue(records.slice(0, mid));
     await enqueue(records.slice(mid));
     return;
   }
 
-  const messages = [
-    { role: "system", content: prompt },
-    {
-      role: "user",
-      content: "Return an array of results in the same order:\n" + userMsg
-    }
-  ];
-
-  const resp   = await gptWithTimeout(messages);
-  const output = JSON.parse(resp.data.choices[0].message.content); // array
+  const resp   = await gptWithTimeout([sys, usr]);
+  const output = JSON.parse(resp.data.choices[0].message.content || "[]");
 
   const { positives, negatives } = await loadAttributes();
+  let unparsable = 0;
 
   for (let i = 0; i < records.length; i++) {
     const rec  = records[i];
-    const gRaw = JSON.stringify(output[i]);
-    const gpt  = callGptScoring(gRaw);
+    const raw  = JSON.stringify(output[i]);
+    let gpt;
 
+    /* ----- robust parse w/ guard -------------------------------- */
+    try { gpt = callGptScoring(raw); }
+    catch (err) {
+      console.warn(`⚠️  Lead ${rec.id} – parser error: ${err.message}`);
+      unparsable++;
+      await base("Leads").update(rec.id, { "Scoring Status": "Failed" });
+      continue;
+    }
+
+    /* ----- recompute finalPct ----------------------------------- */
     const { percentage, rawScore: earned, denominator: max } = computeFinalScore(
       gpt.positive_scores,
       positives,
       gpt.negative_scores,
       negatives,
       gpt.contact_readiness,
-      gpt.unscored_attributes || []
+      gpt.unscored_attributes
     );
     gpt.finalPct = Math.round((gpt.finalPct ?? percentage) * 100) / 100;
 
+    /* ----- build rich breakdown -------------------------------- */
     const breakdown = buildAttributeBreakdown(
       gpt.positive_scores,
       positives,
       gpt.negative_scores,
       negatives,
-      gpt.unscored_attributes || [],
+      gpt.unscored_attributes,
       earned,
       max,
-      gpt.attribute_reasoning || {},
+      gpt.attribute_reasoning,
       false,
       null
     );
 
+    /* ----- write back to Airtable ------------------------------ */
     await base("Leads").update(rec.id, {
       "AI Score"              : gpt.finalPct,
-      "AI Profile Assessment" : gpt.aiProfileAssessment || "",
+      "AI Profile Assessment" : gpt.aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
       "Date Scored"           : new Date().toISOString().split("T")[0],
       "AI_Excluded"           : (gpt.ai_excluded || "No") === "Yes",
-      "Exclude Details"       : gpt.exclude_details || ""
+      "Exclude Details"       : gpt.exclude_details
     });
   }
+
+  if (unparsable)
+    console.warn(`⚠️  ${unparsable} profile(s) could not be parsed in this chunk.`);
 }
 
-/* ---------- Public runner (used by /run-batch-score) ----------- */
-async function run(limit = 1600) {
-  console.log("▶︎ batchScorer.run — limit", limit);
-  const recs = await base("Leads")
-    .select({
-      filterByFormula: '{Scoring Status} = "To Be Scored"',
-      maxRecords     : limit
-    })
-    .firstPage();
+/* ---------- public runner (Express handler style) -------------- */
+async function run(req, res) {
+  try {
+    const limit   = Number(req?.query?.limit) || 1000;
+    const leads   = await fetchLeads(limit);
+    if (!leads.length) {
+      res?.json?.({ ok: true, message: "No leads to score" });
+      return;
+    }
 
-  if (!recs.length) {
-    console.log("No leads need scoring");
-    return;
-  }
+    /* split into CHUNK_SIZE pieces ------------------------------ */
+    const chunks = [];
+    for (let i = 0; i < leads.length; i += CHUNK_SIZE)
+      chunks.push(leads.slice(i, i + CHUNK_SIZE));
 
-  for (let i = 0; i < recs.length; i += CHUNK_SIZE) {
-    enqueue(recs.slice(i, i + CHUNK_SIZE));
+    console.log(`Queued ${leads.length} leads in ${chunks.length} chunk(s) of ${CHUNK_SIZE}`);
+    for (const c of chunks) await enqueue(c);
+
+    res?.json?.({ ok: true, message: "Batch queued", leads: leads.length });
+    await alertAdmin("[Scorer] Batch finished OK", `${leads.length} leads scored`);
+  } catch (err) {
+    console.error("Batch fatal:", err);
+    res?.status?.(500)?.json?.({ ok: false, error: String(err) });
+    await alertAdmin("[Scorer] Batch failed", String(err));
   }
-  console.log(
-    `Queued ${recs.length} leads in ${Math.ceil(recs.length / CHUNK_SIZE)} ` +
-    `chunk(s) of ${CHUNK_SIZE}`
-  );
 }
 
 module.exports = { run };
