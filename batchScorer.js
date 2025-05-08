@@ -176,15 +176,30 @@ async function scoreChunk(records) {
 
   const raw = resp.data.choices[0].message.content || "";
 
+  /* ---------- resilient parse + re-ask -------------------------- */
   let output;
-  try { output = JSON.parse(raw); }
-  catch (_) {
-    const fence = raw.match(/```(?:json)?\s*([\s\S]+?)\s*```/i);
-    if (fence) output = JSON.parse(fence[1]);
-    else throw new Error("Top-level parse failed: GPT did not return JSON");
+  try {
+    // first parse attempt
+    output = JSON.parse(raw);
+    // if GPT sent a single object, wrap it to look like an array
+    if (!Array.isArray(output)) output = [output];
+  } catch (parseErr) {
+    console.warn("⛑  Initial parse failed – firing re-ask");
+    const retry = await openai.createChatCompletion({
+      model: MODEL,
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            `You responded with:\n${raw}\n\n` +
+            `This is NOT a valid JSON array. Reply with the array only.`
+        }
+      ]
+    });
+    output = JSON.parse(retry.data.choices[0].message.content);
+    if (!Array.isArray(output)) output = [output];
   }
-  if (!Array.isArray(output))
-    throw new Error("Top-level parse failed: GPT did not return an array");
 
   /* ---------- length mismatch → solo retry ---------------------- */
   if (output.length !== scorable.length) {
@@ -198,7 +213,7 @@ async function scoreChunk(records) {
 
   /* ---------- write results back -------------------------------- */
   for (let i = 0; i < output.length; i++) {
-    const rec = scorable[i].rec;
+    const rec    = scorable[i].rec;
     const rawObj = JSON.stringify(output[i] || {});
     let gpt;
     try { gpt = callGptScoring(rawObj); }
