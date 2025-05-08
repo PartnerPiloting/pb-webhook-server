@@ -1,85 +1,131 @@
 /* ===================================================================
-   promptBuilder.js — builds the full system-prompt for GPT-4o
+   promptBuilder.js – builds the compact JSON scoring prompt + helpers
    -------------------------------------------------------------------
-   • PREAMBLE narrative comes first (from the “Meta / PREAMBLE” row)
-   • Follows with minified JSON of { positives, negatives }
-   • Appends strict response-schema / partial-credit guidance
-   • Sends the first 5 experience entries (or a fallback array built
-     from organization_* keys if the array is missing)
+   • Embeds the positive & negative attribute dictionaries
+   • Adds the strict response schema
+   • Provides slimLead(profile) that:
+       – consolidates headline + about/summary
+       – grabs the first 5 experience entries (with robust fallback
+         from organization_1..5 if profile.experience is missing)
 =================================================================== */
+
+const fs   = require("fs");
+const path = require("path");
+
 const { loadAttributes } = require("./attributeLoader");
 
 /* ------------------------------------------------------------------
-   buildPrompt  –  returns the system prompt string for GPT-4o
------------------------------------------------------------------- */
-async function buildPrompt() {
-  const { preamble, positives, negatives } = await loadAttributes();
-
-  /* ---------- use minified JSON for token efficiency ------------- */
-  const dictJson = JSON.stringify({ positives, negatives }); // no pretty indent
-
-  const schema = `
-Return **only** a valid JSON object exactly like this:
-{ "positive_scores": { "A": { "score": 15, "reason": "..." }, ... },
-  "negative_scores": { "N1": { "score": -5, "reason": "..." }, ... },
-  "unscored_attributes": [ "C", "D" ] }
-
-Rules:
-• Award partial credit when evidence is partial
-  (e.g. 5 / 10 / 15 or 2 / 5 / 8 / 10 for a 10-point max).
-• Prefer scoring every attribute; use "unscored_attributes" only when
-  no clue exists.
-• A negative is **not triggered** if you return "score": 0.
-• Every scored attribute needs both "score" **and** a 25–40-word "reason".
-• Do **NOT** wrap the JSON in \`\`\` fences or add extra commentary.
-`;
-
-  /* ---------- final assembled prompt ----------------------------- */
-  const prompt = `${preamble.trim()}\n\n${dictJson}\n\n${schema.trim()}`;
-
-  /* ---------- optional debug output ------------------------------ */
-  if (process.env.DEBUG_PROMPT === "true") {
-    const tok = Math.ceil(prompt.length / 4); // ≈ token estimate
-    console.log("\n───────── Assembled GPT System Prompt ─────────\n");
-    console.log(prompt);
-    console.log(`\nApprox. tokens in system prompt: ${tok}\n`);
-    console.log("───────────────────────────────────────────────\n");
-  }
-
-  return prompt;
-}
-
-/* ---------- helper: extractExperience ----------------------------
-   • Use profile.experience if present.
-   • Otherwise build up to 3 entries from organization_* keys.
+   extractExperience  –  normalises a profile’s work‑history array
 ------------------------------------------------------------------ */
 function extractExperience(profile = {}) {
-  if (Array.isArray(profile.experience) && profile.experience.length) {
-    return profile.experience.slice(0, 5);       // keep first 5 roles
+  // Prefer the native experience array when present
+  if (Array.isArray(profile.experience) && profile.experience.length > 0) {
+    return profile.experience;
   }
-  const out = [];
+
+  // Fallback – rebuild from organization_1..5 (legacy scraper output)
+  const jobs = [];
   for (let i = 1; i <= 5; i++) {
-    const company = profile[`organization_${i}`];
-    const title   = profile[`organization_title_${i}`];
-    if (!company && !title) break;
-    out.push({ company, title });
-    if (out.length === 3) break;                 // max 3 fallback roles
+    const company     = profile[`organization_${i}`];
+    const title       = profile[`organization_title_${i}`];
+    const description = profile[`position_description_${i}`] || "";
+    const start       = profile[`organization_start_${i}`];
+    const end         = profile[`organization_end_${i}`];
+
+    if (!company && !title && !description) continue;
+
+    jobs.push({
+      company,
+      title,
+      description,
+      start,
+      end,
+    });
   }
-  return out;
+  return jobs;
 }
 
 /* ------------------------------------------------------------------
-   slimLead  –  drop unused fields to keep the prompt tiny
+   slimLead  –  turns a huge scraped profile into a compact object
+------------------------------------------------------------------
+   • Always passes an **experience** array (max 5 entries)
+   • Keeps headline & about text only
 ------------------------------------------------------------------ */
-function slimLead(full = {}) {
+function slimLead(profile = {}) {
+  const headline = (profile.headline || profile.jobTitle || "").trim();
+
+  const about =
+    (profile.about ||
+      profile.summary ||
+      profile.linkedinDescription ||
+      "").trim();
+
+  const jobs       = extractExperience(profile);
+  const firstFive  = jobs.slice(0, 5);      // stay within token budget
+
   return {
-    firstName   : full.firstName    || "",
-    lastName    : full.lastName     || "",
-    headline    : full.headline     || "",
-    summary     : (full.summary || full.about || full.linkedinDescription || "").trim(),
-    locationName: full.locationName || "",
-    experience  : extractExperience(full)
+    headline,
+    about,
+    experience: firstFive,
+    // debug helpers (ignored by GPT schema)
+    _experienceCount: jobs.length,
+    _originalId     : profile.id || profile.public_id || "",
   };
 }
 
-module.exports = { buildPrompt, slimLead };
+/* ------------------------------------------------------------------
+   buildPrompt  –  returns the SYSTEM prompt string for GPT‑4o
+------------------------------------------------------------------ */
+async function buildPrompt() {
+  const dicts = await loadAttributes(); // { positives, negatives }
+
+  const schema = `
+Return **only** a valid JSON object exactly like this:
+
+{
+  "positive_scores": { "A": { "score": 15, "reason": "..." }, ... },
+  "negative_scores": { "N1": { "score": 0, "reason": "..." }, ... },
+  "contact_readiness": false,
+  "unscored_attributes": [],
+  "aiProfileAssessment": "Single-paragraph assessment",
+  "finalPct": 72.5
+}
+
+Rules:
+• If you cannot score an attribute, omit it and add its ID to unscored_attributes.
+• Provide a concise reason for every scored attribute.
+• Use the attribute dictionaries below exactly as written – do NOT invent new labels.
+`;
+
+  const systemPrompt = `
+You are an AI lead-scoring engine.  Apply the following attribute
+definitions to each LinkedIn profile you receive and output JSON that
+obeys the strict schema shown below.
+
+=================  POSITIVE ATTRIBUTES  =================
+${JSON.stringify(dicts.positives, null, 2)}
+
+=================  NEGATIVE ATTRIBUTES  =================
+${JSON.stringify(dicts.negatives, null, 2)}
+
+=================  RESPONSE SCHEMA  =====================
+${schema}
+`;
+
+  // Optional debug dump
+  if (process.env.DEBUG_RAW_PROMPT === "1") {
+    const fp = path.join(__dirname, "DEBUG_PROMPT.txt");
+    fs.writeFileSync(fp, systemPrompt, "utf8");
+    console.log("▶︎ promptBuilder dumped DEBUG_PROMPT.txt");
+  }
+
+  return systemPrompt;
+}
+
+/* ------------------------------------------------------------------
+   Exports
+------------------------------------------------------------------ */
+module.exports = {
+  buildPrompt,
+  slimLead,
+};
