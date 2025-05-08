@@ -14,12 +14,12 @@ const Airtable = require("airtable");
 const fs = require("fs");
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-const { buildPrompt }           = require("./promptBuilder");
-const { loadAttributes }        = require("./attributeLoader");
-const { callGptScoring }        = require("./callGptScoring");
+const { buildPrompt }             = require("./promptBuilder");
+const { loadAttributes }          = require("./attributeLoader");
+const { callGptScoring }          = require("./callGptScoring");
 const { buildAttributeBreakdown } = require("./breakdown");
-const { scoreLeadNow }          = require("./singleScorer");
-const { computeFinalScore }     = require("./scoring");
+const { scoreLeadNow }            = require("./singleScorer");
+const { computeFinalScore }       = require("./scoring");
 
 const mountPointerApi  = require("./pointerApi");
 const mountLatestLead  = require("./latestLeadApi");
@@ -144,7 +144,7 @@ function isMissingCritical(profile = {}) {
       }
     }
   }
-  return !(hasBio && hasHeadline && hasJob); // true → something missing
+  return !(hasBio && hasHeadline && hasJob);
 }
 
 /* ------------------------------------------------------------------
@@ -195,8 +195,13 @@ app.get("/score-lead", async (req, res) => {
     const record  = await base("Leads").find(id);
     const profile = JSON.parse(record.get("Profile Full JSON") || "{}");
 
-    // —————————————————————————————    critical-field check + alert   ————————————————————————————
-    const aboutText = (profile.about || profile.summary || "").trim();
+    // ——————————————————————————  critical-field check + alert  ——————————————————————————
+    const aboutText = (
+      profile.about ||
+      profile.summary ||
+      profile.linkedinDescription ||
+      ""
+    ).trim();
 
     let hasExp =
       Array.isArray(profile.experience) && profile.experience.length > 0;
@@ -456,7 +461,6 @@ async function upsertLead(
       : undefined
   };
 
-  // ── copy organisation_* & organisation_title_* for PromptBuilder ──
   if (lead.raw) {
     for (let i = 1; i <= 10; i++) {
       const orgKey   = `organization_${i}`;
