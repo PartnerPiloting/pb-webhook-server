@@ -2,14 +2,13 @@
    attributeLoader.js – dynamic attribute list (matches your table)
    ------------------------------------------------------------------
    • Reads the “Scoring Attributes” Airtable table
-   • Converts each row into { positives, negatives } dictionaries
-   • Includes rich guidance (Instructions / Examples / Signals) with
-     markdown stripped and whitespace collapsed
+   • Builds { preamble, positives, negatives } dictionaries
+   • Cleans markdown & collapses whitespace for token savings
    • 10-minute in-memory cache to minimise API calls
    • Falls back to a hard-coded list if Airtable is unreachable
-   • NEW (token trims):
+   • TOKEN trims (unchanged):
         – removes empty examples keys
-        – strips redundant “Scoring Range …” banner from instructions
+        – strips “Scoring Range …” banner from instructions
 =================================================================== */
 require("dotenv").config();
 const Airtable = require("airtable");
@@ -22,8 +21,8 @@ const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 /* ---------- helper: strip markdown + collapse whitespace -------- */
 function clean(text = "") {
   return String(text)
-    .replace(/[*`_~#>\-]|(?:\r?\n|\r)/g, " ") // remove md chars & newlines
-    .replace(/\s+/g, " ")                    // collapse runs of spaces
+    .replace(/[*`_~#>\-]|(?:\r?\n|\r)/g, " ")    // remove md chars & newlines
+    .replace(/\s+/g, " ")                       // collapse runs of spaces
     .trim();
 }
 
@@ -33,38 +32,48 @@ let cacheUntil = 0;
 
 /* ----------------------------------------------------------------
    loadAttributes – fetches Airtable rows (or fallback) and builds
-   { positives, negatives } with token-saving clean-ups
+   { preamble, positives, negatives } with token-saving clean-ups
 ----------------------------------------------------------------- */
 async function loadAttributes() {
   const now = Date.now();
-  if (cache && now < cacheUntil) return cache;      // serve cached copy
+  if (cache && now < cacheUntil) return cache;   // serve cached copy
 
   try {
     const rows = await base(TABLE_NAME).select().all();
     const positives = {};
     const negatives = {};
+    let   preamble  = "";                        // NEW
 
     rows.forEach(r => {
       /* --- map your column names exactly ------------------------ */
       const id    = String(r.get("Attribute Id") || "").trim();
-      const cat   = String(r.get("Category")     || "").toLowerCase(); // positive | negative
+      const cat   = String(r.get("Category")     || "").toLowerCase(); // positive | negative | meta
       const label = String(r.get("Heading")      || "").trim();
 
-      if (!id || !label) return;                           // skip bad rows
+      if (!id) return;                            // skip bad rows / blank IDs
+
+      /* ---------- PREAMBLE row (Category = Meta) --------------- */
+      if (id === "PREAMBLE" || cat === "meta") {
+        preamble = r.get("Instructions") ? String(r.get("Instructions")) : "";
+        return;                                   // done with this row
+      }
 
       /* ------------- shared fields ----------------------------- */
       let instructions = clean(r.get("Instructions") || "");
-      /* TOKEN TRIM ① – remove “Scoring Range …” banner */
-      instructions = instructions.replace(/Scoring Range[\s\S]*?\bpts?\b[^]*?(?=\s[A-Z0-9]{1,2}\b|$)/i, "").trim();
+      /* TOKEN TRIM – remove “Scoring Range …” banner */
+      instructions = instructions.replace(
+        /Scoring Range[\s\S]*?\bpts?\b[^]*?(?=\s[A-Z0-9]{1,2}\b|$)/i,
+        ""
+      ).trim();
 
       const common = {
         label,
         instructions,
-        examples : clean(r.get("Examples")     || ""),
-        signals  : clean(r.get("Signals")      || "")
+        examples : clean(r.get("Examples") || ""),
+        signals  : clean(r.get("Signals")  || "")
       };
 
-      /* TOKEN TRIM ② – drop empty examples */
+      /* TOKEN TRIM – drop empty examples */
       if (!common.examples) delete common.examples;
 
       if (cat === "positive") {
@@ -83,8 +92,8 @@ async function loadAttributes() {
       }
     });
 
-    cache = { positives, negatives };
-    cacheUntil = now + 10 * 60 * 1000;             // 10-minute cache
+    cache = { preamble, positives, negatives };   // NEW shape
+    cacheUntil = now + 10 * 60 * 1000;            // 10-minute cache
     console.log(
       `• Loaded ${rows.length} rows  →  ` +
       `${Object.keys(positives).length} positives, ` +
@@ -97,7 +106,7 @@ async function loadAttributes() {
   }
 }
 
-/* ---------- fallback list (unchanged) -------------------------- */
+/* ---------- fallback list (unchanged, but with preamble:"") ----- */
 function fallbackAttributes() {
   const positives = {
     A: { label:"Founder / Co-Founder",     maxPoints:5, minQualify:0,
@@ -139,7 +148,7 @@ function fallbackAttributes() {
          instructions:"", examples:"", signals:"" }
   };
 
-  return { positives, negatives };
+  return { preamble:"", positives, negatives };
 }
 
 module.exports = { loadAttributes };
