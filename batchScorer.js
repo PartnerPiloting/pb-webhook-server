@@ -1,5 +1,13 @@
 /* ===================================================================
-   batchScorer.js  –  GPT-4o bulk scorer (40-lead chunks)
+   batchScorer.js  –  GPT-4o bulk scorer (chunked lead scoring)
+   -------------------------------------------------------------------
+   • Pulls “To Be Scored” leads from Airtable in chunks (default 40)
+   • Sends each chunk to GPT-4o with a strict schema prompt
+   • Handles partial / malformed replies:
+       – Wraps solo-object replies
+       – Re-asks once if JSON is invalid
+       – Retries missing leads in mini-chunks
+   • Writes AI Score, assessment, and attribute breakdown back to Airtable
 =================================================================== */
 
 require("dotenv").config();
@@ -69,11 +77,21 @@ function isMissingCritical(profile = {}) {
   return !(hasBio && hasHeadline && hasJob);   // true → something missing
 }
 
-/* ---------- GPT wrapper with timeout ---------------------------- */
+/* ---------- GPT wrapper with timeout + explicit max_tokens ------ */
 function gptWithTimeout(messages) {
-  const call  = openai.createChatCompletion({ model: MODEL, temperature: 0, messages });
+  // 350 tokens per lead * chunk size, capped at 4096 (current GPT-4o ceiling)
+  const OUTPUT_MAX = Math.min(4096, CHUNK_SIZE * 350);
+
+  const call = openai.createChatCompletion({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: OUTPUT_MAX,
+    messages
+  });
+
   const timer = new Promise((_, rej) =>
       setTimeout(() => rej(new Error("GPT timeout")), GPT_TIMEOUT_MS));
+
   return Promise.race([call, timer]);
 }
 
@@ -133,7 +151,7 @@ async function scoreChunk(records) {
       }
     }
 
-    /* NEW — alert if critical data missing ----------------------- */
+    /* alert if critical data missing ----------------------------- */
     if (isMissingCritical(profile)) {
       await alertAdmin(
         "[Scraper Alert] Incomplete lead",
@@ -145,10 +163,8 @@ async function scoreChunk(records) {
       );
     }
 
-    /* NEW – skip only if About/Summary is too short -------------- */
-    const shouldSkip = aboutText.length < 40;
-
-    if (shouldSkip) {
+    /* skip if About/Summary too short ---------------------------- */
+    if (aboutText.length < 40) {
       await base("Leads").update(rec.id, {
         "AI Score"              : 0,
         "Scoring Status"        : "Skipped – Profile Full JSON Too Small",
@@ -163,7 +179,7 @@ async function scoreChunk(records) {
 
   if (!scorable.length) return;         // nothing left to score in this chunk
 
-  /* ---------- build prompt -------------------------------------- */
+  /* ---------- build prompt & user message ----------------------- */
   const prompt  = await buildPrompt();
   const slimmed = scorable.map(({ profile }) => slimLead(profile));
   const userMsg = JSON.stringify({ leads: slimmed });
@@ -181,13 +197,14 @@ async function scoreChunk(records) {
   try {
     // first parse attempt
     output = JSON.parse(raw);
-    // if GPT sent a single object, wrap it to look like an array
+    // if GPT sent a single object, wrap it so downstream logic sees an array
     if (!Array.isArray(output)) output = [output];
   } catch (parseErr) {
     console.warn("⛑  Initial parse failed – firing re-ask");
     const retry = await openai.createChatCompletion({
       model: MODEL,
       temperature: 0,
+      max_tokens: Math.min(4096, scorable.length * 350),
       messages: [
         {
           role: "system",
@@ -201,11 +218,16 @@ async function scoreChunk(records) {
     if (!Array.isArray(output)) output = [output];
   }
 
-  /* ---------- length mismatch → solo retry ---------------------- */
+  /* ---------- length mismatch → mini-chunk retry --------------- */
   if (output.length !== scorable.length) {
     console.warn(`⚠️ GPT returned ${output.length} of ${scorable.length}`);
+    const retryBucket = [];
     for (let i = 0; i < scorable.length; i++) {
-      if (!output[i]) await enqueue([scorable[i].rec]);  // single-lead retry
+      if (!output[i]) retryBucket.push(scorable[i].rec);
+      if (retryBucket.length === 10 ||
+          (i === scorable.length - 1 && retryBucket.length)) {
+        await enqueue(retryBucket.splice(0, retryBucket.length));
+      }
     }
   }
 
@@ -224,10 +246,14 @@ async function scoreChunk(records) {
     }
 
     const { percentage, rawScore: earned, denominator: max } =
-      computeFinalScore(gpt.positive_scores, positives,
-                        gpt.negative_scores, negatives,
-                        gpt.contact_readiness, gpt.unscored_attributes);
-    gpt.finalPct = Math.round((gpt.finalPct ?? percentage) * 100) / 100;
+      computeFinalScore(
+        gpt.positive_scores, positives,
+        gpt.negative_scores, negatives,
+        gpt.contact_readiness, gpt.unscored_attributes
+      );
+
+    // always rely on our computed percentage
+    const finalPct = Math.round(percentage * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
       gpt.positive_scores, positives,
@@ -237,7 +263,7 @@ async function scoreChunk(records) {
     );
 
     await base("Leads").update(rec.id, {
-      "AI Score"              : gpt.finalPct,
+      "AI Score"              : finalPct,
       "AI Profile Assessment" : gpt.aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
       "Scoring Status"        : "Scored",
