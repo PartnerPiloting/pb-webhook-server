@@ -14,12 +14,12 @@ const Airtable = require("airtable");
 const fs = require("fs");
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-const { buildPrompt }             = require("./promptBuilder");
-const { loadAttributes }          = require("./attributeLoader");
-const { callGptScoring }          = require("./callGptScoring");
-const { buildAttributeBreakdown } = require("./breakdown");
-const { scoreLeadNow }            = require("./singleScorer");
-const { computeFinalScore }       = require("./scoring");
+const { buildPrompt, slimLead }    = require("./promptBuilder");   // ← PATCHED
+const { loadAttributes }           = require("./attributeLoader");
+const { callGptScoring }           = require("./callGptScoring");
+const { buildAttributeBreakdown }  = require("./breakdown");
+const { scoreLeadNow }             = require("./singleScorer");
+const { computeFinalScore }        = require("./scoring");
 
 const mountPointerApi  = require("./pointerApi");
 const mountLatestLead  = require("./latestLeadApi");
@@ -194,6 +194,10 @@ app.get("/score-lead", async (req, res) => {
 
     const record  = await base("Leads").find(id);
     const profile = JSON.parse(record.get("Profile Full JSON") || "{}");
+
+    // --- DEBUG: confirm compact keys --------------------------------
+    const compact = slimLead(profile);
+    console.log("▶︎ DEBUG compact keys:", Object.keys(compact));   // ← PATCHED
 
     // ——————————————————————————  critical-field check + alert  ——————————————————————————
     const aboutText = (
@@ -647,9 +651,9 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   }
 });
 
-/* ================================================================
+/* ------------------------------------------------------------------
    8)  /lh-webhook/upsertLeadOnly
-================================================================ */
+------------------------------------------------------------------*/
 app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
   try {
     console.log("▶︎ LH payload:", JSON.stringify(req.body).slice(0, 2000));
