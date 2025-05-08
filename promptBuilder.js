@@ -15,7 +15,7 @@ const path = require("path");
 const { loadAttributes } = require("./attributeLoader");
 
 /* ------------------------------------------------------------------
-   extractExperience  –  normalises a profile’s work‑history array
+   extractExperience  –  normalises a profile’s work-history array
 ------------------------------------------------------------------ */
 function extractExperience(profile = {}) {
   // Prefer the native experience array when present
@@ -74,13 +74,13 @@ function slimLead(profile = {}) {
 }
 
 /* ------------------------------------------------------------------
-   buildPrompt  –  returns the SYSTEM prompt string for GPT‑4o
+   buildPrompt  –  returns the SYSTEM prompt string for GPT-4o
 ------------------------------------------------------------------ */
 async function buildPrompt() {
   const dicts = await loadAttributes(); // { positives, negatives }
 
   const schema = `
-Return **only** a valid JSON object exactly like this:
+Return **ONLY** a valid JSON array (even when scoring one lead). No markdown, no prose, no code fences.
 
 {
   "positive_scores": { "A": { "score": 15, "reason": "..." }, ... },
