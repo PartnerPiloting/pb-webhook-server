@@ -15,7 +15,6 @@ You are a lead-scoring engine for Partner Piloting.
 • You receive an array of LinkedIn profiles in JSON.
 • For each profile, judge the presence of the listed positive
   and negative attributes.
-• Output must follow the exact schema and order requested.
 `.trim();
 
 const FOOTER = `
@@ -24,8 +23,27 @@ no Markdown, no code fences, no explanations.
 If you cannot score a profile, return an empty object {} in its slot.
 `.trim();
 
+/* ---------- explicit reply schema ------------------------------ */
+const SCHEMA = `
+When you reply, return exactly **one JSON object** with these keys:
+
+{
+  "positive_scores": { "A": 0-20, "B": 0-20, "C": 0-20, "D": 0-10,
+                       "E": 0-5, "F": 0-15, "G": 0-15, "H": 0-15,
+                       "I": 0-3, "J": 0-5, "K": 0-20 },
+  "negative_scores": { "L1": 0 or -5,
+                       "N1": 0 or -10, "N2": 0 or -10,
+                       "N3": 0 or -5,  "N4": 0 or -10,
+                       "N5": 0 or -5 },
+  "contact_readiness": true | false,
+  "unscored_attributes": ["A","B", …],
+  "aiProfileAssessment": "one short paragraph",
+  "attribute_reasoning": { "A": "1-sentence reason", "B": "…" }
+}
+`.trim();
+
 /* ----------------------------------------------------------------
-   buildPrompt – header + bullets from Airtable + footer
+   buildPrompt – header + bullets from Airtable + schema + footer
 ----------------------------------------------------------------- */
 async function buildPrompt() {
   const { positives, negatives } = await loadAttributes();
@@ -42,8 +60,8 @@ async function buildPrompt() {
     HEADER +
     "\n\nPositive attributes:\n" + positivesTxt +
     "\n\nNegative attributes:\n" + negativesTxt +
-    "\n\n" +
-    FOOTER
+    "\n\n" + SCHEMA +
+    "\n\n" + FOOTER
   );
 }
 
@@ -76,7 +94,12 @@ function slimLead(profile) {
     lastName  : profile.lastName     || "",
     headline  : profile.headline     || "",
     location  : profile.locationName || "",
-    about     : (profile.about || profile.summary || "").trim(),
+    about     : (
+      profile.about ||
+      profile.summary ||
+      profile.linkedinDescription ||
+      ""
+    ).trim(),
     experience: extractExperience(profile),
     skills    : profile.skills || ""
   };
