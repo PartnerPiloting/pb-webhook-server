@@ -16,17 +16,17 @@ const fetch = (...args) =>
   import("node-fetch").then(({ default: f }) => f(...args));
 
 const { buildPrompt } = require("./promptBuilder");
-const { loadAttributes } = require("./attributeLoader"); // dynamic dicts
-const { callGptScoring } = require("./callGptScoring"); // GPT scorer
-const { buildAttributeBreakdown } = require("./breakdown"); // shared breakdown
-const { scoreLeadNow } = require("./singleScorer"); // single-lead scorer
-const { computeFinalScore } = require("./scoring"); // unified scorer
+const { loadAttributes } = require("./attributeLoader");
+const { callGptScoring } = require("./callGptScoring");
+const { buildAttributeBreakdown } = require("./breakdown");
+const { scoreLeadNow } = require("./singleScorer");
+const { computeFinalScore } = require("./scoring");
 
 const mountPointerApi = require("./pointerApi");
 const mountLatestLead = require("./latestLeadApi");
 const mountUpdateLead = require("./updateLeadApi");
 const mountQueue = require("./queueDispatcher");
-const batchScorer = require("./batchScorer"); // batch scorer
+const batchScorer = require("./batchScorer");
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -39,9 +39,7 @@ function getJsonUrl(obj = {}) {
     obj?.output?.jsonUrl ||
     obj?.resultObject?.jsonUrl ||
     (() => {
-      const m = JSON.stringify(obj).match(
-        /https?:\/\/[^"'\s]+\/result\.json/i
-      );
+      const m = JSON.stringify(obj).match(/https?:\/\/[^"'\s]+\/result\.json/i);
       return m ? m[0] : null;
     })()
   );
@@ -137,9 +135,7 @@ app.get("/score-lead", async (req, res) => {
   try {
     const id = req.query.recordId;
     if (!id)
-      return res
-        .status(400)
-        .json({ error: "recordId query param required" });
+      return res.status(400).json({ error: "recordId query param required" });
 
     const record = await base("Leads").find(id);
     const profile = JSON.parse(record.get("Profile Full JSON") || "{}");
@@ -147,37 +143,27 @@ app.get("/score-lead", async (req, res) => {
     /* ──────────────────────────────────────────────────────────
        🔧 skip ultra-thin profiles
     ────────────────────────────────────────────────────────── */
-    // --- completeness checks ------------------------------------
     const aboutText = (profile.about || profile.summary || "").trim();
 
-    // harvest flattened jobs if no experience array --------------
     let hasExp =
       Array.isArray(profile.experience) && profile.experience.length > 0;
     if (!hasExp) {
       for (let i = 1; i <= 5; i++) {
-        if (
-          profile[`organization_${i}`] ||
-          profile[`organization_title_${i}`]
-        ) {
+        if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) {
           hasExp = true;
           break;
         }
       }
     }
 
-    // Skip if About/Summary is < 40 chars OR there’s no job history
-    if (!aboutText || aboutText.length < 40 || !hasExp) {
+    if (aboutText.length < 40) {
       await base("Leads").update(record.id, {
         "AI Score": 0,
         "Scoring Status": "Skipped – Profile Full JSON Too Small",
         "AI Profile Assessment": "",
         "AI Attribute Breakdown": "",
       });
-      res.json({
-        ok: true,
-        skipped: true,
-        reason: "Profile JSON too small",
-      });
+      res.json({ ok: true, skipped: true, reason: "Profile JSON too small" });
       return;
     }
 
@@ -217,7 +203,7 @@ app.get("/score-lead", async (req, res) => {
       earned,
       max,
       attribute_reasoning,
-      true, // show zero-score attributes
+      true,
       null
     );
 
@@ -239,9 +225,7 @@ app.get("/score-lead", async (req, res) => {
 /* ------------------------------------------------------------------
    2)  OpenAI + Airtable setup
 ------------------------------------------------------------------*/
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
 const openai = new OpenAIApi(configuration);
 
 Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
@@ -258,12 +242,11 @@ mountLatestLead(app, base);
 mountUpdateLead(app, base);
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & helpers  (legacy parser – retained for safety)
+   4)  getScoringData & helpers
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const md = await buildPrompt();
   const passMark = 0;
-
   const truncated = md.replace(/```python[\s\S]*?```/g, "");
   const { positives, negatives } = parseMarkdownTables(truncated);
 
@@ -328,7 +311,7 @@ function parseMarkdownTables(markdown) {
 }
 
 /* ------------------------------------------------------------------
-   5)  upsertLead  (AI fields written only if argument ≠ null)
+   5)  upsertLead
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
@@ -428,6 +411,17 @@ async function upsertLead(
       : undefined,
   };
 
+  if (lead.raw) {
+    for (let i = 1; i <= 10; i++) {
+      const orgKey = `organization_${i}`;
+      const titleKey = `organization_title_${i}`;
+      if (lead.raw[orgKey] || lead.raw[titleKey]) {
+        slim[orgKey] = lead.raw[orgKey] || "";
+        slim[titleKey] = lead.raw[titleKey] || "";
+      }
+    }
+  }
+
   const fields = {
     "LinkedIn Profile URL": finalUrl,
     "First Name": firstName,
@@ -482,7 +476,7 @@ async function upsertLead(
 } // END upsertLead
 
 /* ------------------------------------------------------------------
-   6)  /api/test-score (returns JSON only)
+   6)  /api/test-score
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
   try {
@@ -524,7 +518,7 @@ app.post("/api/test-score", async (req, res) => {
       earned,
       max,
       attribute_reasoning,
-      true, // show zero-score attributes
+      true,
       null
     );
 
@@ -593,7 +587,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
           earned,
           max,
           attribute_reasoning,
-          true, // show zero-score attributes
+          true,
           null
         )
       );
@@ -612,6 +606,8 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 ================================================================ */
 app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
   try {
+    console.log("▶︎ LH payload:", JSON.stringify(req.body).slice(0, 2000));
+
     const raw = Array.isArray(req.body) ? req.body : [req.body];
     let processed = 0;
 
@@ -695,6 +691,8 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
+    console.log("▶︎ LH payload:", JSON.stringify(req.body).slice(0, 2000));
+
     const raw = Array.isArray(req.body) ? req.body : [req.body];
     const { positives, negatives } = await loadAttributes();
     let processed = 0;
@@ -818,7 +816,7 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           earned,
           max,
           attribute_reasoning,
-          true, // show zero-score attributes
+          true,
           null
         ),
         auFlag,

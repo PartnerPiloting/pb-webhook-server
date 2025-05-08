@@ -105,7 +105,8 @@ async function scoreChunk(records) {
       }
     }
 
-    const shouldSkip = (!aboutText || aboutText.length < 40) || !hasExp;
+    /* NEW – skip only if About/Summary is too short -------------- */
+    const shouldSkip = aboutText.length < 40;
 
     if (shouldSkip) {
       await base("Leads").update(rec.id, {
