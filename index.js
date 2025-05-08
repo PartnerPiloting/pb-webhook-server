@@ -147,12 +147,26 @@ app.get("/score-lead", async (req, res) => {
     /* ──────────────────────────────────────────────────────────
        🔧 skip ultra-thin profiles
     ────────────────────────────────────────────────────────── */
+    // --- completeness checks ------------------------------------
     const aboutText = (profile.about || profile.summary || "").trim();
-    const hasExp =
-      Array.isArray(profile.experience) && profile.experience.length > 0;
-    const smallBlob = Object.keys(profile).length <= 10;
 
-    if (!aboutText || aboutText.length < 40 || !hasExp || smallBlob) {
+    // harvest flattened jobs if no experience array --------------
+    let hasExp =
+      Array.isArray(profile.experience) && profile.experience.length > 0;
+    if (!hasExp) {
+      for (let i = 1; i <= 5; i++) {
+        if (
+          profile[`organization_${i}`] ||
+          profile[`organization_title_${i}`]
+        ) {
+          hasExp = true;
+          break;
+        }
+      }
+    }
+
+    // Skip if About/Summary is < 40 chars OR there’s no job history
+    if (!aboutText || aboutText.length < 40 || !hasExp) {
       await base("Leads").update(record.id, {
         "AI Score": 0,
         "Scoring Status": "Skipped – Profile Full JSON Too Small",
@@ -329,6 +343,7 @@ async function upsertLead(
   const {
     firstName = "",
     lastName = "",
+
     headline: lhHeadline = "",
 
     linkedinHeadline = "",
