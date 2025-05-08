@@ -46,6 +46,29 @@ async function alertAdmin(subject, text) {
   });
 }
 
+/* ---------- critical-field detector ----------------------------- */
+function isMissingCritical(profile = {}) {
+  const about = (
+    profile.about ||
+    profile.summary ||
+    profile.linkedinDescription ||
+    ""
+  ).trim();
+  const hasBio      = about.length >= 40;
+  const hasHeadline = !!profile.headline?.trim();
+
+  let hasJob = Array.isArray(profile.experience) && profile.experience.length;
+  if (!hasJob) {
+    for (let i = 1; i <= 5; i++) {
+      if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) {
+        hasJob = true;
+        break;
+      }
+    }
+  }
+  return !(hasBio && hasHeadline && hasJob);   // true → something missing
+}
+
 /* ---------- GPT wrapper with timeout ---------------------------- */
 function gptWithTimeout(messages) {
   const call  = openai.createChatCompletion({ model: MODEL, temperature: 0, messages });
@@ -92,7 +115,12 @@ async function scoreChunk(records) {
   for (const rec of records) {
     const profile = JSON.parse(rec.get("Profile Full JSON") || "{}");
 
-    const aboutText = (profile.about || profile.summary || "").trim();
+    const aboutText = (
+      profile.about ||
+      profile.summary ||
+      profile.linkedinDescription ||
+      ""
+    ).trim();
 
     /* detect any job history ------------------------------------- */
     let hasExp = Array.isArray(profile.experience) && profile.experience.length > 0;
@@ -103,6 +131,18 @@ async function scoreChunk(records) {
           break;
         }
       }
+    }
+
+    /* NEW — alert if critical data missing ----------------------- */
+    if (isMissingCritical(profile)) {
+      await alertAdmin(
+        "[Scraper Alert] Incomplete lead",
+        `Rec ID: ${rec.id}\n` +
+        `URL   : ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}\n` +
+        `Headline present : ${!!profile.headline}\n` +
+        `About ≥40 chars  : ${aboutText.length >= 40}\n` +
+        `Job info present : ${hasExp}`
+      );
     }
 
     /* NEW – skip only if About/Summary is too short -------------- */
