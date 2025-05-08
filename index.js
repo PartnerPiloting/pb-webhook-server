@@ -12,21 +12,50 @@ const express = require("express");
 const { Configuration, OpenAIApi } = require("openai");
 const Airtable = require("airtable");
 const fs = require("fs");
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: f }) => f(...args));
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-const { buildPrompt } = require("./promptBuilder");
-const { loadAttributes } = require("./attributeLoader");
-const { callGptScoring } = require("./callGptScoring");
+const { buildPrompt }           = require("./promptBuilder");
+const { loadAttributes }        = require("./attributeLoader");
+const { callGptScoring }        = require("./callGptScoring");
 const { buildAttributeBreakdown } = require("./breakdown");
-const { scoreLeadNow } = require("./singleScorer");
-const { computeFinalScore } = require("./scoring");
+const { scoreLeadNow }          = require("./singleScorer");
+const { computeFinalScore }     = require("./scoring");
 
-const mountPointerApi = require("./pointerApi");
-const mountLatestLead = require("./latestLeadApi");
-const mountUpdateLead = require("./updateLeadApi");
-const mountQueue = require("./queueDispatcher");
-const batchScorer = require("./batchScorer");
+const mountPointerApi  = require("./pointerApi");
+const mountLatestLead  = require("./latestLeadApi");
+const mountUpdateLead  = require("./updateLeadApi");
+const mountQueue       = require("./queueDispatcher");
+const batchScorer      = require("./batchScorer");
+
+/* ------------------------------------------------------------------
+   helper: alertAdmin  (Mailgun)
+------------------------------------------------------------------*/
+async function alertAdmin(subject, text) {
+  try {
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN || !process.env.ALERT_EMAIL) {
+      console.warn("Mailgun not configured, alert skipped");
+      return;
+    }
+    const mgUrl = `https://api.mailgun.net/v3/${process.env.MAILGUN_DOMAIN}/messages`;
+    const body  = new URLSearchParams({
+      from   : `PB Server <alerts@${process.env.MAILGUN_DOMAIN}>`,
+      to     : process.env.ALERT_EMAIL,
+      subject,
+      text
+    });
+    const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString("base64");
+    await fetch(mgUrl, {
+      method : "POST",
+      headers: {
+        Authorization : `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body
+    });
+  } catch (err) {
+    console.error("alertAdmin error:", err);
+  }
+}
 
 /* ------------------------------------------------------------------
    helper: getJsonUrl
@@ -81,10 +110,10 @@ function safeDate(d) {
 function getLastTwoOrgs(lh = {}) {
   const out = [];
   for (let i = 1; i <= 2; i++) {
-    const org = lh[`organization_${i}`];
+    const org   = lh[`organization_${i}`];
     const title = lh[`organization_title_${i}`];
-    const sr = lh[`organization_start_${i}`];
-    const er = lh[`organization_end_${i}`];
+    const sr    = lh[`organization_start_${i}`];
+    const er    = lh[`organization_end_${i}`];
     if (!org && !title) continue;
     const range = sr || er ? `(${sr || "?"} – ${er || "Present"})` : "";
     out.push(`${title || "Unknown Role"} at ${org || "Unknown"} ${range}`);
@@ -93,10 +122,36 @@ function getLastTwoOrgs(lh = {}) {
 }
 
 /* ------------------------------------------------------------------
+   helper: isMissingCritical (bio ≥40, headline, job-history)
+------------------------------------------------------------------*/
+function isMissingCritical(profile = {}) {
+  const about = (
+    profile.about ||
+    profile.summary ||
+    profile.linkedinDescription ||
+    ""
+  ).trim();
+
+  const hasBio      = about.length >= 40;
+  const hasHeadline = !!profile.headline?.trim();
+
+  let hasJob = Array.isArray(profile.experience) && profile.experience.length;
+  if (!hasJob) {
+    for (let i = 1; i <= 5; i++) {
+      if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) {
+        hasJob = true;
+        break;
+      }
+    }
+  }
+  return !(hasBio && hasHeadline && hasJob); // true → something missing
+}
+
+/* ------------------------------------------------------------------
    1)  Globals & Express
 ------------------------------------------------------------------*/
-const TEST_MODE = process.env.TEST_MODE === "true";
-const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
+const TEST_MODE          = process.env.TEST_MODE === "true";
+const MIN_SCORE          = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
 
 const app = express();
@@ -137,12 +192,10 @@ app.get("/score-lead", async (req, res) => {
     if (!id)
       return res.status(400).json({ error: "recordId query param required" });
 
-    const record = await base("Leads").find(id);
+    const record  = await base("Leads").find(id);
     const profile = JSON.parse(record.get("Profile Full JSON") || "{}");
 
-    /* ──────────────────────────────────────────────────────────
-       🔧 skip ultra-thin profiles
-    ────────────────────────────────────────────────────────── */
+    // —————————————————————————————    critical-field check + alert   ————————————————————————————
     const aboutText = (profile.about || profile.summary || "").trim();
 
     let hasExp =
@@ -156,41 +209,58 @@ app.get("/score-lead", async (req, res) => {
       }
     }
 
+    if (isMissingCritical(profile)) {
+      await alertAdmin(
+        "[Scraper Alert] Incomplete lead",
+        `Rec ID: ${record.id}\n` +
+          `URL   : ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}\n` +
+          `Headline present : ${!!profile.headline}\n` +
+          `About ≥40 chars  : ${aboutText.length >= 40}\n` +
+          `Job info present : ${hasExp}`
+      );
+    }
+
+    /* ──────────────────────────────────────────────────────────
+       🔧 skip-guard (only bio length now)
+    ────────────────────────────────────────────────────────── */
     if (aboutText.length < 40) {
       await base("Leads").update(record.id, {
-        "AI Score": 0,
-        "Scoring Status": "Skipped – Profile Full JSON Too Small",
-        "AI Profile Assessment": "",
-        "AI Attribute Breakdown": "",
+        "AI Score"              : 0,
+        "Scoring Status"        : "Skipped – Profile Full JSON Too Small",
+        "AI Profile Assessment" : "",
+        "AI Attribute Breakdown": ""
       });
       res.json({ ok: true, skipped: true, reason: "Profile JSON too small" });
       return;
     }
 
     // GPT scoring
-    const raw = await scoreLeadNow(profile);
+    const raw    = await scoreLeadNow(profile);
     const parsed = await callGptScoring(raw);
 
     const { positives, negatives } = await loadAttributes();
 
     const {
-      positive_scores = {},
-      negative_scores = {},
-      contact_readiness = false,
-      unscored_attributes = [],
-      aiProfileAssessment = "",
-      attribute_reasoning = {},
+      positive_scores      = {},
+      negative_scores      = {},
+      contact_readiness    = false,
+      unscored_attributes  = [],
+      aiProfileAssessment  = "",
+      attribute_reasoning  = {}
     } = parsed;
 
-    const { percentage, rawScore: earned, denominator: max } =
-      computeFinalScore(
-        positive_scores,
-        positives,
-        negative_scores,
-        negatives,
-        contact_readiness,
-        unscored_attributes
-      );
+    const {
+      percentage,
+      rawScore   : earned,
+      denominator: max
+    } = computeFinalScore(
+      positive_scores,
+      positives,
+      negative_scores,
+      negatives,
+      contact_readiness,
+      unscored_attributes
+    );
 
     parsed.finalPct = Math.round(percentage * 100) / 100;
 
@@ -208,11 +278,11 @@ app.get("/score-lead", async (req, res) => {
     );
 
     await base("Leads").update(id, {
-      "AI Score": parsed.finalPct,
+      "AI Score"             : parsed.finalPct,
       "AI Profile Assessment": parsed.aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
-      "Scoring Status": "Scored",
-      "Date Scored": new Date().toISOString().split("T")[0],
+      "Scoring Status"       : "Scored",
+      "Date Scored"          : new Date().toISOString().split("T")[0]
     });
 
     res.json({ id, finalPct: parsed.finalPct, aiProfileAssessment, breakdown });
@@ -226,7 +296,7 @@ app.get("/score-lead", async (req, res) => {
    2)  OpenAI + Airtable setup
 ------------------------------------------------------------------*/
 const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
-const openai = new OpenAIApi(configuration);
+const openai        = new OpenAIApi(configuration);
 
 Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
@@ -242,68 +312,51 @@ mountLatestLead(app, base);
 mountUpdateLead(app, base);
 
 /* ------------------------------------------------------------------
-   4)  getScoringData & helpers
+   4)  getScoringData & helpers  (legacy parser – retained for safety)
 ------------------------------------------------------------------*/
 async function getScoringData() {
   const md = await buildPrompt();
   const passMark = 0;
   const truncated = md.replace(/```python[\s\S]*?```/g, "");
   const { positives, negatives } = parseMarkdownTables(truncated);
-
-  return {
-    truncatedInstructions: truncated,
-    passMark,
-    positives,
-    negatives,
-  };
+  return { truncatedInstructions: truncated, passMark, positives, negatives };
 }
 
 function parseMarkdownTables(markdown) {
   const positives = {};
   const negatives = {};
-  const lines = markdown.split("\n");
-  let section = null;
-  const posRow =
-    /^\|\s*([A-Z])\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|?$/;
-  const negRow =
-    /^\|\s*([A-Z0-9]+)\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|?$/;
+  const lines     = markdown.split("\n");
+  let section     = null;
+
+  const posRow = /^\|\s*([A-Z])\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|?$/;
+  const negRow = /^\|\s*([A-Z0-9]+)\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|?$/;
 
   for (const line of lines) {
     const t = line.trim();
-    if (/^#{2,}\s*Positive Attributes/i.test(t)) {
-      section = "pos";
-      continue;
-    }
-    if (/^#{2,}\s*Negative Attributes/i.test(t)) {
-      section = "neg";
-      continue;
-    }
-    if (/^#{2,}/.test(t)) {
-      section = null;
-      continue;
-    }
-    if (!section || t.startsWith("|----") || /^\|\s*ID\s*\|/i.test(t))
-      continue;
+    if (/^#{2,}\s*Positive Attributes/i.test(t)) { section = "pos"; continue; }
+    if (/^#{2,}\s*Negative Attributes/i.test(t)) { section = "neg"; continue; }
+    if (/^#{2,}/.test(t)) { section = null; continue; }
+    if (!section || t.startsWith("|----") || /^\|\s*ID\s*\|/i.test(t)) continue;
 
     if (section === "pos") {
       const m = t.match(posRow);
       if (!m) continue;
       const [, id, label, maxRaw, minRaw, notes] = m;
       positives[id] = {
-        label: label.trim(),
-        maxPoints: parseInt(maxRaw.replace(/[^\d]/g, ""), 10) || 0,
-        minQualify: parseInt(minRaw.replace(/[^\d]/g, ""), 10) || 0,
-        notes: notes.trim(),
+        label      : label.trim(),
+        maxPoints  : parseInt(maxRaw.replace(/[^\d]/g, ""), 10) || 0,
+        minQualify : parseInt(minRaw.replace(/[^\d]/g, ""), 10) || 0,
+        notes      : notes.trim()
       };
     } else {
       const m = t.match(negRow);
       if (!m) continue;
       const [, id, label, penRaw, disqRaw, notes] = m;
       negatives[id] = {
-        label: label.trim(),
-        penalty: parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
+        label        : label.trim(),
+        penalty      : parseInt(penRaw.replace(/[^\-\d]/g, ""), 10) || 0,
         disqualifying: /yes/i.test(disqRaw.trim()),
-        notes: notes.trim(),
+        notes        : notes.trim()
       };
     }
   }
@@ -311,43 +364,43 @@ function parseMarkdownTables(markdown) {
 }
 
 /* ------------------------------------------------------------------
-   5)  upsertLead
+   5)  upsertLead  (AI fields written only if argument ≠ null)
 ------------------------------------------------------------------*/
 async function upsertLead(
   lead,
-  finalScore = null,
+  finalScore          = null,
   aiProfileAssessment = null,
-  attributeReasoning = null,
-  attributeBreakdown = null,
-  auFlag = null,
-  aiExcluded = null,
-  excludeDetails = null
+  attributeReasoning  = null,
+  attributeBreakdown  = null,
+  auFlag              = null,
+  aiExcluded          = null,
+  excludeDetails      = null
 ) {
   const {
     firstName = "",
-    lastName = "",
+    lastName  = "",
 
-    headline: lhHeadline = "",
+    headline           : lhHeadline = "",
 
-    linkedinHeadline = "",
-    linkedinJobTitle = "",
-    linkedinCompanyName = "",
-    linkedinDescription = "",
+    linkedinHeadline   = "",
+    linkedinJobTitle   = "",
+    linkedinCompanyName= "",
+    linkedinDescription= "",
 
     linkedinProfileUrl = "",
-    connectionDegree = "",
+    connectionDegree   = "",
 
-    linkedinJobDateRange = "",
-    linkedinJobDescription = "",
-    linkedinPreviousJobDateRange = "",
-    linkedinPreviousJobDescription = "",
+    linkedinJobDateRange            = "",
+    linkedinJobDescription          = "",
+    linkedinPreviousJobDateRange    = "",
+    linkedinPreviousJobDescription  = "",
 
-    refreshedAt = "",
+    refreshedAt          = "",
     profileUrl: fallbackProfileUrl = "",
     linkedinConnectionStatus,
 
     emailAddress = "",
-    phoneNumber = "",
+    phoneNumber  = "",
     locationName = "",
     connectionSince,
 
@@ -358,29 +411,22 @@ async function upsertLead(
 
   let jobHistory = [
     linkedinJobDateRange
-      ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}`
-      : "",
+      ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}` : "",
     linkedinPreviousJobDateRange
-      ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+      ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}` : ""
+  ].filter(Boolean).join("\n");
 
   if (!jobHistory && lead.raw) {
     const hist = getLastTwoOrgs(lead.raw);
     if (hist) jobHistory = hist;
   }
 
-  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(
-    /\/$/,
-    ""
-  );
+  let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
   if (!finalUrl) {
     const slug = lead.publicId || lead.publicIdentifier;
-    const mid = lead.memberId || lead.profileId;
-    if (slug) finalUrl = `https://www.linkedin.com/in/${slug}/`;
-    else if (mid) finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
+    const mid  = lead.memberId || lead.profileId;
+    if (slug)      finalUrl = `https://www.linkedin.com/in/${slug}/`;
+    else if (mid)  finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
   }
   if (!finalUrl && lead.raw) {
     const r = lead.raw;
@@ -397,55 +443,50 @@ async function upsertLead(
 
   let connectionStatus = "Candidate";
   if (connectionDegree === "1st") connectionStatus = "Connected";
-  else if (linkedinConnectionStatus === "Pending")
-    connectionStatus = "Pending";
+  else if (linkedinConnectionStatus === "Pending") connectionStatus = "Pending";
 
   const slim = {
     firstName,
     lastName,
-    headline: lhHeadline || linkedinHeadline,
-    summary: linkedinDescription || "",
+    headline : lhHeadline || linkedinHeadline,
+    summary  : linkedinDescription || "",
     locationName,
     experience: Array.isArray(lead.raw?.experience)
       ? lead.raw.experience.slice(0, 2)
-      : undefined,
+      : undefined
   };
 
+  // ── copy organisation_* & organisation_title_* for PromptBuilder ──
   if (lead.raw) {
     for (let i = 1; i <= 10; i++) {
-      const orgKey = `organization_${i}`;
+      const orgKey   = `organization_${i}`;
       const titleKey = `organization_title_${i}`;
       if (lead.raw[orgKey] || lead.raw[titleKey]) {
-        slim[orgKey] = lead.raw[orgKey] || "";
+        slim[orgKey]   = lead.raw[orgKey]   || "";
         slim[titleKey] = lead.raw[titleKey] || "";
       }
     }
   }
 
   const fields = {
-    "LinkedIn Profile URL": finalUrl,
-    "First Name": firstName,
-    "Last Name": lastName,
-    Headline: linkedinHeadline || lhHeadline,
-    "Job Title": linkedinJobTitle,
-    "Company Name": linkedinCompanyName,
-    About: linkedinDescription || "",
-    "Job History": jobHistory,
+    "LinkedIn Profile URL" : finalUrl,
+    "First Name"           : firstName,
+    "Last Name"            : lastName,
+    Headline               : linkedinHeadline || lhHeadline,
+    "Job Title"            : linkedinJobTitle,
+    "Company Name"         : linkedinCompanyName,
+    About                  : linkedinDescription || "",
+    "Job History"          : jobHistory,
     "LinkedIn Connection Status": connectionStatus,
-    Status: "In Process",
-    "Scoring Status": scoringStatus,
-    Location: locationName || "",
-    "Date Connected":
-      safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
-    Email: emailAddress || lead.email || lead.workEmail || "",
-    Phone:
-      phoneNumber ||
-      lead.phone ||
-      (lead.phoneNumbers || [])[0]?.value ||
-      "",
-    "Refreshed At": refreshedAt ? new Date(refreshedAt) : null,
-    "Profile Full JSON": JSON.stringify(slim),
-    "Raw Profile Data": JSON.stringify(rest),
+    Status                 : "In Process",
+    "Scoring Status"       : scoringStatus,
+    Location               : locationName || "",
+    "Date Connected"       : safeDate(connectionSince) || safeDate(lead.connectedAt) || null,
+    Email                  : emailAddress || lead.email || lead.workEmail || "",
+    Phone                  : phoneNumber || lead.phone || (lead.phoneNumbers || [])[0]?.value || "",
+    "Refreshed At"         : refreshedAt ? new Date(refreshedAt) : null,
+    "Profile Full JSON"    : JSON.stringify(slim),
+    "Raw Profile Data"     : JSON.stringify(rest)
   };
 
   if (finalScore !== null)
@@ -454,12 +495,11 @@ async function upsertLead(
     fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
   if (attributeBreakdown !== null)
     fields["AI Attribute Breakdown"] = attributeBreakdown;
-  if (auFlag !== null) fields["AU"] = !!auFlag;
-  if (aiExcluded !== null) fields["AI_Excluded"] = aiExcluded === "Yes";
-  if (excludeDetails !== null)
-    fields["Exclude Details"] = excludeDetails;
+  if (auFlag !== null)                fields["AU"]           = !!auFlag;
+  if (aiExcluded !== null)            fields["AI_Excluded"]  = aiExcluded === "Yes";
+  if (excludeDetails !== null)        fields["Exclude Details"] = excludeDetails;
 
-  const filter = `{Profile Key} = "${profileKey}"`;
+  const filter   = `{Profile Key} = "${profileKey}"`;
   const existing = await base("Leads")
     .select({ filterByFormula: filter, maxRecords: 1 })
     .firstPage();
@@ -476,36 +516,39 @@ async function upsertLead(
 } // END upsertLead
 
 /* ------------------------------------------------------------------
-   6)  /api/test-score
+   6)  /api/test-score (returns JSON only)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
   try {
     const lead = req.body;
 
-    const sysPrompt = await buildPrompt();
+    const sysPrompt                = await buildPrompt();
     const { positives, negatives } = await loadAttributes();
 
     const parsed = await callGptScoring(sysPrompt, lead);
     console.log("GPT finalPct:", parsed.finalPct);
 
     const {
-      positive_scores = {},
-      negative_scores = {},
-      contact_readiness = false,
-      unscored_attributes = [],
-      aiProfileAssessment = "",
-      attribute_reasoning = {},
+      positive_scores      = {},
+      negative_scores      = {},
+      contact_readiness    = false,
+      unscored_attributes  = [],
+      aiProfileAssessment  = "",
+      attribute_reasoning  = {}
     } = parsed;
 
-    const { percentage, rawScore: earned, denominator: max } =
-      computeFinalScore(
-        positive_scores,
-        positives,
-        negative_scores,
-        negatives,
-        contact_readiness,
-        unscored_attributes
-      );
+    const {
+      percentage,
+      rawScore   : earned,
+      denominator: max
+    } = computeFinalScore(
+      positive_scores,
+      positives,
+      negative_scores,
+      negatives,
+      contact_readiness,
+      unscored_attributes
+    );
 
     parsed.finalPct = Math.round(percentage * 100) / 100;
 
@@ -522,11 +565,7 @@ app.post("/api/test-score", async (req, res) => {
       null
     );
 
-    res.json({
-      finalPct: parsed.finalPct,
-      breakdown,
-      assessment: aiProfileAssessment,
-    });
+    res.json({ finalPct: parsed.finalPct, breakdown, assessment: aiProfileAssessment });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -538,37 +577,40 @@ app.post("/api/test-score", async (req, res) => {
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
   try {
-    const leads = Array.isArray(req.body) ? req.body : [];
-    const { positives, negatives } = await loadAttributes();
-    const passMark = 0;
-    let processed = 0;
+    const leads                     = Array.isArray(req.body) ? req.body : [];
+    const { positives, negatives }  = await loadAttributes();
+    const passMark                  = 0;
+    let processed                   = 0;
 
     for (const lead of leads) {
       const sysPrompt = await buildPrompt();
-      const gpt = await callGptScoring(sysPrompt, lead);
+      const gpt       = await callGptScoring(sysPrompt, lead);
       console.log("GPT finalPct:", gpt.finalPct);
 
       const {
-        positive_scores = {},
-        negative_scores = {},
-        contact_readiness = false,
-        unscored_attributes = [],
-        aiProfileAssessment = "",
-        attribute_reasoning = {},
+        positive_scores      = {},
+        negative_scores      = {},
+        contact_readiness    = false,
+        unscored_attributes  = [],
+        aiProfileAssessment  = "",
+        attribute_reasoning  = {}
       } = gpt;
 
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
-      const { percentage, rawScore: earned, denominator: max } =
-        computeFinalScore(
-          positive_scores,
-          positives,
-          negative_scores,
-          negatives,
-          contact_readiness,
-          unscored_attributes
-        );
+      const {
+        percentage,
+        rawScore   : earned,
+        denominator: max
+      } = computeFinalScore(
+        positive_scores,
+        positives,
+        negative_scores,
+        negatives,
+        contact_readiness,
+        unscored_attributes
+      );
 
       gpt.finalPct = Math.round(percentage * 100) / 100;
       if (gpt.finalPct < passMark) continue;
@@ -608,8 +650,8 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
   try {
     console.log("▶︎ LH payload:", JSON.stringify(req.body).slice(0, 2000));
 
-    const raw = Array.isArray(req.body) ? req.body : [req.body];
-    let processed = 0;
+    const raw      = Array.isArray(req.body) ? req.body : [req.body];
+    let processed  = 0;
 
     for (const lh of raw) {
       const rawUrl =
@@ -620,59 +662,57 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
           ? `https://www.linkedin.com/profile/view?id=${lh.memberId}`
           : "");
 
-      const exp = Array.isArray(lh.experience) ? lh.experience : [];
-      const current = exp[0] || {};
+      const exp      = Array.isArray(lh.experience) ? lh.experience : [];
+      const current  = exp[0] || {};
       const previous = exp[1] || {};
 
       const numericDist =
         (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
-        (typeof lh.member_distance === "string" &&
-          lh.member_distance.endsWith("_1"))
+        (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1"))
           ? 1
           : lh.distance;
 
       const lead = {
-        firstName: lh.firstName || lh.first_name || "",
-        lastName: lh.lastName || lh.last_name || "",
-        headline: lh.headline || "",
+        firstName : lh.firstName || lh.first_name || "",
+        lastName  : lh.lastName  || lh.last_name  || "",
+        headline  : lh.headline  || "",
         locationName:
           lh.locationName || lh.location_name || lh.location || "",
-        phone:
+        phone :
           (lh.phoneNumbers || [])[0]?.value ||
           lh.phone_1 ||
           lh.phone_2 ||
           "",
-        email: lh.email || lh.workEmail || "",
+        email : lh.email || lh.workEmail || "",
         linkedinProfileUrl: rawUrl,
-        linkedinJobTitle:
+        linkedinJobTitle  :
           lh.headline ||
           lh.occupation ||
           lh.position ||
           current.title ||
           "",
-        linkedinCompanyName:
+        linkedinCompanyName :
           lh.companyName ||
           (lh.company ? lh.company.name : "") ||
           current.company ||
           lh.organization_1 ||
           "",
-        linkedinDescription: lh.summary || lh.bio || "",
-        linkedinJobDateRange: current.dateRange || current.dates || "",
-        linkedinJobDescription: current.description || "",
-        linkedinPreviousJobDateRange:
-          previous.dateRange || previous.dates || "",
+        linkedinDescription           : lh.summary || lh.bio || "",
+        linkedinJobDateRange          : current.dateRange || current.dates || "",
+        linkedinJobDescription        : current.description || "",
+        linkedinPreviousJobDateRange  : previous.dateRange || previous.dates || "",
         linkedinPreviousJobDescription: previous.description || "",
-        connectionDegree:
+        connectionDegree              :
           lh.connectionDegree ||
           (lh.degree === 1 || numericDist === 1 ? "1st" : ""),
-        connectionSince:
+        connectionSince :
           lh.connectionDate ||
           lh.connected_at_iso ||
           lh.connected_at ||
           lh.invited_date_iso ||
           null,
-        raw: lh,
-        scoringStatus: "To Be Scored",
+        raw           : lh,
+        scoringStatus : "To Be Scored"
       };
 
       await upsertLead(lead);
@@ -693,9 +733,9 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
   try {
     console.log("▶︎ LH payload:", JSON.stringify(req.body).slice(0, 2000));
 
-    const raw = Array.isArray(req.body) ? req.body : [req.body];
-    const { positives, negatives } = await loadAttributes();
-    let processed = 0;
+    const raw                       = Array.isArray(req.body) ? req.body : [req.body];
+    const { positives, negatives }  = await loadAttributes();
+    let processed                   = 0;
 
     for (const lh of raw) {
       const rawUrl =
@@ -706,94 +746,95 @@ app.post("/lh-webhook/scrapeLeads", async (req, res) => {
           ? `https://www.linkedin.com/profile/view?id=${lh.memberId}`
           : "");
 
-      const exp = Array.isArray(lh.experience) ? lh.experience : [];
-      const current = exp[0] || {};
+      const exp      = Array.isArray(lh.experience) ? lh.experience : [];
+      const current  = exp[0] || {};
       const previous = exp[1] || {};
 
       const numericDist =
         (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
-        (typeof lh.member_distance === "string" &&
-          lh.member_distance.endsWith("_1"))
+        (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1"))
           ? 1
           : lh.distance;
 
       const lead = {
-        firstName: lh.firstName || lh.first_name || "",
-        lastName: lh.lastName || lh.last_name || "",
-        headline: lh.headline || "",
+        firstName : lh.firstName || lh.first_name || "",
+        lastName  : lh.lastName  || lh.last_name  || "",
+        headline  : lh.headline  || "",
         locationName:
           lh.locationName || lh.location_name || lh.location || "",
-        phone:
+        phone :
           (lh.phoneNumbers || [])[0]?.value ||
           lh.phone_1 ||
           lh.phone_2 ||
           "",
-        email: lh.email || lh.workEmail || "",
-        linkedinProfileUrl: rawUrl,
-        linkedinJobTitle:
+        email                 : lh.email || lh.workEmail || "",
+        linkedinProfileUrl    : rawUrl,
+        linkedinJobTitle      :
           lh.headline ||
           lh.occupation ||
           lh.position ||
           current.title ||
           "",
-        linkedinCompanyName:
+        linkedinCompanyName   :
           lh.companyName ||
           (lh.company ? lh.company.name : "") ||
           current.company ||
           lh.organization_1 ||
           "",
-        linkedinDescription: lh.summary || lh.bio || "",
-        linkedinJobDateRange: current.dateRange || current.dates || "",
-        linkedinJobDescription: current.description || "",
-        linkedinPreviousJobDateRange:
-          previous.dateRange || previous.dates || "",
+        linkedinDescription           : lh.summary || lh.bio || "",
+        linkedinJobDateRange          : current.dateRange || current.dates || "",
+        linkedinJobDescription        : current.description || "",
+        linkedinPreviousJobDateRange  : previous.dateRange || previous.dates || "",
         linkedinPreviousJobDescription: previous.description || "",
-        connectionDegree:
+        connectionDegree              :
           lh.connectionDegree ||
           (lh.degree === 1 || numericDist === 1 ? "1st" : ""),
-        connectionSince:
+        connectionSince :
           lh.connectionDate ||
           lh.connected_at_iso ||
           lh.connected_at ||
           lh.invited_date_iso ||
           null,
-        raw: lh,
+        raw : lh
       };
 
       const sysPrompt = await buildPrompt();
-      const gpt = await callGptScoring(sysPrompt, lead);
+      const gpt       = await callGptScoring(sysPrompt, lead);
       console.log("GPT finalPct:", gpt.finalPct);
 
       const {
-        positive_scores = {},
-        negative_scores = {},
-        contact_readiness = false,
-        unscored_attributes = [],
-        aiProfileAssessment = "",
-        attribute_reasoning = {},
+        positive_scores      = {},
+        negative_scores      = {},
+        contact_readiness    = false,
+        unscored_attributes  = [],
+        aiProfileAssessment  = "",
+        attribute_reasoning  = {}
       } = gpt;
 
       if (gpt.contact_readiness)
         positive_scores.I = positives?.I?.maxPoints || 3;
 
-      const { percentage, rawScore: earned, denominator: max } =
-        computeFinalScore(
-          positive_scores,
-          positives,
-          negative_scores,
-          negatives,
-          contact_readiness,
-          unscored_attributes
-        );
+      const {
+        percentage,
+        rawScore   : earned,
+        denominator: max
+      } = computeFinalScore(
+        positive_scores,
+        positives,
+        negative_scores,
+        negatives,
+        contact_readiness,
+        unscored_attributes
+      );
 
       gpt.finalPct = Math.round(percentage * 100) / 100;
 
-      const auFlag = isAustralian(lead.locationName || "");
-      const passesScore = gpt.finalPct >= MIN_SCORE;
-      const positiveChat = true;
+      const auFlag        = isAustralian(lead.locationName || "");
+      const passesScore   = gpt.finalPct >= MIN_SCORE;
+      const positiveChat  = true;
       const passesFilters = auFlag && passesScore && positiveChat;
 
-      const aiExcluded = passesFilters ? "No" : "Yes";
+      const aiExcluded    = passesFilters ? "No" : "Yes";
       const excludeDetails = passesFilters
         ? ""
         : !auFlag
@@ -877,8 +918,8 @@ app.get("/pb-pull/connections", async (req, res) => {
         await upsertLead(
           {
             ...c,
-            connectionDegree: "1st",
-            linkedinProfileUrl: (c.profileUrl || "").replace(/\/$/, ""),
+            connectionDegree   : "1st",
+            linkedinProfileUrl : (c.profileUrl || "").replace(/\/$/, "")
           },
           0,
           "",
