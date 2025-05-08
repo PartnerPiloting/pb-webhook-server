@@ -1,63 +1,75 @@
 /* ===================================================================
-   promptBuilder.js — builds the compact JSON scoring prompt
+   promptBuilder.js
    -------------------------------------------------------------------
-   • Embeds the full attribute dictionaries (now with Instructions /
-     Examples / Signals already cleaned by attributeLoader.js)
-   • Adds strict response schema + partial-credit guidance
-   • Sends the first 5 experience entries (was 2)
+   • buildPrompt()      → returns the full system prompt string
+   • slimLead(profile)  → extracts minimal JSON to keep token count low
+   • NOTE: now aliases  summary → about, so legacy rows still score
 =================================================================== */
-const { loadAttributes } = require("./attributeLoader");
 
-/* ------------------------------------------------------------------
-   buildPrompt  –  returns the system prompt string for GPT-4o
------------------------------------------------------------------- */
-async function buildPrompt() {
-  const dicts = await loadAttributes();
+const fs = require("fs");
+const path = require("path");
 
-  /* ---------- use minified JSON for token efficiency ------------- */
-  const dictJson = JSON.stringify(dicts); // no pretty indent
+/* -------------------------------------------------------------------
+   Load static prompt parts (header, footer) from disk
+------------------------------------------------------------------- */
+const header = fs.readFileSync(
+  path.join(__dirname, "prompts", "system-header.txt"),
+  "utf8"
+);
+const footer = fs.readFileSync(
+  path.join(__dirname, "prompts", "system-footer.txt"),
+  "utf8"
+);
 
-  const schema = `
-Return **only** a valid JSON object exactly like this:
-{ "positive_scores": { "A": { "score": 15, "reason": "..." }, ... }, ... }
-
-Rules:
-• If evidence is weak or partial, award partial credit
-  (e.g. 5 / 10 / 15 or 2 / 5 / 8 / 10 for 10-point max).
-• Prefer scoring every attribute (or 0 with a reason); use
-  "unscored_attributes" only when no clue exists.
-• A negative is **not triggered** when "score": 0.
-• Each object needs "score" and a 25–40-word "reason".
-• Do NOT wrap the JSON in \`\`\` fences or add extra commentary.
-`;
-
-  const prompt = `${dictJson}\n\n${schema.trim()}`;
-
-  /* ---------- optional debug output ------------------------------ */
-  if (process.env.DEBUG_PROMPT === "true") {
-    const tok = Math.ceil(prompt.length / 4); // ≈ token estimate
-    console.log("\n───────── Assembled GPT System Prompt ─────────\n");
-    console.log(prompt);
-    console.log(`\nApprox. tokens in system prompt: ${tok}\n`);
-    console.log("───────────────────────────────────────────────\n");
-  }
-
-  return prompt;
+/* -------------------------------------------------------------------
+   Cached attribute dictionaries are loaded once
+------------------------------------------------------------------- */
+let cachedDictionaries = null;
+async function loadDictionaries() {
+  if (cachedDictionaries) return cachedDictionaries;
+  cachedDictionaries = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "prompts", "attributes.json"), "utf8")
+  );
+  return cachedDictionaries;
 }
 
-/* ------------------------------------------------------------------
-   slimLead  –  drop unused fields to keep the prompt tiny
------------------------------------------------------------------- */
-function slimLead(full = {}) {
+/* -------------------------------------------------------------------
+   buildPrompt
+------------------------------------------------------------------- */
+async function buildPrompt() {
+  const dicts = await loadDictionaries();
+  const positives = Object.values(dicts.positives)
+    .map(d => `• ${d.id}: ${d.description}`)
+    .join("\n");
+  const negatives = Object.values(dicts.negatives)
+    .map(d => `• ${d.id}: ${d.description}`)
+    .join("\n");
+
+  return (
+    header +
+    "\n\nPositive attributes:\n" +
+    positives +
+    "\n\nNegative attributes:\n" +
+    negatives +
+    "\n\n" +
+    footer
+  );
+}
+
+/* -------------------------------------------------------------------
+   slimLead – reduce LinkedIn scrape to minimal fields
+------------------------------------------------------------------- */
+function slimLead(profile) {
   return {
-    firstName   : full.firstName || "",
-    lastName    : full.lastName  || "",
-    headline    : full.headline  || "",
-    summary     : full.summary   || full.linkedinDescription || "",
-    locationName: full.locationName || "",
-    experience  : Array.isArray(full.experience)
-                   ? full.experience.slice(0, 5)   // first 5 roles
-                   : undefined
+    firstName : profile.firstName         || "",
+    lastName  : profile.lastName          || "",
+    headline  : profile.headline          || "",
+    location  : profile.locationName      || "",
+    about     : (profile.about || profile.summary || "").trim(), // ← alias added
+    experience: Array.isArray(profile.experience)
+                  ? profile.experience.slice(0, 3)                // first 3 roles
+                  : [],
+    skills    : profile.skills || ""
   };
 }
 
