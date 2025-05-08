@@ -1,74 +1,83 @@
 /* ===================================================================
-   promptBuilder.js
+   promptBuilder.js  –  self-contained (no external prompt files)
    -------------------------------------------------------------------
-   • buildPrompt()      → returns the full system prompt string
-   • slimLead(profile)  → extracts minimal JSON to keep token count low
-   • NOTE: now aliases  summary → about, so legacy rows still score
+   • buildPrompt()  → returns the full system prompt string
+   • slimLead()     → extracts minimal JSON; now includes a
+                      fallback that builds an experience array from
+                      organization_1 / organization_title_1, etc.
 =================================================================== */
 
-const fs = require("fs");
-const path = require("path");
+const { loadAttributes } = require("./attributeLoader");
 
-/* -------------------------------------------------------------------
-   Load static prompt parts (header, footer) from disk
-------------------------------------------------------------------- */
-const header = fs.readFileSync(
-  path.join(__dirname, "prompts", "system-header.txt"),
-  "utf8"
-);
-const footer = fs.readFileSync(
-  path.join(__dirname, "prompts", "system-footer.txt"),
-  "utf8"
-);
+/* ---------- hard-coded header & footer -------------------------- */
+const HEADER = `
+You are a lead-scoring engine for Partner Piloting.
+• You receive an array of LinkedIn profiles in JSON.
+• For each profile, judge the presence of the listed positive
+  and negative attributes.
+• Output must follow the exact schema and order requested.
+`.trim();
 
-/* -------------------------------------------------------------------
-   Cached attribute dictionaries are loaded once
-------------------------------------------------------------------- */
-let cachedDictionaries = null;
-async function loadDictionaries() {
-  if (cachedDictionaries) return cachedDictionaries;
-  cachedDictionaries = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "prompts", "attributes.json"), "utf8")
-  );
-  return cachedDictionaries;
-}
+const FOOTER = `
+Return ONLY valid JSON in the exact schema—no prose,
+no Markdown, no code fences, no explanations.
+If you cannot score a profile, return an empty object {} in its slot.
+`.trim();
 
-/* -------------------------------------------------------------------
-   buildPrompt
-------------------------------------------------------------------- */
+/* ----------------------------------------------------------------
+   buildPrompt – header + bullets from Airtable + footer
+----------------------------------------------------------------- */
 async function buildPrompt() {
-  const dicts = await loadDictionaries();
-  const positives = Object.values(dicts.positives)
+  const { positives, negatives } = await loadAttributes();
+
+  const positivesTxt = Object.values(positives)
     .map(d => `• ${d.id}: ${d.description}`)
     .join("\n");
-  const negatives = Object.values(dicts.negatives)
+
+  const negativesTxt = Object.values(negatives)
     .map(d => `• ${d.id}: ${d.description}`)
     .join("\n");
 
   return (
-    header +
-    "\n\nPositive attributes:\n" +
-    positives +
-    "\n\nNegative attributes:\n" +
-    negatives +
+    HEADER +
+    "\n\nPositive attributes:\n" + positivesTxt +
+    "\n\nNegative attributes:\n" + negativesTxt +
     "\n\n" +
-    footer
+    FOOTER
   );
 }
 
-/* -------------------------------------------------------------------
-   slimLead – reduce LinkedIn scrape to minimal fields
-------------------------------------------------------------------- */
+/* ----------------------------------------------------------------
+   extractExperience – use array if present, else build from the
+   flattened organization_* keys (max 3 roles)
+----------------------------------------------------------------- */
+function extractExperience(profile) {
+  if (Array.isArray(profile.experience) && profile.experience.length) {
+    return profile.experience.slice(0, 3);
+  }
+
+  const exp = [];
+  for (let i = 1; i <= 5; i++) {
+    const company = profile[`organization_${i}`];
+    const title   = profile[`organization_title_${i}`];
+    if (!company && !title) break;
+    exp.push({ company, title });
+    if (exp.length === 3) break;
+  }
+  return exp;
+}
+
+/* ----------------------------------------------------------------
+   slimLead – keep only the fields GPT needs
+----------------------------------------------------------------- */
 function slimLead(profile) {
   return {
-    firstName : profile.firstName         || "",
-    lastName  : profile.lastName          || "",
-    headline  : profile.headline          || "",
-    location  : profile.locationName      || "",
-    about     : (profile.about || profile.summary || "").trim(), // ← alias added
-    experience: Array.isArray(profile.experience)
-                  ? profile.experience.slice(0, 3)                // first 3 roles
-                  : [],
+    firstName : profile.firstName    || "",
+    lastName  : profile.lastName     || "",
+    headline  : profile.headline     || "",
+    location  : profile.locationName || "",
+    about     : (profile.about || profile.summary || "").trim(),
+    experience: extractExperience(profile),
     skills    : profile.skills || ""
   };
 }
