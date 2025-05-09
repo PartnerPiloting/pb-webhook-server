@@ -217,9 +217,13 @@ No markdown, no prose, no extra keys.`;        /* end footer */
   const raw = resp.data.choices[0].message.content || "";
 
   /* ---------- resilient parse + re-ask -------------------------- */
+  const cleaned = raw               // remove ```json fences if present
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
+
   let output;
   try {
-    output = JSON.parse(raw);
+    output = JSON.parse(cleaned);
     if (!Array.isArray(output)) output = [output];   // wrap single obj
   } catch (parseErr) {
     console.warn("⛑  Initial parse failed – firing re-ask");
@@ -236,7 +240,10 @@ No markdown, no prose, no extra keys.`;        /* end footer */
         }
       ]
     });
-    output = JSON.parse(retry.data.choices[0].message.content);
+    const second = retry.data.choices[0].message.content
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "");
+    output = JSON.parse(second);
     if (!Array.isArray(output)) output = [output];
   }
 
