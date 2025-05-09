@@ -8,16 +8,17 @@
        – Re-asks once if JSON is invalid
        – Retries missing leads in mini-chunks
    • ALWAYS uses our locally-computed percentage when writing AI Score
-   • NEW: VERBOSE_SCORING env-flag lets you switch between
-           full-object (“verbose”) and numbers-only (“lean”) modes
+   • VERBOSE_SCORING env-flag lets you switch between:
+       – verbose mode   → full objects back from GPT
+       – lean mode      → numeric subtotals so we recompute %
 =================================================================== */
 
 require("dotenv").config();
 console.log("▶︎ batchScorer module loaded");
 
 const { Configuration, OpenAIApi } = require("openai");
-const Airtable = require("airtable");
-const fetch    = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
+const Airtable                     = require("airtable");
+const fetch                        = (...a) => import("node-fetch").then(({ default: f }) => f(...a));
 
 const { buildPrompt, slimLead }   = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
@@ -99,8 +100,8 @@ function gptWithTimeout(messages, maxTokens) {
 }
 
 /* ---------- tiny queue ------------------------------------------ */
-const queue = [];
-let running = false;
+const queue   = [];
+let   running = false;
 async function enqueue(recs) {
   queue.push(recs);
   if (running) return;
@@ -185,24 +186,31 @@ async function scoreChunk(records) {
   /* ---------- build prompt & user message ----------------------- */
   let prompt = await buildPrompt();
   if (!VERBOSE) {
-    // lean mode footer: ask GPT for numbers only
+    /* lean mode footer: ask for numeric subtotals
+       so we can recompute the percentage ourselves */
     prompt += `
-Return ONLY a JSON array of numbers – each number is the finalPct for
-the corresponding lead, in the same order. No objects, no keys, no prose,
-no markdown, no code fences.`;
+Return ONLY a valid JSON array.  
+Each array item must be an object with this exact shape:
+{
+  "pos": { "A":  0-15, "B":0-15, … "K":0-20 },
+  "neg": { "N1":0-10, "N2":0-10, … "N5":0-10 },
+  "ready": false
+}
+No markdown, no prose, no extra keys.`;        /* end footer */
   }
+
   const slimmed = scorable.map(({ profile }) => slimLead(profile));
   const userMsg = JSON.stringify({ leads: slimmed });
 
   /* ---------- GPT call ------------------------------------------ */
-  const maxOut = Math.min(4096, CHUNK_SIZE * (VERBOSE ? 350 : 10));
-  const resp = await gptWithTimeout([
+  const maxOut = Math.min(4096, CHUNK_SIZE * (VERBOSE ? 350 : 120));
+  const resp   = await gptWithTimeout([
     { role: "system", content: prompt },
     {
       role   : "user",
       content: VERBOSE
         ? "Return an array of results in the same order:\n" + userMsg
-        : "Return the percentages only, in order:\n"     + userMsg
+        : "Return the subtotals only, in order:\n"          + userMsg
     }
   ], maxOut);
 
@@ -211,10 +219,8 @@ no markdown, no code fences.`;
   /* ---------- resilient parse + re-ask -------------------------- */
   let output;
   try {
-    // first parse attempt
     output = JSON.parse(raw);
-    // if GPT sent a single object, wrap it so downstream logic sees an array
-    if (!Array.isArray(output)) output = [output];
+    if (!Array.isArray(output)) output = [output];   // wrap single obj
   } catch (parseErr) {
     console.warn("⛑  Initial parse failed – firing re-ask");
     const retry = await openai.createChatCompletion({
@@ -253,15 +259,32 @@ no markdown, no code fences.`;
   for (let i = 0; i < output.length; i++) {
     const rec = scorable[i].rec;
 
-    /* -------- LEAN MODE: write % only --------------------------- */
+    /* -------- LEAN MODE: recompute % locally -------------------- */
     if (!VERBOSE) {
-      const pct = Number(output[i]);
+      const item = output[i] || {};
+
+      /* 1. Sanity-check structure */
+      if (typeof item !== "object" || !item.pos || !item.neg) {
+        console.warn(`Lean-mode parse error on lead ${rec.id}`);
+        await base("Leads").update(rec.id, { "Scoring Status": "Failed" });
+        continue;
+      }
+
+      /* 2. Recompute percentage using our own maths */
+      const { percentage } = computeFinalScore(
+        item.pos, positives,
+        item.neg, negatives,
+        item.ready, []
+      );
+      const finalPct = Math.round(percentage * 100) / 100;
+
+      /* 3. Write AI Score only */
       await base("Leads").update(rec.id, {
-        "AI Score"       : isFinite(pct) ? Math.round(pct * 100) / 100 : 0,
+        "AI Score"       : finalPct,
         "Scoring Status" : "Scored",
         "Date Scored"    : new Date().toISOString().split("T")[0]
       });
-      continue;                         // skip verbose parsing below
+      continue;                              // skip verbose block
     }
 
     /* -------- VERBOSE MODE parsing ------------------------------ */
@@ -281,7 +304,6 @@ no markdown, no code fences.`;
         gpt.contact_readiness, gpt.unscored_attributes
       );
 
-    // always rely on our computed percentage
     const finalPct = Math.round(percentage * 100) / 100;
 
     const breakdown = buildAttributeBreakdown(
