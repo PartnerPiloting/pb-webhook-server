@@ -7,7 +7,9 @@
        – Wraps solo-object replies
        – Re-asks once if JSON is invalid
        – Retries missing leads in mini-chunks
-   • Writes AI Score, assessment, and attribute breakdown back to Airtable
+   • ALWAYS uses our locally-computed percentage when writing AI Score
+   • NEW: VERBOSE_SCORING env-flag lets you switch between
+           full-object (“verbose”) and numbers-only (“lean”) modes
 =================================================================== */
 
 require("dotenv").config();
@@ -26,6 +28,7 @@ const { callGptScoring }          = require("./callGptScoring");
 /* ---------- ENV -------------------------------------------------- */
 const MODEL          = process.env.GPT_MODEL || "gpt-4o";
 const CHUNK_SIZE     = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10));
+const VERBOSE        = process.env.VERBOSE_SCORING !== "false";   // default = true
 const GPT_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GPT_TIMEOUT_MS || "120000", 10));
 const ADMIN_EMAIL    = process.env.ADMIN_EMAIL || "";
 const FROM_EMAIL     = process.env.FROM_EMAIL  || "";
@@ -77,15 +80,15 @@ function isMissingCritical(profile = {}) {
   return !(hasBio && hasHeadline && hasJob);   // true → something missing
 }
 
-/* ---------- GPT wrapper with timeout + explicit max_tokens ------ */
-function gptWithTimeout(messages) {
-  // 350 tokens per lead * chunk size, capped at 4096 (current GPT-4o ceiling)
-  const OUTPUT_MAX = Math.min(4096, CHUNK_SIZE * 350);
+/* ---------- GPT wrapper with timeout + caller-supplied maxTokens - */
+function gptWithTimeout(messages, maxTokens) {
+  const fallbackMax = Math.min(4096, CHUNK_SIZE * 350);
+  const OUTPUT_MAX  = Math.min(4096, Math.max(1, maxTokens || fallbackMax));
 
   const call = openai.createChatCompletion({
-    model: MODEL,
-    temperature: 0,
-    max_tokens: OUTPUT_MAX,
+    model       : MODEL,
+    temperature : 0,
+    max_tokens  : OUTPUT_MAX,
     messages
   });
 
@@ -129,7 +132,7 @@ async function scoreChunk(records) {
 
   const scorable = [];
 
-  /* ---------- pre-flight skip guard ----------------------------- */
+  /* ---------- pre-flight skip-guard ----------------------------- */
   for (const rec of records) {
     const profile = JSON.parse(rec.get("Profile Full JSON") || "{}");
 
@@ -180,15 +183,28 @@ async function scoreChunk(records) {
   if (!scorable.length) return;         // nothing left to score in this chunk
 
   /* ---------- build prompt & user message ----------------------- */
-  const prompt  = await buildPrompt();
+  let prompt = await buildPrompt();
+  if (!VERBOSE) {
+    // lean mode footer: ask GPT for numbers only
+    prompt += `
+Return ONLY a JSON array of numbers – each number is the finalPct for
+the corresponding lead, in the same order. No objects, no keys, no prose,
+no markdown, no code fences.`;
+  }
   const slimmed = scorable.map(({ profile }) => slimLead(profile));
   const userMsg = JSON.stringify({ leads: slimmed });
 
   /* ---------- GPT call ------------------------------------------ */
+  const maxOut = Math.min(4096, CHUNK_SIZE * (VERBOSE ? 350 : 10));
   const resp = await gptWithTimeout([
     { role: "system", content: prompt },
-    { role: "user",   content: "Return an array of results in the same order:\n" + userMsg }
-  ]);
+    {
+      role   : "user",
+      content: VERBOSE
+        ? "Return an array of results in the same order:\n" + userMsg
+        : "Return the percentages only, in order:\n"     + userMsg
+    }
+  ], maxOut);
 
   const raw = resp.data.choices[0].message.content || "";
 
@@ -202,12 +218,12 @@ async function scoreChunk(records) {
   } catch (parseErr) {
     console.warn("⛑  Initial parse failed – firing re-ask");
     const retry = await openai.createChatCompletion({
-      model: MODEL,
-      temperature: 0,
-      max_tokens: Math.min(4096, scorable.length * 350),
-      messages: [
+      model       : MODEL,
+      temperature : 0,
+      max_tokens  : maxOut,
+      messages    : [
         {
-          role: "system",
+          role   : "system",
           content:
             `You responded with:\n${raw}\n\n` +
             `This is NOT a valid JSON array. Reply with the array only.`
@@ -233,9 +249,22 @@ async function scoreChunk(records) {
 
   const { positives, negatives } = await loadAttributes();
 
-  /* ---------- write results back -------------------------------- */
+  /* ---------- write results back ------------------------------- */
   for (let i = 0; i < output.length; i++) {
-    const rec    = scorable[i].rec;
+    const rec = scorable[i].rec;
+
+    /* -------- LEAN MODE: write % only --------------------------- */
+    if (!VERBOSE) {
+      const pct = Number(output[i]);
+      await base("Leads").update(rec.id, {
+        "AI Score"       : isFinite(pct) ? Math.round(pct * 100) / 100 : 0,
+        "Scoring Status" : "Scored",
+        "Date Scored"    : new Date().toISOString().split("T")[0]
+      });
+      continue;                         // skip verbose parsing below
+    }
+
+    /* -------- VERBOSE MODE parsing ------------------------------ */
     const rawObj = JSON.stringify(output[i] || {});
     let gpt;
     try { gpt = callGptScoring(rawObj); }
@@ -288,7 +317,7 @@ async function run(req, res) {
     for (let i = 0; i < leads.length; i += CHUNK_SIZE)
       chunks.push(leads.slice(i, i + CHUNK_SIZE));
 
-    console.log(`Queued ${leads.length} leads in ${chunks.length} chunk(s) of ${CHUNK_SIZE}`);
+    console.log(`Queued ${leads.length} leads in ${chunks.length} chunk(s) of ${CHUNK_SIZE} (verbose=${VERBOSE})`);
     for (const c of chunks) await enqueue(c);
 
     res?.json?.({ ok: true, message: "Batch queued", leads: leads.length });
