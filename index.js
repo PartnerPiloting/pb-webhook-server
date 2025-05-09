@@ -244,8 +244,22 @@ app.get("/score-lead", async (req, res) => {
     }
 
     // GPT scoring
-    const raw    = await scoreLeadNow(profile);
-    const parsed = await callGptScoring(raw);
+    const raw = await scoreLeadNow(profile);
+
+    // --- CLEAN, THEN PARSE ------------------------------------------
+    let cleaned = raw.trim()
+      // strip ```json ... ``` fences if GPT added them
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "");
+
+    // unwrap if GPT put the object in an array
+    if (cleaned.startsWith("[")) {
+      try { cleaned = JSON.parse(cleaned)[0]; } catch (_) { /* ignore */ }
+    }
+
+    const parsed = await callGptScoring(
+      typeof cleaned === "string" ? cleaned : JSON.stringify(cleaned)
+    );
 
     const { positives, negatives } = await loadAttributes();
 
