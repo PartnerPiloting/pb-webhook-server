@@ -1,0 +1,8 @@
+diff --git a/index.js b/index.js
+--- a/index.js
++++ b/index.js
+@@
+     "LinkedIn Connection Status": connectionStatus,
++    Status                      : "In Process",
+     "Scoring Status"            : scoringStatus,
+@@
