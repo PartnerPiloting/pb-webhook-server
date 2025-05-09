@@ -1,3 +1,4 @@
+console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION C - TOP OF FILE >>>>>");
 /***************************************************************
   Main Server File - LinkedIn → Airtable (Scoring + 1st-degree sync)
   UPDATED FOR GEMINI 2.5 PRO (Corrected Imports)
@@ -12,8 +13,9 @@ const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...ar
 // HarmCategory and HarmBlockThreshold will come from @google-cloud/vertexai
 const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
+console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION C - BEFORE LOCAL REQUIRES >>>>>");
 // Your existing helper modules - ensure these are updated or compatible
-const { buildPrompt, slimLead }   = require("./promptBuilder");
+const { buildPrompt, slimLead }    = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
 const { computeFinalScore }       = require("./scoring");
 const { buildAttributeBreakdown } = require("./breakdown");
@@ -61,7 +63,7 @@ Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
 /* ------------------------------------------------------------------
-   helper: alertAdmin  (Mailgun)
+    helper: alertAdmin  (Mailgun)
 ------------------------------------------------------------------*/
 async function alertAdmin(subject, text) {
     try {
@@ -92,7 +94,7 @@ async function alertAdmin(subject, text) {
 }
 
 /* ------------------------------------------------------------------
-   helper: getJsonUrl (Unchanged)
+    helper: getJsonUrl (Unchanged)
 ------------------------------------------------------------------*/
 function getJsonUrl(obj = {}) {
     return (
@@ -109,14 +111,14 @@ function getJsonUrl(obj = {}) {
 }
 
 /* ------------------------------------------------------------------
-   helper: canonicalUrl (Unchanged)
+    helper: canonicalUrl (Unchanged)
 ------------------------------------------------------------------*/
 function canonicalUrl(url = "") {
     return url.replace(/^https?:\/\//i, "").replace(/\/$/, "").toLowerCase();
 }
 
 /* ------------------------------------------------------------------
-   helper: isAustralian (Unchanged)
+    helper: isAustralian (Unchanged)
 ------------------------------------------------------------------*/
 function isAustralian(loc = "") {
     return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i.test(
@@ -125,7 +127,7 @@ function isAustralian(loc = "") {
 }
 
 /* ------------------------------------------------------------------
-   helper: safeDate (Unchanged)
+    helper: safeDate (Unchanged)
 ------------------------------------------------------------------*/
 function safeDate(d) {
     if (!d) return null;
@@ -139,7 +141,7 @@ function safeDate(d) {
 }
 
 /* ------------------------------------------------------------------
-   helper: getLastTwoOrgs (Unchanged)
+    helper: getLastTwoOrgs (Unchanged)
 ------------------------------------------------------------------*/
 function getLastTwoOrgs(lh = {}) {
     const out = [];
@@ -156,7 +158,7 @@ function getLastTwoOrgs(lh = {}) {
 }
 
 /* ------------------------------------------------------------------
-   helper: isMissingCritical (bio ≥40, headline, job-history) (Unchanged)
+    helper: isMissingCritical (bio ≥40, headline, job-history) (Unchanged)
 ------------------------------------------------------------------*/
 function isMissingCritical(profile = {}) {
     const about = (
@@ -180,7 +182,7 @@ function isMissingCritical(profile = {}) {
 }
 
 /* ------------------------------------------------------------------
-   1)  Globals & Express App Setup
+    1)  Globals & Express App Setup
 ------------------------------------------------------------------*/
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -196,7 +198,7 @@ require("./scoreApi")(app);  // This one uses its own Airtable base init
 mountQueue(app);             // This one uses its own Airtable AT() helper
 
 /* ------------------------------------------------------------------
-   1.5) health check + manual batch route
+    1.5) health check + manual batch route
 ------------------------------------------------------------------*/
 app.get("/health", (_req, res) => res.send("ok"));
 
@@ -221,8 +223,8 @@ app.get("/run-batch-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   ONE-OFF LEAD SCORER – /score-lead?recordId=recXXXXXXXX
-   (Updated for Gemini)
+    ONE-OFF LEAD SCORER – /score-lead?recordId=recXXXXXXXX
+    (Updated for Gemini)
 ------------------------------------------------------------------*/
 app.get("/score-lead", async (req, res) => {
     try {
@@ -305,7 +307,7 @@ app.get("/score-lead", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   5)  upsertLead (Largely unchanged, ensures data consistency for Airtable)
+    5)  upsertLead (Largely unchanged, ensures data consistency for Airtable)
 ------------------------------------------------------------------*/
 async function upsertLead(
     lead, finalScore = null, aiProfileAssessment = null,
@@ -402,7 +404,7 @@ async function upsertLead(
 }
 
 /* ------------------------------------------------------------------
-   6)  /api/test-score (returns JSON only) - (Updated for Gemini)
+    6)  /api/test-score (returns JSON only) - (Updated for Gemini)
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
     try {
@@ -451,7 +453,7 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   7)  /pb-webhook/scrapeLeads – Phantombuster array (Updated for Gemini)
+    7)  /pb-webhook/scrapeLeads – Phantombuster array (Updated for Gemini)
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
     try {
@@ -505,7 +507,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                 if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null) ) {
                      temp_positive_scores.I = positives.I.maxPoints || 0; 
                      if(!attribute_reasoning.I && temp_positive_scores.I > 0) { // Check if positive score was actually awarded
-                        attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
+                         attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
                      }
                 }
 
@@ -570,7 +572,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   8)  /lh-webhook/upsertLeadOnly (Linked Helper Webhook)
+    8)  /lh-webhook/upsertLeadOnly (Linked Helper Webhook)
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
     try {
@@ -585,8 +587,8 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         for (const lh of rawLeadsFromWebhook) {
             try {
                 const rawUrl = lh.profileUrl || lh.linkedinProfileUrl ||
-                             (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) ||
-                             (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null);
+                               (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) ||
+                               (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null);
 
                 if (!rawUrl) {
                     console.warn("Skipping lead in /lh-webhook/upsertLeadOnly due to missing URL identifier:", lh.firstName, lh.lastName);
@@ -639,7 +641,7 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   9)  /pb-pull/connections (Phantombuster Connections Pull)
+    9)  /pb-pull/connections (Phantombuster Connections Pull)
 ------------------------------------------------------------------*/
 let currentLastRunId = 0; // Renamed from lastRunId to avoid conflict with any global
 const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; // Different filename
@@ -740,7 +742,7 @@ app.get("/pb-pull/connections", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   10) DEBUG route (Updated for Gemini)
+    10) DEBUG route (Updated for Gemini)
 ------------------------------------------------------------------*/
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL; // Still used by pointerApi if that's kept
 app.get("/debug-gemini-info", (_req, res) => {
@@ -756,7 +758,7 @@ app.get("/debug-gemini-info", (_req, res) => {
 });
 
 /* ------------------------------------------------------------------
-   11) Start server
+    11) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
@@ -777,7 +779,7 @@ app.listen(port, () => {
 });
 
 /* ------------------------------------------------------------------
-   SECTION 4) getScoringData & helpers (Legacy - Commented Out)
+    SECTION 4) getScoringData & helpers (Legacy - Commented Out)
 ------------------------------------------------------------------*/
 /*
 async function getScoringData() {
