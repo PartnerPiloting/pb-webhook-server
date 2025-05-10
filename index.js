@@ -1,23 +1,31 @@
-console.log("<<<<< INDEX.JS - REFACTOR 7 - CLEANED REQUIRES - TOP OF FILE >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 7.1 - UPDATED GEMINI CONFIG IMPORT - TOP OF FILE >>>>>");
 /***************************************************************
  Main Server File - Orchestrator
 ***************************************************************/
 require("dotenv").config(); 
 
 // --- CONFIGURATIONS ---
-const globalGeminiModel = require('./config/geminiClient.js');
+const geminiConfig = require('./config/geminiClient.js'); // Gets the exported object
+const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null; // Extract the default model instance
+// The following will be used by batchScorer via apiAndJobRoutes.js later
+// const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; 
+// const configuredGeminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
+
 const base = require('./config/airtableClient.js'); 
 
 // --- CORE NPM MODULES ---
 const express = require("express");
 
-console.log("<<<<< INDEX.JS - REFACTOR 7 - AFTER CORE REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 7.1 - AFTER CORE REQUIRES >>>>>");
 
 // --- INITIALIZATION CHECKS ---
-if (!globalGeminiModel) {
-    console.error("FATAL ERROR in index.js: Gemini Model failed to initialize. Scoring will not work. Check logs in config/geminiClient.js.");
+if (!globalGeminiModel) { // This check now correctly refers to the extracted model instance
+    console.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize from config. Scoring will not work. Check logs in config/geminiClient.js.");
 } else {
-    console.log("index.js: Gemini Model loaded successfully from config.");
+    console.log("index.js: Gemini Model (default instance) loaded successfully from config.");
+}
+if (!geminiConfig || !geminiConfig.vertexAIClient) { // Also check if the main client is available for batch scorer later
+    console.error("FATAL ERROR in index.js: VertexAI Client is not available from geminiConfig. Batch scoring might fail. Check logs in config/geminiClient.js.");
 }
 if (!base) {
     console.error("FATAL ERROR in index.js: Airtable Base failed to initialize. Airtable operations will fail. Check logs in config/airtableClient.js.");
@@ -42,7 +50,6 @@ app.use(express.json({ limit: "10mb" }));
 ------------------------------------------------------------------*/
 console.log("index.js: Mounting routes and APIs...");
 
-// Mount existing sub-APIs (these are already in their own files)
 try { require("./promptApi")(app); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message); }
 try { require("./recordApi")(app); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message); }
 try { require("./scoreApi")(app); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message); }
@@ -54,11 +61,9 @@ if (mountQueue && typeof mountQueue === 'function') {
     console.error("index.js: Failed to load queueDispatcher or it's not a function.");
 }
 
-// Mount our newly refactored route modules
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message); }
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message); }
 
-// Reinstating Custom GPT APIs
 console.log("index.js: Attempting to mount Custom GPT support APIs...");
 try {
     const mountPointerApi = require("./pointerApi.js");
@@ -92,18 +97,21 @@ try {
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 7) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 7.1) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}.`);
     if (!globalGeminiModel) {
-        console.error("Final Check: Server started BUT Global Gemini Model is not available. Scoring will fail.");
+        console.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
     } else if (!base) {
         console.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
-    } else {
-        console.log("Final Check: Server started and essential services (Gemini, Airtable) appear to be loaded and routes mounted.");
+    } else if (!geminiConfig || !geminiConfig.vertexAIClient) {
+        console.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
+    }
+    else {
+        console.log("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and routes mounted.");
     }
 });
 
