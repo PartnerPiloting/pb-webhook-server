@@ -1,41 +1,48 @@
-// test_index.js
-console.log("<<<<< STARTING test_index.js - Minimal Test - Version D >>>>>");
+// test_index.js - MODIFIED TO TEST THE FULL, ORIGINAL queueDispatcher.js
+console.log("<<<<< STARTING test_index.js - Attempting to load FULL queueDispatcher - Version F >>>>>");
 
-const express = require("express"); // We still need express to create an 'app' object
+const express = require("express");
 const app = express();
-const port = process.env.PORT || 3001; // Use a different port for safety
+const port = process.env.PORT || 3001;
 
-console.log("Express app created in test_index.js.");
+console.log("Express app created in test_index.js (for full queueDispatcher test).");
 
-let mountTestQueueFunction;
+// We also need dotenv and node-fetch if the full queueDispatcher uses them at the top level
+// (queueDispatcher.js does require them)
+require("dotenv").config(); // queueDispatcher.js uses this
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args)); // queueDispatcher.js uses this
+
+
+let actualMountQueueFunction; 
 try {
-    console.log("Attempting to require('./test_queue_dispatcher')...");
-    mountTestQueueFunction = require("./test_queue_dispatcher"); 
-    console.log("Successfully required './test_queue_dispatcher'.");
-    console.log("Type of mountTestQueueFunction:", typeof mountTestQueueFunction);
+    console.log("Attempting to require('./queueDispatcher') [the FULL version]...");
+    actualMountQueueFunction = require("./queueDispatcher"); 
+    console.log("Successfully required './queueDispatcher' [the FULL version].");
+    console.log("Type of actualMountQueueFunction:", typeof actualMountQueueFunction);
 } catch (e) {
-    console.error("ERROR during require('./test_queue_dispatcher'):", e.message, e.stack);
+    console.error("ERROR during require('./queueDispatcher') [the FULL version]:", e.message, e.stack);
+    // Log the error but let server attempt to start
 }
 
-if (typeof mountTestQueueFunction === 'function') {
+if (typeof actualMountQueueFunction === 'function') {
     try {
-        console.log("Attempting to call mountTestQueueFunction(app)...");
-        mountTestQueueFunction(app); // Call the imported function
-        console.log("Successfully called mountTestQueueFunction(app).");
+        console.log("Attempting to call actualMountQueueFunction(app)...");
+        actualMountQueueFunction(app); // Call the imported function
+        console.log("Successfully called actualMountQueueFunction(app).");
     } catch (e) {
-        console.error("ERROR calling mountTestQueueFunction(app):", e.message, e.stack);
+        console.error("ERROR calling actualMountQueueFunction(app):", e.message, e.stack);
     }
 } else {
-    console.error("mountTestQueueFunction is NOT a function. Value is:", mountTestQueueFunction);
-    console.error("This means require('./test_queue_dispatcher') likely did not return the expected function.");
+    console.error("actualMountQueueFunction is NOT a function. Value is:", actualMountQueueFunction);
+    console.error("This means require('./queueDispatcher') [the FULL version] did not return the expected function.");
 }
 
 app.get("/test-health", (req, res) => {
-    console.log("/test-health endpoint hit");
-    res.send("Minimal test server is healthy!");
+    console.log("/test-health endpoint hit (full queueDispatcher test)");
+    res.send("Minimal test server (for full queueDispatcher) is healthy!");
 });
 
 app.listen(port, () => {
-    console.log(`Minimal test server running on port ${port}. Startup complete.`);
-    console.log("Review logs above for success or failure of loading and calling test_queue_dispatcher.");
+    console.log(`Minimal test server (for full queueDispatcher) running on port ${port}. Startup complete.`);
+    console.log("Review logs above for success or failure of loading and calling the FULL queueDispatcher.");
 });
