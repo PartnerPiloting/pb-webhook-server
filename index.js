@@ -1,4 +1,4 @@
-console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION C - TOP OF FILE >>>>>");
+console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E - TOP OF FILE >>>>>");
 /***************************************************************
   Main Server File - LinkedIn → Airtable (Scoring + 1st-degree sync)
   UPDATED FOR GEMINI 2.5 PRO (Corrected Imports)
@@ -13,7 +13,7 @@ const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...ar
 // HarmCategory and HarmBlockThreshold will come from @google-cloud/vertexai
 const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
-console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION C - BEFORE LOCAL REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E - BEFORE LOCAL REQUIRES >>>>>");
 // Your existing helper modules - ensure these are updated or compatible
 const { buildPrompt, slimLead }    = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
@@ -196,6 +196,10 @@ require("./promptApi")(app); // This one uses its own Airtable base init
 require("./recordApi")(app); // This one uses its own Airtable base init
 require("./scoreApi")(app);  // This one uses its own Airtable base init
 mountQueue(app);             // This one uses its own Airtable AT() helper
+// INFO: The third console.log ("<<<<< INDEX.JS - AFTER require('./queueDispatcher') - Type of mountQueue IS:", typeof mountQueue, ">>>>>")
+// could not be added as specified because the line 'const mountQueue = require("./queueDispatcher");'
+// was not found in the provided base code. If 'mountQueue' is defined by a require statement elsewhere,
+// the log should be placed after that definition.
 
 /* ------------------------------------------------------------------
     1.5) health check + manual batch route
