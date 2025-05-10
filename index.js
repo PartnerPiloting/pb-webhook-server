@@ -1,4 +1,4 @@
-console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E (Patched) - TOP OF FILE >>>>>"); // I've updated the version in this log for clarity
+console.log("<<<<< INDEX.JS - REFACTOR 1 - MOVED HELPERS - TOP OF FILE >>>>>"); // Updated log
 /***************************************************************
  Main Server File - LinkedIn → Airtable (Scoring + 1st-degree sync)
  UPDATED FOR GEMINI 2.5 PRO (Corrected Imports)
@@ -10,10 +10,9 @@ const fs = require("fs");
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
 // --- CORRECTED Google AI Client Setup ---
-// HarmCategory and HarmBlockThreshold will come from @google-cloud/vertexai
 const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
-console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E (Patched) - BEFORE LOCAL REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 1 - BEFORE LOCAL REQUIRES >>>>>");
 // Your existing helper modules - ensure these are updated or compatible
 const { buildPrompt, slimLead }    = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
@@ -22,7 +21,9 @@ const { buildAttributeBreakdown } = require("./breakdown");
 const { scoreLeadNow }            = require("./singleScorer");
 const batchScorer                 = require("./batchScorer");
 
-// const { callGptScoring }          = require("./callGptScoring"); // Obsolete
+// --- REQUIRE FOR NEWLY MOVED HELPERS ---
+const { alertAdmin, getJsonUrl, canonicalUrl, isAustralian, safeDate, getLastTwoOrgs, isMissingCritical } = require('./utils/appHelpers.js');
+
 
 /* ---------- ENV CONFIGURATION ------------------------------------ */
 const MODEL_ID = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06";
@@ -48,9 +49,6 @@ try {
     const credentials = JSON.parse(GCP_CREDENTIALS_JSON_STRING);
     globalVertexAIClient = new VertexAI({ project: GCP_PROJECT_ID, location: GCP_LOCATION, credentials });
     
-    // Initialize the base model instance. Specific configurations like systemInstruction
-    // will be applied when getting a model for a specific request context if needed,
-    // as done in batchScorer.js and singleScorer.js.
     globalGeminiModel = globalVertexAIClient.getGenerativeModel({ model: MODEL_ID });
     console.log(`Global Google Vertex AI Client Initialized. Default Model: ${MODEL_ID}`);
 } catch (error) {
@@ -63,123 +61,15 @@ Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
 const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
 /* ------------------------------------------------------------------
-    helper: alertAdmin  (Mailgun)
+    HELPER FUNCTIONS MOVED TO utils/appHelpers.js
+    - alertAdmin
+    - getJsonUrl
+    - canonicalUrl
+    - isAustralian
+    - safeDate
+    - getLastTwoOrgs
+    - isMissingCritical
 ------------------------------------------------------------------*/
-async function alertAdmin(subject, text) {
-    try {
-        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN || !process.env.ALERT_EMAIL || !process.env.FROM_EMAIL) {
-            console.warn("Mailgun not fully configured, admin alert skipped for:", subject);
-            return;
-        }
-        const mgUrl = `https://api.mailgun.net/v3/${process.env.MAILGUN_DOMAIN}/messages`;
-        const body = new URLSearchParams({
-            from: process.env.FROM_EMAIL, // Use the FROM_EMAIL from .env
-            to: process.env.ALERT_EMAIL,
-            subject: `[LeadScorer-GeminiApp] ${subject}`,
-            text
-        });
-        const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString("base64");
-        await fetch(mgUrl, {
-            method: "POST",
-            headers: {
-                Authorization: `Basic ${auth}`,
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body
-        });
-        console.log("Admin alert sent:", subject);
-    } catch (err) {
-        console.error("alertAdmin error:", err.message);
-    }
-}
-
-/* ------------------------------------------------------------------
-    helper: getJsonUrl (Unchanged)
-------------------------------------------------------------------*/
-function getJsonUrl(obj = {}) {
-    return (
-        obj?.data?.output?.jsonUrl ||
-        obj?.data?.resultObject?.jsonUrl ||
-        obj?.data?.resultObject?.output?.jsonUrl ||
-        obj?.output?.jsonUrl ||
-        obj?.resultObject?.jsonUrl ||
-        (() => {
-            const m = JSON.stringify(obj).match(/https?:\/\/[^"'\s]+\/result\.json/i);
-            return m ? m[0] : null;
-        })()
-    );
-}
-
-/* ------------------------------------------------------------------
-    helper: canonicalUrl (Unchanged)
-------------------------------------------------------------------*/
-function canonicalUrl(url = "") {
-    return url.replace(/^https?:\/\//i, "").replace(/\/$/, "").toLowerCase();
-}
-
-/* ------------------------------------------------------------------
-    helper: isAustralian (Unchanged)
-------------------------------------------------------------------*/
-function isAustralian(loc = "") {
-    return /\b(australia|aus|sydney|melbourne|brisbane|perth|adelaide|canberra|hobart|darwin|nsw|vic|qld|wa|sa|tas|act|nt)\b/i.test(
-        loc
-    );
-}
-
-/* ------------------------------------------------------------------
-    helper: safeDate (Unchanged)
-------------------------------------------------------------------*/
-function safeDate(d) {
-    if (!d) return null;
-    if (d instanceof Date) return isNaN(d) ? null : d;
-    if (/^\d{4}\.\d{2}\.\d{2}$/.test(d)) {
-        const iso = d.replace(/\./g, "-");
-        return new Date(iso + "T00:00:00Z");
-    }
-    const dt = new Date(d);
-    return isNaN(dt) ? null : dt;
-}
-
-/* ------------------------------------------------------------------
-    helper: getLastTwoOrgs (Unchanged)
-------------------------------------------------------------------*/
-function getLastTwoOrgs(lh = {}) {
-    const out = [];
-    for (let i = 1; i <= 2; i++) {
-        const org = lh[`organization_${i}`];
-        const title = lh[`organization_title_${i}`];
-        const sr = lh[`organization_start_${i}`];
-        const er = lh[`organization_end_${i}`];
-        if (!org && !title) continue;
-        const range = sr || er ? `(${sr || "?"} – ${er || "Present"})` : "";
-        out.push(`${title || "Unknown Role"} at ${org || "Unknown"} ${range}`);
-    }
-    return out.join("\n");
-}
-
-/* ------------------------------------------------------------------
-    helper: isMissingCritical (bio ≥40, headline, job-history) (Unchanged)
-------------------------------------------------------------------*/
-function isMissingCritical(profile = {}) {
-    const about = (
-        profile.about ||
-        profile.summary ||
-        profile.linkedinDescription ||
-        ""
-    ).trim();
-    const hasBio = about.length >= 40;
-    const hasHeadline = !!profile.headline?.trim();
-    let hasJob = Array.isArray(profile.experience) && profile.experience.length > 0;
-    if (!hasJob) {
-        for (let i = 1; i <= 5; i++) {
-            if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) {
-                hasJob = true;
-                break;
-            }
-        }
-    }
-    return !(hasBio && hasHeadline && hasJob);
-}
 
 /* ------------------------------------------------------------------
     1)  Globals & Express App Setup
@@ -188,19 +78,11 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 
 /* mount miscellaneous sub-APIs */
-// Ensure these modules don't try to re-initialize 'base' if it's passed or use a global one.
-// For now, assuming they use the 'base' instance passed to them if the function signature allows.
-// Or, if they require 'airtable' themselves, they will create their own 'base' instance.
-// The mountX functions typically take 'app' and sometimes 'base'.
-require("./promptApi")(app); // This one uses its own Airtable base init
-require("./recordApi")(app); // This one uses its own Airtable base init
-require("./scoreApi")(app);  // This one uses its own Airtable base init
-const mountQueue = require("./queueDispatcher"); // <--- ADDED THIS LINE
-mountQueue(app);              // This one uses its own Airtable AT() helper
-// INFO: The third console.log ("<<<<< INDEX.JS - AFTER require('./queueDispatcher') - Type of mountQueue IS:", typeof mountQueue, ">>>>>")
-// could not be added as specified because the line 'const mountQueue = require("./queueDispatcher");'
-// was not found in the provided base code. If 'mountQueue' is defined by a require statement elsewhere,
-// the log should be placed after that definition.
+require("./promptApi")(app);
+require("./recordApi")(app);
+require("./scoreApi")(app); 
+const mountQueue = require("./queueDispatcher");
+mountQueue(app);
 
 /* ------------------------------------------------------------------
     1.5) health check + manual batch route
@@ -211,17 +93,13 @@ app.get("/run-batch-score", async (req, res) => {
     const limit = Number(req.query.limit) || 500;
     console.log(`▶︎ /run-batch-score (Gemini) hit – limit ${limit}`);
     
-    // Pass req and res to batchScorer.run so it can send an initial response
-    // and handle errors more gracefully if it's an HTTP triggered run.
     batchScorer.run(req, res) 
         .then(() => {
-            // batchScorer.run should now handle sending the initial response.
-            // This console log confirms invocation.
             console.log(`Invocation of batchScorer.run for up to ${limit} leads (Gemini) is complete.`);
         })
         .catch((err) => {
             console.error("Error from batchScorer.run invocation:", err);
-            if (res && !res.headersSent) { // Check if res is available and headers not sent
+            if (res && !res.headersSent) {
                 res.status(500).send("Failed to properly initiate batch scoring due to an internal error.");
             }
         });
@@ -229,7 +107,6 @@ app.get("/run-batch-score", async (req, res) => {
 
 /* ------------------------------------------------------------------
     ONE-OFF LEAD SCORER – /score-lead?recordId=recXXXXXXXX
-    (Updated for Gemini)
 ------------------------------------------------------------------*/
 app.get("/score-lead", async (req, res) => {
     try {
@@ -252,16 +129,15 @@ app.get("/score-lead", async (req, res) => {
             return res.json({ ok: true, skipped: true, reason: "Profile JSON too small" });
         }
 
-        if (isMissingCritical(profile)) {
+        if (isMissingCritical(profile)) { // Still uses isMissingCritical from appHelpers.js
             let hasExp = Array.isArray(profile.experience) && profile.experience.length > 0;
             if (!hasExp) for (let i = 1; i <= 5; i++) if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) { hasExp = true; break; }
-            await alertAdmin(
+            await alertAdmin( // Still uses alertAdmin from appHelpers.js
                 "Incomplete lead for single scoring",
                 `Rec ID: ${record.id}\nURL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}\nHeadline: ${!!profile.headline}, About: ${aboutText.length >= 40}, Job info: ${hasExp}`
             );
         }
         
-        // Pass the globally initialized (or to be initialized by singleScorer itself if not passed) Gemini model
         const geminiScoredOutput = await scoreLeadNow(profile, globalGeminiModel);
 
         if (!geminiScoredOutput) {
@@ -313,6 +189,7 @@ app.get("/score-lead", async (req, res) => {
 
 /* ------------------------------------------------------------------
     5)  upsertLead (Largely unchanged, ensures data consistency for Airtable)
+    This function uses getLastTwoOrgs, canonicalUrl, slimLead (imported), safeDate
 ------------------------------------------------------------------*/
 async function upsertLead(
     lead, finalScore = null, aiProfileAssessment = null,
@@ -327,9 +204,9 @@ async function upsertLead(
         linkedinPreviousJobDateRange = "", linkedinPreviousJobDescription = "",
         refreshedAt = "", profileUrl: fallbackProfileUrl = "",
         emailAddress = "", phoneNumber = "", locationName = "",
-        connectionSince, scoringStatus = undefined, // Default to undefined, set below if new
-        raw, // Expect 'raw' to be passed in, containing the original LH/PB object
-        ...rest // any other fields from the webhook not explicitly mapped
+        connectionSince, scoringStatus = undefined, 
+        raw, 
+        ...rest 
     } = lead;
 
     let jobHistory = [
@@ -337,10 +214,10 @@ async function upsertLead(
         linkedinPreviousJobDateRange ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}` : ""
     ].filter(Boolean).join("\n");
 
-    const originalLeadData = raw || lead; // Use raw if present, otherwise the lead object itself
+    const originalLeadData = raw || lead; 
 
     if (!jobHistory && originalLeadData) {
-        const hist = getLastTwoOrgs(originalLeadData);
+        const hist = getLastTwoOrgs(originalLeadData); // Uses helper
         if (hist) jobHistory = hist;
     }
 
@@ -359,15 +236,14 @@ async function upsertLead(
         console.warn("Skipping upsertLead: No finalUrl could be determined for lead:", firstName, lastName);
         return;
     }
-    const profileKey = canonicalUrl(finalUrl);
+    const profileKey = canonicalUrl(finalUrl); // Uses helper
 
     let currentConnectionStatus = "Candidate";
     if (connectionDegree === "1st") currentConnectionStatus = "Connected";
-    else if (lead.linkedinConnectionStatus === "Pending") currentConnectionStatus = "Pending"; // Use passed status if available
+    else if (lead.linkedinConnectionStatus === "Pending") currentConnectionStatus = "Pending"; 
     else if (originalLeadData.connectionStatus) currentConnectionStatus = originalLeadData.connectionStatus;
 
-
-    const profileForJsonField = slimLead(originalLeadData);
+    const profileForJsonField = slimLead(originalLeadData); // Uses imported slimLead
 
     const fields = {
         "LinkedIn Profile URL": finalUrl, "First Name": firstName, "Last Name": lastName,
@@ -380,12 +256,12 @@ async function upsertLead(
         "Status": "In Process",
         "Scoring Status": scoringStatus,
         "Location": locationName || originalLeadData.location || "",
-        "Date Connected": safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || null,
+        "Date Connected": safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || null, // Uses helper
         "Email": emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
         "Phone": phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
         "Refreshed At": refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
         "Profile Full JSON": JSON.stringify(profileForJsonField),
-        "Raw Profile Data": JSON.stringify(originalLeadData) // Store the original webhook data
+        "Raw Profile Data": JSON.stringify(originalLeadData)
     };
 
     if (finalScore !== null) fields["AI Score"] = Math.round(finalScore * 100) / 100;
@@ -402,14 +278,14 @@ async function upsertLead(
         await base("Leads").update(existing[0].id, fields);
     } else {
         fields["Source"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
-        if (fields["Scoring Status"] === undefined) fields["Scoring Status"] = "To Be Scored"; // Ensure new leads get this
+        if (fields["Scoring Status"] === undefined) fields["Scoring Status"] = "To Be Scored";
         console.log(`Upsert: Creating new lead ${finalUrl}`);
         await base("Leads").create([{ fields }]);
     }
 }
 
 /* ------------------------------------------------------------------
-    6)  /api/test-score (returns JSON only) - (Updated for Gemini)
+    6)  /api/test-score (returns JSON only) 
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
     try {
@@ -458,7 +334,8 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-    7)  /pb-webhook/scrapeLeads – Phantombuster array (Updated for Gemini)
+    7)  /pb-webhook/scrapeLeads – Phantombuster array
+    Uses isAustralian helper
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
     try {
@@ -477,18 +354,11 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
             let currentLeadIdentifier = leadDataFromWebhook.profileUrl || leadDataFromWebhook.linkedinProfileUrl || JSON.stringify(leadDataFromWebhook).substring(0,100);
             try {
                 const leadForUpsertPreScore = { ...leadDataFromWebhook, raw: leadDataFromWebhook, scoringStatus: "To Be Scored"};
-                await upsertLead(leadForUpsertPreScore); // Upsert first to ensure it's in Airtable and Profile Full JSON is standardized
-
-                // It's often better to re-fetch the lead from Airtable to use the cleaned/standardized "Profile Full JSON"
-                // For now, directly use leadDataFromWebhook for scoring as per original logic flow
-                // This assumes leadDataFromWebhook has all necessary fields that slimLead expects (like .about, .summary, .experience etc.)
+                await upsertLead(leadForUpsertPreScore); 
 
                 const aboutText = (leadDataFromWebhook.summary || leadDataFromWebhook.bio || leadDataFromWebhook.linkedinDescription || "").trim();
                 if (aboutText.length < 40) {
                     console.log(`Lead (${currentLeadIdentifier}) profile too thin for /pb-webhook/scrapeLeads, skipping AI call.`);
-                    // Update status to skipped after initial upsert (if ID was captured)
-                    // This requires a more complex flow to get Airtable ID first.
-                    // For now, batchScorer will catch it if it remains "To Be Scored".
                     continue; 
                 }
                 
@@ -497,7 +367,6 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                 if (!geminiScoredOutput) {
                     console.warn(`No scoring output from Gemini for lead: ${currentLeadIdentifier}`);
                     failedCount++;
-                    // Optionally update Airtable status to "Failed - No AI Response" if ID is known
                     continue;
                 }
 
@@ -511,7 +380,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                 let temp_positive_scores = {...positive_scores};
                 if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null) ) {
                      temp_positive_scores.I = positives.I.maxPoints || 0; 
-                     if(!attribute_reasoning.I && temp_positive_scores.I > 0) { // Check if positive score was actually awarded
+                     if(!attribute_reasoning.I && temp_positive_scores.I > 0) { 
                           attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
                      }
                 }
@@ -523,7 +392,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                 );
                 const finalPct = Math.round(percentage * 100) / 100;
 
-                const auFlag = isAustralian(leadDataFromWebhook.locationName || leadDataFromWebhook.location || "");
+                const auFlag = isAustralian(leadDataFromWebhook.locationName || leadDataFromWebhook.location || ""); // Uses helper
                 const passesScore = finalPct >= MIN_SCORE;
                 const passesFilters = auFlag && passesScore; 
 
@@ -536,8 +405,6 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                 
                 if (!passesFilters && SAVE_FILTERED_ONLY) {
                     console.log(`Lead ${currentLeadIdentifier} did not pass filters. Skipping save of score details.`);
-                    // Update status to "Filtered Out" if lead was already created
-                    // This part also needs Airtable ID. For now, we just don't update with score.
                     continue;
                 }
 
@@ -547,9 +414,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                     unscored_attributes, earned, max,
                     attribute_reasoning, true, null
                 );
-
-                // Upsert again with all AI scoring data
-                // leadDataFromWebhook is used as the base, and scoring data is added
+                
                 await upsertLead( 
                     leadDataFromWebhook, finalPct, aiProfileAssessment, attribute_reasoning,
                     breakdown, auFlag, final_ai_excluded, final_exclude_details
@@ -624,7 +489,7 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     linkedinConnectionStatus: lh.connectionStatus || lh.linkedinConnectionStatus || (numericDist === 1 ? "Connected" : "Candidate")
                 };
                 
-                await upsertLead(leadForUpsert); // Pass undefined/null for AI fields
+                await upsertLead(leadForUpsert);
                 processedCount++;
             } catch (upsertError) {
                 errorCount++;
@@ -647,9 +512,10 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
 /* ------------------------------------------------------------------
     9)  /pb-pull/connections (Phantombuster Connections Pull)
+    Uses getJsonUrl helper
 ------------------------------------------------------------------*/
-let currentLastRunId = 0; // Renamed from lastRunId to avoid conflict with any global
-const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; // Different filename
+let currentLastRunId = 0; 
+const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; 
 try {
     if (fs.existsSync(PB_LAST_RUN_ID_FILE)) {
         currentLastRunId = parseInt(fs.readFileSync(PB_LAST_RUN_ID_FILE, "utf8"), 10) || 0;
@@ -680,14 +546,14 @@ app.get("/pb-pull/connections", async (req, res) => {
         let newLastRunIdForThisJob = currentLastRunId;
 
         for (const run of runs) {
-            const phantombusterRunId = Number(run.id); // Use a different variable name
+            const phantombusterRunId = Number(run.id); 
             if (phantombusterRunId <= currentLastRunId) continue;
             console.log(`Processing Phantombuster run ID: ${phantombusterRunId}`);
 
             const resultResp = await fetch(`https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`, { headers });
             if (!resultResp.ok) { console.error(`PB API error (fetch result ${run.id}): ${resultResp.status} ${await resultResp.text()}`); continue; }
             const resultObj = await resultResp.json();
-            const jsonUrl = getJsonUrl(resultObj);
+            const jsonUrl = getJsonUrl(resultObj); // Uses helper
             
             let conns;
             if (jsonUrl) {
@@ -749,12 +615,12 @@ app.get("/pb-pull/connections", async (req, res) => {
 /* ------------------------------------------------------------------
     10) DEBUG route (Updated for Gemini)
 ------------------------------------------------------------------*/
-const GPT_CHAT_URL = process.env.GPT_CHAT_URL; // Still used by pointerApi if that's kept
+const GPT_CHAT_URL = process.env.GPT_CHAT_URL; 
 app.get("/debug-gemini-info", (_req, res) => {
     res.json({
         message: "Gemini Scorer Debug Info",
-        model_id_for_scoring: MODEL_ID, // Model used by singleScorer if not overridden
-        batch_scorer_model_id: process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06", // Model used by batchScorer
+        model_id_for_scoring: MODEL_ID, 
+        batch_scorer_model_id: process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06", 
         project_id: GCP_PROJECT_ID,
         location: GCP_LOCATION,
         global_client_initialized: !!globalGeminiModel,
