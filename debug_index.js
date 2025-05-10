@@ -1,33 +1,94 @@
-// debug_index.js - For testing the full queueDispatcher.js
-console.log("<<<<< STARTING debug_index.js - Will attempt to load FULL queueDispatcher - Version G >>>>>");
+// debug_index.js - Testing queueDispatcher with global initializations - Version H
+console.log("<<<<< STARTING debug_index.js - Version H - Adding Airtable & Gemini Init >>>>>");
 
-// Minimal requires needed if queueDispatcher itself needs them at top level
-require("dotenv").config(); // queueDispatcher.js uses this
-const express = require("express"); // queueDispatcher.js requires this (for app.post, though not used by mount function directly)
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args)); // queueDispatcher.js uses this for Airtable/PB
+require("dotenv").config(); // For environment variables
 
-const app = express(); // Create an app instance to pass
-const port = process.env.PORT || 3001; // Use a different port
+// Standard requires for Express app and fetch (used by queueDispatcher or other modules)
+const express = require("express");
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-console.log("Express app created in debug_index.js.");
+// --- Additional requires from index.js for global initializations ---
+const Airtable = require("airtable");
+const { VertexAI } = require('@google-cloud/vertexai'); // HarmCategory, HarmBlockThreshold not directly used in init block
 
-let mountTheRealQueueDispatcher; 
+const app = express();
+const port = process.env.PORT || 3001; // Use a different port for debug server
+
+console.log("Express app created in debug_index.js (Version H).");
+
+/* ---------- ENV CONFIGURATION (Copied from index.js, relevant for Gemini Init) ----------- */
+const MODEL_ID = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06";
+const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
+const GCP_LOCATION = process.env.GCP_LOCATION;
+const GCP_CREDENTIALS_JSON_STRING = process.env.GCP_SERVICE_ACCOUNT_CREDENTIALS_JSON;
+
+/* ---------- GOOGLE GENERATIVE AI CLIENT INITIALIZATION (Copied from index.js) ----------- */
+console.log("Attempting to initialize Global Google Vertex AI Client...");
+let globalVertexAIClient; // Declared for clarity, though not explicitly passed to queueDispatcher in this setup
+let globalGeminiModel;    // This is the one that might be relevant if queueDispatcher or its children expect it
+
 try {
-    console.log("Attempting to require('./queueDispatcher') [the FULL original version]...");
-    // This will try to load your actual queueDispatcher.js file
-    mountTheRealQueueDispatcher = require("./queueDispatcher"); 
-    console.log("Successfully required './queueDispatcher' [the FULL original version].");
+    if (!GCP_PROJECT_ID || !GCP_LOCATION) {
+        throw new Error("GCP_PROJECT_ID and GCP_LOCATION environment variables are required.");
+    }
+    if (!GCP_CREDENTIALS_JSON_STRING) {
+        throw new Error("GCP_SERVICE_ACCOUNT_CREDENTIALS_JSON environment variable is not set.");
+    }
+    // Ensure that GCP_CREDENTIALS_JSON_STRING is valid JSON
+    let credentials;
+    try {
+        credentials = JSON.parse(GCP_CREDENTIALS_JSON_STRING);
+    } catch (parseError) {
+        console.error("Failed to parse GCP_SERVICE_ACCOUNT_CREDENTIALS_JSON. Ensure it's valid JSON string.", parseError);
+        throw new Error("Invalid JSON in GCP_SERVICE_ACCOUNT_CREDENTIALS_JSON.");
+    }
+
+    globalVertexAIClient = new VertexAI({ project: GCP_PROJECT_ID, location: GCP_LOCATION, credentials });
+    globalGeminiModel = globalVertexAIClient.getGenerativeModel({ model: MODEL_ID });
+    console.log(`Global Google Vertex AI Client Initialized in debug_index.js. Default Model: ${MODEL_ID}`);
+} catch (error) {
+    console.error("CRITICAL: Failed to initialize Global Google Vertex AI Client in debug_index.js:", error.message);
+    if (error.stack) console.error("Gemini Init Stack Trace:", error.stack);
+    globalGeminiModel = null; // Ensure it's null if initialization fails
+}
+
+/* ---------- AIRTABLE CONFIGURATION (Copied from index.js) ------------------------------- */
+console.log("Attempting to configure Airtable...");
+let base; // Declare base, so it's available for queueDispatcher if it expects a global 'base'
+try {
+    if (!process.env.AIRTABLE_API_KEY || !process.env.AIRTABLE_BASE_ID) {
+        throw new Error("AIRTABLE_API_KEY and AIRTABLE_BASE_ID environment variables are required.");
+    }
+    Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+    base = Airtable.base(process.env.AIRTABLE_BASE_ID);
+    console.log("Airtable configured successfully in debug_index.js.");
+} catch (error) {
+    console.error("CRITICAL: Failed to configure Airtable in debug_index.js:", error.message);
+    if (error.stack) console.error("Airtable Config Stack Trace:", error.stack);
+    base = null; // Ensure it's null if configuration fails
+}
+
+// --- Now, attempt to load and use queueDispatcher ---
+let mountTheRealQueueDispatcher;
+try {
+    console.log("Attempting to require('./queueDispatcher') [FULL original version] after global inits...");
+    mountTheRealQueueDispatcher = require("./queueDispatcher");
+    console.log("Successfully required './queueDispatcher' [FULL original version].");
     console.log("Type of mountTheRealQueueDispatcher is:", typeof mountTheRealQueueDispatcher);
 } catch (e) {
-    console.error("ERROR during require('./queueDispatcher') [the FULL original version]:", e.message);
-    console.error("Stack trace for require error:", e.stack); // More detailed error
-    // We will let the server attempt to start to see all logs from Render
+    console.error("ERROR during require('./queueDispatcher') [FULL original version]:", e.message);
+    console.error("Stack trace for require error:", e.stack);
 }
 
 if (typeof mountTheRealQueueDispatcher === 'function') {
     try {
         console.log("Attempting to call mountTheRealQueueDispatcher(app)...");
-        mountTheRealQueueDispatcher(app); 
+        // Note: If queueDispatcher expects 'base' or 'globalGeminiModel' to be passed,
+        // or if it relies on them being set globally exactly like this, this test will help.
+        // Some modules in index.js are mounted like: someModule(app, base);
+        // queueDispatcher was mounted as: mountQueue(app);
+        // We are keeping that pattern here.
+        mountTheRealQueueDispatcher(app);
         console.log("Successfully called mountTheRealQueueDispatcher(app).");
     } catch (e) {
         console.error("ERROR calling mountTheRealQueueDispatcher(app):", e.message);
@@ -35,17 +96,22 @@ if (typeof mountTheRealQueueDispatcher === 'function') {
     }
 } else {
     console.error("mountTheRealQueueDispatcher is NOT a function. Actual value received:", mountTheRealQueueDispatcher);
-    console.error("This means require('./queueDispatcher') [the FULL version] did not return the expected function.");
+    console.error("This means require('./queueDispatcher') [FULL version] did not return the expected function.");
 }
 
-app.get("/debug-health", (req, res) => { // Changed endpoint for clarity
-    console.log("/debug-health endpoint hit");
-    res.send("Debug server (testing full queueDispatcher) is healthy!");
+app.get("/debug-health", (req, res) => {
+    console.log("/debug-health (Version H) endpoint hit");
+    res.json({
+        message: "Debug server (Version H - testing full queueDispatcher with global inits) is healthy!",
+        geminiModelInitialized: !!globalGeminiModel,
+        airtableBaseInitialized: !!base,
+        queueDispatcherLoaded: typeof mountTheRealQueueDispatcher === 'function'
+    });
 });
 
 app.listen(port, () => {
-    console.log(`Debug server (testing full queueDispatcher) running on port ${port}. Startup complete.`);
-    console.log("Review logs above for success or failure of loading and calling the FULL queueDispatcher.");
-    console.log("If 'Type of mountTheRealQueueDispatcher' was 'function' and no errors, it loaded!");
-    console.log("If 'Type of mountTheRealQueueDispatcher' was 'undefined' or an error occurred during require, the problem is with queueDispatcher.js loading.");
+    console.log(`Debug server (Version H) running on port ${port}. Startup complete.`);
+    console.log("Review logs above for success or failure of global initializations AND loading/calling queueDispatcher.");
+    if (globalGeminiModel) console.log("Gemini Model status: INITIALIZED"); else console.log("Gemini Model status: FAILED or NOT INITIALIZED");
+    if (base) console.log("Airtable Base status: INITIALIZED"); else console.log("Airtable Base status: FAILED or NOT INITIALIZED");
 });
