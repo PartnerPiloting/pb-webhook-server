@@ -1,7 +1,7 @@
-console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E - TOP OF FILE >>>>>");
+console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E (Patched) - TOP OF FILE >>>>>"); // I've updated the version in this log for clarity
 /***************************************************************
-  Main Server File - LinkedIn → Airtable (Scoring + 1st-degree sync)
-  UPDATED FOR GEMINI 2.5 PRO (Corrected Imports)
+ Main Server File - LinkedIn → Airtable (Scoring + 1st-degree sync)
+ UPDATED FOR GEMINI 2.5 PRO (Corrected Imports)
 ***************************************************************/
 require("dotenv").config();
 const express = require("express");
@@ -13,7 +13,7 @@ const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...ar
 // HarmCategory and HarmBlockThreshold will come from @google-cloud/vertexai
 const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
-console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E - BEFORE LOCAL REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - DEPLOYMENT CHECK - VERSION E (Patched) - BEFORE LOCAL REQUIRES >>>>>");
 // Your existing helper modules - ensure these are updated or compatible
 const { buildPrompt, slimLead }    = require("./promptBuilder");
 const { loadAttributes }          = require("./attributeLoader");
@@ -195,7 +195,8 @@ app.use(express.json({ limit: "10mb" }));
 require("./promptApi")(app); // This one uses its own Airtable base init
 require("./recordApi")(app); // This one uses its own Airtable base init
 require("./scoreApi")(app);  // This one uses its own Airtable base init
-mountQueue(app);             // This one uses its own Airtable AT() helper
+const mountQueue = require("./queueDispatcher"); // <--- ADDED THIS LINE
+mountQueue(app);              // This one uses its own Airtable AT() helper
 // INFO: The third console.log ("<<<<< INDEX.JS - AFTER require('./queueDispatcher') - Type of mountQueue IS:", typeof mountQueue, ">>>>>")
 // could not be added as specified because the line 'const mountQueue = require("./queueDispatcher");'
 // was not found in the provided base code. If 'mountQueue' is defined by a require statement elsewhere,
@@ -511,7 +512,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                 if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null) ) {
                      temp_positive_scores.I = positives.I.maxPoints || 0; 
                      if(!attribute_reasoning.I && temp_positive_scores.I > 0) { // Check if positive score was actually awarded
-                         attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
+                          attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
                      }
                 }
 
@@ -591,8 +592,8 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         for (const lh of rawLeadsFromWebhook) {
             try {
                 const rawUrl = lh.profileUrl || lh.linkedinProfileUrl ||
-                               (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) ||
-                               (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null);
+                                 (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) ||
+                                 (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null);
 
                 if (!rawUrl) {
                     console.warn("Skipping lead in /lh-webhook/upsertLeadOnly due to missing URL identifier:", lh.firstName, lh.lastName);
