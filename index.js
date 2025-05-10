@@ -1,4 +1,4 @@
-console.log("<<<<< INDEX.JS - REFACTOR 2 - MOVED CONFIG - TOP OF FILE >>>>>"); // Updated log
+console.log("<<<<< INDEX.JS - REFACTOR 3 - MOVED UPSERTLEAD - TOP OF FILE >>>>>"); // Updated log
 /***************************************************************
  Main Server File - LinkedIn → Airtable (Scoring + 1st-degree sync)
 ***************************************************************/
@@ -11,7 +11,7 @@ const base = require('./config/airtableClient.js'); // This is our Airtable base
 // --- NPM MODULES ---
 const express = require("express");
 const fs = require("fs"); // Used for Phantombuster lastRunId file
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args)); // Used by alertAdmin (now in helpers) and PB pull
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
 // --- LOCAL HELPER & SERVICE MODULES ---
 const { buildPrompt, slimLead }    = require("./promptBuilder");
@@ -21,41 +21,32 @@ const { buildAttributeBreakdown } = require("./breakdown");
 const { scoreLeadNow }            = require("./singleScorer");
 const batchScorer                 = require("./batchScorer");
 const { alertAdmin, getJsonUrl, canonicalUrl, isAustralian, safeDate, getLastTwoOrgs, isMissingCritical } = require('./utils/appHelpers.js');
+const { upsertLead }              = require('./services/leadService.js'); // <-- IMPORTING upsertLead
 
-console.log("<<<<< INDEX.JS - REFACTOR 2 - AFTER ALL REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 3 - AFTER ALL REQUIRES >>>>>");
 
 // --- INITIALIZATION CHECKS ---
 if (!globalGeminiModel) {
     console.error("FATAL ERROR in index.js: Gemini Model failed to initialize from config. Scoring will not work. Check logs in config/geminiClient.js.");
-    // For a critical failure like this, you might consider exiting if the app cannot function:
-    // process.exit(1); 
-    // For now, we'll let it continue so server starts and logs this, but it's a critical state.
 } else {
     console.log("index.js: Gemini Model loaded successfully from config.");
 }
 
 if (!base) {
     console.error("FATAL ERROR in index.js: Airtable Base failed to initialize from config. Airtable operations will fail. Check logs in config/airtableClient.js.");
-    // process.exit(1);
 } else {
     console.log("index.js: Airtable Base loaded successfully from config.");
 }
 
-/* ---------- ENV CONFIGURATION (App-level, distinct from client init) --- */
-// MODEL_ID, GCP_PROJECT_ID, GCP_LOCATION, GCP_CREDENTIALS_JSON_STRING are now used within config/geminiClient.js
+/* ---------- ENV CONFIGURATION (App-level) --- */
 const TEST_MODE = process.env.TEST_MODE === "true";
 const MIN_SCORE = Number(process.env.MIN_SCORE || 0);
 const SAVE_FILTERED_ONLY = process.env.SAVE_FILTERED_ONLY === "true";
-const GPT_CHAT_URL = process.env.GPT_CHAT_URL; // For pointerApi (to be re-added)
+const GPT_CHAT_URL = process.env.GPT_CHAT_URL; 
 
 /*
-    BLOCK REMOVED: GOOGLE GENERATIVE AI CLIENT INITIALIZATION 
-    (Now handled in config/geminiClient.js)
-*/
-
-/*
-    BLOCK REMOVED: AIRTABLE CONFIGURATION
-    (Now handled in config/airtableClient.js)
+    BLOCK REMOVED: upsertLead function definition
+    (Now handled in services/leadService.js)
 */
 
 /* ------------------------------------------------------------------
@@ -65,12 +56,12 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 
 /* mount miscellaneous sub-APIs */
-require("./promptApi")(app); // Assumes this and others below handle their own Airtable/Gemini needs or are passed them
+require("./promptApi")(app); 
 require("./recordApi")(app);
 require("./scoreApi")(app); 
 const mountQueue = require("./queueDispatcher");
 mountQueue(app);
-// TODO: Re-add mountPointerApi, mountLatestLead, mountUpdateLead here, ensuring 'base' and 'GPT_CHAT_URL' are passed correctly.
+// TODO: Re-add mountPointerApi, mountLatestLead, mountUpdateLead here
 
 /* ------------------------------------------------------------------
     1.5) health check + manual batch route
@@ -78,10 +69,13 @@ mountQueue(app);
 app.get("/health", (_req, res) => res.send("ok"));
 
 app.get("/run-batch-score", async (req, res) => {
+    // ... (existing /run-batch-score logic - no change needed here as it calls batchScorer.run)
+    // This route uses batchScorer, which might have its own upsertLead or Airtable logic,
+    // or it should eventually use the centralized one. For now, this route itself doesn't directly call the global upsertLead.
     const limit = Number(req.query.limit) || 500;
     console.log(`▶︎ /run-batch-score (Gemini) hit – limit ${limit}`);
     
-    if (!globalGeminiModel || !base) { // Check if critical services are available
+    if (!globalGeminiModel || !base) { 
         console.error("/run-batch-score: Cannot proceed, Gemini Model or Airtable Base not initialized.");
         return res.status(503).send("Service temporarily unavailable due to configuration issues.");
     }
@@ -101,6 +95,8 @@ app.get("/run-batch-score", async (req, res) => {
     ONE-OFF LEAD SCORER – /score-lead?recordId=recXXXXXXXX
 ------------------------------------------------------------------*/
 app.get("/score-lead", async (req, res) => {
+    // ... (existing /score-lead logic - uses 'base' and 'globalGeminiModel' correctly)
+    // This route does not directly call the global upsertLead; it calls base("Leads").update.
     if (!globalGeminiModel || !base) {
         console.error("/score-lead: Cannot proceed, Gemini Model or Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
@@ -110,30 +106,65 @@ app.get("/score-lead", async (req, res) => {
         if (!id) return res.status(400).json({ error: "recordId query param required" });
 
         console.log(`▶︎ /score-lead (Gemini) for recordId: ${id}`);
-        const record = await base("Leads").find(id); // Uses 'base' from config
+        const record = await base("Leads").find(id); 
         const profile = JSON.parse(record.get("Profile Full JSON") || "{}");
 
         const aboutText = (profile.about || profile.summary || profile.linkedinDescription || "").trim();
         if (aboutText.length < 40) {
-            await base("Leads").update(record.id, { /* ... */ });
+            await base("Leads").update(record.id, {
+                "AI Score": 0,
+                "Scoring Status": "Skipped – Profile Full JSON Too Small",
+                "AI Profile Assessment": "",
+                "AI Attribute Breakdown": ""
+            });
             console.log(`Lead ${id} skipped, profile too small.`);
             return res.json({ ok: true, skipped: true, reason: "Profile JSON too small" });
         }
 
-        if (isMissingCritical(profile)) {
-            // ... alertAdmin call ...
+        if (isMissingCritical(profile)) { 
+            let hasExp = Array.isArray(profile.experience) && profile.experience.length > 0;
+            if (!hasExp) for (let i = 1; i <= 5; i++) if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) { hasExp = true; break; }
+            await alertAdmin( 
+                "Incomplete lead for single scoring",
+                `Rec ID: ${record.id}\nURL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}\nHeadline: ${!!profile.headline}, About: ${aboutText.length >= 40}, Job info: ${hasExp}`
+            );
         }
         
-        // Pass the required globalGeminiModel
         const geminiScoredOutput = await scoreLeadNow(profile, globalGeminiModel); 
 
-        if (!geminiScoredOutput) { /* ... */ }
-        const { /* ... */ } = geminiScoredOutput;
+        if (!geminiScoredOutput) { throw new Error("singleScorer (scoreLeadNow) did not return valid output."); }
+
+        const {
+            positive_scores = {}, negative_scores = {}, attribute_reasoning = {},
+            contact_readiness = false, unscored_attributes = [], aiProfileAssessment = "N/A",
+            ai_excluded = "No", exclude_details = ""
+        } = geminiScoredOutput;
+
         const { positives, negatives } = await loadAttributes();
-        const { percentage, rawScore: earned, denominator: max } = computeFinalScore( /* ... */ );
+        const { percentage, rawScore: earned, denominator: max } = computeFinalScore( 
+            positive_scores, positives,
+            negative_scores, negatives,
+            contact_readiness, unscored_attributes
+        );
         const finalPct = Math.round(percentage * 100) / 100;
-        const breakdown = buildAttributeBreakdown( /* ... */ );
-        await base("Leads").update(id, { /* ... */ });
+
+        const breakdown = buildAttributeBreakdown( 
+            positive_scores, positives,
+            negative_scores, negatives,
+            unscored_attributes, earned, max,
+            attribute_reasoning, true, null
+        );
+
+        await base("Leads").update(id, { 
+            "AI Score": finalPct,
+            "AI Profile Assessment": aiProfileAssessment,
+            "AI Attribute Breakdown": breakdown,
+            "Scoring Status": "Scored",
+            "Date Scored": new Date().toISOString().split("T")[0],
+            "AI_Excluded": (ai_excluded === "Yes" || ai_excluded === true),
+            "Exclude Details": exclude_details
+        });
+
         console.log(`Lead ${id} scored successfully. Final Pct: ${finalPct}`);
         res.json({ id, finalPct, aiProfileAssessment, breakdown });
 
@@ -146,116 +177,18 @@ app.get("/score-lead", async (req, res) => {
     }
 });
 
-/* ------------------------------------------------------------------
-    5)  upsertLead 
-------------------------------------------------------------------*/
-async function upsertLead( /* ... parameters ... */ ) {
-    if (!base) { // Added check for base
-        console.error("upsertLead: Cannot proceed, Airtable Base not initialized.");
-        throw new Error("Airtable service not available for upsertLead."); 
-    }
-    // ... existing upsertLead logic using 'base', 'getLastTwoOrgs', 'canonicalUrl', 'slimLead', 'safeDate' ...
-    // (For brevity, I'm not reproducing the full upsertLead body here, assume it's the same as before)
-    const {
-        firstName = "", lastName = "", headline: lhHeadline = "",
-        linkedinHeadline = "", linkedinJobTitle = "", linkedinCompanyName = "", linkedinDescription = "",
-        linkedinProfileUrl = "", connectionDegree = "",
-        linkedinJobDateRange = "", linkedinJobDescription = "",
-        linkedinPreviousJobDateRange = "", linkedinPreviousJobDescription = "",
-        refreshedAt = "", profileUrl: fallbackProfileUrl = "",
-        emailAddress = "", phoneNumber = "", locationName = "",
-        connectionSince, scoringStatus = undefined, 
-        raw, 
-        ...rest 
-    } = lead;
-
-    let jobHistory = [
-        linkedinJobDateRange ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}` : "",
-        linkedinPreviousJobDateRange ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}` : ""
-    ].filter(Boolean).join("\n");
-
-    const originalLeadData = raw || lead; 
-
-    if (!jobHistory && originalLeadData) {
-        const hist = getLastTwoOrgs(originalLeadData); 
-        if (hist) jobHistory = hist;
-    }
-
-    let finalUrl = (linkedinProfileUrl || fallbackProfileUrl || "").replace(/\/$/, "");
-    if (!finalUrl) {
-        const slug = originalLeadData.publicId || originalLeadData.publicIdentifier;
-        const mid = originalLeadData.memberId || originalLeadData.profileId;
-        if (slug) finalUrl = `https://www.linkedin.com/in/${slug}/`;
-        else if (mid) finalUrl = `https://www.linkedin.com/profile/view?id=${mid}`;
-    }
-    if (!finalUrl && originalLeadData.profile_url) {
-         finalUrl = originalLeadData.profile_url.trim().replace(/\/$/, "");
-    }
-
-    if (!finalUrl) {
-        console.warn("Skipping upsertLead: No finalUrl could be determined for lead:", firstName, lastName);
-        return;
-    }
-    const profileKey = canonicalUrl(finalUrl); 
-
-    let currentConnectionStatus = "Candidate";
-    if (connectionDegree === "1st") currentConnectionStatus = "Connected";
-    else if (lead.linkedinConnectionStatus === "Pending") currentConnectionStatus = "Pending"; 
-    else if (originalLeadData.connectionStatus) currentConnectionStatus = originalLeadData.connectionStatus;
-
-    const profileForJsonField = slimLead(originalLeadData); 
-
-    const fields = {
-        "LinkedIn Profile URL": finalUrl, "First Name": firstName, "Last Name": lastName,
-        "Headline": linkedinHeadline || lhHeadline || originalLeadData.headline || "",
-        "Job Title": linkedinJobTitle || originalLeadData.occupation || originalLeadData.position || "",
-        "Company Name": linkedinCompanyName || (originalLeadData.company ? originalLeadData.company.name : "") || originalLeadData.organization_1 || "",
-        "About": linkedinDescription || originalLeadData.summary || originalLeadData.bio || "",
-        "Job History": jobHistory,
-        "LinkedIn Connection Status": currentConnectionStatus,
-        "Status": "In Process",
-        "Scoring Status": scoringStatus,
-        "Location": locationName || originalLeadData.location || "",
-        "Date Connected": safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || null, 
-        "Email": emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
-        "Phone": phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
-        "Refreshed At": refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
-        "Profile Full JSON": JSON.stringify(profileForJsonField),
-        "Raw Profile Data": JSON.stringify(originalLeadData)
-    };
-
-    if (finalScore !== null) fields["AI Score"] = Math.round(finalScore * 100) / 100;
-    if (aiProfileAssessment !== null) fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
-    if (attributeBreakdown !== null) fields["AI Attribute Breakdown"] = attributeBreakdown;
-    if (auFlag !== null) fields["AU"] = !!auFlag;
-    if (ai_excluded_val !== null) fields["AI_Excluded"] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
-    if (exclude_details_val !== null) fields["Exclude Details"] = exclude_details_val;
-
-    const existing = await base("Leads").select({ filterByFormula: `{Profile Key} = "${profileKey}"`, maxRecords: 1 }).firstPage();
-
-    if (existing.length) {
-        console.log(`Upsert: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
-        await base("Leads").update(existing[0].id, fields);
-    } else {
-        fields["Source"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
-        if (fields["Scoring Status"] === undefined) fields["Scoring Status"] = "To Be Scored";
-        console.log(`Upsert: Creating new lead ${finalUrl}`);
-        await base("Leads").create([{ fields }]);
-    }
-}
-
 
 /* ------------------------------------------------------------------
     6)  /api/test-score 
 ------------------------------------------------------------------*/
 app.post("/api/test-score", async (req, res) => {
+    // ... (existing /api/test-score logic - does not directly call the global upsertLead)
+    // Uses 'scoreLeadNow', 'globalGeminiModel', etc.
     if (!globalGeminiModel || !base) {
         console.error("/api/test-score: Cannot proceed, Gemini Model or Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
     try {
-        // ... existing /api/test-score logic using 'scoreLeadNow', 'globalGeminiModel', 'loadAttributes', 'computeFinalScore', 'buildAttributeBreakdown' ...
-        // (For brevity, assuming it's the same as before)
         const leadProfileData = req.body || {};
         console.log("▶︎ /api/test-score (Gemini) hit with lead data.");
 
@@ -301,7 +234,8 @@ app.post("/api/test-score", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-    7)  /pb-webhook/scrapeLeads
+    7)  /pb-webhook/scrapeLeads – Phantombuster array
+    This route DOES call upsertLead
 ------------------------------------------------------------------*/
 app.post("/pb-webhook/scrapeLeads", async (req, res) => {
     if (!globalGeminiModel || !base) {
@@ -309,8 +243,6 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
     try {
-        // ... existing /pb-webhook/scrapeLeads logic ...
-        // (For brevity, assuming it's the same as before)
         const leadsFromWebhook = Array.isArray(req.body) ? req.body : (req.body ? [req.body] : []);
         console.log(`▶︎ /pb-webhook/scrapeLeads (Gemini) received ${leadsFromWebhook.length} leads.`);
 
@@ -326,7 +258,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
             let currentLeadIdentifier = leadDataFromWebhook.profileUrl || leadDataFromWebhook.linkedinProfileUrl || JSON.stringify(leadDataFromWebhook).substring(0,100);
             try {
                 const leadForUpsertPreScore = { ...leadDataFromWebhook, raw: leadDataFromWebhook, scoringStatus: "To Be Scored"};
-                await upsertLead(leadForUpsertPreScore); 
+                await upsertLead(leadForUpsertPreScore); // Now uses imported upsertLead
 
                 const aboutText = (leadDataFromWebhook.summary || leadDataFromWebhook.bio || leadDataFromWebhook.linkedinDescription || "").trim();
                 if (aboutText.length < 40) {
@@ -387,7 +319,7 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
                     attribute_reasoning, true, null
                 );
                 
-                await upsertLead( 
+                await upsertLead( // Now uses imported upsertLead
                     leadDataFromWebhook, finalPct, aiProfileAssessment, attribute_reasoning,
                     breakdown, auFlag, final_ai_excluded, final_exclude_details
                 );
@@ -415,15 +347,14 @@ app.post("/pb-webhook/scrapeLeads", async (req, res) => {
 
 /* ------------------------------------------------------------------
     8)  /lh-webhook/upsertLeadOnly
+    This route DOES call upsertLead
 ------------------------------------------------------------------*/
 app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
-    if (!base) { // Added check for base
+    if (!base) { 
         console.error("/lh-webhook/upsertLeadOnly: Cannot proceed, Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
     try {
-        // ... existing /lh-webhook/upsertLeadOnly logic ...
-        // (For brevity, assuming it's the same as before)
         const rawLeadsFromWebhook = Array.isArray(req.body) ? req.body : (req.body ? [req.body] : []);
         console.log(`▶︎ /lh-webhook/upsertLeadOnly received ${rawLeadsFromWebhook.length} leads.`);
         
@@ -467,7 +398,7 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     linkedinConnectionStatus: lh.connectionStatus || lh.linkedinConnectionStatus || (numericDist === 1 ? "Connected" : "Candidate")
                 };
                 
-                await upsertLead(leadForUpsert);
+                await upsertLead(leadForUpsert); // Now uses imported upsertLead
                 processedCount++;
             } catch (upsertError) {
                 errorCount++;
@@ -490,6 +421,7 @@ app.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
 /* ------------------------------------------------------------------
     9)  /pb-pull/connections
+    This route DOES call upsertLead
 ------------------------------------------------------------------*/
 let currentLastRunId = 0; 
 const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; 
@@ -503,13 +435,11 @@ try {
 }
 
 app.get("/pb-pull/connections", async (req, res) => {
-    if (!base) { // Added check for base
+    if (!base) { 
         console.error("/pb-pull/connections: Cannot proceed, Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
     try {
-        // ... existing /pb-pull/connections logic using 'getJsonUrl', 'upsertLead', 'alertAdmin' ...
-        // (For brevity, assuming it's the same as before)
         const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
         if (!process.env.PB_API_KEY || !process.env.PB_AGENT_ID) {
             throw new Error("Phantombuster API Key or Agent ID not configured.");
@@ -558,9 +488,9 @@ app.get("/pb-pull/connections", async (req, res) => {
                     const leadDataForUpsert = {
                         ...c, raw: c, connectionDegree: "1st",
                         linkedinProfileUrl: (c.profileUrl || c.linkedinProfileUrl || "").replace(/\/$/, ""),
-                        scoringStatus: "To Be Scored"
+                        scoringStatus: "To Be Scored" // Phantombuster connections are new leads to be scored
                     };
-                    await upsertLead(leadDataForUpsert);
+                    await upsertLead(leadDataForUpsert); // Now uses imported upsertLead
                     totalUpsertedInThisRun++;
                 } catch (upsertErr) {
                     console.error(`Error upserting a lead in /pb-pull/connections (URL: ${c.profileUrl || 'N/A'}):`, upsertErr.message);
@@ -599,13 +529,18 @@ app.get("/pb-pull/connections", async (req, res) => {
     10) DEBUG route
 ------------------------------------------------------------------*/
 app.get("/debug-gemini-info", (_req, res) => {
+    // Ensure globalGeminiModel is checked before accessing '.model'
+    const modelIdForScoring = globalGeminiModel && globalGeminiModel.model 
+        ? globalGeminiModel.model 
+        : (process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06 (default, client not init)");
+
     res.json({
         message: "Gemini Scorer Debug Info",
-        model_id_for_scoring: globalGeminiModel ? globalGeminiModel.model : "Gemini Model Not Initialized", 
+        model_id_for_scoring: modelIdForScoring, 
         batch_scorer_model_id: process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06", 
-        project_id: process.env.GCP_PROJECT_ID, // Pulled from env for display
-        location: process.env.GCP_LOCATION,     // Pulled from env for display
-        global_client_initialized: !!globalGeminiModel, // Check if the instance from config is truthy
+        project_id: process.env.GCP_PROJECT_ID, 
+        location: process.env.GCP_LOCATION,     
+        global_client_initialized: !!globalGeminiModel, 
         gpt_chat_url_for_pointer_api: GPT_CHAT_URL || "Not Set"
     });
 });
@@ -615,13 +550,11 @@ app.get("/debug-gemini-info", (_req, res) => {
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 2) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 3) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 app.listen(port, () => {
     console.log(`Server running on port ${port}.`);
-    // Initial checks are now done near the top after requires.
-    // This can be a final confirmation or removed if redundant.
     if (!globalGeminiModel) {
         console.error("Final Check: Server started BUT Global Gemini Model is not available. Scoring will fail.");
     } else if (!base) {
