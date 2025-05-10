@@ -1,4 +1,4 @@
-console.log("<<<<< INDEX.JS - REFACTOR 5 (Patched) - MOVED APP/API/JOB ROUTES - TOP OF FILE >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 6 - REINSTATED CUSTOM GPT APIS - TOP OF FILE >>>>>");
 /***************************************************************
  Main Server File - Orchestrator
 ***************************************************************/
@@ -12,13 +12,14 @@ const base = require('./config/airtableClient.js');
 const express = require("express");
 
 // --- LOCAL SERVICE & HELPER MODULES ---
-const { buildPrompt, slimLead }    = require("./promptBuilder");
-const { loadAttributes }          = require("./attributeLoader");
-const { computeFinalScore }       = require("./scoring");
-const { buildAttributeBreakdown } = require("./breakdown");
-const { scoreLeadNow }            = require("./singleScorer");
+// These are likely used by the various route/API modules
+// const { buildPrompt, slimLead }    = require("./promptBuilder"); // buildPrompt used by old scoreApi, slimLead by old upsertLead
+// const { loadAttributes }          = require("./attributeLoader");
+// const { computeFinalScore }       = require("./scoring");
+// const { buildAttributeBreakdown } = require("./breakdown");
+// const { scoreLeadNow }            = require("./singleScorer");
 
-console.log("<<<<< INDEX.JS - REFACTOR 5 (Patched) - AFTER MINIMAL REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 6 - AFTER MINIMAL CORE REQUIRES >>>>>");
 
 // --- INITIALIZATION CHECKS ---
 if (!globalGeminiModel) {
@@ -34,6 +35,13 @@ if (!base) {
 
 /* ---------- APP-LEVEL ENV CONFIGURATION --- */
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL; 
+if (!GPT_CHAT_URL) {
+    // Matching old behavior: throw error if critical for pointerApi
+    // Consider if a console.warn and not mounting pointerApi is preferable if it's not always used
+    console.error("CRITICAL WARNING: Missing GPT_CHAT_URL environment variable. pointerApi will likely fail or not be mounted properly.");
+    // throw new Error("Missing GPT_CHAT_URL env var"); // Uncomment if this should halt startup
+}
+
 
 /* ------------------------------------------------------------------
     1)  Express App Setup
@@ -46,12 +54,18 @@ app.use(express.json({ limit: "10mb" }));
 ------------------------------------------------------------------*/
 console.log("index.js: Mounting routes...");
 
-// Mount existing sub-APIs
-require("./promptApi")(app); 
-require("./recordApi")(app);
-require("./scoreApi")(app); 
+// Mount existing sub-APIs (these are already in their own files)
+require("./promptApi")(app);  // Assumes it handles its own 'base' or doesn't need it
+require("./recordApi")(app); // Assumes it handles its own 'base' or doesn't need it
+require("./scoreApi")(app);  // Assumes it handles its own 'base' or doesn't need it
 const mountQueue = require("./queueDispatcher");
-mountQueue(app);
+if (mountQueue && typeof mountQueue === 'function') { // Added check
+    mountQueue(app); // Assumes it handles its own 'base' or doesn't need it
+    console.log("index.js: Queue Dispatcher mounted.");
+} else {
+    console.error("index.js: Failed to load or mount queueDispatcher.");
+}
+
 
 // Mount our newly refactored route modules
 const webhookRoutes = require('./routes/webhookHandlers.js');
@@ -62,25 +76,49 @@ const appRoutes = require('./routes/apiAndJobRoutes.js');
 app.use(appRoutes);                                       
 console.log("index.js: App/API/Job routes mounted.");
 
-// TODO: Re-add mountPointerApi, mountLatestLead, mountUpdateLead here
-// const mountPointerApi = require("./pointerApi.js");
-// const mountLatestLead = require("./latestLeadApi.js");
-// const mountUpdateLead = require("./updateLeadApi.js");
-// if (GPT_CHAT_URL && base && mountPointerApi && mountLatestLead && mountUpdateLead) { 
-//     mountPointerApi(app, base, GPT_CHAT_URL);
-//     mountLatestLead(app, base);
-//     mountUpdateLead(app, base);
-//     console.log("index.js: pointerApi, latestLeadApi, updateLeadApi mounted.");
-// } else {
-//     console.warn("index.js: One or more dependencies for pointer/latestLead/updateLead APIs are missing. These APIs will not be mounted.");
-// }
+// --- Reinstating Custom GPT APIs ---
+console.log("index.js: Attempting to mount Custom GPT support APIs...");
+try {
+    const mountPointerApi = require("./pointerApi.js");
+    const mountLatestLead = require("./latestLeadApi.js");
+    const mountUpdateLead = require("./updateLeadApi.js");
+
+    if (!GPT_CHAT_URL && mountPointerApi) { // Specific check if GPT_CHAT_URL is vital for pointerApi
+        console.warn("index.js: GPT_CHAT_URL is not set. pointerApi might not function correctly or will not be mounted if it throws an error.");
+        // mountPointerApi might throw its own error if GPT_CHAT_URL is critical internally, or handle it.
+    }
+    
+    if (mountPointerApi && typeof mountPointerApi === 'function') {
+        mountPointerApi(app, base, GPT_CHAT_URL); // Pass base and GPT_CHAT_URL
+        console.log("index.js: pointerApi mounted.");
+    } else {
+        console.error("index.js: pointerApi.js not found or did not export a function.");
+    }
+
+    if (mountLatestLead && typeof mountLatestLead === 'function') {
+        mountLatestLead(app, base); // Pass base
+        console.log("index.js: latestLeadApi mounted.");
+    } else {
+        console.error("index.js: latestLeadApi.js not found or did not export a function.");
+    }
+
+    if (mountUpdateLead && typeof mountUpdateLead === 'function') {
+        mountUpdateLead(app, base); // Pass base
+        console.log("index.js: updateLeadApi mounted.");
+    } else {
+        console.error("index.js: updateLeadApi.js not found or did not export a function.");
+    }
+} catch (apiMountError) {
+    console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message);
+}
+
 
 /* ------------------------------------------------------------------
     3) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 5 Patched) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 6) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
