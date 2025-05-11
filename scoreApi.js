@@ -1,134 +1,131 @@
-/* ===================================================================
-   scoreApi.js – small helper API used by front-end tests
-   (UPDATED FOR GEMINI 2.5 PRO)
-   -------------------------------------------------------------------
-   • POST /api/test-score  (request body = raw lead JSON)
-=================================================================== */
+// scoreApi.js – UPDATED to use passed-in 'base' and 'globalGeminiModel'
+
 require("dotenv").config();
 const express = require("express");
-const Airtable = require("airtable");
+// No longer need: const Airtable = require("airtable");
 
-// Updated dependencies - assuming these .js files are the Gemini-updated versions
-const { buildPrompt, slimLead } = require("./promptBuilder");
+// Dependencies - assuming these .js files are in the project root
+const { buildPrompt, slimLead } = require("./promptBuilder"); // slimLead is used by scoreLeadNow internally
 const { loadAttributes } = require("./attributeLoader");
 const { computeFinalScore } = require("./scoring");
 const { buildAttributeBreakdown } = require("./breakdown");
-const { scoreLeadNow } = require("./singleScorer"); // This now uses Gemini and returns a parsed object
-
-// callGptScoring is no longer needed as Gemini (via scoreLeadNow and buildPrompt)
-// will be instructed to return the already structured/parsed JSON.
-// const { callGptScoring } = require("./callGptScoring");
+const { scoreLeadNow } = require("./singleScorer");
 
 const router = express.Router();
 
-/* ---------- Airtable connection ---------------------------------- */
-// Note: If 'base' is already configured globally in your main app (index.js),
-// you might not need to reconfigure Airtable here unless this module
-// needs its own specific configuration. For now, keeping it as is.
-Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
-const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
+// Airtable 'base' and 'globalGeminiModel' will be passed into mountScoreApi
 
 /* ------------------------------------------------------------------
-   POST /api/test-score
+    POST /api/test-score
 ------------------------------------------------------------------*/
-router.post("/api/test-score", async (req, res) => {
-    try {
-        const leadProfileData = req.body || {}; // Assuming req.body is the lead profile object
-        console.log("▶︎ POST /api/test-score (Gemini) hit. Processing lead data...");
+// Now 'base' and 'globalGeminiModel' are available in this scope from the function params
+let moduleBase;
+let moduleGlobalGeminiModel;
 
+router.post("/test-score", async (req, res) => { // Path is just /test-score as /api is prefixed by app.use
+    console.log("scoreApi.js: POST /api/test-score hit. Processing lead data...");
+
+    if (!moduleBase || !moduleGlobalGeminiModel) {
+        console.error("scoreApi.js - /api/test-score: Airtable base or Gemini model not provided to mountScoreApi. Endpoint will fail.");
+        return res.status(503).json({ error: "Service temporarily unavailable due to internal configuration error." });
+    }
+
+    try {
+        const leadProfileData = req.body || {}; 
         if (typeof leadProfileData !== 'object' || leadProfileData === null || Object.keys(leadProfileData).length === 0) {
             return res.status(400).json({ error: "Request body must be a valid lead profile object." });
         }
 
-        // --- buildPrompt is still relevant for system instructions if scoreLeadNow uses it ---
-        // const sysPrompt = await buildPrompt(); // scoreLeadNow will call buildPrompt internally
-
         const { positives, negatives } = await loadAttributes();
 
-        // Call the updated scoreLeadNow from singleScorer.js (Gemini version)
-        // This function is now expected to return an already parsed JavaScript object
-        // matching the verboseSchemaDefinition.
-        const geminiScoredObject = await scoreLeadNow(leadProfileData /*, pass globalGeminiModel if available and needed */);
+        // Call scoreLeadNow, PASSING the globalGeminiModel
+        const geminiScoredOutput = await scoreLeadNow(leadProfileData, moduleGlobalGeminiModel);
 
-        if (!geminiScoredObject) {
+        if (!geminiScoredOutput) {
             throw new Error("scoreLeadNow (Gemini) did not return valid output for /api/test-score.");
         }
         
-        // 'geminiScoredObject' is now what 'parsed' used to be after callGptScoring.
-        // No need for callGptScoring(raw) anymore.
-        const parsed = geminiScoredObject;
+        const parsed = geminiScoredOutput;
 
-        /* --- always recompute percentage locally -------------------- */
-        // The 'finalPct' if returned by AI is ignored; we recalculate.
-        // delete parsed.finalPct; // Not necessary if AI isn't asked to return it, which it isn't in the new prompt.
+        let { // Use 'let' for attribute_reasoning
+            positive_scores = {}, 
+            negative_scores = {}, 
+            attribute_reasoning = {},
+            contact_readiness = false, 
+            unscored_attributes = [], 
+            aiProfileAssessment = "N/A"
+        } = parsed;
+
+        // Apply "I" attribute logic for consistency (copied from apiAndJobRoutes.js)
+        let temp_positive_scores = {...positive_scores};
+        if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null)) {
+            temp_positive_scores.I = positives.I.maxPoints || 0; 
+            if (!attribute_reasoning.I && temp_positive_scores.I > 0) { 
+                attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
+            }
+        }
 
         const {
             percentage,
-            rawScore: earned, // Use this 'earned' score
-            denominator: max  // Use this 'max' score
+            rawScore: earned, 
+            denominator: max  
         } = computeFinalScore(
-            parsed.positive_scores || {},
+            temp_positive_scores, // Use modified scores
             positives,
-            parsed.negative_scores || {},
+            negative_scores, 
             negatives,
-            parsed.contact_readiness || false,
-            parsed.unscored_attributes || []
+            contact_readiness,
+            unscored_attributes || []
         );
-        // The finalPct is now calculated and available in 'percentage'
-
-        /* --- build human-readable breakdown ------------------------- */
+        
         const breakdown = buildAttributeBreakdown(
-            parsed.positive_scores || {},
+            temp_positive_scores, // Use modified scores
             positives,
-            parsed.negative_scores || {},
+            negative_scores, 
             negatives,
-            parsed.unscored_attributes || [],
-            earned, // Use the 'earned' score from computeFinalScore
-            max,    // Use the 'max' score (denominator) from computeFinalScore
-            parsed.attribute_reasoning || {}, // This should be the object of reasons
-            true, // showZeros - your original code had parsed.disqualified. This might need to be `true` as per previous example.
-            null  // header - your original code had parsed.disqualifyReason.
-                  // If disqualified status needs to be passed, it should come from AI or local logic.
-                  // For now, setting showZeros to true and header to null as per the /score-lead endpoint example.
+            unscored_attributes || [],
+            earned, 
+            max,    
+            attribute_reasoning, // Use potentially modified reasoning
+            false, // showZeros = false for consistency
+            null  
         );
 
-        /* --- OPTIONAL: write to Airtable if recordId provided ------- */
         if (req.query.recordId) {
-            console.log(`Updating Airtable record ${req.query.recordId} from /api/test-score (Gemini).`);
-            await base("Leads").update(req.query.recordId, {
-                "AI Score": Math.round(percentage * 100) / 100, // Use locally calculated percentage
+            console.log(`scoreApi.js: Updating Airtable record ${req.query.recordId} from /api/test-score.`);
+            // Use the passed-in 'moduleBase'
+            await moduleBase("Leads").update(req.query.recordId, {
+                "AI Score": Math.round(percentage * 100) / 100, 
                 "AI Profile Assessment": parsed.aiProfileAssessment || "",
                 "AI Attribute Breakdown": breakdown,
-                "Scoring Status": "Scored (Test)", // Indicate it was scored via test endpoint
+                "Scoring Status": "Scored (Test)", 
                 "Date Scored": new Date().toISOString().split("T")[0],
                 "AI_Excluded": (parsed.ai_excluded === "Yes" || parsed.ai_excluded === true),
                 "Exclude Details": parsed.exclude_details || ""
             });
         }
 
-        /* --- respond ------------------------------------------------ */
-        console.log(`/api/test-score (Gemini) successful. Final Pct: ${Math.round(percentage * 100) / 100}`);
+        console.log(`scoreApi.js: /api/test-score successful. Final Pct: ${Math.round(percentage * 100) / 100}`);
         res.json({
             finalPct: Math.round(percentage * 100) / 100,
             breakdown,
             assessment: parsed.aiProfileAssessment || ""
-            // rawGeminiOutput: parsed // Optionally return the full parsed object for debugging
         });
 
     } catch (err) {
-        console.error("Error in /api/test-score (Gemini):", err.message, err.stack);
+        console.error("scoreApi.js - Error in /api/test-score:", err.message, err.stack);
         res.status(500).json({ error: err.message });
     }
 });
 
-// This line correctly exports the router to be used in index.js with app.use('/api', scoreApiRouter);
-// module.exports = (app) => app.use(router);
-// However, index.js currently does: require("./scoreApi")(app);
-// This implies scoreApi.js should export a function that takes `app`.
-// Let's stick to your original export pattern for now.
-// If your index.js has `app.use('/api', scoreApi);` then `module.exports = router;` is correct.
-// If your index.js has `require("./scoreApi")(app);` then the current export is fine.
-// Sticking to your existing export pattern:
-module.exports = function mountScoreApi(app) {
-    app.use("/api", router); // Assuming you want this mounted at /api path
+module.exports = function mountScoreApi(app, base, globalGeminiModel) { // <-- Now accepts 'base' and 'globalGeminiModel'
+  if (!base || !globalGeminiModel) {
+    console.error("scoreApi.js: mountScoreApi called without base or globalGeminiModel. API will not function.");
+    return;
+  }
+  moduleBase = base; // Make base available to route handlers
+  moduleGlobalGeminiModel = globalGeminiModel; // Make model available
+
+  app.use("/api", router); // Mounts the router at /api, so route is /api/test-score
+  console.log("scoreApi.js: /api/test-score route mounted.");
 };
