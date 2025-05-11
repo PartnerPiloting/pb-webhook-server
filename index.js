@@ -1,22 +1,21 @@
-console.log("<<<<< INDEX.JS - REFACTOR 8 - FINALIZED ROUTE MODULARIZATION - TOP OF FILE >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 8.1 - UPDATED PROMPTAPI MOUNT - TOP OF FILE >>>>>");
 /***************************************************************
  Main Server File - Orchestrator
 ***************************************************************/
 require("dotenv").config(); 
 
 // --- CONFIGURATIONS ---
-// These now export objects or instances directly
 const geminiConfig = require('./config/geminiClient.js');
 const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
-// const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; // Available if index directly needs to pass it
-// const configuredGeminiModelId = geminiConfig ? geminiConfig.geminiModelId : null; // Available if index directly needs to pass it
+// const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; 
+// const configuredGeminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
 const base = require('./config/airtableClient.js'); 
 
 // --- CORE NPM MODULES ---
 const express = require("express");
 
-console.log("<<<<< INDEX.JS - REFACTOR 8 - AFTER CORE REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 8.1 - AFTER CORE REQUIRES >>>>>");
 
 // --- INITIALIZATION CHECKS ---
 if (!globalGeminiModel) {
@@ -50,8 +49,8 @@ app.use(express.json({ limit: "10mb" }));
 ------------------------------------------------------------------*/
 console.log("index.js: Mounting routes and APIs...");
 
-// Mount existing sub-APIs (these are already in their own files)
-try { require("./promptApi")(app); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message, e.stack); }
+// Mount existing sub-APIs
+try { require("./promptApi")(app, base); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message, e.stack); } // MODIFIED: Added 'base'
 try { require("./recordApi")(app); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message, e.stack); }
 try { require("./scoreApi")(app); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message, e.stack); }
 
@@ -95,25 +94,12 @@ try {
     console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
 }
 
-/*
-    BLOCKS REMOVED from index.js:
-    - Inline route definitions for:
-        * /health
-        * /run-batch-score
-        * /score-lead
-        * /api/test-score
-        * /pb-pull/connections
-        * /debug-gemini-info
-    - Top-level 'fs' require and Phantombuster 'currentLastRunId' / 'PB_LAST_RUN_ID_FILE' logic.
-    (These are all now handled in routes/apiAndJobRoutes.js)
-*/
-
 /* ------------------------------------------------------------------
     3) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.1) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
