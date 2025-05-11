@@ -1,30 +1,30 @@
-console.log("<<<<< INDEX.JS - REFACTOR 7.1 - UPDATED GEMINI CONFIG IMPORT - TOP OF FILE >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 8 - FINALIZED ROUTE MODULARIZATION - TOP OF FILE >>>>>");
 /***************************************************************
  Main Server File - Orchestrator
 ***************************************************************/
 require("dotenv").config(); 
 
 // --- CONFIGURATIONS ---
-const geminiConfig = require('./config/geminiClient.js'); // Gets the exported object
-const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null; // Extract the default model instance
-// The following will be used by batchScorer via apiAndJobRoutes.js later
-// const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; 
-// const configuredGeminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
+// These now export objects or instances directly
+const geminiConfig = require('./config/geminiClient.js');
+const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
+// const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; // Available if index directly needs to pass it
+// const configuredGeminiModelId = geminiConfig ? geminiConfig.geminiModelId : null; // Available if index directly needs to pass it
 
 const base = require('./config/airtableClient.js'); 
 
 // --- CORE NPM MODULES ---
 const express = require("express");
 
-console.log("<<<<< INDEX.JS - REFACTOR 7.1 - AFTER CORE REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 8 - AFTER CORE REQUIRES >>>>>");
 
 // --- INITIALIZATION CHECKS ---
-if (!globalGeminiModel) { // This check now correctly refers to the extracted model instance
-    console.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize from config. Scoring will not work. Check logs in config/geminiClient.js.");
+if (!globalGeminiModel) {
+    console.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize. Scoring will not work. Check logs in config/geminiClient.js.");
 } else {
     console.log("index.js: Gemini Model (default instance) loaded successfully from config.");
 }
-if (!geminiConfig || !geminiConfig.vertexAIClient) { // Also check if the main client is available for batch scorer later
+if (!geminiConfig || !geminiConfig.vertexAIClient) { 
     console.error("FATAL ERROR in index.js: VertexAI Client is not available from geminiConfig. Batch scoring might fail. Check logs in config/geminiClient.js.");
 }
 if (!base) {
@@ -50,20 +50,23 @@ app.use(express.json({ limit: "10mb" }));
 ------------------------------------------------------------------*/
 console.log("index.js: Mounting routes and APIs...");
 
-try { require("./promptApi")(app); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message); }
-try { require("./recordApi")(app); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message); }
-try { require("./scoreApi")(app); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message); }
+// Mount existing sub-APIs (these are already in their own files)
+try { require("./promptApi")(app); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message, e.stack); }
+try { require("./recordApi")(app); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message, e.stack); }
+try { require("./scoreApi")(app); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message, e.stack); }
 
 const mountQueue = require("./queueDispatcher");
 if (mountQueue && typeof mountQueue === 'function') {
-    try { mountQueue(app); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message); }
+    try { mountQueue(app); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message, e.stack); }
 } else {
     console.error("index.js: Failed to load queueDispatcher or it's not a function.");
 }
 
-try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message); }
-try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message); }
+// Mount our newly refactored route modules
+try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
+try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
+// Reinstating Custom GPT APIs
 console.log("index.js: Attempting to mount Custom GPT support APIs...");
 try {
     const mountPointerApi = require("./pointerApi.js");
@@ -89,15 +92,28 @@ try {
         console.log("index.js: updateLeadApi mounted.");
     } else { console.error("index.js: updateLeadApi.js not found or did not export a function."); }
 } catch (apiMountError) {
-    console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message);
+    console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
 }
+
+/*
+    BLOCKS REMOVED from index.js:
+    - Inline route definitions for:
+        * /health
+        * /run-batch-score
+        * /score-lead
+        * /api/test-score
+        * /pb-pull/connections
+        * /debug-gemini-info
+    - Top-level 'fs' require and Phantombuster 'currentLastRunId' / 'PB_LAST_RUN_ID_FILE' logic.
+    (These are all now handled in routes/apiAndJobRoutes.js)
+*/
 
 /* ------------------------------------------------------------------
     3) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 7.1) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
@@ -111,7 +127,7 @@ app.listen(port, () => {
         console.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
     }
     else {
-        console.log("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and routes mounted.");
+        console.log("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
     }
 });
 

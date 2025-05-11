@@ -1,34 +1,34 @@
 // routes/apiAndJobRoutes.js
 const express = require('express');
 const router = express.Router();
-const fs = require('fs'); // For Phantombuster lastRunId file
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args)); // For Phantombuster pull
+const fs = require('fs'); 
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
 // --- Dependencies from our project structure ---
 // Configs
-const globalGeminiModel = require('../config/geminiClient.js');
-const base = require('../config/airtableClient.js');
+const geminiConfig = require('../config/geminiClient.js'); // <-- UPDATED: Get the full config object
+const airtableBase = require('../config/airtableClient.js'); // <-- RENAMED for clarity (was 'base')
+
+// Extract specific instances needed by routes in THIS file or to pass to services
+const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null; // Default model instance for single scores
+const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; // Full client for batchScorer
+const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;   // Model ID string for batchScorer
 
 // Services
 const { upsertLead } = require('../services/leadService.js');
-const { scoreLeadNow } = require('../singleScorer.js');   // Assuming singleScorer.js is in project root
-const batchScorer = require('../batchScorer.js');         // Assuming batchScorer.js is in project root
+const { scoreLeadNow } = require('../singleScorer.js');   
+const batchScorer = require('../batchScorer.js');         
 
 // Loaders & Logic Modules
-const { loadAttributes } = require('../attributeLoader.js'); // Assuming in root
-const { computeFinalScore } = require('../scoring.js');       // Assuming in root
-const { buildAttributeBreakdown } = require('../breakdown.js'); // Assuming in root
+const { loadAttributes } = require('../attributeLoader.js'); 
+const { computeFinalScore } = require('../scoring.js');       
+const { buildAttributeBreakdown } = require('../breakdown.js'); 
 
 // Helpers
 const { alertAdmin, getJsonUrl, isMissingCritical } = require('../utils/appHelpers.js');
 
-// Environment Variables (accessible via process.env)
-// Specific env vars like PB_API_KEY, MIN_SCORE etc. will be used directly in routes
-
-/* ------------------------------------------------------------------
-    Logic for /pb-pull/connections (Phantombuster last run ID)
-------------------------------------------------------------------*/
-const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; // Consistent with your latest index.js
+// --- Logic for /pb-pull/connections (Phantombuster last run ID) ---
+const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; 
 let currentLastRunId = 0;
 try {
     if (fs.existsSync(PB_LAST_RUN_ID_FILE)) {
@@ -51,21 +51,30 @@ router.get("/health", (_req, res) => {
 
 // Manual Batch Score Trigger
 router.get("/run-batch-score", async (req, res) => {
-    const limit = Number(req.query.limit) || 500;
+    const limit = Number(req.query.limit) || 500; // Default limit from batchScorer.js is 1000 if not provided by req
     console.log(`apiAndJobRoutes.js: ▶︎ /run-batch-score (Gemini) hit – limit ${limit}`);
     
-    if (!globalGeminiModel || !base) { 
-        console.error("apiAndJobRoutes.js - /run-batch-score: Cannot proceed, Gemini Model or Airtable Base not initialized.");
-        return res.status(503).send("Service temporarily unavailable due to configuration issues.");
+    // UPDATED: Check for specific dependencies needed by batchScorer
+    if (!vertexAIClient || !geminiModelId || !airtableBase) { 
+        console.error("apiAndJobRoutes.js - /run-batch-score: Cannot proceed, core dependencies (VertexAI Client, Model ID, or Airtable Base) not initialized/available for batchScorer.");
+        return res.status(503).send("Service temporarily unavailable due to configuration issues preventing batch scoring.");
     }
-    batchScorer.run(req, res) 
+
+    // UPDATED: Pass the dependencies to batchScorer.run
+    batchScorer.run(req, res, { 
+        vertexAIClient: vertexAIClient, 
+        geminiModelId: geminiModelId, 
+        airtableBase: airtableBase 
+    })
         .then(() => {
-            console.log(`apiAndJobRoutes.js: Invocation of batchScorer.run for up to ${limit} leads (Gemini) is complete.`);
+            // batchScorer.run now handles sending the initial HTTP response if 'res' is provided
+            console.log(`apiAndJobRoutes.js: Invocation of batchScorer.run for up to ${limit} leads (Gemini) has completed its initiation.`);
         })
         .catch((err) => {
-            console.error("apiAndJobRoutes.js - Error from batchScorer.run invocation:", err);
-            if (res && !res.headersSent) {
-                res.status(500).send("Failed to properly initiate batch scoring due to an internal error.");
+            console.error("apiAndJobRoutes.js - Error from batchScorer.run invocation:", err.message, err.stack);
+            // Ensure response is sent if batchScorer.run itself didn't (e.g., due to an early error before it could use 'res')
+            if (res && res.status && !res.headersSent) { 
+                res.status(500).send("Failed to properly initiate batch scoring due to an internal error (apiAndJobRoutes).");
             }
         });
 });
@@ -73,7 +82,8 @@ router.get("/run-batch-score", async (req, res) => {
 // One-off Lead Scorer
 router.get("/score-lead", async (req, res) => {
     console.log("apiAndJobRoutes.js: /score-lead endpoint hit");
-    if (!globalGeminiModel || !base) {
+    // Uses globalGeminiModel (the default model instance) and airtableBase
+    if (!globalGeminiModel || !airtableBase) {
         console.error("apiAndJobRoutes.js - /score-lead: Cannot proceed, Gemini Model or Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
@@ -82,22 +92,18 @@ router.get("/score-lead", async (req, res) => {
         if (!id) return res.status(400).json({ error: "recordId query param required" });
 
         console.log(`apiAndJobRoutes.js: ▶︎ /score-lead (Gemini) for recordId: ${id}`);
-        const record = await base("Leads").find(id); 
+        const record = await airtableBase("Leads").find(id); 
         const profile = JSON.parse(record.get("Profile Full JSON") || "{}");
 
         const aboutText = (profile.about || profile.summary || profile.linkedinDescription || "").trim();
         if (aboutText.length < 40) {
-            await base("Leads").update(record.id, {
-                "AI Score": 0,
-                "Scoring Status": "Skipped – Profile Full JSON Too Small",
-                "AI Profile Assessment": "",
-                "AI Attribute Breakdown": ""
-            });
+            await airtableBase("Leads").update(record.id, { /* ... */ }); // Make sure all Airtable ops use airtableBase
             console.log(`apiAndJobRoutes.js: Lead ${id} skipped, profile too small.`);
             return res.json({ ok: true, skipped: true, reason: "Profile JSON too small" });
         }
 
         if (isMissingCritical(profile)) { 
+             // TODO: Add "I" attribute logic here + showZeros=false for consistency
             let hasExp = Array.isArray(profile.experience) && profile.experience.length > 0;
             if (!hasExp) for (let i = 1; i <= 5; i++) if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) { hasExp = true; break; }
             await alertAdmin( 
@@ -115,23 +121,38 @@ router.get("/score-lead", async (req, res) => {
             contact_readiness = false, unscored_attributes = [], aiProfileAssessment = "N/A",
             ai_excluded = "No", exclude_details = ""
         } = geminiScoredOutput;
+        
+        // --- TODO: Add "I" attribute pre-processing logic here, similar to batchScorer ---
+        // let temp_positive_scores = {...positive_scores};
+        // const { positives: allPositivesAttributes } = await loadAttributes(); // Need positives for "I" logic
+        // if (contact_readiness && allPositivesAttributes?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null) ) {
+        //      temp_positive_scores.I = allPositivesAttributes.I.maxPoints || 0; 
+        //      if(!attribute_reasoning.I && temp_positive_scores.I > 0) { 
+        //           attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
+        //      }
+        // }
+        // --- End of TODO for "I" attribute ---
 
-        const { positives, negatives } = await loadAttributes();
+        const { positives, negatives } = await loadAttributes(); // loadAttributes is still needed
         const { percentage, rawScore: earned, denominator: max } = computeFinalScore( 
-            positive_scores, positives,
+            positive_scores, // Should be temp_positive_scores if "I" logic is added
+            positives, 
             negative_scores, negatives,
             contact_readiness, unscored_attributes
         );
         const finalPct = Math.round(percentage * 100) / 100;
 
         const breakdown = buildAttributeBreakdown( 
-            positive_scores, positives,
+            positive_scores, // Should be temp_positive_scores
+            positives, 
             negative_scores, negatives,
             unscored_attributes, earned, max,
-            attribute_reasoning, true, null
+            attribute_reasoning, 
+            false, // TODO: Change to showZeros = false for consistency
+            null
         );
 
-        await base("Leads").update(id, { 
+        await airtableBase("Leads").update(id, {  // Use airtableBase
             "AI Score": finalPct,
             "AI Profile Assessment": aiProfileAssessment,
             "AI Attribute Breakdown": breakdown,
@@ -156,7 +177,7 @@ router.get("/score-lead", async (req, res) => {
 // API Test Score
 router.post("/api/test-score", async (req, res) => {
     console.log("apiAndJobRoutes.js: /api/test-score endpoint hit");
-    if (!globalGeminiModel || !base) {
+    if (!globalGeminiModel || !airtableBase) { // use airtableBase
         console.error("apiAndJobRoutes.js - /api/test-score: Cannot proceed, Gemini Model or Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
@@ -170,28 +191,41 @@ router.post("/api/test-score", async (req, res) => {
         
         const geminiScoredOutput = await scoreLeadNow(leadProfileData, globalGeminiModel);
 
-        if (!geminiScoredOutput) {
-            throw new Error("scoreLeadNow (Gemini) did not return valid output for /api/test-score.");
-        }
+        if (!geminiScoredOutput) { throw new Error("scoreLeadNow (Gemini) did not return valid output for /api/test-score."); }
         
         const {
             positive_scores = {}, negative_scores = {}, attribute_reasoning = {},
             contact_readiness = false, unscored_attributes = [], aiProfileAssessment = "N/A"
         } = geminiScoredOutput;
 
+        // --- TODO: Add "I" attribute pre-processing logic here, similar to batchScorer ---
+        // let temp_positive_scores = {...positive_scores};
+        // const { positives: allPositivesAttributes } = await loadAttributes(); // Need positives for "I" logic
+        // if (contact_readiness && allPositivesAttributes?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null) ) {
+        //      temp_positive_scores.I = allPositivesAttributes.I.maxPoints || 0; 
+        //      if(!attribute_reasoning.I && temp_positive_scores.I > 0) { 
+        //           attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
+        //      }
+        // }
+        // --- End of TODO for "I" attribute ---
+
         const { positives, negatives } = await loadAttributes();
         const { percentage, rawScore: earned, denominator: max } = computeFinalScore(
-            positive_scores, positives,
+            positive_scores, // Should be temp_positive_scores
+            positives, 
             negative_scores, negatives,
             contact_readiness, unscored_attributes
         );
         const finalPct = Math.round(percentage * 100) / 100;
 
         const breakdown = buildAttributeBreakdown(
-            positive_scores, positives,
+            positive_scores, // Should be temp_positive_scores
+            positives, 
             negative_scores, negatives,
             unscored_attributes, earned, max,
-            attribute_reasoning, true, null
+            attribute_reasoning, 
+            false, // TODO: Change to showZeros = false for consistency
+            null
         );
         
         console.log(`apiAndJobRoutes.js: /api/test-score (Gemini) result - Final Pct: ${finalPct}`);
@@ -208,11 +242,13 @@ router.post("/api/test-score", async (req, res) => {
 // Phantombuster Pull Connections
 router.get("/pb-pull/connections", async (req, res) => {
     console.log("apiAndJobRoutes.js: /pb-pull/connections endpoint hit");
-    if (!base) { 
+    if (!airtableBase) { // use airtableBase
         console.error("apiAndJobRoutes.js - /pb-pull/connections: Cannot proceed, Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
     try {
+        // ... (rest of /pb-pull/connections logic, using 'airtableBase' for Airtable operations via upsertLead) ...
+        // Ensure upsertLead is correctly called. It uses 'airtableBase' internally from its own module scope now.
         const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
         if (!process.env.PB_API_KEY || !process.env.PB_AGENT_ID) {
             throw new Error("Phantombuster API Key or Agent ID not configured.");
@@ -301,6 +337,7 @@ router.get("/pb-pull/connections", async (req, res) => {
 // Debug Gemini Info Route
 router.get("/debug-gemini-info", (_req, res) => {
     console.log("apiAndJobRoutes.js: /debug-gemini-info endpoint hit");
+    // Use globalGeminiModel from this file's scope (which comes from geminiConfig)
     const modelIdForScoring = globalGeminiModel && globalGeminiModel.model 
         ? globalGeminiModel.model 
         : (process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06 (default, client not init)");
@@ -308,13 +345,13 @@ router.get("/debug-gemini-info", (_req, res) => {
     res.json({
         message: "Gemini Scorer Debug Info (from apiAndJobRoutes.js)",
         model_id_for_scoring: modelIdForScoring, 
-        batch_scorer_model_id: process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06", 
+        batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID, // Use geminiModelId from config
         project_id: process.env.GCP_PROJECT_ID, 
         location: process.env.GCP_LOCATION,     
-        global_client_initialized: !!globalGeminiModel, 
-        gpt_chat_url_for_pointer_api: process.env.GPT_CHAT_URL || "Not Set" // GPT_CHAT_URL is still needed for pointerApi
+        global_client_available_in_routes_file: !!vertexAIClient, // Check the client needed by batchScorer
+        default_model_instance_available_in_routes_file: !!globalGeminiModel,
+        gpt_chat_url_for_pointer_api: process.env.GPT_CHAT_URL || "Not Set"
     });
 });
 
-
-module.exports = router; // Export the router
+module.exports = router;
