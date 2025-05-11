@@ -1,4 +1,4 @@
-console.log("<<<<< INDEX.JS - REFACTOR 8.3 - UPDATED SCOREAPI MOUNT - TOP OF FILE >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 8.4 - UPDATED QUEUEDISPATCHER MOUNT - TOP OF FILE >>>>>");
 /***************************************************************
  Main Server File - Orchestrator
 ***************************************************************/
@@ -15,7 +15,7 @@ const base = require('./config/airtableClient.js');
 // --- CORE NPM MODULES ---
 const express = require("express");
 
-console.log("<<<<< INDEX.JS - REFACTOR 8.3 - AFTER CORE REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>");
 
 // --- INITIALIZATION CHECKS ---
 if (!globalGeminiModel) {
@@ -52,11 +52,11 @@ console.log("index.js: Mounting routes and APIs...");
 // Mount existing sub-APIs
 try { require("./promptApi")(app, base); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message, e.stack); }
 try { require("./recordApi")(app, base); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message, e.stack); }
-try { require("./scoreApi")(app, base, globalGeminiModel); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message, e.stack); } // MODIFIED: Added 'base' and 'globalGeminiModel'
+try { require("./scoreApi")(app, base, globalGeminiModel); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message, e.stack); }
 
 const mountQueue = require("./queueDispatcher");
 if (mountQueue && typeof mountQueue === 'function') {
-    try { mountQueue(app); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message, e.stack); }
+    try { mountQueue(app, base); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message, e.stack); } // MODIFIED: Added 'base'
 } else {
     console.error("index.js: Failed to load queueDispatcher or it's not a function.");
 }
@@ -99,7 +99,7 @@ try {
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3000;
 console.log(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.3) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
