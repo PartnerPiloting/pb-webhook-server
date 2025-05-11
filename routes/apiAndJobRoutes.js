@@ -1,4 +1,6 @@
 // routes/apiAndJobRoutes.js
+// This version assumes your singleScorer.scoreLeadNow expects { vertexAIClient, geminiModelId }
+
 const express = require('express');
 const router = express.Router();
 const fs = require('fs'); 
@@ -8,9 +10,10 @@ const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...ar
 const geminiConfig = require('../config/geminiClient.js'); 
 const airtableBase = require('../config/airtableClient.js'); 
 
-// const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null; // Still available if any route specifically needs the default instance
-const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; // For passing to scoreLeadNow & batchScorer
-const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;   // For passing to scoreLeadNow & batchScorer
+// Extract what's needed by this file
+const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
+const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;  
+// globalGeminiModel is also available via geminiConfig.geminiModel if needed by a route that doesn't use vertexAIClient directly
 
 const { upsertLead } = require('../services/leadService.js');
 const { scoreLeadNow } = require('../singleScorer.js');   // Expects { vertexAIClient, geminiModelId }
@@ -22,7 +25,7 @@ const { buildAttributeBreakdown } = require('../breakdown.js');
 
 const { alertAdmin, getJsonUrl, isMissingCritical } = require('../utils/appHelpers.js');
 
-// --- Phantombuster Logic ---
+// --- Phantombuster Logic --- (This was correctly in your last full version)
 const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; 
 let currentLastRunId = 0;
 try {
@@ -73,7 +76,7 @@ router.get("/run-batch-score", async (req, res) => {
 // One-off Lead Scorer
 router.get("/score-lead", async (req, res) => {
     console.log("apiAndJobRoutes.js: /score-lead endpoint hit");
-    // MODIFIED: Dependency check for scoreLeadNow
+    // ***** MODIFICATION 1: Update dependency check *****
     if (!vertexAIClient || !geminiModelId || !airtableBase) {
         console.error("apiAndJobRoutes.js - /score-lead: Cannot proceed, core dependencies (VertexAI Client, Model ID, or Airtable Base) not initialized for single scoring.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
@@ -107,7 +110,7 @@ router.get("/score-lead", async (req, res) => {
             );
         }
         
-        // MODIFIED: Call scoreLeadNow with vertexAIClient and geminiModelId
+        // ***** MODIFICATION 2: Update call to scoreLeadNow *****
         const geminiScoredOutput = await scoreLeadNow(profile, { vertexAIClient, geminiModelId }); 
 
         if (!geminiScoredOutput) { throw new Error("singleScorer (scoreLeadNow) did not return valid output."); }
@@ -125,6 +128,7 @@ router.get("/score-lead", async (req, res) => {
         
         const { positives, negatives } = await loadAttributes();
 
+        // This "I" attribute logic is already in your current version - GOOD!
         let temp_positive_scores = {...positive_scores};
         if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null)) {
             temp_positive_scores.I = positives.I.maxPoints || 0; 
@@ -141,6 +145,7 @@ router.get("/score-lead", async (req, res) => {
         );
         const finalPct = Math.round(percentage * 100) / 100;
 
+        // showZeros=false is already in your current version - GOOD!
         const breakdown = buildAttributeBreakdown( 
             temp_positive_scores, 
             positives, 
@@ -176,8 +181,8 @@ router.get("/score-lead", async (req, res) => {
 // API Test Score
 router.post("/api/test-score", async (req, res) => {
     console.log("apiAndJobRoutes.js: /api/test-score endpoint hit");
-    // MODIFIED: Dependency check for scoreLeadNow
-    if (!vertexAIClient || !geminiModelId || !airtableBase) { 
+    // ***** MODIFICATION 1: Update dependency check *****
+    if (!vertexAIClient || !geminiModelId || !airtableBase ) { 
         console.error("apiAndJobRoutes.js - /api/test-score: Cannot proceed, core dependencies (VertexAI Client, Model ID, or Airtable Base) not initialized for single scoring.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
@@ -189,7 +194,7 @@ router.post("/api/test-score", async (req, res) => {
             return res.status(400).json({ error: "Request body must be a valid lead profile object." });
         }
         
-        // MODIFIED: Call scoreLeadNow with vertexAIClient and geminiModelId
+        // ***** MODIFICATION 2: Update call to scoreLeadNow *****
         const geminiScoredOutput = await scoreLeadNow(leadProfileData, { vertexAIClient, geminiModelId });
 
         if (!geminiScoredOutput) { throw new Error("scoreLeadNow (Gemini) did not return valid output for /api/test-score."); }
@@ -205,6 +210,7 @@ router.post("/api/test-score", async (req, res) => {
 
         const { positives, negatives } = await loadAttributes();
 
+        // This "I" attribute logic is already in your current version - GOOD!
         let temp_positive_scores = {...positive_scores};
         if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null)) {
             temp_positive_scores.I = positives.I.maxPoints || 0; 
@@ -221,6 +227,7 @@ router.post("/api/test-score", async (req, res) => {
         );
         const finalPct = Math.round(percentage * 100) / 100;
 
+        // showZeros=false is already in your current version - GOOD!
         const breakdown = buildAttributeBreakdown(
             temp_positive_scores, 
             positives, 
@@ -244,7 +251,6 @@ router.post("/api/test-score", async (req, res) => {
 
 // Phantombuster Pull Connections
 router.get("/pb-pull/connections", async (req, res) => {
-    // This route's internal logic remains unchanged
     console.log("apiAndJobRoutes.js: /pb-pull/connections endpoint hit");
     if (!airtableBase) { 
         console.error("apiAndJobRoutes.js - /pb-pull/connections: Cannot proceed, Airtable Base not initialized.");
@@ -272,7 +278,6 @@ router.get("/pb-pull/connections", async (req, res) => {
         for (const run of runs) {
             const phantombusterRunId = Number(run.id); 
             if (phantombusterRunId <= currentLastRunId) continue;
-            // ... (rest of the loop is the same)
             console.log(`apiAndJobRoutes.js: Processing Phantombuster run ID: ${phantombusterRunId}`);
             const resultResp = await fetch(`https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`, { headers });
             if (!resultResp.ok) { console.error(`PB API error (fetch result ${run.id}): ${resultResp.status} ${await resultResp.text()}`); continue; }
@@ -312,7 +317,10 @@ router.get("/pb-pull/connections", async (req, res) => {
                 fs.writeFileSync(PB_LAST_RUN_ID_FILE, String(newLastRunIdForThisJob));
                 console.log(`apiAndJobRoutes.js: Successfully wrote new lastRunId ${newLastRunIdForThisJob} to ${PB_LAST_RUN_ID_FILE}`);
                 currentLastRunId = newLastRunIdForThisJob; 
-            } catch (writeErr) { /* ... alertAdmin ... */ }
+            } catch (writeErr) {
+                console.error(`apiAndJobRoutes.js - Failed to write lastRunId ${newLastRunIdForThisJob} to file:`, writeErr.message);
+                await alertAdmin("Failed to write PB lastRunId", `File: ${PB_LAST_RUN_ID_FILE}, ID: ${newLastRunIdForThisJob}. Error: ${writeErr.message}`);
+             }
         }
         
         const finalMessage = `Upserted/updated ${totalUpsertedInThisRun} profiles from Phantombuster. Current lastRunId for this job is ${currentLastRunId}.`;
@@ -320,15 +328,21 @@ router.get("/pb-pull/connections", async (req, res) => {
         if (!res.headersSent) {
              res.json({ message: finalMessage, newProfiles: totalUpsertedInThisRun });
         }
-    } catch (err) { /* ... error handling ... */ }
+    } catch (err) {
+        console.error("apiAndJobRoutes.js - Critical error in /pb-pull/connections:", err.message, err.stack);
+        await alertAdmin("Critical Error in /pb-pull/connections", `Error: ${err.message}`);
+        if (!res.headersSent) {
+            res.status(500).json({ error: err.message });
+        }
+    }
 });
 
 // Debug Gemini Info Route
 router.get("/debug-gemini-info", (_req, res) => {
-    // This route's internal logic remains unchanged
     console.log("apiAndJobRoutes.js: /debug-gemini-info endpoint hit");
-    const modelIdForScoring = globalGeminiModel && globalGeminiModel.model 
-        ? globalGeminiModel.model 
+    // Use globalGeminiModel available in this file's scope (which comes from geminiConfig)
+    const modelIdForScoring = geminiConfig?.geminiModel?.model // Check geminiConfig and geminiModel before accessing model
+        ? geminiConfig.geminiModel.model 
         : (process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06 (default, client not init)");
 
     res.json({
@@ -338,7 +352,7 @@ router.get("/debug-gemini-info", (_req, res) => {
         project_id: process.env.GCP_PROJECT_ID, 
         location: process.env.GCP_LOCATION,     
         global_client_available_in_routes_file: !!vertexAIClient, 
-        default_model_instance_available_in_routes_file: !!globalGeminiModel,
+        default_model_instance_available_in_routes_file: !!(geminiConfig && geminiConfig.geminiModel), // Check the actual default model instance
         gpt_chat_url_for_pointer_api: process.env.GPT_CHAT_URL || "Not Set"
     });
 });
