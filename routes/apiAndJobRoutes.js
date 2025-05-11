@@ -1,5 +1,6 @@
 // routes/apiAndJobRoutes.js
-// This version assumes your singleScorer.scoreLeadNow expects { vertexAIClient, geminiModelId }
+// This version is updated ONLY to correctly call the refactored singleScorer.scoreLeadNow
+// It assumes your singleScorer.scoreLeadNow expects { vertexAIClient, geminiModelId }
 
 const express = require('express');
 const router = express.Router();
@@ -14,6 +15,7 @@ const airtableBase = require('../config/airtableClient.js');
 const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;  
 // globalGeminiModel is also available via geminiConfig.geminiModel if needed by a route that doesn't use vertexAIClient directly
+const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null; // Retaining this for now, though scoreLeadNow won't use it directly.
 
 const { upsertLead } = require('../services/leadService.js');
 const { scoreLeadNow } = require('../singleScorer.js');   // Expects { vertexAIClient, geminiModelId }
@@ -25,7 +27,7 @@ const { buildAttributeBreakdown } = require('../breakdown.js');
 
 const { alertAdmin, getJsonUrl, isMissingCritical } = require('../utils/appHelpers.js');
 
-// --- Phantombuster Logic --- (This was correctly in your last full version)
+// --- Phantombuster Logic --- (This remains for now, as per your current file)
 const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; 
 let currentLastRunId = 0;
 try {
@@ -128,7 +130,6 @@ router.get("/score-lead", async (req, res) => {
         
         const { positives, negatives } = await loadAttributes();
 
-        // This "I" attribute logic is already in your current version - GOOD!
         let temp_positive_scores = {...positive_scores};
         if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null)) {
             temp_positive_scores.I = positives.I.maxPoints || 0; 
@@ -145,7 +146,6 @@ router.get("/score-lead", async (req, res) => {
         );
         const finalPct = Math.round(percentage * 100) / 100;
 
-        // showZeros=false is already in your current version - GOOD!
         const breakdown = buildAttributeBreakdown( 
             temp_positive_scores, 
             positives, 
@@ -210,7 +210,6 @@ router.post("/api/test-score", async (req, res) => {
 
         const { positives, negatives } = await loadAttributes();
 
-        // This "I" attribute logic is already in your current version - GOOD!
         let temp_positive_scores = {...positive_scores};
         if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null)) {
             temp_positive_scores.I = positives.I.maxPoints || 0; 
@@ -227,7 +226,6 @@ router.post("/api/test-score", async (req, res) => {
         );
         const finalPct = Math.round(percentage * 100) / 100;
 
-        // showZeros=false is already in your current version - GOOD!
         const breakdown = buildAttributeBreakdown(
             temp_positive_scores, 
             positives, 
@@ -340,8 +338,7 @@ router.get("/pb-pull/connections", async (req, res) => {
 // Debug Gemini Info Route
 router.get("/debug-gemini-info", (_req, res) => {
     console.log("apiAndJobRoutes.js: /debug-gemini-info endpoint hit");
-    // Use globalGeminiModel available in this file's scope (which comes from geminiConfig)
-    const modelIdForScoring = geminiConfig?.geminiModel?.model // Check geminiConfig and geminiModel before accessing model
+    const modelIdForScoring = geminiConfig?.geminiModel?.model 
         ? geminiConfig.geminiModel.model 
         : (process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06 (default, client not init)");
 
@@ -352,7 +349,7 @@ router.get("/debug-gemini-info", (_req, res) => {
         project_id: process.env.GCP_PROJECT_ID, 
         location: process.env.GCP_LOCATION,     
         global_client_available_in_routes_file: !!vertexAIClient, 
-        default_model_instance_available_in_routes_file: !!(geminiConfig && geminiConfig.geminiModel), // Check the actual default model instance
+        default_model_instance_available_in_routes_file: !!(geminiConfig && geminiConfig.geminiModel),
         gpt_chat_url_for_pointer_api: process.env.GPT_CHAT_URL || "Not Set"
     });
 });
