@@ -1,5 +1,4 @@
-// batchScorer.js - Refactored to use centralized configs and helpers
-// DEBUG: Temporarily set maxOutputForRequest to a high value (60k)
+// batchScorer.js - DEBUG: Log profile object before isMissingCritical check
 
 require("dotenv").config(); 
 
@@ -22,7 +21,7 @@ const DEFAULT_MODEL_ID_FALLBACK = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro
 const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "55", 10)); 
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "240000", 10));
 
-console.log("▶︎ batchScorer module loaded (DEBUG - High Output Limit). Ready to receive dependencies.");
+console.log("▶︎ batchScorer module loaded (DEBUG Profile for isMissingCritical). Ready to receive dependencies.");
 
 /* ---------- LEAD PROCESSING QUEUE (Internal to batchScorer) ------------- */
 const queue = [];
@@ -58,7 +57,7 @@ async function fetchLeads(limit) {
     await BATCH_SCORER_AIRTABLE_BASE("Leads") 
         .select({ 
             maxRecords: limit, 
-            filterByFormula: filterFormula
+            filterByFormula: filterFormula 
         }) 
         .eachPage((pageRecords, next) => {
             records.push(...pageRecords);
@@ -76,13 +75,11 @@ async function fetchLeads(limit) {
 =================================================================== */
 async function scoreChunk(records) {
     if (!BATCH_SCORER_VERTEX_AI_CLIENT || !BATCH_SCORER_GEMINI_MODEL_ID) {
+        // ... (error handling for missing Gemini dependencies) ...
         const errorMsg = "batchScorer.scoreChunk: Aborting. Gemini AI Client or Model ID not initialized/provided.";
         console.error(errorMsg);
         await alertAdmin("Aborted Chunk (batchScorer): Gemini Client/ModelID Not Provided", errorMsg);
-        const failedUpdates = records.map(rec => ({
-            id: rec.id,
-            fields: { "Scoring Status": "Failed – Client Init Error" }
-        }));
+        const failedUpdates = records.map(rec => ({ id: rec.id, fields: { "Scoring Status": "Failed – Client Init Error" }}));
         if (failedUpdates.length > 0 && BATCH_SCORER_AIRTABLE_BASE) {
             for (let i = 0; i < failedUpdates.length; i += 10) await BATCH_SCORER_AIRTABLE_BASE("Leads").update(failedUpdates.slice(i, i+10)).catch(e => console.error("batchScorer.scoreChunk: Airtable update error for client init failed leads:", e));
         }
@@ -91,18 +88,52 @@ async function scoreChunk(records) {
 
     const scorable = [];
     const airtableUpdatesForSkipped = [];
+    let debugProfileLogCount = 0; // To limit how many profiles we log
 
     for (const rec of records) {
-        const profile = JSON.parse(rec.get("Profile Full JSON") || "{}");
+        const profileJsonString = rec.get("Profile Full JSON") || "{}";
+        let profile;
+        try {
+            profile = JSON.parse(profileJsonString);
+        } catch (e) {
+            console.error(`batchScorer.scoreChunk: Failed to parse "Profile Full JSON" for record ${rec.id}. JSON string: ${profileJsonString.substring(0,200)}... Error: ${e.message}`);
+            profile = {}; // Use empty profile to avoid further crashes, it will be skipped or flagged
+        }
+        
         const aboutText = (profile.about || profile.summary || profile.linkedinDescription || "").trim();
         
+        // ***** ADDED DEBUG LOGGING for isMissingCritical *****
+        if (debugProfileLogCount < 3) { // Log details for the first 3 profiles being checked
+            console.log(`batchScorer.scoreChunk: Debugging profile for rec.id ${rec.id}:`);
+            console.log(`  - Has 'about' or 'summary' or 'linkedinDescription'? Length: ${aboutText.length}`);
+            console.log(`  - Has 'headline'? : ${profile.headline ? 'Yes' : 'No'} (Value: ${profile.headline})`);
+            console.log(`  - Has 'experience' array? : ${Array.isArray(profile.experience) && profile.experience.length > 0 ? 'Yes, length ' + profile.experience.length : 'No'}`);
+            let orgFallbackFound = false;
+            if (!(Array.isArray(profile.experience) && profile.experience.length > 0)) {
+                for (let i = 1; i <= 5; i++) {
+                    if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) {
+                        orgFallbackFound = true;
+                        console.log(`  - Found job history via organization_${i} or title_${i}`);
+                        break;
+                    }
+                }
+                if (!orgFallbackFound) console.log(`  - No job history found via organization_X fallback.`);
+            }
+            const isMissing = isMissingCritical(profile);
+            console.log(`  - isMissingCritical() will return: ${isMissing}`);
+            if (isMissing) debugProfileLogCount++; // Only increment if it's one of the ones failing the check
+        }
+        // ***** END DEBUG LOGGING *****
+
         if (isMissingCritical(profile)) { 
             console.log(`batchScorer.scoreChunk: Lead ${rec.id} [${profile.linkedinProfileUrl || profile.profile_url || "unknown"}] missing critical data. Alerting admin.`);
             await alertAdmin("Incomplete lead data for batch scoring", `Rec ID: ${rec.id}\nURL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}`); 
+            // Decide if we should skip sending to Gemini or just alert
+            // For now, original logic: it just alerts and continues to the 'aboutText.length < 40' check
         }
 
         if (aboutText.length < 40) {
-            console.log(`batchScorer.scoreChunk: Lead ${rec.id} profile too thin, skipping. Queuing Airtable update.`);
+            console.log(`batchScorer.scoreChunk: Lead ${rec.id} profile too thin (aboutText length: ${aboutText.length}), skipping AI call. Queuing Airtable update.`);
             airtableUpdatesForSkipped.push({
                 id: rec.id,
                 fields: { "AI Score": 0, "Scoring Status": "Skipped – Profile Too Thin", "AI Profile Assessment": "", "AI Attribute Breakdown": "" }
@@ -111,6 +142,11 @@ async function scoreChunk(records) {
         }
         scorable.push({ id: rec.id, rec, profile });
     }
+
+    // ... (rest of the scoreChunk function, including Airtable updates for skipped, Gemini call, parsing, and final Airtable updates remains the same as your last working version with the 60k token limit) ...
+    // For brevity, I'll elide the rest of scoreChunk as it's unchanged from the "DEBUG - High Output Limit" version
+    // Make sure to use the full version of scoreChunk from that previous step.
+    // The key is the debug logging added above.
 
     if (airtableUpdatesForSkipped.length > 0 && BATCH_SCORER_AIRTABLE_BASE) {
         try {
@@ -135,14 +171,13 @@ async function scoreChunk(records) {
     const leadsDataForUserPrompt = JSON.stringify({ leads: slimmedLeadsForChunk });
     const generationPromptForGemini = `Score the following ${scorable.length} leads based on the criteria and JSON schema defined in the system instructions. The leads are: ${leadsDataForUserPrompt}`;
     
-    // ***** DEBUG MODIFICATION: Temporarily set a very high limit *****
-    const maxOutputForRequest = 60000; // Increased significantly for debugging MAX_TOKENS
+    const maxOutputForRequest = 60000; // Keep high for debugging
 
     console.log(`batchScorer.scoreChunk: DEBUG MODE - Calling Gemini. Using Model ID: ${BATCH_SCORER_GEMINI_MODEL_ID}. Max output tokens for API: ${maxOutputForRequest}`);
 
     let rawResponseText = "";
     let usageMetadataForBatch = {}; 
-    let modelFinishReasonForBatch = null; // To capture finish reason for batch
+    let modelFinishReasonForBatch = null;
 
     try {
         const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
@@ -166,7 +201,7 @@ async function scoreChunk(records) {
         };
         
         const callPromise = modelInstanceForRequest.generateContent(requestPayload);
-        const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS));
+        const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS)); // Use existing timeout
         
         const result = await Promise.race([callPromise, timer]);
 
@@ -188,7 +223,7 @@ async function scoreChunk(records) {
             throw new Error(`Gemini API call (batchScorer chunk) returned no candidates.${sf}`);
         }
 
-        modelFinishReasonForBatch = candidate.finishReason; // Capture finish reason
+        modelFinishReasonForBatch = candidate.finishReason;
 
         if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
             rawResponseText = candidate.content.parts[0].text;
@@ -202,7 +237,6 @@ async function scoreChunk(records) {
             console.warn(`batchScorer.scoreChunk: Gemini API call finished with non-STOP reason: ${modelFinishReasonForBatch}. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
         }
 
-
     } catch (error) { 
         console.error(`batchScorer.scoreChunk: Gemini API call failed: ${error.message}.`);
         await alertAdmin("Gemini API Call Failed (batchScorer Chunk)", `Error: ${error.message}\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
@@ -211,19 +245,17 @@ async function scoreChunk(records) {
         return; 
     }
 
-    // Log raw response text if DEBUG_RAW_GEMINI is set or if MAX_TOKENS occurred
     if (process.env.DEBUG_RAW_GEMINI === "1") {
         console.log("batchScorer.scoreChunk: DBG-RAW-GEMINI (Full Batch Response Text):\n", rawResponseText);
     } else if (modelFinishReasonForBatch === 'MAX_TOKENS' && rawResponseText) {
         console.log(`batchScorer.scoreChunk: DBG-RAW-GEMINI (MAX_TOKENS - Batch Snippet):\n${rawResponseText.substring(0, 2000)}...`);
     }
 
-
     if (rawResponseText.trim() === "") {
         const errorMessage = `batchScorer.scoreChunk: Gemini response text is empty for batch. Finish Reason: ${modelFinishReasonForBatch || 'Unknown'}. Cannot parse scores.`;
         console.error(errorMessage);
         await alertAdmin("Gemini Empty Response (batchScorer)", errorMessage + `\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
-        const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Empty AI Response" } })); // New status
+        const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Empty AI Response" } })); 
         if (failedUpdates.length > 0 && BATCH_SCORER_AIRTABLE_BASE) for (let i = 0; i < failedUpdates.length; i += 10) await BATCH_SCORER_AIRTABLE_BASE("Leads").update(failedUpdates.slice(i, i+10)).catch(e => console.error("batchScorer.scoreChunk: Airtable update error for empty AI response leads:", e));
         return;
     }
@@ -247,7 +279,6 @@ async function scoreChunk(records) {
     console.log(`batchScorer.scoreChunk: Parsed ${outputArray.length} results from Gemini for chunk of ${scorable.length}.`);
     if (outputArray.length !== scorable.length) { 
         await alertAdmin("Gemini Result Count Mismatch (batchScorer)", `Expected ${scorable.length}, got ${outputArray.length}.`);
-        // Potentially mark all as failed or try to match by some ID if possible (complex)
     }
 
     const { positives, negatives } = await loadAttributes();
@@ -255,7 +286,7 @@ async function scoreChunk(records) {
 
     for (let i = 0; i < scorable.length; i++) {
         const leadItem = scorable[i];
-        const geminiOutputItem = outputArray[i]; // This might be undefined if counts mismatch
+        const geminiOutputItem = outputArray[i];
 
         if (!geminiOutputItem) { 
             console.warn(`batchScorer.scoreChunk: No corresponding output from Gemini for lead ${leadItem.id} (index ${i}) in batch due to count mismatch. Marking failed.`);
