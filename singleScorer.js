@@ -1,4 +1,4 @@
-// singleScorer.js - UPDATED to use vertexAIClient and geminiModelId for specific model configuration
+// singleScorer.js - UPDATED to increase maxOutputTokens
 
 require("dotenv").config();
 
@@ -19,7 +19,8 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
     const userLeadData = slimLead(fullLead);
     const userPromptContent = `Score the following single lead based on the criteria and JSON schema provided in the system instructions. The lead is: ${JSON.stringify(userLeadData, null, 2)}`;
     
-    const maxOutputForSingleLead = Math.min(4096, 700 + 512); // Example, adjust as needed
+    // ***** MODIFICATION: Increased maxOutputForSingleLead *****
+    const maxOutputForSingleLead = 4096; // Increased from 1212
 
     console.log(`singleScorer: Calling Gemini for single lead. Model ID: ${geminiModelId}. Max output tokens: ${maxOutputForSingleLead}`);
 
@@ -27,9 +28,8 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
     let usageMetadata = {};
 
     try {
-        // Get a specifically configured model instance for this request
         const modelInstanceForRequest = vertexAIClient.getGenerativeModel({
-            model: geminiModelId, // Use the passed-in model ID
+            model: geminiModelId,
             systemInstruction: { parts: [{ text: systemInstructionText }] },
             safetySettings: [
                 { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -40,7 +40,7 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
             generationConfig: {
                 temperature: 0,
                 responseMimeType: "application/json",
-                maxOutputTokens: maxOutputForSingleLead
+                maxOutputTokens: maxOutputForSingleLead // Using the updated value
             }
         });
 
@@ -67,13 +67,30 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
             throw new Error(`Gemini API call (singleScorer) returned no candidates.${sf}`);
         }
 
+        // Check for finishReason MAX_TOKENS specifically
+        if (candidate.finishReason === 'MAX_TOKENS') {
+            console.error(`singleScorer: Gemini API call finished due to MAX_TOKENS. Output may be truncated. Consider increasing maxOutputForSingleLead if response is incomplete. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
+            // Even if it's MAX_TOKENS, there might still be partial content. Try to use it.
+            // If content is truly unusable or missing, the following check will catch it.
+        } else if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+            // Log other non-STOP finish reasons but still try to get text if available
+            let sf = candidate.safetyRatings ? ` SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`:"";
+            console.warn(`singleScorer: Gemini API call finished with reason: ${candidate.finishReason}.${sf}`);
+        }
+        
         if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
             rawResponseText = candidate.content.parts[0].text;
         } else {
-            const fr = candidate.finishReason;
-            let sf = candidate.safetyRatings ? ` SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`:"";
-            if (fr && fr !== "STOP") throw new Error(`Gemini API call (singleScorer) finished with reason: ${fr}.${sf}`);
-            throw new Error(`Gemini API call (singleScorer) returned candidate with no text content.${sf}`);
+             // If there's no text content, and finishReason wasn't MAX_TOKENS (which might still have partial text)
+             // or another specific non-STOP reason, then throw an error.
+            if (candidate.finishReason !== 'MAX_TOKENS') { // Only throw if not MAX_TOKENS, as MAX_TOKENS might still have usable (truncated) text
+                let sf = candidate.safetyRatings ? ` SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`:"";
+                throw new Error(`Gemini API call (singleScorer) returned candidate with no text content. Finish Reason: ${candidate.finishReason || 'Unknown'}.${sf}`);
+            } else {
+                // If it's MAX_TOKENS and no text, it's a problem.
+                rawResponseText = ""; // Ensure rawResponseText is an empty string to avoid parse errors on undefined
+                console.error("singleScorer: MAX_TOKENS finish reason but no text content was returned.");
+            }
         }
 
     } catch (error) {
@@ -91,6 +108,19 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
     if (process.env.DEBUG_RAW_PROMPT === "1" || process.env.DEBUG_RAW_GEMINI === "1") {
         console.log("singleScorer: DBG-RAW-GEMINI:\n", rawResponseText);
     }
+
+    // Handle cases where rawResponseText might be empty due to MAX_TOKENS with no actual text part
+    if (!rawResponseText && rawResponseText !== "") { // Check for null or undefined, allow empty string
+        console.error("singleScorer: No raw response text from Gemini to parse. This might occur after a MAX_TOKENS error with no content.");
+        throw new Error("singleScorer: No content from Gemini to parse, potentially due to MAX_TOKENS with no text output.");
+    }
+    if (rawResponseText === "" && candidate.finishReason === 'MAX_TOKENS') {
+        console.warn("singleScorer: Gemini response was empty due to MAX_TOKENS. Returning null to indicate no parsable score.");
+        // Depending on how you want to handle this, you could throw an error or return a specific object/null
+        // For now, let's throw an error to make it clear in the logs that scoring failed due to MAX_TOKENS with no content.
+        throw new Error("singleScorer: Gemini response was empty due to MAX_TOKENS. Cannot parse score.");
+    }
+
 
     try {
         const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
