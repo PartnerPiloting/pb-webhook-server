@@ -1,4 +1,4 @@
-// singleScorer.js - DEBUG: Temporarily increased maxOutputTokens to 20k
+// singleScorer.js - TEMPORARY version to count system prompt tokens
 
 require("dotenv").config();
 
@@ -15,14 +15,27 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
         throw new Error("Gemini client/model dependencies not available for single scoring.");
     }
 
+    // 1. Get the system instruction text
     const systemInstructionText = await buildPrompt();
+
+    // 2. ***** TEMPORARY: Count and log tokens for systemInstructionText *****
+    try {
+        const modelForCounting = vertexAIClient.getGenerativeModel({ model: geminiModelId });
+        const countTokensResponse = await modelForCounting.countTokens(systemInstructionText);
+        console.log("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        console.log("<<<<< singleScorer: System Prompt Token Count (from buildPrompt()):", countTokensResponse.totalTokens, ">>>>>");
+        console.log("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+    } catch (countError) {
+        console.error("<<<<< singleScorer: Error counting system prompt tokens:", countError.message, ">>>>>");
+    }
+    // ***** END TEMPORARY TOKEN COUNTING *****
+
     const userLeadData = slimLead(fullLead);
     const userPromptContent = `Score the following single lead based on the criteria and JSON schema provided in the system instructions. The lead is: ${JSON.stringify(userLeadData, null, 2)}`;
     
-    // ***** DEBUG MODIFICATION: Temporarily increased maxOutputForSingleLead *****
-    const maxOutputForSingleLead = 20000; // Increased for debugging this specific MAX_TOKENS issue
+    const maxOutputForSingleLead = 4096; // Using the production-appropriate value
 
-    console.log(`singleScorer: DEBUG MODE - Calling Gemini for single lead. Model ID: ${geminiModelId}. Max output tokens: ${maxOutputForSingleLead}`);
+    console.log(`singleScorer: Calling Gemini for single lead. Model ID: ${geminiModelId}. Max output tokens: ${maxOutputForSingleLead}`);
 
     let rawResponseText = ""; 
     let usageMetadata = {};
@@ -32,7 +45,7 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
     try {
         const modelInstanceForRequest = vertexAIClient.getGenerativeModel({
             model: geminiModelId,
-            systemInstruction: { parts: [{ text: systemInstructionText }] },
+            systemInstruction: { parts: [{ text: systemInstructionText }] }, // Use the same systemInstructionText
             safetySettings: [
                 { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
                 { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -41,7 +54,7 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
             ],
             generationConfig: {
                 temperature: 0,
-                responseMimeType: "application/json", // Still requesting JSON
+                responseMimeType: "application/json",
                 maxOutputTokens: maxOutputForSingleLead 
             }
         });
@@ -102,14 +115,11 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
         usageMetadata.totalTokenCount || "?"
     );
 
-    // Ensure DEBUG_RAW_GEMINI is enabled in your Render environment variables to see this!
     if (process.env.DEBUG_RAW_GEMINI === "1") {
         console.log("singleScorer: DBG-RAW-GEMINI (Full Response Text):\n", rawResponseText);
     } else if (modelFinishReason === 'MAX_TOKENS') {
-        // If not in full debug mode, but we hit MAX_TOKENS, let's log a snippet to help diagnose
         console.log(`singleScorer: DBG-RAW-GEMINI (MAX_TOKENS - Snippet):\n${rawResponseText.substring(0, 1000)}...`);
     }
-
 
     if (rawResponseText.trim() === "") {
         const errorMessage = `singleScorer: Gemini response text is empty. Finish Reason: ${modelFinishReason || 'Unknown'}. Cannot parse score.`;
