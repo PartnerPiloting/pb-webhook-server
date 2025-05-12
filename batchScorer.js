@@ -1,4 +1,4 @@
-// batchScorer.js - DEBUG: Log profile object before isMissingCritical check
+// batchScorer.js - DEBUG: Log profile object, High Output Limit, Increased Timeout, filterByFormula
 
 require("dotenv").config(); 
 
@@ -19,9 +19,10 @@ const { alertAdmin, isMissingCritical } = require('./utils/appHelpers.js');
 /* ---------- ENV CONFIGURATION for Batch Scorer Operations ----------- */
 const DEFAULT_MODEL_ID_FALLBACK = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06";
 const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "55", 10)); 
-const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "240000", 10));
+// ***** INCREASED TIMEOUT FOR DEBUGGING LARGER BATCHES *****
+const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "900000", 10)); // 15 minutes
 
-console.log("▶︎ batchScorer module loaded (DEBUG Profile for isMissingCritical). Ready to receive dependencies.");
+console.log(`▶︎ batchScorer module loaded (DEBUG Profile, High Output, Increased Timeout, filterByFormula). CHUNK_SIZE: ${CHUNK_SIZE}, TIMEOUT: ${GEMINI_TIMEOUT_MS}ms. Ready for dependencies.`);
 
 /* ---------- LEAD PROCESSING QUEUE (Internal to batchScorer) ------------- */
 const queue = [];
@@ -75,7 +76,6 @@ async function fetchLeads(limit) {
 =================================================================== */
 async function scoreChunk(records) {
     if (!BATCH_SCORER_VERTEX_AI_CLIENT || !BATCH_SCORER_GEMINI_MODEL_ID) {
-        // ... (error handling for missing Gemini dependencies) ...
         const errorMsg = "batchScorer.scoreChunk: Aborting. Gemini AI Client or Model ID not initialized/provided.";
         console.error(errorMsg);
         await alertAdmin("Aborted Chunk (batchScorer): Gemini Client/ModelID Not Provided", errorMsg);
@@ -88,48 +88,55 @@ async function scoreChunk(records) {
 
     const scorable = [];
     const airtableUpdatesForSkipped = [];
-    let debugProfileLogCount = 0; // To limit how many profiles we log
+    let debugProfileLogCount = 0; 
 
+    console.log(`batchScorer.scoreChunk: Starting pre-flight checks for ${records.length} records.`);
     for (const rec of records) {
         const profileJsonString = rec.get("Profile Full JSON") || "{}";
         let profile;
         try {
             profile = JSON.parse(profileJsonString);
         } catch (e) {
-            console.error(`batchScorer.scoreChunk: Failed to parse "Profile Full JSON" for record ${rec.id}. JSON string: ${profileJsonString.substring(0,200)}... Error: ${e.message}`);
-            profile = {}; // Use empty profile to avoid further crashes, it will be skipped or flagged
+            console.error(`batchScorer.scoreChunk: Failed to parse "Profile Full JSON" for record ${rec.id}. JSON string (first 200 chars): ${profileJsonString.substring(0,200)}... Error: ${e.message}`);
+            profile = {}; 
         }
         
         const aboutText = (profile.about || profile.summary || profile.linkedinDescription || "").trim();
         
-        // ***** ADDED DEBUG LOGGING for isMissingCritical *****
-        if (debugProfileLogCount < 3) { // Log details for the first 3 profiles being checked
+        // ***** DEBUG LOGGING for isMissingCritical *****
+        if (debugProfileLogCount < 5) { // Log details for the first 5 profiles being checked in the chunk
             console.log(`batchScorer.scoreChunk: Debugging profile for rec.id ${rec.id}:`);
+            console.log(`  - Profile URL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}`);
             console.log(`  - Has 'about' or 'summary' or 'linkedinDescription'? Length: ${aboutText.length}`);
-            console.log(`  - Has 'headline'? : ${profile.headline ? 'Yes' : 'No'} (Value: ${profile.headline})`);
-            console.log(`  - Has 'experience' array? : ${Array.isArray(profile.experience) && profile.experience.length > 0 ? 'Yes, length ' + profile.experience.length : 'No'}`);
+            console.log(`  - Has 'headline'? : ${profile.headline ? 'Yes' : 'No'} (Value: ${profile.headline ? `"${profile.headline.substring(0,50)}..."` : 'N/A'})`);
+            console.log(`  - Has 'experience' array? : ${Array.isArray(profile.experience) && profile.experience.length > 0 ? `Yes, length ${profile.experience.length}` : 'No'}`);
             let orgFallbackFound = false;
             if (!(Array.isArray(profile.experience) && profile.experience.length > 0)) {
-                for (let i = 1; i <= 5; i++) {
+                for (let i = 1; i <= 5; i++) { // Check first 5 org fallbacks
                     if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) {
                         orgFallbackFound = true;
-                        console.log(`  - Found job history via organization_${i} or title_${i}`);
+                        console.log(`  - Found job history via organization_${i} ("${profile[`organization_${i}`]}") or title_${i} ("${profile[`organization_title_${i}`]}")`);
                         break;
                     }
                 }
-                if (!orgFallbackFound) console.log(`  - No job history found via organization_X fallback.`);
+                if (!orgFallbackFound) console.log(`  - No job history found via organization_X fallback (checked 1-5).`);
             }
             const isMissing = isMissingCritical(profile);
             console.log(`  - isMissingCritical() will return: ${isMissing}`);
-            if (isMissing) debugProfileLogCount++; // Only increment if it's one of the ones failing the check
+            if (isMissing) {
+                debugProfileLogCount++; 
+            } else {
+                // If it's not missing critical data, we still want to log a few non-failing ones for comparison
+                if (debugProfileLogCount < 5) debugProfileLogCount++; 
+            }
         }
         // ***** END DEBUG LOGGING *****
 
         if (isMissingCritical(profile)) { 
             console.log(`batchScorer.scoreChunk: Lead ${rec.id} [${profile.linkedinProfileUrl || profile.profile_url || "unknown"}] missing critical data. Alerting admin.`);
             await alertAdmin("Incomplete lead data for batch scoring", `Rec ID: ${rec.id}\nURL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}`); 
-            // Decide if we should skip sending to Gemini or just alert
-            // For now, original logic: it just alerts and continues to the 'aboutText.length < 40' check
+            // For now, we still let it go through to the 'aboutText.length < 40' check as per original logic.
+            // We can add a skip here later if needed.
         }
 
         if (aboutText.length < 40) {
@@ -142,11 +149,6 @@ async function scoreChunk(records) {
         }
         scorable.push({ id: rec.id, rec, profile });
     }
-
-    // ... (rest of the scoreChunk function, including Airtable updates for skipped, Gemini call, parsing, and final Airtable updates remains the same as your last working version with the 60k token limit) ...
-    // For brevity, I'll elide the rest of scoreChunk as it's unchanged from the "DEBUG - High Output Limit" version
-    // Make sure to use the full version of scoreChunk from that previous step.
-    // The key is the debug logging added above.
 
     if (airtableUpdatesForSkipped.length > 0 && BATCH_SCORER_AIRTABLE_BASE) {
         try {
@@ -171,7 +173,7 @@ async function scoreChunk(records) {
     const leadsDataForUserPrompt = JSON.stringify({ leads: slimmedLeadsForChunk });
     const generationPromptForGemini = `Score the following ${scorable.length} leads based on the criteria and JSON schema defined in the system instructions. The leads are: ${leadsDataForUserPrompt}`;
     
-    const maxOutputForRequest = 60000; // Keep high for debugging
+    const maxOutputForRequest = 60000; // DEBUG: High limit
 
     console.log(`batchScorer.scoreChunk: DEBUG MODE - Calling Gemini. Using Model ID: ${BATCH_SCORER_GEMINI_MODEL_ID}. Max output tokens for API: ${maxOutputForRequest}`);
 
@@ -201,7 +203,7 @@ async function scoreChunk(records) {
         };
         
         const callPromise = modelInstanceForRequest.generateContent(requestPayload);
-        const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS)); // Use existing timeout
+        const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS));
         
         const result = await Promise.race([callPromise, timer]);
 
