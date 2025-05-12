@@ -1,9 +1,10 @@
 // routes/apiAndJobRoutes.js
-// REMOVED: /pb-pull/connections route and its top-level fs/Phantombuster file logic.
-// REMOVED: fs, fetch, and getJsonUrl from top-level requires as they were only for the removed route.
+// REMOVED: The /api/test-score route handler. This endpoint is now solely handled by scoreApi.js
 
 const express = require('express');
 const router = express.Router();
+const fs = require('fs'); 
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
 // --- Dependencies ---
 const geminiConfig = require('../config/geminiClient.js'); 
@@ -11,24 +12,29 @@ const airtableBase = require('../config/airtableClient.js');
 
 const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;  
-const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
+const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null; // Retained as /debug-gemini-info uses it
 
-// upsertLead was only used by the removed /pb-pull/connections in this file
-// const { upsertLead } = require('../services/leadService.js'); 
-const { scoreLeadNow } = require('../singleScorer.js');
+const { upsertLead } = require('../services/leadService.js');
+const { scoreLeadNow } = require('../singleScorer.js');   // Expects { vertexAIClient, geminiModelId }
 const batchScorer = require('../batchScorer.js');         
 
 const { loadAttributes } = require('../attributeLoader.js'); 
 const { computeFinalScore } = require('../scoring.js');       
 const { buildAttributeBreakdown } = require('../breakdown.js'); 
 
-// getJsonUrl was only used by the removed /pb-pull/connections route.
-const { alertAdmin, isMissingCritical } = require('../utils/appHelpers.js'); 
+const { alertAdmin, getJsonUrl, isMissingCritical } = require('../utils/appHelpers.js');
 
-/*
-    BLOCK REMOVED: Phantombuster Logic for currentLastRunId and PB_LAST_RUN_ID_FILE
-    (As the /pb-pull/connections route that used this has been removed)
-*/
+// --- Phantombuster Logic --- (This remains as per your current file for /pb-pull/connections)
+const PB_LAST_RUN_ID_FILE = "pbLastRun.txt"; 
+let currentLastRunId = 0;
+try {
+    if (fs.existsSync(PB_LAST_RUN_ID_FILE)) {
+        currentLastRunId = parseInt(fs.readFileSync(PB_LAST_RUN_ID_FILE, "utf8"), 10) || 0;
+    }
+    console.log(`apiAndJobRoutes.js: Initial currentLastRunId for Phantombuster pull: ${currentLastRunId}`);
+} catch (fileErr) {
+    console.warn(`apiAndJobRoutes.js: Could not read ${PB_LAST_RUN_ID_FILE}, starting with currentLastRunId = 0:`, fileErr.message);
+}
 
 /* ------------------------------------------------------------------
     Route Definitions
@@ -167,77 +173,98 @@ router.get("/score-lead", async (req, res) => {
     }
 });
 
-// API Test Score
-router.post("/api/test-score", async (req, res) => {
-    console.log("apiAndJobRoutes.js: /api/test-score endpoint hit");
-    if (!vertexAIClient || !geminiModelId || !airtableBase ) { 
-        console.error("apiAndJobRoutes.js - /api/test-score: Cannot proceed, core dependencies (VertexAI Client, Model ID, or Airtable Base) not initialized for single scoring.");
+/*
+    BLOCK REMOVED: The /api/test-score route handler that was previously here.
+    This endpoint is now solely handled by scoreApi.js (mounted in index.js).
+*/
+
+// Phantombuster Pull Connections
+router.get("/pb-pull/connections", async (req, res) => {
+    console.log("apiAndJobRoutes.js: /pb-pull/connections endpoint hit");
+    if (!airtableBase) { 
+        console.error("apiAndJobRoutes.js - /pb-pull/connections: Cannot proceed, Airtable Base not initialized.");
         return res.status(503).json({ error: "Service temporarily unavailable due to configuration issues." });
     }
     try {
-        const leadProfileData = req.body || {};
-        console.log("apiAndJobRoutes.js: ▶︎ /api/test-score (Gemini) hit with lead data.");
-
-        if (typeof leadProfileData !== 'object' || leadProfileData === null || Object.keys(leadProfileData).length === 0) {
-            return res.status(400).json({ error: "Request body must be a valid lead profile object." });
+        const headers = { "X-Phantombuster-Key-1": process.env.PB_API_KEY };
+        if (!process.env.PB_API_KEY || !process.env.PB_AGENT_ID) {
+            throw new Error("Phantombuster API Key or Agent ID not configured.");
         }
+        const listURL = `https://api.phantombuster.com/api/v1/agent/${process.env.PB_AGENT_ID}/containers?limit=25`;
+        console.log(`apiAndJobRoutes.js: ▶︎ /pb-pull/connections: Fetching containers. Current recorded lastRunId: ${currentLastRunId}`);
+
+        const listResp = await fetch(listURL, { headers });
+        if (!listResp.ok) throw new Error(`Phantombuster API error (list containers): ${listResp.status} ${await listResp.text()}`);
+        const listJson = await listResp.json();
         
-        const geminiScoredOutput = await scoreLeadNow(leadProfileData, { vertexAIClient, geminiModelId });
+        const runs = (listJson.data || [])
+            .filter((r) => r.lastEndStatus === "success")
+            .sort((a, b) => Number(a.id) - Number(b.id));
 
-        if (!geminiScoredOutput) { throw new Error("scoreLeadNow (Gemini) did not return valid output for /api/test-score."); }
-        
-        let { 
-            positive_scores = {}, 
-            negative_scores = {}, 
-            attribute_reasoning = {},
-            contact_readiness = false, 
-            unscored_attributes = [], 
-            aiProfileAssessment = "N/A"
-        } = geminiScoredOutput;
+        let totalUpsertedInThisRun = 0;
+        let newLastRunIdForThisJob = currentLastRunId;
 
-        const { positives, negatives } = await loadAttributes();
-
-        let temp_positive_scores = {...positive_scores};
-        if (contact_readiness && positives?.I && (temp_positive_scores.I === undefined || temp_positive_scores.I === null)) {
-            temp_positive_scores.I = positives.I.maxPoints || 0; 
-            if (!attribute_reasoning.I && temp_positive_scores.I > 0) { 
-                attribute_reasoning.I = "Contact readiness indicated by AI, points awarded for attribute I.";
+        for (const run of runs) {
+            const phantombusterRunId = Number(run.id); 
+            if (phantombusterRunId <= currentLastRunId) continue;
+            console.log(`apiAndJobRoutes.js: Processing Phantombuster run ID: ${phantombusterRunId}`);
+            const resultResp = await fetch(`https://api.phantombuster.com/api/v2/containers/fetch-result-object?id=${run.id}`, { headers });
+            if (!resultResp.ok) { console.error(`PB API error (fetch result ${run.id}): ${resultResp.status} ${await resultResp.text()}`); continue; }
+            const resultObj = await resultResp.json();
+            const jsonUrl = getJsonUrl(resultObj); 
+            let conns;
+            if (jsonUrl) {
+                const connResp = await fetch(jsonUrl);
+                if (!connResp.ok) { console.error(`Error fetching JSON from URL for run ${run.id}: ${connResp.status}`); continue; }
+                conns = await connResp.json();
+            } else if (Array.isArray(resultObj.resultObject)) conns = resultObj.resultObject;
+            else if (Array.isArray(resultObj.data?.resultObject)) conns = resultObj.data.resultObject;
+            else { console.error(`No parsable results for PB run ${run.id}`); newLastRunIdForThisJob = Math.max(newLastRunIdForThisJob, phantombusterRunId); continue; }
+            if (!Array.isArray(conns)) { console.error(`Connections data for run ${run.id} not an array.`); newLastRunIdForThisJob = Math.max(newLastRunIdForThisJob, phantombusterRunId); continue; }
+            const testLimit = req.query.limit ? Number(req.query.limit) : null;
+            if (testLimit) conns = conns.slice(0, testLimit);
+            console.log(`apiAndJobRoutes.js: Processing ${conns.length} connections from PB run ${phantombusterRunId}.`);
+            for (const c of conns) {
+                try {
+                    const leadDataForUpsert = {
+                        ...c, raw: c, connectionDegree: "1st",
+                        linkedinProfileUrl: (c.profileUrl || c.linkedinProfileUrl || "").replace(/\/$/, ""),
+                        scoringStatus: "To Be Scored" 
+                    };
+                    await upsertLead(leadDataForUpsert); 
+                    totalUpsertedInThisRun++;
+                } catch (upsertErr) {
+                    console.error(`apiAndJobRoutes.js - Error upserting a lead in /pb-pull/connections (URL: ${c.profileUrl || 'N/A'}):`, upsertErr.message);
+                }
             }
+            newLastRunIdForThisJob = Math.max(newLastRunIdForThisJob, phantombusterRunId);
+            console.log(`apiAndJobRoutes.js: Finished processing PB run ${phantombusterRunId}. Updated lastRunId for this job to ${newLastRunIdForThisJob}.`);
+        }
+
+        if (newLastRunIdForThisJob > currentLastRunId) {
+            try {
+                fs.writeFileSync(PB_LAST_RUN_ID_FILE, String(newLastRunIdForThisJob));
+                console.log(`apiAndJobRoutes.js: Successfully wrote new lastRunId ${newLastRunIdForThisJob} to ${PB_LAST_RUN_ID_FILE}`);
+                currentLastRunId = newLastRunIdForThisJob; 
+            } catch (writeErr) {
+                console.error(`apiAndJobRoutes.js - Failed to write lastRunId ${newLastRunIdForThisJob} to file:`, writeErr.message);
+                await alertAdmin("Failed to write PB lastRunId", `File: ${PB_LAST_RUN_ID_FILE}, ID: ${newLastRunIdForThisJob}. Error: ${writeErr.message}`);
+             }
         }
         
-        const { percentage, rawScore: earned, denominator: max } = computeFinalScore(
-            temp_positive_scores, 
-            positives, 
-            negative_scores, negatives,
-            contact_readiness, unscored_attributes
-        );
-        const finalPct = Math.round(percentage * 100) / 100;
-
-        const breakdown = buildAttributeBreakdown(
-            temp_positive_scores, 
-            positives, 
-            negative_scores, negatives,
-            unscored_attributes, earned, max,
-            attribute_reasoning, 
-            false, 
-            null
-        );
-        
-        console.log(`apiAndJobRoutes.js: /api/test-score (Gemini) result - Final Pct: ${finalPct}`);
-        res.json({ finalPct, breakdown, assessment: aiProfileAssessment, rawGeminiOutput: geminiScoredOutput });
-
+        const finalMessage = `Upserted/updated ${totalUpsertedInThisRun} profiles from Phantombuster. Current lastRunId for this job is ${currentLastRunId}.`;
+        console.log(finalMessage);
+        if (!res.headersSent) {
+             res.json({ message: finalMessage, newProfiles: totalUpsertedInThisRun });
+        }
     } catch (err) {
-        console.error("apiAndJobRoutes.js - Error in /api/test-score (Gemini):", err.message, err.stack);
+        console.error("apiAndJobRoutes.js - Critical error in /pb-pull/connections:", err.message, err.stack);
+        await alertAdmin("Critical Error in /pb-pull/connections", `Error: ${err.message}`);
         if (!res.headersSent) {
             res.status(500).json({ error: err.message });
         }
     }
 });
-
-/*
-    BLOCK REMOVED: Phantombuster Pull Connections route handler (/pb-pull/connections)
-    As this functionality is now considered obsolete.
-*/
 
 // Debug Gemini Info Route
 router.get("/debug-gemini-info", (_req, res) => {
