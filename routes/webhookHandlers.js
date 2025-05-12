@@ -1,5 +1,5 @@
 // routes/webhookHandlers.js
-// This version has the /pb-webhook/scrapeLeads route and its specific dependencies removed.
+// REMOVED: /pb-webhook/scrapeLeads route and its specific dependencies.
 
 const express = require('express');
 const router = express.Router();
@@ -7,23 +7,21 @@ const router = express.Router();
 // --- Dependencies needed for the remaining /lh-webhook/upsertLeadOnly route ---
 const airtableBase = require('../config/airtableClient.js'); 
 const { upsertLead } = require('../services/leadService.js');
-const { alertAdmin } = require('../utils/appHelpers.js'); // Only alertAdmin is directly used by /lh-webhook/upsertLeadOnly
+const { alertAdmin } = require('../utils/appHelpers.js'); 
 
 /*
-    The following dependencies were for the now-removed /pb-webhook/scrapeLeads endpoint
-    and are no longer needed by THIS FILE:
+    Dependencies removed as they were only for the now-removed /pb-webhook/scrapeLeads endpoint:
     - globalGeminiModel, vertexAIClient, geminiModelId from '../config/geminiClient.js'
     - scoreLeadNow from '../singleScorer.js'
     - loadAttributes from '../attributeLoader.js'
     - computeFinalScore from '../scoring.js'
     - buildAttributeBreakdown from '../breakdown.js'
-    - isAustralian from '../utils/appHelpers.js' (alertAdmin is still used by the remaining route)
-    - MIN_SCORE, SAVE_FILTERED_ONLY (environment variables not directly used by /lh-webhook/upsertLeadOnly)
+    - isAustralian from '../utils/appHelpers.js'
+    - MIN_SCORE, SAVE_FILTERED_ONLY (environment variables)
 */
 
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly – Linked Helper Webhook
-    (This endpoint saves lead data without immediate AI scoring)
 ------------------------------------------------------------------*/
 router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
     if (!airtableBase) { 
@@ -52,7 +50,6 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     continue;
                 }
 
-                // Construct the lead object for upsertLead, ensuring 'raw' and 'scoringStatus' are set
                 const leadForUpsert = {
                     firstName: lh.firstName || lh.first_name || "", 
                     lastName: lh.lastName || lh.last_name || "",
