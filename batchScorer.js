@@ -1,10 +1,13 @@
 // batchScorer.js - Refactored to use centralized configs and helpers
+// UPDATED: Added require for HarmCategory/HarmBlockThreshold
 // UPDATED: fetchLeads now uses filterByFormula
 
 require("dotenv").config(); // For process.env access
 
+// ***** ADDED THIS LINE for safety settings *****
+const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+
 // --- Centralized Dependencies (will be passed into 'run' function) ---
-// We will store them in module-scoped variables once 'run' is called.
 let BATCH_SCORER_VERTEX_AI_CLIENT;
 let BATCH_SCORER_GEMINI_MODEL_ID;
 let BATCH_SCORER_AIRTABLE_BASE;
@@ -27,7 +30,7 @@ const DEFAULT_MODEL_ID_FALLBACK = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro
 const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "55", 10)); 
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "240000", 10));
 
-console.log("▶︎ batchScorer module loaded (Refactored Version with Token Logging, filterByFormula). Ready to receive dependencies.");
+console.log("▶︎ batchScorer module loaded (Refactored Version with HarmCategory fix, Token Logging, filterByFormula). Ready to receive dependencies.");
 
 /*
     BLOCKS REMOVED:
@@ -65,15 +68,13 @@ async function fetchLeads(limit) {
         throw new Error("batchScorer.fetchLeads: Airtable base not initialized/provided.");
     }
     const records = [];
-    // Ensure your Airtable field name for scoring status is exactly "Scoring Status"
-    // and the value indicating it needs scoring is exactly "To Be Scored".
     const filterFormula = `{Scoring Status} = "To Be Scored"`; 
     console.log(`batchScorer.fetchLeads: Fetching up to ${limit} leads using formula: ${filterFormula}`);
     
     await BATCH_SCORER_AIRTABLE_BASE("Leads") 
         .select({ 
             maxRecords: limit, 
-            filterByFormula: filterFormula // ***** MODIFIED TO USE filterByFormula *****
+            filterByFormula: filterFormula 
         }) 
         .eachPage((pageRecords, next) => {
             records.push(...pageRecords);
@@ -165,7 +166,7 @@ async function scoreChunk(records) {
         const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
             model: BATCH_SCORER_GEMINI_MODEL_ID, 
             systemInstruction: { parts: [{ text: systemPromptInstructions }] },
-            safetySettings: [
+            safetySettings: [ // These require HarmCategory and HarmBlockThreshold
                 { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
                 { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
                 { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
