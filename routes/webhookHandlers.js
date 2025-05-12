@@ -1,23 +1,24 @@
-// routes/webhookHandlers.js - REMOVED /pb-webhook/scrapeLeads
+// routes/webhookHandlers.js
+// This version has the /pb-webhook/scrapeLeads route and its specific dependencies removed.
 
 const express = require('express');
 const router = express.Router();
 
-// --- Dependencies needed for /lh-webhook/upsertLeadOnly ---
-const airtableBase = require('../config/airtableClient.js'); // For upsertLead via leadService
+// --- Dependencies needed for the remaining /lh-webhook/upsertLeadOnly route ---
+const airtableBase = require('../config/airtableClient.js'); 
 const { upsertLead } = require('../services/leadService.js');
-const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
+const { alertAdmin } = require('../utils/appHelpers.js'); // Only alertAdmin is directly used by /lh-webhook/upsertLeadOnly
 
 /*
     The following dependencies were for the now-removed /pb-webhook/scrapeLeads endpoint
-    and are no longer needed by this file:
+    and are no longer needed by THIS FILE:
     - globalGeminiModel, vertexAIClient, geminiModelId from '../config/geminiClient.js'
     - scoreLeadNow from '../singleScorer.js'
     - loadAttributes from '../attributeLoader.js'
     - computeFinalScore from '../scoring.js'
     - buildAttributeBreakdown from '../breakdown.js'
-    - isAustralian from '../utils/appHelpers.js' (alertAdmin is still used)
-    - MIN_SCORE, SAVE_FILTERED_ONLY (environment variables)
+    - isAustralian from '../utils/appHelpers.js' (alertAdmin is still used by the remaining route)
+    - MIN_SCORE, SAVE_FILTERED_ONLY (environment variables not directly used by /lh-webhook/upsertLeadOnly)
 */
 
 /* ------------------------------------------------------------------
@@ -70,8 +71,8 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     connectionDegree: lh.connectionDegree || ((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1 ? "1st" : (lh.degree ? String(lh.degree) : "")),
                     connectionSince: lh.connectionDate || lh.connected_at_iso || lh.connected_at || lh.invited_date_iso || null,
                     refreshedAt: lh.lastRefreshed || lh.profileLastRefreshedDate || new Date().toISOString(),
-                    raw: lh, // Pass the full original LH object as 'raw'
-                    scoringStatus: "To Be Scored", // Explicitly set for this webhook's purpose
+                    raw: lh, 
+                    scoringStatus: "To Be Scored", 
                     linkedinConnectionStatus: lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
                 };
                 
