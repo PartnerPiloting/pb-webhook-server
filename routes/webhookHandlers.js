@@ -1,6 +1,7 @@
 // routes/webhookHandlers.js
 // This version includes the updated URL identifier logic for /lh-webhook/upsertLeadOnly
-// and has the /pb-webhook/scrapeLeads route removed.
+// and the corrected regex for trailing slash removal.
+// It has the /pb-webhook/scrapeLeads route removed.
 
 const express = require('express');
 const router = express.Router();
@@ -51,7 +52,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 // Updated rawUrl derivation logic
                 const rawUrl = lh.profileUrl || // Check 1: camelCase profileUrl
                                lh.linkedinProfileUrl || // Check 2: camelCase linkedinProfileUrl
-                               lh.profile_url || // Check 3: snake_case profile_url <<< ADDED THIS
+                               lh.profile_url || // Check 3: snake_case profile_url
                                (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) || // Check 4: publicId
                                (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null); // Check 5: memberId
 
@@ -71,7 +72,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     locationName: lh.locationName || lh.location_name || lh.location || "",
                     phone: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
                     email: lh.email || lh.workEmail || "",
-                    linkedinProfileUrl: rawUrl.replace(/\\/$/, ""), // Use the derived rawUrl
+                    linkedinProfileUrl: rawUrl.replace(/\/$/, ""), // CORRECTED REGEX: Use the derived rawUrl, remove trailing FORWARD slash
                     linkedinJobTitle: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     linkedinCompanyName: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
                     linkedinDescription: lh.summary || lh.bio || "", // 'about' section
