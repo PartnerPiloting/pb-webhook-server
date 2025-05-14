@@ -1,11 +1,10 @@
 // routes/apiAndJobRoutes.js
+// ADDED: New /api/initiate-pb-message endpoint
 // REMOVED: /pb-pull/connections route and its top-level fs/Phantombuster file logic.
 
 const express = require('express');
 const router = express.Router();
-// No longer need: const fs = require('fs'); 
-// fetch is not used by any remaining routes in this file.
-// const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args)); 
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args)); // Needed for the new endpoint
 
 // --- Dependencies ---
 const geminiConfig = require('../config/geminiClient.js'); 
@@ -13,24 +12,20 @@ const airtableBase = require('../config/airtableClient.js');
 
 const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;  
-const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null; // Retained as /debug-gemini-info uses it
+const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
 
-// upsertLead and getJsonUrl were only used by the removed /pb-pull/connections in this file.
-// const { upsertLead } = require('../services/leadService.js'); 
 const { scoreLeadNow } = require('../singleScorer.js');   // Expects { vertexAIClient, geminiModelId }
-const batchScorer = require('../batchScorer.js');         
+const batchScorer = require('../batchScorer.js');           
 
 const { loadAttributes } = require('../attributeLoader.js'); 
 const { computeFinalScore } = require('../scoring.js');       
 const { buildAttributeBreakdown } = require('../breakdown.js'); 
 
-// getJsonUrl was only used by the removed /pb-pull/connections route.
-const { alertAdmin, isMissingCritical /*, getJsonUrl */ } = require('../utils/appHelpers.js'); 
+const { alertAdmin, isMissingCritical } = require('../utils/appHelpers.js'); 
 
-/*
-    BLOCK REMOVED: Phantombuster Logic for currentLastRunId and PB_LAST_RUN_ID_FILE
-    (As the /pb-pull/connections route that used this has been removed)
-*/
+// The URL for your /enqueue endpoint (on the same server)
+const ENQUEUE_URL = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + (process.env.PORT || 3000)}/enqueue`;
+
 
 /* ------------------------------------------------------------------
     Route Definitions
@@ -42,8 +37,119 @@ router.get("/health", (_req, res) => {
     res.send("ok from apiAndJobRoutes");
 });
 
+// New Endpoint to Initiate Phantombuster Message Sending
+router.get("/api/initiate-pb-message", async (req, res) => {
+    const { recordId } = req.query;
+    console.log(`apiAndJobRoutes.js: /api/initiate-pb-message hit for recordId: ${recordId}`);
+
+    if (!recordId) {
+        return res.status(400).json({ success: false, error: "recordId query parameter is required" });
+    }
+
+    if (!airtableBase) {
+        console.error("apiAndJobRoutes.js - /api/initiate-pb-message: Airtable Base not initialized.");
+        return res.status(503).json({ success: false, error: "Service temporarily unavailable (Airtable config)." });
+    }
+
+    try {
+        // 1. Fetch Phantombuster Credentials from Airtable "Credentials" table
+        console.log(`apiAndJobRoutes.js: Fetching PB credentials from Airtable "Credentials" table.`);
+        const credsRecords = await airtableBase("Credentials").select({ maxRecords: 1 }).firstPage();
+        if (!credsRecords || credsRecords.length === 0) {
+            throw new Error("No records found in Credentials table.");
+        }
+        const creds = credsRecords[0];
+
+        const agentId = creds.get("PB Message Sender ID");
+        const pbKey = creds.get("Phantom API Key");
+        const sessionCookie = creds.get("LinkedIn Cookie");
+        const userAgent = creds.get("User-Agent"); // Using the hyphenated version as confirmed
+
+        if (!agentId || !pbKey || !sessionCookie || !userAgent) {
+            let missing = [];
+            if (!agentId) missing.push("PB Message Sender ID");
+            if (!pbKey) missing.push("Phantom API Key");
+            if (!sessionCookie) missing.push("LinkedIn Cookie");
+            if (!userAgent) missing.push("User-Agent");
+            console.error(`apiAndJobRoutes.js: Missing one or more Phantombuster credentials from Airtable: ${missing.join(', ')}`);
+            throw new Error(`Missing Phantombuster credentials in Airtable: ${missing.join(', ')}`);
+        }
+        console.log(`apiAndJobRoutes.js: Successfully fetched PB credentials. Agent ID: ${agentId}`);
+
+        // 2. Fetch Lead Details from Airtable "Leads" table
+        console.log(`apiAndJobRoutes.js: Fetching lead details for recordId: ${recordId}`);
+        const leadRecord = await airtableBase("Leads").find(recordId);
+        if (!leadRecord) {
+            throw new Error(`Lead record with ID ${recordId} not found.`);
+        }
+
+        const profileUrl = leadRecord.get("LinkedIn Profile URL");
+        const message = leadRecord.get("Message To Be Sent");
+
+        if (!profileUrl) {
+            throw new Error(`Missing 'LinkedIn Profile URL' for lead ${recordId}.`);
+        }
+        if (!message) {
+            throw new Error(`Missing 'Message To Be Sent' for lead ${recordId}.`);
+        }
+        console.log(`apiAndJobRoutes.js: Successfully fetched lead details. Profile URL: ${profileUrl}`);
+
+        // 3. Construct the job payload for /enqueue
+        const jobPayload = {
+            recordId: recordId, // The lead's recordId for status updates
+            agentId: agentId,
+            pbKey: pbKey,
+            sessionCookie: sessionCookie,
+            userAgent: userAgent,
+            profileUrl: profileUrl,
+            message: message
+        };
+        console.log("apiAndJobRoutes.js: Constructed job payload for /enqueue:", JSON.stringify(jobPayload, null, 2).substring(0, 500) + "..."); // Log part of it
+
+        // 4. Make an HTTP POST request to the server's own /enqueue endpoint
+        console.log(`apiAndJobRoutes.js: Sending job to /enqueue endpoint: ${ENQUEUE_URL}`);
+        const enqueueResponse = await fetch(ENQUEUE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(jobPayload)
+        });
+
+        const enqueueResponseData = await enqueueResponse.json();
+
+        if (!enqueueResponse.ok || !enqueueResponseData.queued) {
+            console.error("apiAndJobRoutes.js: Call to /enqueue failed or job not queued.", enqueueResponseData);
+            throw new Error(`Failed to enqueue job: ${enqueueResponseData.error || `Status ${enqueueResponse.status}`}`);
+        }
+
+        console.log(`apiAndJobRoutes.js: Successfully enqueued job for recordId ${recordId}. Response from /enqueue:`, enqueueResponseData);
+        
+        // 5. Optionally, update the lead's status in Airtable here to "Queuing Initiated" or similar
+        //    This is similar to what your Airtable Automation script does.
+        try {
+            await airtableBase("Leads").update(recordId, {
+                "Message Status": "Queuing Initiated by Server" // Or your preferred status
+            });
+            console.log(`apiAndJobRoutes.js: Updated lead ${recordId} status to 'Queuing Initiated by Server'.`);
+        } catch (airtableUpdateError) {
+            console.warn(`apiAndJobRoutes.js: Could not update lead ${recordId} status after enqueue:`, airtableUpdateError.message);
+            // Non-fatal for the main operation, but good to log.
+        }
+
+        res.json({ success: true, message: `Message for lead ${recordId} successfully initiated for queuing.`, enqueueResponse: enqueueResponseData });
+
+    } catch (error) {
+        console.error(`apiAndJobRoutes.js - Error in /api/initiate-pb-message for recordId ${recordId}:`, error.message, error.stack);
+        await alertAdmin("Error in /api/initiate-pb-message", `Record ID: ${recordId}\nError: ${error.message}`);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+});
+
+
 // Manual Batch Score Trigger
 router.get("/run-batch-score", async (req, res) => {
+    // ... (this route remains the same as you provided)
     const limit = Number(req.query.limit) || 500; 
     console.log(`apiAndJobRoutes.js: ▶︎ /run-batch-score (Gemini) hit – limit ${limit}`);
     
@@ -70,6 +176,7 @@ router.get("/run-batch-score", async (req, res) => {
 
 // One-off Lead Scorer
 router.get("/score-lead", async (req, res) => {
+    // ... (this route remains the same as you provided)
     console.log("apiAndJobRoutes.js: /score-lead endpoint hit");
     if (!vertexAIClient || !geminiModelId || !airtableBase) {
         console.error("apiAndJobRoutes.js - /score-lead: Cannot proceed, core dependencies (VertexAI Client, Model ID, or Airtable Base) not initialized for single scoring.");
@@ -169,18 +276,9 @@ router.get("/score-lead", async (req, res) => {
     }
 });
 
-/*
-    BLOCK REMOVED: The /api/test-score route handler that was previously here.
-    This endpoint is now solely handled by scoreApi.js (mounted in index.js).
-*/
-
-/*
-    BLOCK REMOVED: Phantombuster Pull Connections route handler (/pb-pull/connections)
-    As this functionality is now considered obsolete.
-*/
-
 // Debug Gemini Info Route
 router.get("/debug-gemini-info", (_req, res) => {
+    // ... (this route remains the same as you provided)
     console.log("apiAndJobRoutes.js: /debug-gemini-info endpoint hit");
     const modelIdForScoring = geminiConfig?.geminiModel?.model 
         ? geminiConfig.geminiModel.model 
@@ -191,7 +289,7 @@ router.get("/debug-gemini-info", (_req, res) => {
         model_id_for_scoring: modelIdForScoring, 
         batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID, 
         project_id: process.env.GCP_PROJECT_ID, 
-        location: process.env.GCP_LOCATION,     
+        location: process.env.GCP_LOCATION,       
         global_client_available_in_routes_file: !!vertexAIClient, 
         default_model_instance_available_in_routes_file: !!(geminiConfig && geminiConfig.geminiModel),
         gpt_chat_url_for_pointer_api: process.env.GPT_CHAT_URL || "Not Set"
