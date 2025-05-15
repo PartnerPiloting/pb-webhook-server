@@ -1,55 +1,48 @@
 // services/leadService.js
+// UPDATED to better handle Scoring Status on updates and Date Connected
 
-// Dependencies that upsertLead needs
-const base = require('../config/airtableClient.js'); // Gets the initialized Airtable base
+const base = require('../config/airtableClient.js'); 
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
-const { slimLead } = require('../promptBuilder.js'); // Assuming promptBuilder.js is in the project root
+const { slimLead } = require('../promptBuilder.js'); 
 
-/**
- * Upserts a lead into Airtable, creating or updating as necessary.
- * Also handles mapping various lead data fields to Airtable fields.
- */
 async function upsertLead(
-    lead, // The lead data object, expected to contain a 'raw' property with the original webhook data
+    lead, 
     finalScore = null,
     aiProfileAssessment = null,
-    attribute_reasoning_obj = null, // Note: parameter name from recent index.js
+    attribute_reasoning_obj = null, 
     attributeBreakdown = null,
     auFlag = null,
-    ai_excluded_val = null,       // Note: parameter name from recent index.js
-    exclude_details_val = null    // Note: parameter name from recent index.js
+    ai_excluded_val = null,       
+    exclude_details_val = null    
 ) {
-    // Critical check: Ensure the Airtable base is initialized and available
     if (!base) {
         console.error("CRITICAL ERROR in leadService/upsertLead: Airtable Base is not initialized. Cannot proceed.");
-        // Depending on how you want to handle this, you could throw an error
-        // to make the failure immediately obvious to the calling function.
         throw new Error("Airtable base is not available in leadService. Check config/airtableClient.js logs.");
     }
 
     const {
         firstName = "", lastName = "", headline: lhHeadline = "",
         linkedinHeadline = "", linkedinJobTitle = "", linkedinCompanyName = "", linkedinDescription = "",
-        linkedinProfileUrl = "", connectionDegree = "",
+        linkedinProfileUrl = "", connectionDegree = "", // This comes from leadForUpsert in webhookHandlers
         linkedinJobDateRange = "", linkedinJobDescription = "",
         linkedinPreviousJobDateRange = "", linkedinPreviousJobDescription = "",
         refreshedAt = "", profileUrl: fallbackProfileUrl = "",
         emailAddress = "", phoneNumber = "", locationName = "",
-        connectionSince, scoringStatus = undefined, // Default to undefined, set by caller or later logic if new
-        raw, // Expect 'raw' to be passed in, containing the original LH/PB object or the full profile for scoring
-        ...rest // any other fields from the webhook not explicitly mapped (used for Raw Profile Data)
+        connectionSince, // This also comes from leadForUpsert
+        scoringStatus, // This comes from leadForUpsert (could be "To Be Scored" or undefined)
+        raw, 
+        ...rest 
     } = lead;
+
+    const originalLeadData = raw || lead;
 
     let jobHistory = [
         linkedinJobDateRange ? `Current:\n${linkedinJobDateRange} — ${linkedinJobDescription}` : "",
         linkedinPreviousJobDateRange ? `Previous:\n${linkedinPreviousJobDateRange} — ${linkedinPreviousJobDescription}` : ""
     ].filter(Boolean).join("\n");
 
-    // 'raw' should ideally be the original, most complete lead object received from the webhook or source
-    const originalLeadData = raw || lead;
-
     if (!jobHistory && originalLeadData) {
-        const hist = getLastTwoOrgs(originalLeadData); // Uses helper from appHelpers.js
+        const hist = getLastTwoOrgs(originalLeadData); 
         if (hist) jobHistory = hist;
     }
 
@@ -66,17 +59,16 @@ async function upsertLead(
 
     if (!finalUrl) {
         console.warn("leadService/upsertLead: Skipping upsert. No finalUrl could be determined for lead:", firstName, lastName);
-        return; // Cannot proceed without a URL to use as a key
+        return; 
     }
-    const profileKey = canonicalUrl(finalUrl); // Uses helper from appHelpers.js
+    const profileKey = canonicalUrl(finalUrl); 
 
-    let currentConnectionStatus = "Candidate"; // Default
+    let currentConnectionStatus = "Candidate"; 
     if (connectionDegree === "1st") currentConnectionStatus = "Connected";
     else if (lead.linkedinConnectionStatus === "Pending") currentConnectionStatus = "Pending";
     else if (originalLeadData.connectionStatus) currentConnectionStatus = originalLeadData.connectionStatus;
 
 
-    // Use slimLead from promptBuilder.js for the 'Profile Full JSON' field content
     const profileForJsonField = slimLead(originalLeadData);
 
     const fields = {
@@ -89,22 +81,26 @@ async function upsertLead(
         "About": linkedinDescription || originalLeadData.summary || originalLeadData.bio || "",
         "Job History": jobHistory,
         "LinkedIn Connection Status": currentConnectionStatus,
-        "Status": "In Process", // Default status
-        "Scoring Status": scoringStatus, // This should be passed in, e.g., "To Be Scored" for new leads
+        "Status": "In Process", 
         "Location": locationName || originalLeadData.location || "",
-        "Date Connected": safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || null, // Uses helper
+        "Date Connected": safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === "Connected" && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
         "Email": emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
         "Phone": phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
         "Refreshed At": refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
         "Profile Full JSON": JSON.stringify(profileForJsonField),
-        "Raw Profile Data": JSON.stringify(originalLeadData) // Store the original/raw lead data
+        "Raw Profile Data": JSON.stringify(originalLeadData) 
     };
 
-    // Add AI scoring fields only if they are provided (not null)
+    // --- MODIFIED Scoring Status Handling ---
+    if (scoringStatus !== undefined) { // Only include if explicitly passed (e.g., "To Be Scored" for new leads)
+        fields["Scoring Status"] = scoringStatus;
+    }
+    // --- END MODIFIED Scoring Status Handling ---
+
     if (finalScore !== null) fields["AI Score"] = Math.round(finalScore * 100) / 100;
     if (aiProfileAssessment !== null) fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
     if (attributeBreakdown !== null) fields["AI Attribute Breakdown"] = attributeBreakdown;
-    if (auFlag !== null) fields["AU"] = !!auFlag; // Convert to boolean
+    if (auFlag !== null) fields["AU"] = !!auFlag; 
     if (ai_excluded_val !== null) fields["AI_Excluded"] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
     if (exclude_details_val !== null) fields["Exclude Details"] = exclude_details_val;
 
@@ -112,18 +108,27 @@ async function upsertLead(
 
     if (existing.length) {
         console.log(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
+        // For "Date Connected", if it's now "Connected" and didn't have a date before, or if a new date is provided
+        if (currentConnectionStatus === "Connected" && !existing[0].fields["Date Connected"] && !fields["Date Connected"]) {
+            fields["Date Connected"] = new Date().toISOString();
+        }
         await base("Leads").update(existing[0].id, fields);
-        return existing[0].id; // Return ID of updated record
+        return existing[0].id; 
     } else {
-        // Ensure new leads get a "To Be Scored" status if not otherwise specified
-        if (fields["Scoring Status"] === undefined) fields["Scoring Status"] = "To Be Scored";
-        // Default source if not provided by other logic
-        if (!fields["Source"]) { // Check if Source is already set
+        // If it's a new record, and scoringStatus wasn't explicitly set to "To Be Scored" (e.g. it was undefined)
+        // default it to "To Be Scored".
+        if (fields["Scoring Status"] === undefined) {
+            fields["Scoring Status"] = "To Be Scored";
+        }
+        if (currentConnectionStatus === "Connected" && !fields["Date Connected"]) {
+            fields["Date Connected"] = new Date().toISOString();
+        }
+        if (!fields["Source"]) { 
             fields["Source"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
         }
         console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
         const createdRecords = await base("Leads").create([{ fields }]);
-        return createdRecords[0].id; // Return ID of new record
+        return createdRecords[0].id; 
     }
 }
 
