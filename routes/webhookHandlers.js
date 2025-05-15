@@ -1,5 +1,5 @@
 // routes/webhookHandlers.js
-// This version includes the updated URL identifier logic for /lh-webhook/upsertLeadOnly
+// This version includes updated logic for handling 'scoringStatus' for /lh-webhook/upsertLeadOnly
 // and the corrected regex for trailing slash removal.
 // It has the /pb-webhook/scrapeLeads route removed.
 
@@ -11,21 +11,10 @@ const airtableBase = require('../config/airtableClient.js'); // For upsertLead v
 const { upsertLead } = require('../services/leadService.js');
 const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
 
-/*
-    The following dependencies were for the now-removed /pb-webhook/scrapeLeads endpoint
-    and are no longer needed by this file:
-    - globalGeminiModel, vertexAIClient, geminiModelId from '../config/geminiClient.js'
-    - scoreLeadNow from '../singleScorer.js'
-    - loadAttributes from '../attributeLoader.js'
-    - computeFinalScore from '../scoring.js'
-    - buildAttributeBreakdown from '../breakdown.js'
-    - isAustralian from '../utils/appHelpers.js' (alertAdmin is still used)
-    - MIN_SCORE, SAVE_FILTERED_ONLY (environment variables)
-*/
-
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly – Linked Helper Webhook
-    (This endpoint saves lead data without immediate AI scoring)
+    (This endpoint saves/updates lead data. It aims to preserve existing Scoring Status
+     for connection updates and sets "To Be Scored" for new profiles).
 ------------------------------------------------------------------*/
 router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
     if (!airtableBase) { 
@@ -36,7 +25,6 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         const rawLeadsFromWebhook = Array.isArray(req.body) ? req.body : (req.body ? [req.body] : []);
         console.log(`webhookHandlers.js: ▶︎ /lh-webhook/upsertLeadOnly received ${rawLeadsFromWebhook.length} leads.`);
         
-        // Log the raw payload to help debug (can be removed or conditionalized later)
         if (rawLeadsFromWebhook.length > 0) {
             console.log("/lh-webhook/upsertLeadOnly first raw lead payload:", JSON.stringify(rawLeadsFromWebhook[0], null, 2));
         }
@@ -49,22 +37,32 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
         for (const lh of rawLeadsFromWebhook) {
             try {
-                // Updated rawUrl derivation logic
-                const rawUrl = lh.profileUrl || // Check 1: camelCase profileUrl
-                               lh.linkedinProfileUrl || // Check 2: camelCase linkedinProfileUrl
-                               lh.profile_url || // Check 3: snake_case profile_url
-                               (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) || // Check 4: publicId
-                               (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null); // Check 5: memberId
+                const rawUrl = lh.profileUrl || 
+                               lh.linkedinProfileUrl || 
+                               lh.profile_url || 
+                               (lh.publicId ? `https://www.linkedin.com/in/${lh.publicId}/` : null) ||
+                               (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null);
 
                 if (!rawUrl) {
-                    // Log the specific lh object that's causing the skip for better debugging
                     console.warn("webhookHandlers.js: Skipping lead in /lh-webhook/upsertLeadOnly due to missing URL identifier. Lead data:", JSON.stringify(lh, null, 2));
                     errorCount++; 
                     continue;
                 }
 
-                // Construct the lead object for upsertLead, ensuring 'raw' and 'scoringStatus' are set
-                // This mapping logic should be reviewed to ensure it correctly maps all desired fields from 'lh'
+                // Determine if this is likely an update for an existing connection
+                const isLikelyExistingConnectionUpdate = (
+                    lh.connectionDegree === "1st" ||
+                    (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
+                    (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) ||
+                    lh.degree === 1 ||
+                    lh.connectionStatus === "Connected" ||
+                    lh.linkedinConnectionStatus === "Connected"
+                );
+
+                // If it's an existing connection update, we don't want to force "To Be Scored".
+                // Pass 'undefined' so leadService.upsertLead preserves existing or sets default for truly new.
+                const scoringStatusForThisLead = isLikelyExistingConnectionUpdate ? undefined : "To Be Scored";
+                
                 const leadForUpsert = {
                     firstName: lh.firstName || lh.first_name || "", 
                     lastName: lh.lastName || lh.last_name || "",
@@ -72,10 +70,10 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     locationName: lh.locationName || lh.location_name || lh.location || "",
                     phone: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
                     email: lh.email || lh.workEmail || "",
-                    linkedinProfileUrl: rawUrl.replace(/\/$/, ""), // CORRECTED REGEX: Use the derived rawUrl, remove trailing FORWARD slash
+                    linkedinProfileUrl: rawUrl.replace(/\/$/, ""), 
                     linkedinJobTitle: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     linkedinCompanyName: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
-                    linkedinDescription: lh.summary || lh.bio || "", // 'about' section
+                    linkedinDescription: lh.summary || lh.bio || "", 
                     linkedinJobDateRange: (lh.experience && lh.experience[0] ? (lh.experience[0].dateRange || lh.experience[0].dates) : "") || "",
                     linkedinJobDescription: (lh.experience && lh.experience[0] ? lh.experience[0].description : "") || "",
                     linkedinPreviousJobDateRange: (lh.experience && lh.experience[1] ? (lh.experience[1].dateRange || lh.experience[1].dates) : "") || "",
@@ -83,10 +81,9 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     connectionDegree: lh.connectionDegree || ((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1 ? "1st" : (lh.degree ? String(lh.degree) : "")),
                     connectionSince: lh.connectionDate || lh.connected_at_iso || lh.connected_at || lh.invited_date_iso || null,
                     refreshedAt: lh.lastRefreshed || lh.profileLastRefreshedDate || new Date().toISOString(),
-                    raw: lh, // Pass the full original LH object as 'raw'
-                    scoringStatus: "To Be Scored", // Explicitly set for this webhook's purpose
+                    raw: lh, 
+                    scoringStatus: scoringStatusForThisLead, // Use the conditional status
                     linkedinConnectionStatus: lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
-                    // Ensure all other fields expected by leadService.upsertLead are mapped or handled
                 };
                 
                 await upsertLead(leadForUpsert);
