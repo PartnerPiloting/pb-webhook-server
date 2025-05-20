@@ -131,11 +131,20 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
         });
     }
 
+    // Normalize the incoming profileUrl to remove a trailing slash, if present
+    let normalizedProfileUrl = profileUrl;
+    if (typeof normalizedProfileUrl === 'string' && normalizedProfileUrl.endsWith('/')) {
+        normalizedProfileUrl = normalizedProfileUrl.slice(0, -1);
+    }
+    console.log(`Normalized Profile URL for Airtable search: ${normalizedProfileUrl}`);
+
+
     try {
-        console.log(`Searching Airtable for Lead with URL: ${profileUrl}`);
+        console.log(`Searching Airtable for Lead with URL: ${normalizedProfileUrl}`); // Use normalized URL
         const records = await base(AIRTABLE_LEADS_TABLE_ID_OR_NAME).select({
             maxRecords: 1,
-            filterByFormula: `({${AIRTABLE_LINKEDIN_URL_FIELD}} = '${profileUrl}')`
+            // Use the normalized URL in the filter formula
+            filterByFormula: `({${AIRTABLE_LINKEDIN_URL_FIELD}} = '${normalizedProfileUrl}')` 
         }).firstPage();
 
         if (records && records.length > 0) {
@@ -145,23 +154,12 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
 
             const existingNotes = record.get(AIRTABLE_NOTES_FIELD) || "";
             const newNoteEntry = `📅 ${timestamp} – Sent: ${linkedinMessage}`;
-            const updatedNotes = `${newNoteEntry}\n\n---\n\n${existingNotes}`; // Prepend new note
+            // Prepend new note, ensuring a clean separation if existingNotes is empty
+            const updatedNotes = existingNotes 
+                ? `${newNoteEntry}\n\n---\n\n${existingNotes}` 
+                : newNoteEntry;
 
-            // **************************************************************************************
-            // TODO: CALL YOUR EXISTING AIRTABLE UPDATE FUNCTION/LOGIC HERE
-            // Instead of the direct update below, call your centralized update function.
-            // Example:
-            // await yourReusableUpdateFunction(recordId, { [AIRTABLE_NOTES_FIELD]: updatedNotes });
-            // or if it's part of a module:
-            // await updateLeadApi.updateLeadNotesFunction(recordId, { [AIRTABLE_NOTES_FIELD]: updatedNotes }, base);
-            //
-            // If you don't have a reusable function yet, you can use the direct update below
-            // as a temporary measure or as a basis for creating one.
-            // **************************************************************************************
-
-            // Fallback: Direct Airtable update (from previous version)
-            // You can use this if you don't have a reusable function from updateLeadApi.js yet.
-            // Ideally, move this logic into a reusable function in updateLeadApi.js or a similar utility module.
+            // Using the direct update logic as discussed
             await base(AIRTABLE_LEADS_TABLE_ID_OR_NAME).update([
                 {
                     "id": recordId,
@@ -170,22 +168,21 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
                     }
                 }
             ]);
-            console.log(`Successfully updated Notes for Record ID: ${recordId} (using direct update in webhook)`);
-
-
+            console.log(`Successfully updated Notes for Record ID: ${recordId}`);
+            
             const airtableRecordUrl = `https://airtable.com/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_LEADS_TABLE_ID_OR_NAME)}/${recordId}`;
 
             return res.status(200).json({
                 status: 'success',
-                message: `Airtable record updated for ${profileUrl}`,
+                message: `Airtable record updated for ${normalizedProfileUrl}`,
                 airtableRecordUrl: airtableRecordUrl,
                 recordId: recordId
             });
         } else {
-            console.warn(`No Lead found in Airtable with URL: ${profileUrl}`);
+            console.warn(`No Lead found in Airtable with URL: ${normalizedProfileUrl}`);
             return res.status(404).json({
                 status: 'error',
-                message: `No Lead found in Airtable with LinkedIn Profile URL: ${profileUrl}`
+                message: `No Lead found in Airtable with LinkedIn Profile URL: ${normalizedProfileUrl}`
             });
         }
     } catch (error) {
