@@ -42,7 +42,7 @@ if (!GPT_CHAT_URL) {
     1)  Express App Setup
 ------------------------------------------------------------------*/
 const app = express();
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb" })); // Ensures JSON payloads are parsed. Your existing limit is fine.
 
 /* ------------------------------------------------------------------
     2) Mount All Route Handlers and Sub-APIs
@@ -93,6 +93,43 @@ try {
 } catch (apiMountError) {
     console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
 }
+
+// >>>>> NEW WEBHOOK FOR TEXT BLAZE LINKEDIN DATA <<<<<
+// This endpoint will receive the LinkedIn message and profile URL from Text Blaze
+app.post('/textblaze-linkedin-webhook', (req, res) => {
+  console.log('Received data from Text Blaze /textblaze-linkedin-webhook:');
+  console.log('Request Body:', req.body); // Log the entire request body
+
+  // Extract the data Text Blaze will send
+  // Ensure these keys match exactly what your Text Blaze snippet sends in the JSON body
+  const { linkedinMessage, profileUrl, timestamp } = req.body;
+
+  // --- For now, just log the received data ---
+  // In the next step (Step 8 of your original workflow), you will add logic here to:
+  // 1. Identify the correct Airtable lead (using profileUrl or another identifier).
+  // 2. Update the Airtable lead's notes with the linkedinMessage and timestamp.
+  //    - You'll likely use the 'airtable' package (already in your dependencies via 'base').
+  //    - Remember to configure Airtable API key and Base ID securely using environment variables (which you already do).
+  console.log('---');
+  console.log('Received LinkedIn Message:', linkedinMessage);
+  console.log('Received Profile URL:', profileUrl);
+  console.log('Received Timestamp:', timestamp);
+  console.log('---');
+
+  // Acknowledge receipt of the data to Text Blaze
+  // This response helps confirm to Text Blaze that the data was received.
+  res.status(200).json({
+    status: 'success',
+    message: 'Data received successfully by /textblaze-linkedin-webhook',
+    receivedData: { // Optional: echo back the received data for easier debugging
+      linkedinMessage: linkedinMessage,
+      profileUrl: profileUrl,
+      timestamp: timestamp
+    }
+  });
+});
+// >>>>> END OF NEW WEBHOOK FOR TEXT BLAZE LINKEDIN DATA <<<<<
+
 
 /* ------------------------------------------------------------------
     3) Start server
