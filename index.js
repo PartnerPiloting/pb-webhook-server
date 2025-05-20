@@ -1,21 +1,20 @@
-console.log("<<<<< INDEX.JS - REFACTOR 8.4 - UPDATED QUEUEDISPATCHER MOUNT - TOP OF FILE >>>>>");
-/***************************************************************
- Main Server File - Orchestrator
-***************************************************************/
-require("dotenv").config(); 
+// index.js
+// Load environment variables from .env file
+require("dotenv").config();
 
 // --- CONFIGURATIONS ---
 const geminiConfig = require('./config/geminiClient.js');
 const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
-// const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null; 
-// const configuredGeminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
+const base = require('./config/airtableClient.js'); // Your Airtable base connection
 
-const base = require('./config/airtableClient.js'); 
+// --- Potentially import your update function ---
+// const { updateLeadRecordFunction } = require('./updateLeadApi'); // OR './your-airtable-utils.js'
+// ^^^ If updateLeadApi.js or another module exports a function to update records, import it here.
 
 // --- CORE NPM MODULES ---
 const express = require("express");
 
-console.log("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>");
+console.log("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>"); // Your existing log
 
 // --- INITIALIZATION CHECKS ---
 if (!globalGeminiModel) {
@@ -38,11 +37,21 @@ if (!GPT_CHAT_URL) {
     console.error("CRITICAL WARNING: Missing GPT_CHAT_URL environment variable. pointerApi may not function correctly.");
 }
 
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
+const AIRTABLE_LEADS_TABLE_ID_OR_NAME = "Leads"; // Your table name
+const AIRTABLE_LINKEDIN_URL_FIELD = "Linkedin Profile URL"; // Your field name for matching
+const AIRTABLE_NOTES_FIELD = "Notes"; // Your field name for notes
+
+if (!AIRTABLE_BASE_ID) {
+    console.error("CRITICAL WARNING: Missing AIRTABLE_BASE_ID environment variable. Airtable operations will fail for textblaze-linkedin-webhook.");
+}
+
+
 /* ------------------------------------------------------------------
     1)  Express App Setup
 ------------------------------------------------------------------*/
 const app = express();
-app.use(express.json({ limit: "10mb" })); // Ensures JSON payloads are parsed. Your existing limit is fine.
+app.use(express.json({ limit: "10mb" }));
 
 /* ------------------------------------------------------------------
     2) Mount All Route Handlers and Sub-APIs
@@ -56,16 +65,14 @@ try { require("./scoreApi")(app, base, globalGeminiModel); console.log("index.js
 
 const mountQueue = require("./queueDispatcher");
 if (mountQueue && typeof mountQueue === 'function') {
-    try { mountQueue(app, base); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message, e.stack); } // MODIFIED: Added 'base'
+    try { mountQueue(app, base); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message, e.stack); }
 } else {
     console.error("index.js: Failed to load queueDispatcher or it's not a function.");
 }
 
-// Mount our newly refactored route modules
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
-// Reinstating Custom GPT APIs
 console.log("index.js: Attempting to mount Custom GPT support APIs...");
 try {
     const mountPointerApi = require("./pointerApi.js");
@@ -94,42 +101,106 @@ try {
     console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
 }
 
-// >>>>> NEW WEBHOOK FOR TEXT BLAZE LINKEDIN DATA <<<<<
-// This endpoint will receive the LinkedIn message and profile URL from Text Blaze
-app.post('/textblaze-linkedin-webhook', (req, res) => {
-  console.log('Received data from Text Blaze /textblaze-linkedin-webhook:');
-  console.log('Request Body:', req.body); // Log the entire request body
+// --- WEBHOOK FOR TEXT BLAZE LINKEDIN DATA ---
+app.post('/textblaze-linkedin-webhook', async (req, res) => {
+    console.log('Received data from Text Blaze /textblaze-linkedin-webhook:');
+    console.log('Request Body:', req.body);
 
-  // Extract the data Text Blaze will send
-  // Ensure these keys match exactly what your Text Blaze snippet sends in the JSON body
-  const { linkedinMessage, profileUrl, timestamp } = req.body;
+    const { linkedinMessage, profileUrl, timestamp } = req.body;
 
-  // --- For now, just log the received data ---
-  // In the next step (Step 8 of your original workflow), you will add logic here to:
-  // 1. Identify the correct Airtable lead (using profileUrl or another identifier).
-  // 2. Update the Airtable lead's notes with the linkedinMessage and timestamp.
-  //    - You'll likely use the 'airtable' package (already in your dependencies via 'base').
-  //    - Remember to configure Airtable API key and Base ID securely using environment variables (which you already do).
-  console.log('---');
-  console.log('Received LinkedIn Message:', linkedinMessage);
-  console.log('Received Profile URL:', profileUrl);
-  console.log('Received Timestamp:', timestamp);
-  console.log('---');
-
-  // Acknowledge receipt of the data to Text Blaze
-  // This response helps confirm to Text Blaze that the data was received.
-  res.status(200).json({
-    status: 'success',
-    message: 'Data received successfully by /textblaze-linkedin-webhook',
-    receivedData: { // Optional: echo back the received data for easier debugging
-      linkedinMessage: linkedinMessage,
-      profileUrl: profileUrl,
-      timestamp: timestamp
+    if (!linkedinMessage || !profileUrl || !timestamp) {
+        console.error("Webhook Error: Missing linkedinMessage, profileUrl, or timestamp in request body.");
+        return res.status(400).json({
+            status: 'error',
+            message: 'Missing required data: linkedinMessage, profileUrl, or timestamp.'
+        });
     }
-  });
-});
-// >>>>> END OF NEW WEBHOOK FOR TEXT BLAZE LINKEDIN DATA <<<<<
+    
+    if (!base) {
+        console.error("Webhook Error: Airtable base not configured on server.");
+        return res.status(500).json({
+            status: 'error',
+            message: 'Airtable integration not available on server.'
+        });
+    }
+    if (!AIRTABLE_BASE_ID) {
+        console.error("Webhook Error: AIRTABLE_BASE_ID not configured on server.");
+        return res.status(500).json({
+            status: 'error',
+            message: 'Airtable Base ID not configured on server.'
+        });
+    }
 
+    try {
+        console.log(`Searching Airtable for Lead with URL: ${profileUrl}`);
+        const records = await base(AIRTABLE_LEADS_TABLE_ID_OR_NAME).select({
+            maxRecords: 1,
+            filterByFormula: `({${AIRTABLE_LINKEDIN_URL_FIELD}} = '${profileUrl}')`
+        }).firstPage();
+
+        if (records && records.length > 0) {
+            const record = records[0];
+            const recordId = record.id;
+            console.log(`Found Lead with Record ID: ${recordId}`);
+
+            const existingNotes = record.get(AIRTABLE_NOTES_FIELD) || "";
+            const newNoteEntry = `📅 ${timestamp} – Sent: ${linkedinMessage}`;
+            const updatedNotes = `${newNoteEntry}\n\n---\n\n${existingNotes}`; // Prepend new note
+
+            // **************************************************************************************
+            // TODO: CALL YOUR EXISTING AIRTABLE UPDATE FUNCTION/LOGIC HERE
+            // Instead of the direct update below, call your centralized update function.
+            // Example:
+            // await yourReusableUpdateFunction(recordId, { [AIRTABLE_NOTES_FIELD]: updatedNotes });
+            // or if it's part of a module:
+            // await updateLeadApi.updateLeadNotesFunction(recordId, { [AIRTABLE_NOTES_FIELD]: updatedNotes }, base);
+            //
+            // If you don't have a reusable function yet, you can use the direct update below
+            // as a temporary measure or as a basis for creating one.
+            // **************************************************************************************
+
+            // Fallback: Direct Airtable update (from previous version)
+            // You can use this if you don't have a reusable function from updateLeadApi.js yet.
+            // Ideally, move this logic into a reusable function in updateLeadApi.js or a similar utility module.
+            await base(AIRTABLE_LEADS_TABLE_ID_OR_NAME).update([
+                {
+                    "id": recordId,
+                    "fields": {
+                        [AIRTABLE_NOTES_FIELD]: updatedNotes
+                    }
+                }
+            ]);
+            console.log(`Successfully updated Notes for Record ID: ${recordId} (using direct update in webhook)`);
+
+
+            const airtableRecordUrl = `https://airtable.com/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_LEADS_TABLE_ID_OR_NAME)}/${recordId}`;
+
+            return res.status(200).json({
+                status: 'success',
+                message: `Airtable record updated for ${profileUrl}`,
+                airtableRecordUrl: airtableRecordUrl,
+                recordId: recordId
+            });
+        } else {
+            console.warn(`No Lead found in Airtable with URL: ${profileUrl}`);
+            return res.status(404).json({
+                status: 'error',
+                message: `No Lead found in Airtable with LinkedIn Profile URL: ${profileUrl}`
+            });
+        }
+    } catch (error) {
+        console.error("Error interacting with Airtable:", error);
+        let errorMessage = "Error updating Airtable.";
+        if (error.message) {
+            errorMessage += ` Details: ${error.message}`;
+        }
+        return res.status(500).json({
+            status: 'error',
+            message: errorMessage,
+            errorDetails: error.toString()
+        });
+    }
+});
 
 /* ------------------------------------------------------------------
     3) Start server
