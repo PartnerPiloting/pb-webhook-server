@@ -2,7 +2,7 @@
 // This version includes updated logic for handling 'scoringStatus' for /lh-webhook/upsertLeadOnly
 // and the corrected regex for trailing slash removal.
 // It has the /pb-webhook/scrapeLeads route removed.
-// MODIFIED: To add Sales Navigator URL processing.
+// MODIFIED: Corrected capitalization for "View In Sales Navigator".
 
 const express = require('express');
 const router = express.Router();
@@ -80,12 +80,11 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     locationName: lh.locationName || lh.location_name || lh.location || "",
                     phone: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
                     email: lh.email || lh.workEmail || "",
-                    linkedinProfileUrl: rawUrl.replace(/\/$/, ""), 
+                    linkedinProfileUrl: rawUrl ? rawUrl.replace(/\/$/, "") : null, 
                     
-                    // ***** NEW/MODIFIED FIELD FOR AIRTABLE *****
-                    // Replace "View in Sales Navigator" with your actual Airtable field name if different
-                    "View in Sales Navigator": salesNavigatorUrl, 
-                    // ***** END OF NEW/MODIFIED FIELD *****
+                    // ***** CORRECTED FIELD NAME CAPITALIZATION *****
+                    "View In Sales Navigator": salesNavigatorUrl, 
+                    // ***** END OF CORRECTION *****
 
                     linkedinJobTitle: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     linkedinCompanyName: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
