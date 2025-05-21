@@ -1,5 +1,6 @@
 // services/leadService.js
 // UPDATED to better handle Scoring Status on updates and Date Connected
+// MODIFIED: To include "View In Sales Navigator" field
 
 const base = require('../config/airtableClient.js'); 
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
@@ -12,8 +13,8 @@ async function upsertLead(
     attribute_reasoning_obj = null, 
     attributeBreakdown = null,
     auFlag = null,
-    ai_excluded_val = null,       
-    exclude_details_val = null    
+    ai_excluded_val = null,         
+    exclude_details_val = null   
 ) {
     if (!base) {
         console.error("CRITICAL ERROR in leadService/upsertLead: Airtable Base is not initialized. Cannot proceed.");
@@ -23,14 +24,15 @@ async function upsertLead(
     const {
         firstName = "", lastName = "", headline: lhHeadline = "",
         linkedinHeadline = "", linkedinJobTitle = "", linkedinCompanyName = "", linkedinDescription = "",
-        linkedinProfileUrl = "", connectionDegree = "", // This comes from leadForUpsert in webhookHandlers
+        linkedinProfileUrl = "", connectionDegree = "", 
         linkedinJobDateRange = "", linkedinJobDescription = "",
         linkedinPreviousJobDateRange = "", linkedinPreviousJobDescription = "",
         refreshedAt = "", profileUrl: fallbackProfileUrl = "",
         emailAddress = "", phoneNumber = "", locationName = "",
-        connectionSince, // This also comes from leadForUpsert
-        scoringStatus, // This comes from leadForUpsert (could be "To Be Scored" or undefined)
+        connectionSince, 
+        scoringStatus, 
         raw, 
+        "View In Sales Navigator": viewInSalesNavigatorUrl, // ***** ADDED DESTRUCTURING for the new field *****
         ...rest 
     } = lead;
 
@@ -88,7 +90,11 @@ async function upsertLead(
         "Phone": phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
         "Refreshed At": refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
         "Profile Full JSON": JSON.stringify(profileForJsonField),
-        "Raw Profile Data": JSON.stringify(originalLeadData) 
+        "Raw Profile Data": JSON.stringify(originalLeadData),
+
+        // ***** ADDED THE NEW FIELD HERE TO BE SAVED TO AIRTABLE *****
+        "View In Sales Navigator": viewInSalesNavigatorUrl || null 
+        // Ensure "View In Sales Navigator" exactly matches your Airtable field name
     };
 
     // --- MODIFIED Scoring Status Handling ---
