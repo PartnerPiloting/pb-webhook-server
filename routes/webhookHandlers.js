@@ -2,6 +2,7 @@
 // This version includes updated logic for handling 'scoringStatus' for /lh-webhook/upsertLeadOnly
 // and the corrected regex for trailing slash removal.
 // It has the /pb-webhook/scrapeLeads route removed.
+// MODIFIED: To add Sales Navigator URL processing.
 
 const express = require('express');
 const router = express.Router();
@@ -35,6 +36,8 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         let processedCount = 0; 
         let errorCount = 0;
 
+        const salesNavBaseUrl = "https://www.linkedin.com/sales/lead/"; // Define this once
+
         for (const lh of rawLeadsFromWebhook) {
             try {
                 const rawUrl = lh.profileUrl || 
@@ -49,7 +52,6 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     continue;
                 }
 
-                // Determine if this is likely an update for an existing connection
                 const isLikelyExistingConnectionUpdate = (
                     lh.connectionDegree === "1st" ||
                     (typeof lh.distance === "string" && lh.distance.endsWith("_1")) ||
@@ -59,10 +61,18 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     lh.linkedinConnectionStatus === "Connected"
                 );
 
-                // If it's an existing connection update, we don't want to force "To Be Scored".
-                // Pass 'undefined' so leadService.upsertLead preserves existing or sets default for truly new.
                 const scoringStatusForThisLead = isLikelyExistingConnectionUpdate ? undefined : "To Be Scored";
                 
+                // ***** START: Construct Sales Navigator URL *****
+                let salesNavigatorUrl = null;
+                if (lh.sn_hash_id && typeof lh.sn_hash_id === 'string' && lh.sn_hash_id.trim() !== '') {
+                    const coreSnHashId = lh.sn_hash_id.split(',')[0].trim(); // Get part before comma
+                    if (coreSnHashId) {
+                        salesNavigatorUrl = `${salesNavBaseUrl}${coreSnHashId}`;
+                    }
+                }
+                // ***** END: Construct Sales Navigator URL *****
+
                 const leadForUpsert = {
                     firstName: lh.firstName || lh.first_name || "", 
                     lastName: lh.lastName || lh.last_name || "",
@@ -71,6 +81,12 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     phone: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
                     email: lh.email || lh.workEmail || "",
                     linkedinProfileUrl: rawUrl.replace(/\/$/, ""), 
+                    
+                    // ***** NEW/MODIFIED FIELD FOR AIRTABLE *****
+                    // Replace "View in Sales Navigator" with your actual Airtable field name if different
+                    "View in Sales Navigator": salesNavigatorUrl, 
+                    // ***** END OF NEW/MODIFIED FIELD *****
+
                     linkedinJobTitle: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     linkedinCompanyName: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
                     linkedinDescription: lh.summary || lh.bio || "", 
@@ -82,7 +98,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     connectionSince: lh.connectionDate || lh.connected_at_iso || lh.connected_at || lh.invited_date_iso || null,
                     refreshedAt: lh.lastRefreshed || lh.profileLastRefreshedDate || new Date().toISOString(),
                     raw: lh, 
-                    scoringStatus: scoringStatusForThisLead, // Use the conditional status
+                    scoringStatus: scoringStatusForThisLead, 
                     linkedinConnectionStatus: lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
                 };
                 
