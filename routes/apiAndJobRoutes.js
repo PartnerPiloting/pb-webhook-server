@@ -156,8 +156,24 @@ router.post("/api/pb-webhook", async (req, res) => {
         }
         // Log received body for debug
         console.log("Received PB webhook:", JSON.stringify(req.body).substring(0, 1000));
-        // Process and upsert the posts (modify this function as needed for your schema)
-        const result = await syncPBPostsToAirtable(req.body);
+        // If the webhook payload has a 'resultObject' property, parse it as JSON (PB's default format)
+        let postsInput = req.body;
+        if (postsInput && typeof postsInput === "object" && Array.isArray(postsInput.resultObject)) {
+            postsInput = postsInput.resultObject;
+        } else if (postsInput && typeof postsInput === "object" && typeof postsInput.resultObject === "string") {
+            // Some PB agents send resultObject as a stringified array
+            try {
+                postsInput = JSON.parse(postsInput.resultObject);
+            } catch (err) {
+                console.error("Could not parse resultObject:", err);
+                return res.status(400).json({ error: "Invalid resultObject format" });
+            }
+        } else if (postsInput && !Array.isArray(postsInput)) {
+            // If it's a single post object, wrap in array
+            postsInput = [postsInput];
+        }
+        // Pass only the array of post(s) to syncPBPostsToAirtable
+        const result = await syncPBPostsToAirtable(postsInput);
         res.json({ ok: true, processed: result });
     } catch (err) {
         console.error("Error in /api/pb-webhook:", err);
