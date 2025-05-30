@@ -8,9 +8,35 @@ const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
 const AIRTABLE_POSTS_FIELD = "Posts Content";
 const AIRTABLE_DATE_ADDED_FIELD = "Time Posts Added";
 
-// Allow this function to process EITHER a supplied array (from webhook), OR fall back to fetching a file if no arg
+// Normalize LinkedIn URLs so any version matches (removes protocol, www, trailing slash, lowercases)
+function normalizeLinkedInUrl(url) {
+    if (!url) return '';
+    return url
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '')
+        .replace(/\/$/, '')
+        .trim();
+}
+
+// Fetch ALL leads and match by normalized LinkedIn Profile URL
+async function getAirtableRecordByProfileUrl(profileUrl) {
+    const normUrl = normalizeLinkedInUrl(profileUrl);
+    // Fetch all leads (fine for moderate dataset; for large datasets, use paginated queries)
+    const records = await base(AIRTABLE_LEADS_TABLE_NAME).select().all();
+    return records.find(record => {
+        const atUrl = record.get(AIRTABLE_LINKEDIN_URL_FIELD);
+        return atUrl && normalizeLinkedInUrl(atUrl) === normUrl;
+    }) || null;
+}
+
+function isPostAlreadyStored(existingPostsArr, postObj) {
+    if (!Array.isArray(existingPostsArr)) return false;
+    return existingPostsArr.some(p => p.postUrl && postObj.postUrl && p.postUrl === postObj.postUrl);
+}
+
+// Main sync function. Accepts EITHER an array of posts (webhook) or a JSON string (legacy/manual mode)
 async function syncPBPostsToAirtable(postsInput) {
-    // 1. Get array of posts to process
     let pbPostsArr;
     if (Array.isArray(postsInput)) {
         pbPostsArr = postsInput;
@@ -20,7 +46,7 @@ async function syncPBPostsToAirtable(postsInput) {
         throw new Error('PB Posts input must be an array of posts!');
     }
 
-    // 2. Index by LinkedIn profile URL
+    // Index posts by normalized profile URL
     const postsByProfile = {};
     pbPostsArr.forEach(post => {
         if (!post.profileUrl || !post.postUrl) return;
@@ -44,7 +70,6 @@ async function syncPBPostsToAirtable(postsInput) {
         });
     });
 
-    // 3. For each profile in PB file, update corresponding Airtable record
     let processedCount = 0, updatedCount = 0, skippedCount = 0;
     for (const [normProfileUrl, postsList] of Object.entries(postsByProfile)) {
         processedCount++;
@@ -54,7 +79,6 @@ async function syncPBPostsToAirtable(postsInput) {
             continue;
         }
 
-        // Get current posts from Airtable (as parsed JSON array), or empty
         let existingPosts = [];
         try {
             existingPosts = JSON.parse(record.get(AIRTABLE_POSTS_FIELD) || "[]");
@@ -62,7 +86,6 @@ async function syncPBPostsToAirtable(postsInput) {
             existingPosts = [];
         }
 
-        // Add only new posts (by postUrl)
         let newPostsAdded = 0;
         postsList.forEach(p => {
             if (!isPostAlreadyStored(existingPosts, p)) {
@@ -90,27 +113,6 @@ async function syncPBPostsToAirtable(postsInput) {
     }
 
     return { processed: processedCount, updated: updatedCount, skipped: skippedCount };
-}
-
-// --- Helper functions from previous code below ---
-function normalizeLinkedInUrl(url) {
-    return url
-        ? url.replace(/^https?:\/\/(www\.)?linkedin\.com\//, 'linkedin.com/').replace(/\/$/, '').trim().toLowerCase()
-        : '';
-}
-
-async function getAirtableRecordByProfileUrl(profileUrl) {
-    const normUrl = normalizeLinkedInUrl(profileUrl);
-    const records = await base(AIRTABLE_LEADS_TABLE_NAME).select({
-        maxRecords: 1,
-        filterByFormula: `{${AIRTABLE_LINKEDIN_URL_FIELD}} = '${normUrl}'`
-    }).firstPage();
-    return records.length ? records[0] : null;
-}
-
-function isPostAlreadyStored(existingPostsArr, postObj) {
-    if (!Array.isArray(existingPostsArr)) return false;
-    return existingPostsArr.some(p => p.postUrl && postObj.postUrl && p.postUrl === postObj.postUrl);
 }
 
 module.exports = syncPBPostsToAirtable;
