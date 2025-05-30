@@ -35,43 +35,37 @@ router.get("/health", (_req, res) => {
     res.send("ok from apiAndJobRoutes");
 });
 
-// New Endpoint: Trigger PB LinkedIn Activity Extractor by API (today's leads, limit 100)
+// --- PB Activity Extractor Trigger Endpoint (Today's Leads, Limit 100) ---
 router.post("/api/run-pb-activity-extractor", async (req, res) => {
     try {
-        // Fetch credentials from Airtable "Credentials"
+        // 1. Fetch PB credentials from Airtable
         const credsRecords = await airtableBase("Credentials").select({ maxRecords: 1 }).firstPage();
         if (!credsRecords || credsRecords.length === 0) throw new Error("No records found in Credentials table.");
         const creds = credsRecords[0];
-
         const pbKey = creds.get("Phantom API Key");
         const sessionCookie = creds.get("LinkedIn Cookie");
         const userAgent = creds.get("User-Agent");
-        const extractorAgentId = creds.get("PB Activity Extractor Agent ID"); // <-- The new field!
+        const extractorAgentId = creds.get("PB Activity Extractor Agent ID");
 
         if (!pbKey || !sessionCookie || !userAgent || !extractorAgentId) {
             throw new Error(`Missing credentials in Airtable (Phantom API Key, LinkedIn Cookie, User-Agent, or PB Activity Extractor Agent ID)`);
         }
 
-        // 1. Find leads created today (since midnight, using "Date Created")
+        // 2. Get today's leads (since local midnight) by "Date Created"
         const now = new Date();
-        const tzOffset = now.getTimezoneOffset() * 60000; // In ms
-        const localMidnight = new Date(now.getTime() - tzOffset);
-        localMidnight.setHours(0, 0, 0, 0);
-        const isoMidnight = new Date(localMidnight.getTime() + tzOffset).toISOString(); // UTC midnight for Airtable
+        now.setHours(0, 0, 0, 0);
+        const isoMidnight = now.toISOString();
 
-        // Airtable "Date Created" is a computed field, so the formula is just IS_AFTER
-        const leads = await airtableBase("Leads")
-            .select({
-                filterByFormula: `IS_AFTER({Date Created}, '${isoMidnight}')`,
-                maxRecords: 100
-            })
-            .firstPage();
+        const leads = await airtableBase("Leads").select({
+            filterByFormula: `IS_AFTER({Date Created}, '${isoMidnight}')`,
+            maxRecords: 100
+        }).firstPage();
 
         if (!leads || leads.length === 0) {
             return res.json({ ok: false, message: "No leads found created today." });
         }
 
-        // 2. Build input array of LinkedIn Profile URLs (Phantom expects an array of { profileUrl } objects)
+        // 3. Prepare input array of LinkedIn Profile URLs (as { profileUrl })
         const inputArr = leads
             .map(record => {
                 const url = record.get("LinkedIn Profile URL");
@@ -84,12 +78,12 @@ router.post("/api/run-pb-activity-extractor", async (req, res) => {
             return res.json({ ok: false, message: "No leads with LinkedIn Profile URLs found." });
         }
 
-        // 3. Trigger the Phantom by API
+        // 4. Trigger the Phantom by API
         const triggerUrl = `https://api.phantombuster.com/api/v2/agents/launch`;
         const body = {
             id: extractorAgentId,
             arguments: {
-                spreadsheet: inputArr, // Pass array of objects as "spreadsheet" input param
+                spreadsheet: inputArr // Pass array of objects as "spreadsheet" input param
             }
         };
 
