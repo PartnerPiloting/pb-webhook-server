@@ -1,6 +1,4 @@
 // routes/apiAndJobRoutes.js
-// ADDED: New /api/initiate-pb-message endpoint
-// REMOVED: /pb-pull/connections route and its top-level fs/Phantombuster file logic.
 
 const express = require('express');
 const router = express.Router();
@@ -26,6 +24,8 @@ const { alertAdmin, isMissingCritical } = require('../utils/appHelpers.js');
 // The URL for your /enqueue endpoint (on the same server)
 const ENQUEUE_URL = `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:' + (process.env.PORT || 3000)}/enqueue`;
 
+// --- NEW: PB Posts Sync Helper ---
+const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
 
 /* ------------------------------------------------------------------
     Route Definitions
@@ -39,6 +39,7 @@ router.get("/health", (_req, res) => {
 
 // New Endpoint to Initiate Phantombuster Message Sending
 router.get("/api/initiate-pb-message", async (req, res) => {
+    // ... (existing code unchanged)
     const { recordId } = req.query;
     console.log(`apiAndJobRoutes.js: /api/initiate-pb-message hit for recordId: ${recordId}`);
 
@@ -146,6 +147,20 @@ router.get("/api/initiate-pb-message", async (req, res) => {
     }
 });
 
+// NEW: PB Posts Sync Endpoint (POST or GET)
+router.all("/api/sync-pb-posts", async (req, res) => {
+    try {
+        const result = await syncPBPostsToAirtable();
+        res.json({
+            status: "success",
+            message: `PB posts sync completed.`,
+            details: result
+        });
+    } catch (err) {
+        console.error("Error in /api/sync-pb-posts:", err);
+        res.status(500).json({ status: "error", error: err.message });
+    }
+});
 
 // Manual Batch Score Trigger
 router.get("/run-batch-score", async (req, res) => {
