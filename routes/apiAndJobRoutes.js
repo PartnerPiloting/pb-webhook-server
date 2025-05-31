@@ -40,79 +40,10 @@ router.get("/health", (_req, res) => {
 
 // ---------------------------------------------------------------
 // LinkedIn Activity Extractor (today’s leads, limit 100)
+// THIS ROUTE HAS BEEN REMOVED AS PER THE NEW ARCHITECTURE
+// (Google Apps Script will populate the sheet, PB runs on schedule)
 // ---------------------------------------------------------------
-router.post("/api/run-pb-activity-extractor", async (_req, res) => {
-  try {
-    // 1) Credentials
-    const [creds] = await airtableBase("Credentials")
-      .select({ maxRecords: 1 })
-      .firstPage();
-    if (!creds) throw new Error("No record in Credentials table.");
-
-    const pbKey = creds.get("Phantom API Key");
-    const sessionCookie = creds.get("LinkedIn Cookie");
-    const userAgent = creds.get("User-Agent");
-    const extractorId = creds.get("PB Activity Extractor Agent ID");
-
-    if (!pbKey || !sessionCookie || !userAgent || !extractorId) {
-      throw new Error("Missing PB or LinkedIn credentials.");
-    }
-
-    // 2) Today’s leads
-    const formula = `{Created in last 24 hours} = "Yes"`;
-    const leads = await airtableBase("Leads")
-      .select({ filterByFormula: formula, maxRecords: 100 })
-      .firstPage();
-
-    console.log("PB Extractor: fetched", leads.length, "records");
-
-    if (!leads.length)
-      return res.json({ ok: false, message: "No leads for today." });
-
-    const urls = leads
-      .map((r) => r.get("LinkedIn Profile URL")?.trim())
-      .filter(Boolean);
-
-    if (!urls.length)
-      return res.json({ ok: false, message: "No URLs in today’s leads." });
-
-    // 3) CSV-style string that meets Phantom schema
-    const csvText = ["profileUrl", ...urls].join("\n");
-    console.log("PB Extractor: CSV bytes:", csvText.length);
-
-    // 4) Launch Phantom
-    const resp = await fetch(
-      "https://api.phantombuster.com/api/v2/agents/launch",
-      {
-        method: "POST",
-        headers: {
-          "X-Phantombuster-Key-1": pbKey,
-          "Content-Type": "application/json",
-          "User-Agent": userAgent,
-        },
-        body: JSON.stringify({
-          id: extractorId,
-          arguments: {
-            spreadsheet: csvText, // <-- single text blob
-            sessionCookie: sessionCookie.trim(),
-          },
-        }),
-      }
-    );
-
-    const data = await resp.json();
-    if (!resp.ok) return res.status(500).json({ ok: false, error: data });
-
-    res.json({
-      ok: true,
-      message: `Triggered PB extractor with ${urls.length} profiles.`,
-      result: data,
-    });
-  } catch (err) {
-    console.error("run-pb-activity-extractor:", err);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
+// router.post("/api/run-pb-activity-extractor", async (_req, res) => { ... }); // Entire block removed
 
 // ---------------------------------------------------------------
 // Initiate PB Message Sender (single lead)
