@@ -4,9 +4,6 @@ const express = require('express');
 const router = express.Router();
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
-// Luxon for reliable timezone math
-const { DateTime } = require("luxon");
-
 // --- Dependencies ---
 const geminiConfig = require('../config/geminiClient.js');
 const airtableBase = require('../config/airtableClient.js');
@@ -38,7 +35,7 @@ router.get("/health", (_req, res) => {
     res.send("ok from apiAndJobRoutes");
 });
 
-// New Endpoint: Trigger PB LinkedIn Activity Extractor by API (today's leads, limit 100)
+// New Endpoint: Trigger PB LinkedIn Activity Extractor by API (leads created in last 24 hours, limit 100)
 router.post("/api/run-pb-activity-extractor", async (req, res) => {
     try {
         // Fetch credentials from Airtable "Credentials"
@@ -55,25 +52,16 @@ router.post("/api/run-pb-activity-extractor", async (req, res) => {
             throw new Error(`Missing credentials in Airtable (Phantom API Key, LinkedIn Cookie, User-Agent, or PB Activity Extractor Agent ID)`);
         }
 
-        // ==== [TIMEZONE FIX] Get AEST midnight as UTC for Airtable filtering ====
-        // Airtable "Date Created" is always UTC. We want records created since midnight AEST.
-        // 1. Get now in AEST (Australia/Brisbane is UTC+10, no daylight savings)
-        const nowAEST = DateTime.now().setZone("Australia/Brisbane");
-        // 2. Get midnight in AEST, then convert to UTC ISO string (what Airtable expects)
-        const midnightAEST_utc = nowAEST.startOf('day').toUTC().toISO();
-        // 3. Use this for the Airtable filter:
-        //    filterByFormula: IS_AFTER({Date Created}, '[midnightAEST_utc]')
-
-        // Find leads created since AEST midnight (today)
+        // 1. Find leads created in the last 24 hours (using "Created in last 24 hours" formula column)
         const leads = await airtableBase("Leads")
             .select({
-                filterByFormula: `IS_AFTER({Date Created}, '${midnightAEST_utc}')`,
+                filterByFormula: `{Created in last 24 hours} = "Yes"`,
                 maxRecords: 100
             })
             .firstPage();
 
         if (!leads || leads.length === 0) {
-            return res.json({ ok: false, message: "No leads found created today." });
+            return res.json({ ok: false, message: "No leads found created in the last 24 hours." });
         }
 
         // 2. Build input array of LinkedIn Profile URLs (Phantom expects an array of { profileUrl } objects)
@@ -126,9 +114,6 @@ router.post("/api/run-pb-activity-extractor", async (req, res) => {
         res.status(500).json({ ok: false, error: err.message });
     }
 });
-
-// (Rest of the file remains unchanged)
-// --- Existing Endpoints follow below ---
 
 // New Endpoint to Initiate Phantombuster Message Sending
 router.get("/api/initiate-pb-message", async (req, res) => {
