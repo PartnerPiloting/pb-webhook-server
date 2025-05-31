@@ -35,7 +35,7 @@ router.get("/health", (_req, res) => {
     res.send("ok from apiAndJobRoutes");
 });
 
-// New Endpoint: Trigger PB LinkedIn Activity Extractor by API (leads created in last 24 hours, limit 100)
+// New Endpoint: Trigger PB LinkedIn Activity Extractor by API (today's leads, limit 100) WITH FULL DEBUGGING
 router.post("/api/run-pb-activity-extractor", async (req, res) => {
     try {
         // Fetch credentials from Airtable "Credentials"
@@ -46,25 +46,56 @@ router.post("/api/run-pb-activity-extractor", async (req, res) => {
         const pbKey = creds.get("Phantom API Key");
         const sessionCookie = creds.get("LinkedIn Cookie");
         const userAgent = creds.get("User-Agent");
-        const extractorAgentId = creds.get("PB Activity Extractor Agent ID"); // <-- The new field!
+        const extractorAgentId = creds.get("PB Activity Extractor Agent ID");
 
         if (!pbKey || !sessionCookie || !userAgent || !extractorAgentId) {
             throw new Error(`Missing credentials in Airtable (Phantom API Key, LinkedIn Cookie, User-Agent, or PB Activity Extractor Agent ID)`);
         }
 
-        // 1. Find leads created in the last 24 hours (using "Created in last 24 hours" formula column)
-        const leads = await airtableBase("Leads")
-            .select({
-                filterByFormula: `{Created in last 24 hours} = "Yes"`,
-                maxRecords: 100
-            })
-            .firstPage();
+        // --- DEBUG: Show the filter formula being used ---
+        const formula = `{Created in last 24 hours} = "Yes"`;
+        console.log("PB Extractor: Airtable filter formula:", formula);
 
-        if (!leads || leads.length === 0) {
-            return res.json({ ok: false, message: "No leads found created in the last 24 hours." });
+        let leads;
+        try {
+            leads = await airtableBase("Leads")
+                .select({
+                    filterByFormula: formula,
+                    maxRecords: 100
+                })
+                .firstPage();
+            console.log("PB Extractor: Number of records fetched with filter:", leads ? leads.length : "undefined/null");
+            if (leads && leads.length > 0) {
+                leads.forEach((rec, idx) => {
+                    console.log(
+                        `  Record[${idx + 1}]: ID=${rec.id}, Date Created="${rec.get("Date Created")}", Created in last 24 hours="${rec.get("Created in last 24 hours")}", Profile URL="${rec.get("LinkedIn Profile URL")}"`
+                    );
+                });
+                // Also log the first record's entire fields object for extra debug
+                console.log("PB Extractor: First record full fields:", leads[0].fields);
+            } else {
+                console.log("PB Extractor: No records returned from Airtable using the formula.");
+            }
+        } catch (atErr) {
+            console.error("PB Extractor: Airtable threw an error when fetching leads:", atErr);
+            return res.status(500).json({ ok: false, message: "Airtable API error while fetching leads.", error: String(atErr) });
         }
 
-        // 2. Build input array of LinkedIn Profile URLs (Phantom expects an array of { profileUrl } objects)
+        // Extra: Try fetching 5 records with no filter (to debug table access)
+        try {
+            const testFetch = await airtableBase("Leads").select({ maxRecords: 5 }).firstPage();
+            console.log("PB Extractor: First 5 records (no filter):", testFetch.map(r =>
+                `ID=${r.id}, Date Created="${r.get("Date Created")}", Created in last 24 hours="${r.get("Created in last 24 hours")}"`
+            ));
+        } catch (testErr) {
+            console.error("PB Extractor: Test fetch (no filter) threw error:", testErr);
+        }
+
+        if (!leads || leads.length === 0) {
+            return res.json({ ok: false, message: "No leads found created today (with formula)." });
+        }
+
+        // 2. Build input array of LinkedIn Profile URLs
         const inputArr = leads
             .map(record => {
                 const url = record.get("LinkedIn Profile URL");
