@@ -122,14 +122,14 @@ router.get("/api/initiate-pb-message", async (req, res) => {
 // ---------------------------------------------------------------
 router.all("/api/sync-pb-posts", async (_req, res) => {
   try {
-    const info = await syncPBPostsToAirtable();
+    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
     res.json({
       status: "success",
       message: "PB posts sync completed.",
       details: info,
     });
   } catch (err) {
-    console.error("sync-pb-posts:", err);
+    console.error("sync-pb-posts error (manual trigger):", err);
     res.status(500).json({ status: "error", error: err.message });
   }
 });
@@ -140,38 +140,101 @@ router.all("/api/sync-pb-posts", async (_req, res) => {
 router.post("/api/pb-webhook", async (req, res) => {
   try {
     const secret = req.query.secret || req.body.secret;
-    if (secret !== process.env.PB_WEBHOOK_SECRET)
+    if (secret !== process.env.PB_WEBHOOK_SECRET) {
+      console.warn("PB Webhook: Forbidden attempt with incorrect secret.");
       return res.status(403).json({ error: "Forbidden" });
-
-    console.log(
-      "Received PB webhook:",
-      JSON.stringify(req.body).slice(0, 1000)
-    );
-
-    let postsInput = req.body;
-    if (
-      postsInput &&
-      typeof postsInput === "object" &&
-      Array.isArray(postsInput.resultObject)
-    ) {
-      postsInput = postsInput.resultObject;
-    } else if (
-      postsInput &&
-      typeof postsInput === "object" &&
-      typeof postsInput.resultObject === "string"
-    ) {
-      postsInput = JSON.parse(postsInput.resultObject);
-    } else if (postsInput && !Array.isArray(postsInput)) {
-      postsInput = [postsInput];
     }
 
-    const processed = await syncPBPostsToAirtable(postsInput);
-    res.json({ ok: true, processed });
-  } catch (err) {
-    console.error("pb-webhook:", err);
-    res.status(500).json({ error: "Server error" });
+    console.log(
+      "PB Webhook: Received raw payload:",
+      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
+    );
+
+    // --- MODIFICATION: Respond to PhantomBuster immediately ---
+    res.status(200).json({ message: "Webhook received. Processing in background." });
+    // --- END MODIFICATION ---
+
+    // Process the data asynchronously after responding
+    // Use a self-invoking async function to handle the promise and errors for background processing
+    (async () => {
+      try {
+        let rawResultObject = req.body.resultObject;
+
+        if (!rawResultObject) {
+            console.warn("PB Webhook: resultObject is missing in the payload.");
+            // If you have an alerting mechanism for critical background failures:
+            // await alertAdmin("PB Webhook Error", "resultObject missing in payload.");
+            return; // Stop processing if there's no resultObject
+        }
+
+        let postsInputArray;
+        if (typeof rawResultObject === 'string') {
+          try {
+            postsInputArray = JSON.parse(rawResultObject);
+          } catch (parseError) {
+            console.error("PB Webhook: Error parsing resultObject string:", parseError);
+            // await alertAdmin("PB Webhook JSON Parse Error", `Error: ${parseError.message}`);
+            return; // Stop if JSON is malformed
+          }
+        } else if (Array.isArray(rawResultObject)) {
+          postsInputArray = rawResultObject;
+        } else if (typeof rawResultObject === 'object' && rawResultObject !== null) {
+          // If PB sometimes sends a single object instead of an array for a single result
+          postsInputArray = [rawResultObject];
+        } else {
+          console.warn("PB Webhook: resultObject is not a string, array, or recognized object. Payload:", req.body);
+          // await alertAdmin("PB Webhook Data Error", "resultObject in unexpected format.");
+          return;
+        }
+        
+        if (!Array.isArray(postsInputArray)) {
+            console.warn("PB Webhook: Processed postsInput is not an array. Original type:", typeof rawResultObject);
+            // await alertAdmin("PB Webhook Data Error", "Processed postsInput is not an array.");
+            return;
+        }
+
+        console.log(`PB Webhook: Extracted ${postsInputArray.length} items from resultObject for background processing.`);
+
+        // --- MODIFICATION: Filter out the header row ---
+        const filteredPostsInput = postsInputArray.filter(item => {
+          // Ensure item is an object and has profileUrl before accessing its properties
+          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
+            // Optionally log unexpected item structures, but don't let it break the filter
+            // console.warn("PB Webhook: Filtering encountered an item with unexpected structure:", item);
+            return true; // Keep items that don't match the header pattern
+          }
+          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
+        });
+        console.log(`PB Webhook: Filtered to ${filteredPostsInput.length} items after removing potential header.`);
+        // --- END MODIFICATION ---
+
+        if (filteredPostsInput.length > 0) {
+          const processed = await syncPBPostsToAirtable(filteredPostsInput);
+          console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
+        } else {
+          console.log("PB Webhook: No valid posts to sync after filtering.");
+        }
+
+      } catch (backgroundErr) {
+        // This error happens after we've already responded to PhantomBuster
+        console.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
+        // Implement more robust error logging or alerting for background tasks if needed
+        // For example, await alertAdmin("Critical PB Webhook Background Error", `Error: ${backgroundErr.message}`);
+      }
+    })(); // Immediately invoke the async function
+
+  } catch (initialErr) {
+    // This catch is for errors before we respond to PB (e.g., secret check)
+    // or if res.status().json() itself fails, though unlikely for the latter.
+    console.error("PB Webhook: Initial processing error:", initialErr.message, initialErr.stack);
+    // If headers haven't been sent, send an error response.
+    // This is a fallback, as we intend to respond quickly with 200 OK.
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Server error during initial webhook processing." });
+    }
   }
 });
+
 
 // ---------------------------------------------------------------
 // Manual Batch Score
@@ -206,7 +269,23 @@ router.get("/score-lead", async (req, res) => {
       return res.status(400).json({ error: "recordId query param required" });
 
     const record = await airtableBase("Leads").find(id);
-    const profile = JSON.parse(record.get("Profile Full JSON") || "{}");
+    if (!record) { // Added check if record exists
+        console.warn(`score-lead: Lead record not found for ID: ${id}`);
+        return res.status(404).json({ error: `Lead record not found for ID: ${id}` });
+    }
+    const profileJsonString = record.get("Profile Full JSON");
+    if (!profileJsonString) {
+        console.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
+         await airtableBase("Leads").update(id, {
+            "AI Score": 0,
+            "Scoring Status": "Skipped – Profile JSON missing",
+            "AI Profile Assessment": "",
+            "AI Attribute Breakdown": "",
+          });
+        return res.json({ ok: true, skipped: true, reason: "Profile JSON missing" });
+    }
+    const profile = JSON.parse(profileJsonString);
+
 
     const about =
       (profile.about ||
@@ -224,28 +303,23 @@ router.get("/score-lead", async (req, res) => {
     }
 
     if (isMissingCritical(profile)) {
-      let hasExp =
-        Array.isArray(profile.experience) && profile.experience.length > 0;
-      if (!hasExp)
-        for (let i = 1; i <= 5; i++)
-          if (
-            profile[`organization_${i}`] ||
-            profile[`organization_title_${i}`]
-          ) {
-            hasExp = true;
-            break;
-          }
-      await alertAdmin(
-        "Incomplete lead for scoring",
-        `ID:${id} JSON missing critical fields`
-      );
+      // isMissingCritical logic might need review if profile structure varies
+      console.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
+      // await alertAdmin( // Consider if this alert is too noisy or if status update is enough
+      //   "Incomplete lead for scoring",
+      //   `ID:${id} JSON missing critical fields`
+      // );
     }
 
     const gOut = await scoreLeadNow(profile, {
       vertexAIClient,
       geminiModelId,
     });
-    if (!gOut) throw new Error("singleScorer returned null.");
+    if (!gOut) {
+        console.error(`score-lead: singleScorer returned null for lead ID: ${id}`);
+        throw new Error("singleScorer returned null.");
+    }
+
 
     let {
       positive_scores = {},
@@ -307,7 +381,8 @@ router.get("/score-lead", async (req, res) => {
 
     res.json({ id, finalPct, aiProfileAssessment, breakdown });
   } catch (err) {
-    await alertAdmin("Single scoring failed", err.message);
+    console.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
+    // await alertAdmin("Single scoring failed", `ID: ${req.query.recordId || 'N/A'}\nError: ${err.message}`);
     if (!res.headersSent)
       res.status(500).json({ error: err.message });
   }
