@@ -31,22 +31,54 @@ if (!base) {
     console.log("index.js: Airtable Base loaded successfully from config.");
 }
 
-/* ---------- APP-LEVEL ENV CONFIGURATION --- */
+/* ---------- APP-LEVEL ENV CONFIGURATION & CONSTANTS --- */
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL;
 if (!GPT_CHAT_URL) {
     console.error("CRITICAL WARNING: Missing GPT_CHAT_URL environment variable. pointerApi may not function correctly.");
 }
 
-// --- THIS IS THE CORRECTED LINE ---
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
-// ------------------------------------
-
-const AIRTABLE_LEADS_TABLE_ID_OR_NAME = "Leads"; // Your table name
-const AIRTABLE_LINKEDIN_URL_FIELD = "Linkedin Profile URL"; // Your field name for matching
-const AIRTABLE_NOTES_FIELD = "Notes"; // Your field name for notes
+const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID; // Corrected line from bug fix
+const AIRTABLE_LEADS_TABLE_ID_OR_NAME = "Leads";
+const AIRTABLE_LINKEDIN_URL_FIELD = "Linkedin Profile URL";
+const AIRTABLE_NOTES_FIELD = "Notes";
 
 if (!AIRTABLE_BASE_ID) {
     console.error("CRITICAL WARNING: Missing AIRTABLE_BASE_ID environment variable. Airtable operations will fail for textblaze-linkedin-webhook.");
+}
+
+// --- NEW: CONSTANTS FOR POST SCORING ---
+const POST_SCORING_ATTRIBUTES_TABLE_NAME = "Post Scoring Attributes";
+const POST_SCORING_INSTRUCTIONS_TABLE_NAME = "Post Scoring Instructions";
+const POST_DATE_SCORED_FIELD = "Date Posts Scored";
+const POSTS_CONTENT_FIELD = "Posts Content";
+const POST_RELEVANCE_SCORE_FIELD = "Posts Relevance Score";
+const POST_AI_EVALUATION_FIELD = "Posts AI Evaluation";
+const POST_RELEVANT_POSTS_SUMMARISED_FIELD = "Relevant Posts Summarised by AI";
+const CREDENTIALS_TABLE_NAME = "Credentials"; // Or "Global Settings", your table for keywords
+
+// --- NEW: CONFIGURATION OBJECT FOR POST ANALYSIS/SCORING ---
+const postAnalysisConfig = {
+    // Airtable Table Names for Post Scoring - using our new constants
+    leadsTableName: AIRTABLE_LEADS_TABLE_ID_OR_NAME,
+    attributesTableName: POST_SCORING_ATTRIBUTES_TABLE_NAME,
+    promptComponentsTableName: POST_SCORING_INSTRUCTIONS_TABLE_NAME,
+    settingsTableName: CREDENTIALS_TABLE_NAME,
+
+    // Field Names in your 'Leads' Table related to Post Scoring - using our new constants
+    fields: {
+        dateScored: POST_DATE_SCORED_FIELD,
+        postsContent: POSTS_CONTENT_FIELD,
+        relevanceScore: POST_RELEVANCE_SCORE_FIELD,
+        aiEvaluation: POST_AI_EVALUATION_FIELD,
+        summarisedByAI: POST_RELEVANT_POSTS_SUMMARISED_FIELD
+    },
+    // AI Keywords are now loaded from Airtable by postAttributeLoader.js
+    // Model ID and Timeout reuse your existing lead scoring environment variables for consistency.
+};
+
+// Check for critical Post Analysis configurations
+if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptComponentsTableName) {
+    console.error("CRITICAL WARNING: Missing essential Airtable table name configurations for Post Analysis. Post scoring may fail.");
 }
 
 
@@ -65,6 +97,17 @@ console.log("index.js: Mounting routes and APIs...");
 try { require("./promptApi")(app, base); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message, e.stack); }
 try { require("./recordApi")(app, base); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message, e.stack); }
 try { require("./scoreApi")(app, base, globalGeminiModel); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message, e.stack); }
+
+// --- NEW: MOUNT POST SCORING APIS ---
+try {
+    // Mounts the API for testing a SINGLE lead's posts
+    require("./postScoreTestApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
+    // Mounts the API for triggering the BATCH process for ALL pending leads
+    require("./postScoreBatchApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
+} catch(e) {
+    console.error("index.js: Error mounting one of the new Post Scoring APIs", e.message, e.stack);
+}
+// ------------------------------------
 
 const mountQueue = require("./queueDispatcher");
 if (mountQueue && typeof mountQueue === 'function') {
