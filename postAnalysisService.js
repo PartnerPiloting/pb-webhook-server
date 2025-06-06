@@ -28,7 +28,8 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // Check 2: Parse the post content
     let parsedPostsArray;
     try {
-        parsedPostsArray = JSON.parse(postsContentField);
+        // Using .trim() to remove any leading/trailing whitespace from the field
+        parsedPostsArray = JSON.parse(postsContentField.trim());
         if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) throw new Error("Content is not a non-empty array.");
     } catch (parseError) {
         console.error(`Lead ${leadRecord.id}: Failed to parse '${config.fields.postsContent}' JSON. Error: ${parseError.message}`);
@@ -44,7 +45,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         console.log(`Lead ${leadRecord.id}: Loading config from Airtable...`);
         const { aiKeywords } = await loadPostScoringAirtableConfig(base, config);
 
-        // Step 2: **MODIFIED LOGIC** - Filter for all posts containing AI keywords
+        // Step 2: Filter for all posts containing AI keywords
         console.log(`Lead ${leadRecord.id}: Scanning ${parsedPostsArray.length} posts for AI keywords...`);
         const relevantPosts = parsedPostsArray.filter(post =>
             post && post.postContent && aiKeywords.some(keyword => post.postContent.toLowerCase().includes(keyword.toLowerCase()))
@@ -86,7 +87,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         console.log(`Lead ${leadRecord.id}: Calling Gemini scorer...`);
         const aiResponseArray = await scorePostsWithGemini(relevantPosts, configuredGeminiModel);
 
-        // Step 6: **MODIFIED LOGIC** - Find the highest scoring post from the response
+        // Step 6: Find the highest scoring post from the response
         if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
             throw new Error("AI response was not a valid or non-empty array of post scores.");
         }
@@ -102,7 +103,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         
         console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
 
-        // Step 7: **MODIFIED LOGIC** - Update Airtable with the results from the highest-scoring post
+        // Step 7: Update Airtable with the results from the highest-scoring post
         await base(config.leadsTableName).update(leadRecord.id, {
             [config.fields.relevanceScore]: highestScoringPost.post_score,
             [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
@@ -142,7 +143,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config) {
                 await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config);
                 processedCount++;
             } catch (leadProcessingError) {
-                console.error(`Error processing lead ${leadRecord.id} in main loop. Continuing. Error: ${leadProcessingError.message}`);
+              __   console.error(`Error processing lead ${leadRecord.id} in main loop. Continuing. Error: ${leadProcessingError.message}`);
                 errorCount++;
             }
         }
@@ -156,7 +157,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config) {
  * Fetches a specific lead by its Airtable Record ID, analyzes its posts,
  * and returns the scoring outcome.
  */
-async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config, options = { updateAirtable: true }) {
+async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config) {
     console.log(`PostAnalysisService: scoreSpecificLeadPosts - Called for leadId: ${leadId}`);
     try {
         const leadRecord = await base(config.leadsTableName).find(leadId);
@@ -166,7 +167,6 @@ async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config, opti
             console.error(notFoundMsg);
             return { status: "Lead not found", error: notFoundMsg, leadId: leadId };
         }
-        // Per our discussion, the 'dry run' concept is removed. This function will now always update Airtable.
         return await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config);
     } catch (error) {
         console.error(`Error in scoreSpecificLeadPosts for lead ${leadId}: ${error.message}`, error.stack);
