@@ -1,4 +1,4 @@
-// File: postAnalysisService.js
+// File: postAnalysisService.js (with special debugging)
 
 // Require our newly defined helper modules
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
@@ -28,7 +28,17 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // Check 2: Parse the post content
     let parsedPostsArray;
     try {
-        // Clean the string: 1. Remove BOM, 2. Trim whitespace.
+        // --- START OF NEW DEBUG BLOCK ---
+        const stringToParse = postsContentField; // Using the raw field for diagnosis
+        console.log('--- DEBUG: String to be parsed ---');
+        console.log(`String Length: ${stringToParse.length}`);
+        if (stringToParse.length > 0) {
+            console.log(`First Character Code: ${stringToParse.charCodeAt(0)}`);
+            console.log(`Second Character Code: ${stringToParse.charCodeAt(1)}`);
+        }
+        console.log('--- END DEBUG ---');
+        // --- END OF NEW DEBUG BLOCK ---
+
         parsedPostsArray = JSON.parse(postsContentField.trim().replace(/^\uFEFF/, ''));
         if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) throw new Error("Content is not a non-empty array.");
     } catch (parseError) {
@@ -120,7 +130,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${error.message}`,
             [config.fields.dateScored]: new Date().toISOString()
         });
-        return { status: "Error during AI scoring", error: error.message, leadId: leadId };
+        return { status: "Error during AI scoring", error: error.message, leadId: leadRecord.id };
     }
 }
 
