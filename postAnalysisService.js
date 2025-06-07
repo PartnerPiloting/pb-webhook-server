@@ -28,8 +28,8 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // Check 2: Parse the post content
     let parsedPostsArray;
     try {
-        // Using .trim() to remove any leading/trailing whitespace from the field
-        parsedPostsArray = JSON.parse(postsContentField.trim());
+        // Clean the string: 1. Remove BOM, 2. Trim whitespace.
+        parsedPostsArray = JSON.parse(postsContentField.trim().replace(/^\uFEFF/, ''));
         if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) throw new Error("Content is not a non-empty array.");
     } catch (parseError) {
         console.error(`Lead ${leadRecord.id}: Failed to parse '${config.fields.postsContent}' JSON. Error: ${parseError.message}`);
@@ -120,7 +120,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${error.message}`,
             [config.fields.dateScored]: new Date().toISOString()
         });
-        return { status: "Error during AI scoring", error: error.message, leadId: leadRecord.id };
+        return { status: "Error during AI scoring", error: error.message, leadId: leadId };
     }
 }
 
