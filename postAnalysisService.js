@@ -143,7 +143,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config) {
                 await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config);
                 processedCount++;
             } catch (leadProcessingError) {
-              __   console.error(`Error processing lead ${leadRecord.id} in main loop. Continuing. Error: ${leadProcessingError.message}`);
+                console.error(`Error processing lead ${leadRecord.id} in main loop. Continuing. Error: ${leadProcessingError.message}`);
                 errorCount++;
             }
         }
