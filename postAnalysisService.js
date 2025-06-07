@@ -1,4 +1,4 @@
-// File: postAnalysisService.js (with special debugging)
+// File: postAnalysisService.js (Final aggressive cleaning)
 
 // Require our newly defined helper modules
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
@@ -28,18 +28,10 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // Check 2: Parse the post content
     let parsedPostsArray;
     try {
-        // --- START OF NEW DEBUG BLOCK ---
-        const stringToParse = postsContentField; // Using the raw field for diagnosis
-        console.log('--- DEBUG: String to be parsed ---');
-        console.log(`String Length: ${stringToParse.length}`);
-        if (stringToParse.length > 0) {
-            console.log(`First Character Code: ${stringToParse.charCodeAt(0)}`);
-            console.log(`Second Character Code: ${stringToParse.charCodeAt(1)}`);
-        }
-        console.log('--- END DEBUG ---');
-        // --- END OF NEW DEBUG BLOCK ---
+        // FINAL ATTEMPT: Aggressively strip any character(s) from the start of the string that are not a '['
+        const cleanedString = postsContentField.trim().replace(/^[^\[]*/, '');
+        parsedPostsArray = JSON.parse(cleanedString);
 
-        parsedPostsArray = JSON.parse(postsContentField.trim().replace(/^\uFEFF/, ''));
         if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) throw new Error("Content is not a non-empty array.");
     } catch (parseError) {
         console.error(`Lead ${leadRecord.id}: Failed to parse '${config.fields.postsContent}' JSON. Error: ${parseError.message}`);
