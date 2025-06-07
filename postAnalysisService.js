@@ -1,4 +1,4 @@
-// File: postAnalysisService.js (Final aggressive cleaning)
+// File: postAnalysisService.js (Reverted to clean version)
 
 // Require our newly defined helper modules
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
@@ -28,10 +28,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // Check 2: Parse the post content
     let parsedPostsArray;
     try {
-        // FINAL ATTEMPT: Aggressively strip any character(s) from the start of the string that are not a '['
-        const cleanedString = postsContentField.trim().replace(/^[^\[]*/, '');
-        parsedPostsArray = JSON.parse(cleanedString);
-
+        parsedPostsArray = JSON.parse(postsContentField);
         if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) throw new Error("Content is not a non-empty array.");
     } catch (parseError) {
         console.error(`Lead ${leadRecord.id}: Failed to parse '${config.fields.postsContent}' JSON. Error: ${parseError.message}`);
@@ -162,7 +159,11 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config) {
 async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config) {
     console.log(`PostAnalysisService: scoreSpecificLeadPosts - Called for leadId: ${leadId}`);
     try {
-        const leadRecord = await base(config.leadsTableName).find(leadId);
+        const records = await base(config.leadsTableName).select({
+            filterByFormula: `RECORD_ID() = '${leadId}'`,
+            maxRecords: 1
+        }).firstPage();
+        const leadRecord = records[0];
 
         if (!leadRecord) {
             const notFoundMsg = `Lead with ID ${leadId} not found.`;
