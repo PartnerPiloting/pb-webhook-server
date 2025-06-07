@@ -3,7 +3,7 @@
 const express = require("express");
 const router = express.Router();
 const fetch = (...args) =>
-  import("node-fetch").then(({ default: f }) => f(...args));
+  import("node-fetch").then(({ default: f }) => f(...args));
 
 // ---------------------------------------------------------------
 // Dependencies
@@ -21,21 +21,21 @@ const { loadAttributes } = require("../attributeLoader.js");
 const { computeFinalScore } = require("../scoring.js");
 const { buildAttributeBreakdown } = require("../breakdown.js");
 const {
-  alertAdmin,
-  isMissingCritical,
+  alertAdmin,
+  isMissingCritical,
 } = require("../utils/appHelpers.js");
 
 const ENQUEUE_URL = `${
-  process.env.RENDER_EXTERNAL_URL ||
-  "http://localhost:" + (process.env.PORT || 3000)
+  process.env.RENDER_EXTERNAL_URL ||
+  "http://localhost:" + (process.env.PORT || 3000)
 }/enqueue`;
 
 // ---------------------------------------------------------------
 // Health Check
 // ---------------------------------------------------------------
 router.get("/health", (_req, res) => {
-  console.log("apiAndJobRoutes.js: /health hit");
-  res.send("ok");
+  console.log("apiAndJobRoutes.js: /health hit");
+  res.send("ok");
 });
 
 // ---------------------------------------------------------------
@@ -49,190 +49,170 @@ router.get("/health", (_req, res) => {
 // Initiate PB Message Sender (single lead)
 // ---------------------------------------------------------------
 router.get("/api/initiate-pb-message", async (req, res) => {
-  const { recordId } = req.query;
-  console.log("/api/initiate-pb-message for", recordId);
-  if (!recordId)
-    return res
-      .status(400)
-      .json({ success: false, error: "recordId query param required" });
+  const { recordId } = req.query;
+  console.log("/api/initiate-pb-message for", recordId);
+  if (!recordId)
+    return res
+      .status(400)
+      .json({ success: false, error: "recordId query param required" });
 
-  try {
-    const [creds] = await airtableBase("Credentials")
-      .select({ maxRecords: 1 })
-      .firstPage();
-    if (!creds) throw new Error("No record in Credentials table.");
+  try {
+    const [creds] = await airtableBase("Credentials")
+      .select({ maxRecords: 1 })
+      .firstPage();
+    if (!creds) throw new Error("No record in Credentials table.");
 
-    const agentId = creds.get("PB Message Sender ID");
-    const pbKey = creds.get("Phantom API Key");
-    const sessionCookie = creds.get("LinkedIn Cookie");
-    const userAgent = creds.get("User-Agent");
-    if (!agentId || !pbKey || !sessionCookie || !userAgent)
-      throw new Error("Missing PB message-sender credentials.");
+    const agentId = creds.get("PB Message Sender ID");
+    const pbKey = creds.get("Phantom API Key");
+    const sessionCookie = creds.get("LinkedIn Cookie");
+    const userAgent = creds.get("User-Agent");
+    if (!agentId || !pbKey || !sessionCookie || !userAgent)
+      throw new Error("Missing PB message-sender credentials.");
 
-    const lead = await airtableBase("Leads").find(recordId);
-    if (!lead) throw new Error(`Lead ${recordId} not found.`);
-    const profileUrl = lead.get("LinkedIn Profile URL");
-    const message = lead.get("Message To Be Sent");
-    if (!profileUrl || !message)
-      throw new Error("Lead missing URL or message.");
+    const lead = await airtableBase("Leads").find(recordId);
+    if (!lead) throw new Error(`Lead ${recordId} not found.`);
+    const profileUrl = lead.get("LinkedIn Profile URL");
+    const message = lead.get("Message To Be Sent");
+    if (!profileUrl || !message)
+      throw new Error("Lead missing URL or message.");
 
-    const enqueueResp = await fetch(ENQUEUE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recordId,
-        agentId,
-        pbKey,
-        sessionCookie,
-        userAgent,
-        profileUrl,
-        message,
-      }),
-    });
-    const enqueueData = await enqueueResp.json();
-    if (!enqueueResp.ok || !enqueueData.queued)
-      throw new Error(enqueueData.error || "Enqueue failed.");
+    const enqueueResp = await fetch(ENQUEUE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recordId,
+        agentId,
+        pbKey,
+        sessionCookie,
+        userAgent,
+        profileUrl,
+        message,
+      }),
+    });
+    const enqueueData = await enqueueResp.json();
+    if (!enqueueResp.ok || !enqueueData.queued)
+      throw new Error(enqueueData.error || "Enqueue failed.");
 
-    try {
-      await airtableBase("Leads").update(recordId, {
-        "Message Status": "Queuing Initiated by Server",
-      });
-    } catch (e) {
-      console.warn("Airtable status update failed:", e.message);
-    }
+    try {
+      await airtableBase("Leads").update(recordId, {
+        "Message Status": "Queuing Initiated by Server",
+      });
+    } catch (e) {
+      console.warn("Airtable status update failed:", e.message);
+    }
 
-    res.json({
-      success: true,
-      message: `Lead ${recordId} queued.`,
-      enqueueResponse: enqueueData,
-    });
-  } catch (e) {
-    console.error("initiate-pb-message:", e);
-    await alertAdmin(
-      "Error /api/initiate-pb-message",
-      `ID:${recordId}\n${e.message}`
-    );
-    if (!res.headersSent)
-      res.status(500).json({ success: false, error: e.message });
-  }
+    res.json({
+      success: true,
+      message: `Lead ${recordId} queued.`,
+      enqueueResponse: enqueueData,
+    });
+  } catch (e) {
+    console.error("initiate-pb-message:", e);
+    await alertAdmin(
+      "Error /api/initiate-pb-message",
+      `ID:${recordId}\n${e.message}`
+    );
+    if (!res.headersSent)
+      res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // ---------------------------------------------------------------
 // Manual PB Posts Sync
 // ---------------------------------------------------------------
 router.all("/api/sync-pb-posts", async (_req, res) => {
-  try {
-    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
-    res.json({
-      status: "success",
-      message: "PB posts sync completed.",
-      details: info,
-    });
-  } catch (err) {
-    console.error("sync-pb-posts error (manual trigger):", err);
-    res.status(500).json({ status: "error", error: err.message });
-  }
+  try {
+    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
+    res.json({
+      status: "success",
+      message: "PB posts sync completed.",
+      details: info,
+    });
+  } catch (err) {
+    console.error("sync-pb-posts error (manual trigger):", err);
+    res.status(500).json({ status: "error", error: err.message });
+  }
 });
 
 // ---------------------------------------------------------------
 // PB Webhook
 // ---------------------------------------------------------------
 router.post("/api/pb-webhook", async (req, res) => {
-  try {
-    const secret = req.query.secret || req.body.secret;
-    if (secret !== process.env.PB_WEBHOOK_SECRET) {
-      console.warn("PB Webhook: Forbidden attempt with incorrect secret.");
-      return res.status(403).json({ error: "Forbidden" });
-    }
+  try {
+    const secret = req.query.secret || req.body.secret;
+    if (secret !== process.env.PB_WEBHOOK_SECRET) {
+      console.warn("PB Webhook: Forbidden attempt with incorrect secret.");
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
-    console.log(
-      "PB Webhook: Received raw payload:",
-      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
-    );
+    console.log(
+      "PB Webhook: Received raw payload:",
+      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
+    );
 
-    // --- MODIFICATION: Respond to PhantomBuster immediately ---
-    res.status(200).json({ message: "Webhook received. Processing in background." });
-    // --- END MODIFICATION ---
+    res.status(200).json({ message: "Webhook received. Processing in background." });
 
-    // Process the data asynchronously after responding
-    // Use a self-invoking async function to handle the promise and errors for background processing
-    (async () => {
-      try {
-        let rawResultObject = req.body.resultObject;
+    (async () => {
+      try {
+        let rawResultObject = req.body.resultObject;
 
-        if (!rawResultObject) {
-            console.warn("PB Webhook: resultObject is missing in the payload.");
-            // If you have an alerting mechanism for critical background failures:
-            // await alertAdmin("PB Webhook Error", "resultObject missing in payload.");
-            return; // Stop processing if there's no resultObject
-        }
+        if (!rawResultObject) {
+            console.warn("PB Webhook: resultObject is missing in the payload.");
+            return;
+        }
 
-        let postsInputArray;
-        if (typeof rawResultObject === 'string') {
-          try {
-            postsInputArray = JSON.parse(rawResultObject);
-          } catch (parseError) {
-            console.error("PB Webhook: Error parsing resultObject string:", parseError);
-            // await alertAdmin("PB Webhook JSON Parse Error", `Error: ${parseError.message}`);
-            return; // Stop if JSON is malformed
-          }
-        } else if (Array.isArray(rawResultObject)) {
-          postsInputArray = rawResultObject;
-        } else if (typeof rawResultObject === 'object' && rawResultObject !== null) {
-          // If PB sometimes sends a single object instead of an array for a single result
-          postsInputArray = [rawResultObject];
-        } else {
-          console.warn("PB Webhook: resultObject is not a string, array, or recognized object. Payload:", req.body);
-          // await alertAdmin("PB Webhook Data Error", "resultObject in unexpected format.");
-          return;
-        }
-        
-        if (!Array.isArray(postsInputArray)) {
-            console.warn("PB Webhook: Processed postsInput is not an array. Original type:", typeof rawResultObject);
-            // await alertAdmin("PB Webhook Data Error", "Processed postsInput is not an array.");
-            return;
-        }
+        let postsInputArray;
+        if (typeof rawResultObject === 'string') {
+          try {
+            // THE PERMANENT FIX: Clean trailing commas from the JSON string before parsing
+            const cleanedString = rawResultObject.replace(/,\s*([}\]])/g, "$1");
+            postsInputArray = JSON.parse(cleanedString);
+          } catch (parseError) {
+            console.error("PB Webhook: Error parsing resultObject string:", parseError);
+            return;
+          }
+        } else if (Array.isArray(rawResultObject)) {
+          postsInputArray = rawResultObject;
+        } else if (typeof rawResultObject === 'object' && rawResultObject !== null) {
+          postsInputArray = [rawResultObject];
+        } else {
+          console.warn("PB Webhook: resultObject is not a string, array, or recognized object.");
+          return;
+        }
+        
+        if (!Array.isArray(postsInputArray)) {
+            console.warn("PB Webhook: Processed postsInput is not an array.");
+            return;
+        }
 
-        console.log(`PB Webhook: Extracted ${postsInputArray.length} items from resultObject for background processing.`);
+        console.log(`PB Webhook: Extracted ${postsInputArray.length} items from resultObject for background processing.`);
 
-        // --- MODIFICATION: Filter out the header row ---
-        const filteredPostsInput = postsInputArray.filter(item => {
-          // Ensure item is an object and has profileUrl before accessing its properties
-          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
-            // Optionally log unexpected item structures, but don't let it break the filter
-            // console.warn("PB Webhook: Filtering encountered an item with unexpected structure:", item);
-            return true; // Keep items that don't match the header pattern
-          }
-          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
-        });
-        console.log(`PB Webhook: Filtered to ${filteredPostsInput.length} items after removing potential header.`);
-        // --- END MODIFICATION ---
+        const filteredPostsInput = postsInputArray.filter(item => {
+          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
+            return true;
+          }
+          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
+        });
+        console.log(`PB Webhook: Filtered to ${filteredPostsInput.length} items after removing potential header.`);
 
-        if (filteredPostsInput.length > 0) {
-          const processed = await syncPBPostsToAirtable(filteredPostsInput);
-          console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
-        } else {
-          console.log("PB Webhook: No valid posts to sync after filtering.");
-        }
+        if (filteredPostsInput.length > 0) {
+          const processed = await syncPBPostsToAirtable(filteredPostsInput);
+          console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
+        } else {
+          console.log("PB Webhook: No valid posts to sync after filtering.");
+        }
 
-      } catch (backgroundErr) {
-        // This error happens after we've already responded to PhantomBuster
-        console.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
-        // Implement more robust error logging or alerting for background tasks if needed
-        // For example, await alertAdmin("Critical PB Webhook Background Error", `Error: ${backgroundErr.message}`);
-      }
-    })(); // Immediately invoke the async function
+      } catch (backgroundErr) {
+        console.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
+      }
+    })();
 
-  } catch (initialErr) {
-    // This catch is for errors before we respond to PB (e.g., secret check)
-    // or if res.status().json() itself fails, though unlikely for the latter.
-    console.error("PB Webhook: Initial processing error:", initialErr.message, initialErr.stack);
-    // If headers haven't been sent, send an error response.
-    // This is a fallback, as we intend to respond quickly with 200 OK.
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Server error during initial webhook processing." });
-    }
-  }
+  } catch (initialErr) {
+    console.error("PB Webhook: Initial processing error:", initialErr.message, initialErr.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Server error during initial webhook processing." });
+    }
+  }
 });
 
 
@@ -240,174 +220,168 @@ router.post("/api/pb-webhook", async (req, res) => {
 // Manual Batch Score
 // ---------------------------------------------------------------
 router.get("/run-batch-score", async (req, res) => {
-  const limit = Number(req.query.limit) || 500;
-  if (!vertexAIClient || !geminiModelId || !airtableBase)
-    return res
-      .status(503)
-      .send("Batch scoring unavailable (config missing).");
+  const limit = Number(req.query.limit) || 500;
+  if (!vertexAIClient || !geminiModelId || !airtableBase)
+    return res
+      .status(503)
+      .send("Batch scoring unavailable (config missing).");
 
-  batchScorer
-    .run(req, res, { vertexAIClient, geminiModelId, airtableBase, limit })
-    .catch((e) => {
-      if (!res.headersSent)
-        res.status(500).send("Batch scoring error: " + e.message);
-    });
+  batchScorer
+    .run(req, res, { vertexAIClient, geminiModelId, airtableBase, limit })
+    .catch((e) => {
+      if (!res.headersSent)
+        res.status(500).send("Batch scoring error: " + e.message);
+    });
 });
 
 // ---------------------------------------------------------------
 // Single Lead Scorer
 // ---------------------------------------------------------------
 router.get("/score-lead", async (req, res) => {
-  if (!vertexAIClient || !geminiModelId || !airtableBase)
-    return res
-      .status(503)
-      .json({ error: "Scoring unavailable (config missing)." });
+  if (!vertexAIClient || !geminiModelId || !airtableBase)
+    return res
+      .status(503)
+      .json({ error: "Scoring unavailable (config missing)." });
 
-  try {
-    const id = req.query.recordId;
-    if (!id)
-      return res.status(400).json({ error: "recordId query param required" });
+  try {
+    const id = req.query.recordId;
+    if (!id)
+      return res.status(400).json({ error: "recordId query param required" });
 
-    const record = await airtableBase("Leads").find(id);
-    if (!record) { // Added check if record exists
-        console.warn(`score-lead: Lead record not found for ID: ${id}`);
-        return res.status(404).json({ error: `Lead record not found for ID: ${id}` });
-    }
-    const profileJsonString = record.get("Profile Full JSON");
-    if (!profileJsonString) {
-        console.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
-         await airtableBase("Leads").update(id, {
-            "AI Score": 0,
-            "Scoring Status": "Skipped – Profile JSON missing",
-            "AI Profile Assessment": "",
-            "AI Attribute Breakdown": "",
-          });
-        return res.json({ ok: true, skipped: true, reason: "Profile JSON missing" });
-    }
-    const profile = JSON.parse(profileJsonString);
-
-
-    const about =
-      (profile.about ||
-        profile.summary ||
-        profile.linkedinDescription ||
-        "").trim();
-    if (about.length < 40) {
-      await airtableBase("Leads").update(id, {
-        "AI Score": 0,
-        "Scoring Status": "Skipped – Profile JSON too small",
-        "AI Profile Assessment": "",
-        "AI Attribute Breakdown": "",
-      });
-      return res.json({ ok: true, skipped: true, reason: "JSON too small" });
-    }
-
-    if (isMissingCritical(profile)) {
-      // isMissingCritical logic might need review if profile structure varies
-      console.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
-      // await alertAdmin( // Consider if this alert is too noisy or if status update is enough
-      //   "Incomplete lead for scoring",
-      //   `ID:${id} JSON missing critical fields`
-      // );
-    }
-
-    const gOut = await scoreLeadNow(profile, {
-      vertexAIClient,
-      geminiModelId,
-    });
-    if (!gOut) {
-        console.error(`score-lead: singleScorer returned null for lead ID: ${id}`);
-        throw new Error("singleScorer returned null.");
-    }
+    const record = await airtableBase("Leads").find(id);
+    if (!record) { 
+        console.warn(`score-lead: Lead record not found for ID: ${id}`);
+        return res.status(404).json({ error: `Lead record not found for ID: ${id}` });
+    }
+    const profileJsonString = record.get("Profile Full JSON");
+    if (!profileJsonString) {
+        console.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
+         await airtableBase("Leads").update(id, {
+            "AI Score": 0,
+            "Scoring Status": "Skipped – Profile JSON missing",
+            "AI Profile Assessment": "",
+            "AI Attribute Breakdown": "",
+          });
+        return res.json({ ok: true, skipped: true, reason: "Profile JSON missing" });
+    }
+    const profile = JSON.parse(profileJsonString);
 
 
-    let {
-      positive_scores = {},
-      negative_scores = {},
-      attribute_reasoning = {},
-      contact_readiness = false,
-      unscored_attributes = [],
-      aiProfileAssessment = "N/A",
-      ai_excluded = "No",
-      exclude_details = "",
-    } = gOut;
+    const about =
+      (profile.about ||
+        profile.summary ||
+        profile.linkedinDescription ||
+        "").trim();
+    if (about.length < 40) {
+      await airtableBase("Leads").update(id, {
+        "AI Score": 0,
+        "Scoring Status": "Skipped – Profile JSON too small",
+        "AI Profile Assessment": "",
+        "AI Attribute Breakdown": "",
+      });
+      return res.json({ ok: true, skipped: true, reason: "JSON too small" });
+    }
 
-    const { positives, negatives } = await loadAttributes();
+    if (isMissingCritical(profile)) {
+      console.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
+    }
 
-    if (
-      contact_readiness &&
-      positives?.I &&
-      (positive_scores.I === undefined || positive_scores.I === null)
-    ) {
-      positive_scores.I = positives.I.maxPoints || 0;
-      if (!attribute_reasoning.I && positive_scores.I > 0) {
-        attribute_reasoning.I = "Contact readiness indicated by AI.";
-      }
-    }
+    const gOut = await scoreLeadNow(profile, {
+      vertexAIClient,
+      geminiModelId,
+    });
+    if (!gOut) {
+        console.error(`score-lead: singleScorer returned null for lead ID: ${id}`);
+        throw new Error("singleScorer returned null.");
+    }
 
-    const { percentage, rawScore: earned, denominator: max } =
-      computeFinalScore(
-        positive_scores,
-        positives,
-        negative_scores,
-        negatives,
-        contact_readiness,
-        unscored_attributes
-      );
-    const finalPct = Math.round(percentage * 100) / 100;
 
-    const breakdown = buildAttributeBreakdown(
-      positive_scores,
-      positives,
-      negative_scores,
-      negatives,
-      unscored_attributes,
-      earned,
-      max,
-      attribute_reasoning,
-      false,
-      null
-    );
+    let {
+      positive_scores = {},
+      negative_scores = {},
+      attribute_reasoning = {},
+      contact_readiness = false,
+      unscored_attributes = [],
+      aiProfileAssessment = "N/A",
+      ai_excluded = "No",
+      exclude_details = "",
+    } = gOut;
 
-    await airtableBase("Leads").update(id, {
-      "AI Score": finalPct,
-      "AI Profile Assessment": aiProfileAssessment,
-      "AI Attribute Breakdown": breakdown,
-      "Scoring Status": "Scored",
-      "Date Scored": new Date().toISOString().split("T")[0],
-      AI_Excluded: ai_excluded === "Yes" || ai_excluded === true,
-      "Exclude Details": exclude_details,
-    });
+    const { positives, negatives } = await loadAttributes();
 
-    res.json({ id, finalPct, aiProfileAssessment, breakdown });
-  } catch (err) {
-    console.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
-    // await alertAdmin("Single scoring failed", `ID: ${req.query.recordId || 'N/A'}\nError: ${err.message}`);
-    if (!res.headersSent)
-      res.status(500).json({ error: err.message });
-  }
+    if (
+      contact_readiness &&
+      positives?.I &&
+      (positive_scores.I === undefined || positive_scores.I === null)
+    ) {
+      positive_scores.I = positives.I.maxPoints || 0;
+      if (!attribute_reasoning.I && positive_scores.I > 0) {
+        attribute_reasoning.I = "Contact readiness indicated by AI.";
+      }
+    }
+
+    const { percentage, rawScore: earned, denominator: max } =
+      computeFinalScore(
+        positive_scores,
+        positives,
+        negative_scores,
+        negatives,
+        contact_readiness,
+        unscored_attributes
+      );
+    const finalPct = Math.round(percentage * 100) / 100;
+
+    const breakdown = buildAttributeBreakdown(
+      positive_scores,
+      positives,
+      negative_scores,
+      negatives,
+      unscored_attributes,
+      earned,
+      max,
+      attribute_reasoning,
+      false,
+      null
+    );
+
+    await airtableBase("Leads").update(id, {
+      "AI Score": finalPct,
+      "AI Profile Assessment": aiProfileAssessment,
+      "AI Attribute Breakdown": breakdown,
+      "Scoring Status": "Scored",
+      "Date Scored": new Date().toISOString().split("T")[0],
+      AI_Excluded: ai_excluded === "Yes" || ai_excluded === true,
+      "Exclude Details": exclude_details,
+    });
+
+    res.json({ id, finalPct, aiProfileAssessment, breakdown });
+  } catch (err) {
+    console.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
+    if (!res.headersSent)
+      res.status(500).json({ error: err.message });
+  }
 });
 
 // ---------------------------------------------------------------
 // Gemini Debug
 // ---------------------------------------------------------------
 router.get("/debug-gemini-info", (_req, res) => {
-  const modelIdForScoring =
-    geminiConfig?.geminiModel?.model ||
-    process.env.GEMINI_MODEL_ID ||
-    "gemini-2.5-pro-preview-05-06 (default)";
+  const modelIdForScoring =
+    geminiConfig?.geminiModel?.model ||
+    process.env.GEMINI_MODEL_ID ||
+    "gemini-2.5-pro-preview-05-06 (default)";
 
-  res.json({
-    message: "Gemini Debug Info",
-    model_id_for_scoring: modelIdForScoring,
-    batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
-    project_id: process.env.GCP_PROJECT_ID,
-    location: process.env.GCP_LOCATION,
-    global_client_available: !!vertexAIClient,
-    default_model_instance_available:
-      !!(geminiConfig && geminiConfig.geminiModel),
-    gpt_chat_url: process.env.GPT_CHAT_URL || "Not Set",
-  });
+  res.json({
+    message: "Gemini Debug Info",
+    model_id_for_scoring: modelIdForScoring,
+    batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
+    project_id: process.env.GCP_PROJECT_ID,
+    location: process.env.GCP_LOCATION,
+    global_client_available: !!vertexAIClient,
+    default_model_instance_available:
+      !!(geminiConfig && geminiConfig.geminiModel),
+    gpt_chat_url: process.env.GPT_CHAT_URL || "Not Set",
+  });
 });
 
 module.exports = router;
