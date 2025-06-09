@@ -1,9 +1,47 @@
-// File: postAnalysisService.js (Reverted to clean version with repost filtering)
+// File: postAnalysisService.js (Now with robust diagnostics for Posts Content parsing)
 
 // Require our newly defined helper modules
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 const { buildPostScoringPrompt } = require('./postPromptBuilder');
 const { scorePostsWithGemini } = require('./postGeminiScorer');
+
+/**
+ * Diagnostic helper for parsing the Posts Content field safely.
+ * Logs type, length, head/tail, and prints raw value if parsing fails.
+ */
+function diagnosePostsContent(rawField, recordId = '') {
+    console.log('------------------------');
+    console.log(`Diagnosing Posts Content for record: ${recordId}`);
+    console.log('Type:', typeof rawField);
+    if (rawField == null) {
+        console.log('Field is null or undefined');
+        return [];
+    }
+    if (typeof rawField !== 'string') {
+        console.log('Field is not a string, returning as-is:', rawField);
+        return Array.isArray(rawField) ? rawField : [];
+    }
+    console.log('String length:', rawField.length);
+    console.log('First 300 chars:', rawField.slice(0, 300));
+    if (rawField.length > 600) {
+        console.log('Last 300 chars:', rawField.slice(-300));
+    }
+
+    try {
+        const parsed = JSON.parse(rawField);
+        console.log('JSON successfully parsed. Type:', typeof parsed, Array.isArray(parsed) ? '(array)' : '');
+        return parsed;
+    } catch (err) {
+        console.error('JSON parse error:', err.message);
+        if (rawField.length > 1200) {
+            console.error('Problematic JSON (first 600 chars):', rawField.slice(0, 600));
+            console.error('Problematic JSON (last 600 chars):', rawField.slice(-600));
+        } else {
+            console.error('Problematic JSON:', rawField);
+        }
+        return [];
+    }
+}
 
 /**
  * Filter out reposts and keep only original posts authored by the lead.
@@ -39,10 +77,11 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         return { status: "No post content", score: 0, leadId: leadRecord.id };
     }
 
-    // Check 2: Parse the post content
+    // Check 2: Parse the post content with diagnostics
     let parsedPostsArray;
     try {
-        parsedPostsArray = JSON.parse(postsContentField);
+        // ---- DIAGNOSTIC WRAP ----
+        parsedPostsArray = diagnosePostsContent(postsContentField, leadRecord.id);
         if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) throw new Error("Content is not a non-empty array.");
     } catch (parseError) {
         console.error(`Lead ${leadRecord.id}: Failed to parse '${config.fields.postsContent}' JSON. Error: ${parseError.message}`);
@@ -53,9 +92,9 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         return { status: "Posts Content parsing error", error: parseError.message, leadId: leadRecord.id };
     }
 
-    // NEW: Filter to only original posts by this lead (no reposts)
-    const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
+    // NEW: Filter to only original posts by this lead (no reposts)
+    const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
+    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
 
     try {
         // Step 1: Load all dynamic configuration from Airtable (including keywords)
@@ -63,7 +102,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         const { aiKeywords } = await loadPostScoringAirtableConfig(base, config);
 
         // Step 2: Filter for all posts containing AI keywords (only from originals)
-        console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
+        console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
         const relevantPosts = originalPosts.filter(post =>
             post && post.postContent && aiKeywords.some(keyword => post.postContent.toLowerCase().includes(keyword.toLowerCase()))
         );
@@ -104,21 +143,21 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         console.log(`Lead ${leadRecord.id}: Calling Gemini scorer...`);
         const aiResponseArray = await scorePostsWithGemini(relevantPosts, configuredGeminiModel);
 
-        // Step 6: Find the highest scoring post from the response
-        if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
-            throw new Error("AI response was not a valid or non-empty array of post scores.");
-        }
+        // Step 6: Find the highest scoring post from the response
+        if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
+            throw new Error("AI response was not a valid or non-empty array of post scores.");
+        }
 
-        // Use reduce to find the post with the highest score.
-        const highestScoringPost = aiResponseArray.reduce((max, current) => {
-            return (current.post_score > max.post_score) ? current : max;
-        }, aiResponseArray[0]);
+        // Use reduce to find the post with the highest score.
+        const highestScoringPost = aiResponseArray.reduce((max, current) => {
+            return (current.post_score > max.post_score) ? current : max;
+        }, aiResponseArray[0]);
 
-        if (!highestScoringPost || typeof highestScoringPost.post_score === 'undefined') {
-             throw new Error("Could not determine the highest scoring post from the AI response.");
-        }
-        
-        console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
+        if (!highestScoringPost || typeof highestScoringPost.post_score === 'undefined') {
+             throw new Error("Could not determine the highest scoring post from the AI response.");
+        }
+        
+        console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
 
         // Step 7: Update Airtable with the results from the highest-scoring post
         await base(config.leadsTableName).update(leadRecord.id, {
@@ -177,10 +216,10 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config) {
 async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config) {
     console.log(`PostAnalysisService: scoreSpecificLeadPosts - Called for leadId: ${leadId}`);
     try {
-        const records = await base(config.leadsTableName).select({
-            filterByFormula: `RECORD_ID() = '${leadId}'`,
-            maxRecords: 1
-        }).firstPage();
+        const records = await base(config.leadsTableName).select({
+            filterByFormula: `RECORD_ID() = '${leadId}'`,
+            maxRecords: 1
+        }).firstPage();
         const leadRecord = records[0];
 
         if (!leadRecord) {
