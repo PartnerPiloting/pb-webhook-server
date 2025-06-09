@@ -1,27 +1,24 @@
 /**
  * utils/repairAirtablePostsContentQuotes.js
+ * Robust, logging version – v2025-06-09
  * ------------------------------------------------------------------
- * One-time fixer for legacy “Posts Content” JSON that contains
- * un-escaped double-quotes inside postContent strings.
- *
  * HOW IT WORKS
- * 1.  Try JSON.parse(raw).  If it succeeds → record already valid, skip.
- * 2.  If parse fails, run safeQuoteFix() to escape inner quotes.
- * 3.  Parse again.  If it now parses → update Airtable.
- * 4.  Else log as FAIL (field left unchanged).
- *
- * Run from CLI :  node utils/repairAirtablePostsContentQuotes.js
- * Or via HTTP  :  POST /admin/repair-posts-content  (endpoint already set up)
+ * 1.  Parse raw JSON.  If it succeeds ➜ SKIP (valid).
+ * 2.  If parse fails ➜ escape every bare " inside each postContent string.
+ * 3.  Parse again.  If it succeeds ➜ FIXED and write back to Airtable.
+ * 4.  Else ➜ FAILED; log 60-char snippet around error for inspection.
  */
+
+console.log(">>> Repair Script v2025-06-09 is running <<<");
 
 require("dotenv").config();
 const base = require("../config/airtableClient");
 
-const TABLE_NAME  = "Leads";
-const POSTS_FIELD = "Posts Content";
+const TABLE  = "Leads";
+const FIELD  = "Posts Content";
 
-// --- 63 legacy record IDs to repair ---
-const BROKEN_RECORD_IDS = [
+// 63 legacy IDs
+const IDS = [
   "rec1UrAtCfS8X4rzE","recSS5otfW1HplXUr","recPxzumLjBG4ir5U","recOc6vvRNPYi2JGO","recAErpv0Fv2sKjzP",
   "recgKIEUFzx7wx6Kx","rec9IPh9z5Ovrng4e","recTAtYpDSEXrSu4T","rec7j4x44Dnd6ur52","recm4DJlkC10vo7DM",
   "recKo0RuWPiESR5ns","recIb0lkzy6zXQUuL","recoU0SnKqraYKZbL","rec2FAVEDYY1Wdtx2","recKpv0lQK9ALJKDu",
@@ -37,66 +34,68 @@ const BROKEN_RECORD_IDS = [
   "recxZ71geihOVrBNi","recyGetDgvWdAS98o","recKKnYTSMe17G9td"
 ];
 
-/**
- * Escapes every un-escaped " inside each postContent value.
- * Works on arrays or single post objects and spans newlines.
- */
-function safeQuoteFix(raw) {
+// Capture full postContent string (handles newlines) then escape quotes
+function escapeQuotes(raw) {
   return raw.replace(
-    /("postContent"\s*:\s*")(.*?)(")/gs,
-    (_, open, content, close) => {
-      const fixed = content.replace(/\\?"/g, q => (q === '"' ? '\\"' : q));
-      return open + fixed + close;
-    }
+    /("postContent"\s*:\s*")((?:[^"\\]|\\.)*)(")/gs,
+    (_, open, body, close) => open + body.replace(/\\?"/g, '\\"') + close
   );
 }
 
-async function repairAirtablePostsContentQuotes() {
-  let fixed = 0, skipped = 0, failed = 0;
+async function run() {
+  let ok = 0, fixed = 0, failed = 0;
 
-  for (const id of BROKEN_RECORD_IDS) {
+  for (const id of IDS) {
     try {
-      const record = await base(TABLE_NAME).find(id);
-      const raw    = record.get(POSTS_FIELD);
+      const rec = await base(TABLE).find(id);
+      const raw = rec.get(FIELD);
 
       if (!raw || typeof raw !== "string" || !raw.trim()) {
-        console.log(`SKIP (blank)  – ${id}`);
-        skipped++;   continue;
+        console.log(`SKIP blank   – ${id}`);
+        ok++; continue;
       }
 
-      // 1) Already valid?
+      // is it already good?
       try {
         JSON.parse(raw);
-        console.log(`SKIP (valid)  – ${id}`);
-        skipped++;   continue;
-      } catch { /* fall through to fix */ }
+        console.log(`SKIP valid   – ${id}`);
+        ok++; continue;
+      } catch { /* fall through */ }
 
-      // 2) Attempt repair
-      const repaired = safeQuoteFix(raw);
+      // attempt repair
+      const repaired = escapeQuotes(raw);
       try {
-        JSON.parse(repaired); // confirm fixed
-        await base(TABLE_NAME).update([{ id, fields: { [POSTS_FIELD]: repaired } }]);
-        console.log(`FIXED         – ${id}`);
+        JSON.parse(repaired);
+        await base(TABLE).update([{ id, fields: { [FIELD]: repaired } }]);
+        console.log(`FIXED        – ${id}`);
         fixed++;
       } catch (e) {
-        console.log(`FAIL          – ${id} (${e.message})`);
+        // extract error position if available
+        const posMatch = e.message.match(/position (\d+)/);
+        if (posMatch) {
+          const pos = Number(posMatch[1]);
+          const snippet = repaired.slice(Math.max(0, pos - 30), pos + 30);
+          console.log(`FAILED       – ${id}  (${e.message})`);
+          console.log("  → snippet:", snippet.replace(/\n/g, "\\n"));
+        } else {
+          console.log(`FAILED       – ${id}  (${e.message})`);
+        }
         failed++;
       }
-
     } catch (err) {
-      console.log(`ERROR         – ${id} (${err.message})`);
+      console.log(`ERROR        – ${id}  (${err.message})`);
       failed++;
     }
   }
 
-  console.log(`\nSUMMARY ► attempted ${BROKEN_RECORD_IDS.length} | fixed ${fixed} | skipped ${skipped} | failed ${failed}`);
-  return { attempted: BROKEN_RECORD_IDS.length, fixed, skipped, failed };
+  console.log(`\nSUMMARY ▸ attempted ${IDS.length} | fixed ${fixed} | skipped ${ok} | failed ${failed}`);
+  return { attempted: IDS.length, fixed, skipped: ok, failed };
 }
 
-module.exports = repairAirtablePostsContentQuotes;
+module.exports = run;
 
 if (require.main === module) {
-  repairAirtablePostsContentQuotes()
+  run()
     .then(() => { console.log("✔︎ Repair complete"); process.exit(0); })
-    .catch(e => { console.error("✖ Repair script error:", e); process.exit(1); });
+    .catch(e => { console.error("✖︎ Script error:", e); process.exit(1); });
 }
