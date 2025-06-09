@@ -1,12 +1,13 @@
 /**
  * repairAirtablePostsContentQuotes.js
  * Attempts to repair unescaped double quotes in "Posts Content" JSON for specific records in Airtable Leads table.
- * Usage: node repairAirtablePostsContentQuotes.js
+ * Usage (CLI): node utils/repairAirtablePostsContentQuotes.js
+ * Usage (import): const repairAirtablePostsContentQuotes = require('./utils/repairAirtablePostsContentQuotes');
  * Loads base from your config/airtableClient.js.
  */
 
 require("dotenv").config(); // Inherit env vars (works on Render and locally)
-const base = require("./config/airtableClient"); // Use your configured Airtable base
+const base = require("../config/airtableClient"); // <-- update this path if needed
 
 const TABLE_NAME = "Leads";
 const POSTS_FIELD = "Posts Content";
@@ -45,8 +46,13 @@ function fixUnescapedQuotes(jsonStr) {
   }
 }
 
-(async () => {
+/**
+ * Main repair function
+ * @returns {Promise<{fixed: number, failed: number, attempted: number, details: object[]}>}
+ */
+async function repairAirtablePostsContentQuotes() {
   let fixed = 0, failed = 0;
+  let details = [];
 
   for (let id of BROKEN_RECORD_IDS) {
     try {
@@ -54,6 +60,7 @@ function fixUnescapedQuotes(jsonStr) {
       let jsonStr = record.get(POSTS_FIELD);
 
       if (!jsonStr || typeof jsonStr !== "string" || jsonStr.trim() === "") {
+        details.push({ id, status: "skipped", reason: "blank" });
         console.log(`Skipped blank: ${id}`);
         continue;
       }
@@ -65,13 +72,16 @@ function fixUnescapedQuotes(jsonStr) {
           { id, fields: { [POSTS_FIELD]: repaired } }
         ]);
         fixed++;
+        details.push({ id, status: "fixed" });
         console.log(`✔️ Fixed and updated: ${id}`);
       } else {
         failed++;
+        details.push({ id, status: "failed", reason: "unfixable" });
         console.log(`❌ Could not fix: ${id}`);
       }
     } catch (err) {
       failed++;
+      details.push({ id, status: "error", reason: err.message });
       console.log(`❌ Error on ${id}: ${err.message}`);
     }
   }
@@ -80,4 +90,26 @@ function fixUnescapedQuotes(jsonStr) {
   console.log(`Total attempted: ${BROKEN_RECORD_IDS.length}`);
   console.log(`Fixed and updated: ${fixed}`);
   console.log(`Failed (manual review needed): ${failed}`);
-})();
+
+  return {
+    attempted: BROKEN_RECORD_IDS.length,
+    fixed,
+    failed,
+    details
+  };
+}
+
+module.exports = repairAirtablePostsContentQuotes;
+
+// If run directly via CLI: node utils/repairAirtablePostsContentQuotes.js
+if (require.main === module) {
+  repairAirtablePostsContentQuotes()
+    .then(() => {
+      console.log("Repair script completed.");
+      process.exit(0);
+    })
+    .catch(e => {
+      console.error("Repair script error:", e);
+      process.exit(1);
+    });
+}
