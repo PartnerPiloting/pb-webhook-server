@@ -88,6 +88,30 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+// --- ADMIN REPAIR ENDPOINT (SECURE) ---
+// Full import for repair script
+const repairAirtablePostsContentQuotes = require('./utils/repairAirtablePostsContentQuotes');
+// Use your existing PB_WEBHOOK_SECRET for the repair endpoint
+const REPAIR_SECRET = process.env.PB_WEBHOOK_SECRET || 'changeme-please-update-this!';
+
+/**
+ * Admin endpoint to trigger the Posts Content repair script.
+ * POST /admin/repair-posts-content
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ */
+app.post('/admin/repair-posts-content', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    try {
+        const summary = await repairAirtablePostsContentQuotes();
+        res.json({ ok: true, summary });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message || 'Repair failed' });
+    }
+});
+
 /* ------------------------------------------------------------------
     2) Mount All Route Handlers and Sub-APIs
 ------------------------------------------------------------------*/
