@@ -1,9 +1,23 @@
-// File: postAnalysisService.js (Reverted to clean version)
+// File: postAnalysisService.js (Reverted to clean version with repost filtering)
 
 // Require our newly defined helper modules
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 const { buildPostScoringPrompt } = require('./postPromptBuilder');
 const { scorePostsWithGemini } = require('./postGeminiScorer');
+
+/**
+ * Filter out reposts and keep only original posts authored by the lead.
+ * @param {Array} postsArray - All posts for the lead
+ * @param {string} leadProfileUrl - LinkedIn profile URL of the lead
+ * @returns {Array}
+ */
+function filterOriginalPosts(postsArray, leadProfileUrl) {
+    return postsArray.filter(post => {
+        const action = post?.pbMeta?.action?.toLowerCase() || '';
+        const isOriginalAuthor = post?.pbMeta?.authorUrl === leadProfileUrl;
+        return !action.includes('repost') && isOriginalAuthor;
+    });
+}
 
 /**
  * (Internal helper function) Contains the common logic for analyzing and scoring
@@ -39,14 +53,18 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         return { status: "Posts Content parsing error", error: parseError.message, leadId: leadRecord.id };
     }
 
+    // NEW: Filter to only original posts by this lead (no reposts)
+    const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
+    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
+
     try {
         // Step 1: Load all dynamic configuration from Airtable (including keywords)
         console.log(`Lead ${leadRecord.id}: Loading config from Airtable...`);
         const { aiKeywords } = await loadPostScoringAirtableConfig(base, config);
 
-        // Step 2: Filter for all posts containing AI keywords
-        console.log(`Lead ${leadRecord.id}: Scanning ${parsedPostsArray.length} posts for AI keywords...`);
-        const relevantPosts = parsedPostsArray.filter(post =>
+        // Step 2: Filter for all posts containing AI keywords (only from originals)
+        console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
+        const relevantPosts = originalPosts.filter(post =>
             post && post.postContent && aiKeywords.some(keyword => post.postContent.toLowerCase().includes(keyword.toLowerCase()))
         );
 
@@ -54,7 +72,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             console.log(`Lead ${leadRecord.id}: No relevant posts with AI keywords found.`);
             await base(config.leadsTableName).update(leadRecord.id, {
                 [config.fields.relevanceScore]: 0,
-                [config.fields.aiEvaluation]: `Scanned ${parsedPostsArray.length} posts. No relevant AI keywords detected.`,
+                [config.fields.aiEvaluation]: `Scanned ${originalPosts.length} original posts. No relevant AI keywords detected.`,
                 [config.fields.dateScored]: new Date().toISOString()
             });
             return { status: "No AI keywords found", score: 0, leadId: leadRecord.id };
