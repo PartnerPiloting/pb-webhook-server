@@ -51,6 +51,7 @@ const POST_SCORING_ATTRIBUTES_TABLE_NAME = "Post Scoring Attributes";
 const POST_SCORING_INSTRUCTIONS_TABLE_NAME = "Post Scoring Instructions";
 const POST_DATE_SCORED_FIELD = "Date Posts Scored";
 const POSTS_CONTENT_FIELD = "Posts Content";
+const POSTS_PLAIN_TEXT_FIELD = "Posts Plain Text"; // NEW: Plain text field for posts
 const POST_RELEVANCE_SCORE_FIELD = "Posts Relevance Score";
 const POST_AI_EVALUATION_FIELD = "Posts AI Evaluation";
 const POST_RELEVANT_POSTS_SUMMARISED_FIELD = "Relevant Posts Summarised by AI";
@@ -67,7 +68,7 @@ const postAnalysisConfig = {
     // Field Names in your 'Leads' Table related to Post Scoring - using our new constants
     fields: {
         dateScored: POST_DATE_SCORED_FIELD,
-        postsContent: POSTS_CONTENT_FIELD,
+        postsContent: POSTS_PLAIN_TEXT_FIELD, // Changed from POSTS_CONTENT_FIELD
         relevanceScore: POST_RELEVANCE_SCORE_FIELD,
         aiEvaluation: POST_AI_EVALUATION_FIELD,
         summarisedByAI: POST_RELEVANT_POSTS_SUMMARISED_FIELD
