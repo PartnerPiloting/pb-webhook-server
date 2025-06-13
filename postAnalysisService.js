@@ -103,13 +103,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             }
             if (!text) return false;
             const matches = aiKeywords.filter(keyword => text.toLowerCase().includes(keyword.toLowerCase()));
-            if (matches.length > 0) {
-                console.log(`Post matched keywords:`, matches, '\nPost text:', text);
-                return true;
-            } else {
-                console.log(`No keyword match for post:`, text);
-                return false;
-            }
+            return matches.length > 0;
         });
 
         if (relevantPosts.length === 0) {
