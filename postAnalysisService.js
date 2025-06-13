@@ -91,11 +91,19 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         // Step 1: Load all dynamic configuration from Airtable (including keywords)
         console.log(`Lead ${leadRecord.id}: Loading config from Airtable...`);
         const { aiKeywords } = await loadPostScoringAirtableConfig(base, config);
-
+        console.log(`Loaded AI Keywords:`, aiKeywords);
         // Step 2: Filter for all posts containing AI keywords (only from originals)
         console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
-        const relevantPosts = originalPosts.filter(post =>
-            post && typeof post === 'string' && aiKeywords.some(keyword => post.toLowerCase().includes(keyword.toLowerCase()))
+        const relevantPosts = originalPosts.filter(post => {
+            if (!post || typeof post !== 'string') return false;
+            const matches = aiKeywords.filter(keyword => post.toLowerCase().includes(keyword.toLowerCase()));
+            if (matches.length > 0) {
+                console.log(`Post matched keywords:`, matches, '\nPost text:', post);
+                return true;
+            } else {
+                console.log(`No keyword match for post:`, post);
+                return false;
+            }
         );
 
         if (relevantPosts.length === 0) {
