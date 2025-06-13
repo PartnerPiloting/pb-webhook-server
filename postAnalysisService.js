@@ -78,10 +78,10 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         return { status: "No post content", score: 0, leadId: leadRecord.id };
     }
 
-    // No JSON parsing needed, just wrap the plain text in an array for compatibility
+    // No JSON parsing needed, just wrap the plain text in an array of objects for compatibility
     const parsedPostsArray = Array.isArray(postsPlainTextField)
-        ? postsPlainTextField
-        : [postsPlainTextField];
+        ? postsPlainTextField.map(text => ({ postContent: text }))
+        : [{ postContent: postsPlainTextField }];
 
     // NEW: Filter to only original posts by this lead (no reposts)
     const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
