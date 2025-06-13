@@ -64,10 +64,11 @@ function filterOriginalPosts(postsArray, leadProfileUrl) {
 async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config) {
     console.log(`PostAnalysisService: Analyzing posts for lead: ${leadRecord.id}`);
 
-    const postsContentField = leadRecord.fields[config.fields.postsContent];
+    // Read the plain text field instead of JSON
+    const postsPlainTextField = leadRecord.fields[config.fields.postsContent];
 
     // Check 1: Ensure there is post content to analyze
-    if (!postsContentField) {
+    if (!postsPlainTextField) {
         console.warn(`Lead ${leadRecord.id} has no '${config.fields.postsContent}' content. Skipping.`);
         await base(config.leadsTableName).update(leadRecord.id, {
             [config.fields.relevanceScore]: 0,
@@ -77,20 +78,10 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         return { status: "No post content", score: 0, leadId: leadRecord.id };
     }
 
-    // Check 2: Parse the post content with diagnostics
-    let parsedPostsArray;
-    try {
-        // ---- DIAGNOSTIC WRAP ----
-        parsedPostsArray = diagnosePostsContent(postsContentField, leadRecord.id);
-        if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) throw new Error("Content is not a non-empty array.");
-    } catch (parseError) {
-        console.error(`Lead ${leadRecord.id}: Failed to parse '${config.fields.postsContent}' JSON. Error: ${parseError.message}`);
-        await base(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.aiEvaluation]: `Error parsing Posts Content: ${parseError.message}`,
-            [config.fields.dateScored]: new Date().toISOString()
-        });
-        return { status: "Posts Content parsing error", error: parseError.message, leadId: leadRecord.id };
-    }
+    // No JSON parsing needed, just wrap the plain text in an array for compatibility
+    const parsedPostsArray = Array.isArray(postsPlainTextField)
+        ? postsPlainTextField
+        : [postsPlainTextField];
 
     // NEW: Filter to only original posts by this lead (no reposts)
     const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
@@ -104,7 +95,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         // Step 2: Filter for all posts containing AI keywords (only from originals)
         console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
         const relevantPosts = originalPosts.filter(post =>
-            post && post.postContent && aiKeywords.some(keyword => post.postContent.toLowerCase().includes(keyword.toLowerCase()))
+            post && typeof post === 'string' && aiKeywords.some(keyword => post.toLowerCase().includes(keyword.toLowerCase()))
         );
 
         if (relevantPosts.length === 0) {
