@@ -73,7 +73,14 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // (If you want to keep this, you may need to adapt filterOriginalPosts to work with plain text posts)
     // const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
     // const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
-    const originalPosts = parsedPostsArray; // Use all parsed posts for now
+    // Filter out reposts: Only keep posts where the URL contains the lead's LinkedIn profile (i.e., original posts)
+    const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
+    const originalPosts = parsedPostsArray.filter(post => {
+        // If you have a way to identify the author's profile in the plain text, use it here
+        // For now, treat as original if the post URL contains the lead's profile URL
+        if (!post.postUrl || !leadProfileUrl) return false;
+        return post.postUrl.includes(leadProfileUrl);
+    });
 
     try {
         // Step 1: Load all dynamic configuration from Airtable (including keywords)
@@ -83,16 +90,16 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         // Step 2: Filter for all posts containing AI keywords (only from originals)
         console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
         const relevantPosts = originalPosts.filter(post => {
-            let text = '';
-            if (typeof post === 'string') {
-                text = post;
-            } else if (post && typeof post === 'object' && post.postContent) {
-                text = post.postContent;
-            }
-            if (!text) return false;
-            const matches = aiKeywords.filter(keyword => text.toLowerCase().includes(keyword.toLowerCase()));
-            return matches.length > 0;
-        });
+          let text = '';
+          if (typeof post === 'string') {
+              text = post;
+          } else if (post && typeof post === 'object' && post.postContent) {
+              text = post.postContent;
+          }
+          if (!text) return false;
+          const matches = aiKeywords.filter(keyword => text.toLowerCase().includes(keyword.toLowerCase()));
+          return matches.length > 0;
+        });
 
         if (relevantPosts.length === 0) {
             console.log(`Lead ${leadRecord.id}: No relevant posts with AI keywords found.`);
