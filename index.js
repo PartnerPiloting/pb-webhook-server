@@ -71,7 +71,8 @@ const postAnalysisConfig = {
         postsContent: POSTS_PLAIN_TEXT_FIELD, // Changed from POSTS_CONTENT_FIELD
         relevanceScore: POST_RELEVANCE_SCORE_FIELD,
         aiEvaluation: POST_AI_EVALUATION_FIELD,
-        topScoringPost: POST_TOP_SCORING_POST_FIELD // Renamed and updated field
+        topScoringPost: POST_TOP_SCORING_POST_FIELD, // Renamed and updated field
+        linkedinUrl: AIRTABLE_LINKEDIN_URL_FIELD // Ensure this is mapped for original/repost filtering
     },
     // AI Keywords are now loaded from Airtable by postAttributeLoader.js
     // Model ID and Timeout reuse your existing lead scoring environment variables for consistency.

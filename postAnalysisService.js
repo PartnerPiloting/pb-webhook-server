@@ -83,7 +83,9 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     const normalizedLeadProfileUrl = normalizeUrl(leadProfileUrl);
     const originalPosts = parsedPostsArray.filter(post => {
         const normalizedAuthorUrl = normalizeUrl(post.authorUrl);
-        return normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
+        const isOriginal = normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
+        console.log(`DEBUG: Comparing authorUrl='${normalizedAuthorUrl}' to leadProfileUrl='${normalizedLeadProfileUrl}' => ${isOriginal ? 'ORIGINAL' : 'REPOST'}`);
+        return isOriginal;
     });
 
     try {
