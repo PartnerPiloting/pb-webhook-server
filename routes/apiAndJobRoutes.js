@@ -4,6 +4,7 @@ const express = require("express");
 const router = express.Router();
 const fetch = (...args) =>
   import("node-fetch").then(({ default: f }) => f(...args));
+const dirtyJSON = require('dirty-json');
 
 // ---------------------------------------------------------------
 // Dependencies
@@ -168,8 +169,15 @@ router.post("/api/pb-webhook", async (req, res) => {
             const cleanedString = rawResultObject.replace(/,\s*([}\]])/g, "$1");
             postsInputArray = JSON.parse(cleanedString);
           } catch (parseError) {
-            console.error("PB Webhook: Error parsing resultObject string:", parseError);
-            return;
+            console.error("PB Webhook: Error parsing resultObject string with JSON.parse:", parseError);
+            // Fallback: try dirty-json
+            try {
+              postsInputArray = dirtyJSON.parse(rawResultObject);
+              console.log("PB Webhook: dirty-json successfully parsed resultObject string.");
+            } catch (dirtyErr) {
+              console.error("PB Webhook: dirty-json also failed to parse resultObject string:", dirtyErr);
+              return;
+            }
           }
         } else if (Array.isArray(rawResultObject)) {
           postsInputArray = rawResultObject;
@@ -208,10 +216,8 @@ router.post("/api/pb-webhook", async (req, res) => {
     })();
 
   } catch (initialErr) {
-    console.error("PB Webhook: Initial processing error:", initialErr.message, initialErr.stack);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Server error during initial webhook processing." });
-    }
+    console.error("PB Webhook: Initial error:", initialErr.message, initialErr.stack);
+    res.status(500).json({ error: initialErr.message });
   }
 });
 
