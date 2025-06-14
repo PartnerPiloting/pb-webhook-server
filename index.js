@@ -95,6 +95,7 @@ app.use(express.json({ limit: "10mb" }));
 const repairAirtablePostsContentQuotes = require('./utils/repairAirtablePostsContentQuotes');
 const scanBadJsonRecords = require('./scanBadJsonRecords');
 const repairSingleBadJsonRecord = require('./repairSingleBadJsonRecord');
+const repairAllBadJsonRecords = require('./repairAllBadJsonRecords');
 // Use your existing PB_WEBHOOK_SECRET for the repair endpoint
 const REPAIR_SECRET = process.env.PB_WEBHOOK_SECRET || 'changeme-please-update-this!';
 
@@ -152,6 +153,24 @@ app.post('/admin/repair-single-bad-json', async (req, res) => {
     try {
         await repairSingleBadJsonRecord(recordId);
         res.json({ ok: true, message: `Repair attempted for record ${recordId}` });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
+ * Admin endpoint to trigger batch repair of all bad JSON records.
+ * POST /admin/repair-all-bad-json
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ */
+app.post('/admin/repair-all-bad-json', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    try {
+        repairAllBadJsonRecords(); // Fire and forget, logs will show progress
+        res.json({ ok: true, message: 'Batch repair started. Check logs for progress and summary.' });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message });
     }
