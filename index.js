@@ -39,7 +39,7 @@ if (!GPT_CHAT_URL) {
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID; // Corrected line from bug fix
 const AIRTABLE_LEADS_TABLE_ID_OR_NAME = "Leads";
-const AIRTABLE_LINKEDIN_URL_FIELD = "Linkedin Profile URL";
+const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
 const AIRTABLE_NOTES_FIELD = "Notes";
 
 if (!AIRTABLE_BASE_ID) {
