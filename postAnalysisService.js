@@ -74,13 +74,16 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // (If you want to keep this, you may need to adapt filterOriginalPosts to work with plain text posts)
     // const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
     // const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
-    // Filter out reposts: Only keep posts where the URL contains the lead's LinkedIn profile (i.e., original posts)
+    // Filter out reposts: Only keep posts where the authorUrl matches the lead's LinkedIn profile URL (case-insensitive, ignore protocol and trailing slashes)
+    function normalizeUrl(url) {
+        if (!url) return '';
+        return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
+    }
     const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
+    const normalizedLeadProfileUrl = normalizeUrl(leadProfileUrl);
     const originalPosts = parsedPostsArray.filter(post => {
-        // If you have a way to identify the author's profile in the plain text, use it here
-        // For now, treat as original if the post URL contains the lead's profile URL
-        if (!post.postUrl || !leadProfileUrl) return false;
-        return post.postUrl.includes(leadProfileUrl);
+        const normalizedAuthorUrl = normalizeUrl(post.authorUrl);
+        return normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
     });
 
     try {
