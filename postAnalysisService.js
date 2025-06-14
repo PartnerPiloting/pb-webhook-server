@@ -4,6 +4,7 @@
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 const { buildPostScoringPrompt } = require('./postPromptBuilder');
 const { scorePostsWithGemini } = require('./postGeminiScorer');
+const { parsePlainTextPosts } = require('./utils/parsePlainTextPosts');
 
 /**
  * Diagnostic helper for parsing the Posts Content field safely.
@@ -64,28 +65,15 @@ function filterOriginalPosts(postsArray, leadProfileUrl) {
 async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config) {
     console.log(`PostAnalysisService: Analyzing posts for lead: ${leadRecord.id}`);
 
-    // Read the plain text field instead of JSON
+    // Read the plain text field and parse it into structured posts
     const postsPlainTextField = leadRecord.fields[config.fields.postsContent];
-
-    // Check 1: Ensure there is post content to analyze
-    if (!postsPlainTextField) {
-        console.warn(`Lead ${leadRecord.id} has no '${config.fields.postsContent}' content. Skipping.`);
-        await base(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.relevanceScore]: 0,
-            [config.fields.aiEvaluation]: "No post content found to analyze.",
-            [config.fields.dateScored]: new Date().toISOString()
-        });
-        return { status: "No post content", score: 0, leadId: leadRecord.id };
-    }
-
-    // No JSON parsing needed, just wrap the plain text in an array of objects for compatibility
-    const parsedPostsArray = Array.isArray(postsPlainTextField)
-        ? postsPlainTextField.map(text => ({ postContent: text }))
-        : [{ postContent: postsPlainTextField }];
+    const parsedPostsArray = parsePlainTextPosts(postsPlainTextField);
 
     // NEW: Filter to only original posts by this lead (no reposts)
-    const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
+    // (If you want to keep this, you may need to adapt filterOriginalPosts to work with plain text posts)
+    // const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
+    // const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
+    const originalPosts = parsedPostsArray; // Use all parsed posts for now
 
     try {
         // Step 1: Load all dynamic configuration from Airtable (including keywords)
