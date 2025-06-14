@@ -159,11 +159,27 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
 
         // Step 7: Update Airtable with the results from the highest-scoring post
-        await base(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.relevanceScore]: highestScoringPost.post_score,
-            [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
-            [config.fields.summarisedByAI]: highestScoringPost.scoring_rationale || "N/A",
-            [config.fields.dateScored]: new Date().toISOString()
+        // Format the top scoring post details for the new field
+        function formatDateAEST(utcString) {
+            if (!utcString) return "";
+            const date = new Date(utcString);
+            const offsetMs = 10 * 60 * 60 * 1000; // 10 hours in ms
+            const aestDate = new Date(date.getTime() + offsetMs);
+            // Format as YYYY-MM-DD HH:mm AEST
+            return aestDate.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
+        }
+        const topScoringPostText =
+            `Date: ${formatDateAEST(highestScoringPost.post_date || highestScoringPost.postDate)}\n` +
+            `URL: ${highestScoringPost.post_url || highestScoringPost.postUrl || ''}\n` +
+            `Score: ${highestScoringPost.post_score}\n` +
+            `Content: ${highestScoringPost.post_content || highestScoringPost.postContent || ''}\n` +
+            `Rationale: ${highestScoringPost.scoring_rationale || 'N/A'}`;
+
+        await base(config.leadsTableName).update(leadRecord.id, {
+            [config.fields.relevanceScore]: highestScoringPost.post_score,
+            [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
+            [config.fields.topScoringPost]: topScoringPostText,
+            [config.fields.dateScored]: new Date().toISOString()
         });
 
         console.log(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
