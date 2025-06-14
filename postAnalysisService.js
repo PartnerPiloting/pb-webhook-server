@@ -162,20 +162,18 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
 
         // Step 7: Update Airtable with the results from the highest-scoring post
-        // Format the top scoring post details for the new field
-        function formatDateAEST(utcString) {
-            if (!utcString) return "";
-            const date = new Date(utcString);
-            const offsetMs = 10 * 60 * 60 * 1000; // 10 hours in ms
-            const aestDate = new Date(date.getTime() + offsetMs);
-            // Format as YYYY-MM-DD HH:mm AEST
-            return aestDate.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
+        // Use the date as-is if it's not a valid ISO string
+        function safeFormatDate(dateStr) {
+            if (!dateStr) return "";
+            // Try to parse as ISO, otherwise return as-is
+            const d = new Date(dateStr);
+            return isNaN(d.getTime()) ? dateStr : d.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
         }
         const topScoringPostText =
-            `Date: ${formatDateAEST(highestScoringPost.post_date || highestScoringPost.postDate)}\n` +
-            `URL: ${highestScoringPost.post_url || highestScoringPost.postUrl || ''}\n` +
+            `Date: ${safeFormatDate(highestScoringPost.postDate || highestScoringPost.post_date)}\n` +
+            `URL: ${highestScoringPost.postUrl || highestScoringPost.post_url || ''}\n` +
             `Score: ${highestScoringPost.post_score}\n` +
-            `Content: ${highestScoringPost.post_content || highestScoringPost.postContent || ''}\n` +
+            `Content: ${highestScoringPost.postContent || highestScoringPost.post_content || ''}\n` +
             `Rationale: ${highestScoringPost.scoring_rationale || 'N/A'}`;
 
         await base(config.leadsTableName).update(leadRecord.id, {
