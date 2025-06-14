@@ -142,7 +142,22 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         console.log(`Lead ${leadRecord.id}: Calling Gemini scorer...`);
         const aiResponseArray = await scorePostsWithGemini(relevantPosts, configuredGeminiModel);
 
-        // Step 6: Find the highest scoring post from the response
+        // --- NEW: Merge original post data into AI response ---
+        // Map post_url to original post for quick lookup
+        const postUrlToOriginal = {};
+        for (const post of relevantPosts) {
+            const url = post.postUrl || post.post_url;
+            if (url) postUrlToOriginal[url] = post;
+        }
+        // Attach content and date to each AI response object
+        aiResponseArray.forEach(resp => {
+            const orig = postUrlToOriginal[resp.post_url] || {};
+            resp.post_content = orig.postContent || orig.post_content || '';
+            resp.postDate = orig.postDate || orig.post_date || '';
+        });
+        // --- END MERGE ---
+
+        // Step 6: Find the highest scoring post from the response
         if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
             throw new Error("AI response was not a valid or non-empty array of post scores.");
         }
