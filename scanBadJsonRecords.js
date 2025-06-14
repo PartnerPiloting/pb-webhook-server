@@ -8,10 +8,15 @@ const LEADS_TABLE = 'Leads';
 async function scanBadJsonRecords() {
     const maxToLog = 5;
     let badRecords = [];
+    let checked = 0;
     let page = 0;
     console.log('Scanning Airtable for records with malformed JSON in Posts Content...');
     await base(LEADS_TABLE).select({fields: [POSTS_CONTENT_FIELD]}).eachPage((records, fetchNextPage) => {
         for (const record of records) {
+            checked++;
+            if (checked % 100 === 0) {
+                console.log(`Checked ${checked} records so far...`);
+            }
             const raw = record.get(POSTS_CONTENT_FIELD);
             if (!raw) continue;
             try {
