@@ -39,6 +39,8 @@ async function scanBadJsonRecords() {
     }
 }
 
+module.exports = scanBadJsonRecords;
+
 scanBadJsonRecords().catch(err => {
     console.error('Error running scanBadJsonRecords:', err);
 });
