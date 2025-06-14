@@ -68,6 +68,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // Read the plain text field and parse it into structured posts
     const postsPlainTextField = leadRecord.fields[config.fields.postsContent];
     const parsedPostsArray = parsePlainTextPosts(postsPlainTextField);
+    console.log('DEBUG: Parsed posts array:', JSON.stringify(parsedPostsArray, null, 2));
 
     // NEW: Filter to only original posts by this lead (no reposts)
     // (If you want to keep this, you may need to adapt filterOriginalPosts to work with plain text posts)
