@@ -93,6 +93,7 @@ app.use(express.json({ limit: "10mb" }));
 // --- ADMIN REPAIR ENDPOINT (SECURE) ---
 // Full import for repair script
 const repairAirtablePostsContentQuotes = require('./utils/repairAirtablePostsContentQuotes');
+const scanBadJsonRecords = require('./scanBadJsonRecords');
 // Use your existing PB_WEBHOOK_SECRET for the repair endpoint
 const REPAIR_SECRET = process.env.PB_WEBHOOK_SECRET || 'changeme-please-update-this!';
 
@@ -111,6 +112,24 @@ app.post('/admin/repair-posts-content', async (req, res) => {
         res.json({ ok: true, summary });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message || 'Repair failed' });
+    }
+});
+
+/**
+ * Admin endpoint to trigger the scanBadJsonRecords utility.
+ * POST /admin/scan-bad-json
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ */
+app.post('/admin/scan-bad-json', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    try {
+        const result = await scanBadJsonRecords();
+        res.json({ ok: true, result });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message || 'Scan failed' });
     }
 });
 
