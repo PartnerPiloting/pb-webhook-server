@@ -94,6 +94,7 @@ app.use(express.json({ limit: "10mb" }));
 // Full import for repair script
 const repairAirtablePostsContentQuotes = require('./utils/repairAirtablePostsContentQuotes');
 const scanBadJsonRecords = require('./scanBadJsonRecords');
+const repairSingleBadJsonRecord = require('./repairSingleBadJsonRecord');
 // Use your existing PB_WEBHOOK_SECRET for the repair endpoint
 const REPAIR_SECRET = process.env.PB_WEBHOOK_SECRET || 'changeme-please-update-this!';
 
@@ -130,6 +131,29 @@ app.post('/admin/scan-bad-json', async (req, res) => {
         res.json({ ok: true, result });
     } catch (e) {
         res.status(500).json({ ok: false, error: e.message || 'Scan failed' });
+    }
+});
+
+/**
+ * Admin endpoint to repair a single bad JSON record by recordId.
+ * POST /admin/repair-single-bad-json
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: { "recordId": "recXXXXXXXXXXXXXX" }
+ */
+app.post('/admin/repair-single-bad-json', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    const { recordId } = req.body;
+    if (!recordId) {
+        return res.status(400).json({ ok: false, error: 'Missing recordId' });
+    }
+    try {
+        await repairSingleBadJsonRecord(recordId);
+        res.json({ ok: true, message: `Repair attempted for record ${recordId}` });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
     }
 });
 
