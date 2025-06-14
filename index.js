@@ -54,7 +54,7 @@ const POSTS_CONTENT_FIELD = "Posts Content";
 const POSTS_PLAIN_TEXT_FIELD = "Posts Plain Text"; // NEW: Plain text field for posts
 const POST_RELEVANCE_SCORE_FIELD = "Posts Relevance Score";
 const POST_AI_EVALUATION_FIELD = "Posts AI Evaluation";
-const POST_RELEVANT_POSTS_SUMMARISED_FIELD = "Relevant Posts Summarised by AI";
+const POST_TOP_SCORING_POST_FIELD = "Top Scoring Post"; // Renamed field
 const CREDENTIALS_TABLE_NAME = "Credentials"; // Or "Global Settings", your table for keywords
 
 // --- NEW: CONFIGURATION OBJECT FOR POST ANALYSIS/SCORING ---
@@ -71,7 +71,7 @@ const postAnalysisConfig = {
         postsContent: POSTS_PLAIN_TEXT_FIELD, // Changed from POSTS_CONTENT_FIELD
         relevanceScore: POST_RELEVANCE_SCORE_FIELD,
         aiEvaluation: POST_AI_EVALUATION_FIELD,
-        summarisedByAI: POST_RELEVANT_POSTS_SUMMARISED_FIELD
+        topScoringPost: POST_TOP_SCORING_POST_FIELD // Renamed and updated field
     },
     // AI Keywords are now loaded from Airtable by postAttributeLoader.js
     // Model ID and Timeout reuse your existing lead scoring environment variables for consistency.
