@@ -63,7 +63,6 @@ function filterOriginalPosts(postsArray, leadProfileUrl) {
         const normalizedAuthorUrl = normalizeUrl(authorUrl);
         const action = post?.pbMeta?.action?.toLowerCase() || '';
         const isOriginal = !action.includes('repost') && normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
-        console.log(`DEBUG: [filterOriginalPosts] Comparing authorUrl='${normalizedAuthorUrl}' to leadProfileUrl='${normalizedLeadProfileUrl}' => ${isOriginal ? 'ORIGINAL' : 'REPOST'}`);
         return isOriginal;
     });
 }
@@ -132,13 +131,9 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             }
             if (!text) return false;
             // DEBUG: Print post content being checked
-            console.log(`Checking post content for lead ${leadRecord.id}:`, text);
             // DEBUG: Print which keywords match
             const matches = aiKeywords.filter(keyword => {
                 const found = text.toLowerCase().includes(keyword.toLowerCase());
-                if (found) {
-                    console.log(`Keyword match for lead ${leadRecord.id}: '${keyword}' in post:`, text);
-                }
                 return found;
             });
             return matches.length > 0;
