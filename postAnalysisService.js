@@ -52,10 +52,19 @@ function diagnosePostsContent(rawField, recordId = '') {
  * @returns {Array}
  */
 function filterOriginalPosts(postsArray, leadProfileUrl) {
+    function normalizeUrl(url) {
+        if (!url) return '';
+        return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
+    }
+    const normalizedLeadProfileUrl = normalizeUrl(leadProfileUrl);
     return postsArray.filter(post => {
+        // Prefer pbMeta.authorUrl, fallback to post.authorUrl
+        const authorUrl = post?.pbMeta?.authorUrl || post.authorUrl;
+        const normalizedAuthorUrl = normalizeUrl(authorUrl);
         const action = post?.pbMeta?.action?.toLowerCase() || '';
-        const isOriginalAuthor = post?.pbMeta?.authorUrl === leadProfileUrl;
-        return !action.includes('repost') && isOriginalAuthor;
+        const isOriginal = !action.includes('repost') && normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
+        console.log(`DEBUG: [filterOriginalPosts] Comparing authorUrl='${normalizedAuthorUrl}' to leadProfileUrl='${normalizedLeadProfileUrl}' => ${isOriginal ? 'ORIGINAL' : 'REPOST'}`);
+        return isOriginal;
     });
 }
 
