@@ -121,15 +121,24 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         // Step 2: Filter for all posts containing AI keywords (only from originals)
         console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
         const relevantPosts = originalPosts.filter(post => {
-          let text = '';
-          if (typeof post === 'string') {
-              text = post;
-          } else if (post && typeof post === 'object' && post.postContent) {
-              text = post.postContent;
-          }
-          if (!text) return false;
-          const matches = aiKeywords.filter(keyword => text.toLowerCase().includes(keyword.toLowerCase()));
-          return matches.length > 0;
+            let text = '';
+            if (typeof post === 'string') {
+                text = post;
+            } else if (post && typeof post === 'object' && post.postContent) {
+                text = post.postContent;
+            }
+            if (!text) return false;
+            // DEBUG: Print post content being checked
+            console.log(`Checking post content for lead ${leadRecord.id}:`, text);
+            // DEBUG: Print which keywords match
+            const matches = aiKeywords.filter(keyword => {
+                const found = text.toLowerCase().includes(keyword.toLowerCase());
+                if (found) {
+                    console.log(`Keyword match for lead ${leadRecord.id}: '${keyword}' in post:`, text);
+                }
+                return found;
+            });
+            return matches.length > 0;
         });
 
         if (relevantPosts.length === 0) {
