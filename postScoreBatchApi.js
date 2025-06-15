@@ -21,7 +21,7 @@ let modulePostAnalysisConfig;
  * or manually to start the batch process of scoring all unscored lead posts.
  * It is secured with your existing PB_WEBHOOK_SECRET.
  */
-router.post('/internal/trigger-post-scoring-batch', (req, res) => {
+router.post('/trigger-post-scoring-batch', (req, res) => {
     console.log("PostScoreBatchApi: POST /api/internal/trigger-post-scoring-batch hit.");
 
     // --- Security Check ---
