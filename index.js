@@ -68,7 +68,7 @@ const postAnalysisConfig = {
     // Field Names in your 'Leads' Table related to Post Scoring - using our new constants
     fields: {
         dateScored: POST_DATE_SCORED_FIELD,
-        postsContent: POSTS_PLAIN_TEXT_FIELD, // Changed from POSTS_CONTENT_FIELD
+        postsContent: POSTS_CONTENT_FIELD, // Switched back to structured JSON field
         relevanceScore: POST_RELEVANCE_SCORE_FIELD,
         aiEvaluation: POST_AI_EVALUATION_FIELD,
         topScoringPost: POST_TOP_SCORING_POST_FIELD, // Renamed and updated field
