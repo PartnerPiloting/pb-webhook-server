@@ -114,13 +114,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
     }
     const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    const normalizedLeadProfileUrl = normalizeUrl(leadProfileUrl);
-    const originalPosts = parsedPostsArray.filter(post => {
-        const normalizedAuthorUrl = normalizeUrl(post.authorUrl);
-        const isOriginal = normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
-        console.log(`DEBUG: Comparing authorUrl='${normalizedAuthorUrl}' to leadProfileUrl='${normalizedLeadProfileUrl}' => ${isOriginal ? 'ORIGINAL' : 'REPOST'}`);
-        return isOriginal;
-    });
+    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
 
     try {
         // Step 1: Load all dynamic configuration from Airtable (including keywords)
