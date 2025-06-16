@@ -54,9 +54,6 @@ async function loadPostScoringAirtableConfig(base, config) {
 
         const attributesById = {};
         for (const record of attributeRecords) {
-            // Debug: Print the raw Airtable record to inspect Category field structure
-            console.log('DEBUG: Raw Airtable attribute record:', JSON.stringify(record, null, 2));
-
             const attributeId = record.get('Attribute ID');
             if (attributeId) {
                 attributesById[attributeId] = {
@@ -96,7 +93,6 @@ async function loadPostScoringAirtableConfig(base, config) {
         const aiKeywords = aiKeywordsString.split(',').map(k => k.trim()).filter(Boolean); // Parse the string into an array
 
         console.log(`PostAttributeLoader: Loaded ${promptComponents.length} prompt components, ${Object.keys(attributesById).length} scoring attributes, and ${aiKeywords.length} AI keywords.`);
-        console.log('DEBUG: Raw attributesById loaded from Airtable:', JSON.stringify(attributesById, null, 2));
 
         // Return all loaded configuration in one structured object
         return {
