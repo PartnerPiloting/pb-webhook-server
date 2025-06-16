@@ -62,8 +62,8 @@ async function loadPostScoringAirtableConfig(base, config) {
                 attributesById[attributeId] = {
                     id: attributeId,
                     criterionName: record.get('Criterion Name'),
-                    category: record.get('Category')?.name,
-                    scoringType: record.get('Scoring Type')?.name,
+                    Category: record.get('Category'), // FIX: use exact field name and value
+                    scoringType: record.get('Scoring Type'), // FIX: use exact field name and value
                     maxScorePointValue: record.get('Max Score / Point Value'),
                     detailedInstructions: record.get('Detailed Instructions for AI (Scoring Rubric)'),
                     positiveKeywords: record.get('Keywords/Positive Indicators'),
