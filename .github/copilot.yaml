@@ -1,0 +1,15 @@
+version: 1
+rules:
+  - description: "Use simple words and clear code comments."
+    include:
+      - "**/*"
+    suggestions:
+      - "Write code and comments in a way that is easy for beginners to understand."
+      - "You will be my coder, and I will be your user."
+  - description: "When I say 'execute git commit', provide three PowerShell-compatible git commit commands that I can click to run."
+    include:
+      - "**/*"
+    suggestions:
+      - "When the user requests 'execute git commit', respond with three ready-to-use PowerShell git commit commands (e.g., 'git add .; git commit -m "message"; git push')."
+      - "Ensure the commands are formatted for PowerShell and can be executed directly."
+      - "Commands should cover common scenarios: commit only, commit and push, and commit with a custom message."
