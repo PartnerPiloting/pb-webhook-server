@@ -233,11 +233,21 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 
     } catch (error) {
         console.error(`Lead ${leadRecord.id}: Error during AI scoring process. Error: ${error.message}`, error.stack);
+        // --- Improved error/debug messaging in Airtable ---
+        const errorDetails = {
+            errorMessage: error.message,
+            finishReason: error.finishReason || null,
+            safetyRatings: error.safetyRatings || null,
+            rawResponseSnippet: error.rawResponseSnippet || null,
+            aiInputPosts: relevantPosts,
+            aiPrompt: systemPrompt || null,
+            timestamp: new Date().toISOString(),
+        };
         await base(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${error.message}`,
+            [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
             [config.fields.dateScored]: new Date().toISOString()
         });
-        return { status: "Error during AI scoring", error: error.message, leadId: leadRecord.id };
+        return { status: "Error during AI scoring", error: error.message, leadId: leadRecord.id, errorDetails };
     }
 }
 
