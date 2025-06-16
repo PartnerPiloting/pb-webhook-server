@@ -294,14 +294,21 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 /**
  * Processes posts for all leads in Airtable that haven't been scored yet.
  */
-async function processAllPendingLeadPosts(base, vertexAIClient, config, limit) {
+async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, forceRescore, viewName) {
     console.log("PostAnalysisService: processAllPendingLeadPosts - Called (Background task)");
     let processedCount = 0, errorCount = 0;
     try {
-        let recordsToProcess = await base(config.leadsTableName).select({
-            filterByFormula: `AND({${config.fields.dateScored}} = BLANK(), {${config.fields.postsContent}} != BLANK())`,
+        // Build select options
+        const selectOptions = {
             fields: [config.fields.postsContent]
-        }).all();
+        };
+        if (viewName) {
+            selectOptions.view = viewName;
+        }
+        if (!forceRescore) {
+            selectOptions.filterByFormula = `AND({${config.fields.dateScored}} = BLANK())`;
+        }
+        let recordsToProcess = await base(config.leadsTableName).select(selectOptions).all();
         if (typeof limit === 'number' && limit > 0) {
             recordsToProcess = recordsToProcess.slice(0, limit);
             console.log(`Limiting batch to first ${limit} leads.`);
