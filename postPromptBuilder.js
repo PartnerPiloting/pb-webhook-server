@@ -62,13 +62,13 @@ function buildScoringRubricSection(attributesById) {
     // Separate attributes into positive and negative categories for clarity
     for (const attrId in attributesById) {
         const attr = attributesById[attrId];
-        if (attr.category === 'Positive Scoring Factor') {
+        if (attr.Category === 'Positive Scoring Factor') {
             positiveAttrs.push(attr);
-        } else if (attr.category === 'Negative Scoring Factor') {
+        } else if (attr.Category === 'Negative Scoring Factor') {
             negativeAttrs.push(attr);
         } else {
             // Add any other attributes to a default list if needed
-            console.warn(`PostPromptBuilder: Attribute '${attr.id}' has an unhandled category: '${attr.category}'.`);
+            console.warn(`PostPromptBuilder: Attribute '${attr.id}' has an unhandled category: '${attr.Category}'.`);
             positiveAttrs.push(attr); // Defaulting to list under positives
         }
     }
