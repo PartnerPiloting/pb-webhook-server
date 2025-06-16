@@ -135,6 +135,8 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             // For other keywords, allow optional plural 's'
             return new RegExp(`\\b${escaped}s?\\b`, 'i');
         });
+        // Track edge cases for possible review
+        const edgeCases = [];
         const relevantPosts = originalPosts.filter(post => {
             let text = '';
             if (typeof post === 'string') {
@@ -151,6 +153,13 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
                 console.log(`DEBUG: Keyword match for post:`, matches);
                 return true;
             } else {
+                // Only mark as edge case if 'AI' is at a word boundary or hyphen/space (not inside another word)
+                const aiEdgeRegex = /\bAI\b|\bAI[-\s]/i;
+                if (aiEdgeRegex.test(text)) {
+                    let postUrl = '';
+                    if (typeof post === 'object' && post.postUrl) postUrl = post.postUrl;
+                    edgeCases.push(`EDGE CASE: post_url=${postUrl} | content="${text}"`);
+                }
                 // Manual review: log posts that contain any keyword fragment but didn't match strictly
                 const lowerText = text.toLowerCase();
                 const fragment = aiKeywords.find(k => lowerText.includes(k.toLowerCase()));
@@ -166,9 +175,13 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 
         if (relevantPosts.length === 0) {
           console.log(`Lead ${leadRecord.id}: No relevant posts with AI keywords found.`);
+          let aiEvalMsg = `Scanned ${originalPosts.length} original posts. No relevant AI keywords detected.`;
+          if (edgeCases.length > 0) {
+            aiEvalMsg += `\n${edgeCases.join('\n')}`;
+          }
           await base(config.leadsTableName).update(leadRecord.id, {
             [config.fields.relevanceScore]: 0,
-            [config.fields.aiEvaluation]: `Scanned ${originalPosts.length} original posts. No relevant AI keywords detected.`,
+            [config.fields.aiEvaluation]: aiEvalMsg,
             [config.fields.dateScored]: new Date().toISOString()
           });
           return { status: "No AI keywords found", score: 0, leadId: leadRecord.id };
@@ -281,17 +294,19 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 /**
  * Processes posts for all leads in Airtable that haven't been scored yet.
  */
-async function processAllPendingLeadPosts(base, vertexAIClient, config) {
+async function processAllPendingLeadPosts(base, vertexAIClient, config, limit) {
     console.log("PostAnalysisService: processAllPendingLeadPosts - Called (Background task)");
     let processedCount = 0, errorCount = 0;
     try {
-        const recordsToProcess = await base(config.leadsTableName).select({
+        let recordsToProcess = await base(config.leadsTableName).select({
             filterByFormula: `AND({${config.fields.dateScored}} = BLANK(), {${config.fields.postsContent}} != BLANK())`,
             fields: [config.fields.postsContent]
         }).all();
-
+        if (typeof limit === 'number' && limit > 0) {
+            recordsToProcess = recordsToProcess.slice(0, limit);
+            console.log(`Limiting batch to first ${limit} leads.`);
+        }
         console.log(`Found ${recordsToProcess.length} leads to process for post scoring.`);
-
         for (const leadRecord of recordsToProcess) {
             try {
                 await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config);
