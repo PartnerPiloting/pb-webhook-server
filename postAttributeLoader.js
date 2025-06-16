@@ -49,18 +49,14 @@ async function loadPostScoringAirtableConfig(base, config) {
 
         // --- 2. Fetch Scoring Attributes (from Table 1) ---
         const attributeRecords = await base(tableNames.attributes)
-            .select({
-                fields: [
-                    'Attribute ID', 'Criterion Name', 'Category', 'Scoring Type',
-                    'Max Score / Point Value', 'Detailed Instructions for AI (Scoring Rubric)',
-                    'Keywords/Positive Indicators', 'Keywords/Negative Indicators',
-                    'Example - High Score / Applies', 'Example - Low Score / Does Not Apply'
-                ]
-            })
+            .select()
             .all();
 
         const attributesById = {};
-        attributeRecords.forEach(record => {
+        for (const record of attributeRecords) {
+            // Debug: Print the raw Airtable record to inspect Category field structure
+            console.log('DEBUG: Raw Airtable attribute record:', JSON.stringify(record, null, 2));
+
             const attributeId = record.get('Attribute ID');
             if (attributeId) {
                 attributesById[attributeId] = {
@@ -76,7 +72,7 @@ async function loadPostScoringAirtableConfig(base, config) {
                     exampleLow: record.get('Example - Low Score / Does Not Apply')
                 };
             }
-        });
+        }
 
         if (Object.keys(attributesById).length === 0) {
             console.warn(`PostAttributeLoader: No scoring attributes found in table '${tableNames.attributes}'.`);
