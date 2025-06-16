@@ -100,6 +100,7 @@ async function loadPostScoringAirtableConfig(base, config) {
         const aiKeywords = aiKeywordsString.split(',').map(k => k.trim()).filter(Boolean); // Parse the string into an array
 
         console.log(`PostAttributeLoader: Loaded ${promptComponents.length} prompt components, ${Object.keys(attributesById).length} scoring attributes, and ${aiKeywords.length} AI keywords.`);
+        console.log('DEBUG: Raw attributesById loaded from Airtable:', JSON.stringify(attributesById, null, 2));
 
         // Return all loaded configuration in one structured object
         return {

@@ -37,12 +37,8 @@ async function buildPostScoringPrompt(base, config) {
         }
     });
 
-    // Optional: For debugging, you can write the final prompt to a file
-    // if (process.env.DEBUG_POST_SCORING_PROMPT === "1") {
-    //     require('fs').writeFileSync('./DEBUG_POST_SCORING_PROMPT.txt', finalPrompt, 'utf8');
-    //     console.log("PostPromptBuilder: Dumped prompt to DEBUG_POST_SCORING_PROMPT.txt");
-    // }
-
+    // Debug: Log the final prompt being sent to Gemini
+    console.log('DEBUG: Final system prompt being sent to Gemini (truncated to 1000 chars):', finalPrompt.slice(0, 1000));
     return finalPrompt.trim();
 }
 
