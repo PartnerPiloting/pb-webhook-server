@@ -103,23 +103,14 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     }
     console.log('DEBUG: Parsed posts array:', JSON.stringify(parsedPostsArray, null, 2));
 
-    // NEW: Filter to only original posts by this lead (no reposts)
-    // (If you want to keep this, you may need to adapt filterOriginalPosts to work with plain text posts)
-    // const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    // const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
-    // Filter out reposts: Only keep posts where the authorUrl matches the lead's LinkedIn profile URL (case-insensitive, ignore protocol and trailing slashes)
-    function normalizeUrl(url) {
-        if (!url) return '';
-        return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
-    }
-    const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
+    // Log the original posts before filtering
+    console.log(`DEBUG: Original posts before filtering for lead ${leadRecord.id}:`, JSON.stringify(originalPosts, null, 2));
 
     try {
         // Step 1: Load all dynamic configuration from Airtable (including keywords)
         console.log(`Lead ${leadRecord.id}: Loading config from Airtable...`);
         const { aiKeywords } = await loadPostScoringAirtableConfig(base, config);
-        console.log(`Loaded AI Keywords:`, aiKeywords);
+        console.log(`DEBUG: Loaded AI Keywords:`, aiKeywords);
         // Step 2: Filter for all posts containing AI keywords (only from originals)
         console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
         const relevantPosts = originalPosts.filter(post => {
@@ -131,13 +122,22 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             }
             if (!text) return false;
             // DEBUG: Print post content being checked
+            console.log(`DEBUG: Checking post content:`, text);
             // DEBUG: Print which keywords match
             const matches = aiKeywords.filter(keyword => {
                 const found = text.toLowerCase().includes(keyword.toLowerCase());
+                if (found) {
+                    console.log(`DEBUG: Keyword match for post: '${keyword}'`);
+                }
                 return found;
             });
+            if (matches.length === 0) {
+                console.log(`DEBUG: No AI keyword matches for this post.`);
+            }
             return matches.length > 0;
         });
+
+        console.log(`DEBUG: Relevant posts after AI keyword filtering for lead ${leadRecord.id}:`, JSON.stringify(relevantPosts, null, 2));
 
         if (relevantPosts.length === 0) {
           console.log(`Lead ${leadRecord.id}: No relevant posts with AI keywords found.`);
