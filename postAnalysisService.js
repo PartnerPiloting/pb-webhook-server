@@ -301,7 +301,14 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
     try {
         // Build select options
         const selectOptions = {
-            fields: [config.fields.postsContent]
+            fields: [
+                config.fields.postsContent,
+                config.fields.linkedinUrl,
+                config.fields.dateScored,
+                config.fields.relevanceScore,
+                config.fields.aiEvaluation,
+                config.fields.topScoringPost
+            ]
         };
         if (viewName) {
             selectOptions.view = viewName;
