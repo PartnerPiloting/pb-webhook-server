@@ -120,6 +120,21 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         console.log(`DEBUG: Loaded AI Keywords:`, aiKeywords);
         // Step 2: Filter for all posts containing AI keywords (only from originals)
         console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
+        // Build regex patterns for each keyword/phrase
+        const keywordPatterns = aiKeywords.map(keyword => {
+            // Escape regex special chars
+            const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // If phrase (contains space), match as phrase (with optional plural 's')
+            if (escaped.includes(' ')) {
+                return new RegExp(`\\b${escaped}s?\\b`, 'i');
+            }
+            // For 'AI', match as word or with hyphen/space and common suffixes
+            if (escaped.toLowerCase() === 'ai') {
+                return new RegExp('\\bAI(\\b|[-\s]?(powered|related|driven|enabled|based|focused|centric|solutions?))\\b', 'i');
+            }
+            // For other keywords, allow optional plural 's'
+            return new RegExp(`\\b${escaped}s?\\b`, 'i');
+        });
         const relevantPosts = originalPosts.filter(post => {
             let text = '';
             if (typeof post === 'string') {
@@ -130,18 +145,21 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             if (!text) return false;
             // DEBUG: Print post content being checked
             console.log(`DEBUG: Checking post content:`, text);
-            // DEBUG: Print which keywords match
-            const matches = aiKeywords.filter(keyword => {
-                const found = text.toLowerCase().includes(keyword.toLowerCase());
-                if (found) {
-                    console.log(`DEBUG: Keyword match for post: '${keyword}'`);
+            // Check for matches using regex patterns
+            const matches = aiKeywords.filter((keyword, idx) => keywordPatterns[idx].test(text));
+            if (matches.length > 0) {
+                console.log(`DEBUG: Keyword match for post:`, matches);
+                return true;
+            } else {
+                // Manual review: log posts that contain any keyword fragment but didn't match strictly
+                const lowerText = text.toLowerCase();
+                const fragment = aiKeywords.find(k => lowerText.includes(k.toLowerCase()));
+                if (fragment) {
+                    console.log(`REVIEW: Post contains possible AI keyword fragment but did not pass strict filter:`, text);
                 }
-                return found;
-            });
-            if (matches.length === 0) {
                 console.log(`DEBUG: No AI keyword matches for this post.`);
+                return false;
             }
-            return matches.length > 0;
         });
 
         console.log(`DEBUG: Relevant posts after AI keyword filtering for lead ${leadRecord.id}:`, JSON.stringify(relevantPosts, null, 2));
