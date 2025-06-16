@@ -45,8 +45,6 @@ ${JSON.stringify(geminiInputObject, null, 2)}
         modelSafetyRatings = candidate.safetyRatings;
         if (candidate.content?.parts?.[0]?.text) rawResponseText = candidate.content.parts[0].text;
         else console.warn(`PostGeminiScorer: Candidate had no text content. Finish Reason: ${modelFinishReason || "Unknown"}.`);
-        // Debug: Log the raw Gemini response text
-        console.log('DEBUG: Raw Gemini response text:', rawResponseText);
         if (modelFinishReason && modelFinishReason !== "STOP") console.warn(`PostGeminiScorer: Gemini API call finished with non-STOP reason: ${modelFinishReason}.`);
         console.log("PostGeminiScorer: TOKENS (Gemini) – Prompt: %s, Candidates: %s, Total: %s", usageMetadata.promptTokenCount || "?", usageMetadata.candidatesTokenCount || "?", usageMetadata.totalTokenCount || "?");
         if (rawResponseText.trim() === "") throw new Error(`PostGeminiScorer: Gemini response text is empty. Finish Reason: ${modelFinishReason || "Unknown"}.`);

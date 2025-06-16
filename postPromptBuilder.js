@@ -37,8 +37,6 @@ async function buildPostScoringPrompt(base, config) {
         }
     });
 
-    // Debug: Log the final prompt being sent to Gemini
-    console.log('DEBUG: Final system prompt being sent to Gemini (truncated to 1000 chars):', finalPrompt.slice(0, 1000));
     return finalPrompt.trim();
 }
 
