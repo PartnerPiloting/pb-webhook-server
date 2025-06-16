@@ -103,7 +103,14 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     }
     console.log('DEBUG: Parsed posts array:', JSON.stringify(parsedPostsArray, null, 2));
 
-    // Log the original posts before filtering
+    // Define originalPosts before logging it
+    function normalizeUrl(url) {
+        if (!url) return '';
+        return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
+    }
+    const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
+    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
+    // Log the original posts after filtering
     console.log(`DEBUG: Original posts before filtering for lead ${leadRecord.id}:`, JSON.stringify(originalPosts, null, 2));
 
     try {
