@@ -171,6 +171,8 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             generationConfig: { temperature: 0, responseMimeType: "application/json" }
         });
 
+        // Debug: Log the posts being sent to Gemini for scoring
+        console.log('DEBUG: Posts being sent to Gemini for scoring:', JSON.stringify(relevantPosts, null, 2));
         // Step 5: Call the Gemini scorer with only the relevant posts
         console.log(`Lead ${leadRecord.id}: Calling Gemini scorer...`);
         // --- FIX: Wrap posts in object with lead_id for Gemini ---
