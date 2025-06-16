@@ -40,18 +40,21 @@ router.post('/trigger-post-scoring-batch', (req, res) => {
         return res.status(503).json({ error: "Service is not ready to process batch job." });
     }
 
-    // --- Parse limit from query string ---
+    // --- Parse limit and forceRescore from query string ---
     let limit = undefined;
     if (req.query && req.query.limit) {
         limit = parseInt(req.query.limit, 10);
         if (isNaN(limit) || limit <= 0) limit = undefined;
     }
+    const forceRescore = req.query && (req.query.forceRescore === 'true' || req.query.forceRescore === true);
+    // --- Specify the view name for non-blank Posts Content ---
+    const viewName = 'viweXZbZUt1XA9NqP';
 
     // --- Trigger the background task ---
     // We call the function but DO NOT use 'await' here.
     // This allows the API to send an immediate response while the (potentially long)
     // batch job runs in the background.
-    processAllPendingLeadPosts(moduleBase, moduleVertexAIClient, modulePostAnalysisConfig, limit)
+    processAllPendingLeadPosts(moduleBase, moduleVertexAIClient, modulePostAnalysisConfig, limit, forceRescore, viewName)
         .then(() => {
             console.log("PostScoreBatchApi: Background task 'processAllPendingLeadPosts' has completed.");
         })
