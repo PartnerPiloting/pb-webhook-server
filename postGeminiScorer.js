@@ -2,21 +2,22 @@
 const MAX_OUTPUT_TOKENS_FOR_POST_SCORING = 16384;
 const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10);
 
-async function scorePostsWithGemini(parsedPostsArray, configuredGeminiModelInstance) {
-    if (!parsedPostsArray || parsedPostsArray.length === 0) throw new Error("PostGeminiScorer: No posts provided to score.");
+async function scorePostsWithGemini(geminiInputObject, configuredGeminiModelInstance) {
+    if (!geminiInputObject || !geminiInputObject.posts || geminiInputObject.posts.length === 0) throw new Error("PostGeminiScorer: No posts provided to score.");
     if (!configuredGeminiModelInstance) throw new Error("PostGeminiScorer: A configured Gemini model instance is required.");
 
     const userPromptContent = `
-Analyze and score EACH of the following LinkedIn posts individually based on the criteria provided in the system instructions.
+Analyze and score EACH of the LinkedIn posts in the following JSON object individually based on the criteria provided in the system instructions.
 
 **Your Task:**
-1.  Evaluate every single post in the JSON array provided below.
-2.  For each post, generate a score and a detailed rationale based on the scoring rubric.
-3.  Return a single JSON array where each object represents one of the posts you evaluated.
-4.  **IMPORTANT:** Do NOT return a single overall score. Return an array of objects. Each object in the array must have the following exact keys: "post_url", "post_score", "scoring_rationale".
+1.  The input is a JSON object with two keys: 'lead_id' (string) and 'posts' (array of post objects).
+2.  Evaluate every single post in the 'posts' array.
+3.  For each post, generate a score and a detailed rationale based on the scoring rubric.
+4.  Return a single JSON array where each object represents one of the posts you evaluated.
+5.  **IMPORTANT:** Do NOT return a single overall score. Return an array of objects. Each object in the array must have the following exact keys: "post_url", "post_score", "scoring_rationale".
 
-Here are the posts to analyze:
-${JSON.stringify(parsedPostsArray, null, 2)}
+Here is the object to analyze:
+${JSON.stringify(geminiInputObject, null, 2)}
 `;
 
     console.log(`PostGeminiScorer: Calling Gemini. User prompt length (approx): ${userPromptContent.length}. Max output tokens: ${MAX_OUTPUT_TOKENS_FOR_POST_SCORING}`);

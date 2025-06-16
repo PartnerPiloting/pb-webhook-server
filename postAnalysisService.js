@@ -173,7 +173,9 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 
         // Step 5: Call the Gemini scorer with only the relevant posts
         console.log(`Lead ${leadRecord.id}: Calling Gemini scorer...`);
-        const aiResponseArray = await scorePostsWithGemini(relevantPosts, configuredGeminiModel);
+        // --- FIX: Wrap posts in object with lead_id for Gemini ---
+        const geminiInput = { lead_id: leadRecord.id, posts: relevantPosts };
+        const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
 
         // --- NEW: Merge original post data into AI response ---
         // Map post_url to original post for quick lookup
