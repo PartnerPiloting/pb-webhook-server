@@ -47,8 +47,8 @@ router.post('/trigger-post-scoring-batch', (req, res) => {
         if (isNaN(limit) || limit <= 0) limit = undefined;
     }
     const forceRescore = req.query && (req.query.forceRescore === 'true' || req.query.forceRescore === true);
-    // --- Specify the view name for non-blank Posts Content ---
-    const viewName = 'viweXZbZUt1XA9NqP';
+    // --- Specify the view name for leads with posts not yet scored ---
+    const viewName = 'Leads with Posts not yet scored';
 
     // --- Trigger the background task ---
     // We call the function but DO NOT use 'await' here.
