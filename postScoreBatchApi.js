@@ -6,9 +6,6 @@ const router = express.Router();
 // Import our main batch processing function from the service module
 const { processAllPendingLeadPosts } = require('./postAnalysisService');
 
-// This secret key is your existing environment variable.
-const SHARED_SECRET_KEY = process.env.PB_WEBHOOK_SECRET;
-
 // These module-level variables will hold the dependencies passed from index.js
 let moduleBase;
 let moduleVertexAIClient;
@@ -24,14 +21,8 @@ let modulePostAnalysisConfig;
 router.post('/trigger-post-scoring-batch', (req, res) => {
     console.log("PostScoreBatchApi: POST /api/internal/trigger-post-scoring-batch hit.");
 
-    // --- Security Check ---
-    // The service calling this endpoint (e.g., Render Cron Job, Postman) must provide
-    // this header with the correct secret key.
-    const providedSecret = req.headers['x-secret-key']; // Using a generic header name
-    if (!SHARED_SECRET_KEY || providedSecret !== SHARED_SECRET_KEY) {
-        console.warn("PostScoreBatchApi: Unauthorized attempt to trigger batch job. Invalid or missing secret key.");
-        return res.status(401).json({ error: "Unauthorized" });
-    }
+    // --- Security Check REMOVED ---
+    // The endpoint is now open for internal or manual triggering without a secret key.
     // --------------------
 
     // Check if the service has been properly initialized
