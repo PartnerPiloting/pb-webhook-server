@@ -315,6 +315,25 @@ router.get("/score-lead", async (req, res) => {
 
     const { positives, negatives } = await loadAttributes();
 
+    // Ensure all positive attributes are present in positive_scores and attribute_reasoning
+    for (const key of Object.keys(positives)) {
+      if (!(key in positive_scores)) {
+        positive_scores[key] = 0;
+      }
+      if (!(key in attribute_reasoning)) {
+        attribute_reasoning[key] = "No evidence found for this attribute.";
+      }
+    }
+    // Ensure all negative attributes are present in negative_scores and attribute_reasoning
+    for (const key of Object.keys(negatives)) {
+      if (!(key in negative_scores)) {
+        negative_scores[key] = 0;
+      }
+      if (!(key in attribute_reasoning)) {
+        attribute_reasoning[key] = "No evidence found for this attribute.";
+      }
+    }
+
     if (
       contact_readiness &&
       positives?.I &&
