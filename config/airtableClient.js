@@ -7,6 +7,9 @@ const Airtable = require('airtable');
 
 let airtableBaseInstance = null; // This will hold our initialized Airtable base
 
+// Cache for base instances to avoid repeated initialization
+const baseInstanceCache = new Map();
+
 try {
     // Check for essential environment variables
     if (!process.env.AIRTABLE_API_KEY) {
@@ -33,5 +36,98 @@ try {
     // The main application (index.js) will need to handle this possibility.
 }
 
-// Export the initialized base instance (it will be null if initialization failed)
+/**
+ * Create a base instance for a specific base ID (Multi-tenant function)
+ * @param {string} baseId - The Airtable base ID
+ * @returns {Object} Airtable base instance
+ */
+function createBaseInstance(baseId) {
+    if (!baseId) {
+        throw new Error("Base ID is required to create base instance");
+    }
+
+    // Check cache first
+    if (baseInstanceCache.has(baseId)) {
+        console.log(`Using cached base instance for: ${baseId}`);
+        return baseInstanceCache.get(baseId);
+    }
+
+    try {
+        // Ensure Airtable is configured
+        if (!process.env.AIRTABLE_API_KEY) {
+            throw new Error("AIRTABLE_API_KEY environment variable is not set");
+        }
+
+        // Configure Airtable if not already done (should be safe to call multiple times)
+        Airtable.configure({
+            apiKey: process.env.AIRTABLE_API_KEY
+        });
+
+        // Create new base instance
+        const baseInstance = Airtable.base(baseId);
+        
+        // Cache the instance
+        baseInstanceCache.set(baseId, baseInstance);
+        
+        console.log(`Created new base instance for: ${baseId}`);
+        return baseInstance;
+
+    } catch (error) {
+        console.error(`Error creating base instance for ${baseId}:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Get base instance for a specific client (Multi-tenant function)
+ * @param {string} clientId - The client ID to get base for
+ * @returns {Promise<Object>} Airtable base instance for the client
+ */
+async function getClientBase(clientId) {
+    try {
+        // Import client service here to avoid circular dependencies
+        const clientService = require('../services/clientService');
+        
+        // Get client configuration
+        const client = await clientService.getClientById(clientId);
+        if (!client) {
+            throw new Error(`Client not found: ${clientId}`);
+        }
+
+        if (!client.airtableBaseId) {
+            throw new Error(`No Airtable base ID configured for client: ${clientId}`);
+        }
+
+        console.log(`Getting base for client ${clientId}: ${client.airtableBaseId}`);
+        return createBaseInstance(client.airtableBaseId);
+
+    } catch (error) {
+        console.error(`Error getting base for client ${clientId}:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Clear base instance cache (useful for testing or memory management)
+ */
+function clearBaseCache() {
+    baseInstanceCache.clear();
+    console.log("Base instance cache cleared");
+}
+
+/**
+ * Get the default base (backward compatibility)
+ * @returns {Object} The default Airtable base instance
+ */
+function getDefaultBase() {
+    return airtableBaseInstance;
+}
+
+// Export the initialized base instance (UNCHANGED - maintains backward compatibility)
 module.exports = airtableBaseInstance;
+
+// Export new multi-tenant functions
+module.exports.createBaseInstance = createBaseInstance;
+module.exports.getClientBase = getClientBase;
+module.exports.clearBaseCache = clearBaseCache;
+module.exports.getDefaultBase = getDefaultBase;
