@@ -470,10 +470,8 @@ async function run(req, res, dependencies) {
                     const duration = Date.now() - clientStartTime;
                     const logEntry = clientService.formatExecutionLog({
                         status: 'Completed successfully',
-                        leadsProcessed: 0,
-                        leadsSuccessful: 0,
-                        leadsFailed: 0,
-                        duration: Math.round(duration / 1000),
+                        leadsProcessed: { successful: 0, failed: 0, total: 0 },
+                        duration: `${Math.round(duration / 1000)} seconds`,
                         tokensUsed: 0,
                         errors: []
                     });
@@ -535,10 +533,12 @@ async function run(req, res, dependencies) {
                 const clientStatus = clientErrors.length > 0 ? 'Completed with errors' : 'Completed successfully';
                 const logEntry = clientService.formatExecutionLog({
                     status: clientStatus,
-                    leadsProcessed: clientProcessed,
-                    leadsSuccessful: clientSuccessful,
-                    leadsFailed: clientFailed,
-                    duration: Math.round(clientDuration / 1000),
+                    leadsProcessed: {
+                        successful: clientSuccessful,
+                        failed: clientFailed,
+                        total: clientProcessed
+                    },
+                    duration: `${Math.round(clientDuration / 1000)}s`,
                     tokensUsed: clientTokensUsed,
                     errors: clientErrors
                 });
@@ -563,10 +563,12 @@ async function run(req, res, dependencies) {
                 const clientDuration = Date.now() - clientStartTime;
                 const logEntry = clientService.formatExecutionLog({
                     status: 'Failed',
-                    leadsProcessed: 0,
-                    leadsSuccessful: 0,
-                    leadsFailed: 0,
-                    duration: Math.round(clientDuration / 1000),
+                    leadsProcessed: {
+                        successful: 0,
+                        failed: 0,
+                        total: 0
+                    },
+                    duration: `${Math.round(clientDuration / 1000)}s`,
                     tokensUsed: 0,
                     errors: [`Fatal error: ${clientError.message}`]
                 });
