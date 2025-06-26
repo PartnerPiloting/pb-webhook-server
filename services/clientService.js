@@ -65,13 +65,24 @@ async function getAllClients() {
             // No filter - get all clients
         }).eachPage((records, fetchNextPage) => {
             records.forEach(record => {
+                console.log("Processing client record:", record.id);
+                console.log("Available fields:", Object.keys(record.fields));
+                
+                const clientId = record.get('Client ID');
+                const clientName = record.get('Client Name');
+                const status = record.get('Status');
+                const airtableBaseId = record.get('Airtable Base ID');
+                const executionLog = record.get('Execution Log') || '';
+                
+                console.log("Field values:", { clientId, clientName, status, airtableBaseId });
+                
                 clients.push({
                     id: record.id,
-                    clientId: record.get('Client ID'),
-                    clientName: record.get('Client Name'),
-                    status: record.get('Status'),
-                    airtableBaseId: record.get('Airtable Base ID'),
-                    executionLog: record.get('Execution Log') || ''
+                    clientId: clientId,
+                    clientName: clientName,
+                    status: status,
+                    airtableBaseId: airtableBaseId,
+                    executionLog: executionLog
                 });
             });
             fetchNextPage();

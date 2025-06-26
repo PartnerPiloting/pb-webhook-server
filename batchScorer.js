@@ -437,7 +437,7 @@ async function run(req, res, dependencies) {
             return;
         }
 
-        console.log(`batchScorer.run: Processing ${clientsToProcess.length} client(s): ${clientsToProcess.map(c => c.fields['Client ID']).join(', ')}`);
+        console.log(`batchScorer.run: Processing ${clientsToProcess.length} client(s): ${clientsToProcess.map(c => c.clientId).join(', ')}`);
 
         let totalLeadsProcessed = 0;
         let totalSuccessful = 0;
@@ -447,7 +447,7 @@ async function run(req, res, dependencies) {
 
         // Process each client sequentially for error isolation
         for (const client of clientsToProcess) {
-            const clientId = client.fields['Client ID'];
+            const clientId = client.clientId;
             const clientStartTime = Date.now();
             
             try {
