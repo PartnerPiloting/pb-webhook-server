@@ -128,14 +128,16 @@ Transition PB-Webhook-Server from single-tenant to multi-tenant architecture, en
 - [ ] **Estimated Time**: 1 hour
 
 ### Task 2.2: Update Post Scoring Batch API  
-- [ ] **Status**: NOT STARTED
-- [ ] **File**: Modify `postScoreBatchApi.js` and related endpoints
-- [ ] **Changes Needed**:
-  - [ ] Update `/api/internal/trigger-post-scoring-batch` for multi-tenant
-  - [ ] Add client-specific post scoring logic
-  - [ ] Integrate with client service for base switching
-- [ ] **Dependencies**: Task 1.2, 1.3 complete
-- [ ] **Estimated Time**: 2 hours
+- [x] **Status**: COMPLETED ✅
+- [x] **File**: Created `postBatchScorer.js` and added `/run-post-batch-score` endpoint
+- [x] **Changes Implemented**:
+  - [x] Created new multi-tenant post scoring system (`postBatchScorer.js`)
+  - [x] Added `/run-post-batch-score` endpoint supporting both single-client and all-clients modes
+  - [x] Integrated with client service for dynamic base switching and execution logging
+  - [x] Implemented per-client error isolation and detailed result tracking
+  - [x] Supports query parameters: `?clientId=guy-wilson&limit=50`
+- [x] **Dependencies**: Task 1.2, 1.3 complete ✅
+- [x] **Estimated Time**: 2 hours (Actual: 2 hours)
 
 ### Task 2.3: Update Webhook Handlers
 - [ ] **Status**: NOT STARTED
