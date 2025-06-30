@@ -255,6 +255,73 @@ function formatExecutionLog(executionData) {
 }
 
 /**
+ * Log execution results for a client
+ * @param {string} clientId - The Client ID to log for
+ * @param {Object} executionData - Execution data object
+ * @returns {Promise<boolean>} True if logging was successful
+ */
+async function logExecution(clientId, executionData) {
+    try {
+        let logEntry;
+        
+        if (executionData.type === 'POST_SCORING') {
+            // For post scoring, format the log appropriately
+            const formattedData = {
+                status: executionData.status || 'Unknown',
+                leadsProcessed: { successful: 0, failed: 0, total: 0 }, // No leads processed in post scoring
+                postScoring: { 
+                    successful: executionData.postsScored || 0, 
+                    failed: (executionData.postsProcessed || 0) - (executionData.postsScored || 0),
+                    total: executionData.postsProcessed || 0
+                },
+                duration: `${executionData.duration || 0}s`,
+                tokensUsed: 0, // We don't track tokens in post scoring yet
+                errors: executionData.errorDetails || []
+            };
+            logEntry = formatExecutionLog(formattedData);
+        } else {
+            // For lead scoring or other types, use the existing format
+            logEntry = formatExecutionLog(executionData);
+        }
+
+        return await updateExecutionLog(clientId, logEntry);
+
+    } catch (error) {
+        console.error(`Error logging execution for client ${clientId}:`, error);
+        return false;
+    }
+}
+
+/**
+ * Get active clients - supports both all clients and specific client
+ * @param {string|null} clientId - Optional specific client ID to get
+ * @returns {Promise<Array>} Array of active client records
+ */
+async function getActiveClients(clientId = null) {
+    try {
+        if (clientId) {
+            // Get specific client
+            const client = await getClientById(clientId);
+            if (!client) {
+                console.log(`Client ${clientId} not found`);
+                return [];
+            }
+            if (client.status !== 'Active') {
+                console.log(`Client ${clientId} is not active (status: ${client.status})`);
+                return [];
+            }
+            return [client];
+        } else {
+            // Get all active clients
+            return await getAllActiveClients();
+        }
+    } catch (error) {
+        console.error("Error in getActiveClients:", error);
+        throw error;
+    }
+}
+
+/**
  * Clear the clients cache (useful for testing or forced refresh)
  */
 function clearCache() {
@@ -266,9 +333,11 @@ function clearCache() {
 module.exports = {
     getAllClients,
     getAllActiveClients,
+    getActiveClients,  // Add the new function
     getClientById,
     validateClient,
     updateExecutionLog,
+    logExecution,     // Add the new logging function
     formatExecutionLog,
     clearCache
 };
