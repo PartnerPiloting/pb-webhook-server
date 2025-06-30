@@ -229,13 +229,13 @@ async function loadClientPostScoringConfig(clientBase) {
         fields: {
             postsContent: 'Posts Content',
             linkedinUrl: 'LinkedIn Profile URL',
-            dateScored: 'Date Scored',
-            relevanceScore: 'Post Relevance Score',
-            aiEvaluation: 'AI Evaluation',
+            dateScored: 'Date Posts Scored',
+            relevanceScore: 'Posts Relevance Score',
+            aiEvaluation: 'Posts AI Evaluation',
             topScoringPost: 'Top Scoring Post'
         },
         attributesTableName: 'Post Scoring Attributes',
-        promptComponentsTableName: 'Post Scoring Prompt Components',
+        promptComponentsTableName: 'Post Scoring Instructions',
         settingsTableName: 'Global Settings'
     };
 }
