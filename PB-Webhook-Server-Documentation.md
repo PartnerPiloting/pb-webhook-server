@@ -86,15 +86,24 @@ var GOOGLE_SHEET_ID = '1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns';
 
 #### Technical Implementation
 - **Render Service**: "Daily Batch Lead Scoring" (same service, different process)
+- **Multi-Tenant Endpoint**: `https://pb-webhook-server.onrender.com/run-post-batch-score`
+- **Legacy Endpoint**: `https://pb-webhook-server.onrender.com/api/internal/trigger-post-scoring-batch` (single-tenant)
 - **Schedule**: `30 2 * * *` (2:30 AM UTC / 12:30 PM AEST daily)
-- **View**: `viweXZbZUt1XA9NqP` from Leads table
 - **AI Backend**: Google Gemini
 
-#### Scoring Process
-1. **Pre-filtering**: Only posts containing AI-related keywords sent for scoring
-2. **Attribute Loading**: Loads criteria from "Post Scoring Attributes" table
-3. **AI Analysis**: Scores posts for relevance and engagement potential
-4. **Result Storage**: Updates "Top Scoring Post" and relevance score in Leads
+#### Multi-Tenant Post Scoring Process
+1. **Client Discovery**: Loads active clients from "Clients" base
+2. **Sequential Processing**: Processes each client's base individually
+3. **Post Pre-filtering**: Only posts containing AI-related keywords sent for scoring
+4. **Attribute Loading**: Loads criteria from each client's "Post Scoring Attributes" table
+5. **AI Analysis**: Scores posts for relevance and engagement potential
+6. **Result Storage**: Updates "Top Scoring Post" and relevance score in each client's Leads table
+7. **Execution Logging**: Records detailed results per client with error isolation
+
+#### API Endpoints
+- `POST /run-post-batch-score` - Process all active clients
+- `POST /run-post-batch-score?clientId=guy-wilson` - Process specific client
+- `POST /run-post-batch-score?clientId=guy-wilson&limit=50` - Process specific client with limit
 
 #### Key Files & Components
 - `postAnalysisService.js` - Main post scoring logic
@@ -157,9 +166,14 @@ var GOOGLE_SHEET_ID = '1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns';
    - Purpose: Trigger daily lead scoring process
    - Called by Render cron job
 
-2. **Post Scoring Batch**
+2. **Multi-Tenant Post Scoring Batch**
+   - `POST /run-post-batch-score`
+   - Purpose: Trigger daily post scoring process (multi-tenant)
+   - Supports clientId and limit parameters
+
+3. **Legacy Post Scoring Batch**
    - `POST /api/internal/trigger-post-scoring-batch`
-   - Purpose: Trigger daily post scoring process
+   - Purpose: Trigger daily post scoring process (single-tenant legacy)
    - View: "Leads with Posts not yet scored"
 
 ---

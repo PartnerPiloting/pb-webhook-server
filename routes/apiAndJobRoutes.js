@@ -417,7 +417,7 @@ const postBatchScorer = require("../postBatchScorer.js");
 // ---------------------------------------------------------------
 // Multi-Tenant Post Batch Score
 // ---------------------------------------------------------------
-router.get("/run-post-batch-score", async (req, res) => {
+router.post("/run-post-batch-score", async (req, res) => {
   console.log("apiAndJobRoutes.js: /run-post-batch-score endpoint hit");
   
   if (!vertexAIClient || !geminiModelId) {
