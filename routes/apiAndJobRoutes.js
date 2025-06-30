@@ -477,4 +477,56 @@ router.post("/run-post-batch-score", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// Debug endpoint for troubleshooting client discovery
+// ---------------------------------------------------------------
+router.get("/debug-clients", async (req, res) => {
+  console.log("Debug clients endpoint hit");
+  
+  try {
+    const clientService = require("../services/clientService");
+    
+    // Check environment variables
+    const debugInfo = {
+      environmentVariables: {
+        MASTER_CLIENTS_BASE_ID: !!process.env.MASTER_CLIENTS_BASE_ID,
+        AIRTABLE_API_KEY: !!process.env.AIRTABLE_API_KEY
+      },
+      values: {
+        MASTER_CLIENTS_BASE_ID: process.env.MASTER_CLIENTS_BASE_ID || "NOT SET",
+        AIRTABLE_API_KEY_LENGTH: process.env.AIRTABLE_API_KEY ? process.env.AIRTABLE_API_KEY.length : 0
+      }
+    };
+    
+    // Try to get all clients
+    let allClients = [];
+    let activeClients = [];
+    let error = null;
+    
+    try {
+      allClients = await clientService.getAllClients();
+      activeClients = await clientService.getAllActiveClients();
+    } catch (clientError) {
+      error = clientError.message;
+    }
+    
+    debugInfo.clientData = {
+      totalClients: allClients.length,
+      activeClients: activeClients.length,
+      allClientsData: allClients,
+      activeClientsData: activeClients,
+      error: error
+    };
+    
+    res.json(debugInfo);
+    
+  } catch (error) {
+    console.error("Debug clients error:", error);
+    res.status(500).json({
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 module.exports = router;
