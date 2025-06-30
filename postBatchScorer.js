@@ -162,7 +162,7 @@ async function processClientPostScoring(client, limit) {
     
     try {
         // Get client-specific Airtable base
-        const clientBase = await getClientBase(client.airtableBaseId);
+        const clientBase = await getClientBase(client.clientId);
         if (!clientBase) {
             throw new Error(`Failed to connect to Airtable base: ${client.airtableBaseId}`);
         }
