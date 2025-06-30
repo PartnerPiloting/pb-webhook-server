@@ -409,4 +409,72 @@ router.get("/debug-gemini-info", (_req, res) => {
   });
 });
 
+// ---------------------------------------------------------------
+// Import multi-tenant post scoring
+// ---------------------------------------------------------------
+const postBatchScorer = require("../postBatchScorer.js");
+
+// ---------------------------------------------------------------
+// Multi-Tenant Post Batch Score
+// ---------------------------------------------------------------
+router.get("/run-post-batch-score", async (req, res) => {
+  console.log("apiAndJobRoutes.js: /run-post-batch-score endpoint hit");
+  
+  if (!vertexAIClient || !geminiModelId) {
+    console.error("Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
+    return res.status(503).json({
+      status: 'error',
+      message: "Multi-tenant post scoring unavailable (Gemini config missing)."
+    });
+  }
+
+  try {
+    // Parse query parameters
+    const clientId = req.query.clientId || null; // Optional: specific client
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
+    
+    console.log(`Starting multi-tenant post scoring with clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}`);
+    
+    // Start the multi-tenant post scoring process
+    const results = await postBatchScorer.runMultiTenantPostScoring(
+      vertexAIClient,
+      geminiModelId,
+      clientId,
+      limit
+    );
+    
+    // Return results immediately
+    res.status(200).json({
+      status: 'completed',
+      message: 'Multi-tenant post scoring completed',
+      summary: {
+        totalClients: results.totalClients,
+        successfulClients: results.successfulClients,
+        failedClients: results.failedClients,
+        totalPostsProcessed: results.totalPostsProcessed,
+        totalPostsScored: results.totalPostsScored,
+        totalErrors: results.totalErrors,
+        duration: results.duration
+      },
+      clientResults: results.clientResults
+    });
+    
+  } catch (error) {
+    console.error("Multi-tenant post scoring error:", error.message, error.stack);
+    
+    let errorMessage = "Multi-tenant post scoring failed";
+    if (error.message) {
+      errorMessage += ` Details: ${error.message}`;
+    }
+    
+    if (!res.headersSent) {
+      return res.status(500).json({
+        status: 'error',
+        message: errorMessage,
+        errorDetails: error.toString()
+      });
+    }
+  }
+});
+
 module.exports = router;
