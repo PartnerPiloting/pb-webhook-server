@@ -61,7 +61,7 @@ var GOOGLE_SHEET_ID = '1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns';
 #### Technical Implementation
 - **Render Service**: "Daily Batch Lead Scoring"
 - **Endpoint**: `https://pb-webhook-server.onrender.com/run-batch-score`
-- **Schedule**: `0 16 * * *` (4:00 PM Singapore time daily)
+- **Schedule**: `0 2 * * *` (2:00 AM UTC / 12:00 PM AEST daily)
 - **AI Backend**: Google Gemini 2.5
 
 #### Scoring Process
@@ -86,7 +86,7 @@ var GOOGLE_SHEET_ID = '1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns';
 
 #### Technical Implementation
 - **Render Service**: "Daily Batch Lead Scoring" (same service, different process)
-- **Schedule**: 4:00 PM UTC daily
+- **Schedule**: `30 2 * * *` (2:30 AM UTC / 12:30 PM AEST daily)
 - **View**: `viweXZbZUt1XA9NqP` from Leads table
 - **AI Backend**: Google Gemini
 
@@ -233,13 +233,22 @@ LEADS PROCESSED: 12/12 successful
 ## Automation & Scheduling
 
 ### Render Cron Jobs
-1. **Daily Lead Scoring**: `0 16 * * *` (4:00 PM Singapore time)
-2. **Daily Post Scoring**: `0 16 * * *` (4:00 PM UTC)
+1. **Daily Lead Scoring**: `0 2 * * *` (2:00 AM UTC / 12:00 PM AEST)
+2. **Daily Post Scoring**: `30 2 * * *` (2:30 AM UTC / 12:30 PM AEST)
 
 ### External Automation
 1. **LinkedHelper**: Runs 12:00 AM - 3:00 AM daily
 2. **PhantomBuster**: 3:30 AM daily (coordinated timing)
 3. **Google Apps Script**: Syncs Airtable to Google Sheets for PB
+
+### Optimized Daily Flow (AEST)
+1. **12:00 AM - 3:00 AM**: LinkedHelper extracts and upserts lead profiles
+2. **3:30 AM**: PhantomBuster extracts posts from newly added leads  
+3. **12:00 PM**: Lead scoring processes all leads with complete profile data
+4. **12:30 PM**: Post scoring analyzes posts for leads with extracted content
+5. **Afternoon**: Results available for review and LinkedIn outreach planning
+
+This timing ensures all data collection completes overnight, with scoring happening during business hours for monitoring and immediate action.
 
 ---
 

@@ -1,7 +1,27 @@
 # Multi-Tenant Migration Task List
 
 ## Project Overview
-Transition PB-Webhook-Server from single-tenant to multi-tenant architecture, enabling the system to serve multiple clients while maintaining the owner (Guy Wilson) as the first client.
+Transition PB-Webhook-Server from single-tenant to multi-tenant architecture, enabling the system t- [ ] **Dependencies**: Task 1.3 complete
+- [ ] **Estimated Time**: 2 hours
+
+### Task 3.3: Create Execution Summary Dashboard
+- [ ] **Status**: NOT STARTED
+- [ ] **Purpose**: Central dashboard view of all client processing performance without diving into individual execution logs
+- [ ] **Implementation**:
+  - [ ] Add "Execution Summary" table to "Clients" master base
+  - [ ] Create table schema with fields: Execution ID, Date, Time, Client ID, Client Name, Process Type, Status, Leads Processed/Successful/Failed, Success Rate, Duration, Tokens Used, Error Count, Performance Score
+  - [ ] Set up dashboard views: "Today's Executions", "Last 7 Days", "By Client", "Performance Trends"
+  - [ ] Modify `clientService.js` to write summary records alongside execution logs
+  - [ ] Add summary record creation to both lead scoring and post scoring processes
+- [ ] **Benefits**: 
+  - [ ] Quick performance overview across all clients
+  - [ ] Timing analysis and trend tracking
+  - [ ] Error spotting and performance monitoring
+  - [ ] Client reporting capabilities
+- [ ] **Dependencies**: Task 1.2, 1.3 complete
+- [ ] **Estimated Time**: 3 hours
+
+---rve multiple clients while maintaining the owner (Guy Wilson) as the first client.
 
 ## Current Status: PHASE 1 COMPLETED ✅
 - **Documentation**: Updated and comprehensive ✅
