@@ -341,68 +341,119 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         console.log(`Lead ${leadRecord.id}: No original posts found, skipping`);
         return { status: "skipped", reason: "No original posts" };
     }
-    
-    // Load scoring configuration
-    const { aiKeywords } = await loadPostScoringAirtableConfig(clientBase, config);
-    
-    // Filter for AI-relevant posts
-    const relevantPosts = filterRelevantPosts(originalPosts, aiKeywords);
-    
-    if (relevantPosts.length === 0) {
-        console.log(`Lead ${leadRecord.id}: No AI-relevant posts found, marking as scored with 0 relevance`);
+
+    try {
+        // Load scoring configuration
+        const { aiKeywords } = await loadPostScoringAirtableConfig(clientBase, config);
         
-        // Update record to mark as processed
-        await clientBase(config.leadsTableName).update([{
-            id: leadRecord.id,
-            fields: {
-                [config.fields.dateScored]: new Date().toISOString().split('T')[0],
+        // Filter for AI-relevant posts
+        const relevantPosts = filterRelevantPosts(originalPosts, aiKeywords);
+        
+        if (relevantPosts.length === 0) {
+            console.log(`Lead ${leadRecord.id}: No AI-relevant posts found, marking as scored with 0 relevance`);
+            
+            let aiEvalMsg = `Scanned ${originalPosts.length} original posts. No relevant AI keywords detected.`;
+            
+            // Update record to mark as processed (matching original format)
+            await clientBase(config.leadsTableName).update(leadRecord.id, {
                 [config.fields.relevanceScore]: 0,
-                [config.fields.aiEvaluation]: "No AI-relevant posts found",
-                [config.fields.topScoringPost]: ""
-            }
-        }]);
-        
-        return { status: "scored", relevanceScore: 0 };
-    }
-    
-    // Score posts with Gemini
-    console.log(`Lead ${leadRecord.id}: Scoring ${relevantPosts.length} relevant posts`);
-    
-    const systemPrompt = await buildPostScoringPrompt(clientBase, config);
-    
-    // Configure the Gemini Model instance with the system prompt
-    const configuredGeminiModel = POST_BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
-        model: POST_BATCH_SCORER_GEMINI_MODEL_ID,
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        ],
-        generationConfig: { temperature: 0, responseMimeType: "application/json" }
-    });
-    
-    // Prepare input for Gemini
-    const geminiInput = { lead_id: leadRecord.id, posts: relevantPosts };
-    const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
-    
-    // Process scoring results
-    const scoringResult = processPostScoringResults(aiResponseArray, relevantPosts);
-    
-    // Update record with scoring results
-    await clientBase(config.leadsTableName).update([{
-        id: leadRecord.id,
-        fields: {
-            [config.fields.dateScored]: new Date().toISOString().split('T')[0],
-            [config.fields.relevanceScore]: scoringResult.relevanceScore || 0,
-            [config.fields.aiEvaluation]: scoringResult.evaluation || "",
-            [config.fields.topScoringPost]: scoringResult.topPost || ""
+                [config.fields.aiEvaluation]: aiEvalMsg,
+                [config.fields.dateScored]: new Date().toISOString()
+            });
+            
+            return { status: "scored", relevanceScore: 0 };
         }
-    }]);
-    
-    console.log(`Lead ${leadRecord.id}: Successfully scored with relevance ${scoringResult.relevanceScore}%`);
-    return { status: "success", relevanceScore: scoringResult.relevanceScore };
+        
+        // Score posts with Gemini
+        console.log(`Lead ${leadRecord.id}: Found ${relevantPosts.length} relevant posts. Proceeding with Gemini scoring.`);
+        
+        const systemPrompt = await buildPostScoringPrompt(clientBase, config);
+        
+        // Configure the Gemini Model instance with the system prompt
+        const configuredGeminiModel = POST_BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
+            model: POST_BATCH_SCORER_GEMINI_MODEL_ID,
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            safetySettings: [
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ],
+            generationConfig: { temperature: 0, responseMimeType: "application/json" }
+        });
+        
+        // Prepare input for Gemini
+        const geminiInput = { lead_id: leadRecord.id, posts: relevantPosts };
+        const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
+        
+        // Merge original post data into AI response (matching original)
+        const postUrlToOriginal = {};
+        for (const post of relevantPosts) {
+            const url = post.postUrl || post.post_url;
+            if (url) postUrlToOriginal[url] = post;
+        }
+        // Attach content and date to each AI response object
+        aiResponseArray.forEach(resp => {
+            const orig = postUrlToOriginal[resp.post_url] || {};
+            resp.post_content = orig.postContent || orig.post_content || '';
+            resp.postDate = orig.postDate || orig.post_date || '';
+        });
+        
+        // Find the highest scoring post (matching original logic)
+        if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
+            throw new Error("AI response was not a valid or non-empty array of post scores.");
+        }
+
+        const highestScoringPost = aiResponseArray.reduce((max, current) => {
+            return (current.post_score > max.post_score) ? current : max;
+        }, aiResponseArray[0]);
+
+        if (!highestScoringPost || typeof highestScoringPost.post_score === 'undefined') {
+             throw new Error("Could not determine the highest scoring post from the AI response.");
+        }
+        
+        console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
+        
+        // Format top scoring post text (matching original)
+        function safeFormatDate(dateStr) {
+            if (!dateStr) return "";
+            const d = new Date(dateStr);
+            return isNaN(d.getTime()) ? dateStr : d.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
+        }
+        const topScoringPostText =
+            `Date: ${safeFormatDate(highestScoringPost.postDate || highestScoringPost.post_date)}\n` +
+            `URL: ${highestScoringPost.postUrl || highestScoringPost.post_url || ''}\n` +
+            `Score: ${highestScoringPost.post_score}\n` +
+            `Content: ${highestScoringPost.postContent || highestScoringPost.post_content || ''}\n` +
+            `Rationale: ${highestScoringPost.scoring_rationale || 'N/A'}`;
+
+        // Update record with scoring results (matching original format exactly)
+        await clientBase(config.leadsTableName).update(leadRecord.id, {
+            [config.fields.relevanceScore]: highestScoringPost.post_score,
+            [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
+            [config.fields.topScoringPost]: topScoringPostText,
+            [config.fields.dateScored]: new Date().toISOString()
+        });
+        
+        console.log(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
+        return { status: "success", relevanceScore: highestScoringPost.post_score };
+
+    } catch (error) {
+        console.error(`Lead ${leadRecord.id}: Error during AI scoring process. Error: ${error.message}`, error.stack);
+        // Improved error/debug messaging in Airtable (matching original)
+        const errorDetails = {
+            errorMessage: error.message,
+            finishReason: error.finishReason || null,
+            safetyRatings: error.safetyRatings || null,
+            rawResponseSnippet: error.rawResponseSnippet || null,
+            timestamp: new Date().toISOString(),
+        };
+        await clientBase(config.leadsTableName).update(leadRecord.id, {
+            [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
+            [config.fields.dateScored]: new Date().toISOString()
+        });
+        return { status: "error", error: error.message, leadId: leadRecord.id, errorDetails };
+    }
 }
 
 // Helper functions from original postAnalysisService.js
@@ -412,14 +463,15 @@ function filterOriginalPosts(postsArray, leadProfileUrl) {
         return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
     }
     
-    const normalizedLeadUrl = normalizeUrl(leadProfileUrl);
+    const normalizedLeadProfileUrl = normalizeUrl(leadProfileUrl);
     
     return postsArray.filter(post => {
-        let authorUrl = '';
-        if (typeof post === 'object' && post.author && post.author.profileUrl) {
-            authorUrl = normalizeUrl(post.author.profileUrl);
-        }
-        return authorUrl === normalizedLeadUrl;
+        // Prefer pbMeta.authorUrl, fallback to post.authorUrl (matching original)
+        const authorUrl = post?.pbMeta?.authorUrl || post.authorUrl;
+        const normalizedAuthorUrl = normalizeUrl(authorUrl);
+        const action = post?.pbMeta?.action?.toLowerCase() || '';
+        const isOriginal = !action.includes('repost') && normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
+        return isOriginal;
     });
 }
 
@@ -447,65 +499,6 @@ function filterRelevantPosts(originalPosts, aiKeywords) {
         
         return keywordPatterns.some(pattern => pattern.test(text));
     });
-}
-
-function processPostScoringResults(aiResponseArray, relevantPosts) {
-    if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
-        return {
-            relevanceScore: 0,
-            evaluation: "No posts were scored",
-            topPost: ""
-        };
-    }
-    
-    // Map post_url to original post for quick lookup
-    const postUrlToOriginal = {};
-    for (const post of relevantPosts) {
-        const url = post.postUrl || post.post_url;
-        if (url) postUrlToOriginal[url] = post;
-    }
-    
-    // Attach content and date to each AI response object
-    aiResponseArray.forEach(resp => {
-        const orig = postUrlToOriginal[resp.post_url] || {};
-        resp.post_content = orig.postContent || orig.post_content || '';
-        resp.postDate = orig.postDate || orig.post_date || '';
-    });
-    
-    // Find the highest scoring post
-    let topScoringPost = null;
-    let highestScore = 0;
-    
-    for (const result of aiResponseArray) {
-        const score = parseInt(result.post_score) || 0;
-        if (score > highestScore) {
-            highestScore = score;
-            topScoringPost = result;
-        }
-    }
-    
-    // Calculate average relevance score
-    const validScores = aiResponseArray
-        .map(result => parseInt(result.post_score) || 0)
-        .filter(score => score > 0);
-    
-    const averageScore = validScores.length > 0 
-        ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
-        : 0;
-    
-    // Build evaluation summary
-    const evaluation = `Analyzed ${aiResponseArray.length} posts. Top score: ${highestScore}%. Average: ${averageScore}%.`;
-    
-    // Build top post summary
-    const topPostSummary = topScoringPost ? 
-        `Score: ${topScoringPost.post_score}% | ${topScoringPost.scoring_rationale || 'No rationale'} | Content: ${(topScoringPost.post_content || '').substring(0, 200)}...` 
-        : "";
-    
-    return {
-        relevanceScore: averageScore,
-        evaluation: evaluation,
-        topPost: topPostSummary
-    };
 }
 
 function chunkArray(array, chunkSize) {
