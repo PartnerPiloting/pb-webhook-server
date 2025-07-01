@@ -308,18 +308,24 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     }
     
     let parsedPostsArray;
-    try {
-        parsedPostsArray = typeof rawPostsContent === 'string' ? 
-            JSON.parse(rawPostsContent) : rawPostsContent;
-    } catch (parseError) {
-        console.warn(`Lead ${leadRecord.id}: JSON.parse failed, attempting dirty-json fallback...`);
+    if (typeof rawPostsContent === 'string') {
         try {
-            parsedPostsArray = dirtyJSON.parse(rawPostsContent);
-            console.warn(`Lead ${leadRecord.id}: dirty-json succeeded`);
-        } catch (dirtyError) {
-            console.error(`Lead ${leadRecord.id}: Both JSON.parse and dirty-json failed:`, dirtyError.message);
-            return { status: "skipped", reason: "Invalid posts JSON" };
+            parsedPostsArray = JSON.parse(rawPostsContent);
+        } catch (parseError) {
+            console.warn(`Lead ${leadRecord.id}: JSON.parse failed, attempting dirty-json fallback...`);
+            try {
+                parsedPostsArray = dirtyJSON.parse(rawPostsContent);
+                console.warn(`Lead ${leadRecord.id}: dirty-json succeeded`);
+            } catch (dirtyError) {
+                console.error(`Lead ${leadRecord.id}: Both JSON.parse and dirty-json failed:`, dirtyError.message);
+                return { status: "skipped", reason: "Invalid posts JSON" };
+            }
         }
+    } else if (Array.isArray(rawPostsContent)) {
+        parsedPostsArray = rawPostsContent;
+    } else {
+        console.warn(`Lead ${leadRecord.id}: Posts Content field is not a string or array, skipping`);
+        return { status: "skipped", reason: "Invalid Posts Content field" };
     }
     
     if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) {
