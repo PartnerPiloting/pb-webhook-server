@@ -312,8 +312,14 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         parsedPostsArray = typeof rawPostsContent === 'string' ? 
             JSON.parse(rawPostsContent) : rawPostsContent;
     } catch (parseError) {
-        console.warn(`Lead ${leadRecord.id}: Failed to parse posts content, skipping`);
-        return { status: "skipped", reason: "Invalid posts JSON" };
+        console.warn(`Lead ${leadRecord.id}: JSON.parse failed, attempting dirty-json fallback...`);
+        try {
+            parsedPostsArray = dirtyJSON.parse(rawPostsContent);
+            console.warn(`Lead ${leadRecord.id}: dirty-json succeeded`);
+        } catch (dirtyError) {
+            console.error(`Lead ${leadRecord.id}: Both JSON.parse and dirty-json failed:`, dirtyError.message);
+            return { status: "skipped", reason: "Invalid posts JSON" };
+        }
     }
     
     if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) {
