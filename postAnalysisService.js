@@ -89,7 +89,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             // Update Posts JSON Status field
             try {
                 await airtableBase('Leads').update(leadRecord.id, {
-                    'Posts JSON Status': 'PARSED'
+                    'Posts JSON Status': 'Parsed'
                 });
             } catch (e) { /* Field might not exist */ }
         } else {
@@ -98,7 +98,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             // Update Posts JSON Status field and mark as processed
             try {
                 await airtableBase('Leads').update(leadRecord.id, {
-                    'Posts JSON Status': 'FAILED'
+                    'Posts JSON Status': 'Failed'
                 });
             } catch (e) { /* Field might not exist */ }
             
@@ -110,7 +110,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         // Update Posts JSON Status field
         try {
             await airtableBase('Leads').update(leadRecord.id, {
-                'Posts JSON Status': 'PARSED'
+                'Posts JSON Status': 'Parsed'
             });
         } catch (e) { /* Field might not exist */ }
     } else {
@@ -119,7 +119,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         // Update Posts JSON Status field
         try {
             await airtableBase('Leads').update(leadRecord.id, {
-                'Posts JSON Status': 'FAILED'
+                'Posts JSON Status': 'Failed'
             });
         } catch (e) { /* Field might not exist */ }
         
