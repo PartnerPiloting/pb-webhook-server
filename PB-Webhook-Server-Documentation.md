@@ -144,7 +144,7 @@ var GOOGLE_SHEET_ID = '1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns';
 - **JSON Parsing**: Uses `dirty-json` library to handle malformed JSON from PhantomBuster
 - **Error Recovery**: Continues processing when individual records fail
 - **Logging**: Comprehensive logging for debugging and monitoring
-- **Posts JSON Status Tracking**: Simple `Posts JSON Status` field tracks whether parsing succeeded (PARSED/FAILED)
+- **Posts JSON Status Tracking**: Simple `Posts JSON Status` field tracks whether parsing succeeded (Parsed/Failed)
 
 #### Known JSON Issues
 **Root Cause**: PhantomBuster's LinkedIn Activity Extractor fails to properly escape quotes in post content, leading to malformed JSON.
@@ -157,7 +157,7 @@ var GOOGLE_SHEET_ID = '1LwX8mzL4VsOYetlGtiVUZFyvUTqh2zdDseQoDKxLuns';
 
 **Current Solutions**:
 1. **Multi-Step JSON Repair**: Progressive parsing with `JSON.parse()` → preprocessing → quote repair → `dirty-json`
-2. **Simple Status Tracking**: Mark records as PARSED or FAILED for monitoring
+2. **Simple Status Tracking**: Mark records as Parsed or Failed for monitoring
 3. **High Success Rate**: Testing shows 95-98% success rate on PhantomBuster data
 4. **Error Logging**: Detailed diagnostics for failed parsing attempts  
 5. **Graceful Degradation**: Mark unparseable records as processed to prevent infinite retry loops

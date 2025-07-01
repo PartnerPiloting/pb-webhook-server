@@ -320,7 +320,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             console.log(`Lead ${leadRecord.id}: JSON parsed successfully using method: ${repairResult.method}`);
             
             // Update Posts JSON Status field - simple pass/fail tracking
-            const jsonStatus = repairResult.success ? 'PARSED' : 'FAILED';
+            const jsonStatus = repairResult.success ? 'Parsed' : 'Failed';
             
             try {
                 await clientBase(config.leadsTableName).update(leadRecord.id, {
@@ -340,7 +340,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
                 [config.fields.relevanceScore]: 0,
                 [config.fields.aiEvaluation]: `JSON_PARSE_ERROR: ${repairResult.error}\nJSON Length: ${rawPostsContent.length}\nFirst 200 chars: ${rawPostsContent.substring(0, 200)}`,
                 [config.fields.dateScored]: new Date().toISOString(),
-                'Posts JSON Status': 'FAILED'
+                'Posts JSON Status': 'Failed'
             });
             return { status: "error", reason: "Unparseable JSON", error: repairResult.error };
         }
@@ -349,7 +349,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         // Mark as parsed if it exists as array
         try {
             await clientBase(config.leadsTableName).update(leadRecord.id, {
-                'Posts JSON Status': 'PARSED'
+                'Posts JSON Status': 'Parsed'
             });
         } catch (e) { /* Field might not exist */ }
     } else {
@@ -358,7 +358,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             [config.fields.relevanceScore]: 0,
             [config.fields.aiEvaluation]: "ERROR: Invalid Posts Content field type",
             [config.fields.dateScored]: new Date().toISOString(),
-            'Posts JSON Status': 'FAILED'
+            'Posts JSON Status': 'Failed'
         });
         return { status: "error", reason: "Invalid Posts Content field" };
     }
