@@ -529,4 +529,41 @@ router.get("/debug-clients", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// JSON Quality Diagnostic endpoint
+// ---------------------------------------------------------------
+router.get("/api/json-quality-analysis", async (req, res) => {
+  console.log("JSON quality analysis endpoint hit");
+  
+  try {
+    const { analyzeJsonQuality } = require("../jsonDiagnosticTool");
+    
+    const clientId = req.query.clientId || null;
+    const limit = parseInt(req.query.limit) || 20;
+    const mode = req.query.mode || 'analyze'; // analyze or repair
+    
+    console.log(`Running JSON quality analysis: mode=${mode}, clientId=${clientId || 'ALL'}, limit=${limit}`);
+    
+    const results = await analyzeJsonQuality(clientId, limit, mode);
+    
+    res.json({
+      status: 'success',
+      analysis: results,
+      parameters: {
+        clientId: clientId || 'ALL',
+        limit: limit,
+        mode: mode
+      }
+    });
+    
+  } catch (error) {
+    console.error("JSON quality analysis error:", error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 module.exports = router;

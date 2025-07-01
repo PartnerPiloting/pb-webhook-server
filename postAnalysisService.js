@@ -5,6 +5,7 @@ const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 const { buildPostScoringPrompt } = require('./postPromptBuilder');
 const { scorePostsWithGemini } = require('./postGeminiScorer');
 const { parsePlainTextPosts } = require('./utils/parsePlainTextPosts');
+const { repairAndParseJson } = require('./utils/jsonRepair');
 const dirtyJSON = require('dirty-json');
 
 /**
@@ -77,24 +78,51 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // Read the JSON field and robustly parse it into structured posts
     const postsJsonField = leadRecord.fields[config.fields.postsContent];
     let parsedPostsArray = [];
+    // Parse the Posts Content field using enhanced JSON repair
     if (typeof postsJsonField === 'string') {
-        try {
-            parsedPostsArray = JSON.parse(postsJsonField);
-        } catch (e) {
-            console.warn(`JSON.parse failed for record ${leadRecord.id}, attempting dirty-json fallback...`);
+        const repairResult = repairAndParseJson(postsJsonField);
+        
+        if (repairResult.success) {
+            parsedPostsArray = repairResult.data;
+            console.log(`Lead ${leadRecord.id}: JSON parsed successfully using method: ${repairResult.method}`);
+            
+            // Update Posts JSON Status field
             try {
-                parsedPostsArray = dirtyJSON.parse(postsJsonField);
-                console.warn(`dirty-json succeeded for record ${leadRecord.id}`);
-            } catch (err) {
-                console.error(`Both JSON.parse and dirty-json failed for record ${leadRecord.id}:`, err.message);
-                // Optionally log to Airtable or alert admin here
-                return { status: "Skipped - Unparseable JSON", error: err.message, leadId: leadRecord.id };
-            }
+                await airtableBase('Leads').update(leadRecord.id, {
+                    'Posts JSON Status': 'PARSED'
+                });
+            } catch (e) { /* Field might not exist */ }
+        } else {
+            console.error(`Lead ${leadRecord.id}: All JSON parsing methods failed:`, repairResult.error);
+            
+            // Update Posts JSON Status field and mark as processed
+            try {
+                await airtableBase('Leads').update(leadRecord.id, {
+                    'Posts JSON Status': 'FAILED'
+                });
+            } catch (e) { /* Field might not exist */ }
+            
+            return { status: "Skipped - Unparseable JSON", error: repairResult.error, leadId: leadRecord.id };
         }
     } else if (Array.isArray(postsJsonField)) {
         parsedPostsArray = postsJsonField;
+        
+        // Update Posts JSON Status field
+        try {
+            await airtableBase('Leads').update(leadRecord.id, {
+                'Posts JSON Status': 'PARSED'
+            });
+        } catch (e) { /* Field might not exist */ }
     } else {
         console.warn(`Posts Content field for record ${leadRecord.id} is not a string or array, skipping.`);
+        
+        // Update Posts JSON Status field
+        try {
+            await airtableBase('Leads').update(leadRecord.id, {
+                'Posts JSON Status': 'FAILED'
+            });
+        } catch (e) { /* Field might not exist */ }
+        
         return { status: "Skipped - Invalid Posts Content field", leadId: leadRecord.id };
     }
     if (!Array.isArray(parsedPostsArray)) {

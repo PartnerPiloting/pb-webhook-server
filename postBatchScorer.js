@@ -13,7 +13,7 @@ const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 const { buildPostScoringPrompt } = require('./postPromptBuilder');
 const { scorePostsWithGemini } = require('./postGeminiScorer');
 const { parsePlainTextPosts } = require('./utils/parsePlainTextPosts');
-const dirtyJSON = require('dirty-json');
+const { repairAndParseJson } = require('./utils/jsonRepair');
 const { alertAdmin } = require('./utils/appHelpers.js');
 
 // --- Centralized Dependencies (will be passed into 'run' function) ---
@@ -282,6 +282,9 @@ async function processPostScoringChunk(records, clientBase, config, clientId) {
             
             if (result.status === 'success' || result.status === 'scored') {
                 chunkResult.scored++;
+            } else if (result.status && result.status.startsWith('Skipped')) {
+                // Skipped records are not counted as errors - they'll be retried next time
+                console.log(`Lead ${leadRecord.id}: ${result.status}`);
             }
             
         } catch (leadError) {
@@ -309,28 +312,60 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     
     let parsedPostsArray;
     if (typeof rawPostsContent === 'string') {
-        try {
-            parsedPostsArray = JSON.parse(rawPostsContent);
-        } catch (parseError) {
-            console.warn(`Lead ${leadRecord.id}: JSON.parse failed, attempting dirty-json fallback...`);
+        // Use enhanced JSON repair utility
+        const repairResult = repairAndParseJson(rawPostsContent);
+        
+        if (repairResult.success) {
+            parsedPostsArray = repairResult.data;
+            console.log(`Lead ${leadRecord.id}: JSON parsed successfully using method: ${repairResult.method}`);
+            
+            // Update Posts JSON Status field - simple pass/fail tracking
+            const jsonStatus = repairResult.success ? 'PARSED' : 'FAILED';
+            
             try {
-                parsedPostsArray = dirtyJSON.parse(rawPostsContent);
-                console.warn(`Lead ${leadRecord.id}: dirty-json succeeded`);
-            } catch (dirtyError) {
-                console.error(`Lead ${leadRecord.id}: Both JSON.parse and dirty-json failed:`, dirtyError.message);
-                return { status: "skipped", reason: "Invalid posts JSON" };
-            }
+                await clientBase(config.leadsTableName).update(leadRecord.id, {
+                    'Posts JSON Status': jsonStatus
+                });
+            } catch (e) { /* Field might not exist yet */ }
+        } else {
+            console.error(`Lead ${leadRecord.id}: All JSON parsing methods failed:`, repairResult.error);
+            
+            // Enhanced diagnostic logging
+            console.log(`Lead ${leadRecord.id}: Raw JSON length: ${rawPostsContent.length}`);
+            console.log(`Lead ${leadRecord.id}: First 200 chars: ${rawPostsContent.substring(0, 200)}`);
+            console.log(`Lead ${leadRecord.id}: Last 200 chars: ${rawPostsContent.substring(rawPostsContent.length - 200)}`);
+            
+            // Mark as processed with detailed error info
+            await clientBase(config.leadsTableName).update(leadRecord.id, {
+                [config.fields.relevanceScore]: 0,
+                [config.fields.aiEvaluation]: `JSON_PARSE_ERROR: ${repairResult.error}\nJSON Length: ${rawPostsContent.length}\nFirst 200 chars: ${rawPostsContent.substring(0, 200)}`,
+                [config.fields.dateScored]: new Date().toISOString(),
+                'Posts JSON Status': 'FAILED'
+            });
+            return { status: "error", reason: "Unparseable JSON", error: repairResult.error };
         }
     } else if (Array.isArray(rawPostsContent)) {
         parsedPostsArray = rawPostsContent;
+        // Mark as parsed if it exists as array
+        try {
+            await clientBase(config.leadsTableName).update(leadRecord.id, {
+                'Posts JSON Status': 'PARSED'
+            });
+        } catch (e) { /* Field might not exist */ }
     } else {
         console.warn(`Lead ${leadRecord.id}: Posts Content field is not a string or array, skipping`);
-        return { status: "skipped", reason: "Invalid Posts Content field" };
+        await clientBase(config.leadsTableName).update(leadRecord.id, {
+            [config.fields.relevanceScore]: 0,
+            [config.fields.aiEvaluation]: "ERROR: Invalid Posts Content field type",
+            [config.fields.dateScored]: new Date().toISOString(),
+            'Posts JSON Status': 'FAILED'
+        });
+        return { status: "error", reason: "Invalid Posts Content field" };
     }
     
     if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) {
-        console.log(`Lead ${leadRecord.id}: No valid posts array, skipping`);
-        return { status: "skipped", reason: "No valid posts" };
+        console.warn(`Lead ${leadRecord.id}: Parsed Posts Content is not an array, skipping`);
+        return { status: "Skipped - Parsed Posts Content not array", leadId: leadRecord.id };
     }
     
     // Filter for original posts
@@ -339,7 +374,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     
     if (originalPosts.length === 0) {
         console.log(`Lead ${leadRecord.id}: No original posts found, skipping`);
-        return { status: "skipped", reason: "No original posts" };
+        return { status: "Skipped - No original posts", leadId: leadRecord.id };
     }
 
     try {
