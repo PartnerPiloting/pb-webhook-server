@@ -236,7 +236,7 @@ async function loadClientPostScoringConfig(clientBase) {
         },
         attributesTableName: 'Post Scoring Attributes',
         promptComponentsTableName: 'Post Scoring Instructions',
-        settingsTableName: 'Global Settings'
+        settingsTableName: 'Credentials'
     };
 }
 
