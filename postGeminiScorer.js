@@ -13,8 +13,23 @@ Analyze and score EACH of the LinkedIn posts in the following JSON object indivi
 1.  The input is a JSON object with two keys: 'lead_id' (string) and 'posts' (array of post objects).
 2.  Evaluate every single post in the 'posts' array.
 3.  For each post, generate a score and a detailed rationale based on the scoring rubric.
-4.  Return a single JSON array where each object represents one of the posts you evaluated.
-5.  **IMPORTANT:** Do NOT return a single overall score. Return an array of objects. Each object in the array must have the following exact keys: "post_url", "post_score", "scoring_rationale".
+4.  Return ONLY a JSON array - nothing else. Do not wrap it in an object.
+5.  **CRITICAL RESPONSE FORMAT:** Your response must be a direct JSON array like this:
+    [
+      {
+        "post_url": "URL_OF_POST_1",
+        "post_score": 75,
+        "scoring_rationale": "Detailed explanation..."
+      },
+      {
+        "post_url": "URL_OF_POST_2", 
+        "post_score": 45,
+        "scoring_rationale": "Detailed explanation..."
+      }
+    ]
+6.  **DO NOT** wrap the array in any object structure like {"post_analysis": [...]} or {"posts": [...]}
+7.  **DO NOT** include any text before or after the JSON array
+8.  Each object in the array must have these exact keys: "post_url", "post_score", "scoring_rationale"
 
 Here is the object to analyze:
 ${JSON.stringify(geminiInputObject, null, 2)}
@@ -52,9 +67,22 @@ ${JSON.stringify(geminiInputObject, null, 2)}
         const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
         const parsedJsonObject = JSON.parse(cleanedJsonString);
 
-        if (Array.isArray(parsedJsonObject)) return parsedJsonObject;
-        console.error("PostGeminiScorer: Gemini response was not a valid JSON array. Parsed:", parsedJsonObject);
-        throw new Error("PostGeminiScorer: Gemini response format error: Expected a JSON array of post score objects.");
+        // Flexible parsing to handle multiple Gemini response formats
+        if (Array.isArray(parsedJsonObject)) {
+            // Format 1: Direct array [{post_id: "...", post_score: 50}]
+            return parsedJsonObject;
+        } else if (parsedJsonObject.post_analysis && Array.isArray(parsedJsonObject.post_analysis)) {
+            // Format 2: Wrapped in object {post_analysis: [{post_id: "...", post_score: 50}]}
+            console.log("PostGeminiScorer: Detected wrapped response format, extracting post_analysis array");
+            return parsedJsonObject.post_analysis;
+        } else if (parsedJsonObject.posts && Array.isArray(parsedJsonObject.posts)) {
+            // Format 3: Alternative wrapper {posts: [{post_id: "...", post_score: 50}]}
+            console.log("PostGeminiScorer: Detected alternative wrapped response format, extracting posts array");
+            return parsedJsonObject.posts;
+        } else {
+            console.error("PostGeminiScorer: Gemini response was not in any recognized format. Parsed:", parsedJsonObject);
+            throw new Error("PostGeminiScorer: Gemini response format error: Expected a JSON array or object containing an array of post score objects.");
+        }
     } catch (error) {
         console.error(`PostGeminiScorer: Gemini API call failed. Error: ${error.message}`);
         error.finishReason = modelFinishReason;
