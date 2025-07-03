@@ -206,6 +206,7 @@ if (mountQueue && typeof mountQueue === 'function') {
 
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
+try { const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); app.use('/api/linkedin', linkedinRoutes); console.log("index.js: LinkedIn routes mounted at /api/linkedin"); } catch(e) { console.error("index.js: Error mounting LinkedIn routes", e.message, e.stack); }
 
 console.log("index.js: Attempting to mount Custom GPT support APIs...");
 try {
