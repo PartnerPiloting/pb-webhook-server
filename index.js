@@ -211,15 +211,15 @@ try { const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-exte
 
 // --- SERVE LINKEDIN PORTAL ---
 try {
-    // Serve static files from build directory
-    app.use('/linkedin', express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
-    
-    // Serve index.html for the /linkedin/ route specifically
+    // Serve index.html for the /linkedin/ route specifically (MUST come before static middleware)
     app.get('/linkedin/', (req, res) => {
         res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
     });
     
-    console.log("index.js: LinkedIn portal static files and route mounted at /linkedin");
+    // Serve static files from build directory
+    app.use('/linkedin', express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
+    
+    console.log("index.js: LinkedIn portal route and static files mounted at /linkedin");
 } catch(e) { 
     console.error("index.js: Error mounting LinkedIn portal", e.message, e.stack); 
 }
