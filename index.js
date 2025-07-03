@@ -209,14 +209,19 @@ try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webh
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 try { const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); app.use('/api/linkedin', linkedinRoutes); console.log("index.js: LinkedIn routes mounted at /api/linkedin"); } catch(e) { console.error("index.js: Error mounting LinkedIn routes", e.message, e.stack); }
 
-// --- SERVE REACT LINKEDIN PORTAL ---
+// --- SERVE LINKEDIN PORTAL ---
 try {
-    // Serve static files from React build
+    // Serve static files from build directory
     app.use('/linkedin', express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
     
-    console.log("index.js: LinkedIn React portal static files mounted at /linkedin");
+    // Serve index.html for the /linkedin/ route specifically
+    app.get('/linkedin/', (req, res) => {
+        res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
+    });
+    
+    console.log("index.js: LinkedIn portal static files and route mounted at /linkedin");
 } catch(e) { 
-    console.error("index.js: Error mounting LinkedIn React portal", e.message, e.stack); 
+    console.error("index.js: Error mounting LinkedIn portal", e.message, e.stack); 
 }
 
 console.log("index.js: Attempting to mount Custom GPT support APIs...");
