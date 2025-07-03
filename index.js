@@ -215,7 +215,7 @@ try {
     app.use('/linkedin', express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
     
     // Serve React app for all LinkedIn portal routes  
-    app.get('/linkedin/*', (req, res) => {
+    app.get('/linkedin*', (req, res) => {
         res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
     });
     
