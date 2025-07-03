@@ -214,12 +214,7 @@ try {
     // Serve static files from React build
     app.use('/linkedin', express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
     
-    // Serve React app for all LinkedIn portal routes  
-    app.get('/linkedin*', (req, res) => {
-        res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
-    });
-    
-    console.log("index.js: LinkedIn React portal mounted at /linkedin");
+    console.log("index.js: LinkedIn React portal static files mounted at /linkedin");
 } catch(e) { 
     console.error("index.js: Error mounting LinkedIn React portal", e.message, e.stack); 
 }
