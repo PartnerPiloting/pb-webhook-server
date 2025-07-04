@@ -9,7 +9,7 @@ import LeadDetailForm from './LeadDetailForm';
 // import ErrorBoundary from './ErrorBoundary';
 
 const LeadSearchUpdate = ({ leads = [] }) => {
-  console.log('LeadSearchUpdate loaded, leads value:', leads);
+  console.log('[LeadSearchUpdate] leads prop received:', leads);
   const safeLeads = leads || [];
   const [search, setSearch] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
