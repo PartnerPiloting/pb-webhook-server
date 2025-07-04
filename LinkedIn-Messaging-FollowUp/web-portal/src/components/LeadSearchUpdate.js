@@ -5,6 +5,7 @@ import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 
 const LeadSearchUpdate = ({ leads }) => {
+  const safeLeads = leads || [];
   const [search, setSearch] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -12,7 +13,7 @@ const LeadSearchUpdate = ({ leads }) => {
   const [message, setMessage] = useState({ type: '', text: '' });
 
   // Filter and sort leads by first name
-  const filteredLeads = leads
+  const filteredLeads = safeLeads
     .filter(lead => {
       const searchLower = search.toLowerCase();
       return (
