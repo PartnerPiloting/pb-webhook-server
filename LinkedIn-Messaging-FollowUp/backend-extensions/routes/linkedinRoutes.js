@@ -5,8 +5,8 @@
 const express = require('express');
 const router = express.Router();
 // const { authenticateWordPressUser } = require('../middleware/wordpressAuth');
-// const { getClientBase } = require('../../../config/airtableClient');
-// const clientService = require('../../../services/clientService');
+const { getClientBase } = require('../../../config/airtableClient');
+const clientService = require('../../../services/clientService');
 
 // For testing: Skip authentication and use client parameter from URL
 // router.use(authenticateWordPressUser);
