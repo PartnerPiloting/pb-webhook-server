@@ -255,13 +255,10 @@ try {
     console.error("index.js: Error mounting LinkedIn portal", e.message, e.stack); 
 }
 
-// Complete portal route with search functionality
-// OLD CODE (commented out):
-// app.get('/portal', (req, res) => {
-//     res.send(`<!DOCTYPE html> ...`);
-// });
+// Serve static files for the React app (must come before /portal route)
+app.use(express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
 
-// NEW CODE: Serve React build for /portal
+// Complete portal route with search functionality
 app.get('/portal', (req, res) => {
     res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
 });
