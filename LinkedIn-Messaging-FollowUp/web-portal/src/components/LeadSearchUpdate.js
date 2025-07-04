@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import PropTypes from 'prop-types';
 import { MagnifyingGlassIcon, ExternalLinkIcon, UserIcon } from '@heroicons/react/24/outline';
 import { debounce } from '../utils/helpers';
 import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 
+// ErrorBoundary wrapper (assume you have or will create this component)
+// import ErrorBoundary from './ErrorBoundary';
+
 const LeadSearchUpdate = ({ leads = [] }) => {
+  console.log('LeadSearchUpdate loaded, leads value:', leads);
   const safeLeads = leads || [];
   const [search, setSearch] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
@@ -12,16 +17,16 @@ const LeadSearchUpdate = ({ leads = [] }) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Filter and sort leads by first name
-  const filteredLeads = safeLeads
-    .filter(lead => {
-      const searchLower = search.toLowerCase();
-      return (
-        lead['First Name']?.toLowerCase().includes(searchLower) ||
-        lead['Last Name']?.toLowerCase().includes(searchLower)
-      );
-    })
-    .sort((a, b) => (a['First Name'] || '').localeCompare(b['First Name'] || ''));
+  // Defensive check: only filter if leads is an array
+  const filteredLeads = Array.isArray(leads)
+    ? safeLeads.filter(lead => {
+        const searchLower = search.toLowerCase();
+        return (
+          lead['First Name']?.toLowerCase().includes(searchLower) ||
+          lead['Last Name']?.toLowerCase().includes(searchLower)
+        );
+      }).sort((a, b) => (a['First Name'] || '').localeCompare(b['First Name'] || ''))
+    : [];
 
   // Debounced search function
   const debouncedSearch = useCallback(
@@ -72,6 +77,14 @@ const LeadSearchUpdate = ({ leads = [] }) => {
     }
   };
 
+  // Wrap the return in an ErrorBoundary if you have one
+  // return (
+  //   <ErrorBoundary>
+  //     ...existing JSX...
+  //   </ErrorBoundary>
+  // );
+
+  // For now, just return the existing JSX
   return (
     <div className="w-full flex flex-col md:flex-row gap-6">
       <div className="md:w-1/3 w-full">
@@ -122,6 +135,10 @@ const LeadSearchUpdate = ({ leads = [] }) => {
       </div>
     </div>
   );
+};
+
+LeadSearchUpdate.propTypes = {
+  leads: PropTypes.array
 };
 
 export default LeadSearchUpdate;
