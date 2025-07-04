@@ -238,7 +238,11 @@ try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoute
 
 // --- SERVE LINKEDIN PORTAL ---
 try {
-    // Serve index.html for the /linkedin/ route specifically (MUST come before static middleware)
+    // Serve index.html for both /linkedin and /linkedin/ routes (MUST come before static middleware)
+    app.get('/linkedin', (req, res) => {
+        res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
+    });
+    
     app.get('/linkedin/', (req, res) => {
         res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
     });
