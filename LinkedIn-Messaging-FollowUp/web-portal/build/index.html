@@ -39,12 +39,7 @@
                             placeholder="Search by name, company, or title..."
                             class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
-                        <button 
-                            id="search-btn"
-                            class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            Search
-                        </button>
+                        <!-- Search button removed for real-time search UX -->
                     </div>
                 </div>
 
@@ -93,6 +88,15 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Lead Detail Modal -->
+    <div id="lead-modal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-lg p-8 max-w-lg w-full relative">
+            <button id="close-lead-modal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl">&times;</button>
+            <h3 class="text-lg font-bold mb-4" id="modal-lead-name"></h3>
+            <div id="modal-lead-details" class="space-y-2 text-sm text-gray-700"></div>
+        </div>
     </div>
 
     <script>
@@ -302,7 +306,9 @@
             debugLog('--- Search process completed ---', 'info');
         }
 
+        // Store last leads array for modal lookup
         function displayResults(leads, query) {
+            window._lastLeadsArray = leads;
             debugLog('📊 Displaying search results...', 'info');
             debugLog(`Query: "${query}"`, 'info');
             debugLog(`Results Type: ${typeof leads}`, 'info');
@@ -373,8 +379,22 @@
         // Handle lead selection
         function selectLead(leadId, leadName) {
             showMessage(`Selected: ${leadName}`, 'success');
-            console.log('Selected lead ID:', leadId);
-            // Add your lead selection logic here
+            debugLog(`Opening modal for lead ID: ${leadId}`, 'info');
+            // Find the lead object from the last search
+            const leads = window._lastLeadsArray || [];
+            const lead = leads.find(l => (l.id || l.recordId || 'unknown') === leadId);
+            if (!lead) {
+                debugLog('Lead not found in last search results', 'error');
+                return;
+            }
+            // Fill modal with details
+            document.getElementById('modal-lead-name').textContent = `${lead['First Name'] || lead.firstName || ''} ${lead['Last Name'] || lead.lastName || ''}`;
+            let detailsHtml = '';
+            Object.entries(lead).forEach(([key, value]) => {
+                detailsHtml += `<div><span class="font-semibold">${key}:</span> ${value}</div>`;
+            });
+            document.getElementById('modal-lead-details').innerHTML = detailsHtml;
+            document.getElementById('lead-modal').classList.remove('hidden');
         }
         
         // Handle lead editing
@@ -400,6 +420,16 @@
                 url.searchParams.set('client', newClient);
                 window.history.replaceState({}, '', url);
                 document.getElementById('client-info').textContent = newClient;
+            }
+        });
+
+        // Close modal event listeners
+        document.getElementById('close-lead-modal').addEventListener('click', () => {
+            document.getElementById('lead-modal').classList.add('hidden');
+        });
+        document.getElementById('lead-modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('lead-modal')) {
+                document.getElementById('lead-modal').classList.add('hidden');
             }
         });
     </script>
