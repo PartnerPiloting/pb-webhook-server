@@ -4,55 +4,50 @@ import { debounce } from '../utils/helpers';
 import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 
-const LeadSearchUpdate = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+const LeadSearchUpdate = ({ leads }) => {
+  const [search, setSearch] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
+  // Filter and sort leads by first name
+  const filteredLeads = leads
+    .filter(lead => {
+      const searchLower = search.toLowerCase();
+      return (
+        lead['First Name']?.toLowerCase().includes(searchLower) ||
+        lead['Last Name']?.toLowerCase().includes(searchLower)
+      );
+    })
+    .sort((a, b) => (a['First Name'] || '').localeCompare(b['First Name'] || ''));
+
   // Debounced search function
   const debouncedSearch = useCallback(
     debounce(async (query) => {
       if (query.trim().length < 2) {
-        setSearchResults([]);
+        setSelectedLead(null);
         return;
       }
 
       setIsLoading(true);
       try {
         const results = await searchLeads(query);
-        setSearchResults(results);
+        setSelectedLead(results[0]);
       } catch (error) {
         console.error('Search error:', error);
         setMessage({ type: 'error', text: 'Search failed. Please try again.' });
       } finally {
         setIsLoading(false);
       }
-    }, 300),
+    }, []),
     []
   );
 
   // Effect to trigger search when query changes
   useEffect(() => {
-    debouncedSearch(searchQuery);
-  }, [searchQuery, debouncedSearch]);
-
-  // Handle lead selection from search results
-  const handleLeadSelect = async (leadId) => {
-    try {
-      setIsLoading(true);
-      const leadData = await getLeadById(leadId);
-      setSelectedLead(leadData);
-      setMessage({ type: '', text: '' });
-    } catch (error) {
-      console.error('Error loading lead:', error);
-      setMessage({ type: 'error', text: 'Failed to load lead details.' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    debouncedSearch(search);
+  }, [search, debouncedSearch]);
 
   // Handle lead update
   const handleLeadUpdate = async (updatedData) => {
@@ -77,125 +72,53 @@ const LeadSearchUpdate = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Lead Search & Update</h2>
-        <p className="mt-1 text-sm text-gray-600">
-          Find and update existing leads. Search by name to locate records.
-        </p>
-      </div>
-
-      {/* Message Display */}
-      {message.text && (
-        <div className={`rounded-md p-4 ${
-          message.type === 'success' 
-            ? 'bg-green-50 text-green-800 border border-green-200'
-            : 'bg-red-50 text-red-800 border border-red-200'
-        }`}>
-          {message.text}
+    <div className="w-full flex flex-col md:flex-row gap-6">
+      <div className="md:w-1/3 w-full">
+        <input
+          type="text"
+          className="search-input mb-4"
+          placeholder="Search by first or last name..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <div className="search-results">
+          {filteredLeads.map(lead => (
+            <div
+              key={lead['Profile Key']}
+              className={`lead-result-item${selectedLead && selectedLead['Profile Key'] === lead['Profile Key'] ? ' selected' : ''}`}
+              onClick={() => setSelectedLead(lead)}
+            >
+              <div className="font-bold">{lead['First Name']} {lead['Last Name']}</div>
+              <div className="text-xs text-gray-500">{lead['Profile Key']}</div>
+            </div>
+          ))}
+          {filteredLeads.length === 0 && (
+            <div className="no-results">No leads found.</div>
+          )}
         </div>
-      )}
-
-      {/* Search Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            placeholder="Search by first name or last name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="search-input pl-10"
-          />
-        </div>
-
-        {/* Search Results */}
-        {searchQuery.trim().length >= 2 && (
-          <div className="mt-4">
-            {isLoading ? (
-              <div className="text-center py-4">
-                <div className="inline-flex items-center">
-                  <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
-                  Searching...
-                </div>
-              </div>
-            ) : searchResults.length > 0 ? (
-              <div className="search-results">
-                {searchResults.map((lead) => (
-                  <div
-                    key={lead.id}
-                    onClick={() => handleLeadSelect(lead.id)}
-                    className={`lead-result-item ${
-                      selectedLead?.id === lead.id ? 'selected' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <UserIcon className="h-5 w-5 text-gray-400 mr-3" />
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {lead.firstName} {lead.lastName}
-                          </div>
-                          <div className="text-xs text-gray-500 truncate max-w-md">
-                            {lead.linkedinProfileUrl}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center text-xs text-gray-400">
-                        {lead.aiScore && (
-                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full mr-2">
-                            Score: {lead.aiScore}
-                          </span>
-                        )}
-                        <ExternalLinkIcon className="h-4 w-4" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="no-results">
-                No leads found matching "{searchQuery}"
-              </div>
-            )}
-          </div>
-        )}
       </div>
-
-      {/* Selected Lead Details */}
-      {selectedLead && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">
-              Lead Details: {selectedLead.firstName} {selectedLead.lastName}
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-              Update lead information and add notes below
-            </p>
-          </div>
-          <div className="p-6">
+      <div className="md:w-2/3 w-full">
+        {selectedLead ? (
+          <div className="lead-card">
+            <div className="mb-4">
+              <div className="text-lg font-bold text-blue-700 break-all">{selectedLead['Profile Key']}</div>
+              <div className="flex gap-2 mt-2">
+                <div className="font-semibold">First Name:</div>
+                <div>{selectedLead['First Name']}</div>
+                <div className="font-semibold ml-4">Last Name:</div>
+                <div>{selectedLead['Last Name']}</div>
+              </div>
+            </div>
             <LeadDetailForm
               lead={selectedLead}
               onUpdate={handleLeadUpdate}
               isUpdating={isUpdating}
             />
           </div>
-        </div>
-      )}
-
-      {/* Help Text */}
-      {!selectedLead && searchQuery.trim().length < 2 && (
-        <div className="text-center py-12">
-          <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">Search for leads</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Type at least 2 characters to search by first name or last name
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="lead-card text-center text-gray-400">Select a lead to view details</div>
+        )}
+      </div>
     </div>
   );
 };
