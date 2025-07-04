@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Follow-Up Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center h-16">
+                    <h1 class="text-xl font-semibold text-gray-900">
+                        LinkedIn Follow-Up Portal
+                    </h1>
+                    <div class="text-sm text-gray-600">
+                        Testing Mode - Client: <span id="client-info">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-6">Lead Search & Management</h2>
+                
+                <!-- Search Section -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        Search Leads
+                    </label>
+                    <div class="flex space-x-4">
+                        <input 
+                            type="text" 
+                            id="search-input"
+                            placeholder="Search by name, company, or title..."
+                            class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                        <button 
+                            id="search-btn"
+                            class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            Search
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Client Selection for Testing -->
+                <div class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <h3 class="text-sm font-medium text-yellow-800 mb-2">Testing Mode</h3>
+                    <label class="block text-sm text-yellow-700 mb-1">Select Client:</label>
+                    <select id="client-select" class="border border-yellow-300 rounded px-2 py-1 text-sm">
+                        <option value="GUY001">Guy Wilson (GUY001)</option>
+                        <option value="">Other clients will be added here...</option>
+                    </select>
+                </div>
+
+                <!-- Results Section -->
+                <div id="results-section" class="hidden">
+                    <h3 class="text-md font-medium text-gray-900 mb-4">Search Results</h3>
+                    <div id="results-container" class="space-y-4">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
+
+                <!-- API Test Section -->
+                <div class="mt-8 p-4 bg-gray-50 rounded-md">
+                    <h3 class="text-md font-medium text-gray-900 mb-4">API Connection Test</h3>
+                    <button 
+                        id="test-api-btn"
+                        class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                        Test Backend Connection
+                    </button>
+                    <div id="api-status" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Status Messages -->
+                <div id="message-container" class="mt-4"></div>
+            </div>
+            
+            <!-- Debug Console -->
+            <div class="bg-gray-900 text-green-400 rounded-lg shadow p-4 mt-6 font-mono text-sm">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-white font-medium">Debug Console</h3>
+                    <button id="clear-debug" class="text-gray-400 hover:text-white text-xs">Clear</button>
+                </div>
+                <div id="debug-console" class="max-h-96 overflow-y-auto">
+                    <div class="text-gray-500">Debug output will appear here...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // API Base URL - adjust if needed
+        const API_BASE = '/api/linkedin';
+        
+        // Get client ID from URL parameter or default
+        const urlParams = new URLSearchParams(window.location.search);
+        const clientId = urlParams.get('client') || 'Guy-Wilson';
+        
+        document.getElementById('client-info').textContent = clientId;
+        document.getElementById('client-select').value = clientId;
+
+        // Debug console functions
+        function debugLog(message, type = 'info') {
+            const debugConsole = document.getElementById('debug-console');
+            const timestamp = new Date().toLocaleTimeString();
+            const colorClass = type === 'error' ? 'text-red-400' : 
+                              type === 'success' ? 'text-green-400' : 
+                              type === 'warning' ? 'text-yellow-400' : 'text-blue-400';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = `mb-1 ${colorClass}`;
+            logEntry.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+            
+            debugConsole.appendChild(logEntry);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+            
+            // Also log to browser console
+            console.log(message);
+        }
+        
+        function debugObject(label, obj) {
+            const debugConsole = document.getElementById('debug-console');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'mb-2 text-cyan-400';
+            logEntry.innerHTML = `
+                <span class="text-gray-500">[${timestamp}]</span> ${label}:
+                <pre class="ml-4 text-xs text-gray-300 mt-1">${JSON.stringify(obj, null, 2)}</pre>
+            `;
+            
+            debugConsole.appendChild(logEntry);
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+            
+            // Also log to browser console
+            console.log(label, obj);
+        }
+        
+        // Clear debug console
+        document.getElementById('clear-debug').addEventListener('click', () => {
+            document.getElementById('debug-console').innerHTML = '<div class="text-gray-500">Debug output cleared...</div>';
+        });
+
+        // Show message function
+        function showMessage(text, type = 'info') {
+            const container = document.getElementById('message-container');
+            const messageClass = type === 'error' ? 'bg-red-50 text-red-700 border-red-200' 
+                               : type === 'success' ? 'bg-green-50 text-green-700 border-green-200'
+                               : 'bg-blue-50 text-blue-700 border-blue-200';
+            
+            container.innerHTML = `
+                <div class="p-3 rounded-md border ${messageClass}">
+                    ${text}
+                </div>
+            `;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        // Test API connection
+        document.getElementById('test-api-btn').addEventListener('click', async () => {
+            const statusDiv = document.getElementById('api-status');
+            statusDiv.innerHTML = 'Testing connection...';
+            
+            try {
+                const testUrl = `${API_BASE}/test?client=${clientId}`;
+                console.log('Testing URL:', testUrl);
+                const response = await fetch(testUrl);
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = `<span class="text-green-600">✅ Connected successfully! Server time: ${data.timestamp}</span>`;
+                    showMessage('Backend connection successful!', 'success');
+                } else {
+                    statusDiv.innerHTML = `<span class="text-red-600">❌ Connection failed: ${data.error}</span>`;
+                    showMessage(`API Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span class="text-red-600">❌ Network error: ${error.message}</span>`;
+                showMessage(`Network Error: ${error.message}`, 'error');
+            }
+        });
+
+        // Real-time search as you type
+        let searchTimeout;
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            if (query.length === 0) {
+                // Clear results when search is empty
+                document.getElementById('results-section').classList.add('hidden');
+                return;
+            }
+            
+            if (query.length < 2) {
+                // Show message for short queries
+                const container = document.getElementById('results-container');
+                const section = document.getElementById('results-section');
+                container.innerHTML = '<p class="text-gray-500">Type at least 2 characters to search...</p>';
+                section.classList.remove('hidden');
+                return;
+            }
+            
+            // Debounce search requests (wait 300ms after user stops typing)
+            searchTimeout = setTimeout(() => {
+                performSearch(query);
+            }, 300);
+        });
+
+        // Keep the button and enter key for immediate search
+        document.getElementById('search-btn').addEventListener('click', () => {
+            const query = document.getElementById('search-input').value.trim();
+            if (query.length >= 2) {
+                performSearch(query);
+            }
+        });
+        
+        document.getElementById('search-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const query = e.target.value.trim();
+                if (query.length >= 2) {
+                    performSearch(query);
+                }
+            }
+        });
+
+        async function performSearch(query) {
+            const selectedClient = document.getElementById('client-select').value || clientId;
+            
+            debugLog('🔍 Starting search...', 'info');
+            debugLog(`Query: "${query}"`, 'info');
+            debugLog(`Client: ${selectedClient}`, 'info');
+            debugLog(`API Base: ${API_BASE}`, 'info');
+            
+            try {
+                // Show loading state
+                const container = document.getElementById('results-container');
+                const section = document.getElementById('results-section');
+                container.innerHTML = '<p class="text-gray-500">🔍 Searching...</p>';
+                section.classList.remove('hidden');
+                
+                const searchUrl = `${API_BASE}/leads/search?q=${encodeURIComponent(query)}&client=${selectedClient}`;
+                debugLog(`Full URL: ${searchUrl}`, 'info');
+                
+                debugLog('Making API request...', 'info');
+                const response = await fetch(searchUrl);
+                
+                debugLog(`Response Status: ${response.status} (${response.statusText})`, 
+                        response.ok ? 'success' : 'error');
+                
+                if (!response.ok) {
+                    debugLog(`HTTP Error: ${response.status}`, 'error');
+                }
+                
+                debugLog('Parsing JSON response...', 'info');
+                const data = await response.json();
+                
+                debugObject('Response Data', data);
+                debugLog(`Data Type: ${typeof data}`, 'info');
+                debugLog(`Is Array: ${Array.isArray(data)}`, 'info');
+                
+                if (Array.isArray(data)) {
+                    debugLog(`Results Count: ${data.length}`, data.length > 0 ? 'success' : 'warning');
+                    if (data.length > 0) {
+                        debugObject('First Result Sample', data[0]);
+                        debugLog(`Available Fields: ${Object.keys(data[0]).join(', ')}`, 'info');
+                    }
+                }
+                
+                if (response.ok) {
+                    debugLog('✅ Search completed successfully', 'success');
+                    displayResults(data, query);
+                } else {
+                    debugLog(`❌ Search failed: ${data.error || 'Unknown error'}`, 'error');
+                    container.innerHTML = `<p class="text-red-600">❌ Search failed: ${data.error || 'Unknown error'}</p>`;
+                }
+            } catch (error) {
+                debugLog(`❌ Network/Parse Error: ${error.message}`, 'error');
+                debugObject('Error Details', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                
+                const container = document.getElementById('results-container');
+                container.innerHTML = `<p class="text-red-600">❌ Network error: ${error.message}</p>`;
+            }
+            
+            debugLog('--- Search process completed ---', 'info');
+        }
+
+        function displayResults(leads, query) {
+            debugLog('📊 Displaying search results...', 'info');
+            debugLog(`Query: "${query}"`, 'info');
+            debugLog(`Results Type: ${typeof leads}`, 'info');
+            debugLog(`Is Array: ${Array.isArray(leads)}`, 'info');
+            
+            const container = document.getElementById('results-container');
+            const section = document.getElementById('results-section');
+            
+            if (!Array.isArray(leads)) {
+                debugLog('❌ Invalid data format - not an array', 'error');
+                debugObject('Raw Data Received', leads);
+                container.innerHTML = `<p class="text-red-600">❌ Invalid data format received from server</p>`;
+                section.classList.remove('hidden');
+                return;
+            }
+            
+            debugLog(`Processing ${leads.length} leads...`, leads.length > 0 ? 'success' : 'warning');
+            
+            if (leads.length === 0) {
+                debugLog('No matching leads found', 'warning');
+                container.innerHTML = `<p class="text-gray-500">No leads found matching "${query}"</p>`;
+            } else {
+                debugLog('Generating HTML for lead cards...', 'info');
+                
+                // Log details about each lead for debugging
+                leads.forEach((lead, index) => {
+                    debugLog(`Lead ${index + 1}: ${(lead['First Name'] || lead.firstName || 'Unknown')} ${(lead['Last Name'] || lead.lastName || '')}`, 'info');
+                });
+                
+                // Show count and make results clickable
+                container.innerHTML = `
+                    <div class="mb-3 text-sm text-gray-600">
+                        Found ${leads.length} lead${leads.length === 1 ? '' : 's'} matching "${query}"
+                    </div>
+                    ${leads.map((lead, index) => {
+                        return `
+                        <div class="border border-gray-200 rounded-lg p-4 hover:bg-blue-50 cursor-pointer transition-colors" 
+                             onclick="selectLead('${lead.id || lead.recordId || 'unknown'}', '${(lead['First Name'] || lead.firstName || '') + ' ' + (lead['Last Name'] || lead.lastName || '')}')">
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <h4 class="font-medium text-gray-900">
+                                        ${lead['First Name'] || lead.firstName || ''} ${lead['Last Name'] || lead.lastName || ''}
+                                    </h4>
+                                    <p class="text-sm text-gray-600">${lead['Job Title'] || lead.jobTitle || ''}</p>
+                                    <p class="text-sm text-gray-600">${lead['Company Name'] || lead.companyName || ''}</p>
+                                    ${(lead['AI Score'] || lead.aiScore) ? `<p class="text-sm font-medium text-blue-600">AI Score: ${lead['AI Score'] || lead.aiScore}%</p>` : ''}
+                                </div>
+                                <div class="flex space-x-2 ml-4">
+                                    ${(lead['LinkedIn Profile URL'] || lead.linkedinUrl) ? 
+                                        `<a href="${lead['LinkedIn Profile URL'] || lead.linkedinUrl}" target="_blank" 
+                                           class="text-blue-600 hover:text-blue-800 text-sm"
+                                           onclick="event.stopPropagation()">View Profile</a>` : ''}
+                                    <button class="text-green-600 hover:text-green-800 text-sm"
+                                            onclick="event.stopPropagation(); editLead('${lead.id || lead.recordId || 'unknown'}')">Edit</button>
+                                </div>
+                            </div>
+                        </div>
+                    `}).join('')}
+                `;
+                
+                debugLog('✅ Lead cards generated successfully', 'success');
+            }
+            
+            section.classList.remove('hidden');
+            debugLog('--- Display process completed ---', 'info');
+        }
+        
+        // Handle lead selection
+        function selectLead(leadId, leadName) {
+            showMessage(`Selected: ${leadName}`, 'success');
+            console.log('Selected lead ID:', leadId);
+            // Add your lead selection logic here
+        }
+        
+        // Handle lead editing
+        function editLead(leadId) {
+            showMessage(`Opening edit for lead ID: ${leadId}`, 'info');
+            console.log('Edit lead ID:', leadId);
+            // Add your edit logic here
+        }
+
+        // Auto-test connection on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Wait a moment then test API
+            setTimeout(() => {
+                document.getElementById('test-api-btn').click();
+            }, 1000);
+        });
+
+        // Update URL when client changes
+        document.getElementById('client-select').addEventListener('change', (e) => {
+            const newClient = e.target.value;
+            if (newClient) {
+                const url = new URL(window.location);
+                url.searchParams.set('client', newClient);
+                window.history.replaceState({}, '', url);
+                document.getElementById('client-info').textContent = newClient;
+            }
+        });
+    </script>
+</body>
+</html>
