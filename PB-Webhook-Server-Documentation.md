@@ -316,6 +316,44 @@ Don't leave a signature"
 
 ---
 
+## LinkedIn Follow-Up System Integration
+
+### Overview
+The LinkedIn Follow-Up System is a web-based extension to the PB-Webhook-Server that provides a modern interface for lead management, replacing the need for direct Airtable access. **Status: LIVE AND OPERATIONAL** (January 2025).
+
+### Live Access
+- **Portal**: https://pb-webhook-server.onrender.com/portal
+- **API**: https://pb-webhook-server.onrender.com/api/linkedin/*
+
+### Key Features
+- **✅ Lead Search**: Real-time search across client Airtable bases
+- **✅ API Integration**: Complete REST API for lead management
+- **✅ Multi-tenant Support**: Leverages existing client infrastructure
+- **✅ Responsive UI**: Modern, mobile-friendly interface
+
+### Technical Implementation
+- **Backend**: Express.js routes mounted at `/api/linkedin`
+- **Frontend**: Single-page portal served via `/portal` route
+- **Database**: Reuses existing Airtable multi-tenant architecture
+- **Authentication**: Ready for WordPress integration (currently testing mode)
+
+### Architecture Benefits
+- **Code Reuse**: 80% leverages existing pb-webhook-server infrastructure
+- **Zero Downtime**: Integrated deployment with main system
+- **Scalability**: Built on proven multi-tenant foundation
+- **Maintainability**: Single codebase for all lead management functions
+
+### Development Status
+- ✅ Web portal and API fully functional
+- ✅ Multi-client support implemented  
+- ✅ Error handling and logging complete
+- ✅ Documentation updated (January 2025)
+- 🚧 Chrome extension development (next phase)
+
+See `/LinkedIn-Messaging-FollowUp/README.md` for detailed documentation.
+
+---
+
 ## Technical Stack Summary
 
 - **Runtime**: Node.js on Render
