@@ -4,7 +4,7 @@ import { debounce } from '../utils/helpers';
 import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 
-const LeadSearchUpdate = ({ leads }) => {
+const LeadSearchUpdate = ({ leads = [] }) => {
   const safeLeads = leads || [];
   const [search, setSearch] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
