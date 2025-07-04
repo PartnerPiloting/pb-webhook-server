@@ -5,11 +5,36 @@
 const express = require('express');
 const router = express.Router();
 // const { authenticateWordPressUser } = require('../middleware/wordpressAuth');
-const { getClientBase } = require('../../../config/airtableClient');
-const clientService = require('../../../services/clientService');
+// const { getClientBase } = require('../../../config/airtableClient');
+// const clientService = require('../../../services/clientService');
 
 // For testing: Skip authentication and use client parameter from URL
 // router.use(authenticateWordPressUser);
+
+/**
+ * Simple test endpoint - no authentication required
+ * GET /api/linkedin/test
+ */
+router.get('/test', (req, res) => {
+    res.json({
+        status: 'success',
+        message: 'LinkedIn API is working!',
+        timestamp: new Date().toISOString(),
+        version: 'v1.0'
+    });
+});
+
+/**
+ * Root endpoint test
+ * GET /api/linkedin/
+ */
+router.get('/', (req, res) => {
+    res.json({
+        status: 'success',
+        message: 'LinkedIn API root endpoint working!',
+        timestamp: new Date().toISOString()
+    });
+});
 
 /**
  * Search leads by name across client's base
@@ -415,6 +440,57 @@ router.post('/leads/:leadId/messages', async (req, res) => {
         res.status(500).json({
             error: 'Failed to add message',
             message: 'Unable to update message history'
+        });
+    }
+});
+
+/**
+ * Test endpoint for API connection
+ * GET /api/linkedin/test?client=clientId
+ */
+router.get('/test', async (req, res) => {
+    try {
+        const { client: clientId } = req.query;
+        
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        // Validate client exists and is active
+        const client = await clientService.getClientById(clientId);
+        if (!client) {
+            return res.status(404).json({
+                error: 'Client not found',
+                message: `Client '${clientId}' does not exist in master Clients base`
+            });
+        }
+        
+        if (client.status !== 'Active') {
+            return res.status(403).json({
+                error: 'Client inactive',
+                message: `Client '${clientId}' status is '${client.status}', expected 'Active'`
+            });
+        }
+
+        res.json({
+            status: 'success',
+            message: 'API connection successful',
+            timestamp: new Date().toISOString(),
+            client: {
+                id: clientId,
+                name: client.clientName,
+                baseId: client.airtableBaseId
+            }
+        });
+        
+    } catch (error) {
+        console.error('Test endpoint error:', error);
+        res.status(500).json({
+            error: 'Test failed',
+            message: 'Unable to test API connection'
         });
     }
 });
