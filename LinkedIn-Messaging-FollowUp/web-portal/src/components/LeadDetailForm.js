@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ExternalLinkIcon, CalendarIcon, StarIcon } from '@heroicons/react/24/outline';
+import { CalendarIcon, StarIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 
 const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
@@ -137,7 +137,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
 
         <div>
           <label className="field-label flex items-center">
-            <ExternalLinkIcon className="h-4 w-4 mr-1" />
+            <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />
             LinkedIn Profile URL *
           </label>
           <input

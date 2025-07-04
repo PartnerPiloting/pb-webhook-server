@@ -174,3 +174,66 @@ Based on our documented conversation capture strategy:
 - Maintain chronological order with section headers
 
 This master list serves as the single source of truth for all Airtable field names, types, and configurations across the LinkedIn Messaging Follow-Up system.
+
+## LinkedIn Follow-Up Portal: Field Editability and Types (Updated December 2024)
+
+### Editable Fields
+| UI Label                    | Airtable Field Name           | Type           | Editable | Notes/Options                                                                 |
+|-----------------------------|-------------------------------|----------------|----------|-------------------------------------------------------------------------------|
+| LinkedIn Profile URL        | LinkedIn Profile URL          | URL            | Yes      | Primary identifier, editable, must be LinkedIn URL format                     |
+| First Name                  | First Name                    | Text           | Yes      |                                                                               |
+| Last Name                   | Last Name                     | Text           | Yes      |                                                                               |
+| Notes                       | Notes                         | Long Text      | Yes      | Manual + auto-captured conversations                                         |
+| Follow-Up Date              | Follow Up Date                | Date           | Yes      | Local timezone, displays timezone in Airtable                                 |
+| Email                       | Email                         | Email          | Yes      |                                                                               |
+| ASH Workshop Email          | ASH Workshop Email            | Checkbox       | Yes      | Checkbox (true/false)                                                         |
+| Phone                       | Phone                         | Text           | Yes      |                                                                               |
+| Status                      | Status                        | Single Select  | Yes      | "On The Radar", "In Process", "Archive", "Not Interested"                     |
+| LinkedIn Connection Status  | LinkedIn Connection Status    | Single Select  | Yes      | "Connected", "Invitation Sent", "Withdrawn", "To Be Sent", "Candidate", "Ignore", "Queued Connection Request" |
+| Priority                    | Priority                      | Single Select  | Yes      | "One", "Two", "Three"                                                         |
+
+### View-Only Fields
+| UI Label                    | Airtable Field Name           | Type           | Editable | Notes/Options                                                                 |
+|-----------------------------|-------------------------------|----------------|----------|-------------------------------------------------------------------------------|
+| Profile Key                 | Profile Key                   | Formula        | No       | Auto-generated unique identifier                                              |
+| View In Sales Navigator     | View In Sales Navigator       | URL            | No       | Manual entry from address bar, not editable in the portal                     |
+| Source                      | Source                        | Single Select  | No       | "SalesNav + LH Scrape", "Manually selected from my ASH Followers", etc.       |
+| Posts Relevance Percentage  | Posts Relevance Percentage    | Formula        | No       | Calculated as `{Posts Relevance Score}/80*100`                                |
+| AI Score                    | AI Score                      | Number         | No       | System-generated lead relevance                                               |
+
+### Single Select Field Options
+- **Source**:  
+  - "SalesNav + LH Scrape"
+  - "Manually selected from my ASH Followers"
+  - "2nd level leads from PB"
+  - "Follow-Up Personally"
+  - "Existing Connection Added by PB"
+  - (and possibly others as defined in your base)
+
+- **Status**:  
+  - "On The Radar"
+  - "In Process"
+  - "Archive"
+  - "Not Interested"
+
+- **LinkedIn Connection Status**:  
+  - "Connected"
+  - "Invitation Sent"
+  - "Withdrawn"
+  - "To Be Sent"
+  - "Candidate"
+  - "Ignore"
+  - "Queued Connection Request"
+
+- **Priority**:  
+  - "One"
+  - "Two"
+  - "Three"
+
+### Special Notes
+- **ASH Workshop Email** is a checkbox (true/false).
+- **Follow Up Date** is editable and displays the timezone in Airtable.
+- **LinkedIn Profile URL** is editable.
+- **View In Sales Navigator** is view-only (not editable in the portal).
+- **Posts Relevance Percentage** and **AI Score** are view-only (system-generated).
+- **Source** is view-only (system-generated or set by automation).
