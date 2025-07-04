@@ -10,8 +10,8 @@ function App() {
     <Router>
       <Layout>
         <Routes>
-          <Route path="/" element={<LeadSearchUpdate />} />
-          <Route path="/lead-search" element={<LeadSearchUpdate />} />
+          <Route path="/" element={<LeadSearchUpdate leads={[]} />} />
+          <Route path="/lead-search" element={<LeadSearchUpdate leads={[]} />} />
           <Route path="/follow-up" element={<FollowUpManager />} />
           <Route path="/new-leads" element={<NewLeads />} />
         </Routes>
