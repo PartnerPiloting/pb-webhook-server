@@ -251,7 +251,7 @@ try {
     console.error("index.js: Error mounting LinkedIn portal", e.message, e.stack); 
 }
 
-// Simple portal route - serve HTML directly
+// Complete portal route with search functionality
 app.get('/portal', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -267,15 +267,37 @@ app.get('/portal', (req, res) => {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between items-center h-16">
                     <h1 class="text-xl font-semibold text-gray-900">LinkedIn Follow-Up Portal</h1>
-                    <div class="text-sm text-gray-600">Testing Mode - Client: <span id="client-info">Loading...</span></div>
+                    <div class="text-sm text-gray-600">Testing Mode - Client: <span id="client-info">Guy-Wilson</span></div>
                 </div>
             </div>
         </header>
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-lg font-medium text-gray-900 mb-6">API Connection Test</h2>
-                <button id="test-api-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Test Backend Connection</button>
-                <div id="api-status" class="mt-2 text-sm"></div>
+                <h2 class="text-lg font-medium text-gray-900 mb-6">Lead Search & Management</h2>
+                
+                <!-- Search Section -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Search Leads</label>
+                    <div class="flex space-x-4">
+                        <input type="text" id="search-input" placeholder="Search by name, company, or title..." 
+                               class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button id="search-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Search</button>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div id="results-section" class="hidden mb-6">
+                    <h3 class="text-md font-medium text-gray-900 mb-4">Search Results</h3>
+                    <div id="results-container" class="space-y-4"></div>
+                </div>
+
+                <!-- API Test Section -->
+                <div class="p-4 bg-gray-50 rounded-md">
+                    <h3 class="text-md font-medium text-gray-900 mb-4">API Connection Test</h3>
+                    <button id="test-api-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Test Backend Connection</button>
+                    <div id="api-status" class="mt-2 text-sm"></div>
+                </div>
+                
                 <div id="message-container" class="mt-4"></div>
             </div>
         </main>
@@ -283,7 +305,6 @@ app.get('/portal', (req, res) => {
     <script>
         const API_BASE = '/api/linkedin';
         const clientId = 'Guy-Wilson';
-        document.getElementById('client-info').textContent = clientId;
         
         function showMessage(text, type = 'info') {
             const container = document.getElementById('message-container');
@@ -293,13 +314,13 @@ app.get('/portal', (req, res) => {
             container.innerHTML = \`<div class="p-3 rounded-md border \${messageClass}">\${text}</div>\`;
         }
         
+        // Test API connection
         document.getElementById('test-api-btn').addEventListener('click', async () => {
             const statusDiv = document.getElementById('api-status');
             statusDiv.innerHTML = 'Testing connection...';
             
             try {
                 const response = await fetch(\`\${API_BASE}/test?client=\${clientId}\`);
-                console.log('Response status:', response.status);
                 const data = await response.json();
                 
                 if (response.ok) {
@@ -314,6 +335,67 @@ app.get('/portal', (req, res) => {
                 showMessage(\`Network Error: \${error.message}\`, 'error');
             }
         });
+        
+        // Search functionality
+        document.getElementById('search-btn').addEventListener('click', performSearch);
+        document.getElementById('search-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+
+        async function performSearch() {
+            const query = document.getElementById('search-input').value.trim();
+            
+            if (query.length < 2) {
+                showMessage('Please enter at least 2 characters to search', 'error');
+                return;
+            }
+
+            try {
+                showMessage('Searching leads...', 'info');
+                
+                const response = await fetch(\`\${API_BASE}/leads/search?q=\${encodeURIComponent(query)}&client=\${clientId}\`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayResults(data);
+                    showMessage(\`Found \${data.length} leads\`, 'success');
+                } else {
+                    showMessage(\`Search failed: \${data.error}\`, 'error');
+                }
+            } catch (error) {
+                showMessage(\`Search error: \${error.message}\`, 'error');
+            }
+        }
+
+        function displayResults(leads) {
+            const container = document.getElementById('results-container');
+            const section = document.getElementById('results-section');
+            
+            if (leads.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">No leads found matching your search.</p>';
+            } else {
+                container.innerHTML = leads.map(lead => \`
+                    <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-medium text-gray-900">\${lead['First Name'] || ''} \${lead['Last Name'] || ''}</h4>
+                                <p class="text-sm text-gray-600">\${lead['Job Title'] || ''}</p>
+                                <p class="text-sm text-gray-600">\${lead['Company Name'] || ''}</p>
+                                \${lead['AI Score'] ? \`<p class="text-sm font-medium text-blue-600">AI Score: \${lead['AI Score']}%</p>\` : ''}
+                            </div>
+                            <div class="flex space-x-2">
+                                \${lead['LinkedIn Profile URL'] ? 
+                                    \`<a href="\${lead['LinkedIn Profile URL']}" target="_blank" 
+                                       class="text-blue-600 hover:text-blue-800 text-sm">View Profile</a>\` : ''}
+                                <button class="text-green-600 hover:text-green-800 text-sm">Edit</button>
+                            </div>
+                        </div>
+                    </div>
+                \`).join('');
+            }
+            
+            section.classList.remove('hidden');
+        }
         
         // Auto-test on load
         setTimeout(() => document.getElementById('test-api-btn').click(), 1000);
@@ -446,6 +528,22 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
             errorDetails: error.toString()
         });
     }
+});
+
+// Diagnostic route to see exactly what's wrong with static files
+app.get('/debug-linkedin-files', (req, res) => {
+    const fs = require('fs');
+    const targetPath = path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build');
+    const indexPath = path.join(targetPath, 'index.html');
+    
+    res.json({
+        __dirname: __dirname,
+        targetPath: targetPath,
+        targetExists: fs.existsSync(targetPath),
+        indexExists: fs.existsSync(indexPath),
+        dirContents: fs.existsSync(targetPath) ? fs.readdirSync(targetPath) : 'directory not found',
+        indexContent: fs.existsSync(indexPath) ? 'file exists' : 'file not found'
+    });
 });
 
 /* ------------------------------------------------------------------
