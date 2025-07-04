@@ -91,6 +91,12 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+// ABSOLUTE BASIC TEST - Should work 100%
+app.get('/basic-test', (req, res) => {
+    res.send('BASIC ROUTE WORKING - Express is alive!');
+});
+console.log("Basic test route added at /basic-test");
+
 // --- ADMIN REPAIR ENDPOINT (SECURE) ---
 // Full import for repair script
 const repairAirtablePostsContentQuotes = require('./utils/repairAirtablePostsContentQuotes');
@@ -206,8 +212,29 @@ if (mountQueue && typeof mountQueue === 'function') {
 }
 
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
-try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 try { const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); app.use('/api/linkedin', linkedinRoutes); console.log("index.js: LinkedIn routes mounted at /api/linkedin"); } catch(e) { console.error("index.js: Error mounting LinkedIn routes", e.message, e.stack); }
+
+// EMERGENCY DEBUG ROUTE - Direct in index.js
+app.get('/api/linkedin/debug', (req, res) => {
+    res.json({ 
+        message: 'DIRECT DEBUG ROUTE WORKING', 
+        timestamp: new Date().toISOString(),
+        path: req.path 
+    });
+});
+
+// TEST DIFFERENT PATH - NOT /api/
+app.get('/test/linkedin/debug', (req, res) => {
+    res.json({ 
+        message: 'NON-API PATH WORKING', 
+        timestamp: new Date().toISOString(),
+        path: req.path 
+    });
+});
+
+console.log("index.js: Emergency debug routes added");
+
+try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
 // --- SERVE LINKEDIN PORTAL ---
 try {
@@ -223,6 +250,77 @@ try {
 } catch(e) { 
     console.error("index.js: Error mounting LinkedIn portal", e.message, e.stack); 
 }
+
+// Simple portal route - serve HTML directly
+app.get('/portal', (req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Follow-Up Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <header class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center h-16">
+                    <h1 class="text-xl font-semibold text-gray-900">LinkedIn Follow-Up Portal</h1>
+                    <div class="text-sm text-gray-600">Testing Mode - Client: <span id="client-info">Loading...</span></div>
+                </div>
+            </div>
+        </header>
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-6">API Connection Test</h2>
+                <button id="test-api-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Test Backend Connection</button>
+                <div id="api-status" class="mt-2 text-sm"></div>
+                <div id="message-container" class="mt-4"></div>
+            </div>
+        </main>
+    </div>
+    <script>
+        const API_BASE = '/api/linkedin';
+        const clientId = 'Guy-Wilson';
+        document.getElementById('client-info').textContent = clientId;
+        
+        function showMessage(text, type = 'info') {
+            const container = document.getElementById('message-container');
+            const messageClass = type === 'error' ? 'bg-red-50 text-red-700 border-red-200' 
+                               : type === 'success' ? 'bg-green-50 text-green-700 border-green-200'
+                               : 'bg-blue-50 text-blue-700 border-blue-200';
+            container.innerHTML = \`<div class="p-3 rounded-md border \${messageClass}">\${text}</div>\`;
+        }
+        
+        document.getElementById('test-api-btn').addEventListener('click', async () => {
+            const statusDiv = document.getElementById('api-status');
+            statusDiv.innerHTML = 'Testing connection...';
+            
+            try {
+                const response = await fetch(\`\${API_BASE}/test?client=\${clientId}\`);
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = \`<span class="text-green-600">✅ Connected! Server time: \${data.timestamp}</span>\`;
+                    showMessage('Backend connection successful!', 'success');
+                } else {
+                    statusDiv.innerHTML = \`<span class="text-red-600">❌ Failed: \${data.error}</span>\`;
+                    showMessage(\`API Error: \${data.error}\`, 'error');
+                }
+            } catch (error) {
+                statusDiv.innerHTML = \`<span class="text-red-600">❌ Network error: \${error.message}</span>\`;
+                showMessage(\`Network Error: \${error.message}\`, 'error');
+            }
+        });
+        
+        // Auto-test on load
+        setTimeout(() => document.getElementById('test-api-btn').click(), 1000);
+    </script>
+</body>
+</html>`);
+});
 
 console.log("index.js: Attempting to mount Custom GPT support APIs...");
 try {
