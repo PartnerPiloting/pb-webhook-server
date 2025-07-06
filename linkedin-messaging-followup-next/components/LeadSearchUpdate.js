@@ -1,3 +1,4 @@
+"use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { MagnifyingGlassIcon, ExternalLinkIcon, UserIcon } from '@heroicons/react/24/outline';
