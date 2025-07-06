@@ -1,3 +1,4 @@
+"use client";
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon } from '@heroicons/react/24/outline';
