@@ -1,15 +1,16 @@
 "use client";
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import Link from 'next/link';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 
 const Layout = ({ children }) => {
-  const location = useLocation();
-
+  // For now, we'll assume we're always on the lead-search page
+  // In a real Next.js app, you'd use usePathname() from next/navigation
+  
   const navigation = [
     {
       name: 'Lead Search & Update',
-      href: '/lead-search',
+      href: '/',
       icon: MagnifyingGlassIcon,
       description: 'Find and update existing leads'
     },
@@ -52,16 +53,16 @@ const Layout = ({ children }) => {
         <nav className="flex space-x-8 mb-8" aria-label="Tabs">
           {navigation.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.href || 
-                           (location.pathname === '/' && item.href === '/lead-search');
+            // For now, assume the first tab is always active
+            const isActive = item.href === '/';
             
             return (
               <Link
                 key={item.name}
-                to={item.href}
+                href={item.href}
                 className={`${
                   isActive
-                    ? 'border-linkedin-600 text-linkedin-600'
+                    ? 'border-blue-600 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200`}
               >

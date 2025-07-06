@@ -78,7 +78,7 @@
 - **Error responses**: Proper JSON error handling throughout
 - **Time Saved**: ~2-3 hours vs fixing API issues after UI built
 
-## � STOP IMMEDIATELY Triggers
+## 🚫 STOP IMMEDIATELY Triggers
 
 If you catch yourself saying or thinking ANY of these, **STOP** and switch approaches:
 
@@ -250,6 +250,10 @@ When facing a technical choice, ask:
 - Building complex features before basic functionality works
 - Recreating existing functionality instead of reusing
 - Local environment working but deployment failing repeatedly
+
+## AI/Dev Gotchas (Common Pitfalls)
+
+- **Next.js config file type:** Do NOT use `next.config.ts` (TypeScript) for Next.js projects on Vercel or Render. Always use `next.config.js` (JavaScript). Using `.ts` will cause silent build failures or confusing errors like 'next: not found' or 'config not supported.'
 
 ---
 

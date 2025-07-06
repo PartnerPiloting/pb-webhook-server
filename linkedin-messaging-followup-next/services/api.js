@@ -11,22 +11,42 @@ const api = axios.create({
   },
 });
 
-// Request interceptor for authentication
-api.interceptors.request.use(
-  (config) => {
-    // Add WordPress authentication headers
+// Get authentication headers
+const getAuthHeaders = () => {
+  // Only access browser APIs on client side
+  if (typeof window !== 'undefined') {
     const wpUser = localStorage.getItem('wpUsername');
     const wpAppPassword = localStorage.getItem('wpAppPassword');
     
     if (wpUser && wpAppPassword) {
-      const credentials = btoa(`${wpUser}:${wpAppPassword}`);
-      config.headers.Authorization = `Basic ${credentials}`;
+      return {
+        'Authorization': `Basic ${btoa(`${wpUser}:${wpAppPassword}`)}`,
+        'Content-Type': 'application/json'
+      };
     }
     
-    // Add WordPress nonce for web portal requests
+    // Fallback to nonce if available
     const wpNonce = document.querySelector('meta[name="wp-nonce"]')?.content;
     if (wpNonce) {
-      config.headers['X-WP-Nonce'] = wpNonce;
+      return {
+        'X-WP-Nonce': wpNonce,
+        'Content-Type': 'application/json'
+      };
+    }
+  }
+  
+  return {
+    'Content-Type': 'application/json'
+  };
+};
+
+// Request interceptor for authentication
+api.interceptors.request.use(
+  (config) => {
+    // Add WordPress authentication headers
+    const headers = getAuthHeaders();
+    for (const [key, value] of Object.entries(headers)) {
+      config.headers[key] = value;
     }
     
     return config;
