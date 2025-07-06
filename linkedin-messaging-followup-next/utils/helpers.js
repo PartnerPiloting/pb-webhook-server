@@ -149,23 +149,26 @@ export const getErrorMessage = (error) => {
   return 'An unexpected error occurred';
 };
 
-// Local storage helpers for user preferences
+// Save user preferences to localStorage
 export const saveUserPreferences = (preferences) => {
-  try {
+  if (typeof window !== 'undefined') {
     localStorage.setItem('leadPortalPreferences', JSON.stringify(preferences));
-  } catch (error) {
-    console.warn('Could not save user preferences:', error);
   }
 };
 
+// Get user preferences from localStorage
 export const getUserPreferences = () => {
-  try {
+  if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('leadPortalPreferences');
-    return stored ? JSON.parse(stored) : {};
-  } catch (error) {
-    console.warn('Could not load user preferences:', error);
-    return {};
+    if (stored) {
+      return JSON.parse(stored);
+    }
   }
+  return {
+    defaultView: 'all',
+    pageSize: 20,
+    sortBy: 'lastActivity'
+  };
 };
 
 // Field visibility helper (for multi-tenant configuration)
