@@ -91,6 +91,22 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+// Add CORS configuration to allow frontend requests
+const cors = require('cors');
+app.use(cors({
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://pb-webhook-server.vercel.app',
+        'https://pb-webhook-server-*.vercel.app', // Allow preview deployments
+        'https://*.vercel.app' // Allow all Vercel deployments for now
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce']
+}));
+console.log("CORS enabled for Vercel frontend");
+
 // ABSOLUTE BASIC TEST - Should work 100%
 app.get('/basic-test', (req, res) => {
     res.send('BASIC ROUTE WORKING - Express is alive!');
