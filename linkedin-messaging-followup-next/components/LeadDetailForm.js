@@ -107,28 +107,26 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Read-only Fields Section */}
-      <div className="p-6 bg-gray-50 rounded-lg border border-gray-200">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-8 gap-y-4">
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Profile Key</label>
-            <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
-              {lead.profileKey || 'Auto-generated'}
-            </div>
+      <div className="space-y-3">
+        <div className="flex">
+          <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Profile Key</label>
+          <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
+            {lead.profileKey || 'Auto-generated'}
           </div>
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 flex items-center">
-              {StarIcon && <StarIcon className="h-4 w-4 mr-1" />}
-              AI Score
-            </label>
-            <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
-              {lead.aiScore !== null && lead.aiScore !== undefined ? lead.aiScore : 'Not scored'}
-            </div>
+        </div>
+        <div className="flex">
+          <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2 flex items-center">
+            {StarIcon && <StarIcon className="h-4 w-4 mr-1" />}
+            AI Score
+          </label>
+          <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
+            {lead.aiScore !== null && lead.aiScore !== undefined ? lead.aiScore : 'Not scored'}
           </div>
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Posts Relevance %</label>
-            <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
-              {lead.postsRelevancePercentage ? `${lead.postsRelevancePercentage}%` : 'No data'}
-            </div>
+        </div>
+        <div className="flex">
+          <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Posts Relevance %</label>
+          <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
+            {lead.postsRelevancePercentage ? `${lead.postsRelevancePercentage}%` : 'No data'}
           </div>
         </div>
       </div>
@@ -137,10 +135,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       <div className="space-y-6">
         <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Basic Information</h4>
         
-        {/* Two-column layout with left-aligned labels */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">First Name *</label>
+        <div className="space-y-3">
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">First Name *</label>
             <input
               type="text"
               value={formData.firstName || ''}
@@ -149,8 +146,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               required
             />
           </div>
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Last Name *</label>
+          
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Last Name *</label>
             <input
               type="text"
               value={formData.lastName || ''}
@@ -159,140 +157,140 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               required
             />
           </div>
-        </div>
 
-        <div className="flex items-center">
-          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 flex items-center">
-            {ArrowTopRightOnSquareIcon && <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />}
-            LinkedIn Profile URL *
-          </label>
-          <div className="flex-1">
-            {editingField === 'linkedinProfileUrl' ? (
-              <div className="flex items-center space-x-2">
-                <input
-                  type="url"
-                  value={formData.linkedinProfileUrl || ''}
-                  onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  placeholder="https://www.linkedin.com/in/username"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setEditingField(null)}
-                  className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData(prev => ({
-                      ...prev,
-                      linkedinProfileUrl: lead.linkedinProfileUrl || ''
-                    }));
-                    setEditingField(null);
-                  }}
-                  className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md bg-white">
-                {formData.linkedinProfileUrl ? (
-                  <a
-                    href={formData.linkedinProfileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 underline break-all flex-1"
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2 flex items-center">
+              {ArrowTopRightOnSquareIcon && <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />}
+              LinkedIn Profile URL *
+            </label>
+            <div className="flex-1">
+              {editingField === 'linkedinProfileUrl' ? (
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="url"
+                    value={formData.linkedinProfileUrl || ''}
+                    onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    placeholder="https://www.linkedin.com/in/username"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditingField(null)}
+                    className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
                   >
-                    {formData.linkedinProfileUrl}
-                  </a>
-                ) : (
-                  <span className="text-gray-400 italic flex-1">No LinkedIn URL</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setEditingField('linkedinProfileUrl')}
-                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex-shrink-0"
-                >
-                  Edit
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center">
-          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">View In Sales Navigator</label>
-          <div className="flex-1">
-            {editingField === 'viewInSalesNavigator' ? (
-              <div className="flex items-center space-x-2">
-                <input
-                  type="url"
-                  value={formData.viewInSalesNavigator || ''}
-                  onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  placeholder="https://www.linkedin.com/sales/..."
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setEditingField(null)}
-                  className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFormData(prev => ({
-                      ...prev,
-                      viewInSalesNavigator: lead.viewInSalesNavigator || ''
-                    }));
-                    setEditingField(null);
-                  }}
-                  className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md bg-white">
-                {formData.viewInSalesNavigator ? (
-                  <a
-                    href={formData.viewInSalesNavigator}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 underline break-all flex-1"
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        linkedinProfileUrl: lead.linkedinProfileUrl || ''
+                      }));
+                      setEditingField(null);
+                    }}
+                    className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
                   >
-                    {formData.viewInSalesNavigator}
-                  </a>
-                ) : (
-                  <span className="text-gray-400 italic flex-1">No Sales Navigator URL</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setEditingField('viewInSalesNavigator')}
-                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex-shrink-0"
-                >
-                  Edit
-                </button>
-              </div>
-            )}
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md bg-white">
+                  {formData.linkedinProfileUrl ? (
+                    <a
+                      href={formData.linkedinProfileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline break-all flex-1"
+                    >
+                      {formData.linkedinProfileUrl}
+                    </a>
+                  ) : (
+                    <span className="text-gray-400 italic flex-1">No LinkedIn URL</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEditingField('linkedinProfileUrl')}
+                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex-shrink-0"
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center">
-          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Email</label>
-          <input
-            type="email"
-            value={formData.email || ''}
-            onChange={(e) => handleChange('email', e.target.value)}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            placeholder="email@example.com"
-          />
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">View In Sales Navigator</label>
+            <div className="flex-1">
+              {editingField === 'viewInSalesNavigator' ? (
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="url"
+                    value={formData.viewInSalesNavigator || ''}
+                    onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    placeholder="https://www.linkedin.com/sales/..."
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditingField(null)}
+                    className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        viewInSalesNavigator: lead.viewInSalesNavigator || ''
+                      }));
+                      setEditingField(null);
+                    }}
+                    className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md bg-white">
+                  {formData.viewInSalesNavigator ? (
+                    <a
+                      href={formData.viewInSalesNavigator}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline break-all flex-1"
+                    >
+                      {formData.viewInSalesNavigator}
+                    </a>
+                  ) : (
+                    <span className="text-gray-400 italic flex-1">No Sales Navigator URL</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEditingField('viewInSalesNavigator')}
+                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex-shrink-0"
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Email</label>
+            <input
+              type="email"
+              value={formData.email || ''}
+              onChange={(e) => handleChange('email', e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              placeholder="email@example.com"
+            />
+          </div>
         </div>
       </div>
 
@@ -300,9 +298,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       <div className="space-y-6">
         <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Status & Classification</h4>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Source</label>
+        <div className="space-y-3">
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Source</label>
             <select
               value={formData.source || ''}
               onChange={(e) => handleChange('source', e.target.value)}
@@ -315,8 +313,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             </select>
           </div>
           
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Status</label>
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Status</label>
             <select
               value={formData.status || ''}
               onChange={(e) => handleChange('status', e.target.value)}
@@ -329,8 +327,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             </select>
           </div>
           
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Priority</label>
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Priority</label>
             <select
               value={formData.priority || ''}
               onChange={(e) => handleChange('priority', e.target.value)}
@@ -343,8 +341,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             </select>
           </div>
           
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">LinkedIn Connection</label>
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">LinkedIn Connection</label>
             <select
               value={formData.linkedinConnectionStatus || ''}
               onChange={(e) => handleChange('linkedinConnectionStatus', e.target.value)}
@@ -366,9 +364,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           Follow-up Management
         </h4>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Follow-up Date</label>
+        <div className="space-y-3">
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Follow-up Date</label>
             <input
               type="date"
               value={formData.followUpDate || ''}
@@ -376,8 +374,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
           </div>
-          <div className="flex items-center">
-            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Follow-up Notes</label>
+          <div className="flex">
+            <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Follow-up Notes</label>
             <input
               type="text"
               value={formData.followUpNotes || ''}
@@ -393,7 +391,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       <div className="space-y-6">
         <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Notes & Conversations</h4>
         <div className="flex">
-          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 pt-2">
+          <label className="w-48 text-sm font-medium text-gray-700 flex-shrink-0 pt-2">
             Notes
           </label>
           <div className="flex-1">
