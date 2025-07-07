@@ -175,7 +175,6 @@ router.get('/leads/:leadId', async (req, res) => {
             
             // Follow-up fields
             followUpDate: record.get('Follow-Up Date') || '',
-            followUpNotes: record.get('Follow-Up Notes') || '',
             notes: record.get('Notes') || '',
             
             // Message history
@@ -243,7 +242,7 @@ router.put('/leads/:leadId', async (req, res) => {
         const updateFields = {};
         const editableFields = [
             'First Name', 'Last Name', 'LinkedIn Profile URL', 'View In Sales Navigator',
-            'Email', 'Notes', 'Follow-Up Date', 'Follow-Up Notes', 'Source',
+            'Email', 'Notes', 'Follow-Up Date', 'Source',
             'Status', 'Priority', 'LinkedIn Connection Status'
         ];
 
@@ -256,7 +255,6 @@ router.put('/leads/:leadId', async (req, res) => {
             email: 'Email',
             notes: 'Notes',
             followUpDate: 'Follow-Up Date',
-            followUpNotes: 'Follow-Up Notes',
             source: 'Source',
             status: 'Status',
             priority: 'Priority',
@@ -310,7 +308,6 @@ router.put('/leads/:leadId', async (req, res) => {
             email: record.get('Email') || '',
             notes: record.get('Notes') || '',
             followUpDate: record.get('Follow-Up Date') || '',
-            followUpNotes: record.get('Follow-Up Notes') || '',
             source: record.get('Source') || '',
             status: record.get('Status') || '',
             priority: record.get('Priority') || '',
