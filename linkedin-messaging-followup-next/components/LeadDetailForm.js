@@ -115,23 +115,28 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         <div className="space-y-3">
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Follow-up Date</label>
-            <div className="flex-1 flex items-center space-x-2">
-              <input
-                type="date"
-                value={formData.followUpDate || ''}
-                onChange={(e) => handleChange('followUpDate', e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              />
-              {formData.followUpDate && (
-                <button
-                  type="button"
-                  onClick={() => handleChange('followUpDate', '')}
-                  className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 flex-shrink-0"
-                  title="Clear follow-up date"
-                >
-                  Clear
-                </button>
-              )}
+            <div className="flex-1">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="date"
+                  value={formData.followUpDate || ''}
+                  onChange={(e) => handleChange('followUpDate', e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+                {formData.followUpDate && (
+                  <button
+                    type="button"
+                    onClick={() => handleChange('followUpDate', '')}
+                    className="px-3 py-2 text-sm bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 flex-shrink-0 flex items-center"
+                    title="Clear follow-up date"
+                  >
+                    × Clear
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Leave blank for no follow-up
+              </p>
             </div>
           </div>
           
@@ -184,8 +189,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
 
           <div className="flex">
-            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2 flex items-center">
-              {ArrowTopRightOnSquareIcon && <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />}
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
               LinkedIn Profile URL *
             </label>
             <div className="flex-1">
