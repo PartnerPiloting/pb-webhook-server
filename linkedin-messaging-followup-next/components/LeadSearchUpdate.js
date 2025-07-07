@@ -1,139 +1,253 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { searchLeads } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { debounce } from '../utils/helpers';
+import { searchLeads, getLeadById, updateLead } from '../services/api';
+import LeadDetailForm from './LeadDetailForm';
 
-// Let's add back the icons first with logging
-console.log('🔍 LeadSearchUpdate: Starting to import icons...');
-let MagnifyingGlassIcon, UserIcon;
+// Import icons using require to avoid Next.js issues
+let MagnifyingGlassIcon, UserIcon, ExternalLinkIcon;
 try {
   const icons = require('@heroicons/react/24/outline');
   MagnifyingGlassIcon = icons.MagnifyingGlassIcon;
   UserIcon = icons.UserIcon;
-  console.log('✅ Icons imported successfully:', { MagnifyingGlassIcon: !!MagnifyingGlassIcon, UserIcon: !!UserIcon });
+  ExternalLinkIcon = icons.ExternalLinkIcon;
 } catch (error) {
-  console.error('❌ Failed to import icons:', error);
+  console.error('Failed to import icons:', error);
 }
 
-const LeadSearchUpdate = () => {
-  console.log('🚀 LeadSearchUpdate: Component rendering...');
-  
-  const [leads, setLeads] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+// Safe rendering helper
+const safeRender = (value, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  return value;
+};
 
-  // Fetch leads on mount
+const LeadSearchUpdate = () => {
+  const [search, setSearch] = useState('');
+  const [leads, setLeads] = useState([]);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  // Fetch initial leads on component mount
   useEffect(() => {
-    console.log('📡 LeadSearchUpdate: useEffect triggered, fetching leads...');
-    fetchLeads();
+    fetchInitialLeads();
   }, []);
 
-  const fetchLeads = async () => {
+  const fetchInitialLeads = async () => {
     setIsLoading(true);
-    setError(null);
     try {
-      console.log('🔄 LeadSearchUpdate: Calling searchLeads API...');
       const results = await searchLeads('');
-      console.log('✅ LeadSearchUpdate: API returned results:', { 
-        count: results?.length, 
-        firstLead: results?.[0],
-        isArray: Array.isArray(results) 
-      });
       setLeads(results || []);
-    } catch (err) {
-      console.error('❌ LeadSearchUpdate: API error:', err);
-      setError('Failed to load leads');
+    } catch (error) {
+      console.error('Failed to fetch initial leads:', error);
+      setMessage({ type: 'error', text: 'Failed to load leads. Please refresh the page.' });
     } finally {
       setIsLoading(false);
     }
   };
 
-  console.log('🎨 LeadSearchUpdate: About to render JSX...');
-  console.log('📊 Current state:', { 
-    leadsCount: leads.length, 
-    isLoading, 
-    hasError: !!error,
-    hasIcons: !!MagnifyingGlassIcon && !!UserIcon
-  });
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce(async (query) => {
+      setIsLoading(true);
+      try {
+        const results = await searchLeads(query);
+        setLeads(results || []);
+      } catch (error) {
+        console.error('Search error:', error);
+        setMessage({ type: 'error', text: 'Search failed. Please try again.' });
+      } finally {
+        setIsLoading(false);
+      }
+    }, 500),
+    []
+  );
 
-  // Let's try adding back the search box with icon
+  // Effect to trigger search when query changes
+  useEffect(() => {
+    if (search.trim()) {
+      debouncedSearch(search);
+    } else {
+      fetchInitialLeads();
+    }
+  }, [search, debouncedSearch]);
+
+  // Handle lead selection - fetch full details
+  const handleLeadSelect = async (lead) => {
+    if (!lead || !lead['Profile Key']) {
+      console.error('Invalid lead selected:', lead);
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const fullLead = await getLeadById(lead['Profile Key']);
+      setSelectedLead(fullLead);
+    } catch (error) {
+      console.error('Failed to load lead details:', error);
+      setMessage({ type: 'error', text: 'Failed to load lead details. Please try again.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle lead update
+  const handleLeadUpdate = async (updatedData) => {
+    if (!selectedLead) return;
+
+    setIsUpdating(true);
+    try {
+      const updated = await updateLead(selectedLead.id || selectedLead['Profile Key'], updatedData);
+      setSelectedLead(updated);
+      setMessage({ type: 'success', text: 'Lead updated successfully!' });
+      
+      // Update the lead in the search results too
+      setLeads(prevLeads => 
+        prevLeads.map(lead => 
+          lead['Profile Key'] === (updated.id || updated['Profile Key']) ? {
+            ...lead,
+            'First Name': updated['First Name'] || '',
+            'Last Name': updated['Last Name'] || '',
+            'Status': updated['Status'] || ''
+          } : lead
+        )
+      );
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setMessage({ type: '', text: '' });
+      }, 3000);
+    } catch (error) {
+      console.error('Update error:', error);
+      setMessage({ type: 'error', text: 'Failed to update lead. Please try again.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Lead Search (With Icons Test)</h1>
-      
-      {/* Add search box with icon */}
-      <div style={{ position: 'relative', marginBottom: '20px' }}>
-        {MagnifyingGlassIcon ? (
-          <MagnifyingGlassIcon style={{ 
-            position: 'absolute', 
-            left: '10px', 
-            top: '10px', 
-            height: '20px', 
-            width: '20px' 
-          }} />
-        ) : (
-          <span>🔍</span>
-        )}
-        <input
-          type="text"
-          style={{ 
-            padding: '10px 10px 10px 40px', 
-            width: '300px',
-            border: '1px solid #ccc',
-            borderRadius: '4px'
-          }}
-          placeholder="Search leads..."
-        />
-      </div>
-      
-      {isLoading && <p>Loading...</p>}
-      
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      
-      {!isLoading && !error && (
-        <div>
-          <p>Found {leads.length} leads</p>
-          <div>
-            {leads.map((lead, index) => {
-              console.log(`🔍 Rendering lead ${index}:`, lead);
-              return (
-                <div key={index} style={{ 
-                  padding: '10px', 
-                  border: '1px solid #eee', 
-                  marginBottom: '5px',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}>
-                  {UserIcon ? (
-                    <UserIcon style={{ height: '20px', width: '20px', marginRight: '10px' }} />
-                  ) : (
-                    <span style={{ marginRight: '10px' }}>👤</span>
-                  )}
-                  <div>
-                    <div style={{ fontWeight: 'bold' }}>
-                      {lead['First Name'] || 'No first name'} {lead['Last Name'] || 'No last name'}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#666' }}>
-                      {lead['Status'] || 'No status'} • Score: {lead['AI Score'] || 'N/A'}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+    <div className="w-full flex flex-col md:flex-row gap-6">
+      {/* Message display */}
+      {message && message.text && (
+        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
+          message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          {safeRender(message.text)}
         </div>
       )}
       
-      <div style={{ marginTop: '20px', padding: '10px', backgroundColor: '#f0f0f0' }}>
-        <strong>Debug Info:</strong>
-        <pre>{JSON.stringify({ 
-          iconStatus: {
-            MagnifyingGlassIcon: !!MagnifyingGlassIcon,
-            UserIcon: !!UserIcon
-          },
-          leadsCount: leads.length,
-          isLoading,
-          error
-        }, null, 2)}</pre>
+      <div className="md:w-1/3 w-full">
+        <div className="relative">
+          {MagnifyingGlassIcon && (
+            <MagnifyingGlassIcon className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+          )}
+          <input
+            type="text"
+            className="search-input pl-10 mb-4"
+            placeholder="Search by first or last name..."
+            value={search || ''}
+            onChange={e => setSearch(e.target.value || '')}
+          />
+        </div>
+        
+        <div className="search-results">
+          {isLoading && (!leads || leads.length === 0) ? (
+            <div className="text-center py-4">
+              <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+              <p className="text-gray-500 mt-2">Loading leads...</p>
+            </div>
+          ) : (
+            <>
+              {leads && Array.isArray(leads) && leads.map(lead => {
+                if (!lead || !lead['Profile Key']) return null;
+                
+                return (
+                  <div
+                    key={lead['Profile Key']}
+                    className={`lead-result-item${selectedLead && (selectedLead.id || selectedLead['Profile Key']) === lead['Profile Key'] ? ' selected' : ''}`}
+                    onClick={() => handleLeadSelect(lead)}
+                  >
+                    <div className="flex items-center">
+                      {UserIcon && <UserIcon className="h-5 w-5 mr-2 text-gray-400" />}
+                      <div>
+                        <div className="font-bold">
+                          {safeRender(lead['First Name'])} {safeRender(lead['Last Name'])}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {safeRender(lead['Status'], 'No status')} • Score: {safeRender(lead['AI Score'], 'N/A')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {(!leads || leads.length === 0) && !isLoading && (
+                <div className="no-results">No leads found.</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+      
+      <div className="md:w-2/3 w-full">
+        {selectedLead ? (
+          <div className="lead-card">
+            <div className="mb-4 pb-4 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {safeRender(selectedLead['First Name'])} {safeRender(selectedLead['Last Name'])}
+                </h2>
+                {selectedLead['LinkedIn Profile URL'] && ExternalLinkIcon && (
+                  <a
+                    href={selectedLead['LinkedIn Profile URL']}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    <ExternalLinkIcon className="h-5 w-5" />
+                  </a>
+                )}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">
+                Profile Key: {safeRender(selectedLead.id || selectedLead['Profile Key'])}
+              </div>
+            </div>
+            
+            <LeadDetailForm
+              lead={{
+                ...selectedLead,
+                // Map the fields to the expected format with safety
+                id: safeRender(selectedLead.id || selectedLead['Profile Key']),
+                profileKey: safeRender(selectedLead['Profile Key']),
+                firstName: safeRender(selectedLead['First Name']),
+                lastName: safeRender(selectedLead['Last Name']),
+                linkedinProfileUrl: safeRender(selectedLead['LinkedIn Profile URL']),
+                viewInSalesNavigator: safeRender(selectedLead['View In Sales Navigator']),
+                email: safeRender(selectedLead['Email']),
+                aiScore: selectedLead['AI Score'],
+                postsRelevancePercentage: selectedLead['Posts Relevance Percentage'],
+                source: safeRender(selectedLead['Source']),
+                status: safeRender(selectedLead['Status']),
+                priority: safeRender(selectedLead['Priority']),
+                linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
+                followUpDate: safeRender(selectedLead['Follow Up Date']),
+                followUpNotes: safeRender(selectedLead['Follow Up Notes']),
+                notes: safeRender(selectedLead['Notes']),
+                lastMessageDate: safeRender(selectedLead['Last Message Date'])
+              }}
+              onUpdate={handleLeadUpdate}
+              isUpdating={isUpdating}
+            />
+          </div>
+        ) : (
+          <div className="lead-card">
+            <div className="text-center text-gray-400 py-12">
+              {UserIcon && <UserIcon className="h-16 w-16 mx-auto mb-4" />}
+              <p className="text-lg">Select a lead to view details</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

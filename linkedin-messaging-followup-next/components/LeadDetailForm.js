@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarIcon, StarIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
+
+// Import icons using require to avoid Next.js issues
+let CalendarIcon, StarIcon, ArrowTopRightOnSquareIcon;
+try {
+  const icons = require('@heroicons/react/24/outline');
+  CalendarIcon = icons.CalendarIcon;
+  StarIcon = icons.StarIcon;
+  ArrowTopRightOnSquareIcon = icons.ArrowTopRightOnSquareIcon;
+} catch (error) {
+  console.error('Failed to import icons:', error);
+}
 
 // Simple date formatter to avoid date-fns issues
 const formatDate = (dateString) => {
@@ -108,7 +118,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         </div>
         <div>
           <label className="field-label flex items-center">
-            <StarIcon className="h-4 w-4 mr-1" />
+            {StarIcon && <StarIcon className="h-4 w-4 mr-1" />}
             AI Score
           </label>
           <input
@@ -160,7 +170,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
 
         <div>
           <label className="field-label flex items-center">
-            <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />
+            {ArrowTopRightOnSquareIcon && <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />}
             LinkedIn Profile URL *
           </label>
           <input
@@ -262,7 +272,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       {/* Follow-up Section */}
       <div className="space-y-4">
         <h4 className="text-lg font-medium text-gray-900 flex items-center">
-          <CalendarIcon className="h-5 w-5 mr-2" />
+          {CalendarIcon && <CalendarIcon className="h-5 w-5 mr-2" />}
           Follow-up Management
         </h4>
         
