@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   const [formData, setFormData] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [editingField, setEditingField] = useState(null); // Track which field is being edited
 
   // Initialize form data when lead changes
   useEffect(() => {
@@ -44,6 +45,30 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       setHasChanges(false);
     }
   };
+
+  // Handle escape key to cancel editing
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && editingField) {
+        setEditingField(null);
+        // Reset the field being edited
+        if (editingField === 'linkedinProfileUrl') {
+          setFormData(prev => ({
+            ...prev,
+            linkedinProfileUrl: lead.linkedinProfileUrl || lead['LinkedIn Profile URL'] || ''
+          }));
+        } else if (editingField === 'viewInSalesNavigator') {
+          setFormData(prev => ({
+            ...prev,
+            viewInSalesNavigator: lead.viewInSalesNavigator || lead['View In Sales Navigator'] || ''
+          }));
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [editingField, lead]);
 
   // Form field configurations based on master field list
   const fieldConfig = {
@@ -140,51 +165,118 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />
             LinkedIn Profile URL *
           </label>
-          <div className="flex items-center space-x-2">
-            <input
-              type="url"
-              value={formData.linkedinProfileUrl}
-              onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
-              className="form-field flex-1"
-              placeholder="https://www.linkedin.com/in/username"
-              required
-            />
-            {formData.linkedinProfileUrl && (
-              <a
-                href={formData.linkedinProfileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                title="Open LinkedIn Profile"
+          {editingField === 'linkedinProfileUrl' ? (
+            <div className="flex items-center space-x-2">
+              <input
+                type="url"
+                value={formData.linkedinProfileUrl}
+                onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
+                className="form-field flex-1"
+                placeholder="https://www.linkedin.com/in/username"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setEditingField(null)}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
               >
-                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-              </a>
-            )}
-          </div>
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({
+                    ...prev,
+                    linkedinProfileUrl: lead.linkedinProfileUrl || lead['LinkedIn Profile URL'] || ''
+                  }));
+                  setEditingField(null);
+                }}
+                className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              {formData.linkedinProfileUrl ? (
+                <a
+                  href={formData.linkedinProfileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline break-all"
+                >
+                  {formData.linkedinProfileUrl}
+                </a>
+              ) : (
+                <span className="text-gray-400 italic">No LinkedIn URL</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditingField('linkedinProfileUrl')}
+                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
           <label className="field-label">View In Sales Navigator</label>
-          <div className="flex items-center space-x-2">
-            <input
-              type="url"
-              value={formData.viewInSalesNavigator}
-              onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
-              className="form-field flex-1"
-              placeholder="https://www.linkedin.com/sales/..."
-            />
-            {formData.viewInSalesNavigator && (
-              <a
-                href={formData.viewInSalesNavigator}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                title="Open Sales Navigator"
+          {editingField === 'viewInSalesNavigator' ? (
+            <div className="flex items-center space-x-2">
+              <input
+                type="url"
+                value={formData.viewInSalesNavigator}
+                onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
+                className="form-field flex-1"
+                placeholder="https://www.linkedin.com/sales/..."
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setEditingField(null)}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
               >
-                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-              </a>
-            )}
-          </div>
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({
+                    ...prev,
+                    viewInSalesNavigator: lead.viewInSalesNavigator || lead['View In Sales Navigator'] || ''
+                  }));
+                  setEditingField(null);
+                }}
+                className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              {formData.viewInSalesNavigator ? (
+                <a
+                  href={formData.viewInSalesNavigator}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline break-all"
+                >
+                  {formData.viewInSalesNavigator}
+                </a>
+              ) : (
+                <span className="text-gray-400 italic">No Sales Navigator URL</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditingField('viewInSalesNavigator')}
+                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
