@@ -89,12 +89,22 @@ const LeadSearchUpdate = () => {
             // If no search query, show all (already filtered above)
             if (!query.trim()) return true;
             
-            // Check if all search terms match either first name, last name, or full name
-            return searchTerms.every(term => 
-              firstName.includes(term) || 
-              lastName.includes(term) || 
-              fullName.includes(term)
-            );
+            const searchQuery = query.trim().toLowerCase();
+            
+            // Simple approach: if the search contains spaces, treat as "first last" search
+            if (searchQuery.includes(' ')) {
+              const parts = searchQuery.split(/\s+/);
+              const [firstPart, ...restParts] = parts;
+              const lastPart = restParts.join(' ');
+              
+              // Check if first part matches first name and last part matches last name
+              return firstName.includes(firstPart) && lastName.includes(lastPart);
+            }
+            
+            // Single word search - match against first name, last name, or full name
+            return firstName.includes(searchQuery) || 
+                   lastName.includes(searchQuery) || 
+                   fullName.includes(searchQuery);
           })
           .sort((a, b) => {
             const firstNameA = (a['First Name'] || '').toLowerCase();
@@ -201,7 +211,7 @@ const LeadSearchUpdate = () => {
           />
         </div>
         
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-h-96 overflow-y-auto">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-h-[600px] overflow-y-auto">
           {isLoading && (!leads || leads.length === 0) ? (
             <div className="text-center py-6">
               <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
