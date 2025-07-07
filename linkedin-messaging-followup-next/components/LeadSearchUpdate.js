@@ -52,7 +52,14 @@ const LeadSearchUpdate = () => {
         .sort((a, b) => {
           const firstNameA = (a['First Name'] || '').toLowerCase();
           const firstNameB = (b['First Name'] || '').toLowerCase();
-          return firstNameA.localeCompare(firstNameB);
+          const lastNameA = (a['Last Name'] || '').toLowerCase();
+          const lastNameB = (b['Last Name'] || '').toLowerCase();
+          
+          // Sort by first name first, then by last name
+          if (firstNameA !== firstNameB) {
+            return firstNameA.localeCompare(firstNameB);
+          }
+          return lastNameA.localeCompare(lastNameB);
         })
         .slice(0, 25); // Limit to 25 results
       
@@ -97,8 +104,8 @@ const LeadSearchUpdate = () => {
               const [firstPart, ...restParts] = parts;
               const lastPart = restParts.join(' ');
               
-              // Check if first part matches first name and last part matches last name
-              return firstName.includes(firstPart) && lastName.includes(lastPart);
+              // Check if first part matches first name and last part matches beginning of last name
+              return firstName.includes(firstPart) && lastName.startsWith(lastPart);
             }
             
             // Single word search - match against first name, last name, or full name
@@ -109,7 +116,14 @@ const LeadSearchUpdate = () => {
           .sort((a, b) => {
             const firstNameA = (a['First Name'] || '').toLowerCase();
             const firstNameB = (b['First Name'] || '').toLowerCase();
-            return firstNameA.localeCompare(firstNameB);
+            const lastNameA = (a['Last Name'] || '').toLowerCase();
+            const lastNameB = (b['Last Name'] || '').toLowerCase();
+            
+            // Sort by first name first, then by last name
+            if (firstNameA !== firstNameB) {
+              return firstNameA.localeCompare(firstNameB);
+            }
+            return lastNameA.localeCompare(lastNameB);
           })
           .slice(0, 25); // Limit to 25 results
         
