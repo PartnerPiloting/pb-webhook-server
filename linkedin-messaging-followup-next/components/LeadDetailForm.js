@@ -114,24 +114,36 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         
         <div className="space-y-3">
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Follow-up Date</label>
-            <input
-              type="date"
-              value={formData.followUpDate || ''}
-              onChange={(e) => handleChange('followUpDate', e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Follow-up Date</label>
+            <div className="flex-1 flex items-center space-x-2">
+              <input
+                type="date"
+                value={formData.followUpDate || ''}
+                onChange={(e) => handleChange('followUpDate', e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+              {formData.followUpDate && (
+                <button
+                  type="button"
+                  onClick={() => handleChange('followUpDate', '')}
+                  className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 flex-shrink-0"
+                  title="Clear follow-up date"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 pt-2">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 pt-2">
               Notes
             </label>
             <div className="flex-1">
               <textarea
                 value={formData.notes || ''}
                 onChange={(e) => handleChange('notes', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[180px] resize-y"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[180px] resize-y text-sm"
                 rows={9}
                 placeholder="Add manual notes here. LinkedIn conversations will be automatically captured and appended..."
               />
@@ -150,7 +162,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         
         <div className="space-y-3">
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">First Name *</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">First Name *</label>
             <input
               type="text"
               value={formData.firstName || ''}
@@ -161,7 +173,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
           
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Last Name *</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Last Name *</label>
             <input
               type="text"
               value={formData.lastName || ''}
@@ -172,7 +184,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
 
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2 flex items-center">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2 flex items-center">
               {ArrowTopRightOnSquareIcon && <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />}
               LinkedIn Profile URL *
             </label>
@@ -235,7 +247,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
 
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">View In Sales Navigator</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">View In Sales Navigator</label>
             <div className="flex-1">
               {editingField === 'viewInSalesNavigator' ? (
                 <div className="flex items-center space-x-2">
@@ -295,7 +307,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
 
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Email</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Email</label>
             <input
               type="email"
               value={formData.email || ''}
@@ -313,7 +325,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         
         <div className="space-y-3">
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Source</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Source</label>
             <select
               value={formData.source || ''}
               onChange={(e) => handleChange('source', e.target.value)}
@@ -327,7 +339,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
           
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Status</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Status</label>
             <select
               value={formData.status || ''}
               onChange={(e) => handleChange('status', e.target.value)}
@@ -341,7 +353,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
           
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Priority</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Priority</label>
             <select
               value={formData.priority || ''}
               onChange={(e) => handleChange('priority', e.target.value)}
@@ -355,7 +367,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </div>
           
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">LinkedIn Connection</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">LinkedIn Connection</label>
             <select
               value={formData.linkedinConnectionStatus || ''}
               onChange={(e) => handleChange('linkedinConnectionStatus', e.target.value)}
@@ -378,13 +390,13 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         </h4>
         <div className="space-y-3">
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Profile Score</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Profile Score</label>
             <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
               {lead.aiScore !== null && lead.aiScore !== undefined ? lead.aiScore : 'Not scored'}
             </div>
           </div>
           <div className="flex">
-            <label className="w-36 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Top Post's Score</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Top Post's Score</label>
             <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
               {lead.postsRelevancePercentage ? `${lead.postsRelevancePercentage}%` : 'No data'}
             </div>
