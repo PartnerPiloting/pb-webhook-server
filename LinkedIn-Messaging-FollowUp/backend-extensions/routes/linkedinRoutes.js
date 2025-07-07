@@ -80,6 +80,8 @@ router.get('/leads/search', async (req, res) => {
         const filterFormula = searchQuery.trim() 
             ? buildSearchFormula(searchQuery.toLowerCase())
             : ''; // Empty filter returns all records
+        
+        console.log(`Search query: "${searchQuery}", Filter formula: "${filterFormula}"`);
             
         await base('Leads').select({
             filterByFormula: filterFormula,
@@ -589,16 +591,17 @@ function buildSearchFormula(searchQuery) {
         const lastPart = restParts.join(' ');
         
         // Search for first name containing first part AND last name starting with last part
+        // Using FIND which is case-insensitive in Airtable
         return `AND(
-            SEARCH(LOWER("${firstPart}"), LOWER({First Name})),
-            SEARCH(LOWER("${lastPart}"), LOWER(LEFT({Last Name}, ${lastPart.length})))
+            FIND("${firstPart}", LOWER({First Name})) > 0,
+            FIND("${lastPart}", LOWER({Last Name})) = 1
         )`;
     }
     
     // Single word search - check both first and last name
     return `OR(
-        SEARCH(LOWER("${query}"), LOWER({First Name})),
-        SEARCH(LOWER("${query}"), LOWER({Last Name}))
+        FIND("${query}", LOWER({First Name})) > 0,
+        FIND("${query}", LOWER({Last Name})) > 0
     )`;
 }
 
