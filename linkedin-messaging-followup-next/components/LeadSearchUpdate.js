@@ -104,6 +104,17 @@ const LeadSearchUpdate = () => {
               const [firstPart, ...restParts] = parts;
               const lastPart = restParts.join(' ');
               
+              console.log('Multi-word search debug:', {
+                searchQuery,
+                parts,
+                firstPart,
+                lastPart,
+                leadName: `${firstName} ${lastName}`,
+                firstNameMatch: firstName.includes(firstPart),
+                lastNameStartsWith: lastName.startsWith(lastPart),
+                result: firstName.includes(firstPart) && lastName.startsWith(lastPart)
+              });
+              
               // Check if first part matches first name and last part matches beginning of last name
               return firstName.includes(firstPart) && lastName.startsWith(lastPart);
             }
