@@ -38,7 +38,25 @@ const LeadSearchUpdate = () => {
     setIsLoading(true);
     try {
       const results = await searchLeads('');
-      setLeads(results || []);
+      // Filter out Multi-Tenant related entries and sort alphabetically by first name
+      const filteredAndSorted = (results || [])
+        .filter(lead => {
+          const firstName = lead['First Name'] || '';
+          const lastName = lead['Last Name'] || '';
+          // Filter out any entries that seem to be Multi-Tenant related
+          return !firstName.toLowerCase().includes('multi') && 
+                 !lastName.toLowerCase().includes('multi') &&
+                 !firstName.toLowerCase().includes('tenant') && 
+                 !lastName.toLowerCase().includes('tenant');
+        })
+        .sort((a, b) => {
+          const firstNameA = (a['First Name'] || '').toLowerCase();
+          const firstNameB = (b['First Name'] || '').toLowerCase();
+          return firstNameA.localeCompare(firstNameB);
+        })
+        .slice(0, 25); // Limit to 25 results
+      
+      setLeads(filteredAndSorted);
     } catch (error) {
       console.error('Failed to fetch initial leads:', error);
       setMessage({ type: 'error', text: 'Failed to load leads. Please refresh the page.' });
@@ -53,7 +71,25 @@ const LeadSearchUpdate = () => {
       setIsLoading(true);
       try {
         const results = await searchLeads(query);
-        setLeads(results || []);
+        // Filter out Multi-Tenant related entries and sort alphabetically by first name
+        const filteredAndSorted = (results || [])
+          .filter(lead => {
+            const firstName = lead['First Name'] || '';
+            const lastName = lead['Last Name'] || '';
+            // Filter out any entries that seem to be Multi-Tenant related
+            return !firstName.toLowerCase().includes('multi') && 
+                   !lastName.toLowerCase().includes('multi') &&
+                   !firstName.toLowerCase().includes('tenant') && 
+                   !lastName.toLowerCase().includes('tenant');
+          })
+          .sort((a, b) => {
+            const firstNameA = (a['First Name'] || '').toLowerCase();
+            const firstNameB = (b['First Name'] || '').toLowerCase();
+            return firstNameA.localeCompare(firstNameB);
+          })
+          .slice(0, 25); // Limit to 25 results
+        
+        setLeads(filteredAndSorted);
       } catch (error) {
         console.error('Search error:', error);
         setMessage({ type: 'error', text: 'Search failed. Please try again.' });
