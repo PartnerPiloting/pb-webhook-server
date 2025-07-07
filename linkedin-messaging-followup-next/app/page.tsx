@@ -1,11 +1,14 @@
 import React from "react";
 import Layout from "../components/Layout";
 import LeadSearchUpdate from "../components/LeadSearchUpdate";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 export default function Home() {
   return (
-    <Layout>
-      <LeadSearchUpdate />
-    </Layout>
+    <ErrorBoundary>
+      <Layout>
+        <LeadSearchUpdate />
+      </Layout>
+    </ErrorBoundary>
   );
 }
