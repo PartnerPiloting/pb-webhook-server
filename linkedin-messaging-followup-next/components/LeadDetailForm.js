@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarIcon, StarIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
-import { format } from 'date-fns';
+
+// Simple date formatter to avoid date-fns issues
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString; // Return original if invalid
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (e) {
+    return dateString;
+  }
+};
 
 const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   const [formData, setFormData] = useState({});
@@ -293,17 +311,11 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       </div>
 
       {/* Message History Preview */}
-      {lead.lastMessageDate && (
+      {lead && lead.lastMessageDate && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h5 className="text-sm font-medium text-blue-900 mb-2">Recent Activity</h5>
           <p className="text-sm text-blue-700">
-            Last message: {(() => {
-              try {
-                return format(new Date(lead.lastMessageDate), 'MMM d, yyyy h:mm a');
-              } catch (e) {
-                return lead.lastMessageDate;
-              }
-            })()}
+            Last message: {formatDate(lead.lastMessageDate)}
           </p>
           <p className="text-xs text-blue-600 mt-1">
             Full message history is managed by the Chrome extension
