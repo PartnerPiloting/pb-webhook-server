@@ -278,6 +278,12 @@ router.put('/leads/:leadId', async (req, res) => {
                 // Handle date fields - convert empty strings to null
                 if (reactFieldName === 'followUpDate') {
                     updateFields[airtableFieldName] = value || null;
+                } else if (isSelectField(airtableFieldName)) {
+                    // Handle select fields - only update if value is not empty
+                    if (value && value.trim() !== '') {
+                        updateFields[airtableFieldName] = value;
+                    }
+                    // Skip empty select fields entirely - don't try to update them
                 } else {
                     updateFields[airtableFieldName] = value || '';
                 }
@@ -530,7 +536,18 @@ function isValidEmail(email) {
 }
 
 function generateMessageId() {
-    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+// Helper function to identify select fields
+function isSelectField(fieldName) {
+    const selectFields = [
+        'Source',
+        'Status', 
+        'Priority',
+        'LinkedIn Connection Status'
+    ];
+    return selectFields.includes(fieldName);
 }
 
 module.exports = router;
