@@ -80,8 +80,6 @@ router.get('/leads/search', async (req, res) => {
         const filterFormula = searchQuery.trim() 
             ? buildSearchFormula(searchQuery.toLowerCase())
             : ''; // Empty filter returns all records
-        
-        console.log(`Search query: "${searchQuery}", Filter formula: "${filterFormula}"`);
             
         await base('Leads').select({
             filterByFormula: filterFormula,
