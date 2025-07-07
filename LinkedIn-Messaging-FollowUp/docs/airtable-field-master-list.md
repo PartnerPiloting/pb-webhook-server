@@ -11,6 +11,8 @@
 | `Last Name` | Text | Yes | Yes | None | No character limits |
 | `View In Sales Navigator` | URL | Yes | No | None | Manual entry from address bar |
 | `Email` | Email | Yes | No | Email format | Can be empty |
+| `Phone` | Text | Yes | No | None | Phone number, any format |
+| `Add to Workshop Invite List` | Checkbox | Yes | No | Boolean | Workshop invitation tracking |
 
 ### **Profile Key Formula**
 ```
@@ -114,6 +116,8 @@ const fieldVisibility = {
   "Last Name": { visible: true, editable: true },
   "View In Sales Navigator": { visible: true, editable: true },
   "Email": { visible: true, editable: true },
+  "Phone": { visible: true, editable: true },
+  "Add to Workshop Invite List": { visible: true, editable: true },
   "Notes": { visible: true, editable: true },
   "Follow Up Date": { visible: true, editable: true },
   "Follow Up Notes": { visible: true, editable: true },
@@ -125,7 +129,6 @@ const fieldVisibility = {
   "Last Message Date": { visible: true, editable: false },
   
   // Hidden fields
-  "Add to Workshop Invite List": { visible: false, editable: false },
   "LinkedIn Messages": { visible: false, editable: false }, // Handled via special interface
   "Extension Last Sync": { visible: false, editable: false }
 };
