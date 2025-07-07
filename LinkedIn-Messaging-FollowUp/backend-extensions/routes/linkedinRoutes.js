@@ -52,10 +52,11 @@ router.get('/leads/search', async (req, res) => {
             });
         }
 
-        if (!searchQuery || searchQuery.trim().length < 2) {
+        // Allow empty search to return all leads
+        if (searchQuery === undefined || searchQuery === null) {
             return res.status(400).json({
-                error: 'Search query too short',
-                message: 'Please provide at least 2 characters'
+                error: 'Search query missing',
+                message: 'Please provide a search query'
             });
         }
 
@@ -82,11 +83,15 @@ router.get('/leads/search', async (req, res) => {
         const leads = [];
 
         // Search in Leads table
-        await base('Leads').select({
-            filterByFormula: `OR(
+        const filterFormula = searchQuery.trim() 
+            ? `OR(
                 SEARCH(LOWER("${searchQuery.toLowerCase()}"), LOWER({First Name})),
                 SEARCH(LOWER("${searchQuery.toLowerCase()}"), LOWER({Last Name}))
-            )`,
+            )`
+            : ''; // Empty filter returns all records
+            
+        await base('Leads').select({
+            filterByFormula: filterFormula,
             maxRecords: 50,
             sort: [
                 { field: 'AI Score', direction: 'desc' },
