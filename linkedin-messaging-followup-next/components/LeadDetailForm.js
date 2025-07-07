@@ -44,6 +44,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         linkedinProfileUrl: lead.linkedinProfileUrl || '',
         viewInSalesNavigator: lead.viewInSalesNavigator || '',
         email: lead.email || '',
+        phone: lead.phone || '',
+        addToWorkshopInviteList: lead.addToWorkshopInviteList || false,
         notes: lead.notes || '',
         followUpDate: lead.followUpDate || '',
         source: lead.source || '',
@@ -82,7 +84,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   const fieldConfig = {
     editable: [
       'firstName', 'lastName', 'linkedinProfileUrl', 'viewInSalesNavigator', 
-      'email', 'notes', 'followUpDate', 'followUpNotes', 'source', 
+      'email', 'phone', 'addToWorkshopInviteList', 'notes', 'followUpDate', 'followUpNotes', 'source', 
       'status', 'priority', 'linkedinConnectionStatus'
     ],
     readonly: ['profileKey', 'aiScore', 'postsRelevancePercentage', 'lastMessageDate'],
@@ -320,6 +322,32 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               placeholder="email@example.com"
             />
           </div>
+
+          <div className="flex">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Phone</label>
+            <input
+              type="text"
+              value={formData.phone || ''}
+              onChange={(e) => handleChange('phone', e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              placeholder="+1 (555) 123-4567"
+            />
+          </div>
+
+          <div className="flex">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">ASH Workshop Email</label>
+            <div className="flex-1 flex items-center py-2">
+              <input
+                type="checkbox"
+                checked={formData.addToWorkshopInviteList || false}
+                onChange={(e) => handleChange('addToWorkshopInviteList', e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <span className="ml-2 text-sm text-gray-600">
+                Add to workshop invite list
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -438,6 +466,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
                   linkedinProfileUrl: lead.linkedinProfileUrl || '',
                   viewInSalesNavigator: lead.viewInSalesNavigator || '',
                   email: lead.email || '',
+                  phone: lead.phone || '',
+                  addToWorkshopInviteList: lead.addToWorkshopInviteList || false,
                   notes: lead.notes || '',
                   followUpDate: lead.followUpDate || '',
                   source: lead.source || '',

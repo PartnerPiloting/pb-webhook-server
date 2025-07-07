@@ -157,6 +157,8 @@ router.get('/leads/:leadId', async (req, res) => {
             linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
             viewInSalesNavigator: record.get('View In Sales Navigator') || '',
             email: record.get('Email') || '',
+            phone: record.get('Phone') || '',
+            addToWorkshopInviteList: record.get('Add to Workshop Invite List') || false,
             
             // Read-only fields
             profileKey: record.get('Profile Key') || '',
@@ -242,7 +244,7 @@ router.put('/leads/:leadId', async (req, res) => {
         const updateFields = {};
         const editableFields = [
             'First Name', 'Last Name', 'LinkedIn Profile URL', 'View In Sales Navigator',
-            'Email', 'Notes', 'Follow-Up Date', 'Source',
+            'Email', 'Phone', 'Add to Workshop Invite List', 'Notes', 'Follow-Up Date', 'Source',
             'Status', 'Priority', 'LinkedIn Connection Status'
         ];
 
@@ -253,6 +255,8 @@ router.put('/leads/:leadId', async (req, res) => {
             linkedinProfileUrl: 'LinkedIn Profile URL',
             viewInSalesNavigator: 'View In Sales Navigator',
             email: 'Email',
+            phone: 'Phone',
+            addToWorkshopInviteList: 'Add to Workshop Invite List',
             notes: 'Notes',
             followUpDate: 'Follow-Up Date',
             source: 'Source',
@@ -278,6 +282,9 @@ router.put('/leads/:leadId', async (req, res) => {
                 // Handle date fields - convert empty strings to null
                 if (reactFieldName === 'followUpDate') {
                     updateFields[airtableFieldName] = value || null;
+                } else if (reactFieldName === 'addToWorkshopInviteList') {
+                    // Handle checkbox field - convert to boolean
+                    updateFields[airtableFieldName] = Boolean(value);
                 } else if (isSelectField(airtableFieldName)) {
                     // Handle select fields - only update if value is not empty
                     if (value && value.trim() !== '') {
@@ -317,6 +324,8 @@ router.put('/leads/:leadId', async (req, res) => {
             'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
             'View In Sales Navigator': record.get('View In Sales Navigator') || '',
             'Email': record.get('Email') || '',
+            'Phone': record.get('Phone') || '',
+            'Add to Workshop Invite List': record.get('Add to Workshop Invite List') || false,
             'Notes': record.get('Notes') || '',
             'Follow-Up Date': record.get('Follow-Up Date') || '',
             'Source': record.get('Source') || '',
@@ -336,6 +345,8 @@ router.put('/leads/:leadId', async (req, res) => {
             linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
             viewInSalesNavigator: record.get('View In Sales Navigator') || '',
             email: record.get('Email') || '',
+            phone: record.get('Phone') || '',
+            addToWorkshopInviteList: record.get('Add to Workshop Invite List') || false,
             notes: record.get('Notes') || '',
             followUpDate: record.get('Follow-Up Date') || '',
             source: record.get('Source') || '',
@@ -567,8 +578,7 @@ function isSelectField(fieldName) {
         'Status', 
         'Priority',
         'LinkedIn Connection Status',
-        'Scoring Status',
-        'Add to Workshop Invite List' // This might be a checkbox but let's be safe
+        'Scoring Status'
     ];
     return selectFields.includes(fieldName);
 }
