@@ -330,7 +330,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               value={formData.phone || ''}
               onChange={(e) => handleChange('phone', e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              placeholder="+1 (555) 123-4567"
+              placeholder="Enter phone number"
+              autoComplete="off"
+              inputMode="text"
             />
           </div>
 
