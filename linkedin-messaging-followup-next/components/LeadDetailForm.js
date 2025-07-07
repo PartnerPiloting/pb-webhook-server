@@ -45,6 +45,11 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
     }
   };
 
+  // Return null if no lead is provided
+  if (!lead) {
+    return null;
+  }
+
   // Form field configurations based on master field list
   const fieldConfig = {
     editable: [
@@ -90,7 +95,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </label>
           <input
             type="number"
-            value={lead.aiScore || ''}
+            value={lead.aiScore !== null && lead.aiScore !== undefined ? lead.aiScore : ''}
             readOnly
             className="form-field"
             placeholder="Not scored"
@@ -117,7 +122,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <label className="field-label">First Name *</label>
             <input
               type="text"
-              value={formData.firstName}
+              value={formData.firstName || ''}
               onChange={(e) => handleChange('firstName', e.target.value)}
               className="form-field"
               required
@@ -127,7 +132,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <label className="field-label">Last Name *</label>
             <input
               type="text"
-              value={formData.lastName}
+              value={formData.lastName || ''}
               onChange={(e) => handleChange('lastName', e.target.value)}
               className="form-field"
               required
@@ -142,7 +147,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </label>
           <input
             type="url"
-            value={formData.linkedinProfileUrl}
+            value={formData.linkedinProfileUrl || ''}
             onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
             className="form-field"
             placeholder="https://www.linkedin.com/in/username"
@@ -154,7 +159,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <label className="field-label">View In Sales Navigator</label>
           <input
             type="url"
-            value={formData.viewInSalesNavigator}
+            value={formData.viewInSalesNavigator || ''}
             onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
             className="form-field"
             placeholder="https://www.linkedin.com/sales/..."
@@ -165,7 +170,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <label className="field-label">Email</label>
           <input
             type="email"
-            value={formData.email}
+            value={formData.email || ''}
             onChange={(e) => handleChange('email', e.target.value)}
             className="form-field"
             placeholder="email@example.com"
@@ -181,7 +186,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <div>
             <label className="field-label">Source</label>
             <select
-              value={formData.source}
+              value={formData.source || ''}
               onChange={(e) => handleChange('source', e.target.value)}
               className="form-field"
             >
@@ -195,7 +200,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <div>
             <label className="field-label">Status</label>
             <select
-              value={formData.status}
+              value={formData.status || ''}
               onChange={(e) => handleChange('status', e.target.value)}
               className="form-field"
             >
@@ -209,7 +214,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <div>
             <label className="field-label">Priority</label>
             <select
-              value={formData.priority}
+              value={formData.priority || ''}
               onChange={(e) => handleChange('priority', e.target.value)}
               className="form-field"
             >
@@ -223,7 +228,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <div>
             <label className="field-label">LinkedIn Connection</label>
             <select
-              value={formData.linkedinConnectionStatus}
+              value={formData.linkedinConnectionStatus || ''}
               onChange={(e) => handleChange('linkedinConnectionStatus', e.target.value)}
               className="form-field"
             >
@@ -248,7 +253,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <label className="field-label">Follow-up Date</label>
             <input
               type="date"
-              value={formData.followUpDate}
+              value={formData.followUpDate || ''}
               onChange={(e) => handleChange('followUpDate', e.target.value)}
               className="form-field"
             />
@@ -257,7 +262,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <label className="field-label">Follow-up Notes</label>
             <input
               type="text"
-              value={formData.followUpNotes}
+              value={formData.followUpNotes || ''}
               onChange={(e) => handleChange('followUpNotes', e.target.value)}
               className="form-field"
               placeholder="Context for next interaction..."
@@ -274,7 +279,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             Notes (Manual + Auto-captured conversations)
           </label>
           <textarea
-            value={formData.notes}
+            value={formData.notes || ''}
             onChange={(e) => handleChange('notes', e.target.value)}
             className="form-textarea"
             rows={6}
@@ -292,7 +297,13 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h5 className="text-sm font-medium text-blue-900 mb-2">Recent Activity</h5>
           <p className="text-sm text-blue-700">
-            Last message: {format(new Date(lead.lastMessageDate), 'MMM d, yyyy h:mm a')}
+            Last message: {(() => {
+              try {
+                return format(new Date(lead.lastMessageDate), 'MMM d, yyyy h:mm a');
+              } catch (e) {
+                return lead.lastMessageDate;
+              }
+            })()}
           </p>
           <p className="text-xs text-blue-600 mt-1">
             Full message history is managed by the Chrome extension
@@ -310,21 +321,23 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <button
             type="button"
             onClick={() => {
-              setFormData({
-                firstName: lead.firstName || '',
-                lastName: lead.lastName || '',
-                linkedinProfileUrl: lead.linkedinProfileUrl || '',
-                viewInSalesNavigator: lead.viewInSalesNavigator || '',
-                email: lead.email || '',
-                notes: lead.notes || '',
-                followUpDate: lead.followUpDate || '',
-                followUpNotes: lead.followUpNotes || '',
-                source: lead.source || '',
-                status: lead.status || '',
-                priority: lead.priority || '',
-                linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
-              });
-              setHasChanges(false);
+              if (lead) {
+                setFormData({
+                  firstName: lead.firstName || '',
+                  lastName: lead.lastName || '',
+                  linkedinProfileUrl: lead.linkedinProfileUrl || '',
+                  viewInSalesNavigator: lead.viewInSalesNavigator || '',
+                  email: lead.email || '',
+                  notes: lead.notes || '',
+                  followUpDate: lead.followUpDate || '',
+                  followUpNotes: lead.followUpNotes || '',
+                  source: lead.source || '',
+                  status: lead.status || '',
+                  priority: lead.priority || '',
+                  linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
+                });
+                setHasChanges(false);
+              }
             }}
             className="btn-secondary"
             disabled={!hasChanges || isUpdating}
