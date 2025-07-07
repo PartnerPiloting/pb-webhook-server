@@ -77,9 +77,10 @@ const LeadSearchUpdate = () => {
     debounce(async (query) => {
       setIsLoading(true);
       try {
-        const results = await searchLeads(query);
+        // Always get all leads from API, then filter on frontend
+        const results = await searchLeads('');
         // Filter out Multi-Tenant related entries, apply search logic, and sort alphabetically
-        const searchTerms = query.trim().toLowerCase().split(/\s+/);
+        const searchQuery = query.trim().toLowerCase();
         
         const filteredAndSorted = (results || [])
           .filter(lead => {
@@ -96,24 +97,13 @@ const LeadSearchUpdate = () => {
             // If no search query, show all (already filtered above)
             if (!query.trim()) return true;
             
-            const searchQuery = query.trim().toLowerCase();
-            
             // Simple approach: if the search contains spaces, treat as "first last" search
             if (searchQuery.includes(' ')) {
               const parts = searchQuery.split(/\s+/);
               const [firstPart, ...restParts] = parts;
               const lastPart = restParts.join(' ');
               
-              console.log('Multi-word search debug:', {
-                searchQuery,
-                parts,
-                firstPart,
-                lastPart,
-                leadName: `${firstName} ${lastName}`,
-                firstNameMatch: firstName.includes(firstPart),
-                lastNameStartsWith: lastName.startsWith(lastPart),
-                result: firstName.includes(firstPart) && lastName.startsWith(lastPart)
-              });
+
               
               // Check if first part matches first name and last part matches beginning of last name
               return firstName.includes(firstPart) && lastName.startsWith(lastPart);
