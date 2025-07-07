@@ -160,9 +160,9 @@ const LeadSearchUpdate = () => {
                   <div className="flex items-center">
                     <UserIcon className="h-5 w-5 mr-2 text-gray-400" />
                     <div>
-                      <div className="font-bold">{lead['First Name']} {lead['Last Name']}</div>
+                      <div className="font-bold">{(lead['First Name'] || '')} {(lead['Last Name'] || '')}</div>
                       <div className="text-xs text-gray-500">
-                        {lead['Status'] || 'No status'} • Score: {lead['AI Score'] || 'N/A'}
+                        {lead['Status'] || 'No status'} • Score: {lead['AI Score'] !== null && lead['AI Score'] !== undefined ? lead['AI Score'] : 'N/A'}
                       </div>
                     </div>
                   </div>
@@ -182,7 +182,7 @@ const LeadSearchUpdate = () => {
             <div className="mb-4 pb-4 border-b">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-800">
-                  {selectedLead['First Name']} {selectedLead['Last Name']}
+                  {(selectedLead['First Name'] || '')} {(selectedLead['Last Name'] || '')}
                 </h2>
                 {selectedLead['LinkedIn Profile URL'] && (
                   <a
@@ -196,7 +196,7 @@ const LeadSearchUpdate = () => {
                 )}
               </div>
               <div className="text-sm text-gray-600 mt-1">
-                Profile Key: {selectedLead.id || selectedLead['Profile Key']}
+                Profile Key: {selectedLead.id || selectedLead['Profile Key'] || ''}
               </div>
             </div>
             
