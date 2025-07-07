@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 // API configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000/api';
+// In Next.js, environment variables must be prefixed with NEXT_PUBLIC_ to be available in the browser
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -49,6 +50,14 @@ api.interceptors.request.use(
       config.headers[key] = value;
     }
     
+    // Add client parameter to all requests if not already present
+    if (!config.params) {
+      config.params = {};
+    }
+    if (!config.params.client) {
+      config.params.client = 'guy-wilson'; // TODO: Make this dynamic
+    }
+    
     return config;
   },
   (error) => {
@@ -69,18 +78,66 @@ api.interceptors.response.use(
 export const searchLeads = async (query) => {
   try {
     const response = await api.get('/leads/search', {
-      params: { q: query }
+      params: { 
+        q: query,
+        client: 'guy-wilson' // TODO: Make this dynamic based on logged-in user
+      }
     });
-    return response.data;
+    
+    // Map backend field names to frontend field names
+    const leads = response.data.map(lead => ({
+      'Profile Key': lead.id,
+      'First Name': lead.firstName,
+      'Last Name': lead.lastName,
+      'LinkedIn Profile URL': lead.linkedinProfileUrl,
+      'AI Score': lead.aiScore,
+      'Status': lead.status,
+      'Last Message Date': lead.lastMessageDate
+    }));
+    
+    return leads;
   } catch (error) {
+    console.error('Search error:', error);
     throw new Error('Failed to search leads');
   }
 };
 
 export const getLeadById = async (leadId) => {
   try {
-    const response = await api.get(`/leads/${leadId}`);
-    return response.data;
+    const response = await api.get(`/leads/${leadId}`, {
+      params: {
+        client: 'guy-wilson' // TODO: Make this dynamic
+      }
+    });
+    
+    // Map backend response to frontend format
+    const lead = response.data;
+    return {
+      id: lead.id,
+      'Profile Key': lead.profileKey,
+      'First Name': lead.firstName,
+      'Last Name': lead.lastName,
+      'LinkedIn Profile URL': lead.linkedinProfileUrl,
+      'View In Sales Navigator': lead.viewInSalesNavigator,
+      'Email': lead.email,
+      'AI Score': lead.aiScore,
+      'Posts Relevance Score': lead.postsRelevanceScore,
+      'Posts Relevance Percentage': lead.postsRelevancePercentage,
+      'Source': lead.source,
+      'Status': lead.status,
+      'Priority': lead.priority,
+      'LinkedIn Connection Status': lead.linkedinConnectionStatus,
+      'Follow Up Date': lead.followUpDate,
+      'Follow Up Notes': lead.followUpNotes,
+      'Notes': lead.notes,
+      'LinkedIn Messages': lead.linkedinMessages,
+      'Last Message Date': lead.lastMessageDate,
+      'Extension Last Sync': lead.extensionLastSync,
+      'Headline': lead.headline,
+      'Job Title': lead.jobTitle,
+      'Company Name': lead.companyName,
+      'About': lead.about
+    };
   } catch (error) {
     throw new Error('Failed to load lead details');
   }
@@ -88,8 +145,38 @@ export const getLeadById = async (leadId) => {
 
 export const updateLead = async (leadId, updateData) => {
   try {
-    const response = await api.put(`/leads/${leadId}`, updateData);
-    return response.data;
+    // Map frontend field names to backend field names
+    const backendData = {};
+    const fieldMapping = {
+      'First Name': 'firstName',
+      'Last Name': 'lastName',
+      'LinkedIn Profile URL': 'linkedinProfileUrl',
+      'View In Sales Navigator': 'viewInSalesNavigator',
+      'Email': 'email',
+      'Notes': 'notes',
+      'Follow Up Date': 'followUpDate',
+      'Follow Up Notes': 'followUpNotes',
+      'Source': 'source',
+      'Status': 'status',
+      'Priority': 'priority',
+      'LinkedIn Connection Status': 'linkedinConnectionStatus'
+    };
+    
+    Object.keys(updateData).forEach(frontendField => {
+      const backendField = fieldMapping[frontendField];
+      if (backendField) {
+        backendData[backendField] = updateData[frontendField];
+      }
+    });
+    
+    const response = await api.put(`/leads/${leadId}`, backendData, {
+      params: {
+        client: 'guy-wilson' // TODO: Make this dynamic
+      }
+    });
+    
+    // Map response back to frontend format
+    return getLeadById(leadId);
   } catch (error) {
     throw new Error('Failed to update lead');
   }
