@@ -216,8 +216,25 @@ router.get('/leads/:leadId', async (req, res) => {
 router.put('/leads/:leadId', async (req, res) => {
     try {
         const { leadId } = req.params;
-        const { clientId } = req.auth;
+        const { client: clientId } = req.query; // For testing: get client from URL parameter
         const updates = req.body;
+        
+        // For testing: get client from URL parameter
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        // Validate client exists and is active
+        const client = await clientService.getClientById(clientId);
+        if (!client || client.status !== 'Active') {
+            return res.status(404).json({
+                error: 'Invalid client',
+                message: `Client '${clientId}' not found or inactive`
+            });
+        }
 
         // Get client's Airtable base
         const base = await getClientBase(clientId);

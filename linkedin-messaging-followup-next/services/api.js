@@ -159,21 +159,23 @@ export const getLeadById = async (leadId) => {
 
 export const updateLead = async (leadId, updateData) => {
   try {
+    console.log('Updating lead:', leadId, 'with data:', updateData);
+    
     // Map frontend field names to backend field names
     const backendData = {};
     const fieldMapping = {
-      'First Name': 'firstName',
-      'Last Name': 'lastName',
-      'LinkedIn Profile URL': 'linkedinProfileUrl',
-      'View In Sales Navigator': 'viewInSalesNavigator',
-      'Email': 'email',
-      'Notes': 'notes',
-      'Follow Up Date': 'followUpDate',
-      'Follow Up Notes': 'followUpNotes',
-      'Source': 'source',
-      'Status': 'status',
-      'Priority': 'priority',
-      'LinkedIn Connection Status': 'linkedinConnectionStatus'
+      'firstName': 'firstName',
+      'lastName': 'lastName', 
+      'linkedinProfileUrl': 'linkedinProfileUrl',
+      'viewInSalesNavigator': 'viewInSalesNavigator',
+      'email': 'email',
+      'notes': 'notes',
+      'followUpDate': 'followUpDate',
+      'followUpNotes': 'followUpNotes',
+      'source': 'source',
+      'status': 'status',
+      'priority': 'priority',
+      'linkedinConnectionStatus': 'linkedinConnectionStatus'
     };
     
     Object.keys(updateData).forEach(frontendField => {
@@ -183,16 +185,21 @@ export const updateLead = async (leadId, updateData) => {
       }
     });
     
+    console.log('Sending backend data:', backendData);
+    
     const response = await api.put(`/leads/${leadId}`, backendData, {
       params: {
-        client: 'Guy-Wilson' // TODO: Make this dynamic
+        client: 'Guy-Wilson' // Backend expects this as URL parameter for now
       }
     });
     
-    // Map response back to frontend format
-    return getLeadById(leadId);
+    console.log('Update response:', response.data);
+    
+    // Return the response data directly since backend returns the updated lead
+    return response.data;
   } catch (error) {
-    throw new Error('Failed to update lead');
+    console.error('Update lead error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to update lead');
   }
 };
 
