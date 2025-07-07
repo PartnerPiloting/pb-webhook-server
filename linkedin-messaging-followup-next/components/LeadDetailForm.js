@@ -33,6 +33,7 @@ const formatDate = (dateString) => {
 const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   const [formData, setFormData] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [editingField, setEditingField] = useState(null); // Track which field is being edited
 
   // Initialize form data when lead changes
   useEffect(() => {
@@ -173,25 +174,118 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             {ArrowTopRightOnSquareIcon && <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />}
             LinkedIn Profile URL *
           </label>
-          <input
-            type="url"
-            value={formData.linkedinProfileUrl || ''}
-            onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
-            className="form-field"
-            placeholder="https://www.linkedin.com/in/username"
-            required
-          />
+          {editingField === 'linkedinProfileUrl' ? (
+            <div className="flex items-center space-x-2">
+              <input
+                type="url"
+                value={formData.linkedinProfileUrl || ''}
+                onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
+                className="form-field flex-1"
+                placeholder="https://www.linkedin.com/in/username"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setEditingField(null)}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({
+                    ...prev,
+                    linkedinProfileUrl: lead.linkedinProfileUrl || ''
+                  }));
+                  setEditingField(null);
+                }}
+                className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              {formData.linkedinProfileUrl ? (
+                <a
+                  href={formData.linkedinProfileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline break-all"
+                >
+                  {formData.linkedinProfileUrl}
+                </a>
+              ) : (
+                <span className="text-gray-400 italic">No LinkedIn URL</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditingField('linkedinProfileUrl')}
+                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
           <label className="field-label">View In Sales Navigator</label>
-          <input
-            type="url"
-            value={formData.viewInSalesNavigator || ''}
-            onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
-            className="form-field"
-            placeholder="https://www.linkedin.com/sales/..."
-          />
+          {editingField === 'viewInSalesNavigator' ? (
+            <div className="flex items-center space-x-2">
+              <input
+                type="url"
+                value={formData.viewInSalesNavigator || ''}
+                onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
+                className="form-field flex-1"
+                placeholder="https://www.linkedin.com/sales/..."
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setEditingField(null)}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData(prev => ({
+                    ...prev,
+                    viewInSalesNavigator: lead.viewInSalesNavigator || ''
+                  }));
+                  setEditingField(null);
+                }}
+                className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2">
+              {formData.viewInSalesNavigator ? (
+                <a
+                  href={formData.viewInSalesNavigator}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline break-all"
+                >
+                  {formData.viewInSalesNavigator}
+                </a>
+              ) : (
+                <span className="text-gray-400 italic">No Sales Navigator URL</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditingField('viewInSalesNavigator')}
+                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+              >
+                Edit
+              </button>
+            </div>
+          )}
         </div>
 
         <div>
