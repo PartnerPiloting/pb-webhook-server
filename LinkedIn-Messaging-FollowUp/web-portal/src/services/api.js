@@ -48,8 +48,11 @@ api.interceptors.response.use(
 // Lead search and management functions
 export const searchLeads = async (query) => {
   try {
-    const response = await api.get('/leads/search', {
-      params: { q: query }
+    const response = await api.get('/linkedin/leads/search', {
+      params: { 
+        q: query,
+        client: 'Guy-Wilson' // For testing
+      }
     });
     return response.data;
   } catch (error) {
@@ -59,7 +62,11 @@ export const searchLeads = async (query) => {
 
 export const getLeadById = async (leadId) => {
   try {
-    const response = await api.get(`/leads/${leadId}`);
+    const response = await api.get(`/linkedin/leads/${leadId}`, {
+      params: {
+        client: 'Guy-Wilson' // For testing
+      }
+    });
     return response.data;
   } catch (error) {
     throw new Error('Failed to load lead details');
@@ -68,7 +75,11 @@ export const getLeadById = async (leadId) => {
 
 export const updateLead = async (leadId, updateData) => {
   try {
-    const response = await api.put(`/leads/${leadId}`, updateData);
+    const response = await api.put(`/linkedin/leads/${leadId}`, updateData, {
+      params: {
+        client: 'Guy-Wilson' // For testing
+      }
+    });
     return response.data;
   } catch (error) {
     throw new Error('Failed to update lead');
