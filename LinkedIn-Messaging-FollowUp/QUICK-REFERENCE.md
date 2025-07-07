@@ -1,9 +1,9 @@
 # LinkedIn Follow-Up System - Quick Reference
 
 ## 🚀 Live System Access
-- **Portal URL**: https://pb-webhook-server.onrender.com/portal
-- **API Test**: https://pb-webhook-server.onrender.com/api/linkedin/test
-- **Debug Info**: https://pb-webhook-server.onrender.com/api/linkedin/debug
+- **Portal URL**: https://pb-webhook-server.vercel.app (Next.js frontend)
+- **API Test**: https://pb-webhook-server.onrender.com/api/linkedin/test (Express backend)
+- **Debug Info**: https://pb-webhook-server.onrender.com/api/linkedin/debug (Express backend)
 
 ## 📁 Key Files
 - **Main Server**: `index.js` (contains `/portal` route, lines 255-400)
@@ -31,10 +31,11 @@ http://localhost:3000/api/linkedin/test
 - `POST /api/linkedin/leads/:id/update?client=Guy-Wilson` - Update lead
 
 ## ⚡ Quick Fixes
-1. **Portal not loading**: Check `/portal` route (not `/linkedin`)
-2. **API errors**: Verify `?client=Guy-Wilson` parameter
+1. **Portal not loading**: Check Vercel deployment at pb-webhook-server.vercel.app
+2. **API errors**: Verify `?client=Guy-Wilson` parameter and Render backend
 3. **Search issues**: Test API connection first (green checkmark)
-4. **Deployment**: Push to main branch auto-deploys to Render
+4. **Frontend Deployment**: Push to main branch auto-deploys to Vercel
+5. **Backend Deployment**: Push to main branch auto-deploys to Render
 
 ## ✅ Current Status (January 2025)
 - ✅ Web portal fully functional

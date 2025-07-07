@@ -28,13 +28,13 @@ The web portal provides a custom interface to replace Airtable interfaces, maint
 ```
 
 #### Search Functionality
-- **Search Field**: Global search across First Name and Last Name
+- **Search Field**: Global search across name fields (see master field list for current field names)
 - **Keep Simple**: No advanced filters (dedicated Follow-Up interface handles date filtering)
 - **Live Results**: Display matching records immediately as user types
 - **Visual Confirmation**: Show list of matching records before selection
 
 #### Results Display
-- **Format**: LinkedIn Profile URL - First Name Last Name
+- **Format**: LinkedIn Profile URL - First Name Last Name (field names per master field list)
 - **Selection**: Click on result to load details in bottom panel
 - **Unique Records**: Each LinkedIn Profile URL should be unique (primary key)
 - **Note**: Both First Name and Last Name are editable in the detail panel for corrections and updates
@@ -76,22 +76,15 @@ Show Preview Dialog (new content only) → User Approves → Append to Notes
 
 ## Data Integration
 
-### Core Fields (Existing)
-- **Profile Key** - Auto-calculated unique identifier (read-only, formula-based)
-- **LinkedIn Profile URL** - Primary identifier/deduplication key (editable - users can change LinkedIn URLs)
-- **View In Sales Navigator** - System-generated, user can manually update from address bar (editable)
-- **First Name**, **Last Name** - Both editable for corrections and updates
-- **AI Score** - Universal lead profile scoring based on headline, about section, and experience (visible, read-only - all users have this)
-- **Posts Relevance Percentage** - Existing post analysis (visible, read-only)
-- **Source** - Lead origin tracking
-- **Notes** - Manual message logging (current focus)
+> ⚠️ **Field Specifications**: For current field names, types, and detailed specifications, see [airtable-field-master-list.md](./airtable-field-master-list.md)
 
-### New Fields for LinkedIn Messaging
-- **LinkedIn Messages** - JSON array of captured messages
-- **Follow Up Date** - Next contact scheduling
-- **Follow Up Notes** - Context for next interaction
-- **Last Message Date** - Timeline tracking
-- **Extension Last Sync** - Chrome extension sync timestamp
+### Field Categories
+The web portal displays and manages lead information using the standard field set defined in the master field list, organized into these categories:
+
+- **Core Fields**: Profile identification and basic contact information
+- **LinkedIn Messaging Fields**: Message history and conversation tracking
+- **Follow-up Management**: Scheduling and notes for future contact
+- **Read-only Fields**: System-generated scores and metadata
 
 **Owner-Specific Fields (Hidden from Client View)**:
 - **Guy's Workshop Email** - Boolean checkbox for workshop invitation tracking (Guy-specific functionality)
@@ -178,22 +171,11 @@ Step 2: Follow-Up Reminder
 ### Field Visibility Configuration
 ```javascript
 // Web portal field visibility control
+// Note: Field names must match exactly with master field list
+// See airtable-field-master-list.md for current field specifications
 const fieldVisibility = {
-  // Standard fields - visible to all clients
-  "LinkedIn Profile URL": { visible: true, editable: true },
-  "First Name": { visible: true, editable: true },
-  "Last Name": { visible: true, editable: true },
-  "Follow Up Date": { visible: true, editable: true },
-  "Follow Up Notes": { visible: true, editable: true },
-  "Notes": { visible: true, editable: true },
-  
-  // Read-only fields
-  "Profile Key": { visible: true, editable: false },
-  "AI Score": { visible: true, editable: false },
-  "Posts Relevance Percentage": { visible: true, editable: false },
-  
-  // Owner-specific fields - hidden from clients
-  "Guy's Workshop Email": { visible: false, editable: false }
+  // Configuration object showing visibility and editability
+  // Actual field names defined in master field list
 };
 ```
 

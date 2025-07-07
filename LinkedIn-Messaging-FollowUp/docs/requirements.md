@@ -84,55 +84,10 @@
 ### Extend Existing "Leads" Table (Minimal Changes)
 The pb-webhook-server already has a comprehensive "Leads" table structure. We only need to add LinkedIn messaging-specific fields:
 
-#### New Fields to Add
-```javascript
-{
-  "LinkedIn Messages": {
-    "type": "Long text",
-    "description": "JSON array of message history",
-    "example": "[{\"date\":\"2025-01-15T10:30:00Z\",\"content\":\"Hi John...\",\"direction\":\"sent\",\"platform\":\"linkedin\"}]"
-  },
-  "Follow Up Date": {
-    "type": "Date", 
-    "description": "Next scheduled contact date"
-  },
-  "Follow Up Notes": {
-    "type": "Long text",
-    "description": "Context and instructions for next interaction"
-  },
-  "Message Source": {
-    "type": "Single select",
-    "options": ["LinkedIn", "Sales Navigator"],
-    "description": "Platform where message was captured"
-  },
-  "Last Message Date": {
-    "type": "Date",
-    "description": "Timestamp of most recent message"
-  },
-  "Extension Last Sync": {
-    "type": "Date", 
-    "description": "When Chrome extension last updated this record"
-  }
-}
-```
+#### Field Specifications
+> ⚠️ **Field Specifications**: For current field names, types, and detailed specifications, see [airtable-field-master-list.md](./airtable-field-master-list.md)
 
-#### Existing Fields to Leverage
-```javascript
-{
-  "LinkedIn Profile URL": "Primary deduplication key (already exists)",
-  "First Name": "Contact details (already exists)",
-  "Last Name": "Contact details (already exists)",
-  "Headline": "Professional info (already exists)",
-  "Job Title": "Current position (already exists)",
-  "Company Name": "Current employer (already exists)",
-  "About": "LinkedIn About section (already exists)",
-  "LinkedIn Connection Status": "Candidate/Connected/Pending (already exists)",
-  "AI Score": "Lead relevance 0-100% (already exists)",
-  "Post Relevance Score": "AI post scoring (already exists)",
-  "Top Scoring Post": "Best post for engagement context (already exists)",
-  "Profile Full JSON": "Complete profile data (already exists)"
-}
-```
+The LinkedIn extension adds messaging-specific fields to the existing "Leads" table while leveraging the comprehensive lead profile fields already implemented in pb-webhook-server.
 
 ### Multi-Tenant Data Structure (Already Implemented)
 **Master Control**: "Clients" base manages all client configurations

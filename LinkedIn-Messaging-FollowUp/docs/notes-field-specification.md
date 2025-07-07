@@ -1,5 +1,7 @@
 # Notes Field Specification
 
+> ⚠️ **Field Specifications**: For current field names, types, and detailed specifications, see [airtable-field-master-list.md](./airtable-field-master-list.md)
+
 ## Overview
 Based on AI Blaze's proven approach to generic DOM text extraction, we can implement comprehensive conversation capture for both LinkedIn and Sales Navigator messaging platforms.
 

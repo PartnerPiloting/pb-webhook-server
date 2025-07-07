@@ -127,7 +127,7 @@ const LeadSearchUpdate = () => {
   };
 
   return (
-    <div className="w-full flex flex-col md:flex-row gap-6">
+    <div className="w-full flex flex-col lg:flex-row gap-6">
       {/* Message display */}
       {message && message.text && (
         <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
@@ -137,25 +137,25 @@ const LeadSearchUpdate = () => {
         </div>
       )}
       
-      <div className="md:w-1/3 w-full">
-        <div className="relative">
+      <div className="lg:w-1/4 w-full">
+        <div className="relative mb-4">
           {MagnifyingGlassIcon && (
             <MagnifyingGlassIcon className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
           )}
           <input
             type="text"
-            className="search-input pl-10 mb-4"
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm"
             placeholder="Search by first or last name..."
             value={search || ''}
             onChange={e => setSearch(e.target.value || '')}
           />
         </div>
         
-        <div className="search-results">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-h-96 overflow-y-auto">
           {isLoading && (!leads || leads.length === 0) ? (
-            <div className="text-center py-4">
+            <div className="text-center py-6">
               <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-              <p className="text-gray-500 mt-2">Loading leads...</p>
+              <p className="text-gray-500 mt-3">Loading leads...</p>
             </div>
           ) : (
             <>
@@ -165,16 +165,20 @@ const LeadSearchUpdate = () => {
                 return (
                   <div
                     key={lead['Profile Key']}
-                    className={`lead-result-item${selectedLead && (selectedLead.id || selectedLead['Profile Key']) === lead['Profile Key'] ? ' selected' : ''}`}
+                    className={`p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${
+                      selectedLead && (selectedLead.id || selectedLead['Profile Key']) === lead['Profile Key'] 
+                        ? 'bg-blue-50 border-blue-200' 
+                        : ''
+                    }`}
                     onClick={() => handleLeadSelect(lead)}
                   >
                     <div className="flex items-center">
-                      {UserIcon && <UserIcon className="h-5 w-5 mr-2 text-gray-400" />}
-                      <div>
-                        <div className="font-bold">
+                      {UserIcon && <UserIcon className="h-5 w-5 mr-3 text-gray-400 flex-shrink-0" />}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-gray-900 truncate">
                           {safeRender(lead['First Name'])} {safeRender(lead['Last Name'])}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 truncate">
                           {safeRender(lead['Status'], 'No status')} • Score: {safeRender(lead['AI Score'], 'N/A')}
                         </div>
                       </div>
@@ -183,19 +187,19 @@ const LeadSearchUpdate = () => {
                 );
               })}
               {(!leads || leads.length === 0) && !isLoading && (
-                <div className="no-results">No leads found.</div>
+                <div className="p-6 text-center text-gray-500 italic">No leads found.</div>
               )}
             </>
           )}
         </div>
       </div>
       
-      <div className="md:w-2/3 w-full">
+      <div className="lg:w-3/4 w-full">
         {selectedLead ? (
-          <div className="lead-card">
-            <div className="mb-4 pb-4 border-b">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+            <div className="mb-6 pb-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">
+                <h2 className="text-2xl font-semibold text-gray-900">
                   {safeRender(selectedLead['First Name'])} {safeRender(selectedLead['Last Name'])}
                 </h2>
                 {selectedLead['LinkedIn Profile URL'] && ExternalLinkIcon && (
@@ -203,13 +207,13 @@ const LeadSearchUpdate = () => {
                     href={selectedLead['LinkedIn Profile URL']}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800"
+                    className="text-blue-600 hover:text-blue-800 transition-colors"
                   >
-                    <ExternalLinkIcon className="h-5 w-5" />
+                    <ExternalLinkIcon className="h-6 w-6" />
                   </a>
                 )}
               </div>
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="text-sm text-gray-500 mt-2">
                 Profile Key: {safeRender(selectedLead.id || selectedLead['Profile Key'])}
               </div>
             </div>
@@ -241,10 +245,11 @@ const LeadSearchUpdate = () => {
             />
           </div>
         ) : (
-          <div className="lead-card">
-            <div className="text-center text-gray-400 py-12">
-              {UserIcon && <UserIcon className="h-16 w-16 mx-auto mb-4" />}
-              <p className="text-lg">Select a lead to view details</p>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+            <div className="text-center text-gray-400 py-16">
+              {UserIcon && <UserIcon className="h-20 w-20 mx-auto mb-6 text-gray-300" />}
+              <p className="text-xl text-gray-500">Select a lead to view details</p>
+              <p className="text-sm text-gray-400 mt-2">Choose a lead from the search results to view and edit their information</p>
             </div>
           </div>
         )}

@@ -4,7 +4,7 @@
 
 ✅ **DEPLOYED AND WORKING**: Multi-tenant LinkedIn lead management system integrated into pb-webhook-server.
 
-**Live Portal**: `https://pb-webhook-server.onrender.com/portal`
+**Live Portal**: `https://pb-webhook-server.vercel.app`
 
 Extension of the existing pb-webhook-server multi-tenant system providing LinkedIn lead management capabilities through:
 - ✅ **Working Web Portal**: Complete lead search and management interface  
@@ -30,17 +30,17 @@ Extension of the existing pb-webhook-server multi-tenant system providing Linked
 - **✅ Error Handling**: Robust error handling and user feedback throughout interface
 
 ### Verified Working URLs
-- **✅ Main Portal**: https://pb-webhook-server.onrender.com/portal (CONFIRMED WORKING)
-- **✅ API Test**: https://pb-webhook-server.onrender.com/api/linkedin/test (CONFIRMED WORKING)
-- **✅ Debug Info**: https://pb-webhook-server.onrender.com/api/linkedin/debug (CONFIRMED WORKING)
+- **✅ Main Portal**: https://pb-webhook-server.vercel.app (Next.js frontend)
+- **✅ API Test**: https://pb-webhook-server.onrender.com/api/linkedin/test (Render backend)
+- **✅ Debug Info**: https://pb-webhook-server.onrender.com/api/linkedin/debug (Render backend)
 
 ## Architecture
 
 ### Current Implementation (Fully Deployed)
-- **✅ Web Portal**: Inline HTML/JS served via Express route (`/portal` in `index.js`)
-  - **Solution**: Bypassed static file serving issues by serving portal content directly via route
-  - **Benefits**: Simplified deployment, no static file dependencies, faster loading
-  - **Features**: Complete search UI, API connection testing, responsive design with Tailwind CSS
+- **✅ Web Portal**: Next.js application deployed on Vercel (`linkedin-messaging-followup-next/`)
+  - **Frontend**: https://pb-webhook-server.vercel.app (Next.js with Airtable-style layout)
+  - **Backend**: https://pb-webhook-server.onrender.com (Express APIs)
+  - **Features**: Complete search UI, API connection testing, professional Airtable-style design
 - **✅ API Layer**: Express.js routes at `/api/linkedin/*` in `linkedinRoutes.js`
   - **Routes**: `/test`, `/leads/search`, `/leads/:id`, `/leads/:id/update`
   - **Integration**: Full multi-tenant support via existing `clientService.js`

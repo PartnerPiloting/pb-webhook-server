@@ -107,210 +107,206 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Read-only Fields Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-        <div>
-          <label className="field-label">Profile Key</label>
-          <input
-            type="text"
-            value={lead.profileKey || 'Auto-generated'}
-            readOnly
-            className="form-field"
-          />
-        </div>
-        <div>
-          <label className="field-label flex items-center">
-            {StarIcon && <StarIcon className="h-4 w-4 mr-1" />}
-            AI Score
-          </label>
-          <input
-            type="number"
-            value={lead.aiScore !== null && lead.aiScore !== undefined ? lead.aiScore : ''}
-            readOnly
-            className="form-field"
-            placeholder="Not scored"
-          />
-        </div>
-        <div>
-          <label className="field-label">Posts Relevance %</label>
-          <input
-            type="text"
-            value={lead.postsRelevancePercentage ? `${lead.postsRelevancePercentage}%` : ''}
-            readOnly
-            className="form-field"
-            placeholder="No data"
-          />
+      <div className="p-6 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-8 gap-y-4">
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Profile Key</label>
+            <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
+              {lead.profileKey || 'Auto-generated'}
+            </div>
+          </div>
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 flex items-center">
+              {StarIcon && <StarIcon className="h-4 w-4 mr-1" />}
+              AI Score
+            </label>
+            <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
+              {lead.aiScore !== null && lead.aiScore !== undefined ? lead.aiScore : 'Not scored'}
+            </div>
+          </div>
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Posts Relevance %</label>
+            <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
+              {lead.postsRelevancePercentage ? `${lead.postsRelevancePercentage}%` : 'No data'}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Basic Information */}
-      <div className="space-y-4">
-        <h4 className="text-lg font-medium text-gray-900">Basic Information</h4>
+      <div className="space-y-6">
+        <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Basic Information</h4>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="field-label">First Name *</label>
+        {/* Two-column layout with left-aligned labels */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">First Name *</label>
             <input
               type="text"
               value={formData.firstName || ''}
               onChange={(e) => handleChange('firstName', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               required
             />
           </div>
-          <div>
-            <label className="field-label">Last Name *</label>
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Last Name *</label>
             <input
               type="text"
               value={formData.lastName || ''}
               onChange={(e) => handleChange('lastName', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               required
             />
           </div>
         </div>
 
-        <div>
-          <label className="field-label flex items-center">
+        <div className="flex items-center">
+          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 flex items-center">
             {ArrowTopRightOnSquareIcon && <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />}
             LinkedIn Profile URL *
           </label>
-          {editingField === 'linkedinProfileUrl' ? (
-            <div className="flex items-center space-x-2">
-              <input
-                type="url"
-                value={formData.linkedinProfileUrl || ''}
-                onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
-                className="form-field flex-1"
-                placeholder="https://www.linkedin.com/in/username"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setEditingField(null)}
-                className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormData(prev => ({
-                    ...prev,
-                    linkedinProfileUrl: lead.linkedinProfileUrl || ''
-                  }));
-                  setEditingField(null);
-                }}
-                className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              {formData.linkedinProfileUrl ? (
-                <a
-                  href={formData.linkedinProfileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 underline break-all"
+          <div className="flex-1">
+            {editingField === 'linkedinProfileUrl' ? (
+              <div className="flex items-center space-x-2">
+                <input
+                  type="url"
+                  value={formData.linkedinProfileUrl || ''}
+                  onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  placeholder="https://www.linkedin.com/in/username"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditingField(null)}
+                  className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
                 >
-                  {formData.linkedinProfileUrl}
-                </a>
-              ) : (
-                <span className="text-gray-400 italic">No LinkedIn URL</span>
-              )}
-              <button
-                type="button"
-                onClick={() => setEditingField('linkedinProfileUrl')}
-                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-              >
-                Edit
-              </button>
-            </div>
-          )}
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      linkedinProfileUrl: lead.linkedinProfileUrl || ''
+                    }));
+                    setEditingField(null);
+                  }}
+                  className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md bg-white">
+                {formData.linkedinProfileUrl ? (
+                  <a
+                    href={formData.linkedinProfileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline break-all flex-1"
+                  >
+                    {formData.linkedinProfileUrl}
+                  </a>
+                ) : (
+                  <span className="text-gray-400 italic flex-1">No LinkedIn URL</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setEditingField('linkedinProfileUrl')}
+                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex-shrink-0"
+                >
+                  Edit
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div>
-          <label className="field-label">View In Sales Navigator</label>
-          {editingField === 'viewInSalesNavigator' ? (
-            <div className="flex items-center space-x-2">
-              <input
-                type="url"
-                value={formData.viewInSalesNavigator || ''}
-                onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
-                className="form-field flex-1"
-                placeholder="https://www.linkedin.com/sales/..."
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setEditingField(null)}
-                className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormData(prev => ({
-                    ...prev,
-                    viewInSalesNavigator: lead.viewInSalesNavigator || ''
-                  }));
-                  setEditingField(null);
-                }}
-                className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              {formData.viewInSalesNavigator ? (
-                <a
-                  href={formData.viewInSalesNavigator}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 underline break-all"
+        <div className="flex items-center">
+          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">View In Sales Navigator</label>
+          <div className="flex-1">
+            {editingField === 'viewInSalesNavigator' ? (
+              <div className="flex items-center space-x-2">
+                <input
+                  type="url"
+                  value={formData.viewInSalesNavigator || ''}
+                  onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  placeholder="https://www.linkedin.com/sales/..."
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditingField(null)}
+                  className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700"
                 >
-                  {formData.viewInSalesNavigator}
-                </a>
-              ) : (
-                <span className="text-gray-400 italic">No Sales Navigator URL</span>
-              )}
-              <button
-                type="button"
-                onClick={() => setEditingField('viewInSalesNavigator')}
-                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-              >
-                Edit
-              </button>
-            </div>
-          )}
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData(prev => ({
+                      ...prev,
+                      viewInSalesNavigator: lead.viewInSalesNavigator || ''
+                    }));
+                    setEditingField(null);
+                  }}
+                  className="px-3 py-2 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-md bg-white">
+                {formData.viewInSalesNavigator ? (
+                  <a
+                    href={formData.viewInSalesNavigator}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline break-all flex-1"
+                  >
+                    {formData.viewInSalesNavigator}
+                  </a>
+                ) : (
+                  <span className="text-gray-400 italic flex-1">No Sales Navigator URL</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setEditingField('viewInSalesNavigator')}
+                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 flex-shrink-0"
+                >
+                  Edit
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div>
-          <label className="field-label">Email</label>
+        <div className="flex items-center">
+          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Email</label>
           <input
             type="email"
             value={formData.email || ''}
             onChange={(e) => handleChange('email', e.target.value)}
-            className="form-field"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             placeholder="email@example.com"
           />
         </div>
       </div>
 
       {/* Status and Classification */}
-      <div className="space-y-4">
-        <h4 className="text-lg font-medium text-gray-900">Status & Classification</h4>
+      <div className="space-y-6">
+        <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Status & Classification</h4>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label className="field-label">Source</label>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Source</label>
             <select
               value={formData.source || ''}
               onChange={(e) => handleChange('source', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="">Select source...</option>
               {fieldConfig.selectOptions.source.map(option => (
@@ -319,12 +315,12 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             </select>
           </div>
           
-          <div>
-            <label className="field-label">Status</label>
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Status</label>
             <select
               value={formData.status || ''}
               onChange={(e) => handleChange('status', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="">Select status...</option>
               {fieldConfig.selectOptions.status.map(option => (
@@ -333,12 +329,12 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             </select>
           </div>
           
-          <div>
-            <label className="field-label">Priority</label>
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Priority</label>
             <select
               value={formData.priority || ''}
               onChange={(e) => handleChange('priority', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="">Select priority...</option>
               {fieldConfig.selectOptions.priority.map(option => (
@@ -347,12 +343,12 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             </select>
           </div>
           
-          <div>
-            <label className="field-label">LinkedIn Connection</label>
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">LinkedIn Connection</label>
             <select
               value={formData.linkedinConnectionStatus || ''}
               onChange={(e) => handleChange('linkedinConnectionStatus', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="">Select status...</option>
               {fieldConfig.selectOptions.linkedinConnectionStatus.map(option => (
@@ -364,29 +360,29 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       </div>
 
       {/* Follow-up Section */}
-      <div className="space-y-4">
-        <h4 className="text-lg font-medium text-gray-900 flex items-center">
+      <div className="space-y-6">
+        <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center">
           {CalendarIcon && <CalendarIcon className="h-5 w-5 mr-2" />}
           Follow-up Management
         </h4>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="field-label">Follow-up Date</label>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Follow-up Date</label>
             <input
               type="date"
               value={formData.followUpDate || ''}
               onChange={(e) => handleChange('followUpDate', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
           </div>
-          <div>
-            <label className="field-label">Follow-up Notes</label>
+          <div className="flex items-center">
+            <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0">Follow-up Notes</label>
             <input
               type="text"
               value={formData.followUpNotes || ''}
               onChange={(e) => handleChange('followUpNotes', e.target.value)}
-              className="form-field"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               placeholder="Context for next interaction..."
             />
           </div>
@@ -394,23 +390,25 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       </div>
 
       {/* Notes Section */}
-      <div className="space-y-4">
-        <h4 className="text-lg font-medium text-gray-900">Notes & Conversations</h4>
-        <div>
-          <label className="field-label">
-            Notes (Manual + Auto-captured conversations)
+      <div className="space-y-6">
+        <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Notes & Conversations</h4>
+        <div className="flex">
+          <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 pt-2">
+            Notes
           </label>
-          <textarea
-            value={formData.notes || ''}
-            onChange={(e) => handleChange('notes', e.target.value)}
-            className="form-textarea"
-            rows={6}
-            placeholder="Add manual notes here. LinkedIn conversations will be automatically captured and appended..."
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Chrome extension automatically captures LinkedIn conversations with timestamps.
-            Manual notes are preserved separately.
-          </p>
+          <div className="flex-1">
+            <textarea
+              value={formData.notes || ''}
+              onChange={(e) => handleChange('notes', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[120px] resize-y"
+              rows={6}
+              placeholder="Add manual notes here. LinkedIn conversations will be automatically captured and appended..."
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Chrome extension automatically captures LinkedIn conversations with timestamps.
+              Manual notes are preserved separately.
+            </p>
+          </div>
         </div>
       </div>
 
