@@ -238,6 +238,9 @@ router.put('/leads/:leadId', async (req, res) => {
         // Get client's Airtable base
         const base = await getClientBase(clientId);
 
+        // Add debugging to see what data is being sent
+        console.log('🔍 DEBUG: Incoming update data:', JSON.stringify(updates, null, 2));
+
         // Prepare update fields (only allow editable fields)
         const updateFields = {};
         const editableFields = [
@@ -284,6 +287,7 @@ router.put('/leads/:leadId', async (req, res) => {
                         updateFields[airtableFieldName] = value;
                     }
                     // Skip empty select fields entirely - don't try to update them
+                    console.log(`🔍 DEBUG: Skipping empty select field: ${airtableFieldName} = "${value}"`);
                 } else {
                     updateFields[airtableFieldName] = value || '';
                 }
@@ -297,6 +301,9 @@ router.put('/leads/:leadId', async (req, res) => {
             });
         }
 
+        // Add debugging to see what fields are being sent to Airtable
+        console.log('🔍 DEBUG: Fields being sent to Airtable:', JSON.stringify(updateFields, null, 2));
+
         // Update record
         const updatedRecord = await base('Leads').update([{
             id: leadId,
@@ -307,6 +314,26 @@ router.put('/leads/:leadId', async (req, res) => {
         const record = updatedRecord[0];
         const updatedLead = {
             id: record.id,
+            // Return data in the format frontend expects (Airtable field names)
+            'First Name': record.get('First Name') || '',
+            'Last Name': record.get('Last Name') || '',
+            'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
+            'View In Sales Navigator': record.get('View In Sales Navigator') || '',
+            'Email': record.get('Email') || '',
+            'Notes': record.get('Notes') || '',
+            'Follow-Up Date': record.get('Follow-Up Date') || '',
+            'Source': record.get('Source') || '',
+            'Status': record.get('Status') || '',
+            'Priority': record.get('Priority') || '',
+            'LinkedIn Connection Status': record.get('LinkedIn Connection Status') || '',
+            
+            // Read-only fields
+            'Profile Key': record.get('Profile Key') || '',
+            'AI Score': record.get('AI Score') || null,
+            postsRelevancePercentage: calculatePostsRelevancePercentage(record.get('Post Relevance Score')),
+            'Last Message Date': record.get('Last Message Date') || null,
+            
+            // Also include camelCase versions for compatibility
             firstName: record.get('First Name') || '',
             lastName: record.get('Last Name') || '',
             linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
@@ -318,11 +345,8 @@ router.put('/leads/:leadId', async (req, res) => {
             status: record.get('Status') || '',
             priority: record.get('Priority') || '',
             linkedinConnectionStatus: record.get('LinkedIn Connection Status') || '',
-            
-            // Read-only fields
             profileKey: record.get('Profile Key') || '',
             aiScore: record.get('AI Score') || null,
-            postsRelevancePercentage: calculatePostsRelevancePercentage(record.get('Post Relevance Score')),
             lastMessageDate: record.get('Last Message Date') || null
         };
 
@@ -545,7 +569,9 @@ function isSelectField(fieldName) {
         'Source',
         'Status', 
         'Priority',
-        'LinkedIn Connection Status'
+        'LinkedIn Connection Status',
+        'Scoring Status',
+        'Add to Workshop Invite List' // This might be a checkbox but let's be safe
     ];
     return selectFields.includes(fieldName);
 }
