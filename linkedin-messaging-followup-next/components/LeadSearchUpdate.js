@@ -77,80 +77,22 @@ const LeadSearchUpdate = () => {
     debounce(async (query) => {
       setIsLoading(true);
       try {
-        // Always get all leads from API, then filter on frontend
-        const results = await searchLeads('');
-        console.log('Search debug - API returned leads:', results?.length || 0);
+        // Use backend search with the query - backend now handles partial searches properly
+        const results = await searchLeads(query);
         
-        // Filter out Multi-Tenant related entries, apply search logic, and sort alphabetically
-        const searchQuery = query.trim().toLowerCase();
-        console.log('Search debug - Query:', query, 'SearchQuery:', searchQuery);
-        
+        // Filter out Multi-Tenant related entries and sort alphabetically (backend now sorts properly)
         const filteredAndSorted = (results || [])
           .filter(lead => {
             const firstName = (lead['First Name'] || '').toLowerCase();
             const lastName = (lead['Last Name'] || '').toLowerCase();
-            const fullName = `${firstName} ${lastName}`.trim();
             
             // Filter out Multi-Tenant related entries
-            if (firstName.includes('multi') || lastName.includes('multi') ||
-                firstName.includes('tenant') || lastName.includes('tenant')) {
-              return false;
-            }
-            
-            // If no search query, show all (already filtered above)
-            if (!query.trim()) return true;
-            
-            // Debug logging for single word searches
-            if (!searchQuery.includes(' ')) {
-              const singleWordMatch = firstName.includes(searchQuery) || 
-                                    lastName.includes(searchQuery) || 
-                                    fullName.includes(searchQuery);
-              
-              if (searchQuery === 'justin' || searchQuery === 'andrew') {
-                console.log('Single word search debug:', {
-                  searchQuery,
-                  leadName: `${firstName} ${lastName}`,
-                  firstName,
-                  lastName,
-                  fullName,
-                  firstNameMatch: firstName.includes(searchQuery),
-                  lastNameMatch: lastName.includes(searchQuery),
-                  fullNameMatch: fullName.includes(searchQuery),
-                  result: singleWordMatch
-                });
-              }
-            }
-            
-            // Simple approach: if the search contains spaces, treat as "first last" search
-            if (searchQuery.includes(' ')) {
-              const parts = searchQuery.split(/\s+/);
-              const [firstPart, ...restParts] = parts;
-              const lastPart = restParts.join(' ');
-              
-              // Check if first part matches first name and last part matches beginning of last name
-              return firstName.includes(firstPart) && lastName.startsWith(lastPart);
-            }
-            
-            // Single word search - match against first name, last name, or full name
-            return firstName.includes(searchQuery) || 
-                   lastName.includes(searchQuery) || 
-                   fullName.includes(searchQuery);
-          })
-          .sort((a, b) => {
-            const firstNameA = (a['First Name'] || '').toLowerCase();
-            const firstNameB = (b['First Name'] || '').toLowerCase();
-            const lastNameA = (a['Last Name'] || '').toLowerCase();
-            const lastNameB = (b['Last Name'] || '').toLowerCase();
-            
-            // Sort by first name first, then by last name
-            if (firstNameA !== firstNameB) {
-              return firstNameA.localeCompare(firstNameB);
-            }
-            return lastNameA.localeCompare(lastNameB);
+            return !firstName.includes('multi') && 
+                   !lastName.includes('multi') &&
+                   !firstName.includes('tenant') && 
+                   !lastName.includes('tenant');
           })
           .slice(0, 25); // Limit to 25 results
-        
-        console.log('Search debug - Final filtered results:', filteredAndSorted?.length || 0);
         
         setLeads(filteredAndSorted);
       } catch (error) {

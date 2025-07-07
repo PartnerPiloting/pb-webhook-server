@@ -78,17 +78,14 @@ router.get('/leads/search', async (req, res) => {
 
         // Search in Leads table
         const filterFormula = searchQuery.trim() 
-            ? `OR(
-                SEARCH(LOWER("${searchQuery.toLowerCase()}"), LOWER({First Name})),
-                SEARCH(LOWER("${searchQuery.toLowerCase()}"), LOWER({Last Name}))
-            )`
+            ? buildSearchFormula(searchQuery.toLowerCase())
             : ''; // Empty filter returns all records
             
         await base('Leads').select({
             filterByFormula: filterFormula,
-            maxRecords: 50,
+            maxRecords: 200, // Increased from 50 to handle more leads
             sort: [
-                { field: 'AI Score', direction: 'desc' },
+                { field: 'First Name', direction: 'asc' },
                 { field: 'Last Name', direction: 'asc' }
             ]
         }).eachPage((records, fetchNextPage) => {
@@ -574,6 +571,35 @@ function isSelectField(fieldName) {
         'Add to Workshop Invite List' // This might be a checkbox but let's be safe
     ];
     return selectFields.includes(fieldName);
+}
+
+/**
+ * Build search formula for Airtable to handle single words and multi-word searches
+ * Examples:
+ * - "justin" → searches first name and last name for "justin"
+ * - "justin c" → searches for first name containing "justin" AND last name starting with "c"
+ */
+function buildSearchFormula(searchQuery) {
+    const query = searchQuery.trim().toLowerCase();
+    
+    // Handle multi-word searches (e.g., "justin c")
+    if (query.includes(' ')) {
+        const parts = query.split(/\s+/);
+        const [firstPart, ...restParts] = parts;
+        const lastPart = restParts.join(' ');
+        
+        // Search for first name containing first part AND last name starting with last part
+        return `AND(
+            SEARCH(LOWER("${firstPart}"), LOWER({First Name})),
+            SEARCH(LOWER("${lastPart}"), LOWER(LEFT({Last Name}, ${lastPart.length})))
+        )`;
+    }
+    
+    // Single word search - check both first and last name
+    return `OR(
+        SEARCH(LOWER("${query}"), LOWER({First Name})),
+        SEARCH(LOWER("${query}"), LOWER({Last Name}))
+    )`;
 }
 
 module.exports = router;
