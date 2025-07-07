@@ -252,32 +252,15 @@ console.log("index.js: Emergency debug routes added");
 
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
-// --- SERVE LINKEDIN PORTAL ---
-try {
-    // Serve index.html for both /linkedin and /linkedin/ routes (MUST come before static middleware)
-    app.get('/linkedin', (req, res) => {
-        res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
-    });
-    
-    app.get('/linkedin/', (req, res) => {
-        res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
-    });
-    
-    // Serve static files from build directory
-    app.use('/linkedin', express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
-    
-    console.log("index.js: LinkedIn portal route and static files mounted at /linkedin");
-} catch(e) { 
-    console.error("index.js: Error mounting LinkedIn portal", e.message, e.stack); 
-}
-
-// Serve static files for the React app (must come before /portal route)
-app.use(express.static(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build')));
-
-// Complete portal route with search functionality
-app.get('/portal', (req, res) => {
-    res.sendFile(path.join(__dirname, 'LinkedIn-Messaging-FollowUp/web-portal/build/index.html'));
-});
+// --- BROKEN PORTAL ROUTES REMOVED ---
+// The following routes were removed as they were trying to serve non-existent files:
+// - /linkedin and /linkedin/ routes
+// - /portal route  
+// - Static file serving for LinkedIn-Messaging-FollowUp/web-portal/build/
+//
+// ACTUAL WORKING FRONTEND: Next.js app deployed separately on Vercel
+// Frontend URL: https://pb-webhook-server.vercel.app
+// Backend APIs: Continue to work correctly on Render
 
 console.log("index.js: Attempting to mount Custom GPT support APIs...");
 try {

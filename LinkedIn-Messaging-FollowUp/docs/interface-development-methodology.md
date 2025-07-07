@@ -47,9 +47,11 @@ Each custom web portal interface aims to replicate the functionality and user ex
 - Search and filtering capabilities needed
 
 ### Field Configuration
+> ⚠️ **Field Specifications**: Reference [airtable-field-master-list.md](./airtable-field-master-list.md) for current field names and types
+
 | Field Name | Visible | Editable | Required | Format/Type |
 |------------|---------|----------|----------|-------------|
-| Example Field | Yes | No | - | Text |
+| [Per Master List] | [Configuration] | [Configuration] | [Configuration] | [Per Master List] |
 
 ### Layout & Behavior
 - Interface type: Form, Table, Dashboard, Custom
@@ -119,27 +121,11 @@ For each interface, we'll document:
     "responsive": true
   },
   "fields": [
-    {
-      "name": "LinkedIn Profile URL",
-      "airtableField": "LinkedIn Profile URL", 
-      "visible": true,
-      "editable": false,
-      "required": false,
-      "type": "url",
-      "displayFormat": "link"
-    },
-    {
-      "name": "Notes",
-      "airtableField": "Notes",
-      "visible": true,
-      "editable": true,
-      "required": false,
-      "type": "longtext",
-      "displayFormat": "textarea"
-    }
+    // Field configurations based on airtable-field-master-list.md
+    // Actual field names, types, and properties defined in master list
   ],
   "defaultFilters": [],
-  "searchFields": ["First Name", "Last Name"],
+  "searchFields": [], // Field names from master list
   "actions": [
     {"name": "save", "label": "Save Changes", "primary": true},
     {"name": "viewLinkedIn", "label": "View LinkedIn Profile", "external": true}

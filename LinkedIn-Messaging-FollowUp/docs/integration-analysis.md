@@ -37,48 +37,17 @@ The LinkedIn Messaging Follow-Up system leverages the existing pb-webhook-server
 - Standardized table structure across all clients
 
 #### Existing "Leads" Table Schema
-```javascript
-{
-  "LinkedIn Profile URL": "Primary identifier for deduplication",
-  "First Name": "Contact details",
-  "Last Name": "Contact details", 
-  "Headline": "Professional summary",
-  "Job Title": "Current position",
-  "Company Name": "Current employer",
-  "About": "LinkedIn About section",
-  "Job History": "Employment history",
-  "LinkedIn Connection Status": "Candidate/Connected/Pending",
-  "Date Connected": "When connection was made",
-  "AI Score": "Lead relevance percentage (0-100)",
-  "Scoring Status": "To Be Scored/Scored/Excluded",
-  "Profile Full JSON": "Complete LinkedIn profile data",
-  "Posts Content": "JSON array of LinkedIn posts",
-  "Post Relevance Score": "AI scoring of posts",
-  "Top Scoring Post": "Best post analysis",
-  "View In Sales Navigator": "Sales Navigator URL"
-}
-```
+> ⚠️ **Field Specifications**: For current field names, types, and detailed specifications, see [airtable-field-master-list.md](./airtable-field-master-list.md)
+
+The "Leads" table contains fields for lead identification, contact details, AI scoring, post analysis, and LinkedIn integration data as defined in the master field list.
 
 ## LinkedIn Extension Integration Strategy
 
 ### Minimal Schema Extensions
-**New Fields to Add to Existing "Leads" Table**:
-```javascript
-{
-  "LinkedIn Messages": "JSON array of message history",
-  "Follow Up Date": "Next contact date",
-  "Follow Up Notes": "Context for next interaction", 
-  "Last Message Date": "Timeline tracking",
-  "Extension Last Sync": "Chrome extension sync timestamp"
-}
-```
+> ⚠️ **Field Specifications**: For current field names, types, and detailed specifications, see [airtable-field-master-list.md](./airtable-field-master-list.md)
 
-**Owner-Specific Fields (Hidden from Client Interfaces)**:
-```javascript
-{
-  "Guy's Workshop Email": "Boolean - Workshop invitation tracking (Guy-specific)"
-}
-```
+**New Fields Added for LinkedIn Messaging**:
+The LinkedIn extension adds fields for message history, follow-up management, and sync tracking to the existing "Leads" table schema. See the master field list for exact field names and specifications.
 
 **Field Visibility Strategy**:
 - **Standard Fields**: Visible to all clients in web portal and interfaces
