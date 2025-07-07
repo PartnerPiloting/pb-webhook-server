@@ -28,6 +28,17 @@ const Layout = ({ children }) => {
     }
   ];
 
+  // Ensure children is defined
+  if (!children) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="text-center">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -51,7 +62,9 @@ const Layout = ({ children }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <nav className="flex space-x-8 mb-8" aria-label="Tabs">
-          {navigation.map((item) => {
+          {navigation && navigation.map((item) => {
+            if (!item || !item.name || !item.href) return null;
+            
             const Icon = item.icon;
             // For now, assume the first tab is always active
             const isActive = item.href === '/';
@@ -66,12 +79,14 @@ const Layout = ({ children }) => {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 } whitespace-nowrap flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200`}
               >
-                <Icon className="h-5 w-5 mr-2" />
+                {Icon && <Icon className="h-5 w-5 mr-2" />}
                 <div>
-                  <div>{item.name}</div>
-                  <div className="text-xs text-gray-400 font-normal">
-                    {item.description}
-                  </div>
+                  <div>{item.name || ''}</div>
+                  {item.description && (
+                    <div className="text-xs text-gray-400 font-normal">
+                      {item.description}
+                    </div>
+                  )}
                 </div>
               </Link>
             );
