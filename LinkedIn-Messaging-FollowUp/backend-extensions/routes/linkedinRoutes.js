@@ -277,7 +277,12 @@ router.put('/leads/:leadId', async (req, res) => {
                     throw new Error('Invalid email format');
                 }
                 
-                updateFields[airtableFieldName] = value || '';
+                // Handle date fields - convert empty strings to null
+                if (reactFieldName === 'followUpDate') {
+                    updateFields[airtableFieldName] = value || null;
+                } else {
+                    updateFields[airtableFieldName] = value || '';
+                }
             }
         });
 
