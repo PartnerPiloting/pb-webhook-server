@@ -71,16 +71,30 @@ const LeadSearchUpdate = () => {
       setIsLoading(true);
       try {
         const results = await searchLeads(query);
-        // Filter out Multi-Tenant related entries and sort alphabetically by first name
+        // Filter out Multi-Tenant related entries, apply search logic, and sort alphabetically
+        const searchTerms = query.trim().toLowerCase().split(/\s+/);
+        
         const filteredAndSorted = (results || [])
           .filter(lead => {
-            const firstName = lead['First Name'] || '';
-            const lastName = lead['Last Name'] || '';
-            // Filter out any entries that seem to be Multi-Tenant related
-            return !firstName.toLowerCase().includes('multi') && 
-                   !lastName.toLowerCase().includes('multi') &&
-                   !firstName.toLowerCase().includes('tenant') && 
-                   !lastName.toLowerCase().includes('tenant');
+            const firstName = (lead['First Name'] || '').toLowerCase();
+            const lastName = (lead['Last Name'] || '').toLowerCase();
+            const fullName = `${firstName} ${lastName}`.trim();
+            
+            // Filter out Multi-Tenant related entries
+            if (firstName.includes('multi') || lastName.includes('multi') ||
+                firstName.includes('tenant') || lastName.includes('tenant')) {
+              return false;
+            }
+            
+            // If no search query, show all (already filtered above)
+            if (!query.trim()) return true;
+            
+            // Check if all search terms match either first name, last name, or full name
+            return searchTerms.every(term => 
+              firstName.includes(term) || 
+              lastName.includes(term) || 
+              fullName.includes(term)
+            );
           })
           .sort((a, b) => {
             const firstNameA = (a['First Name'] || '').toLowerCase();

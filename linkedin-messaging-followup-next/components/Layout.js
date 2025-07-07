@@ -51,9 +51,7 @@ const Layout = ({ children }) => {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">
-                Multi-Tenant Lead Management
-              </span>
+              {/* Future: Add user menu or additional controls */}
             </div>
           </div>
         </div>
