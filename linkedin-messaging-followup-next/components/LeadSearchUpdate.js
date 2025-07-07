@@ -6,8 +6,11 @@ import { debounce } from '../utils/helpers';
 import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 
-// ErrorBoundary wrapper (assume you have or will create this component)
-// import ErrorBoundary from './ErrorBoundary';
+// Safe rendering helper
+const safeRender = (value, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  return value;
+};
 
 const LeadSearchUpdate = () => {
   const [search, setSearch] = useState('');
@@ -65,6 +68,11 @@ const LeadSearchUpdate = () => {
 
   // Handle lead selection - fetch full details
   const handleLeadSelect = async (lead) => {
+    if (!lead || !lead['Profile Key']) {
+      console.error('Invalid lead selected:', lead);
+      return;
+    }
+    
     setIsLoading(true);
     try {
       // Fetch full lead details
@@ -84,18 +92,18 @@ const LeadSearchUpdate = () => {
 
     setIsUpdating(true);
     try {
-      const updated = await updateLead(selectedLead.id, updatedData);
+      const updated = await updateLead(selectedLead.id || selectedLead['Profile Key'], updatedData);
       setSelectedLead(updated);
       setMessage({ type: 'success', text: 'Lead updated successfully!' });
       
       // Update the lead in the search results too
       setLeads(prevLeads => 
         prevLeads.map(lead => 
-          lead['Profile Key'] === updated.id ? {
+          lead['Profile Key'] === (updated.id || updated['Profile Key']) ? {
             ...lead,
-            'First Name': updated['First Name'],
-            'Last Name': updated['Last Name'],
-            'Status': updated['Status']
+            'First Name': updated['First Name'] || '',
+            'Last Name': updated['Last Name'] || '',
+            'Status': updated['Status'] || ''
           } : lead
         )
       );
@@ -123,11 +131,11 @@ const LeadSearchUpdate = () => {
   return (
     <div className="w-full flex flex-col md:flex-row gap-6">
       {/* Message display */}
-      {message.text && (
+      {message && message.text && (
         <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
           message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
         }`}>
-          {message.text}
+          {safeRender(message.text)}
         </div>
       )}
       
@@ -138,37 +146,43 @@ const LeadSearchUpdate = () => {
             type="text"
             className="search-input pl-10 mb-4"
             placeholder="Search by first or last name..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={search || ''}
+            onChange={e => setSearch(e.target.value || '')}
           />
         </div>
         
         <div className="search-results">
-          {isLoading && leads.length === 0 ? (
+          {isLoading && (!leads || leads.length === 0) ? (
             <div className="text-center py-4">
               <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
               <p className="text-gray-500 mt-2">Loading leads...</p>
             </div>
           ) : (
             <>
-              {leads.map(lead => (
-                <div
-                  key={lead['Profile Key']}
-                  className={`lead-result-item${selectedLead && selectedLead.id === lead['Profile Key'] ? ' selected' : ''}`}
-                  onClick={() => handleLeadSelect(lead)}
-                >
-                  <div className="flex items-center">
-                    <UserIcon className="h-5 w-5 mr-2 text-gray-400" />
-                    <div>
-                      <div className="font-bold">{(lead['First Name'] || '')} {(lead['Last Name'] || '')}</div>
-                      <div className="text-xs text-gray-500">
-                        {lead['Status'] || 'No status'} • Score: {lead['AI Score'] !== null && lead['AI Score'] !== undefined ? lead['AI Score'] : 'N/A'}
+              {leads && Array.isArray(leads) && leads.map(lead => {
+                if (!lead || !lead['Profile Key']) return null;
+                
+                return (
+                  <div
+                    key={lead['Profile Key']}
+                    className={`lead-result-item${selectedLead && (selectedLead.id || selectedLead['Profile Key']) === lead['Profile Key'] ? ' selected' : ''}`}
+                    onClick={() => handleLeadSelect(lead)}
+                  >
+                    <div className="flex items-center">
+                      <UserIcon className="h-5 w-5 mr-2 text-gray-400" />
+                      <div>
+                        <div className="font-bold">
+                          {safeRender(lead['First Name'])} {safeRender(lead['Last Name'])}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {safeRender(lead['Status'], 'No status')} • Score: {safeRender(lead['AI Score'], 'N/A')}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-              {leads.length === 0 && !isLoading && (
+                );
+              })}
+              {(!leads || leads.length === 0) && !isLoading && (
                 <div className="no-results">No leads found.</div>
               )}
             </>
@@ -182,7 +196,7 @@ const LeadSearchUpdate = () => {
             <div className="mb-4 pb-4 border-b">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-800">
-                  {(selectedLead['First Name'] || '')} {(selectedLead['Last Name'] || '')}
+                  {safeRender(selectedLead['First Name'])} {safeRender(selectedLead['Last Name'])}
                 </h2>
                 {selectedLead['LinkedIn Profile URL'] && (
                   <a
@@ -196,31 +210,31 @@ const LeadSearchUpdate = () => {
                 )}
               </div>
               <div className="text-sm text-gray-600 mt-1">
-                Profile Key: {selectedLead.id || selectedLead['Profile Key'] || ''}
+                Profile Key: {safeRender(selectedLead.id || selectedLead['Profile Key'])}
               </div>
             </div>
             
             <LeadDetailForm
               lead={{
                 ...selectedLead,
-                // Map the fields to the expected format
-                id: selectedLead.id || selectedLead['Profile Key'],
-                profileKey: selectedLead['Profile Key'],
-                firstName: selectedLead['First Name'],
-                lastName: selectedLead['Last Name'],
-                linkedinProfileUrl: selectedLead['LinkedIn Profile URL'],
-                viewInSalesNavigator: selectedLead['View In Sales Navigator'],
-                email: selectedLead['Email'],
+                // Map the fields to the expected format with safety
+                id: safeRender(selectedLead.id || selectedLead['Profile Key']),
+                profileKey: safeRender(selectedLead['Profile Key']),
+                firstName: safeRender(selectedLead['First Name']),
+                lastName: safeRender(selectedLead['Last Name']),
+                linkedinProfileUrl: safeRender(selectedLead['LinkedIn Profile URL']),
+                viewInSalesNavigator: safeRender(selectedLead['View In Sales Navigator']),
+                email: safeRender(selectedLead['Email']),
                 aiScore: selectedLead['AI Score'],
                 postsRelevancePercentage: selectedLead['Posts Relevance Percentage'],
-                source: selectedLead['Source'],
-                status: selectedLead['Status'],
-                priority: selectedLead['Priority'],
-                linkedinConnectionStatus: selectedLead['LinkedIn Connection Status'],
-                followUpDate: selectedLead['Follow Up Date'],
-                followUpNotes: selectedLead['Follow Up Notes'],
-                notes: selectedLead['Notes'],
-                lastMessageDate: selectedLead['Last Message Date']
+                source: safeRender(selectedLead['Source']),
+                status: safeRender(selectedLead['Status']),
+                priority: safeRender(selectedLead['Priority']),
+                linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
+                followUpDate: safeRender(selectedLead['Follow Up Date']),
+                followUpNotes: safeRender(selectedLead['Follow Up Notes']),
+                notes: safeRender(selectedLead['Notes']),
+                lastMessageDate: safeRender(selectedLead['Last Message Date'])
               }}
               onUpdate={handleLeadUpdate}
               isUpdating={isUpdating}
