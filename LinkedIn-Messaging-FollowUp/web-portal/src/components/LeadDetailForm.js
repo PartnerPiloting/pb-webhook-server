@@ -10,18 +10,18 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   useEffect(() => {
     if (lead) {
       setFormData({
-        firstName: lead.firstName || '',
-        lastName: lead.lastName || '',
-        linkedinProfileUrl: lead.linkedinProfileUrl || '',
-        viewInSalesNavigator: lead.viewInSalesNavigator || '',
-        email: lead.email || '',
-        notes: lead.notes || '',
-        followUpDate: lead.followUpDate || '',
-        followUpNotes: lead.followUpNotes || '',
-        source: lead.source || '',
-        status: lead.status || '',
-        priority: lead.priority || '',
-        linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
+        firstName: lead.firstName || lead['First Name'] || '',
+        lastName: lead.lastName || lead['Last Name'] || '',
+        linkedinProfileUrl: lead.linkedinProfileUrl || lead['LinkedIn Profile URL'] || '',
+        viewInSalesNavigator: lead.viewInSalesNavigator || lead['View In Sales Navigator'] || '',
+        email: lead.email || lead['Email'] || '',
+        notes: lead.notes || lead['Notes'] || '',
+        followUpDate: lead.followUpDate || lead['Follow-Up Date'] || '',
+        followUpNotes: lead.followUpNotes || lead['Follow-Up Notes'] || '',
+        source: lead.source || lead['Source'] || '',
+        status: lead.status || lead['Status'] || '',
+        priority: lead.priority || lead['Priority'] || '',
+        linkedinConnectionStatus: lead.linkedinConnectionStatus || lead['LinkedIn Connection Status'] || ''
       });
       setHasChanges(false);
     }
@@ -78,7 +78,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <label className="field-label">Profile Key</label>
           <input
             type="text"
-            value={lead.profileKey || 'Auto-generated'}
+            value={lead.profileKey || lead['Profile Key'] || 'Auto-generated'}
             readOnly
             className="form-field"
           />
@@ -90,7 +90,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </label>
           <input
             type="number"
-            value={lead.aiScore || ''}
+            value={lead.aiScore || lead['AI Score'] || ''}
             readOnly
             className="form-field"
             placeholder="Not scored"
@@ -140,25 +140,51 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <ArrowTopRightOnSquareIcon className="h-4 w-4 mr-1" />
             LinkedIn Profile URL *
           </label>
-          <input
-            type="url"
-            value={formData.linkedinProfileUrl}
-            onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
-            className="form-field"
-            placeholder="https://www.linkedin.com/in/username"
-            required
-          />
+          <div className="flex items-center space-x-2">
+            <input
+              type="url"
+              value={formData.linkedinProfileUrl}
+              onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
+              className="form-field flex-1"
+              placeholder="https://www.linkedin.com/in/username"
+              required
+            />
+            {formData.linkedinProfileUrl && (
+              <a
+                href={formData.linkedinProfileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                title="Open LinkedIn Profile"
+              >
+                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              </a>
+            )}
+          </div>
         </div>
 
         <div>
           <label className="field-label">View In Sales Navigator</label>
-          <input
-            type="url"
-            value={formData.viewInSalesNavigator}
-            onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
-            className="form-field"
-            placeholder="https://www.linkedin.com/sales/..."
-          />
+          <div className="flex items-center space-x-2">
+            <input
+              type="url"
+              value={formData.viewInSalesNavigator}
+              onChange={(e) => handleChange('viewInSalesNavigator', e.target.value)}
+              className="form-field flex-1"
+              placeholder="https://www.linkedin.com/sales/..."
+            />
+            {formData.viewInSalesNavigator && (
+              <a
+                href={formData.viewInSalesNavigator}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-3 py-2 border border-blue-300 rounded-md text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                title="Open Sales Navigator"
+              >
+                <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              </a>
+            )}
+          </div>
         </div>
 
         <div>
@@ -311,18 +337,18 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             type="button"
             onClick={() => {
               setFormData({
-                firstName: lead.firstName || '',
-                lastName: lead.lastName || '',
-                linkedinProfileUrl: lead.linkedinProfileUrl || '',
-                viewInSalesNavigator: lead.viewInSalesNavigator || '',
-                email: lead.email || '',
-                notes: lead.notes || '',
-                followUpDate: lead.followUpDate || '',
-                followUpNotes: lead.followUpNotes || '',
-                source: lead.source || '',
-                status: lead.status || '',
-                priority: lead.priority || '',
-                linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
+                firstName: lead.firstName || lead['First Name'] || '',
+                lastName: lead.lastName || lead['Last Name'] || '',
+                linkedinProfileUrl: lead.linkedinProfileUrl || lead['LinkedIn Profile URL'] || '',
+                viewInSalesNavigator: lead.viewInSalesNavigator || lead['View In Sales Navigator'] || '',
+                email: lead.email || lead['Email'] || '',
+                notes: lead.notes || lead['Notes'] || '',
+                followUpDate: lead.followUpDate || lead['Follow-Up Date'] || '',
+                followUpNotes: lead.followUpNotes || lead['Follow-Up Notes'] || '',
+                source: lead.source || lead['Source'] || '',
+                status: lead.status || lead['Status'] || '',
+                priority: lead.priority || lead['Priority'] || '',
+                linkedinConnectionStatus: lead.linkedinConnectionStatus || lead['LinkedIn Connection Status'] || ''
               });
               setHasChanges(false);
             }}
