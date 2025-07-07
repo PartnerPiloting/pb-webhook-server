@@ -55,7 +55,7 @@ api.interceptors.request.use(
       config.params = {};
     }
     if (!config.params.client) {
-      config.params.client = 'guy-wilson'; // TODO: Make this dynamic
+      config.params.client = 'Guy-Wilson'; // TODO: Make this dynamic
     }
     
     return config;
@@ -80,7 +80,7 @@ export const searchLeads = async (query) => {
     const response = await api.get('/leads/search', {
       params: { 
         q: query,
-        client: 'guy-wilson' // TODO: Make this dynamic based on logged-in user
+        client: 'Guy-Wilson' // TODO: Make this dynamic based on logged-in user
       }
     });
     
@@ -106,7 +106,7 @@ export const getLeadById = async (leadId) => {
   try {
     const response = await api.get(`/leads/${leadId}`, {
       params: {
-        client: 'guy-wilson' // TODO: Make this dynamic
+        client: 'Guy-Wilson' // TODO: Make this dynamic
       }
     });
     
@@ -171,7 +171,7 @@ export const updateLead = async (leadId, updateData) => {
     
     const response = await api.put(`/leads/${leadId}`, backendData, {
       params: {
-        client: 'guy-wilson' // TODO: Make this dynamic
+        client: 'Guy-Wilson' // TODO: Make this dynamic
       }
     });
     
