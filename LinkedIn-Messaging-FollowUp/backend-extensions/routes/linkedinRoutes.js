@@ -174,8 +174,8 @@ router.get('/leads/:leadId', async (req, res) => {
             linkedinConnectionStatus: record.get('LinkedIn Connection Status') || '',
             
             // Follow-up fields
-            followUpDate: record.get('Follow Up Date') || '',
-            followUpNotes: record.get('Follow Up Notes') || '',
+            followUpDate: record.get('Follow-Up Date') || '',
+            followUpNotes: record.get('Follow-Up Notes') || '',
             notes: record.get('Notes') || '',
             
             // Message history
@@ -243,7 +243,7 @@ router.put('/leads/:leadId', async (req, res) => {
         const updateFields = {};
         const editableFields = [
             'First Name', 'Last Name', 'LinkedIn Profile URL', 'View In Sales Navigator',
-            'Email', 'Notes', 'Follow Up Date', 'Follow Up Notes', 'Source',
+            'Email', 'Notes', 'Follow-Up Date', 'Follow-Up Notes', 'Source',
             'Status', 'Priority', 'LinkedIn Connection Status'
         ];
 
@@ -255,8 +255,8 @@ router.put('/leads/:leadId', async (req, res) => {
             viewInSalesNavigator: 'View In Sales Navigator',
             email: 'Email',
             notes: 'Notes',
-            followUpDate: 'Follow Up Date',
-            followUpNotes: 'Follow Up Notes',
+            followUpDate: 'Follow-Up Date',
+            followUpNotes: 'Follow-Up Notes',
             source: 'Source',
             status: 'Status',
             priority: 'Priority',
@@ -304,8 +304,8 @@ router.put('/leads/:leadId', async (req, res) => {
             viewInSalesNavigator: record.get('View In Sales Navigator') || '',
             email: record.get('Email') || '',
             notes: record.get('Notes') || '',
-            followUpDate: record.get('Follow Up Date') || '',
-            followUpNotes: record.get('Follow Up Notes') || '',
+            followUpDate: record.get('Follow-Up Date') || '',
+            followUpNotes: record.get('Follow-Up Notes') || '',
             source: record.get('Source') || '',
             status: record.get('Status') || '',
             priority: record.get('Priority') || '',
@@ -362,7 +362,7 @@ router.post('/leads/check-exists', async (req, res) => {
                     firstName: record.get('First Name') || '',
                     lastName: record.get('Last Name') || '',
                     lastMessageDate: record.get('Last Message Date') || null,
-                    followUpDate: record.get('Follow Up Date') || null,
+                    followUpDate: record.get('Follow-Up Date') || null,
                     status: record.get('Status') || ''
                 });
             });
