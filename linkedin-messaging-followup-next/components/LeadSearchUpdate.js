@@ -9,51 +9,58 @@ import LeadDetailForm from './LeadDetailForm';
 // ErrorBoundary wrapper (assume you have or will create this component)
 // import ErrorBoundary from './ErrorBoundary';
 
-const LeadSearchUpdate = ({ leads = [] }) => {
-  console.log('[LeadSearchUpdate] leads prop received:', leads);
-  const safeLeads = leads || [];
+const LeadSearchUpdate = () => {
   const [search, setSearch] = useState('');
+  const [leads, setLeads] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Defensive check: only filter if leads is an array
-  const filteredLeads = Array.isArray(leads)
-    ? safeLeads.filter(lead => {
-        const searchLower = search.toLowerCase();
-        return (
-          lead['First Name']?.toLowerCase().includes(searchLower) ||
-          lead['Last Name']?.toLowerCase().includes(searchLower)
-        );
-      }).sort((a, b) => (a['First Name'] || '').localeCompare(b['First Name'] || ''))
-    : [];
+  // Fetch initial leads on component mount
+  useEffect(() => {
+    fetchInitialLeads();
+  }, []);
+
+  const fetchInitialLeads = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch all leads or recent leads
+      const results = await searchLeads('');
+      setLeads(results || []);
+    } catch (error) {
+      console.error('Failed to fetch initial leads:', error);
+      setMessage({ type: 'error', text: 'Failed to load leads. Please refresh the page.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Debounced search function
   const debouncedSearch = useCallback(
     debounce(async (query) => {
-      if (query.trim().length < 2) {
-        setSelectedLead(null);
-        return;
-      }
-
       setIsLoading(true);
       try {
         const results = await searchLeads(query);
-        setSelectedLead(results[0]);
+        setLeads(results || []);
       } catch (error) {
         console.error('Search error:', error);
         setMessage({ type: 'error', text: 'Search failed. Please try again.' });
       } finally {
         setIsLoading(false);
       }
-    }, []),
+    }, 500),
     []
   );
 
   // Effect to trigger search when query changes
   useEffect(() => {
-    debouncedSearch(search);
+    if (search.trim()) {
+      debouncedSearch(search);
+    } else {
+      // If search is empty, fetch all leads again
+      fetchInitialLeads();
+    }
   }, [search, debouncedSearch]);
 
   // Handle lead update
@@ -97,7 +104,7 @@ const LeadSearchUpdate = ({ leads = [] }) => {
           onChange={e => setSearch(e.target.value)}
         />
         <div className="search-results">
-          {filteredLeads.map(lead => (
+          {leads.map(lead => (
             <div
               key={lead['Profile Key']}
               className={`lead-result-item${selectedLead && selectedLead['Profile Key'] === lead['Profile Key'] ? ' selected' : ''}`}
@@ -107,7 +114,7 @@ const LeadSearchUpdate = ({ leads = [] }) => {
               <div className="text-xs text-gray-500">{lead['Profile Key']}</div>
             </div>
           ))}
-          {filteredLeads.length === 0 && (
+          {leads.length === 0 && (
             <div className="no-results">No leads found.</div>
           )}
         </div>
@@ -136,10 +143,6 @@ const LeadSearchUpdate = ({ leads = [] }) => {
       </div>
     </div>
   );
-};
-
-LeadSearchUpdate.propTypes = {
-  leads: PropTypes.array
 };
 
 export default LeadSearchUpdate;
