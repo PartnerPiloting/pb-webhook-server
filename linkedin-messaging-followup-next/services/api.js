@@ -84,17 +84,31 @@ export const searchLeads = async (query) => {
       }
     });
     
+    console.log('API searchLeads response:', response.data);
+    
+    // Ensure we always return an array
+    if (!response.data) {
+      console.warn('API returned no data');
+      return [];
+    }
+    
+    if (!Array.isArray(response.data)) {
+      console.warn('API returned non-array data:', response.data);
+      return [];
+    }
+    
     // Map backend field names to frontend field names
     const leads = response.data.map(lead => ({
-      'Profile Key': lead.id,
-      'First Name': lead.firstName,
-      'Last Name': lead.lastName,
-      'LinkedIn Profile URL': lead.linkedinProfileUrl,
+      'Profile Key': lead.id || '',
+      'First Name': lead.firstName || '',
+      'Last Name': lead.lastName || '',
+      'LinkedIn Profile URL': lead.linkedinProfileUrl || '',
       'AI Score': lead.aiScore,
-      'Status': lead.status,
-      'Last Message Date': lead.lastMessageDate
+      'Status': lead.status || '',
+      'Last Message Date': lead.lastMessageDate || ''
     }));
     
+    console.log('Mapped leads:', leads);
     return leads;
   } catch (error) {
     console.error('Search error:', error);
