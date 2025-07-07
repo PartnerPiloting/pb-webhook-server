@@ -52,13 +52,7 @@ router.get('/leads/search', async (req, res) => {
             });
         }
 
-        // Allow empty search to return all leads
-        if (searchQuery === undefined || searchQuery === null) {
-            return res.status(400).json({
-                error: 'Search query missing',
-                message: 'Please provide a search query'
-            });
-        }
+        // No validation for searchQuery - allow empty searches to return all leads
 
         // Validate client exists and is active
         const client = await clientService.getClientById(clientId);
