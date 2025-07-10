@@ -155,7 +155,8 @@ export const getLeadById = async (leadId) => {
       'ASH Workshop Email': lead.ashWorkshopEmail,
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
-      phone: lead.phone
+      phone: lead.phone,
+      followUpDate: lead.followUpDate
     };
   } catch (error) {
     throw new Error('Failed to load lead details');
