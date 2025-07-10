@@ -111,6 +111,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       // Debug log to see what date format we're receiving
       console.log('Lead follow-up date from backend:', lead.followUpDate);
       console.log('Lead ASH Workshop Email from backend:', lead.ashWorkshopEmail);
+      console.log('🔍 FORM DEBUG: Type of lead.ashWorkshopEmail:', typeof lead.ashWorkshopEmail);
+      console.log('🔍 FORM DEBUG: Boolean(lead.ashWorkshopEmail):', Boolean(lead.ashWorkshopEmail));
       console.log('Full lead object:', lead);
       
       setFormData({
@@ -120,7 +122,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         viewInSalesNavigator: lead.viewInSalesNavigator || '',
         email: lead.email || '',
         phone: lead.phone || '',
-        ashWorkshopEmail: lead.ashWorkshopEmail || false,
+        ashWorkshopEmail: Boolean(lead.ashWorkshopEmail),
         notes: lead.notes || '',
         followUpDate: convertToISODate(lead.followUpDate),
         source: lead.source || '',
@@ -200,7 +202,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
                   viewInSalesNavigator: lead.viewInSalesNavigator || '',
                   email: lead.email || '',
                   phone: lead.phone || '',
-                  ashWorkshopEmail: lead.ashWorkshopEmail || false,
+                  ashWorkshopEmail: Boolean(lead.ashWorkshopEmail),
                   notes: lead.notes || '',
                   followUpDate: convertToISODate(lead.followUpDate),
                   source: lead.source || '',
@@ -507,8 +509,13 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <div className="flex-1 flex items-center py-2">
               <input
                 type="checkbox"
-                checked={formData.ashWorkshopEmail || false}
-                onChange={(e) => handleChange('ashWorkshopEmail', e.target.checked)}
+                checked={Boolean(formData.ashWorkshopEmail)}
+                onChange={(e) => {
+                  console.log('🔍 CHECKBOX DEBUG: Changing ASH Workshop Email to:', e.target.checked);
+                  console.log('🔍 CHECKBOX DEBUG: Current formData.ashWorkshopEmail:', formData.ashWorkshopEmail);
+                  console.log('🔍 CHECKBOX DEBUG: Type of formData.ashWorkshopEmail:', typeof formData.ashWorkshopEmail);
+                  handleChange('ashWorkshopEmail', e.target.checked);
+                }}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <span className="ml-2 text-sm text-gray-600">
