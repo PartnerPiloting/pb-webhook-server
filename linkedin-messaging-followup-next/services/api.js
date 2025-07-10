@@ -203,8 +203,9 @@ export const updateLead = async (leadId, updateData) => {
     
     console.log('Update response:', response.data);
     
-    // Return the response data directly since backend returns the updated lead
-    return response.data;
+    // Fetch the complete lead data after update to ensure consistency
+    const completeLeadData = await getLeadById(leadId);
+    return completeLeadData;
   } catch (error) {
     console.error('Update lead error:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to update lead');
