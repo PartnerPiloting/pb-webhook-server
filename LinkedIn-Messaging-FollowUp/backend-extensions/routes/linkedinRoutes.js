@@ -159,6 +159,11 @@ router.get('/leads/:leadId', async (req, res) => {
         // Fetch lead record
         const record = await base('Leads').find(leadId);
         
+        // Debug what's actually in Airtable
+        console.log('🔍 DEBUG: Raw Airtable data for Follow-Up Date:', record.get('Follow-Up Date'));
+        console.log('🔍 DEBUG: Raw Airtable data for ASH Workshop Email:', record.get('ASH Workshop Email'));
+        console.log('🔍 DEBUG: All available fields:', record.fields);
+        
         const leadData = {
             id: record.id,
             // Basic information
