@@ -113,6 +113,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
       console.log('Lead ASH Workshop Email from backend:', lead.ashWorkshopEmail);
       console.log('🔍 FORM DEBUG: Type of lead.ashWorkshopEmail:', typeof lead.ashWorkshopEmail);
       console.log('🔍 FORM DEBUG: Boolean(lead.ashWorkshopEmail):', Boolean(lead.ashWorkshopEmail));
+      console.log('🚀 TEST: Frontend deployment working - latest code running!');
       console.log('Full lead object:', lead);
       
       setFormData({
