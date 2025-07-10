@@ -124,6 +124,9 @@ const LeadSearchUpdate = () => {
     setIsLoading(true);
     try {
       const fullLead = await getLeadById(lead['Profile Key']);
+      console.log('Full lead data from API:', fullLead);
+      console.log('Follow-Up Date field:', fullLead['Follow-Up Date']);
+      console.log('followUpDate field:', fullLead.followUpDate);
       setSelectedLead(fullLead);
     } catch (error) {
       console.error('Failed to load lead details:', error);

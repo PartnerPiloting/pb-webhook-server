@@ -110,6 +110,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
     if (lead) {
       // Debug log to see what date format we're receiving
       console.log('Lead follow-up date from backend:', lead.followUpDate);
+      console.log('Lead ASH Workshop Email from backend:', lead.ashWorkshopEmail);
+      console.log('Full lead object:', lead);
       
       setFormData({
         firstName: lead.firstName || '',
@@ -294,17 +296,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
                 </>
               ) : (
                 <>
-                  <div 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 min-h-[180px] text-sm whitespace-pre-wrap cursor-pointer hover:bg-gray-100"
-                    onClick={() => setIsEditingNotes(true)}
-                  >
-                    {formData.notes ? (
-                      <div>{renderTextWithLinks(formData.notes)}</div>
-                    ) : (
-                      <span className="text-gray-400 italic">Click to add notes...</span>
-                    )}
-                  </div>
-                  <div className="mt-2 flex justify-between items-center">
+                  <div className="flex justify-between items-center mb-2">
                     <p className="text-xs text-gray-500">
                       Click to edit. URLs will be clickable.
                     </p>
@@ -315,6 +307,16 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
                     >
                       Edit Notes
                     </button>
+                  </div>
+                  <div 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 min-h-[180px] text-sm whitespace-pre-wrap cursor-pointer hover:bg-gray-100"
+                    onClick={() => setIsEditingNotes(true)}
+                  >
+                    {formData.notes ? (
+                      <div>{renderTextWithLinks(formData.notes)}</div>
+                    ) : (
+                      <span className="text-gray-400 italic">Click to add notes...</span>
+                    )}
                   </div>
                 </>
               )}

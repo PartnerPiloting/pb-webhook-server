@@ -97,7 +97,17 @@ router.get('/leads/search', async (req, res) => {
                     linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
                     aiScore: record.get('AI Score') || null,
                     status: record.get('Status') || '',
-                    lastMessageDate: record.get('Last Message Date') || null
+                    lastMessageDate: record.get('Last Message Date') || null,
+                    // Include all field formats for compatibility
+                    'Profile Key': record.id,
+                    'First Name': record.get('First Name') || '',
+                    'Last Name': record.get('Last Name') || '',
+                    'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
+                    'AI Score': record.get('AI Score') || null,
+                    'Status': record.get('Status') || '',
+                    'Last Message Date': record.get('Last Message Date') || null,
+                    'ASH Workshop Email': record.get('ASH Workshop Email') || false,
+                    'Follow-Up Date': record.get('Follow-Up Date') || ''
                 });
             });
             fetchNextPage();
@@ -185,7 +195,26 @@ router.get('/leads/:leadId', async (req, res) => {
             headline: record.get('Headline') || '',
             jobTitle: record.get('Job Title') || '',
             companyName: record.get('Company Name') || '',
-            about: record.get('About') || ''
+            about: record.get('About') || '',
+            
+            // Also include Airtable field names for compatibility
+            'First Name': record.get('First Name') || '',
+            'Last Name': record.get('Last Name') || '',
+            'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
+            'View In Sales Navigator': record.get('View In Sales Navigator') || '',
+            'Email': record.get('Email') || '',
+            'Phone': record.get('Phone') || '',
+            'ASH Workshop Email': record.get('ASH Workshop Email') || false,
+            'Notes': record.get('Notes') || '',
+            'Follow-Up Date': record.get('Follow-Up Date') || '',
+            'Source': record.get('Source') || '',
+            'Status': record.get('Status') || '',
+            'Priority': record.get('Priority') || '',
+            'LinkedIn Connection Status': record.get('LinkedIn Connection Status') || '',
+            'Profile Key': record.get('Profile Key') || '',
+            'AI Score': record.get('AI Score') || null,
+            'Posts Relevance Percentage': calculatePostsRelevancePercentage(record.get('Post Relevance Score')),
+            'Last Message Date': record.get('Last Message Date') || null
         };
 
         console.log(`Retrieved lead ${leadId} for client ${clientId}`);
