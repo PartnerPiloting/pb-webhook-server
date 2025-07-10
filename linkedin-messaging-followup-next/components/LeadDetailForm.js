@@ -56,6 +56,49 @@ const renderTextWithLinks = (text) => {
   });
 };
 
+// Function to convert date to ISO format for HTML date input
+const convertToISODate = (dateString) => {
+  if (!dateString) return '';
+  
+  console.log('Converting date:', dateString, 'Type:', typeof dateString);
+  
+  // If already in ISO format (YYYY-MM-DD), return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString;
+  }
+  
+  // Try to parse the date
+  let date = new Date(dateString);
+  
+  // If invalid, try MM/DD/YYYY format
+  if (isNaN(date.getTime()) && dateString.includes('/')) {
+    const parts = dateString.split('/');
+    if (parts.length === 3) {
+      // Assuming MM/DD/YYYY format
+      const month = parseInt(parts[0], 10);
+      const day = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+      date = new Date(year, month - 1, day); // month is 0-indexed in JS
+    }
+  }
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid date format:', dateString);
+    return '';
+  }
+  
+  // Convert to YYYY-MM-DD format
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  
+  const isoDate = `${year}-${month}-${day}`;
+  console.log('Converted to ISO:', isoDate);
+  
+  return isoDate;
+};
+
 const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   const [formData, setFormData] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -65,6 +108,9 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   // Initialize form data when lead changes
   useEffect(() => {
     if (lead) {
+      // Debug log to see what date format we're receiving
+      console.log('Lead follow-up date from backend:', lead.followUpDate);
+      
       setFormData({
         firstName: lead.firstName || '',
         lastName: lead.lastName || '',
@@ -74,7 +120,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         phone: lead.phone || '',
         ashWorkshopEmail: lead.ashWorkshopEmail || false,
         notes: lead.notes || '',
-        followUpDate: lead.followUpDate || '',
+        followUpDate: convertToISODate(lead.followUpDate),
         source: lead.source || '',
         status: lead.status || '',
         priority: lead.priority || '',
@@ -154,7 +200,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
                   phone: lead.phone || '',
                   ashWorkshopEmail: lead.ashWorkshopEmail || false,
                   notes: lead.notes || '',
-                  followUpDate: lead.followUpDate || '',
+                  followUpDate: convertToISODate(lead.followUpDate),
                   source: lead.source || '',
                   status: lead.status || '',
                   priority: lead.priority || '',
