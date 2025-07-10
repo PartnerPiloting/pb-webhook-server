@@ -165,6 +165,7 @@ router.get('/leads/:leadId', async (req, res) => {
         console.log('🔍 DEBUG: Raw Airtable data for ASH Wshop Email:', record.get('ASH Wshop Email'));
         console.log('🔍 DEBUG: All available fields:', Object.keys(record.fields));
         console.log('🔍 DEBUG: All field values:', record.fields);
+        console.log('🔍 DEBUG: Lead being sent to frontend - ASH Workshop Email field:', record.get('ASH Workshop Email'));
         
         const leadData = {
             id: record.id,
