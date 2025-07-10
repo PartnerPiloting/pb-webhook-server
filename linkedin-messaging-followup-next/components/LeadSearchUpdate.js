@@ -124,9 +124,6 @@ const LeadSearchUpdate = () => {
     setIsLoading(true);
     try {
       const fullLead = await getLeadById(lead['Profile Key']);
-      console.log('Full lead data from API:', fullLead);
-      console.log('Follow-Up Date field:', fullLead['Follow-Up Date']);
-      console.log('followUpDate field:', fullLead.followUpDate);
       setSelectedLead(fullLead);
     } catch (error) {
       console.error('Failed to load lead details:', error);
@@ -142,14 +139,7 @@ const LeadSearchUpdate = () => {
 
     setIsUpdating(true);
     try {
-      console.log('🔍 UPDATE DEBUG: Original selectedLead Follow-up Date:', selectedLead['Follow Up Date']);
-      console.log('🔍 UPDATE DEBUG: Original selectedLead followUpDate:', selectedLead.followUpDate);
-      
       const updated = await updateLead(selectedLead.id || selectedLead['Profile Key'], updatedData);
-      
-      console.log('🔍 UPDATE DEBUG: Updated response Follow-up Date:', updated['Follow Up Date']);
-      console.log('🔍 UPDATE DEBUG: Updated response followUpDate:', updated.followUpDate);
-      console.log('🔍 UPDATE DEBUG: Full updated response:', updated);
       
       setSelectedLead(updated);
       setMessage({ type: 'success', text: 'Lead updated successfully!' });

@@ -60,8 +60,6 @@ const renderTextWithLinks = (text) => {
 const convertToISODate = (dateString) => {
   if (!dateString) return '';
   
-  console.log('Converting date:', dateString, 'Type:', typeof dateString);
-  
   // If already in ISO format (YYYY-MM-DD), return as is
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     return dateString;
@@ -84,7 +82,6 @@ const convertToISODate = (dateString) => {
   
   // Check if date is valid
   if (isNaN(date.getTime())) {
-    console.warn('Invalid date format:', dateString);
     return '';
   }
   
@@ -93,10 +90,7 @@ const convertToISODate = (dateString) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   
-  const isoDate = `${year}-${month}-${day}`;
-  console.log('Converted to ISO:', isoDate);
-  
-  return isoDate;
+  return `${year}-${month}-${day}`;
 };
 
 const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
@@ -108,17 +102,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   // Initialize form data when lead changes
   useEffect(() => {
     if (lead) {
-      // Debug log to see what date format we're receiving
-      console.log('🔍 FORM USEEFFECT: Follow-up date from lead.followUpDate:', lead.followUpDate);
-      console.log('🔍 FORM USEEFFECT: Follow-up date from lead["Follow Up Date"]:', lead['Follow Up Date']);
-      console.log('🔍 FORM USEEFFECT: Lead ID:', lead.id);
-      console.log('🔍 FORM USEEFFECT: convertToISODate result:', convertToISODate(lead.followUpDate));
-      console.log('🔍 FORM USEEFFECT: All lead keys:', Object.keys(lead));
-      console.log('Lead ASH Workshop Email from backend:', lead.ashWorkshopEmail);
-      console.log('🔍 FORM DEBUG: Type of lead.ashWorkshopEmail:', typeof lead.ashWorkshopEmail);
-      console.log('🔍 FORM DEBUG: Boolean(lead.ashWorkshopEmail):', Boolean(lead.ashWorkshopEmail));
-      console.log('🚀 TEST: Frontend deployment working - latest code running!');
-      console.log('Full lead object:', lead);
+
       
       setFormData({
         firstName: lead.firstName || '',
@@ -515,12 +499,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               <input
                 type="checkbox"
                 checked={Boolean(formData.ashWorkshopEmail)}
-                onChange={(e) => {
-                  console.log('🔍 CHECKBOX DEBUG: Changing ASH Workshop Email to:', e.target.checked);
-                  console.log('🔍 CHECKBOX DEBUG: Current formData.ashWorkshopEmail:', formData.ashWorkshopEmail);
-                  console.log('🔍 CHECKBOX DEBUG: Type of formData.ashWorkshopEmail:', typeof formData.ashWorkshopEmail);
-                  handleChange('ashWorkshopEmail', e.target.checked);
-                }}
+                onChange={(e) => handleChange('ashWorkshopEmail', e.target.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <span className="ml-2 text-sm text-gray-600">

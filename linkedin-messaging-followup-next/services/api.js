@@ -84,21 +84,17 @@ export const searchLeads = async (query) => {
       }
     });
     
-    console.log('API searchLeads response:', response.data);
-    
     // Ensure we always return an array
     if (!response.data) {
-      console.warn('API returned no data');
       return [];
     }
     
     if (!Array.isArray(response.data)) {
-      console.warn('API returned non-array data:', response.data);
       return [];
     }
     
     // Map backend field names to frontend field names
-    const leads = response.data.map(lead => ({
+    return response.data.map(lead => ({
       'Profile Key': lead.id || '',
       'First Name': lead.firstName || '',
       'Last Name': lead.lastName || '',
@@ -107,9 +103,6 @@ export const searchLeads = async (query) => {
       'Status': lead.status || '',
       'Last Message Date': lead.lastMessageDate || ''
     }));
-    
-    console.log('Mapped leads:', leads);
-    return leads;
   } catch (error) {
     console.error('Search error:', error);
     throw new Error('Failed to search leads');
@@ -165,8 +158,6 @@ export const getLeadById = async (leadId) => {
 
 export const updateLead = async (leadId, updateData) => {
   try {
-    console.log('Updating lead:', leadId, 'with data:', updateData);
-    
     // Map frontend field names to backend field names
     const backendData = {};
     const fieldMapping = {
@@ -193,19 +184,14 @@ export const updateLead = async (leadId, updateData) => {
       }
     });
     
-    console.log('Sending backend data:', backendData);
-    
     const response = await api.put(`/leads/${leadId}`, backendData, {
       params: {
         client: 'Guy-Wilson' // Backend expects this as URL parameter for now
       }
     });
     
-    console.log('Update response:', response.data);
-    
-    // Fetch the complete lead data after update to ensure consistency
-    const completeLeadData = await getLeadById(leadId);
-    return completeLeadData;
+    // Return the response data directly since backend returns the updated lead
+    return response.data;
   } catch (error) {
     console.error('Update lead error:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to update lead');
