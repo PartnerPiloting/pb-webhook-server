@@ -289,7 +289,7 @@ const LeadSearchUpdate = () => {
                 status: safeRender(selectedLead['Status']),
                 priority: safeRender(selectedLead['Priority']),
                 linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
-                followUpDate: safeRender(selectedLead['Follow Up Date']),
+                followUpDate: safeRender(selectedLead.followUpDate),
                 notes: safeRender(selectedLead['Notes']),
                 lastMessageDate: safeRender(selectedLead['Last Message Date'])
               }}
