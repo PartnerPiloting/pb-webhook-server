@@ -134,6 +134,7 @@ export const getLeadById = async (leadId) => {
       'LinkedIn Profile URL': lead.linkedinProfileUrl,
       'View In Sales Navigator': lead.viewInSalesNavigator,
       'Email': lead.email,
+      'Phone': lead.phone,
       'AI Score': lead.aiScore,
       'Posts Relevance Score': lead.postsRelevanceScore,
       'Posts Relevance Percentage': lead.postsRelevancePercentage,
@@ -153,7 +154,8 @@ export const getLeadById = async (leadId) => {
       'About': lead.about,
       'ASH Workshop Email': lead.ashWorkshopEmail,
       // Also include camelCase for compatibility
-      ashWorkshopEmail: lead.ashWorkshopEmail
+      ashWorkshopEmail: lead.ashWorkshopEmail,
+      phone: lead.phone
     };
   } catch (error) {
     throw new Error('Failed to load lead details');
@@ -172,6 +174,7 @@ export const updateLead = async (leadId, updateData) => {
       'linkedinProfileUrl': 'linkedinProfileUrl',
       'viewInSalesNavigator': 'viewInSalesNavigator',
       'email': 'email',
+      'phone': 'phone',
       'notes': 'notes',
       'followUpDate': 'followUpDate',
       'followUpNotes': 'followUpNotes',
