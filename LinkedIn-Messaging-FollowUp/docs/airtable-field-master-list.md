@@ -12,7 +12,7 @@
 | `View In Sales Navigator` | URL | Yes | No | None | Manual entry from address bar |
 | `Email` | Email | Yes | No | Email format | Can be empty |
 | `Phone` | Text | Yes | No | None | Phone number, any format |
-| `Add to Workshop Invite List` | Checkbox | Yes | No | Boolean | Workshop invitation tracking |
+| `ASH Workshop Email` | Checkbox | Yes | No | Boolean | Workshop invitation tracking |
 
 ### **Profile Key Formula**
 ```
@@ -44,8 +44,7 @@ LOWER(
 | Field Name | Type | Editable | Format | Description |
 |------------|------|----------|--------|-------------|
 | `Notes` | Long Text | Yes | Rich text | Manual + auto-captured conversations |
-| `Follow Up Date` | Date | Yes | Local timezone | Next contact scheduling |
-| `Follow Up Notes` | Text | Yes | Plain text | Context for next interaction |
+| `Follow-Up Date` | Date | Yes | Local timezone | Next contact scheduling |
 
 ### **Status Tracking**
 | Field Name | Type | Options | Description |
@@ -87,7 +86,7 @@ LOWER(
 ### **Guy-Specific Functionality**
 | Field Name | Type | Editable | Visibility | Description |
 |------------|------|----------|------------|-------------|
-| `Add to Workshop Invite List` | Checkbox | Yes | Owner-only | Workshop invitation tracking |
+| `ASH Workshop Email` | Checkbox | Yes | Owner-only | Workshop invitation tracking |
 
 ## Existing Fields (Reference Only)
 
@@ -117,10 +116,9 @@ const fieldVisibility = {
   "View In Sales Navigator": { visible: true, editable: true },
   "Email": { visible: true, editable: true },
   "Phone": { visible: true, editable: true },
-  "Add to Workshop Invite List": { visible: true, editable: true },
+  "ASH Workshop Email": { visible: true, editable: true },
   "Notes": { visible: true, editable: true },
-  "Follow Up Date": { visible: true, editable: true },
-  "Follow Up Notes": { visible: true, editable: true },
+  "Follow-Up Date": { visible: true, editable: true },
   
   // Read-only fields
   "Profile Key": { visible: true, editable: false },
@@ -139,8 +137,7 @@ const fieldVisibility = {
 ### **Primary Fields Used**
 - `LinkedIn Profile URL` - Lead identification
 - `Notes` - Conversation capture
-- `Follow Up Date` - Follow-up scheduling
-- `Follow Up Notes` - Follow-up context
+- `Follow-Up Date` - Follow-up scheduling
 - `LinkedIn Messages` - Message history (JSON)
 - `Last Message Date` - Timeline tracking
 - `Extension Last Sync` - Sync status

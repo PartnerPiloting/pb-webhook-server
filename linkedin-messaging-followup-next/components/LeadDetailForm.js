@@ -30,10 +30,37 @@ const formatDate = (dateString) => {
   }
 };
 
+// Function to detect and convert URLs to clickable links
+const renderTextWithLinks = (text) => {
+  if (!text) return null;
+  
+  // URL regex pattern
+  const urlPattern = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlPattern);
+  
+  return parts.map((part, index) => {
+    if (part.match(urlPattern)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 underline"
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
 const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   const [formData, setFormData] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
   const [editingField, setEditingField] = useState(null); // Track which field is being edited
+  const [isEditingNotes, setIsEditingNotes] = useState(false); // Track notes editing state
 
   // Initialize form data when lead changes
   useEffect(() => {
@@ -45,7 +72,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
         viewInSalesNavigator: lead.viewInSalesNavigator || '',
         email: lead.email || '',
         phone: lead.phone || '',
-        addToWorkshopInviteList: lead.addToWorkshopInviteList || false,
+        ashWorkshopEmail: lead.ashWorkshopEmail || false,
         notes: lead.notes || '',
         followUpDate: lead.followUpDate || '',
         source: lead.source || '',
@@ -84,7 +111,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   const fieldConfig = {
     editable: [
       'firstName', 'lastName', 'linkedinProfileUrl', 'viewInSalesNavigator', 
-      'email', 'phone', 'addToWorkshopInviteList', 'notes', 'followUpDate', 'followUpNotes', 'source', 
+      'email', 'phone', 'ashWorkshopEmail', 'notes', 'followUpDate', 'source', 
       'status', 'priority', 'linkedinConnectionStatus'
     ],
     readonly: ['profileKey', 'aiScore', 'postsRelevancePercentage', 'lastMessageDate'],
@@ -107,6 +134,58 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Action Buttons - Moved to top */}
+      <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+        <div className="text-sm text-gray-500">
+          {hasChanges ? 'You have unsaved changes' : 'All changes saved'}
+        </div>
+        
+        <div className="flex space-x-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (lead) {
+                setFormData({
+                  firstName: lead.firstName || '',
+                  lastName: lead.lastName || '',
+                  linkedinProfileUrl: lead.linkedinProfileUrl || '',
+                  viewInSalesNavigator: lead.viewInSalesNavigator || '',
+                  email: lead.email || '',
+                  phone: lead.phone || '',
+                  ashWorkshopEmail: lead.ashWorkshopEmail || false,
+                  notes: lead.notes || '',
+                  followUpDate: lead.followUpDate || '',
+                  source: lead.source || '',
+                  status: lead.status || '',
+                  priority: lead.priority || '',
+                  linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
+                });
+                setHasChanges(false);
+              }
+            }}
+            className="btn-secondary"
+            disabled={!hasChanges || isUpdating}
+          >
+            Reset Changes
+          </button>
+          
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={!hasChanges || isUpdating}
+          >
+            {isUpdating ? (
+              <span className="inline-flex items-center">
+                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                Updating...
+              </span>
+            ) : (
+              'Update Lead'
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Follow-up Management - Top Priority Section */}
       <div className="space-y-6">
         <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center">
@@ -147,13 +226,52 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               Notes
             </label>
             <div className="flex-1">
-              <textarea
-                value={formData.notes || ''}
-                onChange={(e) => handleChange('notes', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[180px] resize-y text-sm"
-                rows={9}
-                placeholder="Add manual notes here. LinkedIn conversations will be automatically captured and appended..."
-              />
+              {isEditingNotes ? (
+                <>
+                  <textarea
+                    value={formData.notes || ''}
+                    onChange={(e) => handleChange('notes', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[180px] resize-y text-sm"
+                    rows={9}
+                    placeholder="Add manual notes here. LinkedIn conversations will be automatically captured and appended..."
+                    autoFocus
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingNotes(false)}
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      Done Editing
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div 
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 min-h-[180px] text-sm whitespace-pre-wrap cursor-pointer hover:bg-gray-100"
+                    onClick={() => setIsEditingNotes(true)}
+                  >
+                    {formData.notes ? (
+                      <div>{renderTextWithLinks(formData.notes)}</div>
+                    ) : (
+                      <span className="text-gray-400 italic">Click to add notes...</span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex justify-between items-center">
+                    <p className="text-xs text-gray-500">
+                      Click to edit. URLs will be clickable.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingNotes(true)}
+                      className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                    >
+                      Edit Notes
+                    </button>
+                  </div>
+                </>
+              )}
               <p className="text-xs text-gray-500 mt-2">
                 Chrome extension automatically captures LinkedIn conversations with timestamps.
                 Manual notes are preserved separately.
@@ -341,8 +459,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
             <div className="flex-1 flex items-center py-2">
               <input
                 type="checkbox"
-                checked={formData.addToWorkshopInviteList || false}
-                onChange={(e) => handleChange('addToWorkshopInviteList', e.target.checked)}
+                checked={formData.ashWorkshopEmail || false}
+                onChange={(e) => handleChange('ashWorkshopEmail', e.target.checked)}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <span className="ml-2 text-sm text-gray-600">
@@ -450,58 +568,6 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           </p>
         </div>
       )}
-
-      {/* Action Buttons */}
-      <div className="flex justify-between items-center pt-6 border-t border-gray-200">
-        <div className="text-sm text-gray-500">
-          {hasChanges ? 'You have unsaved changes' : 'All changes saved'}
-        </div>
-        
-        <div className="flex space-x-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (lead) {
-                setFormData({
-                  firstName: lead.firstName || '',
-                  lastName: lead.lastName || '',
-                  linkedinProfileUrl: lead.linkedinProfileUrl || '',
-                  viewInSalesNavigator: lead.viewInSalesNavigator || '',
-                  email: lead.email || '',
-                  phone: lead.phone || '',
-                  addToWorkshopInviteList: lead.addToWorkshopInviteList || false,
-                  notes: lead.notes || '',
-                  followUpDate: lead.followUpDate || '',
-                  source: lead.source || '',
-                  status: lead.status || '',
-                  priority: lead.priority || '',
-                  linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
-                });
-                setHasChanges(false);
-              }
-            }}
-            className="btn-secondary"
-            disabled={!hasChanges || isUpdating}
-          >
-            Reset Changes
-          </button>
-          
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={!hasChanges || isUpdating}
-          >
-            {isUpdating ? (
-              <span className="inline-flex items-center">
-                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                Updating...
-              </span>
-            ) : (
-              'Update Lead'
-            )}
-          </button>
-        </div>
-      </div>
     </form>
   );
 };

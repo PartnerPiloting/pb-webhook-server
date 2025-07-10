@@ -158,7 +158,7 @@ router.get('/leads/:leadId', async (req, res) => {
             viewInSalesNavigator: record.get('View In Sales Navigator') || '',
             email: record.get('Email') || '',
             phone: record.get('Phone') || '',
-            addToWorkshopInviteList: record.get('Add to Workshop Invite List') || false,
+            ashWorkshopEmail: record.get('ASH Workshop Email') || false,
             
             // Read-only fields
             profileKey: record.get('Profile Key') || '',
@@ -244,7 +244,7 @@ router.put('/leads/:leadId', async (req, res) => {
         const updateFields = {};
         const editableFields = [
             'First Name', 'Last Name', 'LinkedIn Profile URL', 'View In Sales Navigator',
-            'Email', 'Phone', 'Add to Workshop Invite List', 'Notes', 'Follow-Up Date', 'Source',
+            'Email', 'Phone', 'ASH Workshop Email', 'Notes', 'Follow-Up Date', 'Source',
             'Status', 'Priority', 'LinkedIn Connection Status'
         ];
 
@@ -256,7 +256,7 @@ router.put('/leads/:leadId', async (req, res) => {
             viewInSalesNavigator: 'View In Sales Navigator',
             email: 'Email',
             phone: 'Phone',
-            addToWorkshopInviteList: 'Add to Workshop Invite List',
+            ashWorkshopEmail: 'ASH Workshop Email',
             notes: 'Notes',
             followUpDate: 'Follow-Up Date',
             source: 'Source',
@@ -282,7 +282,7 @@ router.put('/leads/:leadId', async (req, res) => {
                 // Handle date fields - convert empty strings to null
                 if (reactFieldName === 'followUpDate') {
                     updateFields[airtableFieldName] = value || null;
-                } else if (reactFieldName === 'addToWorkshopInviteList') {
+                } else if (reactFieldName === 'ashWorkshopEmail') {
                     // Handle checkbox field - convert to boolean
                     updateFields[airtableFieldName] = Boolean(value);
                 } else if (isSelectField(airtableFieldName)) {
@@ -325,7 +325,7 @@ router.put('/leads/:leadId', async (req, res) => {
             'View In Sales Navigator': record.get('View In Sales Navigator') || '',
             'Email': record.get('Email') || '',
             'Phone': record.get('Phone') || '',
-            'Add to Workshop Invite List': record.get('Add to Workshop Invite List') || false,
+            'ASH Workshop Email': record.get('ASH Workshop Email') || false,
             'Notes': record.get('Notes') || '',
             'Follow-Up Date': record.get('Follow-Up Date') || '',
             'Source': record.get('Source') || '',
@@ -346,7 +346,7 @@ router.put('/leads/:leadId', async (req, res) => {
             viewInSalesNavigator: record.get('View In Sales Navigator') || '',
             email: record.get('Email') || '',
             phone: record.get('Phone') || '',
-            addToWorkshopInviteList: record.get('Add to Workshop Invite List') || false,
+            ashWorkshopEmail: record.get('ASH Workshop Email') || false,
             notes: record.get('Notes') || '',
             followUpDate: record.get('Follow-Up Date') || '',
             source: record.get('Source') || '',

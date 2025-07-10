@@ -270,14 +270,15 @@ const LeadSearchUpdate = () => {
                 linkedinProfileUrl: safeRender(selectedLead['LinkedIn Profile URL']),
                 viewInSalesNavigator: safeRender(selectedLead['View In Sales Navigator']),
                 email: safeRender(selectedLead['Email']),
+                phone: safeRender(selectedLead['Phone']),
+                ashWorkshopEmail: selectedLead['ASH Workshop Email'] || false,
                 aiScore: selectedLead['AI Score'],
                 postsRelevancePercentage: selectedLead['Posts Relevance Percentage'],
                 source: safeRender(selectedLead['Source']),
                 status: safeRender(selectedLead['Status']),
                 priority: safeRender(selectedLead['Priority']),
                 linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
-                followUpDate: safeRender(selectedLead['Follow Up Date']),
-                followUpNotes: safeRender(selectedLead['Follow Up Notes']),
+                followUpDate: safeRender(selectedLead['Follow-Up Date']),
                 notes: safeRender(selectedLead['Notes']),
                 lastMessageDate: safeRender(selectedLead['Last Message Date'])
               }}
