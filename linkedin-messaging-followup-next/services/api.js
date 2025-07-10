@@ -150,7 +150,10 @@ export const getLeadById = async (leadId) => {
       'Headline': lead.headline,
       'Job Title': lead.jobTitle,
       'Company Name': lead.companyName,
-      'About': lead.about
+      'About': lead.about,
+      'ASH Workshop Email': lead.ashWorkshopEmail,
+      // Also include camelCase for compatibility
+      ashWorkshopEmail: lead.ashWorkshopEmail
     };
   } catch (error) {
     throw new Error('Failed to load lead details');
@@ -175,7 +178,8 @@ export const updateLead = async (leadId, updateData) => {
       'source': 'source',
       'status': 'status',
       'priority': 'priority',
-      'linkedinConnectionStatus': 'linkedinConnectionStatus'
+      'linkedinConnectionStatus': 'linkedinConnectionStatus',
+      'ashWorkshopEmail': 'ashWorkshopEmail'
     };
     
     Object.keys(updateData).forEach(frontendField => {
