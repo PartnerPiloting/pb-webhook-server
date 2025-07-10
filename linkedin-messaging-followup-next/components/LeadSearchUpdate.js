@@ -274,7 +274,7 @@ const LeadSearchUpdate = () => {
                 viewInSalesNavigator: safeRender(selectedLead['View In Sales Navigator']),
                 email: safeRender(selectedLead['Email']),
                 phone: safeRender(selectedLead['Phone']),
-                ashWorkshopEmail: selectedLead['ASH Workshop Email'] || false,
+                ashWorkshopEmail: Boolean(selectedLead['ASH Workshop Email']),
                 aiScore: selectedLead['AI Score'],
                 postsRelevancePercentage: selectedLead['Posts Relevance Percentage'],
                 source: safeRender(selectedLead['Source']),
