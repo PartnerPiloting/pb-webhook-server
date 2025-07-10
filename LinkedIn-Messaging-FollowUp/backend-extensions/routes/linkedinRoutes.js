@@ -318,7 +318,9 @@ router.put('/leads/:leadId', async (req, res) => {
                 
                 // Handle date fields - convert empty strings to null
                 if (reactFieldName === 'followUpDate') {
+                    console.log('🔍 DEBUG: Follow-up date update - incoming value:', value, 'type:', typeof value);
                     updateFields[airtableFieldName] = value || null;
+                    console.log('🔍 DEBUG: Follow-up date update - sending to Airtable:', updateFields[airtableFieldName]);
                 } else if (reactFieldName === 'ashWorkshopEmail') {
                     // Handle checkbox field - convert to boolean
                     updateFields[airtableFieldName] = Boolean(value);
