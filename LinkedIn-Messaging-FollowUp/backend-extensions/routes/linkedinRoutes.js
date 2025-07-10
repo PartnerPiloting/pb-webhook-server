@@ -106,7 +106,7 @@ router.get('/leads/search', async (req, res) => {
                     'AI Score': record.get('AI Score') || null,
                     'Status': record.get('Status') || '',
                     'Last Message Date': record.get('Last Message Date') || null,
-                    'ASH Workshop Email': record.get('ASH Workshop Email') || false,
+                    'ASH Workshop Email': Boolean(record.get('ASH Workshop Email')),
                     'Follow-Up Date': record.get('Follow-Up Date') || ''
                 });
             });
