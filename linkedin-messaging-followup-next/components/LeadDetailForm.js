@@ -109,7 +109,11 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
   useEffect(() => {
     if (lead) {
       // Debug log to see what date format we're receiving
-      console.log('Lead follow-up date from backend:', lead.followUpDate);
+      console.log('🔍 FORM USEEFFECT: Follow-up date from lead.followUpDate:', lead.followUpDate);
+      console.log('🔍 FORM USEEFFECT: Follow-up date from lead["Follow Up Date"]:', lead['Follow Up Date']);
+      console.log('🔍 FORM USEEFFECT: Lead ID:', lead.id);
+      console.log('🔍 FORM USEEFFECT: convertToISODate result:', convertToISODate(lead.followUpDate));
+      console.log('🔍 FORM USEEFFECT: All lead keys:', Object.keys(lead));
       console.log('Lead ASH Workshop Email from backend:', lead.ashWorkshopEmail);
       console.log('🔍 FORM DEBUG: Type of lead.ashWorkshopEmail:', typeof lead.ashWorkshopEmail);
       console.log('🔍 FORM DEBUG: Boolean(lead.ashWorkshopEmail):', Boolean(lead.ashWorkshopEmail));
