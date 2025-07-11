@@ -126,6 +126,178 @@ router.get('/leads/search', async (req, res) => {
 });
 
 /**
+ * Get leads due for follow-up (today or earlier)
+ * GET /api/linkedin/leads/follow-ups
+ */
+router.get('/leads/follow-ups', async (req, res) => {
+    try {
+        const { client: clientId } = req.query;
+        
+        // For testing: get client from URL parameter
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        // Validate client exists and is active
+        const client = await clientService.getClientById(clientId);
+        if (!client) {
+            return res.status(404).json({
+                error: 'Client not found',
+                message: `Client '${clientId}' does not exist in master Clients base`
+            });
+        }
+        
+        if (client.status !== 'Active') {
+            return res.status(403).json({
+                error: 'Client inactive',
+                message: `Client '${clientId}' status is '${client.status}', expected 'Active'`
+            });
+        }
+
+        console.log(`Getting follow-ups for client: ${client.clientName} (${clientId}) → Base: ${client.airtableBaseId}`);
+
+        // Get client's Airtable base
+        const base = await getClientBase(clientId);
+        const leads = [];
+
+        // Get today's date in YYYY-MM-DD format for comparison
+        const currentDate = new Date();
+        const todayStr = currentDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        
+        console.log(`Looking for follow-ups due on or before: ${todayStr}`);
+
+        // TEST: Check what tables exist in this base
+        console.log('🔍 DEBUG: Base object:', typeof base);
+        console.log('🔍 DEBUG: Base ID being used:', client.airtableBaseId);
+        console.log('🔍 DEBUG: About to try querying "Leads" table...');
+
+        try {
+            await base('Leads').select({
+            // NO filterByFormula - just get any leads
+            maxRecords: 200, // Reasonable limit for follow-ups
+            sort: [
+                { field: 'First Name', direction: 'asc' },
+                { field: 'Last Name', direction: 'asc' }
+            ]
+        }).eachPage((records, fetchNextPage) => {
+            console.log('🔍 DEBUG: Airtable returned', records.length, 'records from filter');
+            
+            records.forEach((record, index) => {
+                const followUpDate = record.get('Follow-Up Date');
+                const followUpDateStr = followUpDate || '';
+                
+                console.log(`🔍 DEBUG: Record ${index + 1}:`, {
+                    id: record.id,
+                    firstName: record.get('First Name'),
+                    lastName: record.get('Last Name'),
+                    followUpDate: followUpDate,
+                    followUpDateStr: followUpDateStr,
+                    followUpDateType: typeof followUpDate
+                });
+                
+                // Calculate days difference for display
+                let daysUntilFollowUp = null;
+                if (followUpDate) {
+                    const followUpDateObj = new Date(followUpDate);
+                    const diffTime = followUpDateObj - currentDate;
+                    daysUntilFollowUp = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+
+                leads.push({
+                    id: record.id,
+                    firstName: record.get('First Name') || '',
+                    lastName: record.get('Last Name') || '',
+                    linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
+                    followUpDate: followUpDateStr,
+                    daysUntilFollowUp: daysUntilFollowUp, // Negative = overdue, 0 = today, positive = future
+                    aiScore: record.get('AI Score') || null,
+                    status: record.get('Status') || '',
+                    lastMessageDate: record.get('Last Message Date') || null,
+                    notes: record.get('Notes') || '',
+                    
+                    // Include all field formats for compatibility with existing form
+                    'Profile Key': record.id,
+                    'First Name': record.get('First Name') || '',
+                    'Last Name': record.get('Last Name') || '',
+                    'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
+                    'View In Sales Navigator': record.get('View In Sales Navigator') || '',
+                    'Email': record.get('Email') || '',
+                    'Phone': record.get('Phone') || '',
+                    'ASH Workshop Email': Boolean(record.get('ASH Workshop Email')),
+                    'Notes': record.get('Notes') || '',
+                    'Follow-Up Date': followUpDateStr,
+                    'Source': record.get('Source') || '',
+                    'Status': record.get('Status') || '',
+                    'Priority': record.get('Priority') || '',
+                    'LinkedIn Connection Status': record.get('LinkedIn Connection Status') || '',
+                    'AI Score': record.get('AI Score') || null,
+                    'Last Message Date': record.get('Last Message Date') || null
+                });
+            });
+            fetchNextPage();
+        });
+
+        console.log(`🔍 DEBUG: Follow-ups query returned ${leads.length} results for client ${clientId} (${client.clientName})`);
+        
+        // Log some stats for debugging
+        const overdue = leads.filter(lead => lead.daysUntilFollowUp < 0).length;
+        const dueToday = leads.filter(lead => lead.daysUntilFollowUp === 0).length;
+        console.log(`🔍 DEBUG: Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
+        
+        // If no results, let's also check if there are ANY leads with follow-up dates at all
+        if (leads.length === 0) {
+            console.log('🔍 DEBUG: No results from filter. Let\'s check if ANY leads have follow-up dates...');
+            
+            const testLeads = [];
+            await base('Leads').select({
+                filterByFormula: `NOT({Follow-Up Date} = BLANK())`,
+                maxRecords: 10
+            }).eachPage((records, fetchNextPage) => {
+                records.forEach(record => {
+                    const followUpDate = record.get('Follow-Up Date');
+                    testLeads.push({
+                        id: record.id,
+                        firstName: record.get('First Name'),
+                        lastName: record.get('Last Name'),
+                        followUpDate: followUpDate,
+                        followUpDateStr: followUpDate || '',
+                        followUpDateType: typeof followUpDate
+                    });
+                });
+                fetchNextPage();
+            });
+            
+            console.log('🔍 DEBUG: Found', testLeads.length, 'leads with ANY follow-up date:');
+            testLeads.forEach((lead, index) => {
+                console.log(`🔍 DEBUG: Lead ${index + 1}:`, lead);
+            });
+        }
+        
+        res.json(leads);
+
+        } catch (error) {
+            console.error('🔍 DEBUG: Error querying Leads table:', error);
+            console.error('🔍 DEBUG: Error details:', {
+                message: error.message,
+                statusCode: error.statusCode,
+                type: error.type
+            });
+            throw error; // Re-throw to be caught by outer catch
+        }
+
+    } catch (error) {
+        console.error('Follow-ups query error:', error);
+        res.status(500).json({
+            error: 'Follow-ups query failed',
+            message: 'Unable to retrieve follow-up leads'
+        });
+    }
+});
+
+/**
  * Get detailed lead information by ID
  * GET /api/linkedin/leads/:leadId
  */
@@ -674,178 +846,6 @@ router.delete('/leads/:leadId', async (req, res) => {
                 message: error.message || 'Unable to delete lead'
             });
         }
-    }
-});
-
-/**
- * Get leads due for follow-up (today or earlier)
- * GET /api/linkedin/leads/follow-ups
- */
-router.get('/leads/follow-ups', async (req, res) => {
-    try {
-        const { client: clientId } = req.query;
-        
-        // For testing: get client from URL parameter
-        if (!clientId) {
-            return res.status(400).json({
-                error: 'Client parameter required',
-                message: 'Please provide ?client=guy-wilson in URL for testing'
-            });
-        }
-
-        // Validate client exists and is active
-        const client = await clientService.getClientById(clientId);
-        if (!client) {
-            return res.status(404).json({
-                error: 'Client not found',
-                message: `Client '${clientId}' does not exist in master Clients base`
-            });
-        }
-        
-        if (client.status !== 'Active') {
-            return res.status(403).json({
-                error: 'Client inactive',
-                message: `Client '${clientId}' status is '${client.status}', expected 'Active'`
-            });
-        }
-
-        console.log(`Getting follow-ups for client: ${client.clientName} (${clientId}) → Base: ${client.airtableBaseId}`);
-
-        // Get client's Airtable base
-        const base = await getClientBase(clientId);
-        const leads = [];
-
-        // Get today's date in YYYY-MM-DD format for comparison
-        const currentDate = new Date();
-        const todayStr = currentDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
-        
-        console.log(`Looking for follow-ups due on or before: ${todayStr}`);
-
-        // TEST: Check what tables exist in this base
-        console.log('🔍 DEBUG: Base object:', typeof base);
-        console.log('🔍 DEBUG: Base ID being used:', client.airtableBaseId);
-        console.log('🔍 DEBUG: About to try querying "Leads" table...');
-
-        try {
-            await base('Leads').select({
-            // NO filterByFormula - just get any leads
-            maxRecords: 200, // Reasonable limit for follow-ups
-            sort: [
-                { field: 'First Name', direction: 'asc' },
-                { field: 'Last Name', direction: 'asc' }
-            ]
-        }).eachPage((records, fetchNextPage) => {
-            console.log('🔍 DEBUG: Airtable returned', records.length, 'records from filter');
-            
-            records.forEach((record, index) => {
-                const followUpDate = record.get('Follow-Up Date');
-                const followUpDateStr = followUpDate || '';
-                
-                console.log(`🔍 DEBUG: Record ${index + 1}:`, {
-                    id: record.id,
-                    firstName: record.get('First Name'),
-                    lastName: record.get('Last Name'),
-                    followUpDate: followUpDate,
-                    followUpDateStr: followUpDateStr,
-                    followUpDateType: typeof followUpDate
-                });
-                
-                // Calculate days difference for display
-                let daysUntilFollowUp = null;
-                if (followUpDate) {
-                    const followUpDateObj = new Date(followUpDate);
-                    const diffTime = followUpDateObj - currentDate;
-                    daysUntilFollowUp = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                }
-
-                leads.push({
-                    id: record.id,
-                    firstName: record.get('First Name') || '',
-                    lastName: record.get('Last Name') || '',
-                    linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
-                    followUpDate: followUpDateStr,
-                    daysUntilFollowUp: daysUntilFollowUp, // Negative = overdue, 0 = today, positive = future
-                    aiScore: record.get('AI Score') || null,
-                    status: record.get('Status') || '',
-                    lastMessageDate: record.get('Last Message Date') || null,
-                    notes: record.get('Notes') || '',
-                    
-                    // Include all field formats for compatibility with existing form
-                    'Profile Key': record.id,
-                    'First Name': record.get('First Name') || '',
-                    'Last Name': record.get('Last Name') || '',
-                    'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
-                    'View In Sales Navigator': record.get('View In Sales Navigator') || '',
-                    'Email': record.get('Email') || '',
-                    'Phone': record.get('Phone') || '',
-                    'ASH Workshop Email': Boolean(record.get('ASH Workshop Email')),
-                    'Notes': record.get('Notes') || '',
-                    'Follow-Up Date': followUpDateStr,
-                    'Source': record.get('Source') || '',
-                    'Status': record.get('Status') || '',
-                    'Priority': record.get('Priority') || '',
-                    'LinkedIn Connection Status': record.get('LinkedIn Connection Status') || '',
-                    'AI Score': record.get('AI Score') || null,
-                    'Last Message Date': record.get('Last Message Date') || null
-                });
-            });
-            fetchNextPage();
-        });
-
-        console.log(`🔍 DEBUG: Follow-ups query returned ${leads.length} results for client ${clientId} (${client.clientName})`);
-        
-        // Log some stats for debugging
-        const overdue = leads.filter(lead => lead.daysUntilFollowUp < 0).length;
-        const dueToday = leads.filter(lead => lead.daysUntilFollowUp === 0).length;
-        console.log(`🔍 DEBUG: Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
-        
-        // If no results, let's also check if there are ANY leads with follow-up dates at all
-        if (leads.length === 0) {
-            console.log('🔍 DEBUG: No results from filter. Let\'s check if ANY leads have follow-up dates...');
-            
-            const testLeads = [];
-            await base('Leads').select({
-                filterByFormula: `NOT({Follow-Up Date} = BLANK())`,
-                maxRecords: 10
-            }).eachPage((records, fetchNextPage) => {
-                records.forEach(record => {
-                    const followUpDate = record.get('Follow-Up Date');
-                    testLeads.push({
-                        id: record.id,
-                        firstName: record.get('First Name'),
-                        lastName: record.get('Last Name'),
-                        followUpDate: followUpDate,
-                        followUpDateStr: followUpDate || '',
-                        followUpDateType: typeof followUpDate
-                    });
-                });
-                fetchNextPage();
-            });
-            
-            console.log('🔍 DEBUG: Found', testLeads.length, 'leads with ANY follow-up date:');
-            testLeads.forEach((lead, index) => {
-                console.log(`🔍 DEBUG: Lead ${index + 1}:`, lead);
-            });
-        }
-        
-        res.json(leads);
-
-        } catch (error) {
-            console.error('🔍 DEBUG: Error querying Leads table:', error);
-            console.error('🔍 DEBUG: Error details:', {
-                message: error.message,
-                statusCode: error.statusCode,
-                type: error.type
-            });
-            throw error; // Re-throw to be caught by outer catch
-        }
-
-    } catch (error) {
-        console.error('Follow-ups query error:', error);
-        res.status(500).json({
-            error: 'Follow-ups query failed',
-            message: 'Unable to retrieve follow-up leads'
-        });
     }
 });
 
