@@ -38,7 +38,7 @@ This document tracks the development progress of the LinkedIn Follow-Up Portal, 
   - `ASH Workshop Email` - was incorrectly `Add to Workshop Invite List`
   - Removed non-existent `Follow Up Notes` field references
   
-- **Important Note**: Backend returns both formats - `Follow Up Date` (spaces) contains the actual data, while `Follow-Up Date` (hyphen) is empty. Frontend must use the spaced version.
+- **Important Note**: The correct field name is `Follow-Up Date` (with hyphens) as per the official field master list. All code should use this format consistently.
   
 #### UI Improvements
 - **Button Placement**: Moved Reset/Update buttons to top of form for better accessibility

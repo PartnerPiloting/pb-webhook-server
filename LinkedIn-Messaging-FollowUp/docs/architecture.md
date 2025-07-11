@@ -79,7 +79,7 @@ The LinkedIn Messaging Follow-Up system extends the existing pb-webhook-server i
 
 **New Fields for LinkedIn Messaging**:
 - `LinkedIn Messages` - JSON array of message history
-- `Follow Up Date` - Next contact scheduling
+- `Follow-Up Date` - Next contact scheduling
 - `Follow Up Notes` - Context for next interaction
 - `Message Source` - LinkedIn vs Sales Navigator tracking
 - `Last Message Date` - Timeline tracking

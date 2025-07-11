@@ -292,7 +292,7 @@ const addLinkedInMessageFields = async () => {
   
   for (const client of clients) {
     const base = await airtableClient.getClientBase(client.clientId);
-    // Add fields: LinkedIn Messages, Follow Up Date, Follow Up Notes, etc.
+    // Add fields: LinkedIn Messages, Follow-Up Date, Follow Up Notes, etc.
   }
 };
 ```
