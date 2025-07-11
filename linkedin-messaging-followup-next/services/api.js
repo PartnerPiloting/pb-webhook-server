@@ -336,18 +336,6 @@ export const getLeadByLinkedInUrl = async (linkedinUrl) => {
   }
 };
 
-// Follow-up management
-export const getFollowUps = async (date) => {
-  try {
-    const response = await api.get('/follow-ups', {
-      params: { date }
-    });
-    return response.data;
-  } catch (error) {
-    throw new Error('Failed to load follow-ups');
-  }
-};
-
 // Message history functions
 export const updateMessageHistory = async (leadId, messageData) => {
   try {
