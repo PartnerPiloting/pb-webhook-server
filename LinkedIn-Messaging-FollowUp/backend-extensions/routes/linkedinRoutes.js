@@ -174,34 +174,23 @@ router.get('/leads/follow-ups', async (req, res) => {
         
         console.log(`Looking for follow-ups due on or before: ${todayStr}`);
 
-        // TEST: Check what tables exist in this base
-        console.log('🔍 DEBUG: Base object:', typeof base);
-        console.log('🔍 DEBUG: Base ID being used:', client.airtableBaseId);
-        console.log('🔍 DEBUG: About to try querying "Leads" table...');
+        // Filter for leads with follow-up dates today or earlier
+        const filterFormula = `AND(
+            NOT({Follow-Up Date} = BLANK()),
+            {Follow-Up Date} <= TODAY()
+        )`;
 
-        try {
-            await base('Leads').select({
-            // NO filterByFormula - just get any leads
+        await base('Leads').select({
+            filterByFormula: filterFormula,
             maxRecords: 200, // Reasonable limit for follow-ups
             sort: [
                 { field: 'First Name', direction: 'asc' },
                 { field: 'Last Name', direction: 'asc' }
             ]
         }).eachPage((records, fetchNextPage) => {
-            console.log('🔍 DEBUG: Airtable returned', records.length, 'records from filter');
-            
-            records.forEach((record, index) => {
+            records.forEach((record) => {
                 const followUpDate = record.get('Follow-Up Date');
                 const followUpDateStr = followUpDate || '';
-                
-                console.log(`🔍 DEBUG: Record ${index + 1}:`, {
-                    id: record.id,
-                    firstName: record.get('First Name'),
-                    lastName: record.get('Last Name'),
-                    followUpDate: followUpDate,
-                    followUpDateStr: followUpDateStr,
-                    followUpDateType: typeof followUpDate
-                });
                 
                 // Calculate days difference for display
                 let daysUntilFollowUp = null;
@@ -245,53 +234,14 @@ router.get('/leads/follow-ups', async (req, res) => {
             fetchNextPage();
         });
 
-        console.log(`🔍 DEBUG: Follow-ups query returned ${leads.length} results for client ${clientId} (${client.clientName})`);
+        console.log(`Follow-ups query returned ${leads.length} results for client ${clientId} (${client.clientName})`);
         
         // Log some stats for debugging
         const overdue = leads.filter(lead => lead.daysUntilFollowUp < 0).length;
         const dueToday = leads.filter(lead => lead.daysUntilFollowUp === 0).length;
-        console.log(`🔍 DEBUG: Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
-        
-        // If no results, let's also check if there are ANY leads with follow-up dates at all
-        if (leads.length === 0) {
-            console.log('🔍 DEBUG: No results from filter. Let\'s check if ANY leads have follow-up dates...');
-            
-            const testLeads = [];
-            await base('Leads').select({
-                filterByFormula: `NOT({Follow-Up Date} = BLANK())`,
-                maxRecords: 10
-            }).eachPage((records, fetchNextPage) => {
-                records.forEach(record => {
-                    const followUpDate = record.get('Follow-Up Date');
-                    testLeads.push({
-                        id: record.id,
-                        firstName: record.get('First Name'),
-                        lastName: record.get('Last Name'),
-                        followUpDate: followUpDate,
-                        followUpDateStr: followUpDate || '',
-                        followUpDateType: typeof followUpDate
-                    });
-                });
-                fetchNextPage();
-            });
-            
-            console.log('🔍 DEBUG: Found', testLeads.length, 'leads with ANY follow-up date:');
-            testLeads.forEach((lead, index) => {
-                console.log(`🔍 DEBUG: Lead ${index + 1}:`, lead);
-            });
-        }
+        console.log(`Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
         
         res.json(leads);
-
-        } catch (error) {
-            console.error('🔍 DEBUG: Error querying Leads table:', error);
-            console.error('🔍 DEBUG: Error details:', {
-                message: error.message,
-                statusCode: error.statusCode,
-                type: error.type
-            });
-            throw error; // Re-throw to be caught by outer catch
-        }
 
     } catch (error) {
         console.error('Follow-ups query error:', error);
