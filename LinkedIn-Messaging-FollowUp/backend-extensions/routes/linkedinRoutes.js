@@ -721,11 +721,13 @@ router.get('/leads/follow-ups', async (req, res) => {
         
         console.log(`Looking for follow-ups due on or before: ${todayStr}`);
 
-        // TEST: No filter at all - just get first 5 leads to see if basic query works
-        console.log('🔍 DEBUG: Testing basic query with NO filter at all...');
-        console.log('🔍 DEBUG: Today\'s date for comparison:', todayStr);
+        // TEST: Check what tables exist in this base
+        console.log('🔍 DEBUG: Base object:', typeof base);
+        console.log('🔍 DEBUG: Base ID being used:', client.airtableBaseId);
+        console.log('🔍 DEBUG: About to try querying "Leads" table...');
 
-        await base('Leads').select({
+        try {
+            await base('Leads').select({
             // NO filterByFormula - just get any leads
             maxRecords: 200, // Reasonable limit for follow-ups
             sort: [
@@ -827,6 +829,16 @@ router.get('/leads/follow-ups', async (req, res) => {
         }
         
         res.json(leads);
+
+        } catch (error) {
+            console.error('🔍 DEBUG: Error querying Leads table:', error);
+            console.error('🔍 DEBUG: Error details:', {
+                message: error.message,
+                statusCode: error.statusCode,
+                type: error.type
+            });
+            throw error; // Re-throw to be caught by outer catch
+        }
 
     } catch (error) {
         console.error('Follow-ups query error:', error);
