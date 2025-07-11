@@ -245,6 +245,192 @@ router.get('/leads/:leadId', async (req, res) => {
 });
 
 /**
+ * Create new lead
+ * POST /api/linkedin/leads
+ * Body: { firstName, lastName, linkedinProfileUrl?, source, status, ... }
+ */
+router.post('/leads', async (req, res) => {
+    try {
+        const { client: clientId } = req.query; // For testing: get client from URL parameter
+        const leadData = req.body;
+        
+        // For testing: get client from URL parameter
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        // Validate client exists and is active
+        const client = await clientService.getClientById(clientId);
+        if (!client || client.status !== 'Active') {
+            return res.status(404).json({
+                error: 'Invalid client',
+                message: `Client '${clientId}' not found or inactive`
+            });
+        }
+
+        // Get client's Airtable base
+        const base = await getClientBase(clientId);
+
+        // Required fields validation
+        const requiredFields = ['firstName', 'lastName', 'source', 'status'];
+        for (const field of requiredFields) {
+            if (!leadData[field] || leadData[field].trim() === '') {
+                return res.status(400).json({
+                    error: 'Required field missing',
+                    message: `Field '${field}' is required`
+                });
+            }
+        }
+
+        // Generate LinkedIn URL if not provided
+        let linkedinProfileUrl = leadData.linkedinProfileUrl;
+        if (!linkedinProfileUrl || linkedinProfileUrl.trim() === '') {
+            const timestamp = Date.now();
+            const cleanFirst = leadData.firstName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cleanLast = leadData.lastName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            linkedinProfileUrl = `unknown-${cleanFirst}-${cleanLast}-${timestamp}`;
+        }
+
+        // Validate LinkedIn URL format if it's a real URL (not generated placeholder)
+        if (!linkedinProfileUrl.startsWith('unknown-') && !isValidLinkedInUrl(linkedinProfileUrl)) {
+            return res.status(400).json({
+                error: 'Invalid LinkedIn URL format',
+                message: 'Please provide a valid LinkedIn profile URL'
+            });
+        }
+
+        // Check for duplicate LinkedIn URL
+        const existingLeads = [];
+        await base('Leads').select({
+            filterByFormula: `{LinkedIn Profile URL} = "${linkedinProfileUrl}"`,
+            maxRecords: 1
+        }).eachPage((records, fetchNextPage) => {
+            records.forEach(record => {
+                existingLeads.push(record);
+            });
+            fetchNextPage();
+        });
+
+        if (existingLeads.length > 0) {
+            return res.status(409).json({
+                error: 'Duplicate LinkedIn URL',
+                message: 'A lead with this LinkedIn URL already exists'
+            });
+        }
+
+        // Map React field names to Airtable field names
+        const fieldMapping = {
+            firstName: 'First Name',
+            lastName: 'Last Name',
+            linkedinProfileUrl: 'LinkedIn Profile URL',
+            viewInSalesNavigator: 'View In Sales Navigator',
+            email: 'Email',
+            phone: 'Phone',
+            ashWorkshopEmail: 'ASH Workshop Email',
+            notes: 'Notes',
+            followUpDate: 'Follow-Up Date',
+            source: 'Source',
+            status: 'Status',
+            priority: 'Priority',
+            linkedinConnectionStatus: 'LinkedIn Connection Status'
+        };
+
+        // Build create object
+        const createFields = {
+            'LinkedIn Profile URL': linkedinProfileUrl, // Always include this as primary key
+        };
+
+        Object.keys(leadData).forEach(reactFieldName => {
+            const airtableFieldName = fieldMapping[reactFieldName];
+            if (airtableFieldName && reactFieldName !== 'linkedinProfileUrl') { // Skip linkedinProfileUrl since we handled it above
+                const value = leadData[reactFieldName];
+                
+                // Basic validation
+                if (reactFieldName === 'email' && value && !isValidEmail(value)) {
+                    throw new Error('Invalid email format');
+                }
+                
+                // Handle specific field types
+                if (reactFieldName === 'followUpDate') {
+                    createFields[airtableFieldName] = value || null;
+                } else if (reactFieldName === 'ashWorkshopEmail') {
+                    createFields[airtableFieldName] = Boolean(value);
+                } else if (isSelectField(airtableFieldName)) {
+                    // Handle select fields - only set if value is not empty
+                    if (value && value.trim() !== '') {
+                        createFields[airtableFieldName] = value;
+                    }
+                } else {
+                    createFields[airtableFieldName] = value || '';
+                }
+            }
+        });
+
+        // Create record in Airtable
+        const createdRecord = await base('Leads').create([{
+            fields: createFields
+        }]);
+
+        // Return created data in both formats (following same pattern as other routes)
+        const record = createdRecord[0];
+        const newLead = {
+            id: record.id,
+            // Return data in the format frontend expects (Airtable field names)
+            'First Name': record.get('First Name') || '',
+            'Last Name': record.get('Last Name') || '',
+            'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
+            'View In Sales Navigator': record.get('View In Sales Navigator') || '',
+            'Email': record.get('Email') || '',
+            'Phone': record.get('Phone') || '',
+            'ASH Workshop Email': Boolean(record.get('ASH Workshop Email')),
+            'Notes': record.get('Notes') || '',
+            'Follow-Up Date': record.get('Follow-Up Date') || '',
+            'Source': record.get('Source') || '',
+            'Status': record.get('Status') || '',
+            'Priority': record.get('Priority') || '',
+            'LinkedIn Connection Status': record.get('LinkedIn Connection Status') || '',
+            
+            // Read-only fields
+            'Profile Key': record.get('Profile Key') || '',
+            'AI Score': record.get('AI Score') || null,
+            postsRelevancePercentage: calculatePostsRelevancePercentage(record.get('Post Relevance Score')),
+            'Last Message Date': record.get('Last Message Date') || null,
+            
+            // Also include camelCase versions for compatibility
+            firstName: record.get('First Name') || '',
+            lastName: record.get('Last Name') || '',
+            linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
+            viewInSalesNavigator: record.get('View In Sales Navigator') || '',
+            email: record.get('Email') || '',
+            phone: record.get('Phone') || '',
+            ashWorkshopEmail: Boolean(record.get('ASH Workshop Email')),
+            notes: record.get('Notes') || '',
+            followUpDate: record.get('Follow-Up Date') || '',
+            source: record.get('Source') || '',
+            status: record.get('Status') || '',
+            priority: record.get('Priority') || '',
+            linkedinConnectionStatus: record.get('LinkedIn Connection Status') || '',
+            profileKey: record.get('Profile Key') || '',
+            aiScore: record.get('AI Score') || null,
+            lastMessageDate: record.get('Last Message Date') || null
+        };
+
+        console.log(`Created new lead for client ${clientId}:`, record.id);
+        res.status(201).json(newLead);
+
+    } catch (error) {
+        console.error('Create lead error:', error);
+        res.status(500).json({
+            error: 'Create failed',
+            message: error.message || 'Unable to create lead'
+        });
+    }
+});
+
+/**
  * Update lead information
  * PUT /api/linkedin/leads/:leadId
  */
