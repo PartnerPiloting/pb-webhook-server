@@ -168,6 +168,32 @@ const LeadSearchUpdate = () => {
     }
   };
 
+  // Handle lead deletion
+  const handleLeadDelete = (deletedLead) => {
+    if (!deletedLead) return;
+
+    // Remove the lead from the search results
+    setLeads(prevLeads => 
+      prevLeads.filter(lead => 
+        lead['Profile Key'] !== (deletedLead.id || deletedLead['Profile Key'])
+      )
+    );
+    
+    // Clear the selected lead
+    setSelectedLead(null);
+    
+    // Show success message
+    setMessage({ 
+      type: 'success', 
+      text: `${deletedLead.firstName || ''} ${deletedLead.lastName || ''} has been deleted successfully.` 
+    });
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => {
+      setMessage({ type: '', text: '' });
+    }, 5000);
+  };
+
   return (
     <div className="w-full flex flex-col lg:flex-row gap-6">
       {/* Message display */}
@@ -284,6 +310,7 @@ const LeadSearchUpdate = () => {
                 lastMessageDate: safeRender(selectedLead['Last Message Date'])
               }}
               onUpdate={handleLeadUpdate}
+              onDelete={handleLeadDelete}
               isUpdating={isUpdating}
             />
           </div>
