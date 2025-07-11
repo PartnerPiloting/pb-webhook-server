@@ -722,10 +722,10 @@ router.get('/leads/follow-ups', async (req, res) => {
         console.log(`Looking for follow-ups due on or before: ${todayStr}`);
 
         // Build filter formula for leads with follow-up dates today or earlier
-        // Using Airtable's IS_BEFORE function for proper date comparison
+        // Using proper Airtable date comparison - follow-up date <= today
         const filterFormula = `AND(
             NOT({Follow-Up Date} = BLANK()),
-            IS_BEFORE({Follow-Up Date}, DATEADD(TODAY(), 1, 'days'))
+            {Follow-Up Date} <= TODAY()
         )`;
 
         await base('Leads').select({
