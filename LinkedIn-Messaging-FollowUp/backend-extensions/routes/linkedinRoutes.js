@@ -801,6 +801,18 @@ router.get('/leads/follow-ups', async (req, res) => {
 });
 
 /**
+ * TEMPORARY DEBUG: Test route to verify follow-ups area is working
+ * GET /api/linkedin/leads/follow-ups-debug
+ */
+router.get('/leads/follow-ups-debug', (req, res) => {
+    res.json({
+        message: 'Follow-ups debug route working!',
+        timestamp: new Date().toISOString(),
+        note: 'This means the follow-ups route should work too'
+    });
+});
+
+/**
  * Check if lead exists by LinkedIn URL
  * POST /api/linkedin/leads/check-exists
  * Body: { linkedinUrl: "https://linkedin.com/in/..." }
