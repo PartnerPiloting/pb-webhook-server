@@ -1,11 +1,11 @@
 "use client";
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 
 const Layout = ({ children }) => {
-  // For now, we'll assume we're always on the lead-search page
-  // In a real Next.js app, you'd use usePathname() from next/navigation
+  const pathname = usePathname();
   
   const navigation = [
     {
@@ -64,8 +64,8 @@ const Layout = ({ children }) => {
             if (!item || !item.name || !item.href) return null;
             
             const Icon = item.icon;
-            // For now, assume the first tab is always active
-            const isActive = item.href === '/';
+            // Check if current pathname matches this navigation item
+            const isActive = pathname === item.href;
             
             return (
               <Link
