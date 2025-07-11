@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { deleteLead } from '../services/api';
 
 // Import icons using require to avoid Next.js issues
-let CalendarIcon, StarIcon, ArrowTopRightOnSquareIcon;
+let CalendarIcon, StarIcon, ArrowTopRightOnSquareIcon, TrashIcon;
 try {
   const icons = require('@heroicons/react/24/outline');
   CalendarIcon = icons.CalendarIcon;
   StarIcon = icons.StarIcon;
   ArrowTopRightOnSquareIcon = icons.ArrowTopRightOnSquareIcon;
+  TrashIcon = icons.TrashIcon;
 } catch (error) {
   console.error('Failed to import icons:', error);
 }
@@ -93,11 +95,13 @@ const convertToISODate = (dateString) => {
   return `${year}-${month}-${day}`;
 };
 
-const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
+const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   const [formData, setFormData] = useState({});
   const [hasChanges, setHasChanges] = useState(false);
   const [editingField, setEditingField] = useState(null); // Track which field is being edited
   const [isEditingNotes, setIsEditingNotes] = useState(false); // Track notes editing state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Track delete confirmation dialog
+  const [isDeleting, setIsDeleting] = useState(false); // Track delete operation
 
   // Initialize form data when lead changes
   useEffect(() => {
@@ -141,6 +145,27 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
     }
   };
 
+  // Handle delete operation
+  const handleDelete = async () => {
+    if (!lead || !lead.id) return;
+    
+    setIsDeleting(true);
+    try {
+      await deleteLead(lead.id);
+      setShowDeleteConfirm(false);
+      
+      // Notify parent component that lead was deleted
+      if (onDelete) {
+        onDelete(lead);
+      }
+    } catch (error) {
+      console.error('Delete failed:', error);
+      alert(error.message || 'Failed to delete lead. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Return null if no lead is provided
   if (!lead) {
     return null;
@@ -175,8 +200,21 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Action Buttons - Moved to top */}
       <div className="flex justify-between items-center pb-4 border-b border-gray-200">
-        <div className="text-sm text-gray-500">
-          {hasChanges ? 'You have unsaved changes' : 'All changes saved'}
+        <div className="flex items-center space-x-4">
+          <div className="text-sm text-gray-500">
+            {hasChanges ? 'You have unsaved changes' : 'All changes saved'}
+          </div>
+          
+          {/* Delete Button - Separated on left side */}
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+            disabled={isUpdating || isDeleting}
+          >
+            {TrashIcon && <TrashIcon className="h-4 w-4 mr-1" />}
+            Delete Lead
+          </button>
         </div>
         
         <div className="flex space-x-3">
@@ -203,7 +241,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
               }
             }}
             className="btn-secondary"
-            disabled={!hasChanges || isUpdating}
+            disabled={!hasChanges || isUpdating || isDeleting}
           >
             Reset Changes
           </button>
@@ -211,7 +249,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <button
             type="submit"
             className="btn-primary"
-            disabled={!hasChanges || isUpdating}
+            disabled={!hasChanges || isUpdating || isDeleting}
           >
             {isUpdating ? (
               <span className="inline-flex items-center">
@@ -607,6 +645,53 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
           <p className="text-xs text-blue-600 mt-1">
             Full message history is managed by the Chrome extension
           </p>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md mx-auto p-6">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 bg-red-100 rounded-full">
+              {TrashIcon && <TrashIcon className="h-6 w-6 text-red-600" />}
+            </div>
+            
+            <h3 className="text-lg font-medium text-gray-900 text-center mb-2">
+              Delete Lead
+            </h3>
+            
+            <p className="text-sm text-gray-500 text-center mb-6">
+              Are you sure you want to delete <strong>{lead?.firstName} {lead?.lastName}</strong>? 
+              This action cannot be undone and will permanently remove all data for this lead.
+            </p>
+            
+            <div className="flex space-x-3 justify-center">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <span className="inline-flex items-center">
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                    Deleting...
+                  </span>
+                ) : (
+                  'Delete Lead'
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </form>

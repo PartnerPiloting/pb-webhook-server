@@ -272,6 +272,28 @@ export const updateLead = async (leadId, updateData) => {
   }
 };
 
+export const deleteLead = async (leadId) => {
+  try {
+    const response = await api.delete(`/leads/${leadId}`, {
+      params: {
+        client: 'Guy-Wilson' // Backend expects this as URL parameter
+      }
+    });
+    
+    // Return the response data which includes success confirmation and deleted lead info
+    return response.data;
+  } catch (error) {
+    console.error('Delete lead error:', error.response?.data || error.message);
+    
+    // Handle specific error cases
+    if (error.response?.status === 404) {
+      throw new Error('Lead not found. It may have already been deleted.');
+    }
+    
+    throw new Error(error.response?.data?.message || 'Failed to delete lead');
+  }
+};
+
 export const getLeadByLinkedInUrl = async (linkedinUrl) => {
   try {
     const response = await api.get('/leads/by-linkedin-url', {
