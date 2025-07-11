@@ -137,7 +137,7 @@ if (window.location.hostname.includes('linkedin.com')) {
 ## New Airtable Fields Integration
 The extension will populate these 5 new standard fields in the existing "Leads" table:
 - `LinkedIn Messages` - JSON array of message history
-- `Follow Up Date` - Next contact scheduling  
+- `Follow-Up Date` - Next contact scheduling  
 - `Follow Up Notes` - Context for next interaction
 - `Last Message Date` - Timeline tracking
 - `Extension Last Sync` - Chrome extension sync timestamp
