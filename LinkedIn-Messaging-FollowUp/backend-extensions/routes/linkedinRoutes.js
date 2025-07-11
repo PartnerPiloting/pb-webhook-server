@@ -723,9 +723,10 @@ router.get('/leads/follow-ups', async (req, res) => {
 
         // Build filter formula for leads with follow-up dates today or earlier
         // Using Airtable's DATESTR function to ensure proper date comparison
+        // Note: Using 'Follow Up Date' (spaces) as per documentation - this contains the actual data
         const filterFormula = `AND(
-            NOT({Follow-Up Date} = BLANK()),
-            DATESTR({Follow-Up Date}) <= "${todayStr}"
+            NOT({Follow Up Date} = BLANK()),
+            DATESTR({Follow Up Date}) <= "${todayStr}"
         )`;
 
         await base('Leads').select({
@@ -737,7 +738,7 @@ router.get('/leads/follow-ups', async (req, res) => {
             ]
         }).eachPage((records, fetchNextPage) => {
             records.forEach(record => {
-                const followUpDate = record.get('Follow-Up Date');
+                const followUpDate = record.get('Follow Up Date');
                 const followUpDateStr = followUpDate || '';
                 
                 // Calculate days difference for display
