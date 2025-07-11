@@ -174,15 +174,14 @@ router.get('/leads/follow-ups', async (req, res) => {
         
         console.log(`Looking for follow-ups due on or before: ${todayStr}`);
 
-        // Filter for leads with follow-up dates today or earlier
-        const filterFormula = `AND(
-            NOT({Follow-Up Date} = BLANK()),
-            {Follow-Up Date} <= TODAY()
-        )`;
+        // OPTIMIZED: Simple filter + JavaScript filtering for speed
+        const filterFormula = `NOT({Follow-Up Date} = BLANK())`;
+        
+        console.log('🔍 DEBUG: Using simple filter + JavaScript filtering for speed');
 
         await base('Leads').select({
-            filterByFormula: filterFormula,
-            maxRecords: 200, // Reasonable limit for follow-ups
+            filterByFormula: filterFormula, // Simple: just get leads with follow-up dates
+            maxRecords: 100, // Reasonable limit
             sort: [
                 { field: 'First Name', direction: 'asc' },
                 { field: 'Last Name', direction: 'asc' }
@@ -200,7 +199,9 @@ router.get('/leads/follow-ups', async (req, res) => {
                     daysUntilFollowUp = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 }
 
-                leads.push({
+                // FILTER IN JAVASCRIPT: Only add if follow-up date is today or earlier
+                if (followUpDate && daysUntilFollowUp <= 0) {
+                    leads.push({
                     id: record.id,
                     firstName: record.get('First Name') || '',
                     lastName: record.get('Last Name') || '',
@@ -230,6 +231,7 @@ router.get('/leads/follow-ups', async (req, res) => {
                     'AI Score': record.get('AI Score') || null,
                     'Last Message Date': record.get('Last Message Date') || null
                 });
+                } // Close the if statement for JavaScript filtering
             });
             fetchNextPage();
         });
@@ -240,6 +242,35 @@ router.get('/leads/follow-ups', async (req, res) => {
         const overdue = leads.filter(lead => lead.daysUntilFollowUp < 0).length;
         const dueToday = leads.filter(lead => lead.daysUntilFollowUp === 0).length;
         console.log(`Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
+        
+        // If no results, let's check what follow-up dates actually exist
+        if (leads.length === 0) {
+            console.log('🔍 DEBUG: No results from filter. Checking what follow-up dates exist...');
+            
+            const testLeads = [];
+            await base('Leads').select({
+                filterByFormula: `NOT({Follow-Up Date} = BLANK())`,
+                maxRecords: 10
+            }).eachPage((records, fetchNextPage) => {
+                records.forEach(record => {
+                    const followUpDate = record.get('Follow-Up Date');
+                    testLeads.push({
+                        id: record.id,
+                        firstName: record.get('First Name'),
+                        lastName: record.get('Last Name'),
+                        followUpDate: followUpDate,
+                        followUpDateStr: followUpDate ? followUpDate.toString() : 'null',
+                        followUpDateType: typeof followUpDate
+                    });
+                });
+                fetchNextPage();
+            });
+            
+            console.log('🔍 DEBUG: Found', testLeads.length, 'leads with ANY follow-up date:');
+            testLeads.forEach((lead, index) => {
+                console.log(`🔍 DEBUG: Lead ${index + 1}:`, lead);
+            });
+        }
         
         res.json(leads);
 
