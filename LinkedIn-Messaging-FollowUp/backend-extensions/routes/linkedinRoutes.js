@@ -801,6 +801,70 @@ router.get('/leads/follow-ups', async (req, res) => {
 });
 
 /**
+ * TEMPORARY DEBUG: Check what fields exist and if any have follow-up dates
+ * GET /api/linkedin/leads/debug-fields
+ */
+router.get('/leads/debug-fields', async (req, res) => {
+    try {
+        const { client: clientId } = req.query;
+        
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        const client = await clientService.getClientById(clientId);
+        if (!client) {
+            return res.status(404).json({
+                error: 'Client not found',
+                message: `Client '${clientId}' does not exist in master Clients base`
+            });
+        }
+
+        console.log(`Debug: Getting fields for client: ${client.clientName} (${clientId}) → Base: ${client.airtableBaseId}`);
+
+        const base = await getClientBase(clientId);
+        const leads = [];
+
+        // Get first 5 leads to check field names
+        await base('Leads').select({
+            maxRecords: 5
+        }).eachPage((records, fetchNextPage) => {
+            records.forEach(record => {
+                console.log('🔍 DEBUG: Available fields:', Object.keys(record.fields));
+                console.log('🔍 DEBUG: Follow-Up Date field:', record.get('Follow-Up Date'));
+                console.log('🔍 DEBUG: Follow Up Date field:', record.get('Follow Up Date'));
+                console.log('🔍 DEBUG: All field values:', record.fields);
+                
+                leads.push({
+                    id: record.id,
+                    availableFields: Object.keys(record.fields),
+                    followUpDateHyphen: record.get('Follow-Up Date'),
+                    followUpDateSpace: record.get('Follow Up Date'),
+                    allFields: record.fields
+                });
+            });
+            fetchNextPage();
+        });
+
+        res.json({
+            message: 'Debug info for field names',
+            totalLeads: leads.length,
+            leads: leads
+        });
+
+    } catch (error) {
+        console.error('Debug fields error:', error);
+        res.status(500).json({
+            error: 'Debug failed',
+            message: error.message
+        });
+    }
+});
+
+/**
  * TEMPORARY DEBUG: Test route to verify follow-ups area is working
  * GET /api/linkedin/leads/follow-ups-debug
  */
