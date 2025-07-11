@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { debounce } from '../utils/helpers';
 import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
@@ -35,8 +35,8 @@ const LeadSearchUpdate = () => {
   }, []);
 
   const fetchInitialLeads = async () => {
-    setIsLoading(true);
     try {
+      console.log('🔍 Fetching initial leads');
       const results = await searchLeads('');
       // Filter out Multi-Tenant related entries and sort alphabetically by first name
       const filteredAndSorted = (results || [])
@@ -64,21 +64,32 @@ const LeadSearchUpdate = () => {
         .slice(0, 25); // Limit to 25 results
       
       setLeads(filteredAndSorted);
+      console.log(`🔍 Initial leads loaded: ${filteredAndSorted.length} results`);
     } catch (error) {
       console.error('Failed to fetch initial leads:', error);
       setMessage({ type: 'error', text: 'Failed to load leads. Please refresh the page.' });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Debounced search function
+  // Debounced search function with race condition protection
   const debouncedSearch = useCallback(
-    debounce(async (query) => {
+    debounce(async (query, requestId) => {
+      // Check if this is still the current search request
+      if (requestId !== currentSearchRef.current) {
+        console.log('🔍 Search cancelled due to newer request');
+        return;
+      }
+      
       setIsLoading(true);
       try {
         // Use backend search with the query - backend now handles partial searches properly
         const results = await searchLeads(query);
+        
+        // Check again after async operation
+        if (requestId !== currentSearchRef.current) {
+          console.log('🔍 Search results ignored due to newer request');
+          return;
+        }
         
         // Filter out Multi-Tenant related entries and sort alphabetically (backend now sorts properly)
         const filteredAndSorted = (results || [])
@@ -95,22 +106,42 @@ const LeadSearchUpdate = () => {
           .slice(0, 25); // Limit to 25 results
         
         setLeads(filteredAndSorted);
+        console.log(`🔍 Search "${query}" completed with ${filteredAndSorted.length} results`);
       } catch (error) {
         console.error('Search error:', error);
-        setMessage({ type: 'error', text: 'Search failed. Please try again.' });
+        if (requestId === currentSearchRef.current) {
+          setMessage({ type: 'error', text: 'Search failed. Please try again.' });
+        }
       } finally {
-        setIsLoading(false);
+        if (requestId === currentSearchRef.current) {
+          setIsLoading(false);
+        }
       }
     }, 500),
     []
   );
 
+  // Use ref to track current search request and prevent race conditions
+  const currentSearchRef = useRef(0);
+
   // Effect to trigger search when query changes
   useEffect(() => {
+    // Increment request ID to cancel any pending searches
+    currentSearchRef.current += 1;
+    const requestId = currentSearchRef.current;
+    
+    console.log(`🔍 Search triggered: "${search}" (ID: ${requestId})`);
+    
     if (search.trim()) {
-      debouncedSearch(search);
+      debouncedSearch(search, requestId);
     } else {
-      fetchInitialLeads();
+      // For empty search, load initial leads immediately without debounce
+      setIsLoading(true);
+      fetchInitialLeads().finally(() => {
+        if (requestId === currentSearchRef.current) {
+          setIsLoading(false);
+        }
+      });
     }
   }, [search, debouncedSearch]);
 
