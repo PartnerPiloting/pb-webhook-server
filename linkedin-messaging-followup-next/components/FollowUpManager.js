@@ -76,6 +76,13 @@ const FollowUpManager = () => {
     loadFollowUps();
   }, []);
 
+  // Auto-select first lead when follow-ups load
+  useEffect(() => {
+    if (followUps && followUps.length > 0 && !selectedLead) {
+      handleLeadSelect(followUps[0]);
+    }
+  }, [followUps]);
+
   const loadFollowUps = async () => {
     setIsLoading(true);
     try {
@@ -121,15 +128,31 @@ const FollowUpManager = () => {
       setSelectedLead(updated);
       setMessage({ type: 'success', text: 'Lead updated successfully!' });
       
-              // If follow-up date was cleared, remove from list and clear selection
-        if (!updated['Follow-Up Date'] || updated['Follow-Up Date'] === '') {
-        setFollowUps(prevFollowUps => 
-          prevFollowUps.filter(lead => 
-            lead['Profile Key'] !== (updated.id || updated['Profile Key'])
-          )
+      // Check if follow-up date was changed to future date or cleared
+      const updatedDate = updated['Follow-Up Date'];
+      const shouldRemoveFromList = !updatedDate || updatedDate === '' || 
+        (updatedDate && new Date(updatedDate) > new Date());
+
+      if (shouldRemoveFromList) {
+        const currentIndex = followUps.findIndex(lead => 
+          lead['Profile Key'] === (updated.id || updated['Profile Key'])
         );
-        setSelectedLead(null);
-        setMessage({ type: 'success', text: 'Lead removed from follow-ups!' });
+        
+        // Remove from list
+        const newFollowUps = followUps.filter(lead => 
+          lead['Profile Key'] !== (updated.id || updated['Profile Key'])
+        );
+        setFollowUps(newFollowUps);
+        
+        // Auto-advance to next lead
+        if (newFollowUps.length > 0) {
+          const nextIndex = Math.min(currentIndex, newFollowUps.length - 1);
+          handleLeadSelect(newFollowUps[nextIndex]);
+          setMessage({ type: 'success', text: 'Lead removed from follow-ups! Advanced to next lead.' });
+        } else {
+          setSelectedLead(null);
+          setMessage({ type: 'success', text: 'Lead removed from follow-ups! No more leads due.' });
+        }
       } else {
         // Update the lead in the follow-ups list
         setFollowUps(prevFollowUps => 
@@ -162,21 +185,31 @@ const FollowUpManager = () => {
   const handleLeadDelete = (deletedLead) => {
     if (!deletedLead) return;
 
-    // Remove the lead from the follow-ups list
-    setFollowUps(prevFollowUps => 
-      prevFollowUps.filter(lead => 
-        lead['Profile Key'] !== (deletedLead.id || deletedLead['Profile Key'])
-      )
+    const currentIndex = followUps.findIndex(lead => 
+      lead['Profile Key'] === (deletedLead.id || deletedLead['Profile Key'])
     );
+
+    // Remove the lead from the follow-ups list
+    const newFollowUps = followUps.filter(lead => 
+      lead['Profile Key'] !== (deletedLead.id || deletedLead['Profile Key'])
+    );
+    setFollowUps(newFollowUps);
     
-    // Clear the selected lead
-    setSelectedLead(null);
-    
-    // Show success message
-    setMessage({ 
-      type: 'success', 
-      text: `${deletedLead.firstName || ''} ${deletedLead.lastName || ''} has been deleted successfully.` 
-    });
+    // Auto-advance to next lead or clear selection
+    if (newFollowUps.length > 0) {
+      const nextIndex = Math.min(currentIndex, newFollowUps.length - 1);
+      handleLeadSelect(newFollowUps[nextIndex]);
+      setMessage({ 
+        type: 'success', 
+        text: `${deletedLead.firstName || ''} ${deletedLead.lastName || ''} deleted. Advanced to next lead.` 
+      });
+    } else {
+      setSelectedLead(null);
+      setMessage({ 
+        type: 'success', 
+        text: `${deletedLead.firstName || ''} ${deletedLead.lastName || ''} deleted. No more leads due.` 
+      });
+    }
     
     // Clear success message after 5 seconds
     setTimeout(() => {
