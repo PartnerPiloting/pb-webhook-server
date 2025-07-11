@@ -32,13 +32,6 @@ const LeadSearchUpdate = () => {
   // Use ref to track current search request and prevent race conditions
   const currentSearchRef = useRef(0);
 
-  // Load initial results on component mount
-  useEffect(() => {
-    // Trigger initial search with empty query
-    currentSearchRef.current += 1;
-    performSearch('', currentSearchRef.current);
-  }, [performSearch]);
-
   // Single search function that handles both search and initial load
   const performSearch = useCallback(async (query, requestId) => {
     // Check if this is still the current search request
@@ -95,6 +88,13 @@ const LeadSearchUpdate = () => {
     }, 500),
     [performSearch]
   );
+
+  // Load initial results on component mount
+  useEffect(() => {
+    // Trigger initial search with empty query
+    currentSearchRef.current += 1;
+    performSearch('', currentSearchRef.current);
+  }, [performSearch]);
 
   // Effect to trigger search when query changes
   useEffect(() => {
