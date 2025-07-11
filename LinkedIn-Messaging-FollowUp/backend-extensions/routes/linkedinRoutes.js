@@ -678,6 +678,129 @@ router.delete('/leads/:leadId', async (req, res) => {
 });
 
 /**
+ * Get leads due for follow-up (today or earlier)
+ * GET /api/linkedin/leads/follow-ups
+ */
+router.get('/leads/follow-ups', async (req, res) => {
+    try {
+        const { client: clientId } = req.query;
+        
+        // For testing: get client from URL parameter
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        // Validate client exists and is active
+        const client = await clientService.getClientById(clientId);
+        if (!client) {
+            return res.status(404).json({
+                error: 'Client not found',
+                message: `Client '${clientId}' does not exist in master Clients base`
+            });
+        }
+        
+        if (client.status !== 'Active') {
+            return res.status(403).json({
+                error: 'Client inactive',
+                message: `Client '${clientId}' status is '${client.status}', expected 'Active'`
+            });
+        }
+
+        console.log(`Getting follow-ups for client: ${client.clientName} (${clientId}) → Base: ${client.airtableBaseId}`);
+
+        // Get client's Airtable base
+        const base = await getClientBase(clientId);
+        const leads = [];
+
+        // Get today's date in YYYY-MM-DD format for comparison
+        const currentDate = new Date();
+        const todayStr = currentDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        
+        console.log(`Looking for follow-ups due on or before: ${todayStr}`);
+
+        // Build filter formula for leads with follow-up dates today or earlier
+        // Using Airtable's DATESTR function to ensure proper date comparison
+        const filterFormula = `AND(
+            NOT({Follow-Up Date} = BLANK()),
+            DATESTR({Follow-Up Date}) <= "${todayStr}"
+        )`;
+
+        await base('Leads').select({
+            filterByFormula: filterFormula,
+            maxRecords: 200, // Reasonable limit for follow-ups
+            sort: [
+                { field: 'First Name', direction: 'asc' },
+                { field: 'Last Name', direction: 'asc' }
+            ]
+        }).eachPage((records, fetchNextPage) => {
+            records.forEach(record => {
+                const followUpDate = record.get('Follow-Up Date');
+                const followUpDateStr = followUpDate || '';
+                
+                // Calculate days difference for display
+                let daysUntilFollowUp = null;
+                if (followUpDate) {
+                    const followUpDateObj = new Date(followUpDate);
+                    const diffTime = followUpDateObj - currentDate;
+                    daysUntilFollowUp = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+
+                leads.push({
+                    id: record.id,
+                    firstName: record.get('First Name') || '',
+                    lastName: record.get('Last Name') || '',
+                    linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
+                    followUpDate: followUpDateStr,
+                    daysUntilFollowUp: daysUntilFollowUp, // Negative = overdue, 0 = today, positive = future
+                    aiScore: record.get('AI Score') || null,
+                    status: record.get('Status') || '',
+                    lastMessageDate: record.get('Last Message Date') || null,
+                    notes: record.get('Notes') || '',
+                    
+                    // Include all field formats for compatibility with existing form
+                    'Profile Key': record.id,
+                    'First Name': record.get('First Name') || '',
+                    'Last Name': record.get('Last Name') || '',
+                    'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
+                    'View In Sales Navigator': record.get('View In Sales Navigator') || '',
+                    'Email': record.get('Email') || '',
+                    'Phone': record.get('Phone') || '',
+                    'ASH Workshop Email': Boolean(record.get('ASH Workshop Email')),
+                    'Notes': record.get('Notes') || '',
+                    'Follow-Up Date': followUpDateStr,
+                    'Source': record.get('Source') || '',
+                    'Status': record.get('Status') || '',
+                    'Priority': record.get('Priority') || '',
+                    'LinkedIn Connection Status': record.get('LinkedIn Connection Status') || '',
+                    'AI Score': record.get('AI Score') || null,
+                    'Last Message Date': record.get('Last Message Date') || null
+                });
+            });
+            fetchNextPage();
+        });
+
+        console.log(`Follow-ups query returned ${leads.length} results for client ${clientId} (${client.clientName})`);
+        
+        // Log some stats for debugging
+        const overdue = leads.filter(lead => lead.daysUntilFollowUp < 0).length;
+        const dueToday = leads.filter(lead => lead.daysUntilFollowUp === 0).length;
+        console.log(`Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
+        
+        res.json(leads);
+
+    } catch (error) {
+        console.error('Follow-ups query error:', error);
+        res.status(500).json({
+            error: 'Follow-ups query failed',
+            message: 'Unable to retrieve follow-up leads'
+        });
+    }
+});
+
+/**
  * Check if lead exists by LinkedIn URL
  * POST /api/linkedin/leads/check-exists
  * Body: { linkedinUrl: "https://linkedin.com/in/..." }
