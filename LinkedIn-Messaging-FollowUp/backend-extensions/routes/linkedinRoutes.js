@@ -181,7 +181,7 @@ router.get('/leads/follow-ups', async (req, res) => {
 
         await base('Leads').select({
             filterByFormula: filterFormula, // Simple: just get leads with follow-up dates
-            maxRecords: 100, // Reasonable limit
+            maxRecords: 50, // Conservative limit to prevent timeout
             sort: [
                 { field: 'First Name', direction: 'asc' },
                 { field: 'Last Name', direction: 'asc' }

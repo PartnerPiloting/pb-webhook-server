@@ -299,7 +299,8 @@ export const getFollowUps = async () => {
     const response = await api.get('/leads/follow-ups', {
       params: {
         client: 'Guy-Wilson' // Backend expects this as URL parameter
-      }
+      },
+      timeout: 30000 // 30 seconds for follow-ups to handle larger datasets
     });
     
     // Backend already returns data in the correct format for the Follow-Up Manager
