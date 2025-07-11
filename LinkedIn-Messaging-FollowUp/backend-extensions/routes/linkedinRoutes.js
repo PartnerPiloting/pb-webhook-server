@@ -728,6 +728,10 @@ router.get('/leads/follow-ups', async (req, res) => {
             {Follow-Up Date} <= TODAY()
         )`;
 
+        console.log('🔍 DEBUG: Filter formula being used:', filterFormula);
+        console.log('🔍 DEBUG: Today\'s date for comparison:', todayStr);
+        console.log('🔍 DEBUG: About to query Airtable with filter...');
+
         await base('Leads').select({
             filterByFormula: filterFormula,
             maxRecords: 200, // Reasonable limit for follow-ups
@@ -736,9 +740,20 @@ router.get('/leads/follow-ups', async (req, res) => {
                 { field: 'Last Name', direction: 'asc' }
             ]
         }).eachPage((records, fetchNextPage) => {
-            records.forEach(record => {
+            console.log('🔍 DEBUG: Airtable returned', records.length, 'records from filter');
+            
+            records.forEach((record, index) => {
                 const followUpDate = record.get('Follow-Up Date');
                 const followUpDateStr = followUpDate || '';
+                
+                console.log(`🔍 DEBUG: Record ${index + 1}:`, {
+                    id: record.id,
+                    firstName: record.get('First Name'),
+                    lastName: record.get('Last Name'),
+                    followUpDate: followUpDate,
+                    followUpDateStr: followUpDateStr,
+                    followUpDateType: typeof followUpDate
+                });
                 
                 // Calculate days difference for display
                 let daysUntilFollowUp = null;
@@ -782,12 +797,41 @@ router.get('/leads/follow-ups', async (req, res) => {
             fetchNextPage();
         });
 
-        console.log(`Follow-ups query returned ${leads.length} results for client ${clientId} (${client.clientName})`);
+        console.log(`🔍 DEBUG: Follow-ups query returned ${leads.length} results for client ${clientId} (${client.clientName})`);
         
         // Log some stats for debugging
         const overdue = leads.filter(lead => lead.daysUntilFollowUp < 0).length;
         const dueToday = leads.filter(lead => lead.daysUntilFollowUp === 0).length;
-        console.log(`Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
+        console.log(`🔍 DEBUG: Follow-up stats: ${overdue} overdue, ${dueToday} due today, ${leads.length} total`);
+        
+        // If no results, let's also check if there are ANY leads with follow-up dates at all
+        if (leads.length === 0) {
+            console.log('🔍 DEBUG: No results from filter. Let\'s check if ANY leads have follow-up dates...');
+            
+            const testLeads = [];
+            await base('Leads').select({
+                filterByFormula: `NOT({Follow-Up Date} = BLANK())`,
+                maxRecords: 10
+            }).eachPage((records, fetchNextPage) => {
+                records.forEach(record => {
+                    const followUpDate = record.get('Follow-Up Date');
+                    testLeads.push({
+                        id: record.id,
+                        firstName: record.get('First Name'),
+                        lastName: record.get('Last Name'),
+                        followUpDate: followUpDate,
+                        followUpDateStr: followUpDate || '',
+                        followUpDateType: typeof followUpDate
+                    });
+                });
+                fetchNextPage();
+            });
+            
+            console.log('🔍 DEBUG: Found', testLeads.length, 'leads with ANY follow-up date:');
+            testLeads.forEach((lead, index) => {
+                console.log(`🔍 DEBUG: Lead ${index + 1}:`, lead);
+            });
+        }
         
         res.json(leads);
 
