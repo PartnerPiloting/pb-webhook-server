@@ -4,6 +4,10 @@
 
 const express = require('express');
 const router = express.Router();
+
+// IMPORTANT: Route order matters! Specific routes MUST come before parameterized routes
+// ✅ CORRECT: /leads/follow-ups (specific) before /leads/:leadId (parameterized)
+// ❌ WRONG: /leads/:leadId before /leads/follow-ups (would catch "follow-ups" as leadId)
 // const { authenticateWordPressUser } = require('../middleware/wordpressAuth');
 const { getClientBase } = require('../../../config/airtableClient');
 const clientService = require('../../../services/clientService');
@@ -130,6 +134,7 @@ router.get('/leads/search', async (req, res) => {
  * GET /api/linkedin/leads/follow-ups
  */
 router.get('/leads/follow-ups', async (req, res) => {
+    console.log('🔍 ROUTE CALLED:', req.method, req.path, 'with params:', req.params, 'query:', req.query);
     try {
         const { client: clientId } = req.query;
         
@@ -302,6 +307,7 @@ router.get('/leads/follow-ups', async (req, res) => {
  * GET /api/linkedin/leads/:leadId
  */
 router.get('/leads/:leadId', async (req, res) => {
+    console.log('🔍 ROUTE CALLED:', req.method, req.path, 'with params:', req.params, 'query:', req.query);
     try {
         const { leadId } = req.params;
         const { client: clientId } = req.query;
@@ -1053,6 +1059,20 @@ router.post('/leads/:leadId/messages', async (req, res) => {
             message: 'Unable to update message history'
         });
     }
+});
+
+/**
+ * QUICK DEBUG: Test if routing works at all
+ * GET /api/linkedin/leads/debug-routing
+ */
+router.get('/leads/debug-routing', (req, res) => {
+    res.json({
+        message: 'Route order is correct! This specific route was called instead of :leadId',
+        path: req.path,
+        method: req.method,
+        query: req.query,
+        timestamp: new Date().toISOString()
+    });
 });
 
 /**
