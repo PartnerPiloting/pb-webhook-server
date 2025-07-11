@@ -13,6 +13,22 @@ This document tracks the development progress of the LinkedIn Follow-Up Portal, 
 
 ## Completed Features
 
+### Follow-up Date Field Fix (COMPLETED ✅ - December 2024)
+
+#### Fixed Follow-up Date Disappearing After Updates
+- **Root Cause**: Frontend field mapping inconsistencies causing Follow-up Date to clear after form updates
+- **Resolution**: Fixed API service field mappings to ensure consistent data format
+  - Added missing `followUpDate: lead.followUpDate` mapping in `getLeadById` function
+  - Changed LeadSearchUpdate.js to use `selectedLead.followUpDate` instead of undefined spaced version
+  - Issue was masked by browser caching - hard refresh revealed fixes were working
+
+- **Files Updated**:
+  - `linkedin-messaging-followup-next/services/api.js` - Added camelCase field mapping
+  - `linkedin-messaging-followup-next/components/LeadSearchUpdate.js` - Fixed field reference
+  - `linkedin-messaging-followup-next/components/LeadDetailForm.js` - Enhanced debugging (later cleaned up)
+
+- **Deployment**: Frontend only (Vercel) - no backend changes needed
+
 ### Field Mapping Fixes & UI Improvements (COMPLETED ✅ - December 2024)
 
 #### Fixed Field Name Inconsistencies

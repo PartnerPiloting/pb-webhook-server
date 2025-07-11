@@ -1,10 +1,20 @@
-'use client';
+"use client";
+import React from 'react';
+import Layout from '../../components/Layout';
+import NewLeadForm from '../../components/NewLeadForm';
 
 export default function NewLeadsPage() {
+  const handleLeadCreated = (newLead) => {
+    // Optional: Add any specific actions after lead creation
+    // For example, you could show a toast notification or redirect
+    console.log('New lead created:', newLead);
+  };
+
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">New Leads</h1>
-      <p className="text-gray-600">This feature is coming soon. Use the Lead Search to view and manage all your leads.</p>
-    </div>
+    <Layout>
+      <div className="p-8">
+        <NewLeadForm onLeadCreated={handleLeadCreated} />
+      </div>
+    </Layout>
   );
 } 
