@@ -309,7 +309,7 @@ export const getFollowUps = async () => {
       'First Name': lead.firstName || '',
       'Last Name': lead.lastName || '',
       'LinkedIn Profile URL': lead.linkedinProfileUrl || '',
-      'Follow-Up Date': lead.followUpDate || '',
+      'Follow Up Date': lead.followUpDate || '',
       'AI Score': lead.aiScore,
       'Status': lead.status || '',
       'Last Message Date': lead.lastMessageDate || '',

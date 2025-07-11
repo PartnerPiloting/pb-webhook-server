@@ -121,8 +121,8 @@ const FollowUpManager = () => {
       setSelectedLead(updated);
       setMessage({ type: 'success', text: 'Lead updated successfully!' });
       
-      // If follow-up date was cleared, remove from list and clear selection
-      if (!updated['Follow-Up Date'] || updated['Follow-Up Date'] === '') {
+              // If follow-up date was cleared, remove from list and clear selection
+        if (!updated['Follow Up Date'] || updated['Follow Up Date'] === '') {
         setFollowUps(prevFollowUps => 
           prevFollowUps.filter(lead => 
             lead['Profile Key'] !== (updated.id || updated['Profile Key'])
@@ -139,7 +139,7 @@ const FollowUpManager = () => {
               'First Name': updated['First Name'] || '',
               'Last Name': updated['Last Name'] || '',
               'Status': updated['Status'] || '',
-              'Follow-Up Date': updated['Follow-Up Date'] || '',
+              'Follow Up Date': updated['Follow Up Date'] || '',
               'Notes': updated['Notes'] || ''
             } : lead
           )
@@ -242,7 +242,7 @@ const FollowUpManager = () => {
                             {followUpStatus.text}
                           </span>
                           <span className="text-xs text-gray-400 ml-2">
-                            ({formatDate(lead['Follow-Up Date'])})
+                            ({formatDate(lead['Follow Up Date'])})
                           </span>
                         </div>
                       </div>
@@ -285,7 +285,7 @@ const FollowUpManager = () => {
               <div className="text-sm text-gray-500 mt-2">
                 Profile Key: {safeRender(selectedLead.id || selectedLead['Profile Key'])}
               </div>
-              {selectedLead['Follow-Up Date'] && (
+              {selectedLead['Follow Up Date'] && (
                 <div className="mt-2">
                   <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
                     getFollowUpStatus(selectedLead.daysUntilFollowUp).bgColor
