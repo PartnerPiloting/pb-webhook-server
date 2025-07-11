@@ -29,100 +29,72 @@ const LeadSearchUpdate = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // Fetch initial leads on component mount
-  useEffect(() => {
-    fetchInitialLeads();
-  }, []);
+  // Use ref to track current search request and prevent race conditions
+  const currentSearchRef = useRef(0);
 
-  const fetchInitialLeads = async () => {
+  // Load initial results on component mount
+  useEffect(() => {
+    // Trigger initial search with empty query
+    currentSearchRef.current += 1;
+    performSearch('', currentSearchRef.current);
+  }, [performSearch]);
+
+  // Single search function that handles both search and initial load
+  const performSearch = useCallback(async (query, requestId) => {
+    // Check if this is still the current search request
+    if (requestId !== currentSearchRef.current) {
+      console.log(`🔍 Search cancelled: "${query}" (ID: ${requestId})`);
+      return;
+    }
+    
+    setIsLoading(true);
+    console.log(`🔍 Starting search: "${query}" (ID: ${requestId})`);
+    
     try {
-      console.log('🔍 Fetching initial leads');
-      const results = await searchLeads('');
-      // Filter out Multi-Tenant related entries and sort alphabetically by first name
+      // Use backend search with the query - backend handles partial searches properly
+      const results = await searchLeads(query);
+      
+      // Check again after async operation
+      if (requestId !== currentSearchRef.current) {
+        console.log(`🔍 Search results ignored: "${query}" (ID: ${requestId}) - newer request active`);
+        return;
+      }
+      
+      // Filter out Multi-Tenant related entries and sort alphabetically (backend now sorts properly)
       const filteredAndSorted = (results || [])
         .filter(lead => {
-          const firstName = lead['First Name'] || '';
-          const lastName = lead['Last Name'] || '';
-          // Filter out any entries that seem to be Multi-Tenant related
-          return !firstName.toLowerCase().includes('multi') && 
-                 !lastName.toLowerCase().includes('multi') &&
-                 !firstName.toLowerCase().includes('tenant') && 
-                 !lastName.toLowerCase().includes('tenant');
-        })
-        .sort((a, b) => {
-          const firstNameA = (a['First Name'] || '').toLowerCase();
-          const firstNameB = (b['First Name'] || '').toLowerCase();
-          const lastNameA = (a['Last Name'] || '').toLowerCase();
-          const lastNameB = (b['Last Name'] || '').toLowerCase();
+          const firstName = (lead['First Name'] || '').toLowerCase();
+          const lastName = (lead['Last Name'] || '').toLowerCase();
           
-          // Sort by first name first, then by last name
-          if (firstNameA !== firstNameB) {
-            return firstNameA.localeCompare(firstNameB);
-          }
-          return lastNameA.localeCompare(lastNameB);
+          // Filter out Multi-Tenant related entries
+          return !firstName.includes('multi') && 
+                 !lastName.includes('multi') &&
+                 !firstName.includes('tenant') && 
+                 !lastName.includes('tenant');
         })
         .slice(0, 25); // Limit to 25 results
       
       setLeads(filteredAndSorted);
-      console.log(`🔍 Initial leads loaded: ${filteredAndSorted.length} results`);
+      console.log(`🔍 Search completed: "${query}" (ID: ${requestId}) - ${filteredAndSorted.length} results`);
     } catch (error) {
-      console.error('Failed to fetch initial leads:', error);
-      setMessage({ type: 'error', text: 'Failed to load leads. Please refresh the page.' });
+      console.error('Search error:', error);
+      if (requestId === currentSearchRef.current) {
+        setMessage({ type: 'error', text: 'Search failed. Please try again.' });
+      }
+    } finally {
+      if (requestId === currentSearchRef.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, []);
 
-  // Debounced search function with race condition protection
+  // Debounced version of search for user typing
   const debouncedSearch = useCallback(
-    debounce(async (query, requestId) => {
-      // Check if this is still the current search request
-      if (requestId !== currentSearchRef.current) {
-        console.log('🔍 Search cancelled due to newer request');
-        return;
-      }
-      
-      setIsLoading(true);
-      try {
-        // Use backend search with the query - backend now handles partial searches properly
-        const results = await searchLeads(query);
-        
-        // Check again after async operation
-        if (requestId !== currentSearchRef.current) {
-          console.log('🔍 Search results ignored due to newer request');
-          return;
-        }
-        
-        // Filter out Multi-Tenant related entries and sort alphabetically (backend now sorts properly)
-        const filteredAndSorted = (results || [])
-          .filter(lead => {
-            const firstName = (lead['First Name'] || '').toLowerCase();
-            const lastName = (lead['Last Name'] || '').toLowerCase();
-            
-            // Filter out Multi-Tenant related entries
-            return !firstName.includes('multi') && 
-                   !lastName.includes('multi') &&
-                   !firstName.includes('tenant') && 
-                   !lastName.includes('tenant');
-          })
-          .slice(0, 25); // Limit to 25 results
-        
-        setLeads(filteredAndSorted);
-        console.log(`🔍 Search "${query}" completed with ${filteredAndSorted.length} results`);
-      } catch (error) {
-        console.error('Search error:', error);
-        if (requestId === currentSearchRef.current) {
-          setMessage({ type: 'error', text: 'Search failed. Please try again.' });
-        }
-      } finally {
-        if (requestId === currentSearchRef.current) {
-          setIsLoading(false);
-        }
-      }
+    debounce((query, requestId) => {
+      performSearch(query, requestId);
     }, 500),
-    []
+    [performSearch]
   );
-
-  // Use ref to track current search request and prevent race conditions
-  const currentSearchRef = useRef(0);
 
   // Effect to trigger search when query changes
   useEffect(() => {
@@ -133,17 +105,13 @@ const LeadSearchUpdate = () => {
     console.log(`🔍 Search triggered: "${search}" (ID: ${requestId})`);
     
     if (search.trim()) {
+      // Use debounced search for user typing
       debouncedSearch(search, requestId);
     } else {
       // For empty search, load initial leads immediately without debounce
-      setIsLoading(true);
-      fetchInitialLeads().finally(() => {
-        if (requestId === currentSearchRef.current) {
-          setIsLoading(false);
-        }
-      });
+      performSearch('', requestId);
     }
-  }, [search, debouncedSearch]);
+  }, [search, debouncedSearch, performSearch]);
 
   // Handle lead selection - fetch full details
   const handleLeadSelect = async (lead) => {
