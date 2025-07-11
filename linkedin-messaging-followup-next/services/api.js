@@ -156,6 +156,80 @@ export const getLeadById = async (leadId) => {
   }
 };
 
+export const createLead = async (leadData) => {
+  try {
+    // Map frontend field names to backend field names (same mapping as updateLead)
+    const backendData = {};
+    const fieldMapping = {
+      'firstName': 'firstName',
+      'lastName': 'lastName', 
+      'linkedinProfileUrl': 'linkedinProfileUrl',
+      'viewInSalesNavigator': 'viewInSalesNavigator',
+      'email': 'email',
+      'phone': 'phone',
+      'notes': 'notes',
+      'followUpDate': 'followUpDate',
+      'followUpNotes': 'followUpNotes',
+      'source': 'source',
+      'status': 'status',
+      'priority': 'priority',
+      'linkedinConnectionStatus': 'linkedinConnectionStatus',
+      'ashWorkshopEmail': 'ashWorkshopEmail'
+    };
+    
+    Object.keys(leadData).forEach(frontendField => {
+      const backendField = fieldMapping[frontendField];
+      if (backendField) {
+        backendData[backendField] = leadData[frontendField];
+      }
+    });
+    
+    const response = await api.post('/leads', backendData, {
+      params: {
+        client: 'Guy-Wilson' // Backend expects this as URL parameter
+      }
+    });
+    
+    // Map backend response to frontend format (same as getLeadById)
+    const lead = response.data;
+    return {
+      id: lead.id,
+      'Profile Key': lead.profileKey,
+      'First Name': lead.firstName,
+      'Last Name': lead.lastName,
+      'LinkedIn Profile URL': lead.linkedinProfileUrl,
+      'View In Sales Navigator': lead.viewInSalesNavigator,
+      'Email': lead.email,
+      'Phone': lead.phone,
+      'AI Score': lead.aiScore,
+      'Posts Relevance Score': lead.postsRelevanceScore,
+      'Posts Relevance Percentage': lead.postsRelevancePercentage,
+      'Source': lead.source,
+      'Status': lead.status,
+      'Priority': lead.priority,
+      'LinkedIn Connection Status': lead.linkedinConnectionStatus,
+      'Follow Up Date': lead.followUpDate,
+      'Follow Up Notes': lead.followUpNotes,
+      'Notes': lead.notes,
+      'LinkedIn Messages': lead.linkedinMessages,
+      'Last Message Date': lead.lastMessageDate,
+      'Extension Last Sync': lead.extensionLastSync,
+      'Headline': lead.headline,
+      'Job Title': lead.jobTitle,
+      'Company Name': lead.companyName,
+      'About': lead.about,
+      'ASH Workshop Email': lead.ashWorkshopEmail,
+      // Also include camelCase for compatibility
+      ashWorkshopEmail: lead.ashWorkshopEmail,
+      phone: lead.phone,
+      followUpDate: lead.followUpDate
+    };
+  } catch (error) {
+    console.error('Create lead error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to create lead');
+  }
+};
+
 export const updateLead = async (leadId, updateData) => {
   try {
     // Map frontend field names to backend field names
