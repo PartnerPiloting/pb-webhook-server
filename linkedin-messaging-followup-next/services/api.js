@@ -294,6 +294,37 @@ export const deleteLead = async (leadId) => {
   }
 };
 
+export const getFollowUps = async () => {
+  try {
+    const response = await api.get('/leads/follow-ups', {
+      params: {
+        client: 'Guy-Wilson' // Backend expects this as URL parameter
+      }
+    });
+    
+    // Backend already returns data in the correct format for the Follow-Up Manager
+    // Map backend response to frontend format (same as searchLeads)
+    return response.data.map(lead => ({
+      'Profile Key': lead.id || '',
+      'First Name': lead.firstName || '',
+      'Last Name': lead.lastName || '',
+      'LinkedIn Profile URL': lead.linkedinProfileUrl || '',
+      'Follow-Up Date': lead.followUpDate || '',
+      'AI Score': lead.aiScore,
+      'Status': lead.status || '',
+      'Last Message Date': lead.lastMessageDate || '',
+      'Notes': lead.notes || '',
+      // Additional fields for Follow-Up Manager
+      daysUntilFollowUp: lead.daysUntilFollowUp,
+      // Include raw backend data for compatibility
+      ...lead
+    }));
+  } catch (error) {
+    console.error('Get follow-ups error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to load follow-ups');
+  }
+};
+
 export const getLeadByLinkedInUrl = async (linkedinUrl) => {
   try {
     const response = await api.get('/leads/by-linkedin-url', {
