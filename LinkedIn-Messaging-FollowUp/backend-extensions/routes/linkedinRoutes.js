@@ -596,6 +596,88 @@ router.put('/leads/:leadId', async (req, res) => {
 });
 
 /**
+ * Delete lead by ID
+ * DELETE /api/linkedin/leads/:leadId
+ */
+router.delete('/leads/:leadId', async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { client: clientId } = req.query; // For testing: get client from URL parameter
+        
+        // For testing: get client from URL parameter
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        // Validate client exists and is active
+        const client = await clientService.getClientById(clientId);
+        if (!client || client.status !== 'Active') {
+            return res.status(404).json({
+                error: 'Invalid client',
+                message: `Client '${clientId}' not found or inactive`
+            });
+        }
+
+        console.log(`Deleting lead ${leadId} for client: ${client.clientName} (${clientId}) → Base: ${client.airtableBaseId}`);
+
+        // Get client's Airtable base
+        const base = await getClientBase(clientId);
+
+        // First, verify the lead exists and get its basic info for logging
+        let leadInfo = null;
+        try {
+            const record = await base('Leads').find(leadId);
+            leadInfo = {
+                firstName: record.get('First Name') || '',
+                lastName: record.get('Last Name') || '',
+                linkedinUrl: record.get('LinkedIn Profile URL') || ''
+            };
+        } catch (error) {
+            if (error.statusCode === 404) {
+                return res.status(404).json({
+                    error: 'Lead not found',
+                    message: 'The requested lead does not exist'
+                });
+            }
+            throw error; // Re-throw if it's a different error
+        }
+
+        // Delete the record
+        await base('Leads').destroy([leadId]);
+
+        console.log(`Successfully deleted lead ${leadId} for client ${clientId}: ${leadInfo.firstName} ${leadInfo.lastName}`);
+        
+        res.json({
+            success: true,
+            message: 'Lead deleted successfully',
+            deletedLead: {
+                id: leadId,
+                firstName: leadInfo.firstName,
+                lastName: leadInfo.lastName,
+                linkedinUrl: leadInfo.linkedinUrl
+            }
+        });
+
+    } catch (error) {
+        console.error('Delete lead error:', error);
+        if (error.statusCode === 404) {
+            res.status(404).json({
+                error: 'Lead not found',
+                message: 'The requested lead does not exist'
+            });
+        } else {
+            res.status(500).json({
+                error: 'Delete failed',
+                message: error.message || 'Unable to delete lead'
+            });
+        }
+    }
+});
+
+/**
  * Check if lead exists by LinkedIn URL
  * POST /api/linkedin/leads/check-exists
  * Body: { linkedinUrl: "https://linkedin.com/in/..." }
