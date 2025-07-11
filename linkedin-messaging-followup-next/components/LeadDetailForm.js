@@ -274,6 +274,8 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating }) => {
                     rows={9}
                     placeholder="Add manual notes here. LinkedIn conversations will be automatically captured and appended..."
                     autoFocus
+                    data-text-blaze="enabled"
+                    data-tb-allow="true"
                   />
                   <div className="mt-2 flex justify-end">
                     <button
