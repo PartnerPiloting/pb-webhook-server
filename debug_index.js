@@ -109,9 +109,92 @@ app.get("/debug-health", (req, res) => {
     });
 });
 
+// NEW: LinkedIn Routes Testing Endpoint (Added Jan 2025)
+app.get("/debug-linkedin-routes", async (req, res) => {
+    console.log("/debug-linkedin-routes endpoint hit - testing LinkedIn API endpoints");
+    
+    const tests = [];
+    const baseUrl = "https://pb-webhook-server.onrender.com";
+    
+    try {
+        // Test follow-ups endpoint
+        try {
+            const followUpsRes = await fetch(`${baseUrl}/api/linkedin/leads/follow-ups`);
+            tests.push({
+                endpoint: "/api/linkedin/leads/follow-ups",
+                status: followUpsRes.status,
+                success: followUpsRes.ok,
+                message: followUpsRes.ok ? "✅ Follow-ups endpoint working" : `❌ Status ${followUpsRes.status}`
+            });
+        } catch (e) {
+            tests.push({
+                endpoint: "/api/linkedin/leads/follow-ups",
+                status: "ERROR",
+                success: false,
+                message: `❌ ${e.message}`
+            });
+        }
+
+        // Test top-scoring-posts endpoint  
+        try {
+            const topPostsRes = await fetch(`${baseUrl}/api/linkedin/leads/top-scoring-posts`);
+            tests.push({
+                endpoint: "/api/linkedin/leads/top-scoring-posts", 
+                status: topPostsRes.status,
+                success: topPostsRes.ok,
+                message: topPostsRes.ok ? "✅ Top scoring posts endpoint working" : `❌ Status ${topPostsRes.status}`
+            });
+        } catch (e) {
+            tests.push({
+                endpoint: "/api/linkedin/leads/top-scoring-posts",
+                status: "ERROR", 
+                success: false,
+                message: `❌ ${e.message}`
+            });
+        }
+
+        // Test search endpoint
+        try {
+            const searchRes = await fetch(`${baseUrl}/api/linkedin/leads/search?q=test`);
+            tests.push({
+                endpoint: "/api/linkedin/leads/search",
+                status: searchRes.status,
+                success: searchRes.ok,
+                message: searchRes.ok ? "✅ Search endpoint working" : `❌ Status ${searchRes.status}`
+            });
+        } catch (e) {
+            tests.push({
+                endpoint: "/api/linkedin/leads/search",
+                status: "ERROR",
+                success: false, 
+                message: `❌ ${e.message}`
+            });
+        }
+
+        const allPassed = tests.every(test => test.success);
+        
+        res.json({
+            message: "LinkedIn Routes Debug Test Results",
+            allTestsPassed: allPassed,
+            summary: `${tests.filter(t => t.success).length}/${tests.length} endpoints working`,
+            tests: tests,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error("Error in debug-linkedin-routes:", error);
+        res.status(500).json({
+            message: "Error testing LinkedIn routes",
+            error: error.message,
+            tests: tests
+        });
+    }
+});
+
 app.listen(port, () => {
     console.log(`Debug server (Version H) running on port ${port}. Startup complete.`);
     console.log("Review logs above for success or failure of global initializations AND loading/calling queueDispatcher.");
+    console.log("NEW: Access /debug-linkedin-routes to test LinkedIn API endpoints");
     if (globalGeminiModel) console.log("Gemini Model status: INITIALIZED"); else console.log("Gemini Model status: FAILED or NOT INITIALIZED");
     if (base) console.log("Airtable Base status: INITIALIZED"); else console.log("Airtable Base status: FAILED or NOT INITIALIZED");
 });
