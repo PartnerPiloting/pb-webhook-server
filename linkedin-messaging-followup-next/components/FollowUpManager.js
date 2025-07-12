@@ -100,14 +100,14 @@ const FollowUpManager = () => {
 
   // Handle lead selection - fetch full details
   const handleLeadSelect = async (lead) => {
-    if (!lead || !lead['Profile Key']) {
+    if (!lead || !lead.id) {
       console.error('Invalid lead selected:', lead);
       return;
     }
     
     setIsLoading(true);
     try {
-      const fullLead = await getLeadById(lead['Profile Key']);
+      const fullLead = await getLeadById(lead.id);
       setSelectedLead(fullLead);
     } catch (error) {
       console.error('Failed to load lead details:', error);
@@ -123,7 +123,7 @@ const FollowUpManager = () => {
 
     setIsUpdating(true);
     try {
-      const updated = await updateLead(selectedLead.id || selectedLead['Profile Key'], updatedData);
+      const updated = await updateLead(selectedLead.id, updatedData);
       
       setSelectedLead(updated);
       setMessage({ type: 'success', text: 'Lead updated successfully!' });
