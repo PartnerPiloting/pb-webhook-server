@@ -22,32 +22,6 @@ const safeRender = (value, fallback = '') => {
 };
 
 // Helper to format follow-up status
-const getFollowUpStatus = (daysUntilFollowUp) => {
-  if (daysUntilFollowUp < 0) {
-    const daysOverdue = Math.abs(daysUntilFollowUp);
-    return {
-      text: `${daysOverdue} day${daysOverdue === 1 ? '' : 's'} overdue`,
-      color: 'text-red-600',
-      bgColor: 'bg-red-50',
-      borderColor: 'border-red-200'
-    };
-  } else if (daysUntilFollowUp === 0) {
-    return {
-      text: 'Due today',
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-50',
-      borderColor: 'border-orange-200'
-    };
-  } else {
-    return {
-      text: `Due in ${daysUntilFollowUp} day${daysUntilFollowUp === 1 ? '' : 's'}`,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200'
-    };
-  }
-};
-
 // Helper to format date for display
 const formatDate = (dateString) => {
   if (!dateString) return '';
@@ -248,8 +222,6 @@ const FollowUpManager = () => {
               {followUps && Array.isArray(followUps) && followUps.map(lead => {
                 if (!lead || !lead['Profile Key']) return null;
                 
-                const followUpStatus = getFollowUpStatus(lead.daysUntilFollowUp);
-                
                 return (
                   <div
                     key={lead['Profile Key']}
@@ -269,14 +241,8 @@ const FollowUpManager = () => {
                         <div className="text-xs text-gray-500 truncate">
                           {safeRender(lead['Status'], 'No status')} • Score: {safeRender(lead['AI Score'], 'N/A')}
                         </div>
-                        <div className="flex items-center mt-1">
-                          {ClockIcon && <ClockIcon className="h-3 w-3 mr-1 text-gray-400" />}
-                          <span className={`text-xs font-medium ${followUpStatus.color}`}>
-                            {followUpStatus.text}
-                          </span>
-                          <span className="text-xs text-gray-400 ml-2">
-                            ({formatDate(lead['Follow-Up Date'])})
-                          </span>
+                        <div className="text-xs text-gray-400 mt-1">
+                          Follow-up: {formatDate(lead['Follow-Up Date']) || 'Not set'}
                         </div>
                       </div>
                     </div>
@@ -318,16 +284,6 @@ const FollowUpManager = () => {
               <div className="text-sm text-gray-500 mt-2">
                 Profile Key: {safeRender(selectedLead.id || selectedLead['Profile Key'])}
               </div>
-              {selectedLead['Follow-Up Date'] && (
-                <div className="mt-2">
-                  <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                    getFollowUpStatus(selectedLead.daysUntilFollowUp).bgColor
-                  } ${getFollowUpStatus(selectedLead.daysUntilFollowUp).color}`}>
-                    {ClockIcon && <ClockIcon className="h-3 w-3 mr-1" />}
-                    {getFollowUpStatus(selectedLead.daysUntilFollowUp).text}
-                  </span>
-                </div>
-              )}
             </div>
             
             <LeadDetailForm
@@ -351,8 +307,7 @@ const FollowUpManager = () => {
                 linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
                 followUpDate: safeRender(selectedLead.followUpDate),
                 notes: safeRender(selectedLead['Notes']),
-                lastMessageDate: safeRender(selectedLead['Last Message Date']),
-                daysUntilFollowUp: selectedLead.daysUntilFollowUp
+                lastMessageDate: safeRender(selectedLead['Last Message Date'])
               }}
               onUpdate={handleLeadUpdate}
               onDelete={handleLeadDelete}
