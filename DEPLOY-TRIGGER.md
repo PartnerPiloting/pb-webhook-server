@@ -7,4 +7,4 @@ Changes included:
 - Simplified follow-up date display
 - Fixed undefined days calculation issue
 
-Deploy timestamp: 2025-07-13 ${new Date().toISOString()}
+Deploy timestamp: 2025-07-13 23:55:00 UTC - Force Vercel to pull latest commits
