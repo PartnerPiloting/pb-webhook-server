@@ -1,9 +1,10 @@
 # Quick syntax check script for development
 Write-Host "🔍 Running quick syntax check..." -ForegroundColor Yellow
 
-# Check all JS files in routes directory
+# Check JS files in backend directories only (skip React/Next.js files)
 $routeFiles = Get-ChildItem -Path "routes" -Filter "*.js" -Recurse -ErrorAction SilentlyContinue
 $routeFiles += Get-ChildItem -Path "LinkedIn-Messaging-FollowUp/backend-extensions/routes" -Filter "*.js" -Recurse -ErrorAction SilentlyContinue
+$routeFiles += Get-ChildItem -Path "." -Filter "*.js" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^(index|server|app)\.js$" }
 
 $hasErrors = $false
 
