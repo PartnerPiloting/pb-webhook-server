@@ -31,7 +31,7 @@ const TopScoringPosts = () => {
       
       // API call to get leads with Posts Actioned empty and Posts Relevance Score > 0
       // Sorted by First Name, Last Name
-      const response = await fetch(`/api/linkedin/leads/top-scoring-posts?client=${client}`);
+      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts?client=${client}`);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
