@@ -18,6 +18,10 @@ const TopScoringPostsWithParams = () => {
     FIRST_NAME: 'First Name',
     LAST_NAME: 'Last Name',
     LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL',
+    SALES_NAVIGATOR_URL: 'Sales Navigator URL',
+    LINKEDIN_CONNECTION_STATUS: 'LinkedIn Connection Status',
+    NOTES: 'Notes',
+    AI_PROFILE_ASSESSMENT: 'AI Profile Assessment',
     AI_SCORE: 'AI Score',
     POSTS_RELEVANCE_PERCENTAGE: 'Posts Relevance Percentage',
     TOP_SCORING_POST: 'Top Scoring Post',
@@ -120,6 +124,36 @@ const TopScoringPostsWithParams = () => {
     }
   };
 
+  // Handle Notes update
+  const handleNotesUpdate = async (leadId, notes) => {
+    try {
+      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/${leadId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          [FIELD_NAMES.NOTES]: notes
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update Notes: ${response.statusText}`);
+      }
+
+      // Update the selected lead
+      const updatedLead = { ...selectedLead, [FIELD_NAMES.NOTES]: notes };
+      setSelectedLead(updatedLead);
+      
+      // Update in leads list
+      setLeads(leads.map(l => l.id === leadId ? updatedLead : l));
+      
+    } catch (err) {
+      setError(`Failed to update Notes: ${err.message}`);
+      console.error('Notes update error:', err);
+    }
+  };
+
   // Load data on component mount
   useEffect(() => {
     loadTopScoringPosts();
@@ -204,48 +238,139 @@ const TopScoringPostsWithParams = () => {
         </div>
       </div>
 
-      {/* Right Panel - Post Content */}
-      <div className="flex-1 bg-gray-50 p-6">
+      {/* Right Panel - Lead Details */}
+      <div className="flex-1 bg-gray-50 overflow-y-auto">
         {selectedLead ? (
-          <div>
-            {/* Lead Header */}
-            <div className="bg-white rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {selectedLead[FIELD_NAMES.FIRST_NAME]} {selectedLead[FIELD_NAMES.LAST_NAME]}
-                  </h2>
-                  <div className="text-sm text-gray-600 mt-1">
-                    AI Score: {selectedLead[FIELD_NAMES.AI_SCORE]}% • 
-                    Posts Relevance: {selectedLead[FIELD_NAMES.POSTS_RELEVANCE_SCORE]} 
-                    ({selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE]}%)
-                  </div>
-                </div>
-                
-                {/* Posts Actioned Checkbox */}
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={selectedLead[FIELD_NAMES.POSTS_ACTIONED] || false}
-                    onChange={(e) => handlePostsActioned(selectedLead.id, e.target.checked)}
-                    className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700">Posts Actioned</span>
-                </label>
+          <div className="p-6">
+            {/* Lead Name */}
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">
+                {selectedLead[FIELD_NAMES.FIRST_NAME]} {selectedLead[FIELD_NAMES.LAST_NAME]}
+              </h2>
+            </div>
+
+            {/* LinkedIn Profile URL */}
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                LinkedIn Profile
+              </label>
+              {selectedLead[FIELD_NAMES.LINKEDIN_PROFILE_URL] ? (
+                <a 
+                  href={selectedLead[FIELD_NAMES.LINKEDIN_PROFILE_URL]} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline"
+                >
+                  {selectedLead[FIELD_NAMES.LINKEDIN_PROFILE_URL]}
+                </a>
+              ) : (
+                <span className="text-gray-500">No LinkedIn URL</span>
+              )}
+            </div>
+
+            {/* Sales Navigator URL */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sales Navigator
+              </label>
+              {selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL] ? (
+                <a 
+                  href={selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL]} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline"
+                >
+                  {selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL]}
+                </a>
+              ) : (
+                <span className="text-gray-500">No Sales Navigator URL</span>
+              )}
+            </div>
+
+            {/* Posts Actioned Checkbox */}
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedLead[FIELD_NAMES.POSTS_ACTIONED] || false}
+                  onChange={(e) => handlePostsActioned(selectedLead.id, e.target.checked)}
+                  className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <span className="text-sm font-medium text-yellow-800">
+                  Mark Posts as Actioned
+                </span>
+              </label>
+              <p className="text-xs text-yellow-700 mt-1">
+                Check this box when you've taken action on this lead's posts. 
+                The lead will be removed from this list.
+              </p>
+            </div>
+
+            {/* LinkedIn Connection Status - Display Only */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                LinkedIn Connection Status
+              </label>
+              <div className="p-2 bg-gray-100 border border-gray-300 rounded-md text-gray-700">
+                {selectedLead[FIELD_NAMES.LINKEDIN_CONNECTION_STATUS] || 'Not specified'}
               </div>
             </div>
 
-            {/* Post Content */}
-            {selectedLead[FIELD_NAMES.TOP_SCORING_POST] && (
-              <div className="bg-white rounded-lg p-4">
-                <h3 className="font-medium text-gray-900 mb-3">Top Scoring Post</h3>
-                <div className="bg-gray-50 border border-gray-200 rounded p-4">
-                  <div className="text-sm text-gray-800 whitespace-pre-wrap">
-                    {selectedLead[FIELD_NAMES.TOP_SCORING_POST]}
-                  </div>
+            {/* Notes - Editable */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
+              <textarea
+                value={selectedLead[FIELD_NAMES.NOTES] || ''}
+                onChange={(e) => {
+                  // Update local state immediately for responsive UI
+                  const updatedLead = { ...selectedLead, [FIELD_NAMES.NOTES]: e.target.value };
+                  setSelectedLead(updatedLead);
+                }}
+                onBlur={(e) => {
+                  // Save to backend when user finishes editing
+                  handleNotesUpdate(selectedLead.id, e.target.value);
+                }}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                rows="4"
+                placeholder="Add notes about this lead..."
+              />
+            </div>
+
+            {/* AI Profile Assessment */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                AI Profile Assessment
+              </label>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="text-sm text-blue-900">
+                  {selectedLead[FIELD_NAMES.AI_PROFILE_ASSESSMENT] || 'No AI assessment available'}
                 </div>
+                {selectedLead[FIELD_NAMES.AI_SCORE] && (
+                  <div className="mt-2 text-xs text-blue-700">
+                    AI Score: {selectedLead[FIELD_NAMES.AI_SCORE]}%
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* Top Scoring Post */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Top Scoring Post
+              </label>
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                <div className="text-sm text-green-900 whitespace-pre-wrap">
+                  {selectedLead[FIELD_NAMES.TOP_SCORING_POST] || 'No top scoring post available'}
+                </div>
+                {selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] && (
+                  <div className="mt-2 text-xs text-green-700">
+                    Posts Relevance: {selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE]}%
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -255,7 +380,7 @@ const TopScoringPostsWithParams = () => {
                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
                 </svg>
               </div>
-              <div className="text-gray-500">Select a post to view content</div>
+              <div className="text-gray-500">Select a lead to view details</div>
             </div>
           </div>
         )}
