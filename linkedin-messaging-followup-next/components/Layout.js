@@ -1,13 +1,12 @@
 "use client";
-import React from 'react';
+import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon } from '@heroicons/react/24/outline';
 
-const Layout = ({ children }) => {
-  const pathname = usePathname();
+// Component that uses useSearchParams wrapped in Suspense
+const NavigationWithParams = ({ pathname, children }) => {
   const searchParams = useSearchParams();
-  
   // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
   const serviceLevel = parseInt(searchParams.get('level') || '1');
   
@@ -45,6 +44,44 @@ const Layout = ({ children }) => {
   // Filter navigation based on service level
   const filteredNavigation = navigation.filter(item => item.minLevel <= serviceLevel);
 
+  return (
+    <nav className="flex space-x-8 mb-8" aria-label="Tabs">
+      {filteredNavigation && filteredNavigation.map((item) => {
+        if (!item || !item.name || !item.href) return null;
+        
+        const Icon = item.icon;
+        // Check if current pathname matches this navigation item
+        const isActive = pathname === item.href;
+        
+        return (
+          <Link
+            key={item.name}
+            href={item.href}
+            className={`${
+              isActive
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200`}
+          >
+            {Icon && <Icon className="h-5 w-5 mr-2" />}
+            <div>
+              <div>{item.name || ''}</div>
+              {item.description && (
+                <div className="text-xs text-gray-400 font-normal">
+                  {item.description}
+                </div>
+              )}
+            </div>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+};
+
+const Layout = ({ children }) => {
+  const pathname = usePathname();
+
   // Ensure children is defined
   if (!children) {
     return (
@@ -76,37 +113,11 @@ const Layout = ({ children }) => {
 
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
-        <nav className="flex space-x-8 mb-8" aria-label="Tabs">
-          {filteredNavigation && filteredNavigation.map((item) => {
-            if (!item || !item.name || !item.href) return null;
-            
-            const Icon = item.icon;
-            // Check if current pathname matches this navigation item
-            const isActive = pathname === item.href;
-            
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`${
-                  isActive
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200`}
-              >
-                {Icon && <Icon className="h-5 w-5 mr-2" />}
-                <div>
-                  <div>{item.name || ''}</div>
-                  {item.description && (
-                    <div className="text-xs text-gray-400 font-normal">
-                      {item.description}
-                    </div>
-                  )}
-                </div>
-              </Link>
-            );
-          })}
-        </nav>
+        <Suspense fallback={<div>Loading navigation...</div>}>
+          <NavigationWithParams pathname={pathname}>
+            {children}
+          </NavigationWithParams>
+        </Suspense>
 
         {/* Main Content */}
         <main>

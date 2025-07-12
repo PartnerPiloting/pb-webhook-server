@@ -1,9 +1,10 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import LeadDetailForm from './LeadDetailForm';
 
-const TopScoringPosts = () => {
+// Component that uses useSearchParams wrapped in Suspense
+const TopScoringPostsWithParams = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -286,6 +287,14 @@ const TopScoringPosts = () => {
         />
       )}
     </div>
+  );
+};
+
+const TopScoringPosts = () => {
+  return (
+    <Suspense fallback={<div>Loading Top Scoring Posts...</div>}>
+      <TopScoringPostsWithParams />
+    </Suspense>
   );
 };
 
