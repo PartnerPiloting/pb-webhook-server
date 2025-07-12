@@ -1,32 +1,49 @@
 "use client";
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon } from '@heroicons/react/24/outline';
 
 const Layout = ({ children }) => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  
+  // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
+  const serviceLevel = parseInt(searchParams.get('level') || '1');
   
   const navigation = [
     {
       name: 'Lead Search & Update',
       href: '/',
       icon: MagnifyingGlassIcon,
-      description: 'Find and update existing leads'
+      description: 'Find and update existing leads',
+      minLevel: 1
     },
     {
       name: 'Follow-Up Manager',
       href: '/follow-up',
       icon: CalendarDaysIcon,
-      description: 'Manage scheduled follow-ups'
+      description: 'Manage scheduled follow-ups',
+      minLevel: 1
     },
     {
       name: 'New Leads',
       href: '/new-leads',
       icon: UserPlusIcon,
-      description: 'Review and process new leads'
+      description: 'Review and process new leads',
+      minLevel: 1
+    },
+    {
+      name: 'Top Scoring Posts',
+      href: '/top-scoring-posts',
+      icon: TrophyIcon,
+      description: 'Leads with high-relevance posts ready for action',
+      minLevel: 2
     }
   ];
+
+  // Filter navigation based on service level
+  const filteredNavigation = navigation.filter(item => item.minLevel <= serviceLevel);
 
   // Ensure children is defined
   if (!children) {
@@ -60,7 +77,7 @@ const Layout = ({ children }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <nav className="flex space-x-8 mb-8" aria-label="Tabs">
-          {navigation && navigation.map((item) => {
+          {filteredNavigation && filteredNavigation.map((item) => {
             if (!item || !item.name || !item.href) return null;
             
             const Icon = item.icon;
