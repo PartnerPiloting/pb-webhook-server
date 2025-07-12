@@ -37,8 +37,13 @@ LOWER(
 | Field Name | Type | Editable | Scale/Format | Description |
 |------------|------|----------|--------------|-------------|
 | `AI Score` | Number | No | 0-100, no decimals | System-generated lead relevance |
+| `AI Profile Assessment` | Long Text | No | Rich text | AI-generated profile analysis and insights |
+| `AI Attribute Breakdown` | Long Text | No | Rich text | Detailed attribute analysis and scoring breakdown |
+| `Scoring Status` | Single Select | No | System status | "To Be Scored", "Scored", "Skipped - Profile Too Thin", etc. |
 | `Posts Relevance Score` | Number | No | System value | Raw scoring value |
 | `Posts Relevance Percentage` | Formula | No | 0-100% | Calculated as `{Posts Relevance Score}/80*100` |
+| `Posts Actioned` | Checkbox | Yes | Boolean | Whether posts have been acted upon |
+| `Top Scoring Post` | Long Text | No | Rich text | Best post for engagement context |
 
 ### **Messaging & Follow-Up**
 | Field Name | Type | Editable | Format | Description |
@@ -124,11 +129,11 @@ const fieldVisibility = {
   "Profile Key": { visible: true, editable: false },
   "AI Score": { visible: true, editable: false },
   "Posts Relevance Percentage": { visible: true, editable: false },
+  "Top Scoring Post": { visible: true, editable: false },
   "Last Message Date": { visible: true, editable: false },
   
-  // Hidden fields
-  "LinkedIn Messages": { visible: false, editable: false }, // Handled via special interface
-  "Extension Last Sync": { visible: false, editable: false }
+  // Post scoring fields (level 2 service only)
+  "Posts Actioned": { visible: true, editable: true, serviceLevel: 2 },
 };
 ```
 
