@@ -369,49 +369,11 @@ router.post('/leads', async (req, res) => {
  * DELETE /api/linkedin/leads/:id
  * Delete a lead
  */
-router.delete('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: DELETE /leads/:id called');
-  
-  try {
-    const leadId = req.params.id;
-    const clientId = req.query.client;
-    
-    console.log('LinkedIn Routes: Deleting lead:', leadId, 'Client:', clientId);
 
-    // Get the lead first to return its data
-    const record = await airtableBase('Leads').find(leadId);
-    const leadData = {
-      id: record.id,
-      recordId: record.id,
-      profileKey: record.id, // Use Airtable record ID as profile key
-      firstName: record.fields['First Name'],
-      lastName: record.fields['Last Name'],
-      linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
-      // Include all original fields for compatibility
-      ...record.fields
-    };
-
-    // Delete the lead from Airtable
-    await airtableBase('Leads').destroy([leadId]);
-
-    console.log('LinkedIn Routes: Lead deleted successfully');
-    res.json({ 
-      message: 'Lead deleted successfully',
-      deletedLead: leadData
-    });
-
-  } catch (error) {
-    console.error('LinkedIn Routes: Error deleting lead:', error);
-    if (error.statusCode === 404) {
-      res.status(404).json({ error: 'Lead not found. It may have already been deleted.' });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to delete lead',
-        details: error.message 
-      });
-    }
-  }
-});
+/**
+ * GET /api/linkedin/leads/follow-ups?client=clientId
+ * Get leads that need follow-ups
+ */
 
 /**
  * GET /api/linkedin/leads/follow-ups?client=clientId
