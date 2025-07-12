@@ -8,7 +8,7 @@ import ErrorBoundary from "../../components/ErrorBoundary";
 export const dynamic = 'force-dynamic'
 
 export default function NewLeadsPage() {
-  const handleLeadCreated = (newLead) => {
+  const handleLeadCreated = (newLead: any) => {
     // Optional: Add any specific actions after lead creation
     console.log('New lead created:', newLead);
   };
