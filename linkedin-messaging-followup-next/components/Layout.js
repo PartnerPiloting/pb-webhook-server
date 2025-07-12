@@ -56,7 +56,7 @@ const NavigationWithParams = ({ pathname, children }) => {
         return (
           <Link
             key={item.name}
-            href={item.href}
+            href={`${item.href}?${searchParams.toString()}`}
             className={`${
               isActive
                 ? 'border-blue-600 text-blue-600'
