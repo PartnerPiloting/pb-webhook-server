@@ -26,7 +26,7 @@ const TopScoringPostsWithParams = () => {
     try {
       console.log('🔍 Loading top scoring posts for client:', clientId);
       
-      const response = await fetch(`/api/linkedin/leads/top-scoring-posts?client=${clientId}`);
+      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts?client=${clientId}`);
       const data = await response.json();
       
       if (!response.ok) {
