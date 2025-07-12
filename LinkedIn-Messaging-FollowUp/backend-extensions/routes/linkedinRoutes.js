@@ -429,7 +429,7 @@ router.get('/leads/follow-ups', async (req, res) => {
     const leads = await airtableBase('Leads').select({
       filterByFormula: `AND(
         {Follow-Up Date} != '',
-        {Follow-Up Date} != BLANK()
+        {Follow-Up Date} <= TODAY()
       )`,
       sort: [
         { field: 'Follow-Up Date', direction: 'asc' },
