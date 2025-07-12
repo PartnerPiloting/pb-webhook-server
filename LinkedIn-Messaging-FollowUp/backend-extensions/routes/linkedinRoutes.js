@@ -55,25 +55,6 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
 
     // Transform records to match frontend API expectations
     const transformedLeads = leads.map(record => ({
-
-
-/**
- * GET /api/linkedin/leads/:id
- * Get a specific lead by ID
- */
-router.get('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/:id called');
-  
-  try {
-    const leadId = req.params.id;
-    const clientId = req.query.client;
-    
-    console.log('LinkedIn Routes: Getting lead:', leadId, 'Client:', clientId);
-
-    // Get the lead from Airtable
-    const record = await airtableBase('Leads').find(leadId);
-
-    const transformedLead = {
       id: record.id,
       recordId: record.id,
       profileKey: record.id, // Use Airtable record ID as profile key
@@ -81,67 +62,23 @@ router.get('/leads/:id', async (req, res) => {
       lastName: record.fields['Last Name'],
       linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
       viewInSalesNavigator: record.fields['View In Sales Navigator'],
-      email: record.fields['Email'],
-      phone: record.fields['Phone'],
-      // ...other fields...
-      ...record.fields
-    };
-
-    res.json(transformedLead);
-
-  } catch (error) {
-    console.error('LinkedIn Routes: Error getting lead:', error);
-    if (error.statusCode === 404) {
-      res.status(404).json({ error: 'Lead not found' });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to get lead',
-        details: error.message 
-      });
-    }
-  }
-});
-        fields: updates
-      }
-    ]);
-
-    if (updatedRecords.length === 0) {
-      return res.status(404).json({ error: 'Lead not found' });
-    }
-
-    const updatedLead = {
-      id: updatedRecords[0].id,
-      recordId: updatedRecords[0].id,
-      profileKey: updatedRecords[0].id, // Use Airtable record ID as profile key
-      firstName: updatedRecords[0].fields['First Name'],
-      lastName: updatedRecords[0].fields['Last Name'],
-      linkedinProfileUrl: updatedRecords[0].fields['LinkedIn Profile URL'],
-      viewInSalesNavigator: updatedRecords[0].fields['View In Sales Navigator'],
-      email: updatedRecords[0].fields['Email'],
-      phone: updatedRecords[0].fields['Phone'],
-      notes: updatedRecords[0].fields['Notes'],
-      followUpDate: updatedRecords[0].fields['Follow-Up Date'],
-      followUpNotes: updatedRecords[0].fields['Follow Up Notes'],
-      source: updatedRecords[0].fields['Source'],
-      status: updatedRecords[0].fields['Status'],
-      priority: updatedRecords[0].fields['Priority'],
-      linkedinConnectionStatus: updatedRecords[0].fields['LinkedIn Connection Status'],
-      ashWorkshopEmail: updatedRecords[0].fields['ASH Workshop Email'],
-      aiScore: updatedRecords[0].fields['AI Score'],
-      postsRelevanceScore: updatedRecords[0].fields['Posts Relevance Score'],
-      postsRelevancePercentage: updatedRecords[0].fields['Posts Relevance Percentage'],
+      aiScore: record.fields['AI Score'],
+      postsRelevanceScore: record.fields['Posts Relevance Score'],
+      postsRelevancePercentage: record.fields['Posts Relevance Percentage'],
+      topScoringPost: record.fields['Top Scoring Post'],
+      postsActioned: record.fields['Posts Actioned'],
+      postsRelevanceStatus: record.fields['Posts Relevance Status'],
       // Include all original fields for compatibility
-      ...updatedRecords[0].fields
-    };
+      ...record.fields
+    }));
 
-    console.log('LinkedIn Routes: Lead updated successfully');
-    res.json(updatedLead);
 
+    res.json(transformedLeads);
   } catch (error) {
-    console.error('LinkedIn Routes: Error updating lead:', error);
-    res.status(500).json({ 
-      error: 'Failed to update lead',
-      details: error.message 
+    console.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
+    res.status(500).json({
+      error: 'Failed to fetch top scoring posts',
+      details: error.message
     });
   }
 });
