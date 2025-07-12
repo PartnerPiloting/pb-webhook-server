@@ -1,5 +1,3 @@
-// LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js
-
 const express = require('express');
 const router = express.Router();
 
@@ -72,13 +70,156 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       ...record.fields
     }));
 
-
     res.json(transformedLeads);
   } catch (error) {
     console.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
     res.status(500).json({
       error: 'Failed to fetch top scoring posts',
       details: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/linkedin/leads/follow-ups?client=clientId
+ * Get leads that need follow-ups
+ */
+router.get('/leads/follow-ups', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/follow-ups called');
+  
+  try {
+    const clientId = req.query.client;
+    console.log('LinkedIn Routes: Client ID:', clientId);
+
+    // Get leads with Follow-Up Date set (including overdue dates)
+    // This includes leads with follow-up dates today or earlier as per frontend expectations
+    const leads = await airtableBase('Leads').select({
+      filterByFormula: `AND(
+        {Follow-Up Date} != '',
+        {Follow-Up Date} <= TODAY()
+      )`,
+      sort: [
+        { field: 'Follow-Up Date', direction: 'asc' },
+        { field: 'First Name', direction: 'asc' }
+      ]
+    }).all();
+
+    console.log(`LinkedIn Routes: Found ${leads.length} follow-ups`);
+
+    // Transform to expected format with days calculation
+    const transformedLeads = leads.map(record => {
+      const followUpDate = record.fields['Follow-Up Date'];
+      let daysUntilFollowUp = null;
+      
+      if (followUpDate) {
+        const today = new Date();
+        const followUp = new Date(followUpDate);
+        daysUntilFollowUp = Math.ceil((followUp - today) / (1000 * 60 * 60 * 24));
+      }
+
+      return {
+        id: record.id,
+        recordId: record.id,
+        profileKey: record.id, // Use Airtable record ID as profile key
+        firstName: record.fields['First Name'],
+        lastName: record.fields['Last Name'],
+        linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
+        followUpDate: record.fields['Follow-Up Date'],
+        aiScore: record.fields['AI Score'],
+        status: record.fields['Status'],
+        lastMessageDate: record.fields['Last Message Date'],
+        notes: record.fields['Notes'],
+        daysUntilFollowUp: daysUntilFollowUp,
+        // Include all original fields for compatibility
+        ...record.fields
+      };
+    });
+
+    res.json(transformedLeads);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch follow-ups',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/linkedin/leads/search?q=query&client=clientId
+ * Search for leads by name
+ */
+router.get('/leads/search', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/search called');
+  
+  try {
+    const query = req.query.q;
+    const clientId = req.query.client;
+    
+    console.log('LinkedIn Routes: Search query:', query, 'Client:', clientId);
+    
+    // Build filter formula based on whether there's a query
+    let filterFormula;
+    if (!query || query.trim() === '') {
+      // No query - return all leads (excluding multi-tenant)
+      filterFormula = `NOT(OR(
+        SEARCH("multi", LOWER({First Name})) > 0,
+        SEARCH("multi", LOWER({Last Name})) > 0,
+        SEARCH("tenant", LOWER({First Name})) > 0,
+        SEARCH("tenant", LOWER({Last Name})) > 0
+      ))`;
+    } else {
+      // Query provided - search by name and exclude multi-tenant
+      filterFormula = `AND(
+        OR(
+          SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
+          SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0
+        ),
+        NOT(OR(
+          SEARCH("multi", LOWER({First Name})) > 0,
+          SEARCH("multi", LOWER({Last Name})) > 0,
+          SEARCH("tenant", LOWER({First Name})) > 0,
+          SEARCH("tenant", LOWER({Last Name})) > 0
+        ))
+      )`;
+    }
+
+    // Search leads in Airtable by First Name or Last Name
+    // Exclude Multi-Tenant related entries (as per frontend filtering)
+    const leads = await airtableBase('Leads').select({
+      filterByFormula: filterFormula,
+      sort: [
+        { field: 'First Name', direction: 'asc' },
+        { field: 'Last Name', direction: 'asc' }
+      ],
+      maxRecords: 25 // Limit to 25 results as per frontend
+    }).all();
+
+    console.log(`LinkedIn Routes: Found ${leads.length} leads matching "${query}"`);
+
+    // Transform to expected format
+    const transformedLeads = leads.map(record => ({
+      id: record.id,
+      recordId: record.id,
+      profileKey: record.id, // Use Airtable record ID as profile key
+      firstName: record.fields['First Name'],
+      lastName: record.fields['Last Name'],
+      linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
+      aiScore: record.fields['AI Score'],
+      status: record.fields['Status'],
+      lastMessageDate: record.fields['Last Message Date'],
+      // Include all original fields for compatibility
+      ...record.fields
+    }));
+
+    res.json(transformedLeads);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error in /leads/search:', error);
+    res.status(500).json({ 
+      error: 'Failed to search leads',
+      details: error.message 
     });
   }
 });
@@ -299,6 +440,69 @@ router.post('/leads', async (req, res) => {
     console.error('LinkedIn Routes: Error creating lead:', error);
     res.status(500).json({ 
       error: 'Failed to create lead',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * PUT /api/linkedin/leads/:id
+ * Update a lead by ID
+ */
+router.put('/leads/:id', async (req, res) => {
+  console.log('LinkedIn Routes: PUT /leads/:id called');
+  
+  try {
+    const leadId = req.params.id;
+    const updates = req.body;
+    const clientId = req.query.client;
+    
+    console.log('LinkedIn Routes: Updating lead:', leadId, 'Updates:', updates, 'Client:', clientId);
+
+    // Update the lead in Airtable
+    const updatedRecords = await airtableBase('Leads').update([
+      {
+        id: leadId,
+        fields: updates
+      }
+    ]);
+
+    if (updatedRecords.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    const updatedLead = {
+      id: updatedRecords[0].id,
+      recordId: updatedRecords[0].id,
+      profileKey: updatedRecords[0].id, // Use Airtable record ID as profile key
+      firstName: updatedRecords[0].fields['First Name'],
+      lastName: updatedRecords[0].fields['Last Name'],
+      linkedinProfileUrl: updatedRecords[0].fields['LinkedIn Profile URL'],
+      viewInSalesNavigator: updatedRecords[0].fields['View In Sales Navigator'],
+      email: updatedRecords[0].fields['Email'],
+      phone: updatedRecords[0].fields['Phone'],
+      notes: updatedRecords[0].fields['Notes'],
+      followUpDate: updatedRecords[0].fields['Follow-Up Date'],
+      followUpNotes: updatedRecords[0].fields['Follow Up Notes'],
+      source: updatedRecords[0].fields['Source'],
+      status: updatedRecords[0].fields['Status'],
+      priority: updatedRecords[0].fields['Priority'],
+      linkedinConnectionStatus: updatedRecords[0].fields['LinkedIn Connection Status'],
+      ashWorkshopEmail: updatedRecords[0].fields['ASH Workshop Email'],
+      aiScore: updatedRecords[0].fields['AI Score'],
+      postsRelevanceScore: updatedRecords[0].fields['Posts Relevance Score'],
+      postsRelevancePercentage: updatedRecords[0].fields['Posts Relevance Percentage'],
+      // Include all original fields for compatibility
+      ...updatedRecords[0].fields
+    };
+
+    console.log('LinkedIn Routes: Lead updated successfully');
+    res.json(updatedLead);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error updating lead:', error);
+    res.status(500).json({ 
+      error: 'Failed to update lead',
       details: error.message 
     });
   }
