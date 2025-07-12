@@ -18,9 +18,7 @@ const TopScoringPostsWithParams = () => {
     FIRST_NAME: 'First Name',
     LAST_NAME: 'Last Name',
     LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL',
-    SALES_NAVIGATOR_URL: 'Sales Navigator URL', // Try this first
-    SALES_NAV_URL: 'Sales Nav URL', // Alternative
-    LINKEDIN_SALES_NAVIGATOR: 'LinkedIn Sales Navigator', // Another alternative
+    VIEW_IN_SALES_NAVIGATOR: 'View In Sales Navigator', // Correct field name
     LINKEDIN_CONNECTION_STATUS: 'LinkedIn Connection Status',
     NOTES: 'Notes',
     AI_PROFILE_ASSESSMENT: 'AI Profile Assessment',
@@ -279,13 +277,9 @@ const TopScoringPostsWithParams = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 View in Sales Navigator
               </label>
-              {(selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL] || 
-                selectedLead[FIELD_NAMES.SALES_NAV_URL] || 
-                selectedLead[FIELD_NAMES.LINKEDIN_SALES_NAVIGATOR]) ? (
+              {selectedLead[FIELD_NAMES.VIEW_IN_SALES_NAVIGATOR] ? (
                 <a 
-                  href={selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL] || 
-                        selectedLead[FIELD_NAMES.SALES_NAV_URL] || 
-                        selectedLead[FIELD_NAMES.LINKEDIN_SALES_NAVIGATOR]} 
+                  href={selectedLead[FIELD_NAMES.VIEW_IN_SALES_NAVIGATOR]} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:text-blue-800 underline"
