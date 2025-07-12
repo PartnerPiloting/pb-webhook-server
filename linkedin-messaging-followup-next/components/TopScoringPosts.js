@@ -12,7 +12,7 @@ const TopScoringPostsWithParams = () => {
   const [updating, setUpdating] = useState(false);
   
   const searchParams = useSearchParams();
-  const clientId = searchParams.get('client') || 'guy-wilson';
+  const clientId = searchParams.get('client') || 'Guy-Wilson';
 
   // Load top scoring posts on component mount
   useEffect(() => {

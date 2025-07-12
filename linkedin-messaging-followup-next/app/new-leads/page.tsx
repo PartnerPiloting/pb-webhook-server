@@ -4,14 +4,14 @@ export const dynamic = 'force-dynamic'
 "use client";
 import React from "react";
 import Layout from "../../components/Layout";
-import TopScoringPosts from "../../components/TopScoringPosts";
+import NewLeads from "../../components/NewLeads";
 import ErrorBoundary from "../../components/ErrorBoundary";
 
-export default function TopScoringPostsPage() {
+export default function NewLeadsPage() {
   return (
     <ErrorBoundary>
       <Layout>
-        <TopScoringPosts />
+        <NewLeads />
       </Layout>
     </ErrorBoundary>
   );
