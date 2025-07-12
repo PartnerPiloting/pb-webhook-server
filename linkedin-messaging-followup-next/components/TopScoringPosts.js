@@ -22,16 +22,21 @@ const TopScoringPostsWithParams = () => {
     POSTS_RELEVANCE_PERCENTAGE: 'Posts Relevance Percentage',
     TOP_SCORING_POST: 'Top Scoring Post',
     POSTS_ACTIONED: 'Posts Actioned',
-    POSTS_RELEVANCE_SCORE: 'Posts Relevance Score'
+    POSTS_RELEVANCE_SCORE: 'Posts Relevance Score',
+    POSTS_RELEVANCE_STATUS: 'Posts Relevance Status'
   };
 
-  // Load leads with empty Posts Actioned and Posts Relevance Score > 0 (indicating "Relevant")
+  // Load leads with empty Posts Actioned and Posts Relevance Status = "Relevant"
   const loadTopScoringPosts = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // API call to get leads with Posts Actioned empty and Posts Relevance Score > 0
+      // Get client from URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const client = urlParams.get('client') || 'Guy-Wilson';
+      
+      // API call to get leads with Posts Actioned empty and Posts Relevance Status = "Relevant"
       // Sorted by First Name, Last Name
       const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts?client=${client}`);
       
@@ -44,7 +49,7 @@ const TopScoringPostsWithParams = () => {
       // Filter client-side as backup for API filtering
       const filteredLeads = (data || []).filter(lead => 
         !lead[FIELD_NAMES.POSTS_ACTIONED] && 
-        lead[FIELD_NAMES.POSTS_RELEVANCE_SCORE] > 0
+        lead[FIELD_NAMES.POSTS_RELEVANCE_STATUS] === 'Relevant'
       );
       
       // Sort by First Name, Last Name as per spec
