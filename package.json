@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "syntax-check": "node -e \"const fs = require('fs'); const path = require('path'); function checkSyntax(dir) { const files = fs.readdirSync(dir); files.forEach(file => { const filePath = path.join(dir, file); const stat = fs.statSync(filePath); if (stat.isDirectory() && file !== 'node_modules') { checkSyntax(filePath); } else if (file.endsWith('.js')) { try { require('child_process').execSync(`node -c ${filePath}`, {stdio: 'pipe'}); console.log('✅', filePath); } catch (e) { console.error('❌', filePath, e.message); process.exit(1); } } }); } checkSyntax('.');\"",
+    "pre-deploy": "npm run syntax-check && echo 'Ready to deploy!'"
   },
   "keywords": [],
   "author": "",
