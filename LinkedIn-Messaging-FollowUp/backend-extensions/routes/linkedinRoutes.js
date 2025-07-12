@@ -40,12 +40,12 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
     // - Posts Relevance Status = "Relevant"
     const leads = await airtableBase('Leads').select({
       filterByFormula: `AND(
-        OR({${FIELD_NAMES.POSTS_ACTIONED}} = '', {${FIELD_NAMES.POSTS_ACTIONED}} = BLANK()),
-        {${FIELD_NAMES.POSTS_RELEVANCE_STATUS}} = 'Relevant'
+        OR({Posts Actioned} = '', {Posts Actioned} = BLANK()),
+        {Posts Relevance Status} = 'Relevant'
       )`,
       sort: [
-        { field: FIELD_NAMES.FIRST_NAME, direction: 'asc' },
-        { field: FIELD_NAMES.LAST_NAME, direction: 'asc' }
+        { field: 'First Name', direction: 'asc' },
+        { field: 'Last Name', direction: 'asc' }
       ]
     }).all();
 
