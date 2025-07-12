@@ -55,50 +55,52 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
 
     // Transform records to match frontend API expectations
     const transformedLeads = leads.map(record => ({
-      id: record.id,
-      recordId: record.id,
-      // Both camelCase (for API service) and original field names (for direct access)
-      firstName: record.fields[FIELD_NAMES.FIRST_NAME],
-      lastName: record.fields[FIELD_NAMES.LAST_NAME],
-      linkedinProfileUrl: record.fields[FIELD_NAMES.LINKEDIN_PROFILE_URL],
-      aiScore: record.fields[FIELD_NAMES.AI_SCORE],
-      postsRelevancePercentage: record.fields[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE],
-      topScoringPost: record.fields[FIELD_NAMES.TOP_SCORING_POST],
-      postsActioned: record.fields[FIELD_NAMES.POSTS_ACTIONED],
-      postsRelevanceScore: record.fields[FIELD_NAMES.POSTS_RELEVANCE_SCORE],
-      postsRelevanceStatus: record.fields[FIELD_NAMES.POSTS_RELEVANCE_STATUS],
-      // Include all original fields for compatibility
-      ...record.fields
-    }));
 
-    res.json(transformedLeads);
-
-  } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch top scoring posts',
-      details: error.message 
-    });
-  }
-});
 
 /**
- * PUT /api/linkedin/leads/:id
- * Update a lead's fields
+ * GET /api/linkedin/leads/:id
+ * Get a specific lead by ID
  */
-router.put('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: PUT /leads/:id called');
+router.get('/leads/:id', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/:id called');
   
   try {
     const leadId = req.params.id;
-    const updates = req.body;
+    const clientId = req.query.client;
     
-    console.log('LinkedIn Routes: Updating lead:', leadId, 'with:', updates);
+    console.log('LinkedIn Routes: Getting lead:', leadId, 'Client:', clientId);
 
-    // Update the lead in Airtable using the main base
-    const updatedRecords = await airtableBase('Leads').update([
-      {
-        id: leadId,
+    // Get the lead from Airtable
+    const record = await airtableBase('Leads').find(leadId);
+
+    const transformedLead = {
+      id: record.id,
+      recordId: record.id,
+      profileKey: record.id, // Use Airtable record ID as profile key
+      firstName: record.fields['First Name'],
+      lastName: record.fields['Last Name'],
+      linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
+      viewInSalesNavigator: record.fields['View In Sales Navigator'],
+      email: record.fields['Email'],
+      phone: record.fields['Phone'],
+      // ...other fields...
+      ...record.fields
+    };
+
+    res.json(transformedLead);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error getting lead:', error);
+    if (error.statusCode === 404) {
+      res.status(404).json({ error: 'Lead not found' });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to get lead',
+        details: error.message 
+      });
+    }
+  }
+});
         fields: updates
       }
     ]);
