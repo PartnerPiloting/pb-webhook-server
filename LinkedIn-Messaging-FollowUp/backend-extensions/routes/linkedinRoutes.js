@@ -157,14 +157,19 @@ router.get('/leads/search', async (req, res) => {
     
     console.log('LinkedIn Routes: Search query:', query, 'Client:', clientId);
     
-    if (!query) {
-      return res.json([]); // Return empty array if no query
-    }
-
-    // Search leads in Airtable by First Name or Last Name
-    // Exclude Multi-Tenant related entries (as per frontend filtering)
-    const leads = await airtableBase('Leads').select({
-      filterByFormula: `AND(
+    // Build filter formula based on whether there's a query
+    let filterFormula;
+    if (!query || query.trim() === '') {
+      // No query - return all leads (excluding multi-tenant)
+      filterFormula = `NOT(OR(
+        SEARCH("multi", LOWER({First Name})) > 0,
+        SEARCH("multi", LOWER({Last Name})) > 0,
+        SEARCH("tenant", LOWER({First Name})) > 0,
+        SEARCH("tenant", LOWER({Last Name})) > 0
+      ))`;
+    } else {
+      // Query provided - search by name and exclude multi-tenant
+      filterFormula = `AND(
         OR(
           SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
           SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0
@@ -175,7 +180,13 @@ router.get('/leads/search', async (req, res) => {
           SEARCH("tenant", LOWER({First Name})) > 0,
           SEARCH("tenant", LOWER({Last Name})) > 0
         ))
-      )`,
+      )`;
+    }
+
+    // Search leads in Airtable by First Name or Last Name
+    // Exclude Multi-Tenant related entries (as per frontend filtering)
+    const leads = await airtableBase('Leads').select({
+      filterByFormula: filterFormula,
       sort: [
         { field: 'First Name', direction: 'asc' },
         { field: 'Last Name', direction: 'asc' }
