@@ -70,6 +70,9 @@ async function getAllClients() {
                 const status = record.get('Status');
                 const airtableBaseId = record.get('Airtable Base ID');
                 const executionLog = record.get('Execution Log') || '';
+                const wpUserId = record.get('WordPress User ID');
+                const serviceLevel = record.get('Service Level') || 1;
+                const comment = record.get('Comment') || '';
                 
                 clients.push({
                     id: record.id,
@@ -77,7 +80,10 @@ async function getAllClients() {
                     clientName: clientName,
                     status: status,
                     airtableBaseId: airtableBaseId,
-                    executionLog: executionLog
+                    executionLog: executionLog,
+                    wpUserId: wpUserId,
+                    serviceLevel: serviceLevel,
+                    comment: comment
                 });
             });
             fetchNextPage();
@@ -136,6 +142,30 @@ async function getClientById(clientId) {
 
     } catch (error) {
         console.error(`Error fetching client ${clientId}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Get a specific client by WordPress User ID
+ * @param {number} wpUserId - The WordPress User ID to search for
+ * @returns {Promise<Object|null>} Client record or null if not found
+ */
+async function getClientByWpUserId(wpUserId) {
+    try {
+        const allClients = await getAllClients();
+        const client = allClients.find(c => c.wpUserId === wpUserId);
+        
+        if (client) {
+            console.log(`Found client by WP User ID ${wpUserId}: ${client.clientName} (${client.clientId})`);
+        } else {
+            console.log(`Client not found for WP User ID: ${wpUserId}`);
+        }
+
+        return client || null;
+
+    } catch (error) {
+        console.error(`Error fetching client by WP User ID ${wpUserId}:`, error);
         throw error;
     }
 }
@@ -335,6 +365,7 @@ module.exports = {
     getAllActiveClients,
     getActiveClients,  // Add the new function
     getClientById,
+    getClientByWpUserId, // Add the new WP User ID lookup function
     validateClient,
     updateExecutionLog,
     logExecution,     // Add the new logging function

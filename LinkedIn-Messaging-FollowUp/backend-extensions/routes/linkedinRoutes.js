@@ -1107,6 +1107,125 @@ router.get('/test', async (req, res) => {
     }
 });
 
+/**
+ * Get leads with top scoring posts ready for action
+ * GET /api/linkedin/leads/top-scoring-posts?client=clientId
+ * Returns leads where Posts Actioned is empty AND Posts Relevance Score > 0
+ * Sorted by First Name, Last Name
+ */
+router.get('/leads/top-scoring-posts', async (req, res) => {
+    console.log('🔍 TOP SCORING POSTS ROUTE CALLED:', req.method, req.path, 'query:', req.query);
+    try {
+        const { client: clientId } = req.query;
+        
+        // For testing: get client from URL parameter
+        if (!clientId) {
+            return res.status(400).json({
+                error: 'Client parameter required',
+                message: 'Please provide ?client=guy-wilson in URL for testing'
+            });
+        }
+
+        // Validate client exists and is active
+        const client = await clientService.getClientById(clientId);
+        if (!client) {
+            return res.status(404).json({
+                error: 'Client not found',
+                message: `Client '${clientId}' does not exist in master Clients base`
+            });
+        }
+        
+        if (client.status !== 'Active') {
+            return res.status(403).json({
+                error: 'Client inactive',
+                message: `Client '${clientId}' status is '${client.status}', expected 'Active'`
+            });
+        }
+
+        console.log(`Getting top scoring posts for client: ${client.clientName} (${clientId}) → Base: ${client.airtableBaseId}`);
+
+        // Get client's Airtable base
+        const base = await getClientBase(clientId);
+        const leads = [];
+
+        // Filter: Posts Actioned empty AND Posts Relevance Score > 0
+        // Using exact field names from master field list
+        const filterFormula = `AND(
+            {Posts Actioned} = BLANK(),
+            {Posts Relevance Score} > 0
+        )`;
+        
+        console.log('🔍 DEBUG: Top scoring posts filter:', filterFormula);
+
+        await base('Leads').select({
+            filterByFormula: filterFormula,
+            maxRecords: 100, // Reasonable limit for top scoring posts
+            sort: [
+                { field: 'First Name', direction: 'asc' },
+                { field: 'Last Name', direction: 'asc' }
+            ]
+        }).eachPage((records, fetchNextPage) => {
+            records.forEach((record) => {
+                // Using exact field names from master field list as single source of truth
+                const lead = {
+                    id: record.id,
+                    recordId: record.id, // Compatibility
+                    
+                    // Basic fields (exact names from master list)
+                    'First Name': record.get('First Name') || '',
+                    'Last Name': record.get('Last Name') || '',
+                    'LinkedIn Profile URL': record.get('LinkedIn Profile URL') || '',
+                    'Profile Key': record.get('Profile Key') || '',
+                    'Email': record.get('Email') || '',
+                    'Phone': record.get('Phone') || '',
+                    'View In Sales Navigator': record.get('View In Sales Navigator') || '',
+                    
+                    // AI Scoring fields (exact names from master list)
+                    'AI Score': record.get('AI Score') || 0,
+                    'Posts Relevance Score': record.get('Posts Relevance Score') || 0,
+                    'Posts Relevance Percentage': record.get('Posts Relevance Percentage') || 0,
+                    'Posts Actioned': Boolean(record.get('Posts Actioned')),
+                    'Top Scoring Post': record.get('Top Scoring Post') || '',
+                    
+                    // Status fields (exact names from master list)
+                    'Source': record.get('Source') || '',
+                    'Status': record.get('Status') || '',
+                    'Priority': record.get('Priority') || '',
+                    'LinkedIn Connection Status': record.get('LinkedIn Connection Status') || '',
+                    
+                    // Messaging fields (exact names from master list)
+                    'Notes': record.get('Notes') || '',
+                    'Follow-Up Date': record.get('Follow-Up Date') || null,
+                    'Last Message Date': record.get('Last Message Date') || null,
+                    
+                    // Compatibility aliases (camelCase for legacy support)
+                    firstName: record.get('First Name') || '',
+                    lastName: record.get('Last Name') || '',
+                    linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
+                    aiScore: record.get('AI Score') || 0,
+                    postsRelevanceScore: record.get('Posts Relevance Score') || 0,
+                    postsRelevancePercentage: record.get('Posts Relevance Percentage') || 0,
+                    postsActioned: Boolean(record.get('Posts Actioned')),
+                    topScoringPost: record.get('Top Scoring Post') || ''
+                };
+                
+                leads.push(lead);
+            });
+            fetchNextPage();
+        });
+
+        console.log(`Found ${leads.length} leads with top scoring posts for client ${clientId} (${client.clientName})`);
+        res.json(leads);
+
+    } catch (error) {
+        console.error('Top scoring posts error:', error);
+        res.status(500).json({
+            error: 'Failed to load top scoring posts',
+            message: 'Unable to retrieve leads with top scoring posts'
+        });
+    }
+});
+
 // Helper functions
 function calculatePostsRelevancePercentage(score) {
     if (!score || score === 0) return 0;
