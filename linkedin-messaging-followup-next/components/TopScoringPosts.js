@@ -6,286 +6,231 @@ import LeadDetailForm from './LeadDetailForm';
 // Component that uses useSearchParams wrapped in Suspense
 const TopScoringPostsWithParams = () => {
   const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
-  const [updating, setUpdating] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   
   const searchParams = useSearchParams();
-  const clientId = searchParams.get('client') || 'Guy-Wilson';
+  const client = searchParams.get('client') || 'Guy-Wilson';
 
-  // Load top scoring posts on component mount
-  useEffect(() => {
-    loadTopScoringPosts();
-  }, [clientId]);
+  // Field names from master field list - single source of truth
+  const FIELD_NAMES = {
+    FIRST_NAME: 'First Name',
+    LAST_NAME: 'Last Name',
+    LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL',
+    AI_SCORE: 'AI Score',
+    POSTS_RELEVANCE_PERCENTAGE: 'Posts Relevance Percentage',
+    TOP_SCORING_POST: 'Top Scoring Post',
+    POSTS_ACTIONED: 'Posts Actioned',
+    POSTS_RELEVANCE_SCORE: 'Posts Relevance Score'
+  };
 
+  // Load leads with empty Posts Actioned and Posts Relevance Score > 0 (indicating "Relevant")
   const loadTopScoringPosts = async () => {
     setLoading(true);
-    setError('');
+    setError(null);
     
     try {
-      console.log('🔍 Loading top scoring posts for client:', clientId);
-      
-      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts?client=${clientId}`);
-      const data = await response.json();
+      // API call to get leads with Posts Actioned empty and Posts Relevance Score > 0
+      // Sorted by First Name, Last Name
+      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts?client=${client}`);
       
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to load top scoring posts');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      console.log('✅ Top scoring posts loaded:', data.length, 'leads');
-      setLeads(data);
+      const data = await response.json();
+      
+      // Filter client-side as backup for API filtering
+      const filteredLeads = (data || []).filter(lead => 
+        !lead[FIELD_NAMES.POSTS_ACTIONED] && 
+        lead[FIELD_NAMES.POSTS_RELEVANCE_SCORE] > 0
+      );
+      
+      // Sort by First Name, Last Name as per spec
+      filteredLeads.sort((a, b) => {
+        const firstNameA = a[FIELD_NAMES.FIRST_NAME] || '';
+        const firstNameB = b[FIELD_NAMES.FIRST_NAME] || '';
+        const lastNameA = a[FIELD_NAMES.LAST_NAME] || '';
+        const lastNameB = b[FIELD_NAMES.LAST_NAME] || '';
+        
+        if (firstNameA !== firstNameB) {
+          return firstNameA.localeCompare(firstNameB);
+        }
+        return lastNameA.localeCompare(lastNameB);
+      });
+      
+      setLeads(filteredLeads);
+      
+      // Auto-select first lead if any
+      if (filteredLeads.length > 0) {
+        setSelectedLead(filteredLeads[0]);
+      }
       
     } catch (err) {
-      console.error('❌ Error loading top scoring posts:', err);
-      setError(err.message);
+      setError(`Failed to load top scoring posts: ${err.message}`);
+      console.error('TopScoringPosts load error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePostsActioned = async (leadId, isChecked) => {
-    setUpdating(true);
-    
+  // Handle Posts Actioned checkbox change
+  const handlePostsActioned = async (leadId, checked) => {
     try {
-      console.log('🔄 Updating Posts Actioned for lead:', leadId, 'to:', isChecked);
-      
-      const response = await fetch(`/api/linkedin/leads/${leadId}`, {
+      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/${leadId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          'Posts Actioned': isChecked,
-          client: clientId
-        }),
+          [FIELD_NAMES.POSTS_ACTIONED]: checked
+        })
       });
-      
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update Posts Actioned');
+        throw new Error(`Failed to update Posts Actioned: ${response.statusText}`);
       }
-      
-      // Update local state
-      setLeads(prevLeads => 
-        prevLeads.map(lead => 
-          lead.id === leadId 
-            ? { ...lead, 'Posts Actioned': isChecked, postsActioned: isChecked }
-            : lead
-        )
-      );
-      
-      // If checked, remove from list (since filter is Posts Actioned empty)
-      if (isChecked) {
-        setLeads(prevLeads => prevLeads.filter(lead => lead.id !== leadId));
+
+      // Remove lead from list immediately (as per spec)
+      if (checked) {
+        const updatedLeads = leads.filter(lead => lead.id !== leadId);
+        setLeads(updatedLeads);
+        
+        // Select next lead in list
+        if (updatedLeads.length > 0) {
+          const currentIndex = leads.findIndex(lead => lead.id === leadId);
+          const nextIndex = Math.min(currentIndex, updatedLeads.length - 1);
+          setSelectedLead(updatedLeads[nextIndex]);
+        } else {
+          setSelectedLead(null);
+        }
       }
-      
-      console.log('✅ Posts Actioned updated successfully');
       
     } catch (err) {
-      console.error('❌ Error updating Posts Actioned:', err);
-      setError(err.message);
-    } finally {
-      setUpdating(false);
+      setError(`Failed to update Posts Actioned: ${err.message}`);
+      console.error('Posts Actioned update error:', err);
     }
   };
 
-  const openLeadDetail = (lead) => {
+  // Load data on component mount
+  useEffect(() => {
+    loadTopScoringPosts();
+  }, [client]);
+
+  // Handle lead selection from list
+  const handleLeadSelect = (lead) => {
     setSelectedLead(lead);
   };
 
-  const closeLeadDetail = () => {
-    setSelectedLead(null);
-  };
-
-  const handleLeadUpdate = (updatedLead) => {
-    // Update the lead in our list
-    setLeads(prevLeads => 
-      prevLeads.map(lead => 
-        lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
-      )
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">Loading top scoring posts...</div>
+      </div>
     );
-    closeLeadDetail();
-    // Optionally reload the list to ensure consistency
-    // loadTopScoringPosts();
-  };
+  }
 
   if (error) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-md p-4">
-        <h3 className="text-sm font-medium text-red-800">Error Loading Top Scoring Posts</h3>
-        <p className="mt-1 text-sm text-red-700">{error}</p>
+        <div className="text-red-800">{error}</div>
         <button 
           onClick={loadTopScoringPosts}
-          className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+          className="mt-2 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
         >
-          Try Again
+          Retry
         </button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Top Scoring Posts</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Leads with high-relevance posts ready for action (Posts Actioned empty, Posts Relevance Score {'>'} 0)
-            </p>
-          </div>
-          <button
-            onClick={loadTopScoringPosts}
-            disabled={loading}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
+    <div className="flex h-full">
+      {/* Left Panel - Leads List */}
+      <div className="w-1/3 border-r border-gray-200 bg-white">
+        <div className="p-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">
+            Top Scoring Posts
+            <span className="ml-2 text-sm text-gray-500">({leads.length})</span>
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Leads with relevant posts ready for action
+          </p>
         </div>
         
-        {/* Stats */}
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600">{leads.length}</div>
-            <div className="text-sm text-blue-600">Ready for Action</div>
-          </div>
-          <div className="bg-green-50 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-green-600">
-              {leads.filter(lead => (lead['Posts Relevance Score'] || 0) >= 50).length}
+        <div className="overflow-y-auto" style={{ height: 'calc(100vh - 200px)' }}>
+          {leads.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              No leads with relevant posts found
             </div>
-            <div className="text-sm text-green-600">High Score (≥50)</div>
-          </div>
-          <div className="bg-yellow-50 p-4 rounded-lg">
-            <div className="text-2xl font-bold text-yellow-600">
-              {leads.filter(lead => (lead['Top Scoring Post'] || '').length > 0).length}
-            </div>
-            <div className="text-sm text-yellow-600">With Post Content</div>
-          </div>
+          ) : (
+            leads.map((lead) => (
+              <div
+                key={lead.id || lead.recordId}
+                className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-blue-50 ${
+                  selectedLead?.id === lead.id ? 'bg-blue-100 border-blue-300' : ''
+                }`}
+                onClick={() => handleLeadSelect(lead)}
+              >
+                <div className="font-medium text-gray-900">
+                  {lead[FIELD_NAMES.FIRST_NAME]} {lead[FIELD_NAMES.LAST_NAME]}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">
+                  AI Score: {lead[FIELD_NAMES.AI_SCORE]}% • 
+                  Posts Relevance: {lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE]}%
+                </div>
+                {lead[FIELD_NAMES.TOP_SCORING_POST] && (
+                  <div className="text-xs text-gray-500 mt-1 truncate">
+                    {lead[FIELD_NAMES.TOP_SCORING_POST].substring(0, 80)}...
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </div>
 
-      {/* Lead List */}
-      {loading ? (
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex items-center justify-center">
-            <div className="text-gray-500">Loading top scoring posts...</div>
-          </div>
-        </div>
-      ) : leads.length === 0 ? (
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="text-center">
-            <div className="text-gray-500 mb-2">No leads with actionable posts found</div>
-            <div className="text-sm text-gray-400">
-              Looking for leads where Posts Actioned is empty and Posts Relevance Score {'>'} 0
+      {/* Right Panel - Lead Details */}
+      <div className="flex-1 bg-gray-50">
+        {selectedLead ? (
+          <div className="h-full">
+            {/* Posts Actioned Checkbox */}
+            <div className="bg-yellow-50 border-b border-yellow-200 p-4">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedLead[FIELD_NAMES.POSTS_ACTIONED] || false}
+                  onChange={(e) => handlePostsActioned(selectedLead.id, e.target.checked)}
+                  className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <span className="text-sm font-medium text-yellow-800">
+                  Mark Posts as Actioned
+                </span>
+              </label>
+              <p className="text-xs text-yellow-700 mt-1">
+                Check this box when you've taken action on this lead's posts. 
+                The lead will be removed from this list.
+              </p>
             </div>
+            
+            {/* Lead Detail Form */}
+            <LeadDetailForm 
+              lead={selectedLead}
+              onUpdate={(updatedLead) => {
+                setSelectedLead(updatedLead);
+                // Update in leads list
+                setLeads(leads.map(l => l.id === updatedLead.id ? updatedLead : l));
+              }}
+              showPostScoringFields={true}
+            />
           </div>
-        </div>
-      ) : (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Lead
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  AI Score
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Posts Relevance
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Top Post Preview
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Posts Actioned
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {leads.map((lead) => (
-                <tr key={lead.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {lead['First Name']} {lead['Last Name']}
-                        </div>
-                        {lead['LinkedIn Profile URL'] && (
-                          <a
-                            href={lead['LinkedIn Profile URL']}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-blue-600 hover:text-blue-800"
-                          >
-                            View LinkedIn Profile
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      (lead['AI Score'] || 0) >= 75 ? 'bg-green-100 text-green-800' :
-                      (lead['AI Score'] || 0) >= 50 ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {lead['AI Score'] || 0}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-gray-900">
-                        {lead['Posts Relevance Score'] || 0}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {lead['Posts Relevance Percentage'] || 0}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900 max-w-xs truncate">
-                      {(lead['Top Scoring Post'] || '').substring(0, 100)}
-                      {(lead['Top Scoring Post'] || '').length > 100 ? '...' : ''}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(lead['Posts Actioned'] || lead.postsActioned)}
-                      onChange={(e) => handlePostsActioned(lead.id, e.target.checked)}
-                      disabled={updating}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => openLeadDetail(lead)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Lead Detail Modal */}
-      {selectedLead && (
-        <LeadDetailForm
-          lead={selectedLead}
-          onClose={closeLeadDetail}
-          onUpdate={handleLeadUpdate}
-        />
-      )}
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-gray-500">Select a lead to view details</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
