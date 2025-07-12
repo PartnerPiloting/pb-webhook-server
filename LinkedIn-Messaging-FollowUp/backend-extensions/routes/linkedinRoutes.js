@@ -2,7 +2,9 @@
 
 const express = require('express');
 const router = express.Router();
-const { validateClient } = require('../../../services/clientService');
+
+// Import Airtable base directly instead of validateClient
+const airtableBase = require('../../../config/airtableClient');
 
 /**
  * GET /api/linkedin/leads/top-scoring-posts?client=clientId
@@ -20,14 +22,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       return res.status(400).json({ error: 'Client parameter is required' });
     }
 
-    // Validate client and get Airtable base
-    const { isValid, airtableBase, clientName } = await validateClient(clientId);
-    if (!isValid) {
-      console.log('LinkedIn Routes: Invalid client:', clientId);
-      return res.status(400).json({ error: `Invalid client: ${clientId}` });
-    }
-
-    console.log('LinkedIn Routes: Valid client, fetching leads...');
+    console.log('LinkedIn Routes: Fetching leads from Airtable...');
 
     // Define field names (matching frontend)
     const FIELD_NAMES = {
@@ -89,16 +84,7 @@ router.put('/leads/:id', async (req, res) => {
     
     console.log('LinkedIn Routes: Updating lead:', leadId, 'with:', updates);
 
-    // Get client from query or try to determine from lead
-    const clientId = req.query.client || 'Guy-Wilson'; // Default fallback
-    
-    // Validate client and get Airtable base
-    const { isValid, airtableBase } = await validateClient(clientId);
-    if (!isValid) {
-      return res.status(400).json({ error: `Invalid client: ${clientId}` });
-    }
-
-    // Update the lead in Airtable
+    // Update the lead in Airtable using the main base
     const updatedRecords = await airtableBase('Leads').update([
       {
         id: leadId,
