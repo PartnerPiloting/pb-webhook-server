@@ -18,7 +18,9 @@ const TopScoringPostsWithParams = () => {
     FIRST_NAME: 'First Name',
     LAST_NAME: 'Last Name',
     LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL',
-    SALES_NAVIGATOR_URL: 'Sales Navigator URL',
+    SALES_NAVIGATOR_URL: 'Sales Navigator URL', // Try this first
+    SALES_NAV_URL: 'Sales Nav URL', // Alternative
+    LINKEDIN_SALES_NAVIGATOR: 'LinkedIn Sales Navigator', // Another alternative
     LINKEDIN_CONNECTION_STATUS: 'LinkedIn Connection Status',
     NOTES: 'Notes',
     AI_PROFILE_ASSESSMENT: 'AI Profile Assessment',
@@ -242,11 +244,15 @@ const TopScoringPostsWithParams = () => {
       <div className="flex-1 bg-gray-50 overflow-y-auto">
         {selectedLead ? (
           <div className="p-6">
-            {/* Lead Name */}
+            {/* Lead Name with AI Score and Posts Relevance */}
             <div className="mb-4">
               <h2 className="text-2xl font-bold text-gray-900">
                 {selectedLead[FIELD_NAMES.FIRST_NAME]} {selectedLead[FIELD_NAMES.LAST_NAME]}
               </h2>
+              <div className="text-sm text-gray-600 mt-1">
+                AI Score: {selectedLead[FIELD_NAMES.AI_SCORE] || 0}% • 
+                Posts Relevance: {selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0}%
+              </div>
             </div>
 
             {/* LinkedIn Profile URL */}
@@ -271,16 +277,20 @@ const TopScoringPostsWithParams = () => {
             {/* Sales Navigator URL */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Sales Navigator
+                View in Sales Navigator
               </label>
-              {selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL] ? (
+              {(selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL] || 
+                selectedLead[FIELD_NAMES.SALES_NAV_URL] || 
+                selectedLead[FIELD_NAMES.LINKEDIN_SALES_NAVIGATOR]) ? (
                 <a 
-                  href={selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL]} 
+                  href={selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL] || 
+                        selectedLead[FIELD_NAMES.SALES_NAV_URL] || 
+                        selectedLead[FIELD_NAMES.LINKEDIN_SALES_NAVIGATOR]} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-blue-600 hover:text-blue-800 underline"
                 >
-                  {selectedLead[FIELD_NAMES.SALES_NAVIGATOR_URL]}
+                  Open in Sales Navigator
                 </a>
               ) : (
                 <span className="text-gray-500">No Sales Navigator URL</span>
@@ -288,7 +298,7 @@ const TopScoringPostsWithParams = () => {
             </div>
 
             {/* Posts Actioned Checkbox */}
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+            <div className="mb-4">
               <label className="flex items-center">
                 <input
                   type="checkbox"
@@ -296,11 +306,11 @@ const TopScoringPostsWithParams = () => {
                   onChange={(e) => handlePostsActioned(selectedLead.id, e.target.checked)}
                   className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <span className="text-sm font-medium text-yellow-800">
+                <span className="text-sm font-medium text-gray-700">
                   Mark Posts as Actioned
                 </span>
               </label>
-              <p className="text-xs text-yellow-700 mt-1">
+              <p className="text-xs text-gray-500 mt-1 ml-6">
                 Check this box when you've taken action on this lead's posts. 
                 The lead will be removed from this list.
               </p>
@@ -347,11 +357,6 @@ const TopScoringPostsWithParams = () => {
                 <div className="text-sm text-blue-900">
                   {selectedLead[FIELD_NAMES.AI_PROFILE_ASSESSMENT] || 'No AI assessment available'}
                 </div>
-                {selectedLead[FIELD_NAMES.AI_SCORE] && (
-                  <div className="mt-2 text-xs text-blue-700">
-                    AI Score: {selectedLead[FIELD_NAMES.AI_SCORE]}%
-                  </div>
-                )}
               </div>
             </div>
 
@@ -364,11 +369,6 @@ const TopScoringPostsWithParams = () => {
                 <div className="text-sm text-green-900 whitespace-pre-wrap">
                   {selectedLead[FIELD_NAMES.TOP_SCORING_POST] || 'No top scoring post available'}
                 </div>
-                {selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] && (
-                  <div className="mt-2 text-xs text-green-700">
-                    Posts Relevance: {selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE]}%
-                  </div>
-                )}
               </div>
             </div>
           </div>
