@@ -114,4 +114,97 @@ router.put('/leads/:id', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/linkedin/leads/search?q=query&client=clientId
+ * Search for leads by name
+ */
+router.get('/leads/search', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/search called');
+  
+  try {
+    const query = req.query.q;
+    const clientId = req.query.client;
+    
+    console.log('LinkedIn Routes: Search query:', query, 'Client:', clientId);
+    
+    if (!query) {
+      return res.json([]); // Return empty array if no query
+    }
+
+    // Search leads in Airtable by First Name or Last Name
+    const leads = await airtableBase('Leads').select({
+      filterByFormula: `OR(
+        SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
+        SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0
+      )`,
+      sort: [
+        { field: 'First Name', direction: 'asc' },
+        { field: 'Last Name', direction: 'asc' }
+      ]
+    }).all();
+
+    console.log(`LinkedIn Routes: Found ${leads.length} leads matching "${query}"`);
+
+    // Transform to expected format
+    const transformedLeads = leads.map(record => ({
+      id: record.id,
+      recordId: record.id,
+      firstName: record.fields['First Name'],
+      lastName: record.fields['Last Name'],
+      linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
+      aiScore: record.fields['AI Score'],
+      status: record.fields['Status'],
+      lastMessageDate: record.fields['Last Message Date'],
+      ...record.fields
+    }));
+
+    res.json(transformedLeads);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error in /leads/search:', error);
+    res.status(500).json({ 
+      error: 'Failed to search leads',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/linkedin/leads/:id
+ * Get a specific lead by ID
+ */
+router.get('/leads/:id', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/:id called');
+  
+  try {
+    const leadId = req.params.id;
+    const clientId = req.query.client;
+    
+    console.log('LinkedIn Routes: Getting lead:', leadId, 'Client:', clientId);
+
+    // Get the lead from Airtable
+    const record = await airtableBase('Leads').find(leadId);
+
+    const transformedLead = {
+      id: record.id,
+      recordId: record.id,
+      ...record.fields
+    };
+
+    console.log('LinkedIn Routes: Lead found');
+    res.json(transformedLead);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error getting lead:', error);
+    if (error.statusCode === 404) {
+      res.status(404).json({ error: 'Lead not found' });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to get lead',
+        details: error.message 
+      });
+    }
+  }
+});
+
 module.exports = router;
