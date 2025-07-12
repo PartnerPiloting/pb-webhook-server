@@ -289,6 +289,7 @@ router.get('/leads/follow-ups', async (req, res) => {
  * Returns leads where Posts Actioned is empty AND Posts Relevance Score > 0
  * Sorted by First Name, Last Name
  */
+// FORCE DEPLOY: Route order fix for top-scoring-posts
 router.get('/leads/top-scoring-posts', async (req, res) => {
     console.log('🔍 TOP SCORING POSTS ROUTE CALLED:', req.method, req.path, 'query:', req.query);
     try {
@@ -1224,6 +1225,11 @@ router.get('/test', async (req, res) => {
             message: 'Unable to test API connection'
         });
     }
+});
+
+// Quick test route to verify deployment
+router.get('/leads/test-scoring', async (req, res) => {
+    res.json({ message: 'Route order fix deployed!', timestamp: new Date().toISOString() });
 });
 
 // Helper functions
