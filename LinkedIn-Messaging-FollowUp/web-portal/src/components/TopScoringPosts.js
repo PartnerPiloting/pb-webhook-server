@@ -76,7 +76,7 @@ const TopScoringPosts = () => {
   // Handle Posts Actioned checkbox change
   const handlePostsActioned = async (leadId, checked) => {
     try {
-      const response = await fetch(`/api/linkedin/leads/${leadId}`, {
+      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/${leadId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
