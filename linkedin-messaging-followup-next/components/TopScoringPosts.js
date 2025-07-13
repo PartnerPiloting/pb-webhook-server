@@ -9,6 +9,8 @@ const TopScoringPostsWithParams = () => {
   const [selectedLead, setSelectedLead] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isMarkingActioned, setIsMarkingActioned] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   
   const searchParams = useSearchParams();
   const client = searchParams.get('client') || 'Guy-Wilson';
@@ -84,8 +86,11 @@ const TopScoringPostsWithParams = () => {
     }
   };
 
-  // Handle Posts Actioned checkbox change
-  const handlePostsActioned = async (leadId, checked) => {
+  // Handle Posts Actioned button click
+  const handlePostsActioned = async (leadId) => {
+    setIsMarkingActioned(true);
+    setError(null);
+    
     try {
       const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/${leadId}`, {
         method: 'PUT',
@@ -93,7 +98,7 @@ const TopScoringPostsWithParams = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          [FIELD_NAMES.POSTS_ACTIONED]: checked
+          [FIELD_NAMES.POSTS_ACTIONED]: true
         })
       });
 
@@ -101,8 +106,11 @@ const TopScoringPostsWithParams = () => {
         throw new Error(`Failed to update Posts Actioned: ${response.statusText}`);
       }
 
-      // Remove lead from list immediately when Posts Actioned is checked
-      if (checked) {
+      // Show success feedback
+      setShowSuccess(true);
+      
+      // Wait 2 seconds, then remove lead and advance
+      setTimeout(() => {
         const updatedLeads = leads.filter(lead => lead.id !== leadId);
         setLeads(updatedLeads);
         
@@ -116,11 +124,17 @@ const TopScoringPostsWithParams = () => {
             setSelectedLead(null);
           }
         }
-      }
+        
+        // Reset states
+        setIsMarkingActioned(false);
+        setShowSuccess(false);
+      }, 2000);
       
     } catch (err) {
       setError(`Failed to update Posts Actioned: ${err.message}`);
       console.error('Posts Actioned update error:', err);
+      setIsMarkingActioned(false);
+      setShowSuccess(false);
     }
   };
 
@@ -291,23 +305,49 @@ const TopScoringPostsWithParams = () => {
               )}
             </div>
 
-            {/* Posts Actioned Checkbox */}
+            {/* Posts Actioned Button */}
             <div className="mb-4">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={selectedLead[FIELD_NAMES.POSTS_ACTIONED] || false}
-                  onChange={(e) => handlePostsActioned(selectedLead.id, e.target.checked)}
-                  className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  Mark Posts as Actioned
-                </span>
-              </label>
-              <p className="text-xs text-gray-500 mt-1 ml-6">
-                Check this box when you've taken action on this lead's posts. 
-                The lead will be removed from this list.
-              </p>
+              {showSuccess ? (
+                <div className="flex items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-2">
+                      <p className="text-sm font-medium text-green-800">
+                        Posts marked as actioned! Moving to next lead...
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <button
+                    onClick={() => handlePostsActioned(selectedLead.id)}
+                    disabled={isMarkingActioned}
+                    className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  >
+                    {isMarkingActioned ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Mark Posts as Actioned
+                      </>
+                    )}
+                  </button>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Click when you've taken action on this lead's posts. The lead will be removed from this list.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* LinkedIn Connection Status - Display Only */}
