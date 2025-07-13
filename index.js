@@ -11,6 +11,16 @@ const geminiConfig = require('./config/geminiClient.js');
 const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
 const base = require('./config/airtableClient.js'); // Your Airtable base connection
 
+// Initialize OpenAI client for attribute editing
+const { initializeOpenAI } = require('./config/openaiClient.js');
+let openaiClient = null;
+try {
+    openaiClient = initializeOpenAI();
+    console.log("index.js: OpenAI client initialized successfully for attribute editing");
+} catch (openaiError) {
+    console.warn("index.js: OpenAI client initialization failed - attribute editing will not work:", openaiError.message);
+}
+
 // --- Potentially import your update function ---
 // const { updateLeadRecordFunction } = require('./updateLeadApi'); // OR './your-airtable-utils.js'
 // ^^^ If updateLeadApi.js or another module exports a function to update records, import it here.

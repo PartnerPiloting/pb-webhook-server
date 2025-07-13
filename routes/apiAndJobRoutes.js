@@ -566,4 +566,291 @@ router.get("/api/json-quality-analysis", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// AI-Powered Attribute Editing Endpoints
+// ---------------------------------------------------------------
+
+const { getOpenAIClient } = require("../config/openaiClient.js");
+const { buildAttributeEditPrompt, validateRubricDraft, getAISuggestions } = require("../utils/attributePrompts.js");
+const { getClientBase } = require("../config/airtableClient.js");
+
+// Chat endpoint for AI-powered attribute editing
+router.post("/api/attributes/chat", async (req, res) => {
+  console.log("AI Attribute Chat endpoint hit");
+  
+  try {
+    const { attributeId, userText, client } = req.body;
+    
+    if (!attributeId || !userText) {
+      return res.status(400).json({
+        error: "Missing required fields: attributeId and userText"
+      });
+    }
+
+    // Get the appropriate Airtable base (multi-tenant)
+    const base = client ? getClientBase(client) : airtableBase;
+    
+    // Fetch current attribute from Airtable
+    console.log(`Fetching attribute ${attributeId} for editing`);
+    const record = await base("Scoring Attributes").find(attributeId);
+    
+    if (!record) {
+      return res.status(404).json({
+        error: `Attribute not found: ${attributeId}`
+      });
+    }
+
+    // Build current rubric object
+    const currentRubric = {
+      heading: record.get("Label") || "",
+      maxPoints: record.get("Max Points") || 0,
+      minToQualify: record.get("Min To Qualify") || 0,
+      penalty: record.get("Penalty") || 0,
+      instructionsMarkdown: record.get("Instructions") || ""
+    };
+
+    console.log("Current rubric:", currentRubric);
+    console.log("User request:", userText);
+
+    // Build OpenAI prompt
+    const messages = buildAttributeEditPrompt(currentRubric, userText);
+    
+    // Call OpenAI
+    const openai = getOpenAIClient();
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini', // Using mini for cost efficiency
+      temperature: 0.2,
+      max_tokens: 800,
+      messages: messages
+    });
+
+    const aiResponse = completion.choices[0].message.content;
+    console.log("AI response:", aiResponse);
+
+    // Parse and validate AI response
+    let draft;
+    try {
+      draft = JSON.parse(aiResponse);
+      validateRubricDraft(draft);
+    } catch (parseError) {
+      console.error("AI response parsing/validation error:", parseError);
+      return res.status(500).json({
+        error: "AI generated invalid response format",
+        details: parseError.message
+      });
+    }
+
+    // Save draft to Airtable draft fields
+    const updateFields = {
+      "Draft Label": draft.heading,
+      "Draft Max Points": draft.maxPoints,
+      "Draft Min To Qualify": draft.minToQualify,
+      "Draft Penalty": draft.penalty,
+      "Draft Instructions": draft.instructionsMarkdown,
+      "Draft Updated At": new Date().toISOString()
+    };
+
+    await base("Scoring Attributes").update(attributeId, updateFields);
+    
+    console.log("Draft saved successfully");
+
+    res.json({
+      success: true,
+      draft: draft,
+      message: "AI suggestion generated and saved as draft"
+    });
+
+  } catch (error) {
+    console.error("Attribute chat error:", error);
+    res.status(500).json({
+      error: "Failed to process AI attribute edit",
+      details: error.message
+    });
+  }
+});
+
+// Publish draft attribute changes
+router.patch("/api/attributes/:id/publish", async (req, res) => {
+  console.log("Publish attribute changes endpoint hit");
+  
+  try {
+    const { id } = req.params;
+    const { client } = req.body;
+
+    // Get the appropriate Airtable base (multi-tenant)
+    const base = client ? getClientBase(client) : airtableBase;
+
+    // Fetch current record with draft fields
+    const record = await base("Scoring Attributes").find(id);
+    
+    if (!record) {
+      return res.status(404).json({
+        error: `Attribute not found: ${id}`
+      });
+    }
+
+    // Check if there are draft changes to publish
+    const draftHeading = record.get("Draft Label");
+    if (!draftHeading) {
+      return res.status(400).json({
+        error: "No draft changes to publish"
+      });
+    }
+
+    // Copy draft fields to live fields and clear drafts
+    const updateFields = {
+      "Label": record.get("Draft Label"),
+      "Max Points": record.get("Draft Max Points"),
+      "Min To Qualify": record.get("Draft Min To Qualify"),
+      "Penalty": record.get("Draft Penalty"),
+      "Instructions": record.get("Draft Instructions"),
+      // Clear draft fields
+      "Draft Label": null,
+      "Draft Max Points": null,
+      "Draft Min To Qualify": null,
+      "Draft Penalty": null,
+      "Draft Instructions": null,
+      "Draft Updated At": null
+    };
+
+    await base("Scoring Attributes").update(id, updateFields);
+
+    console.log(`Attribute ${id} published successfully`);
+
+    res.json({
+      success: true,
+      message: "Attribute changes published successfully"
+    });
+
+  } catch (error) {
+    console.error("Publish attribute error:", error);
+    res.status(500).json({
+      error: "Failed to publish attribute changes",
+      details: error.message
+    });
+  }
+});
+
+// Discard draft attribute changes
+router.patch("/api/attributes/:id/discard", async (req, res) => {
+  console.log("Discard attribute draft endpoint hit");
+  
+  try {
+    const { id } = req.params;
+    const { client } = req.body;
+
+    // Get the appropriate Airtable base (multi-tenant)
+    const base = client ? getClientBase(client) : airtableBase;
+
+    // Clear all draft fields
+    const updateFields = {
+      "Draft Label": null,
+      "Draft Max Points": null,
+      "Draft Min To Qualify": null,
+      "Draft Penalty": null,
+      "Draft Instructions": null,
+      "Draft Updated At": null
+    };
+
+    await base("Scoring Attributes").update(id, updateFields);
+
+    console.log(`Attribute ${id} draft discarded successfully`);
+
+    res.json({
+      success: true,
+      message: "Draft changes discarded successfully"
+    });
+
+  } catch (error) {
+    console.error("Discard attribute draft error:", error);
+    res.status(500).json({
+      error: "Failed to discard draft changes",
+      details: error.message
+    });
+  }
+});
+
+// Get AI suggestions for attribute editing
+router.get("/api/attributes/suggestions", (req, res) => {
+  try {
+    const suggestions = getAISuggestions();
+    res.json({
+      success: true,
+      suggestions: suggestions
+    });
+  } catch (error) {
+    console.error("Get AI suggestions error:", error);
+    res.status(500).json({
+      error: "Failed to get AI suggestions",
+      details: error.message
+    });
+  }
+});
+
+// Test endpoint to verify OpenAI and Airtable connections
+router.get("/api/attributes/test", async (req, res) => {
+  console.log("Testing attribute editing setup");
+  
+  try {
+    const { client } = req.query;
+    
+    // Test Airtable connection
+    const base = client ? getClientBase(client) : airtableBase;
+    
+    // Try to fetch one attribute record
+    const records = await base("Scoring Attributes")
+      .select({
+        maxRecords: 1,
+        fields: ["Label", "Instructions", "Max Points", "Min To Qualify", "Penalty"]
+      })
+      .firstPage();
+    
+    if (records.length === 0) {
+      return res.json({
+        success: false,
+        message: "No attributes found in Scoring Attributes table",
+        airtableConnection: true,
+        openaiConnection: !!getOpenAIClient()
+      });
+    }
+
+    const testRecord = records[0];
+    const currentRubric = {
+      heading: testRecord.get("Label") || "",
+      maxPoints: testRecord.get("Max Points") || 0,
+      minToQualify: testRecord.get("Min To Qualify") || 0,
+      penalty: testRecord.get("Penalty") || 0,
+      instructionsMarkdown: testRecord.get("Instructions") || ""
+    };
+
+    res.json({
+      success: true,
+      message: "Attribute editing setup working correctly",
+      airtableConnection: true,
+      openaiConnection: !!getOpenAIClient(),
+      sampleAttribute: {
+        id: testRecord.id,
+        ...currentRubric
+      },
+      fieldsAvailable: {
+        hasLabel: !!testRecord.get("Label"),
+        hasInstructions: !!testRecord.get("Instructions"),
+        hasMaxPoints: testRecord.get("Max Points") !== undefined,
+        hasMinToQualify: testRecord.get("Min To Qualify") !== undefined,
+        hasPenalty: testRecord.get("Penalty") !== undefined
+      }
+    });
+
+  } catch (error) {
+    console.error("Attribute test error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Setup test failed",
+      details: error.message,
+      airtableConnection: false,
+      openaiConnection: !!getOpenAIClient()
+    });
+  }
+});
+
 module.exports = router;

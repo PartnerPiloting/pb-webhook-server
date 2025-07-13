@@ -1,10 +1,11 @@
-# Force Deploy - Remove Days Display Fix
+# AI-Powered Attribute Editor Development
 
-This commit forces Vercel to redeploy with the updated FollowUpManager.js that removes the "Due in undefined days" display.
+This commit implements the AI-powered Current ↔ Proposed attribute editing system with chat-to-edit functionality.
 
 Changes included:
-- Removed getFollowUpStatus function
-- Simplified follow-up date display
-- Fixed undefined days calculation issue
+- Added AI-powered rubric generation and editing
+- Implemented Current vs Proposed split-pane interface
+- Added OpenAI integration for natural language attribute editing
+- Created draft/publish workflow for safe attribute management
 
-Deploy timestamp: 2025-07-13 23:55:00 UTC - Force Vercel to pull latest commits
+Deploy timestamp: 2025-07-13 23:55:00 UTC - AI Attribute Editor Implementation
