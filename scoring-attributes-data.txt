@@ -1,0 +1,534 @@
+================================================================================
+SCORING ATTRIBUTES TABLE - COMPLETE DATA EXPORT
+================================================================================
+
+Export Date: 2025-07-13T07:55:22.560Z
+Base ID: appXySOLo6V9PfMfa
+Table Name: Scoring Attributes
+Total Records: 23
+
+FIELD STRUCTURE ANALYSIS:
+----------------------------------------
+1. "Attribute Id"
+   Type(s): string
+   Sample values: "A", "K", "STEP-A"
+   Records with data: 23/23
+
+2. "Category"
+   Type(s): string
+   Sample values: "Positive", "Positive", "Step"
+   Records with data: 23/23
+
+3. "Disqualifying"
+   Type(s): boolean
+   Sample values: true, true, true
+   Records with data: 3/23
+
+4. "Examples"
+   Type(s): string
+   Sample values: "★ POSITIVE (5 pts)\n────────────────────────────────────────\nCurrent Role: “Procurement and Contract Management – On Contract (Mar 2025 – Present)”\nReasoning: Job heading explicitly says “On Contract”.\n\n★ NEGATIVE (0 pts)\n────────────────────────────────────────\nCurrent Role: “Senior Data Analyst – Full-time (Jan 2024 – Present)”\nReasoning: Employment type is full-time; no contract wording.\n\n★ POSITIVE (5 pts)\n────────────────────────────────────────\nCurrent Role: “Project Manager (12-month Fixed-Term Contract) – Present”\nReasoning: “Fixed-Term Contract” indicates a temporary engagement.\n\n★ NEGATIVE (0 pts)\n────────────────────────────────────────\nCurrent Role: “Head of Marketing – Consultant (Self-employed) – Present”\nReasoning: Consultant/freelancer wording but no sign it’s a contract with an employer.\n"
+   Records with data: 1/23
+
+5. "Heading"
+   Type(s): string
+   Sample values: "Emerging Tech / AI Enthusiasm", "Financial Ability via Income/Career", "Disqualifying Check (Immediate Stop)"
+   Records with data: 23/23
+
+6. "Instructions"
+   Type(s): string
+   Sample values: "\\n\\*\\*Scoring Range\\*\\*\\n- \\*\\*0–3 pts\\*\\* = minimal or vague interest (e.g. one-off “AI is interesting” comment).\\n- \\*\\*4–7 pts\\*\\* = occasional mentions or passive sharing of AI articles.\\n- \\*\\*8–11 pts\\*\\* = regular AI/ML posts, online courses, or project updates.\\n- \\*\\*12–15 pts\\*\\* = strong advocate: publishes thought-leadership, demos tools, speaks at AI events.\\n\\nAward points based on the \\*\\*depth, frequency, and recency\\*\\* of demonstrated engagement with emerging tech or AI.\\n\n", "\\n\\*\\*Scoring Range\\*\\*\\n- \\*\\*0–4 pts\\*\\* = Early-career, unstable job history, frequent short stints (< 1 yr), low-level titles.\\n- \\*\\*5–9 pts\\*\\* = Mid-career stability (3–5 yrs per role) or first supervisory title; modest disposable income.\\n- \\*\\*10–14 pts\\*\\* = Senior contributor or manager; 5 + yrs in field; clear salary head-room; some savings/investment mentions.\\n- \\*\\*15–20 pts\\*\\* = Executive / Director / Partner; long tenure, stock options, or passive income streams; explicit comments about “next chapter” or investing in ventures.\\n\\nAward points based on the candidate’s \\*\\*financial head-room, seniority, and tenure stability\\*\\*, indicating capacity to fund or focus on a side venture.\\n\n", "\\n1. If any \\*\\*negative\\*\\* attribute with \\*\\*Disqualifying = Yes\\*\\* is triggered:\\n - Assign \\*\\*Final Score = 0 %\\*\\*\\n - \\*\\*Stop\\*\\* all further scoring\\n - Record \\*\\*which disqualifier fired\\*\\*\\n\n"
+   Records with data: 23/23
+
+7. "Last Updated"
+   Type(s): string
+   Sample values: "2025-04-26T06:35:18.000Z", "2025-05-05T08:59:46.000Z", "2025-04-26T06:26:52.000Z"
+   Records with data: 23/23
+
+8. "Max Points"
+   Type(s): number
+   Sample values: 15, 20, 15
+   Records with data: 11/23
+
+9. "Min To Qualify"
+   Type(s): number
+   Sample values: 5, 5, 0
+   Records with data: 11/23
+
+10. "Penalty"
+   Type(s): number
+   Sample values: 5, 5, 10
+   Records with data: 6/23
+
+11. "Signals"
+   Type(s): string
+   Sample values: "mentions of GPT, ChatGPT, machine learning, LLMs, prompt engineering, AI ethics; shares AI courses or conference posts; showcases AI side-projects or tools\n", "titles like Manager, Director, VP, Head of …; 8 + yrs tenure; LinkedIn shows bonuses, equity, RSUs; posts about investing, property portfolio, FIRE journey; consistent career progression; mentions of “financial freedom”\n", "percentages (↑ %, ↓ %), revenue $, cost-savings, “ROI”, KPIs, OKRs, “exceeded target”, award names, “top performer”, dashboards or data-driven posts\n"
+   Records with data: 17/23
+
+
+================================================================================
+COMPLETE RECORDS DATA:
+================================================================================
+
+RECORD 1:
+Record ID: rec1dyLYXREwmsP9a
+Created Time: Not available
+Fields:
+  Attribute Id: "A"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Emerging Tech / AI Enthusiasm"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–3 pts\*\* = minimal or vague interest (e.g. one-off “AI is interest... (truncated)
+  Last Updated: "2025-04-26T06:35:18.000Z"
+  Max Points: 15
+  Min To Qualify: 5
+  Penalty: (empty)
+  Signals: mentions of GPT, ChatGPT, machine learning, LLMs, prompt engineering, AI ethics; shares AI courses o... (truncated)
+
+------------------------------------------------------------
+
+RECORD 2:
+Record ID: rec21p96C9GMSeA74
+Created Time: Not available
+Fields:
+  Attribute Id: "K"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Financial Ability via Income/Career"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–4 pts\*\* = Early-career, unstable job history, frequent short stin... (truncated)
+  Last Updated: "2025-05-05T08:59:46.000Z"
+  Max Points: 20
+  Min To Qualify: 5
+  Penalty: (empty)
+  Signals: titles like Manager, Director, VP, Head of …; 8 + yrs tenure; LinkedIn shows bonuses, equity, RSUs; ... (truncated)
+
+------------------------------------------------------------
+
+RECORD 3:
+Record ID: rec4gZuYpzg8wdRN0
+Created Time: Not available
+Fields:
+  Attribute Id: "STEP-A"
+  Category: "Step"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Disqualifying Check (Immediate Stop)"
+  Instructions: \n1. If any \*\*negative\*\* attribute with \*\*Disqualifying = Yes\*\* is triggered:\n - Assign \*\... (truncated)
+  Last Updated: "2025-04-26T06:26:52.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: (empty)
+  Signals: (empty)
+
+------------------------------------------------------------
+
+RECORD 4:
+Record ID: rec4yQ9n5NSXCCd7A
+Created Time: Not available
+Fields:
+  Attribute Id: "C"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Results‑Oriented"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–3 pts\*\* = vague claims; no numbers; “responsible for X”.\n- \*\*4... (truncated)
+  Last Updated: "2025-04-26T06:38:23.000Z"
+  Max Points: 15
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: percentages (↑ %, ↓ %), revenue $, cost-savings, “ROI”, KPIs, OKRs, “exceeded target”, award names, ... (truncated)
+
+------------------------------------------------------------
+
+RECORD 5:
+Record ID: rec7VGS7ytrV17B2x
+Created Time: Not available
+Fields:
+  Attribute Id: "D"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Collaborative Spirit"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–2 pts\*\* = no evidence of teamwork or peer recognition.\n- \*\*3–5... (truncated)
+  Last Updated: "2025-04-26T06:39:25.000Z"
+  Max Points: 10
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: shout-outs to teammates; “we achieved…”, “cross-functional”; endorses others’ skills; LinkedIn recom... (truncated)
+
+------------------------------------------------------------
+
+RECORD 6:
+Record ID: rec9aeHBgk0EFg6Ha
+Created Time: Not available
+Fields:
+  Attribute Id: "STEP-C"
+  Category: "Step"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Determine Scorable Attributes"
+  Instructions: \n1. List \*\*all Positive Attributes\*\* (A, B, C, D, E, F, G, H, I, K).\n2. If an attribute is tru... (truncated)
+  Last Updated: "2025-04-26T06:31:46.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: (empty)
+  Signals: (empty)
+
+------------------------------------------------------------
+
+RECORD 7:
+Record ID: rec9d1YLoht2cHYD2
+Created Time: Not available
+Fields:
+  Attribute Id: "N3"
+  Category: "Negative"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Hard Job Lock‑In"
+  Instructions: \nTriggered when the candidate appears \*\*deeply entrenched\*\* in a single corporate track with li... (truncated)
+  Last Updated: "2025-04-26T06:51:04.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: 5
+  Signals: “20-year veteran at …” badge; long-service awards; posts about staying put until retirement; heavy f... (truncated)
+
+------------------------------------------------------------
+
+RECORD 8:
+Record ID: recADOGQAqw1AFqpF
+Created Time: Not available
+Fields:
+  Attribute Id: "H"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Possibly Entrepreneurial"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–3 pts\*\* = career employee; no sign of entrepreneurial activity.\n... (truncated)
+  Last Updated: "2025-05-05T08:59:15.000Z"
+  Max Points: 15
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: “Co-founder”, “Founder”, “Side business”, “Director”, equity stakes, board seats, ASIC registrations... (truncated)
+
+------------------------------------------------------------
+
+RECORD 9:
+Record ID: recEe5VHLLPtjGS0E
+Created Time: Not available
+Fields:
+  Attribute Id: "E"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Leadership & Mentorship"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–1 pts\*\* = no sign of leading or guiding others.\n- \*\*2–3 pts\*\... (truncated)
+  Last Updated: "2025-04-26T06:40:23.000Z"
+  Max Points: 5
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: “Team Lead”, “Manager”, “Head of …”, “Founder”, “Coach”, “Mentor”, “people development”, testimonial... (truncated)
+
+------------------------------------------------------------
+
+RECORD 10:
+Record ID: recGAENpSYohgqiCY
+Created Time: Not available
+Fields:
+  Attribute Id: "B"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Learner’s Mindset"
+  Instructions: We value \*\*active, self-directed growth\*\*, not résumé badges.
+Look for evidence the person exper... (truncated)
+  Last Updated: "2025-05-06T03:50:40.000Z"
+  Max Points: 15
+  Min To Qualify: 6
+  Penalty: (empty)
+  Signals: "\n"
+
+------------------------------------------------------------
+
+RECORD 11:
+Record ID: recKkXiaki2cSESmF
+Created Time: Not available
+Fields:
+  Attribute Id: "G"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Side‑Hustle Curiosity"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–3 pts\*\* = no mention of projects outside day-job.\n- \*\*4–7 pts\... (truncated)
+  Last Updated: "2025-04-26T06:42:24.000Z"
+  Max Points: 15
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: phrases like “side project”, “passion project”, “startup weekend”, “after-hours build”, Gumroad/Shop... (truncated)
+
+------------------------------------------------------------
+
+RECORD 12:
+Record ID: recMO9Vwc1pDdg927
+Created Time: Not available
+Fields:
+  Attribute Id: "N5"
+  Category: "Negative"
+  Disqualifying: true
+  Examples: (empty)
+  Heading: "Negative Energy / Cynicism"
+  Instructions: \nTriggered when the candidate’s profile or posts convey \*\*hostile, bitter, or consistently cynica... (truncated)
+  Last Updated: "2025-04-26T06:53:17.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: 5
+  Signals: repeated angry emojis (💢, 🤬), “rant alert”, posts attacking colleagues, comments dripping with sar... (truncated)
+
+------------------------------------------------------------
+
+RECORD 13:
+Record ID: recNzzX4kLPPUpLwq
+Created Time: Not available
+Fields:
+  Attribute Id: "N2"
+  Category: "Negative"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "No Personal Spark"
+  Instructions: \nTriggered when the profile feels \*\*flat or lifeless\*\*, showing minimal genuine interest, perso... (truncated)
+  Last Updated: "2025-04-26T06:49:48.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: 10
+  Signals: “Experienced professional with a demonstrated history…” boilerplate; empty Activity tab; zero emojis... (truncated)
+
+------------------------------------------------------------
+
+RECORD 14:
+Record ID: recP08aabObbbFyW2
+Created Time: Not available
+Fields:
+  Attribute Id: "STEP-B"
+  Category: "Step"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Minimum Threshold Filter (Early Stop)"
+  Instructions: \n1. For each \*\*positive\*\* attribute that specifies a \*\*Min to Qualify\*\*:\n - If the candida... (truncated)
+  Last Updated: "2025-04-26T06:30:31.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: (empty)
+  Signals: (empty)
+
+------------------------------------------------------------
+
+RECORD 15:
+Record ID: recVfXRB3XNxcDVyW
+Created Time: Not available
+Fields:
+  Attribute Id: "F"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Grit & Resilience"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0–3 pts\*\* = no clear examples of overcoming setbacks.\n- \*\*4–7 pt... (truncated)
+  Last Updated: "2025-04-26T06:41:32.000Z"
+  Max Points: 15
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: words like “overcame”, “bounce back”, “turned around”, “from zero to…”, recovery from redundancy, at... (truncated)
+
+------------------------------------------------------------
+
+RECORD 16:
+Record ID: recVkTSFyYZ8hStHL
+Created Time: Not available
+Fields:
+  Attribute Id: "GEN-001"
+  Category: "Global Rule"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Final Score Computation"
+  Instructions: \n1. Compute \*\*awarded\*\* and \*\*possible\*\* points (exclude any unscored positives from the de... (truncated)
+  Last Updated: "2025-04-26T06:33:52.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: (empty)
+  Signals: (empty)
+
+------------------------------------------------------------
+
+RECORD 17:
+Record ID: recaIUL7K7MNSYDRh
+Created Time: Not available
+Fields:
+  Attribute Id: "N1"
+  Category: "Negative"
+  Disqualifying: true
+  Examples: (empty)
+  Heading: "Media/Creative Producer"
+  Instructions: \nTriggered when the profile is \*\*dominated by creative/media content\*\* with \*\*no entrepreneur... (truncated)
+  Last Updated: "2025-04-26T06:48:32.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: 10
+  Signals: photographer / filmmaker banners; linktree with only social channels; language centred on “artistic ... (truncated)
+
+------------------------------------------------------------
+
+RECORD 18:
+Record ID: recc2VuB94p6k8hLR
+Created Time: Not available
+Fields:
+  Attribute Id: "PREAMBLE"
+  Category: "Meta"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Global Scoring Narrative"
+  Instructions: \*\*Purpose\*\*
+
+Evaluate LinkedIn profiles to pinpoint candidates who are qualified, motivated, and... (truncated)
+  Last Updated: "2025-05-08T10:16:32.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: (empty)
+  Signals: (empty)
+
+------------------------------------------------------------
+
+RECORD 19:
+Record ID: reclHbvyAzum97Bq8
+Created Time: Not available
+Fields:
+  Attribute Id: "L1"
+  Category: "Negative"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Inactive Profile"
+  Instructions: \nApplies when the candidate shows \*\*little or no recent LinkedIn activity\*\*. Indicates low enga... (truncated)
+  Last Updated: "2025-04-26T06:47:25.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: 5
+  Signals: Activity tab shows “No recent activity”; last post > 12 months ago; comment history empty; only auto... (truncated)
+
+------------------------------------------------------------
+
+RECORD 20:
+Record ID: recsnlIAjEf4lHI3I
+Created Time: Not available
+Fields:
+  Attribute Id: "I"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Contact Readiness"
+  Instructions: \n\*\*Scoring Range\*\*\n- \*\*0 pts\*\* = Profile closed; no contact info; “Message” button disable... (truncated)
+  Last Updated: "2025-04-26T06:44:02.000Z"
+  Max Points: 3
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: visible email address; “open to opportunities”; “DM me”; Calendly / booking link; phone number; pers... (truncated)
+
+------------------------------------------------------------
+
+RECORD 21:
+Record ID: recu4DwH30t7lMrdN
+Created Time: Not available
+Fields:
+  Attribute Id: "J"
+  Category: "Positive"
+  Disqualifying: (empty)
+  Examples: ★ POSITIVE (5 pts)
+────────────────────────────────────────
+Current Role: “Procurement and Contract ... (truncated)
+  Heading: "Are they currently on Contract"
+  Instructions: • Search the entire “Profile Full JSON” object (current + past roles, summary, etc.).
+• If ANY contr... (truncated)
+  Last Updated: "2025-05-04T04:24:57.000Z"
+  Max Points: 5
+  Min To Qualify: 0
+  Penalty: (empty)
+  Signals: on contract
+contractor
+fixed-term
+fixed term
+ftc
+temporary contract
+12-month contract
+6-month contra... (truncated)
+
+------------------------------------------------------------
+
+RECORD 22:
+Record ID: reculD1DQLspP1wry
+Created Time: Not available
+Fields:
+  Attribute Id: "STEP-D"
+  Category: "Step"
+  Disqualifying: (empty)
+  Examples: (empty)
+  Heading: "Assign and Document Scores"
+  Instructions: \n1. For each \*\*positive attribute\*\*, decide how many points to award (0 → max).\n2. Apply any \... (truncated)
+  Last Updated: "2025-04-26T06:32:51.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: (empty)
+  Signals: (empty)
+
+------------------------------------------------------------
+
+RECORD 23:
+Record ID: recxW74LgCKrqO04O
+Created Time: Not available
+Fields:
+  Attribute Id: "N4"
+  Category: "Negative"
+  Disqualifying: true
+  Examples: (empty)
+  Heading: "Anti‑Entrepreneurial Tone"
+  Instructions: \nTriggered when the profile or posts express a \*\*negative attitude toward startups, side hustles,... (truncated)
+  Last Updated: "2025-04-26T06:52:04.000Z"
+  Max Points: (empty)
+  Min To Qualify: (empty)
+  Penalty: 10
+  Signals: phrases like “I’d never start a business”, “9-to-5 for life”, “startups always fail”, ridicules side... (truncated)
+
+------------------------------------------------------------
+
+DATA PATTERNS ANALYSIS:
+----------------------------------------
+Categories found: Positive, Step, Negative, Global Rule, Meta
+  Positive: 11 records
+  Step: 4 records
+  Negative: 6 records
+  Global Rule: 1 records
+  Meta: 1 records
+
+Max Points range: 3 - 20
+Unique Max Points values: 3, 5, 10, 15, 20
+
+API DEVELOPMENT NOTES:
+----------------------------------------
+✅ Table name confirmed: "Scoring Attributes"
+✅ Primary key field: "Attribute Id" (values like: A, K, STEP-A)
+✅ Editable fields: Category, Disqualifying, Examples, Heading, Instructions, Last Updated, Max Points, Min To Qualify, Penalty, Signals
+✅ Record IDs available for updates: Yes
+✅ Field types suitable for web editing: Yes
+
+RECOMMENDED WEB INTERFACE FIELDS:
+  Attribute Id: Read-only identifier
+  Category: Dropdown (Positive, Step, Negative, Global Rule, Meta)
+  Disqualifying: Text input
+  Examples: Text input
+  Heading: Text input
+  Instructions: Textarea (long text)
+  Last Updated: Text input
+  Max Points: Number input
+  Min To Qualify: Text input
+  Penalty: Number input
+  Signals: Text input
+
+================================================================================
+END OF EXPORT
+================================================================================

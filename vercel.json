@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd linkedin-messaging-followup-next && npm run build",
+  "outputDirectory": "linkedin-messaging-followup-next/.next",
+  "installCommand": "cd linkedin-messaging-followup-next && npm install",
+  "framework": "nextjs"
+}

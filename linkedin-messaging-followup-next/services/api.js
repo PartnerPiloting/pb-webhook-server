@@ -158,23 +158,23 @@ export const getLeadById = async (leadId) => {
 
 export const createLead = async (leadData) => {
   try {
-    // Map frontend field names to backend field names (same mapping as updateLead)
+    // Map frontend field names to Airtable field names (same mapping as updateLead)
     const backendData = {};
     const fieldMapping = {
-      'firstName': 'firstName',
-      'lastName': 'lastName', 
-      'linkedinProfileUrl': 'linkedinProfileUrl',
-      'viewInSalesNavigator': 'viewInSalesNavigator',
-      'email': 'email',
-      'phone': 'phone',
-      'notes': 'notes',
-      'followUpDate': 'followUpDate',
-      'followUpNotes': 'followUpNotes',
-      'source': 'source',
-      'status': 'status',
-      'priority': 'priority',
-      'linkedinConnectionStatus': 'linkedinConnectionStatus',
-      'ashWorkshopEmail': 'ashWorkshopEmail'
+      'firstName': 'First Name',
+      'lastName': 'Last Name', 
+      'linkedinProfileUrl': 'LinkedIn Profile URL',
+      'viewInSalesNavigator': 'View In Sales Navigator',
+      'email': 'Email',
+      'phone': 'Phone',
+      'notes': 'Notes',
+      'followUpDate': 'Follow-Up Date',
+      'followUpNotes': 'Follow Up Notes',
+      'source': 'Source',
+      'status': 'Status',
+      'priority': 'Priority',
+      'linkedinConnectionStatus': 'LinkedIn Connection Status',
+      'ashWorkshopEmail': 'ASH Workshop Email'
     };
     
     Object.keys(leadData).forEach(frontendField => {
@@ -232,23 +232,23 @@ export const createLead = async (leadData) => {
 
 export const updateLead = async (leadId, updateData) => {
   try {
-    // Map frontend field names to backend field names
+    // Map frontend field names to Airtable field names
     const backendData = {};
     const fieldMapping = {
-      'firstName': 'firstName',
-      'lastName': 'lastName', 
-      'linkedinProfileUrl': 'linkedinProfileUrl',
-      'viewInSalesNavigator': 'viewInSalesNavigator',
-      'email': 'email',
-      'phone': 'phone',
-      'notes': 'notes',
-      'followUpDate': 'followUpDate',
-      'followUpNotes': 'followUpNotes',
-      'source': 'source',
-      'status': 'status',
-      'priority': 'priority',
-      'linkedinConnectionStatus': 'linkedinConnectionStatus',
-      'ashWorkshopEmail': 'ashWorkshopEmail'
+      'firstName': 'First Name',
+      'lastName': 'Last Name', 
+      'linkedinProfileUrl': 'LinkedIn Profile URL',
+      'viewInSalesNavigator': 'View In Sales Navigator',
+      'email': 'Email',
+      'phone': 'Phone',
+      'notes': 'Notes',
+      'followUpDate': 'Follow-Up Date',
+      'followUpNotes': 'Follow Up Notes',
+      'source': 'Source',
+      'status': 'Status',
+      'priority': 'Priority',
+      'linkedinConnectionStatus': 'LinkedIn Connection Status',
+      'ashWorkshopEmail': 'ASH Workshop Email'
     };
     
     Object.keys(updateData).forEach(frontendField => {
