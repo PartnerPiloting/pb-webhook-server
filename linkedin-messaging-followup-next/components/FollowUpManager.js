@@ -74,14 +74,15 @@ const FollowUpManager = () => {
 
   // Handle lead selection - fetch full details
   const handleLeadSelect = async (lead) => {
-    if (!lead || !lead.id) {
+    const leadId = lead?.id || lead?.['Profile Key'];
+    if (!lead || !leadId) {
       console.error('Invalid lead selected:', lead);
       return;
     }
     
     setIsLoading(true);
     try {
-      const fullLead = await getLeadById(lead.id);
+      const fullLead = await getLeadById(leadId);
       setSelectedLead(fullLead);
     } catch (error) {
       console.error('Failed to load lead details:', error);
