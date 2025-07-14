@@ -297,7 +297,7 @@ export const updateLead = async (leadId, updateData) => {
     
     return {
       id: lead.id,
-      'Profile Key': lead.profileKey || lead.id,
+      'Profile Key': lead.id,  // Always use lead.id for consistency with follow-ups loading
       'First Name': lead.firstName,
       'Last Name': lead.lastName,
       'LinkedIn Profile URL': lead.linkedinProfileUrl,

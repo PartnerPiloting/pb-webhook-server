@@ -126,6 +126,7 @@ const FollowUpManager = () => {
           const updatedId = updated['Profile Key'] || updated.id;
           const matches = leadId === updatedId;
           
+          console.log(`🔍 DEBUG: Comparing leadId="${leadId}" with updatedId="${updatedId}" - matches: ${matches}`);
           console.log('🔍 DEBUG: Comparing lead:', {
             leadName: `${lead['First Name']} ${lead['Last Name']}`,
             leadId,
