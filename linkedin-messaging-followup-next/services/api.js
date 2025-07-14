@@ -177,10 +177,20 @@ export const createLead = async (leadData) => {
       'ashWorkshopEmail': 'ASH Workshop Email'
     };
     
+    // List of dropdown fields that need empty string handling
+    const dropdownFields = ['source', 'status', 'priority', 'linkedinConnectionStatus'];
+    
     Object.keys(leadData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
       if (backendField) {
-        backendData[backendField] = leadData[frontendField];
+        let value = leadData[frontendField];
+        
+        // Convert empty strings to null for dropdown fields to avoid Airtable permissions error
+        if (dropdownFields.includes(frontendField) && value === '') {
+          value = null;
+        }
+        
+        backendData[backendField] = value;
       }
     });
     
@@ -251,10 +261,20 @@ export const updateLead = async (leadId, updateData) => {
       'ashWorkshopEmail': 'ASH Workshop Email'
     };
     
+    // List of dropdown fields that need empty string handling
+    const dropdownFields = ['source', 'status', 'priority', 'linkedinConnectionStatus'];
+    
     Object.keys(updateData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
       if (backendField) {
-        backendData[backendField] = updateData[frontendField];
+        let value = updateData[frontendField];
+        
+        // Convert empty strings to null for dropdown fields to avoid Airtable permissions error
+        if (dropdownFields.includes(frontendField) && value === '') {
+          value = null;
+        }
+        
+        backendData[backendField] = value;
       }
     });
     
