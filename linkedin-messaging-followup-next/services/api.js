@@ -288,12 +288,6 @@ export const updateLead = async (leadId, updateData) => {
     
     // Map backend response to frontend format (same as getLeadById)
     const lead = response.data;
-    console.log('🔍 DEBUG updateLead response:', { 
-      followUpDate: lead.followUpDate, 
-      followUpDateField: lead['Follow-Up Date'],
-      fieldsFollowUpDate: lead.fields?.['Follow-Up Date'],
-      allFields: Object.keys(lead)
-    });
     
     return {
       id: lead.id,

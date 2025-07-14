@@ -108,54 +108,14 @@ const FollowUpManager = () => {
       const shouldRemoveFromList = !updatedDate || updatedDate === '' || 
         (updatedDate && new Date(updatedDate) > new Date());
 
-      console.log('🔍 DEBUG: Lead update check:', {
-        updatedDate,
-        shouldRemoveFromList,
-        updatedLead: updated,
-        currentFollowUps: followUps.map(lead => ({
-          name: `${lead['First Name']} ${lead['Last Name']}`,
-          profileKey: lead['Profile Key'],
-          id: lead.id
-        }))
-      });
-
       if (shouldRemoveFromList) {
-        // Find current lead in the list using both possible identifiers
-        const currentIndex = followUps.findIndex(lead => {
-          const leadId = lead['Profile Key'] || lead.id;
-          const updatedId = updated['Profile Key'] || updated.id;
-          const matches = leadId === updatedId;
-          
-          console.log(`🔍 DEBUG: Comparing leadId="${leadId}" with updatedId="${updatedId}" - matches: ${matches}`);
-          console.log('🔍 DEBUG: Comparing lead:', {
-            leadName: `${lead['First Name']} ${lead['Last Name']}`,
-            leadId,
-            updatedId,
-            matches
-          });
-          
-          return matches;
-        });
+        // Simply reload the follow-ups list to show current data
+        console.log('� Follow-up date moved to future - refreshing list');
+        await loadFollowUps();
         
-        console.log('🔍 DEBUG: Found lead at index:', currentIndex);
-        
-        // Remove from list
-        const newFollowUps = followUps.filter(lead => {
-          const leadId = lead['Profile Key'] || lead.id;
-          const updatedId = updated['Profile Key'] || updated.id;
-          return leadId !== updatedId;
-        });
-        setFollowUps(newFollowUps);
-        
-        // Auto-advance to next lead
-        if (newFollowUps.length > 0) {
-          const nextIndex = Math.min(currentIndex, newFollowUps.length - 1);
-          handleLeadSelect(newFollowUps[nextIndex]);
-          setMessage({ type: 'success', text: 'Lead removed from follow-ups! Advanced to next lead.' });
-        } else {
-          setSelectedLead(null);
-          setMessage({ type: 'success', text: 'Lead removed from follow-ups! No more leads due.' });
-        }
+        // Clear selection since the lead is no longer in the list
+        setSelectedLead(null);
+        setMessage({ type: 'success', text: 'Follow-up date updated! Lead removed from today\'s list.' });
       } else {
         // Update the lead in the follow-ups list
         setFollowUps(prevFollowUps => 
@@ -172,6 +132,7 @@ const FollowUpManager = () => {
             } : lead;
           })
         );
+        setMessage({ type: 'success', text: 'Lead updated successfully!' });
       }
       
       // Clear success message after 3 seconds
