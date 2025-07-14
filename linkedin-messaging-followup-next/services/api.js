@@ -174,7 +174,8 @@ export const createLead = async (leadData) => {
       'status': 'Status',
       'priority': 'Priority',
       'linkedinConnectionStatus': 'LinkedIn Connection Status',
-      'ashWorkshopEmail': 'ASH Workshop Email'
+      'ashWorkshopEmail': 'ASH Workshop Email',
+      'postsActioned': 'Posts Actioned'
     };
     
     // List of dropdown fields that need empty string handling
@@ -258,7 +259,8 @@ export const updateLead = async (leadId, updateData) => {
       'status': 'Status',
       'priority': 'Priority',
       'linkedinConnectionStatus': 'LinkedIn Connection Status',
-      'ashWorkshopEmail': 'ASH Workshop Email'
+      'ashWorkshopEmail': 'ASH Workshop Email',
+      'postsActioned': 'Posts Actioned'
     };
     
     // List of dropdown fields that need empty string handling
