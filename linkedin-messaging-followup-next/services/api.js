@@ -286,8 +286,40 @@ export const updateLead = async (leadId, updateData) => {
       }
     });
     
-    // Return the response data directly since backend returns the updated lead
-    return response.data;
+    // Map backend response to frontend format (same as getLeadById)
+    const lead = response.data;
+    return {
+      id: lead.id,
+      'Profile Key': lead.profileKey || lead.id,
+      'First Name': lead.firstName,
+      'Last Name': lead.lastName,
+      'LinkedIn Profile URL': lead.linkedinProfileUrl,
+      'View In Sales Navigator': lead.viewInSalesNavigator,
+      'Email': lead.email,
+      'Phone': lead.phone,
+      'AI Score': lead.aiScore,
+      'Posts Relevance Score': lead.postsRelevanceScore,
+      'Posts Relevance Percentage': lead.postsRelevancePercentage,
+      'Source': lead.source,
+      'Status': lead.status,
+      'Priority': lead.priority,
+      'LinkedIn Connection Status': lead.linkedinConnectionStatus,
+      'Follow-Up Date': lead.followUpDate,
+      'Follow Up Notes': lead.followUpNotes,
+      'Notes': lead.notes,
+      'LinkedIn Messages': lead.linkedinMessages,
+      'Last Message Date': lead.lastMessageDate,
+      'Extension Last Sync': lead.extensionLastSync,
+      'Headline': lead.headline,
+      'Job Title': lead.jobTitle,
+      'Company Name': lead.companyName,
+      'About': lead.about,
+      'ASH Workshop Email': lead.ashWorkshopEmail,
+      // Also include camelCase for compatibility
+      ashWorkshopEmail: lead.ashWorkshopEmail,
+      phone: lead.phone,
+      followUpDate: lead.followUpDate
+    };
   } catch (error) {
     console.error('Update lead error:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to update lead');

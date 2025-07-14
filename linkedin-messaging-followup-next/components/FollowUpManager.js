@@ -108,14 +108,19 @@ const FollowUpManager = () => {
         (updatedDate && new Date(updatedDate) > new Date());
 
       if (shouldRemoveFromList) {
-        const currentIndex = followUps.findIndex(lead => 
-          lead['Profile Key'] === (updated.id || updated['Profile Key'])
-        );
+        // Find current lead in the list using both possible identifiers
+        const currentIndex = followUps.findIndex(lead => {
+          const leadId = lead['Profile Key'] || lead.id;
+          const updatedId = updated['Profile Key'] || updated.id;
+          return leadId === updatedId;
+        });
         
         // Remove from list
-        const newFollowUps = followUps.filter(lead => 
-          lead['Profile Key'] !== (updated.id || updated['Profile Key'])
-        );
+        const newFollowUps = followUps.filter(lead => {
+          const leadId = lead['Profile Key'] || lead.id;
+          const updatedId = updated['Profile Key'] || updated.id;
+          return leadId !== updatedId;
+        });
         setFollowUps(newFollowUps);
         
         // Auto-advance to next lead
@@ -130,16 +135,18 @@ const FollowUpManager = () => {
       } else {
         // Update the lead in the follow-ups list
         setFollowUps(prevFollowUps => 
-          prevFollowUps.map(lead => 
-            lead['Profile Key'] === (updated.id || updated['Profile Key']) ? {
+          prevFollowUps.map(lead => {
+            const leadId = lead['Profile Key'] || lead.id;
+            const updatedId = updated['Profile Key'] || updated.id;
+            return leadId === updatedId ? {
               ...lead,
               'First Name': updated['First Name'] || '',
               'Last Name': updated['Last Name'] || '',
               'Status': updated['Status'] || '',
               'Follow-Up Date': updated['Follow-Up Date'] || '',
               'Notes': updated['Notes'] || ''
-            } : lead
-          )
+            } : lead;
+          })
         );
       }
       
@@ -159,14 +166,19 @@ const FollowUpManager = () => {
   const handleLeadDelete = (deletedLead) => {
     if (!deletedLead) return;
 
-    const currentIndex = followUps.findIndex(lead => 
-      lead['Profile Key'] === (deletedLead.id || deletedLead['Profile Key'])
-    );
+    // Find current lead in the list using both possible identifiers
+    const currentIndex = followUps.findIndex(lead => {
+      const leadId = lead['Profile Key'] || lead.id;
+      const deletedId = deletedLead['Profile Key'] || deletedLead.id;
+      return leadId === deletedId;
+    });
 
     // Remove the lead from the follow-ups list
-    const newFollowUps = followUps.filter(lead => 
-      lead['Profile Key'] !== (deletedLead.id || deletedLead['Profile Key'])
-    );
+    const newFollowUps = followUps.filter(lead => {
+      const leadId = lead['Profile Key'] || lead.id;
+      const deletedId = deletedLead['Profile Key'] || deletedLead.id;
+      return leadId !== deletedId;
+    });
     setFollowUps(newFollowUps);
     
     // Auto-advance to next lead or clear selection
