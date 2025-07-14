@@ -3,16 +3,19 @@ import React from "react";
 import Layout from "../components/Layout";
 import LeadSearchUpdate from "../components/LeadSearchUpdate";
 import ErrorBoundary from "../components/ErrorBoundary";
+import EnvironmentValidator from "../components/EnvironmentValidator";
 
 // Force dynamic rendering for pages that use search parameters
 export const dynamic = 'force-dynamic'
 
 export default function Home() {
   return (
-    <ErrorBoundary>
-      <Layout>
-        <LeadSearchUpdate />
-      </Layout>
-    </ErrorBoundary>
+    <EnvironmentValidator>
+      <ErrorBoundary>
+        <Layout>
+          <LeadSearchUpdate />
+        </Layout>
+      </ErrorBoundary>
+    </EnvironmentValidator>
   );
 }
