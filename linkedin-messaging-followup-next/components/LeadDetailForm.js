@@ -276,19 +276,12 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
             </label>
             <div className="flex-1">
               <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <input
-                    type="date"
-                    value={formData.followUpDate || ''}
-                    onChange={(e) => handleChange('followUpDate', e.target.value)}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+                <input
+                  type="date"
+                  value={formData.followUpDate || ''}
+                  onChange={(e) => handleChange('followUpDate', e.target.value)}
+                  className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
                 <button
                   type="button"
                   onClick={() => handleChange('followUpDate', '')}
