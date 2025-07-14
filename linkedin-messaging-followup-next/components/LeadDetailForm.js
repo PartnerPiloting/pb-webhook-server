@@ -175,7 +175,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   const fieldConfig = {
     editable: [
       'firstName', 'lastName', 'linkedinProfileUrl', 'viewInSalesNavigator', 
-      'email', 'phone', 'ashWorkshopEmail', 'notes', 'followUpDate', 'source', 
+      'email', 'phone', 'ashWorkshopEmail', 'notes', 'source', 
       'status', 'priority', 'linkedinConnectionStatus'
     ],
     readonly: ['profileKey', 'aiScore', 'postsRelevancePercentage', 'lastMessageDate'],
@@ -263,41 +263,53 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         </div>
       </div>
 
-      {/* Follow-up Management - Top Priority Section */}
+      {/* Follow-up Date Section */}
       <div className="space-y-6">
         <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center">
-          {CalendarIcon && <CalendarIcon className="h-5 w-5 mr-2" />}
-          Follow-up Management
+          📅 Follow-up Date
         </h4>
         
         <div className="space-y-3">
           <div className="flex">
-            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Follow-up Date</label>
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 pt-2">
+              Follow-up Date
+            </label>
             <div className="flex-1">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="date"
-                  value={formData.followUpDate || ''}
-                  onChange={(e) => handleChange('followUpDate', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                />
-                {formData.followUpDate && (
-                  <button
-                    type="button"
-                    onClick={() => handleChange('followUpDate', '')}
-                    className="px-3 py-2 text-sm bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 flex-shrink-0 flex items-center"
-                    title="Clear follow-up date"
-                  >
-                    × Clear
-                  </button>
-                )}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="date"
+                    value={formData.followUpDate || ''}
+                    onChange={(e) => handleChange('followUpDate', e.target.value)}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleChange('followUpDate', '')}
+                  className="px-3 py-2 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  title="Clear follow-up date"
+                >
+                  Clear
+                </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Leave blank for no follow-up
-              </p>
             </div>
           </div>
-          
+        </div>
+      </div>
+
+      {/* Notes Section */}
+      <div className="space-y-6">
+        <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2 flex items-center">
+          📝 Notes
+        </h4>
+        
+        <div className="space-y-3">
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 pt-2">
               Notes
