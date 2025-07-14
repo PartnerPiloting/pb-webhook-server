@@ -107,13 +107,35 @@ const FollowUpManager = () => {
       const shouldRemoveFromList = !updatedDate || updatedDate === '' || 
         (updatedDate && new Date(updatedDate) > new Date());
 
+      console.log('🔍 DEBUG: Lead update check:', {
+        updatedDate,
+        shouldRemoveFromList,
+        updatedLead: updated,
+        currentFollowUps: followUps.map(lead => ({
+          name: `${lead['First Name']} ${lead['Last Name']}`,
+          profileKey: lead['Profile Key'],
+          id: lead.id
+        }))
+      });
+
       if (shouldRemoveFromList) {
         // Find current lead in the list using both possible identifiers
         const currentIndex = followUps.findIndex(lead => {
           const leadId = lead['Profile Key'] || lead.id;
           const updatedId = updated['Profile Key'] || updated.id;
-          return leadId === updatedId;
+          const matches = leadId === updatedId;
+          
+          console.log('🔍 DEBUG: Comparing lead:', {
+            leadName: `${lead['First Name']} ${lead['Last Name']}`,
+            leadId,
+            updatedId,
+            matches
+          });
+          
+          return matches;
         });
+        
+        console.log('🔍 DEBUG: Found lead at index:', currentIndex);
         
         // Remove from list
         const newFollowUps = followUps.filter(lead => {
