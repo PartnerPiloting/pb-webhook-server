@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 
 // Component that uses useSearchParams wrapped in Suspense
@@ -87,24 +88,16 @@ const TopScoringPostsWithParams = () => {
   };
 
   // Handle Posts Actioned button click
+  // Handle Posts Actioned update using shared API service
   const handlePostsActioned = async (leadId) => {
     setIsMarkingActioned(true);
     setError(null);
     
     try {
-      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/${leadId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          [FIELD_NAMES.POSTS_ACTIONED]: true
-        })
+      // Use shared updateLead function with proper field mapping
+      await updateLead(leadId, {
+        postsActioned: true  // This will be mapped to "Posts Actioned" by the API service
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to update Posts Actioned: ${response.statusText}`);
-      }
 
       // Show success feedback
       setShowSuccess(true);
@@ -138,29 +131,19 @@ const TopScoringPostsWithParams = () => {
     }
   };
 
-  // Handle Notes update
+  // Handle Notes update using shared API service
   const handleNotesUpdate = async (leadId, notes) => {
     try {
-      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/${leadId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          [FIELD_NAMES.NOTES]: notes
-        })
+      // Use shared updateLead function with proper field mapping
+      const updatedLead = await updateLead(leadId, {
+        notes: notes  // This will be mapped to "Notes" by the API service
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to update Notes: ${response.statusText}`);
-      }
-
-      // Update the selected lead
-      const updatedLead = { ...selectedLead, [FIELD_NAMES.NOTES]: notes };
-      setSelectedLead(updatedLead);
+      // Update the selected lead with the response from API
+      setSelectedLead({ ...selectedLead, [FIELD_NAMES.NOTES]: notes });
       
       // Update in leads list
-      setLeads(leads.map(l => l.id === leadId ? updatedLead : l));
+      setLeads(leads.map(l => l.id === leadId ? { ...l, [FIELD_NAMES.NOTES]: notes } : l));
       
     } catch (err) {
       setError(`Failed to update Notes: ${err.message}`);
