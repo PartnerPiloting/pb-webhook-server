@@ -263,16 +263,16 @@ export const updateLead = async (leadId, updateData) => {
       'postsActioned': 'Posts Actioned'
     };
     
-    // List of dropdown fields that need empty string handling
-    const dropdownFields = ['source', 'status', 'priority', 'linkedinConnectionStatus'];
+    // List of fields that need empty string converted to null
+    const emptyStringToNullFields = ['source', 'status', 'priority', 'linkedinConnectionStatus', 'followUpDate'];
     
     Object.keys(updateData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
       if (backendField) {
         let value = updateData[frontendField];
         
-        // Convert empty strings to null for dropdown fields to avoid Airtable permissions error
-        if (dropdownFields.includes(frontendField) && value === '') {
+        // Convert empty strings to null for fields that can't handle empty strings
+        if (emptyStringToNullFields.includes(frontendField) && value === '') {
           value = null;
         }
         
