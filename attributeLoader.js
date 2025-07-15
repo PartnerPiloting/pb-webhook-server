@@ -230,7 +230,6 @@ function fallbackAttributes() {
 
 module.exports = { 
   loadAttributes, 
-  getSpecificAttributes,
   loadAttributeForEditing, 
   updateAttribute,
   listAttributesForEditing 
