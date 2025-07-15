@@ -8,7 +8,7 @@ import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon } from 
 const NavigationWithParams = ({ pathname, children }) => {
   const searchParams = useSearchParams();
   // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
-  const serviceLevel = parseInt(searchParams.get('level') || '1');
+  const serviceLevel = parseInt(searchParams.get('level') || '2');
   
   const navigation = [
     {
