@@ -33,6 +33,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   const [aiSuggestion, setAiSuggestion] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
+  const [editMode, setEditMode] = useState('ai'); // 'ai' or 'direct'
 
   if (!isOpen) return null;
 
@@ -162,224 +163,207 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-10 mx-auto p-5 border w-11/12 max-w-6xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+      <div className="relative top-10 mx-auto p-5 border w-11/12 max-w-5xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <SparklesIcon className="h-6 w-6 text-blue-600" />
-            <h3 className="text-lg font-medium text-gray-900">
-              AI-Powered Attribute Editor
-            </h3>
+            <div>
+              <h3 className="text-lg font-medium text-gray-900">Edit Attribute</h3>
+              <p className="text-sm text-gray-500">"{attribute.heading}"</p>
+            </div>
           </div>
-          <button
-            onClick={handleClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
+          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
             <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
 
-        {/* Current Attribute Display */}
+        {/* Mode Selector */}
         <div className="mt-6">
-          <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-            📊 Current Attribute: "{attribute.heading}"
-          </h4>
-          
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-4 mb-8">
-            {/* Basic Info Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <FieldTooltip title={fieldTooltips.maxPoints.title} description={fieldTooltips.maxPoints.description}>
-                  <div className="text-xs text-gray-500 mb-1">Max Points</div>
-                </FieldTooltip>
-                <div className="font-medium text-gray-900">{attribute.maxPoints || 'Not set'}</div>
-              </div>
-              <div>
-                <FieldTooltip title={fieldTooltips.minToQualify.title} description={fieldTooltips.minToQualify.description}>
-                  <div className="text-xs text-gray-500 mb-1">Min to Qualify</div>
-                </FieldTooltip>
-                <div className="font-medium text-gray-900">{attribute.minToQualify || 'Not set'}</div>
-              </div>
-              <div>
-                <FieldTooltip title={fieldTooltips.penalty.title} description={fieldTooltips.penalty.description}>
-                  <div className="text-xs text-gray-500 mb-1">Penalty</div>
-                </FieldTooltip>
-                <div className="font-medium text-gray-900">{attribute.penalty || '0'}</div>
-              </div>
-              <div>
-                <FieldTooltip title={fieldTooltips.active.title} description={fieldTooltips.active.description}>
-                  <div className="text-xs text-gray-500 mb-1">Status</div>
-                </FieldTooltip>
-                <div className={`font-medium ${attribute.active ? 'text-green-600' : 'text-gray-600'}`}>
-                  {attribute.active ? 'Active' : 'Inactive'}
-                </div>
-              </div>
-            </div>
-
-            {/* Instructions */}
-            {attribute.instructions && (
-              <div>
-                <FieldTooltip title={fieldTooltips.instructions.title} description={fieldTooltips.instructions.description}>
-                  <div className="text-xs text-gray-500 mb-1">Current Instructions (Core Rubric)</div>
-                </FieldTooltip>
-                <div className="text-gray-700 text-sm bg-white p-3 rounded border">
-                  {attribute.instructions}
-                </div>
-              </div>
-            )}
-
-            {/* Signals */}
-            {attribute.signals && (
-              <div>
-                <FieldTooltip title={fieldTooltips.signals.title} description={fieldTooltips.signals.description}>
-                  <div className="text-xs text-gray-500 mb-1">Detection Keywords</div>
-                </FieldTooltip>
-                <div className="text-gray-700 text-sm bg-white p-3 rounded border">
-                  {attribute.signals}
-                </div>
-              </div>
-            )}
-
-            {/* Examples */}
-            {attribute.examples && (
-              <div>
-                <FieldTooltip title={fieldTooltips.examples.title} description={fieldTooltips.examples.description}>
-                  <div className="text-xs text-gray-500 mb-1">Scoring Examples</div>
-                </FieldTooltip>
-                <div className="text-gray-700 text-sm bg-white p-3 rounded border">
-                  {attribute.examples}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* User Input Section */}
-        <div className="mt-6">
-          <FieldTooltip 
-            title="Describe Your Changes" 
-            description="Use natural language to describe what you want to improve. Examples: 'Add scoring examples for online courses', 'Increase max points to 20', 'Make the instructions more specific'"
-          >
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              What would you like to improve about this attribute?
-            </label>
-          </FieldTooltip>
-          
-          <textarea
-            value={userRequest}
-            onChange={(e) => setUserRequest(e.target.value)}
-            placeholder="e.g., 'Make the instructions more specific by adding scoring ranges. Add examples about online courses and certifications. Increase max points to 20.'"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            rows={4}
-          />
-          
-          {/* Quick Edit Suggestions */}
-          <div className="mt-3 mb-4">
-            <div className="text-xs text-gray-500 mb-2">💡 Quick actions - click to auto-fill your request:</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setUserRequest(`Make the current instructions more specific with clear point ranges.
-
-CURRENT INSTRUCTIONS:
-${attribute.instructions || 'No instructions set'}
-
-Please improve these by adding specific point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong).`)}
-                className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 border border-blue-200"
-              >
-                Improve instructions
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserRequest(`Add specific examples and scenarios for scoring this attribute.
-
-CURRENT EXAMPLES:
-${attribute.examples || 'No examples set'}
-
-Please add concrete examples showing how different profiles would be scored for this attribute.`)}
-                className="px-3 py-1 text-xs bg-green-50 text-green-700 rounded-full hover:bg-green-100 border border-green-200"
-              >
-                Add examples
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserRequest(`Add more detection keywords and signals to help AI identify this attribute.
-
-CURRENT SIGNALS:
-${attribute.signals || 'No signals set'}
-
-Please expand these keywords to help AI better detect when this attribute applies.`)}
-                className="px-3 py-1 text-xs bg-purple-50 text-purple-700 rounded-full hover:bg-purple-100 border border-purple-200"
-              >
-                Improve signals
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserRequest(`Adjust the scoring points for this attribute.
-
-CURRENT SETTINGS:
-- Max Points: ${attribute.maxPoints || 'Not set'}
-- Min to Qualify: ${attribute.minToQualify || 'Not set'}
-- Penalty: ${attribute.penalty || '0'}
-
-Please suggest appropriate changes to make this attribute more/less important in scoring.`)}
-                className="px-3 py-1 text-xs bg-orange-50 text-orange-700 rounded-full hover:bg-orange-100 border border-orange-200"
-              >
-                Adjust points
-              </button>
-            </div>
-          </div>
-          
-          <div className="mt-3 flex justify-between items-center">
+          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
             <button
-              onClick={handleGenerateAISuggestion}
-              disabled={isGenerating || !userRequest.trim()}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              onClick={() => setEditMode('ai')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                editMode === 'ai'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
             >
-              {isGenerating ? (
-                <>
-                  <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" />
-                  Generating Suggestions...
-                </>
-              ) : (
-                <>
-                  <SparklesIcon className="h-4 w-4 mr-2" />
-                  Generate AI Suggestions
-                </>
-              )}
+              🤖 AI Assistant
             </button>
-            
-            {error && (
-              <div className="text-red-600 text-sm max-w-md">{error}</div>
-            )}
+            <button
+              onClick={() => setEditMode('direct')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                editMode === 'direct'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              ✏️ Direct Edit
+            </button>
           </div>
         </div>
 
-        {/* AI Suggestions Display */}
-        {aiSuggestion && (
+        {/* AI Mode */}
+        {editMode === 'ai' && !aiSuggestion && (
           <div className="mt-8">
-            <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-              <SparklesIcon className="h-5 w-5 mr-2 text-green-600" />
-              AI Suggestions for "{attribute.heading}"
+            <h4 className="text-lg font-medium text-gray-900 mb-4">
+              What would you like to improve?
             </h4>
             
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 space-y-4">
-              {renderFieldComparison("Heading", attribute.heading, aiSuggestion.heading, fieldTooltips.heading)}
-              {renderFieldComparison("Instructions", attribute.instructions, aiSuggestion.instructions, fieldTooltips.instructions)}
-              {renderFieldComparison("Max Points", attribute.maxPoints, aiSuggestion.maxPoints, fieldTooltips.maxPoints)}
-              {renderFieldComparison("Min To Qualify", attribute.minToQualify, aiSuggestion.minToQualify, fieldTooltips.minToQualify)}
-              {renderFieldComparison("Penalty", attribute.penalty, aiSuggestion.penalty, fieldTooltips.penalty)}
-              {renderFieldComparison("Signals", attribute.signals, aiSuggestion.signals, fieldTooltips.signals)}
-              {renderFieldComparison("Examples", attribute.examples, aiSuggestion.examples, fieldTooltips.examples)}
-              {renderFieldComparison("Status", attribute.active, aiSuggestion.active, fieldTooltips.active)}
+            {/* Quick Actions */}
+            <div className="mb-6">
+              <div className="text-sm text-gray-600 mb-3">✨ Popular improvements:</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button
+                  onClick={() => setUserRequest(`Improve the scoring instructions with specific point ranges and clearer criteria.`)}
+                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">📝 Better Instructions</div>
+                  <div className="text-sm text-gray-600">Add point ranges and clearer criteria</div>
+                </button>
+                <button
+                  onClick={() => setUserRequest(`Add concrete examples showing how different profiles would be scored.`)}
+                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">💡 Add Examples</div>
+                  <div className="text-sm text-gray-600">Concrete scoring scenarios</div>
+                </button>
+                <button
+                  onClick={() => setUserRequest(`Expand the detection keywords to help AI better identify this attribute.`)}
+                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">🔍 Better Detection</div>
+                  <div className="text-sm text-gray-600">Improve keyword signals</div>
+                </button>
+                <button
+                  onClick={() => setUserRequest(`Review and optimize the overall scoring approach for this attribute.`)}
+                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">⚡ General Improvement</div>
+                  <div className="text-sm text-gray-600">Overall optimization</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Custom Request */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Or describe your specific request:
+              </label>
+              <textarea
+                value={userRequest}
+                onChange={(e) => setUserRequest(e.target.value)}
+                placeholder="e.g., 'Make the instructions more specific for software engineers' or 'Add examples for e-commerce experience'"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                rows={3}
+              />
+            </div>
+
+            <div className="mt-6 flex justify-between items-center">
+              <button
+                onClick={handleGenerateAISuggestion}
+                disabled={isGenerating || !userRequest.trim()}
+                className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {isGenerating ? (
+                  <>
+                    <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon className="h-4 w-4 mr-2" />
+                    Generate AI Suggestions
+                  </>
+                )}
+              </button>
+              
+              {error && (
+                <div className="text-red-600 text-sm">{error}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* AI Suggestions */}
+        {aiSuggestion && (
+          <div className="mt-8">
+            <h4 className="text-lg font-medium text-gray-900 mb-6 flex items-center">
+              <SparklesIcon className="h-5 w-5 mr-2 text-green-600" />
+              AI Suggestions
+            </h4>
+            
+            <div className="space-y-6">
+              {/* Only show fields that actually changed */}
+              {aiSuggestion.instructions !== attribute.instructions && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Instructions</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
+                        {attribute.instructions || 'No instructions set'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                        {aiSuggestion.instructions}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Similar pattern for other changed fields */}
+              {aiSuggestion.signals !== attribute.signals && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Detection Keywords</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
+                        {attribute.signals || 'No signals set'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                        {aiSuggestion.signals}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiSuggestion.examples !== attribute.examples && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Examples</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
+                        {attribute.examples || 'No examples set'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                        {aiSuggestion.examples}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
-            <div className="mt-6 flex space-x-3">
+            <div className="mt-8 flex space-x-3">
               <button
                 onClick={handleAcceptSuggestion}
                 className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
               >
-                Accept All Changes & Save
+                Accept & Save Changes
               </button>
               <button
                 onClick={() => setAiSuggestion(null)}
@@ -391,9 +375,62 @@ Please suggest appropriate changes to make this attribute more/less important in
           </div>
         )}
 
-        {/* Close button if no suggestion */}
-        {!aiSuggestion && (
-          <div className="mt-6 flex justify-end">
+        {/* Direct Edit Mode */}
+        {editMode === 'direct' && (
+          <div className="mt-8">
+            <h4 className="text-lg font-medium text-gray-900 mb-6">Direct Edit</h4>
+            <div className="text-gray-600 mb-6">
+              Quick edits for points, thresholds, and status. For complex text changes, use AI Assistant.
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Max Points</label>
+                <input
+                  type="number"
+                  defaultValue={attribute.maxPoints || ''}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Min to Qualify</label>
+                <input
+                  type="number"
+                  defaultValue={attribute.minToQualify || ''}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Penalty</label>
+                <input
+                  type="number"
+                  defaultValue={attribute.penalty || ''}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select
+                  defaultValue={attribute.active ? 'active' : 'inactive'}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <button className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                Save Changes
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Close button */}
+        {!aiSuggestion && editMode === 'ai' && (
+          <div className="mt-8 flex justify-end">
             <button
               onClick={handleClose}
               className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
