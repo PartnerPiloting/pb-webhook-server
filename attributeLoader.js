@@ -105,137 +105,118 @@ async function loadAttributes() {
 }
 
 /* ----------------------------------------------------------------
-    loadAttributeForEditing – fetches a single attribute with draft fields
-    Returns: { live: {...}, draft: {...} } for the editing UI
+    loadAttributeForEditing – fetches a single attribute for editing
+    Returns: complete attribute object with all fields
 ----------------------------------------------------------------- */
 async function loadAttributeForEditing(attributeId) {
-  if (!base) {
-    throw new Error("Airtable base not available");
-  }
-
   try {
+    console.log(`attributeLoader.js: Loading attribute ${attributeId} for editing`);
+    
+    if (!base) {
+      throw new Error("Airtable base not available from config/airtableClient.js");
+    }
+    
     const record = await base(TABLE_NAME).find(attributeId);
     
-    const live = {
+    const attribute = {
       id: record.id,
+      attributeId: record.get("Attribute Id") || "",
       heading: record.get("Heading") || "",
+      category: record.get("Category") || "",
       instructions: record.get("Instructions") || "",
       maxPoints: Number(record.get("Max Points") || 0),
       minToQualify: Number(record.get("Min To Qualify") || 0),
       penalty: Number(record.get("Penalty") || 0),
-      category: record.get("Category") || "",
-      disqualifying: !!record.get("Disqualifying")
+      disqualifying: !!record.get("Disqualifying"),
+      signals: record.get("Signals") || "",
+      examples: record.get("Examples") || "",
+      active: record.get("Active") !== false // Default to true if field doesn't exist
     };
-
-    const draft = {
-      heading: record.get("Draft Heading") || null,
-      instructions: record.get("Draft Instructions") || null,
-      maxPoints: record.get("Draft Max Points") || null,
-      minToQualify: record.get("Draft Min To Qualify") || null,
-      penalty: record.get("Draft Penalty") || null,
-      updatedAt: record.get("Draft Updated At") || null
-    };
-
-    return { live, draft };
+    
+    console.log(`attributeLoader.js: Successfully loaded attribute ${attributeId}`);
+    return attribute;
   } catch (error) {
-    console.error("Error loading attribute for editing:", error);
-    throw error;
+    console.error(`attributeLoader.js: Error loading attribute ${attributeId}:`, error.message);
+    throw new Error(`Failed to load attribute: ${error.message}`);
   }
 }
 
 /* ----------------------------------------------------------------
-    updateAttributeDraft – saves draft fields without affecting live
+    updateAttribute – saves changes directly to live fields
 ----------------------------------------------------------------- */
-async function updateAttributeDraft(attributeId, draftData) {
-  if (!base) {
-    throw new Error("Airtable base not available");
-  }
-
+async function updateAttribute(attributeId, data) {
   try {
-    const updateFields = {
-      "Draft Heading": draftData.heading,
-      "Draft Instructions": draftData.instructions,
-      "Draft Max Points": draftData.maxPoints,
-      "Draft Min To Qualify": draftData.minToQualify,
-      "Draft Penalty": draftData.penalty,
-      "Draft Updated At": new Date().toISOString()
-    };
-
-    await base(TABLE_NAME).update(attributeId, updateFields);
+    console.log(`attributeLoader.js: Updating attribute ${attributeId}:`, Object.keys(data));
     
-    // Clear cache since draft changed
-    cache = null;
-    cacheUntil = 0;
+    if (!base) {
+      throw new Error("Airtable base not available from config/airtableClient.js");
+    }
     
-    return { success: true };
-  } catch (error) {
-    console.error("Error updating attribute draft:", error);
-    throw error;
-  }
-}
-
-/* ----------------------------------------------------------------
-    publishAttributeDraft – copies draft fields to live fields
------------------------------------------------------------------ */
-async function publishAttributeDraft(attributeId) {
-  if (!base) {
-    throw new Error("Airtable base not available");
-  }
-
-  try {
-    const record = await base(TABLE_NAME).find(attributeId);
+    const updateFields = {};
     
-    const updateFields = {
-      "Heading": record.get("Draft Heading"),
-      "Instructions": record.get("Draft Instructions"),
-      "Max Points": record.get("Draft Max Points"),
-      "Min To Qualify": record.get("Draft Min To Qualify"),
-      "Penalty": record.get("Draft Penalty"),
-      // Clear draft fields
-      "Draft Heading": null,
-      "Draft Instructions": null,
-      "Draft Max Points": null,
-      "Draft Min To Qualify": null,
-      "Draft Penalty": null,
-      "Draft Updated At": null
-    };
+    // Only update fields that are provided
+    if (data.heading !== undefined) updateFields["Heading"] = data.heading;
+    if (data.instructions !== undefined) updateFields["Instructions"] = data.instructions;
+    if (data.maxPoints !== undefined) updateFields["Max Points"] = Number(data.maxPoints);
+    if (data.minToQualify !== undefined) updateFields["Min To Qualify"] = Number(data.minToQualify);
+    if (data.penalty !== undefined) updateFields["Penalty"] = Number(data.penalty);
+    if (data.disqualifying !== undefined) updateFields["Disqualifying"] = !!data.disqualifying;
+    if (data.signals !== undefined) updateFields["Signals"] = data.signals;
+    if (data.examples !== undefined) updateFields["Examples"] = data.examples;
+    if (data.active !== undefined) updateFields["Active"] = !!data.active;
 
-    await base(TABLE_NAME).update(attributeId, updateFields);
+    const record = await base(TABLE_NAME).update(attributeId, updateFields);
     
     // Clear cache since live data changed
     cache = null;
     cacheUntil = 0;
     
-    return { success: true };
+    console.log(`attributeLoader.js: Successfully updated attribute ${attributeId}`);
+    return { success: true, id: record.id };
   } catch (error) {
-    console.error("Error publishing attribute draft:", error);
-    throw error;
+    console.error(`attributeLoader.js: Error updating attribute ${attributeId}:`, error.message);
+    throw new Error(`Failed to update attribute: ${error.message}`);
   }
 }
 
 /* ----------------------------------------------------------------
-    discardAttributeDraft – clears all draft fields
+    listAttributesForEditing – fetches all attributes for the library view
 ----------------------------------------------------------------- */
-async function discardAttributeDraft(attributeId) {
-  if (!base) {
-    throw new Error("Airtable base not available");
-  }
-
+async function listAttributesForEditing() {
   try {
-    const updateFields = {
-      "Draft Heading": null,
-      "Draft Instructions": null,
-      "Draft Max Points": null,
-      "Draft Min To Qualify": null,
-      "Draft Penalty": null,
-      "Draft Updated At": null
-    };
-
-    await base(TABLE_NAME).update(attributeId, updateFields);
-    return { success: true };
+    console.log("attributeLoader.js: Loading all attributes for editing");
+    
+    if (!base) {
+      throw new Error("Airtable base not available from config/airtableClient.js");
+    }
+    
+    const records = await base(TABLE_NAME)
+      .select({
+        fields: [
+          "Attribute Id", "Heading", "Category", "Max Points", 
+          "Min To Qualify", "Penalty", "Disqualifying", "Active"
+        ]
+      })
+      .all();
+      
+    const attributes = records.map(record => ({
+      id: record.id,
+      attributeId: record.get("Attribute Id") || "",
+      heading: record.get("Heading") || "[Unnamed Attribute]",
+      category: record.get("Category") || "",
+      maxPoints: Number(record.get("Max Points") || 0),
+      minToQualify: Number(record.get("Min To Qualify") || 0),
+      penalty: Number(record.get("Penalty") || 0),
+      disqualifying: !!record.get("Disqualifying"),
+      active: record.get("Active") !== false, // Default to true if field doesn't exist
+      isEmpty: !record.get("Heading") && !record.get("Instructions")
+    }));
+    
+    console.log(`attributeLoader.js: Successfully loaded ${attributes.length} attributes for editing`);
+    return attributes;
   } catch (error) {
-    console.error("Error discarding attribute draft:", error);
-    throw error;
+    console.error("attributeLoader.js: Error loading attributes for editing:", error.message);
+    throw new Error(`Failed to load attributes: ${error.message}`);
   }
 }
 
@@ -247,4 +228,10 @@ function fallbackAttributes() {
   return { preamble:"", positives, negatives };
 }
 
-module.exports = { loadAttributes, loadAttributeForEditing, updateAttributeDraft, publishAttributeDraft, discardAttributeDraft };
+module.exports = { 
+  loadAttributes, 
+  getSpecificAttributes,
+  loadAttributeForEditing, 
+  updateAttribute,
+  listAttributesForEditing 
+};
