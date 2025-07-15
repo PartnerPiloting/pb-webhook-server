@@ -26,6 +26,7 @@ GCP_SERVICE_ACCOUNT_CREDENTIALS_JSON={"type":"service_account",...}
 
 # Optional Configuration
 GEMINI_MODEL_ID=gemini-2.5-pro-preview-05-06
+GEMINI_EDITING_MODEL_ID=gemini-2.5-pro
 PB_WEBHOOK_SECRET=your-webhook-secret
 PORT=3000
 BATCH_CHUNK_SIZE=55
