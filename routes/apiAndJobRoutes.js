@@ -18,7 +18,7 @@ const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
 const { scoreLeadNow } = require("../singleScorer.js");
 const batchScorer = require("../batchScorer.js");
-const { loadAttributes, loadAttributeForEditing, updateAttributeDraft, publishAttributeDraft, discardAttributeDraft } = require("../attributeLoader.js");
+const { loadAttributes, loadAttributeForEditing, updateAttribute } = require("../attributeLoader.js");
 const { computeFinalScore } = require("../scoring.js");
 const { buildAttributeBreakdown } = require("../breakdown.js");
 const {
@@ -615,57 +615,60 @@ function validateAttributeResponse(data) {
   return true;
 }
 
-// Get attribute for editing (live + draft)
+// Get attribute for editing
 router.get("/api/attributes/:id/edit", async (req, res) => {
   try {
+    console.log(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit - Loading attribute for editing`);
     const attributeId = req.params.id;
     const attribute = await loadAttributeForEditing(attributeId);
     
     res.json({
       success: true,
-      ...attribute
+      attribute
     });
     
   } catch (error) {
-    console.error("Error loading attribute for editing:", error);
+    console.error(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit error:`, error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || "Failed to load attribute for editing"
     });
   }
 });
 
-// AI-powered attribute editing
+// AI-powered attribute editing (memory-based, returns improved rubric)
 router.post("/api/attributes/:id/ai-edit", async (req, res) => {
   try {
+    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
     const attributeId = req.params.id;
     const { userRequest } = req.body;
     
     if (!userRequest || typeof userRequest !== 'string') {
       return res.status(400).json({
         success: false,
-        error: "userRequest is required"
+        error: "userRequest is required and must be a string"
       });
     }
 
     // Load current attribute
-    const { live } = await loadAttributeForEditing(attributeId);
+    const currentAttribute = await loadAttributeForEditing(attributeId);
     
     // Build current rubric for AI
     const currentRubric = {
-      heading: live.heading,
-      maxPoints: live.maxPoints,
-      minToQualify: live.minToQualify,
-      penalty: live.penalty,
-      instructionsMarkdown: live.instructions
+      heading: currentAttribute.heading,
+      maxPoints: currentAttribute.maxPoints,
+      minToQualify: currentAttribute.minToQualify,
+      penalty: currentAttribute.penalty,
+      instructionsMarkdown: currentAttribute.instructions
     };
 
     // Call Gemini (using editing-specific model for quality over speed)
     if (!vertexAIClient) {
-      throw new Error("Gemini client not available");
+      throw new Error("Gemini client not available - check config/geminiClient.js");
     }
 
     const editingModelId = process.env.GEMINI_EDITING_MODEL_ID || "gemini-2.5-pro";
+    console.log(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing`);
     const model = vertexAIClient.getGenerativeModel({ model: editingModelId });
     const prompt = buildAttributeEditPrompt(currentRubric, userRequest);
     
@@ -677,73 +680,66 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     try {
       aiResponse = JSON.parse(responseText);
     } catch (parseError) {
-      throw new Error(`AI returned invalid JSON: ${responseText}`);
+      console.error("apiAndJobRoutes.js: AI response parsing error:", parseError.message);
+      console.error("apiAndJobRoutes.js: Raw AI response:", responseText);
+      throw new Error(`AI returned invalid JSON: ${responseText.substring(0, 200)}...`);
     }
     
     validateAttributeResponse(aiResponse);
     
-    // Save as draft
-    const draftData = {
-      heading: aiResponse.heading,
-      instructions: aiResponse.instructionsMarkdown,
-      maxPoints: aiResponse.maxPoints,
-      minToQualify: aiResponse.minToQualify,
-      penalty: aiResponse.penalty
-    };
-    
-    await updateAttributeDraft(attributeId, draftData);
-    
+    // Return improved rubric (memory-based, don't save yet)
     res.json({
       success: true,
-      draft: draftData,
-      aiResponse: responseText
+      improvedRubric: {
+        heading: aiResponse.heading,
+        instructions: aiResponse.instructionsMarkdown,
+        maxPoints: aiResponse.maxPoints,
+        minToQualify: aiResponse.minToQualify,
+        penalty: aiResponse.penalty,
+        signals: currentAttribute.signals, // Keep existing
+        examples: currentAttribute.examples, // Keep existing
+        active: currentAttribute.active
+      },
+      model: editingModelId,
+      prompt: userRequest.substring(0, 100) + (userRequest.length > 100 ? '...' : '')
     });
     
   } catch (error) {
-    console.error("AI attribute editing error:", error);
+    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit error:`, error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || "Failed to generate AI suggestions"
     });
   }
 });
 
-// Publish draft to live
-router.post("/api/attributes/:id/publish", async (req, res) => {
+// Save improved rubric to live attribute
+router.post("/api/attributes/:id/save", async (req, res) => {
   try {
+    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save - Saving attribute changes`);
     const attributeId = req.params.id;
-    await publishAttributeDraft(attributeId);
+    const { improvedRubric } = req.body;
     
+    if (!improvedRubric || typeof improvedRubric !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: "improvedRubric is required and must be an object"
+      });
+    }
+    
+    await updateAttribute(attributeId, improvedRubric);
+    
+    console.log(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
     res.json({
       success: true,
-      message: "Draft published successfully"
+      message: "Attribute updated successfully"
     });
     
   } catch (error) {
-    console.error("Error publishing draft:", error);
+    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save error:`, error.message);
     res.status(500).json({
       success: false,
-      error: error.message
-    });
-  }
-});
-
-// Discard draft
-router.post("/api/attributes/:id/discard", async (req, res) => {
-  try {
-    const attributeId = req.params.id;
-    await discardAttributeDraft(attributeId);
-    
-    res.json({
-      success: true,
-      message: "Draft discarded successfully"
-    });
-    
-  } catch (error) {
-    console.error("Error discarding draft:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message
+      error: error.message || "Failed to save attribute changes"
     });
   }
 });
@@ -751,16 +747,17 @@ router.post("/api/attributes/:id/discard", async (req, res) => {
 // List all attributes for the library view
 router.get("/api/attributes", async (req, res) => {
   try {
+    console.log("apiAndJobRoutes.js: GET /api/attributes - Loading attribute library");
+    
     if (!airtableBase) {
-      throw new Error("Airtable not available");
+      throw new Error("Airtable not available - check config/airtableClient.js");
     }
 
     const records = await airtableBase("Scoring Attributes")
       .select({
         fields: [
           "Attribute Id", "Heading", "Category", "Max Points", 
-          "Min To Qualify", "Penalty", "Disqualifying",
-          "Draft Heading", "Draft Updated At"
+          "Min To Qualify", "Penalty", "Disqualifying", "Active"
         ]
       })
       .all();
@@ -768,26 +765,28 @@ router.get("/api/attributes", async (req, res) => {
     const attributes = records.map(record => ({
       id: record.id,
       attributeId: record.get("Attribute Id"),
-      heading: record.get("Heading"),
+      heading: record.get("Heading") || "[Unnamed Attribute]",
       category: record.get("Category"),
-      maxPoints: record.get("Max Points"),
-      minToQualify: record.get("Min To Qualify"),
-      penalty: record.get("Penalty"),
+      maxPoints: record.get("Max Points") || 0,
+      minToQualify: record.get("Min To Qualify") || 0,
+      penalty: record.get("Penalty") || 0,
       disqualifying: !!record.get("Disqualifying"),
-      hasDraft: !!(record.get("Draft Heading") || record.get("Draft Updated At")),
-      draftUpdatedAt: record.get("Draft Updated At")
+      active: record.get("Active") !== false, // Default to true if field doesn't exist
+      isEmpty: !record.get("Heading") && !record.get("Instructions")
     }));
 
+    console.log(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} attributes for library view`);
     res.json({
       success: true,
-      attributes
+      attributes,
+      count: attributes.length
     });
     
   } catch (error) {
-    console.error("Error loading attributes:", error);
+    console.error("apiAndJobRoutes.js: GET /api/attributes error:", error.message);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || "Failed to load attributes"
     });
   }
 });
