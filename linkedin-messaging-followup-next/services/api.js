@@ -520,4 +520,7 @@ export const saveAttributeChanges = async (attributeId, improvedRubric) => {
   }
 };
 
+// Alias for backwards compatibility
+export const saveAttribute = saveAttributeChanges;
+
 export default api;

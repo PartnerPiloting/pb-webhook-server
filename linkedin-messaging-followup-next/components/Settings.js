@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CogIcon, AcademicCapIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
-import { getAttributes } from '../services/api';
+import { getAttributes, saveAttribute } from '../services/api';
+import AIEditModal from './AIEditModal';
 
 const Settings = () => {
   const searchParams = useSearchParams();
@@ -11,6 +12,8 @@ const Settings = () => {
   const [attributes, setAttributes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [selectedAttribute, setSelectedAttribute] = useState(null);
 
   // Available settings sections based on service level
   const settingsSections = [
@@ -31,6 +34,28 @@ const Settings = () => {
   ];
 
   const availableSections = settingsSections.filter(section => section.minLevel <= serviceLevel);
+
+  const handleOpenAIEdit = (attribute) => {
+    setSelectedAttribute(attribute);
+    setIsAIModalOpen(true);
+  };
+
+  const handleCloseAIModal = () => {
+    setIsAIModalOpen(false);
+    setSelectedAttribute(null);
+  };
+
+  const handleSaveAttribute = async (attributeId, updatedData) => {
+    try {
+      await saveAttribute(attributeId, updatedData);
+      // Reload attributes to show changes
+      const data = await getAttributes();
+      setAttributes(data.attributes || []);
+    } catch (err) {
+      console.error('Error saving attribute:', err);
+      throw err;
+    }
+  };
 
   // Load attributes from your backend
   useEffect(() => {
@@ -97,12 +122,12 @@ const Settings = () => {
             </p>
           </div>
           
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-gray-200 max-w-4xl">
             {attributes.map((attribute) => (
               <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
+                <div className="flex items-start space-x-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-3 mb-2">
                       <h4 className="text-sm font-medium text-gray-900">
                         {attribute.heading || '[Unnamed Attribute]'}
                       </h4>
@@ -119,20 +144,17 @@ const Settings = () => {
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
+                    <div className="flex items-center space-x-4 text-sm text-gray-500">
                       <span>Max Points: {attribute.maxPoints}</span>
                       <span>Min to Qualify: {attribute.minToQualify}</span>
                       {attribute.penalty && <span>Penalty: {attribute.penalty}</span>}
                       <span className="capitalize">{attribute.category}</span>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex-shrink-0">
                     <button 
                       className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                      onClick={() => {
-                        // This will be implemented in the next phase
-                        alert(`AI editing for "${attribute.heading}" will be available soon!`);
-                      }}
+                      onClick={() => handleOpenAIEdit(attribute)}
                     >
                       <CogIcon className="h-3 w-3 mr-1" />
                       Edit with AI
@@ -207,6 +229,14 @@ const Settings = () => {
         {activeSection === 'lead-scoring' && renderLeadScoringSection()}
         {activeSection === 'post-scoring' && renderPostScoringSection()}
       </div>
+
+      {/* AI Edit Modal */}
+      <AIEditModal
+        isOpen={isAIModalOpen}
+        onClose={handleCloseAIModal}
+        attribute={selectedAttribute}
+        onSave={handleSaveAttribute}
+      />
     </div>
   );
 };
