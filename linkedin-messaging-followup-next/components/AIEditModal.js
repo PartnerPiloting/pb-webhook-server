@@ -179,6 +179,81 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           </button>
         </div>
 
+        {/* Current Attribute Display */}
+        <div className="mt-6">
+          <h4 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            📊 Current Attribute: "{attribute.heading}"
+          </h4>
+          
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 space-y-4 mb-8">
+            {/* Basic Info Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <FieldTooltip title={fieldTooltips.maxPoints.title} description={fieldTooltips.maxPoints.description}>
+                  <div className="text-xs text-gray-500 mb-1">Max Points</div>
+                </FieldTooltip>
+                <div className="font-medium text-gray-900">{attribute.maxPoints || 'Not set'}</div>
+              </div>
+              <div>
+                <FieldTooltip title={fieldTooltips.minToQualify.title} description={fieldTooltips.minToQualify.description}>
+                  <div className="text-xs text-gray-500 mb-1">Min to Qualify</div>
+                </FieldTooltip>
+                <div className="font-medium text-gray-900">{attribute.minToQualify || 'Not set'}</div>
+              </div>
+              <div>
+                <FieldTooltip title={fieldTooltips.penalty.title} description={fieldTooltips.penalty.description}>
+                  <div className="text-xs text-gray-500 mb-1">Penalty</div>
+                </FieldTooltip>
+                <div className="font-medium text-gray-900">{attribute.penalty || '0'}</div>
+              </div>
+              <div>
+                <FieldTooltip title={fieldTooltips.active.title} description={fieldTooltips.active.description}>
+                  <div className="text-xs text-gray-500 mb-1">Status</div>
+                </FieldTooltip>
+                <div className={`font-medium ${attribute.active ? 'text-green-600' : 'text-gray-600'}`}>
+                  {attribute.active ? 'Active' : 'Inactive'}
+                </div>
+              </div>
+            </div>
+
+            {/* Instructions */}
+            {attribute.instructions && (
+              <div>
+                <FieldTooltip title={fieldTooltips.instructions.title} description={fieldTooltips.instructions.description}>
+                  <div className="text-xs text-gray-500 mb-1">Current Instructions (Core Rubric)</div>
+                </FieldTooltip>
+                <div className="text-gray-700 text-sm bg-white p-3 rounded border">
+                  {attribute.instructions}
+                </div>
+              </div>
+            )}
+
+            {/* Signals */}
+            {attribute.signals && (
+              <div>
+                <FieldTooltip title={fieldTooltips.signals.title} description={fieldTooltips.signals.description}>
+                  <div className="text-xs text-gray-500 mb-1">Detection Keywords</div>
+                </FieldTooltip>
+                <div className="text-gray-700 text-sm bg-white p-3 rounded border">
+                  {attribute.signals}
+                </div>
+              </div>
+            )}
+
+            {/* Examples */}
+            {attribute.examples && (
+              <div>
+                <FieldTooltip title={fieldTooltips.examples.title} description={fieldTooltips.examples.description}>
+                  <div className="text-xs text-gray-500 mb-1">Scoring Examples</div>
+                </FieldTooltip>
+                <div className="text-gray-700 text-sm bg-white p-3 rounded border">
+                  {attribute.examples}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* User Input Section */}
         <div className="mt-6">
           <FieldTooltip 
@@ -195,8 +270,43 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
             onChange={(e) => setUserRequest(e.target.value)}
             placeholder="e.g., 'Make the instructions more specific by adding scoring ranges. Add examples about online courses and certifications. Increase max points to 20.'"
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            rows={3}
+            rows={4}
           />
+          
+          {/* Quick Edit Suggestions */}
+          <div className="mt-3 mb-4">
+            <div className="text-xs text-gray-500 mb-2">💡 Common requests you can make:</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setUserRequest("Make the instructions more specific with clear point ranges")}
+                className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 border border-blue-200"
+              >
+                Improve instructions
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserRequest("Add specific examples and scenarios for scoring")}
+                className="px-3 py-1 text-xs bg-green-50 text-green-700 rounded-full hover:bg-green-100 border border-green-200"
+              >
+                Add examples
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserRequest("Add more detection keywords and signals")}
+                className="px-3 py-1 text-xs bg-purple-50 text-purple-700 rounded-full hover:bg-purple-100 border border-purple-200"
+              >
+                Improve signals
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserRequest("Increase the maximum points to make this more important")}
+                className="px-3 py-1 text-xs bg-orange-50 text-orange-700 rounded-full hover:bg-orange-100 border border-orange-200"
+              >
+                Adjust points
+              </button>
+            </div>
+          </div>
           
           <div className="mt-3 flex justify-between items-center">
             <button
