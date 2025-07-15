@@ -62,7 +62,10 @@ const Settings = () => {
     const loadAttributes = async () => {
       try {
         setLoading(true);
+        console.log('Settings: Loading attributes...');
         const data = await getAttributes();
+        console.log('Settings: Received data:', data);
+        console.log('Settings: Attributes array:', data.attributes);
         setAttributes(data.attributes || []);
       } catch (err) {
         console.error('Error loading attributes:', err);
@@ -120,17 +123,30 @@ const Settings = () => {
             <p className="text-sm text-gray-500 mt-1">
               {attributes.length} attributes configured • AI editing available
             </p>
+            {/* Debug info */}
+            <div className="text-xs text-gray-400 mt-1">
+              Loading: {loading ? 'true' : 'false'} | Error: {error || 'none'} | Attributes: {JSON.stringify(attributes).slice(0, 100)}...
+            </div>
           </div>
           
           <div className="divide-y divide-gray-200 max-w-4xl">
-            {attributes.map((attribute) => (
-              <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
-                <div className="flex items-start space-x-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h4 className="text-sm font-medium text-gray-900">
-                        {attribute.heading || '[Unnamed Attribute]'}
-                      </h4>
+            {loading ? (
+              <div className="px-6 py-8 text-center text-gray-500">
+                Loading attributes...
+              </div>
+            ) : attributes.length === 0 ? (
+              <div className="px-6 py-8 text-center text-gray-500">
+                No attributes found. Debug: {JSON.stringify({loading, error, attributesLength: attributes.length})}
+              </div>
+            ) : (
+              attributes.map((attribute) => (
+                <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
+                  <div className="flex items-start space-x-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h4 className="text-sm font-medium text-gray-900">
+                          {attribute.heading || '[Unnamed Attribute]'}
+                        </h4>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         attribute.active !== false 
                           ? 'bg-green-100 text-green-800' 
@@ -162,7 +178,8 @@ const Settings = () => {
                   </div>
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
         </div>
       </div>

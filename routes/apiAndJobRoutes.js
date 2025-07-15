@@ -571,47 +571,68 @@ router.get("/api/json-quality-analysis", async (req, res) => {
 // ---------------------------------------------------------------
 
 // Helper function to build Gemini prompt for attribute editing
-function buildAttributeEditPrompt(currentRubric, userRequest) {
-  return `You are an Attribute-Rubric Assistant for a lead scoring system.
+function buildAttributeEditPrompt(currentAttribute, userRequest) {
+  return `You are an expert Attribute-Rubric Assistant for a sophisticated AI lead scoring system.
 
-RULES:
-- Always return VALID JSON with exactly these keys: heading, maxPoints, minToQualify, penalty, instructionsMarkdown
-- maxPoints must be 1-100 (integer)
-- minToQualify must be 0 to maxPoints (integer)  
-- penalty must be 0 or negative integer (-100 to 0)
-- instructionsMarkdown should be clear, actionable scoring criteria (max 200 words)
-- Keep the same category (positive/negative) unless explicitly asked to change
+CONTEXT:
+This is a multi-field attribute used by AI to score LinkedIn profiles. Each field serves a specific purpose:
+- **Heading**: Display name users see
+- **Instructions**: Core rubric content sent to AI for scoring (MOST IMPORTANT)
+- **Max Points**: Scoring ceiling (positive attributes only)
+- **Min To Qualify**: Threshold for early elimination  
+- **Penalty**: Deduction amount (negative attributes only)
+- **Signals**: Keywords/phrases that trigger detection (helps AI find this attribute)
+- **Examples**: Sample scenarios with scoring ranges (helps AI understand nuances)
+- **Active**: Whether this attribute is currently used in scoring
 
-CURRENT_RUBRIC:
-${JSON.stringify(currentRubric, null, 2)}
+CURRENT_ATTRIBUTE:
+${JSON.stringify(currentAttribute, null, 2)}
 
 USER_REQUEST:
 ${userRequest}
+
+RULES:
+- Return VALID JSON with these exact keys: heading, instructions, maxPoints, minToQualify, penalty, signals, examples, active
+- **Instructions** should include clear scoring ranges (e.g., "0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong")
+- **Signals** should be comma-separated keywords/phrases that help AI detect this attribute
+- **Examples** should include concrete scenarios with point values
+- Keep numeric fields as integers
+- Only positive attributes can have maxPoints > 0
+- Only negative attributes can have penalty < 0
+- Make improvements thoughtful and preserve the attribute's core purpose
 
 Return ONLY the JSON object, no other text.`;
 }
 
 // Validate AI response for attribute editing
 function validateAttributeResponse(data) {
-  const required = ['heading', 'maxPoints', 'minToQualify', 'penalty', 'instructionsMarkdown'];
+  const required = ['heading', 'instructions', 'maxPoints', 'minToQualify', 'penalty', 'signals', 'examples', 'active'];
   for (const key of required) {
     if (!(key in data)) {
       throw new Error(`Missing required field: ${key}`);
     }
   }
   
-  if (typeof data.maxPoints !== 'number' || data.maxPoints < 1 || data.maxPoints > 100) {
-    throw new Error('maxPoints must be integer 1-100');
+  if (typeof data.maxPoints !== 'number' || data.maxPoints < 0 || data.maxPoints > 100) {
+    throw new Error('maxPoints must be integer 0-100');
   }
   
-  if (typeof data.minToQualify !== 'number' || data.minToQualify < 0 || data.minToQualify > data.maxPoints) {
-    throw new Error('minToQualify must be 0 to maxPoints');
+  if (typeof data.minToQualify !== 'number' || data.minToQualify < 0) {
+    throw new Error('minToQualify must be 0 or positive integer');
   }
   
   if (typeof data.penalty !== 'number' || data.penalty > 0) {
-    throw new Error('penalty must be 0 or negative');
+    throw new Error('penalty must be 0 or negative integer');
   }
-  
+
+  if (typeof data.heading !== 'string' || data.heading.trim().length === 0) {
+    throw new Error('heading must be non-empty string');
+  }
+
+  if (typeof data.instructions !== 'string' || data.instructions.trim().length === 0) {
+    throw new Error('instructions must be non-empty string');
+  }
+
   return true;
 }
 
@@ -650,18 +671,9 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
       });
     }
 
-    // Load current attribute
+    // Load current attribute (get ALL fields)
     const currentAttribute = await loadAttributeForEditing(attributeId);
     
-    // Build current rubric for AI
-    const currentRubric = {
-      heading: currentAttribute.heading,
-      maxPoints: currentAttribute.maxPoints,
-      minToQualify: currentAttribute.minToQualify,
-      penalty: currentAttribute.penalty,
-      instructionsMarkdown: currentAttribute.instructions
-    };
-
     // Call Gemini (using editing-specific model for quality over speed)
     if (!vertexAIClient) {
       throw new Error("Gemini client not available - check config/geminiClient.js");
@@ -670,7 +682,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     const editingModelId = process.env.GEMINI_EDITING_MODEL_ID || "gemini-2.5-pro";
     console.log(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing`);
     const model = vertexAIClient.getGenerativeModel({ model: editingModelId });
-    const prompt = buildAttributeEditPrompt(currentRubric, userRequest);
+    const prompt = buildAttributeEditPrompt(currentAttribute, userRequest);
     
     const result = await model.generateContent(prompt);
     const responseText = result.response.text().trim();
@@ -687,19 +699,10 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     
     validateAttributeResponse(aiResponse);
     
-    // Return improved rubric (memory-based, don't save yet)
+    // Return improved attribute (memory-based, don't save yet)
     res.json({
       success: true,
-      improvedRubric: {
-        heading: aiResponse.heading,
-        instructions: aiResponse.instructionsMarkdown,
-        maxPoints: aiResponse.maxPoints,
-        minToQualify: aiResponse.minToQualify,
-        penalty: aiResponse.penalty,
-        signals: currentAttribute.signals, // Keep existing
-        examples: currentAttribute.examples, // Keep existing
-        active: currentAttribute.active
-      },
+      suggestion: aiResponse, // Use 'suggestion' to match frontend expectations
       model: editingModelId,
       prompt: userRequest.substring(0, 100) + (userRequest.length > 100 ? '...' : '')
     });
@@ -718,16 +721,17 @@ router.post("/api/attributes/:id/save", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save - Saving attribute changes`);
     const attributeId = req.params.id;
-    const { improvedRubric } = req.body;
+    const { improvedRubric } = req.body; // Keep for backward compatibility
+    const updatedData = improvedRubric || req.body; // Also accept data directly
     
-    if (!improvedRubric || typeof improvedRubric !== 'object') {
+    if (!updatedData || typeof updatedData !== 'object') {
       return res.status(400).json({
         success: false,
-        error: "improvedRubric is required and must be an object"
+        error: "updatedData is required and must be an object"
       });
     }
     
-    await updateAttribute(attributeId, improvedRubric);
+    await updateAttribute(attributeId, updatedData);
     
     console.log(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
     res.json({
