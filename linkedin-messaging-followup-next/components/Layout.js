@@ -2,7 +2,7 @@
 import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
 
 // Component that uses useSearchParams wrapped in Suspense
 const NavigationWithParams = ({ pathname, children }) => {
@@ -38,6 +38,13 @@ const NavigationWithParams = ({ pathname, children }) => {
       icon: TrophyIcon,
       description: 'Leads with high-relevance posts ready for action',
       minLevel: 2
+    },
+    {
+      name: 'Settings',
+      href: '/settings',
+      icon: CogIcon,
+      description: 'Configure scoring attributes and system settings',
+      minLevel: 1
     }
   ];
 

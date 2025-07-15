@@ -427,4 +427,93 @@ export const syncLeadData = async (syncData) => {
   }
 };
 
+// Attribute management functions (NEW)
+export const getAttributes = async () => {
+  try {
+    // Call your deployed backend directly
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load attributes: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getAttributes:', error);
+    throw new Error('Failed to load attributes');
+  }
+};
+
+export const getAttributeForEditing = async (attributeId) => {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes/${attributeId}/edit`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load attribute: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getAttributeForEditing:', error);
+    throw new Error('Failed to load attribute for editing');
+  }
+};
+
+export const getAISuggestions = async (attributeId, userRequest, currentAttribute) => {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes/${attributeId}/ai-edit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userRequest,
+        current: currentAttribute
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get AI suggestions: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getAISuggestions:', error);
+    throw new Error('Failed to get AI suggestions');
+  }
+};
+
+export const saveAttributeChanges = async (attributeId, improvedRubric) => {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes/${attributeId}/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        improvedRubric
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to save changes: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in saveAttributeChanges:', error);
+    throw new Error('Failed to save attribute changes');
+  }
+};
+
 export default api;
