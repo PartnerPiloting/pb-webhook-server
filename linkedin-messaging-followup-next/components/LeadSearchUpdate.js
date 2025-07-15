@@ -23,6 +23,7 @@ const safeRender = (value, fallback = '') => {
 
 const LeadSearchUpdate = () => {
   const [search, setSearch] = useState('');
+  const [priority, setPriority] = useState('all');
   const [leads, setLeads] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,19 +34,19 @@ const LeadSearchUpdate = () => {
   const currentSearchRef = useRef(0);
 
   // Single search function that handles both search and initial load
-  const performSearch = useCallback(async (query, requestId) => {
+  const performSearch = useCallback(async (query, currentPriority, requestId) => {
     // Check if this is still the current search request
     if (requestId !== currentSearchRef.current) {
-      console.log(`🔍 Search cancelled: "${query}" (ID: ${requestId})`);
+      console.log(`🔍 Search cancelled: "${query}" priority: "${currentPriority}" (ID: ${requestId})`);
       return;
     }
     
     setIsLoading(true);
-    console.log(`🔍 Starting search: "${query}" (ID: ${requestId})`);
+    console.log(`🔍 Starting search: "${query}" priority: "${currentPriority}" (ID: ${requestId})`);
     
     try {
-      // Use backend search with the query - backend handles partial searches properly
-      const results = await searchLeads(query);
+      // Use backend search with the query and priority - backend handles filtering properly
+      const results = await searchLeads(query, currentPriority);
       
       // Check again after async operation
       if (requestId !== currentSearchRef.current) {
@@ -53,7 +54,7 @@ const LeadSearchUpdate = () => {
         return;
       }
       
-      // Filter out Multi-Tenant related entries and sort alphabetically (backend now sorts properly)
+      // Filter out Multi-Tenant related entries (backend now handles priority filtering)
       const filteredAndSorted = (results || [])
         .filter(lead => {
           const firstName = (lead['First Name'] || '').toLowerCase();
@@ -83,8 +84,8 @@ const LeadSearchUpdate = () => {
 
   // Debounced version of search for user typing
   const debouncedSearch = useCallback(
-    debounce((query, requestId) => {
-      performSearch(query, requestId);
+    debounce((query, currentPriority, requestId) => {
+      performSearch(query, currentPriority, requestId);
     }, 500),
     [performSearch]
   );
@@ -93,25 +94,25 @@ const LeadSearchUpdate = () => {
   useEffect(() => {
     // Trigger initial search with empty query
     currentSearchRef.current += 1;
-    performSearch('', currentSearchRef.current);
-  }, [performSearch]);
+    performSearch('', priority, currentSearchRef.current);
+  }, [performSearch, priority]);
 
-  // Effect to trigger search when query changes
+  // Effect to trigger search when query or priority changes
   useEffect(() => {
     // Increment request ID to cancel any pending searches
     currentSearchRef.current += 1;
     const requestId = currentSearchRef.current;
     
-    console.log(`🔍 Search triggered: "${search}" (ID: ${requestId})`);
+    console.log(`🔍 Search triggered: "${search}" priority: "${priority}" (ID: ${requestId})`);
     
     if (search.trim()) {
       // Use debounced search for user typing
-      debouncedSearch(search, requestId);
+      debouncedSearch(search, priority, requestId);
     } else {
       // For empty search, load initial leads immediately without debounce
-      performSearch('', requestId);
+      performSearch('', priority, requestId);
     }
-  }, [search, debouncedSearch, performSearch]);
+  }, [search, priority, debouncedSearch, performSearch]);
 
   // Handle lead selection - fetch full details
   const handleLeadSelect = async (lead) => {
@@ -218,6 +219,20 @@ const LeadSearchUpdate = () => {
           />
         </div>
         
+        {/* Priority Filter */}
+        <div className="mb-4">
+          <select
+            value={priority}
+            onChange={e => setPriority(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm bg-white"
+          >
+            <option value="all">All Priorities</option>
+            <option value="One">Priority One</option>
+            <option value="Two">Priority Two</option>
+            <option value="Three">Priority Three</option>
+          </select>
+        </div>
+        
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-h-[600px] overflow-y-auto">
           {isLoading && (!leads || leads.length === 0) ? (
             <div className="text-center py-6">
@@ -246,7 +261,7 @@ const LeadSearchUpdate = () => {
                           {safeRender(lead['First Name'])} {safeRender(lead['Last Name'])}
                         </div>
                         <div className="text-xs text-gray-500 truncate">
-                          {safeRender(lead['Status'], 'No status')} • Score: {safeRender(lead['AI Score'], 'N/A')}
+                          {safeRender(lead['Status'], 'No status')} • Score: {safeRender(lead['AI Score'], 'N/A')} • Priority: {safeRender(lead['Priority'], 'None')}
                         </div>
                       </div>
                     </div>

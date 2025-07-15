@@ -147,43 +147,45 @@ router.get('/leads/follow-ups', async (req, res) => {
 });
 
 /**
- * GET /api/linkedin/leads/search?q=query&client=clientId
- * Search for leads by name
+ * GET /api/linkedin/leads/search?q=query&priority=priority&client=clientId
+ * Search for leads by name and optionally filter by priority
  */
 router.get('/leads/search', async (req, res) => {
   console.log('LinkedIn Routes: GET /leads/search called');
   
   try {
     const query = req.query.q;
+    const priority = req.query.priority;
     const clientId = req.query.client;
     
-    console.log('LinkedIn Routes: Search query:', query, 'Client:', clientId);
+    console.log('LinkedIn Routes: Search query:', query, 'Priority:', priority, 'Client:', clientId);
     
-    // Build filter formula based on whether there's a query
-    let filterFormula;
-    if (!query || query.trim() === '') {
-      // No query - return all leads (excluding multi-tenant)
-      filterFormula = `NOT(OR(
-        SEARCH("multi", LOWER({First Name})) > 0,
-        SEARCH("multi", LOWER({Last Name})) > 0,
-        SEARCH("tenant", LOWER({First Name})) > 0,
-        SEARCH("tenant", LOWER({Last Name})) > 0
-      ))`;
-    } else {
-      // Query provided - search by name and exclude multi-tenant
-      filterFormula = `AND(
-        OR(
-          SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
-          SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0
-        ),
-        NOT(OR(
-          SEARCH("multi", LOWER({First Name})) > 0,
-          SEARCH("multi", LOWER({Last Name})) > 0,
-          SEARCH("tenant", LOWER({First Name})) > 0,
-          SEARCH("tenant", LOWER({Last Name})) > 0
-        ))
-      )`;
+    // Build filter formula based on query and priority
+    let filterParts = [];
+    
+    // Add name search filter
+    if (query && query.trim() !== '') {
+      filterParts.push(`OR(
+        SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
+        SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0
+      )`);
     }
+    
+    // Add priority filter
+    if (priority && priority !== 'all') {
+      filterParts.push(`{Priority} = "${priority}"`);
+    }
+    
+    // Always exclude multi-tenant entries
+    filterParts.push(`NOT(OR(
+      SEARCH("multi", LOWER({First Name})) > 0,
+      SEARCH("multi", LOWER({Last Name})) > 0,
+      SEARCH("tenant", LOWER({First Name})) > 0,
+      SEARCH("tenant", LOWER({Last Name})) > 0
+    ))`);
+    
+    // Combine filters with AND
+    const filterFormula = filterParts.length > 1 ? `AND(${filterParts.join(', ')})` : filterParts[0];
 
     // Search leads in Airtable by First Name or Last Name
     // Exclude Multi-Tenant related entries (as per frontend filtering)
@@ -196,7 +198,7 @@ router.get('/leads/search', async (req, res) => {
       maxRecords: 25 // Limit to 25 results as per frontend
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${leads.length} leads matching "${query}"`);
+    console.log(`LinkedIn Routes: Found ${leads.length} leads matching "${query}" with priority "${priority}"`);
 
     // Transform to expected format
     const transformedLeads = leads.map(record => ({
@@ -208,84 +210,7 @@ router.get('/leads/search', async (req, res) => {
       linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
       aiScore: record.fields['AI Score'],
       status: record.fields['Status'],
-      lastMessageDate: record.fields['Last Message Date'],
-      // Include all original fields for compatibility
-      ...record.fields
-    }));
-
-    res.json(transformedLeads);
-
-  } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/search:', error);
-    res.status(500).json({ 
-      error: 'Failed to search leads',
-      details: error.message 
-    });
-  }
-});
-
-/**
- * GET /api/linkedin/leads/search?q=query&client=clientId
- * Search for leads by name
- */
-router.get('/leads/search', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/search called');
-  
-  try {
-    const query = req.query.q;
-    const clientId = req.query.client;
-    
-    console.log('LinkedIn Routes: Search query:', query, 'Client:', clientId);
-    
-    // Build filter formula based on whether there's a query
-    let filterFormula;
-    if (!query || query.trim() === '') {
-      // No query - return all leads (excluding multi-tenant)
-      filterFormula = `NOT(OR(
-        SEARCH("multi", LOWER({First Name})) > 0,
-        SEARCH("multi", LOWER({Last Name})) > 0,
-        SEARCH("tenant", LOWER({First Name})) > 0,
-        SEARCH("tenant", LOWER({Last Name})) > 0
-      ))`;
-    } else {
-      // Query provided - search by name and exclude multi-tenant
-      filterFormula = `AND(
-        OR(
-          SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
-          SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0
-        ),
-        NOT(OR(
-          SEARCH("multi", LOWER({First Name})) > 0,
-          SEARCH("multi", LOWER({Last Name})) > 0,
-          SEARCH("tenant", LOWER({First Name})) > 0,
-          SEARCH("tenant", LOWER({Last Name})) > 0
-        ))
-      )`;
-    }
-
-    // Search leads in Airtable by First Name or Last Name
-    // Exclude Multi-Tenant related entries (as per frontend filtering)
-    const leads = await airtableBase('Leads').select({
-      filterByFormula: filterFormula,
-      sort: [
-        { field: 'First Name', direction: 'asc' },
-        { field: 'Last Name', direction: 'asc' }
-      ],
-      maxRecords: 25 // Limit to 25 results as per frontend
-    }).all();
-
-    console.log(`LinkedIn Routes: Found ${leads.length} leads matching "${query}"`);
-
-    // Transform to expected format
-    const transformedLeads = leads.map(record => ({
-      id: record.id,
-      recordId: record.id,
-      profileKey: record.id, // Use Airtable record ID as profile key
-      firstName: record.fields['First Name'],
-      lastName: record.fields['Last Name'],
-      linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
-      aiScore: record.fields['AI Score'],
-      status: record.fields['Status'],
+      priority: record.fields['Priority'], // Include Priority field
       lastMessageDate: record.fields['Last Message Date'],
       // Include all original fields for compatibility
       ...record.fields

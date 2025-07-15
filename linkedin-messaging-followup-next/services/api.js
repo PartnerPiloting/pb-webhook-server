@@ -75,14 +75,19 @@ api.interceptors.response.use(
 );
 
 // Lead search and management functions
-export const searchLeads = async (query) => {
+export const searchLeads = async (query, priority = 'all') => {
   try {
-    const response = await api.get('/leads/search', {
-      params: { 
-        q: query,
-        client: 'Guy-Wilson' // TODO: Make this dynamic based on logged-in user
-      }
-    });
+    const params = { 
+      q: query,
+      client: 'Guy-Wilson' // TODO: Make this dynamic based on logged-in user
+    };
+    
+    // Only add priority parameter if it's not 'all'
+    if (priority && priority !== 'all') {
+      params.priority = priority;
+    }
+    
+    const response = await api.get('/leads/search', { params });
     
     // Ensure we always return an array
     if (!response.data) {
@@ -101,6 +106,7 @@ export const searchLeads = async (query) => {
       'LinkedIn Profile URL': lead.linkedinProfileUrl || '',
       'AI Score': lead.aiScore,
       'Status': lead.status || '',
+      'Priority': lead.priority || '',
       'Last Message Date': lead.lastMessageDate || ''
     }));
   } catch (error) {
