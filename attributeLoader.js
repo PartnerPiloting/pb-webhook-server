@@ -104,6 +104,141 @@ async function loadAttributes() {
   }
 }
 
+/* ----------------------------------------------------------------
+    loadAttributeForEditing – fetches a single attribute with draft fields
+    Returns: { live: {...}, draft: {...} } for the editing UI
+----------------------------------------------------------------- */
+async function loadAttributeForEditing(attributeId) {
+  if (!base) {
+    throw new Error("Airtable base not available");
+  }
+
+  try {
+    const record = await base(TABLE_NAME).find(attributeId);
+    
+    const live = {
+      id: record.id,
+      heading: record.get("Heading") || "",
+      instructions: record.get("Instructions") || "",
+      maxPoints: Number(record.get("Max Points") || 0),
+      minToQualify: Number(record.get("Min To Qualify") || 0),
+      penalty: Number(record.get("Penalty") || 0),
+      category: record.get("Category") || "",
+      disqualifying: !!record.get("Disqualifying")
+    };
+
+    const draft = {
+      heading: record.get("Draft Heading") || null,
+      instructions: record.get("Draft Instructions") || null,
+      maxPoints: record.get("Draft Max Points") || null,
+      minToQualify: record.get("Draft Min To Qualify") || null,
+      penalty: record.get("Draft Penalty") || null,
+      updatedAt: record.get("Draft Updated At") || null
+    };
+
+    return { live, draft };
+  } catch (error) {
+    console.error("Error loading attribute for editing:", error);
+    throw error;
+  }
+}
+
+/* ----------------------------------------------------------------
+    updateAttributeDraft – saves draft fields without affecting live
+----------------------------------------------------------------- */
+async function updateAttributeDraft(attributeId, draftData) {
+  if (!base) {
+    throw new Error("Airtable base not available");
+  }
+
+  try {
+    const updateFields = {
+      "Draft Heading": draftData.heading,
+      "Draft Instructions": draftData.instructions,
+      "Draft Max Points": draftData.maxPoints,
+      "Draft Min To Qualify": draftData.minToQualify,
+      "Draft Penalty": draftData.penalty,
+      "Draft Updated At": new Date().toISOString()
+    };
+
+    await base(TABLE_NAME).update(attributeId, updateFields);
+    
+    // Clear cache since draft changed
+    cache = null;
+    cacheUntil = 0;
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating attribute draft:", error);
+    throw error;
+  }
+}
+
+/* ----------------------------------------------------------------
+    publishAttributeDraft – copies draft fields to live fields
+----------------------------------------------------------------- */
+async function publishAttributeDraft(attributeId) {
+  if (!base) {
+    throw new Error("Airtable base not available");
+  }
+
+  try {
+    const record = await base(TABLE_NAME).find(attributeId);
+    
+    const updateFields = {
+      "Heading": record.get("Draft Heading"),
+      "Instructions": record.get("Draft Instructions"),
+      "Max Points": record.get("Draft Max Points"),
+      "Min To Qualify": record.get("Draft Min To Qualify"),
+      "Penalty": record.get("Draft Penalty"),
+      // Clear draft fields
+      "Draft Heading": null,
+      "Draft Instructions": null,
+      "Draft Max Points": null,
+      "Draft Min To Qualify": null,
+      "Draft Penalty": null,
+      "Draft Updated At": null
+    };
+
+    await base(TABLE_NAME).update(attributeId, updateFields);
+    
+    // Clear cache since live data changed
+    cache = null;
+    cacheUntil = 0;
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error publishing attribute draft:", error);
+    throw error;
+  }
+}
+
+/* ----------------------------------------------------------------
+    discardAttributeDraft – clears all draft fields
+----------------------------------------------------------------- */
+async function discardAttributeDraft(attributeId) {
+  if (!base) {
+    throw new Error("Airtable base not available");
+  }
+
+  try {
+    const updateFields = {
+      "Draft Heading": null,
+      "Draft Instructions": null,
+      "Draft Max Points": null,
+      "Draft Min To Qualify": null,
+      "Draft Penalty": null,
+      "Draft Updated At": null
+    };
+
+    await base(TABLE_NAME).update(attributeId, updateFields);
+    return { success: true };
+  } catch (error) {
+    console.error("Error discarding attribute draft:", error);
+    throw error;
+  }
+}
+
 /* ---------- fallback list (unchanged, but with preamble:"") ----- */
 function fallbackAttributes() {
   // ... (fallbackAttributes function remains the same as you provided)
@@ -112,4 +247,4 @@ function fallbackAttributes() {
   return { preamble:"", positives, negatives };
 }
 
-module.exports = { loadAttributes };
+module.exports = { loadAttributes, loadAttributeForEditing, updateAttributeDraft, publishAttributeDraft, discardAttributeDraft };
