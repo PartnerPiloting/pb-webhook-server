@@ -430,8 +430,9 @@ export const syncLeadData = async (syncData) => {
 // Attribute management functions (NEW)
 export const getAttributes = async () => {
   try {
-    // Call your deployed backend directly
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes`, {
+    // Call your deployed backend directly - use full base URL without /api/linkedin
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/attributes`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
@@ -451,7 +452,8 @@ export const getAttributes = async () => {
 
 export const getAttributeForEditing = async (attributeId) => {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes/${attributeId}/edit`, {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/edit`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
@@ -471,7 +473,8 @@ export const getAttributeForEditing = async (attributeId) => {
 
 export const getAISuggestions = async (attributeId, userRequest, currentAttribute) => {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes/${attributeId}/ai-edit`, {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/ai-edit`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -495,7 +498,8 @@ export const getAISuggestions = async (attributeId, userRequest, currentAttribut
 
 export const saveAttributeChanges = async (attributeId, improvedRubric) => {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com'}/api/attributes/${attributeId}/save`, {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/save`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
