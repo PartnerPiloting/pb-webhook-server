@@ -275,7 +275,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           
           {/* Quick Edit Suggestions */}
           <div className="mt-3 mb-4">
-            <div className="text-xs text-gray-500 mb-2">💡 Common requests you can make:</div>
+            <div className="text-xs text-gray-500 mb-2">💡 Quick actions - click to auto-fill your request:</div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
