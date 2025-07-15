@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon, ArrowPathIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
 const FieldTooltip = ({ title, description, children }) => {
@@ -34,8 +34,144 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [editMode, setEditMode] = useState('ai'); // 'ai' or 'direct'
+  const [quickActionMode, setQuickActionMode] = useState(null); // 'instructions', 'examples', 'signals'
+  
+  // Direct Edit form state
+  const [directEditForm, setDirectEditForm] = useState({
+    heading: '',
+    instructions: '',
+    maxPoints: '',
+    minToQualify: '',
+    penalty: '',
+    signals: '',
+    examples: '',
+    disqualifying: '',
+    active: true
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Helper function to clean and format text for display
+  const formatTextForDisplay = (text) => {
+    if (!text) return 'Not set';
+    
+    return text
+      .replace(/\\n/g, '\n')  // Convert \n to actual line breaks
+      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove markdown bold
+      .replace(/\*(.*?)\*/g, '$1')  // Remove markdown italic
+      .trim();
+  };
+
+  // Helper function to validate scoring ranges against maxPoints
+  const validateScoringRanges = (instructions, maxPoints) => {
+    if (!instructions || !maxPoints) return true;
+    
+    // Look for point ranges in the format "X-Y pts" or "X pts"
+    const rangeMatches = instructions.match(/(\d+)[-–]?(\d+)?\s*pts?/gi);
+    if (!rangeMatches) return true;
+    
+    const highestRange = Math.max(...rangeMatches.map(match => {
+      const nums = match.match(/\d+/g);
+      return Math.max(...nums.map(Number));
+    }));
+    
+    return highestRange <= maxPoints;
+  };
+
+  // Initialize Direct Edit form when attribute changes
+  useEffect(() => {
+    if (attribute) {
+      setDirectEditForm({
+        heading: attribute.heading || '',
+        instructions: formatTextForDisplay(attribute.instructions),
+        maxPoints: attribute.maxPoints || '',
+        minToQualify: attribute.minToQualify || '',
+        penalty: attribute.penalty || '',
+        signals: formatTextForDisplay(attribute.signals),
+        examples: formatTextForDisplay(attribute.examples),
+        disqualifying: attribute.disqualifying || '',
+        active: attribute.active !== false
+      });
+    }
+  }, [attribute]);
+
+  // Handle Direct Edit save
+  const handleDirectEditSave = async () => {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Validation
+      if (!directEditForm.heading.trim()) {
+        throw new Error('Attribute name is required');
+      }
+      
+      if (directEditForm.maxPoints && directEditForm.minToQualify) {
+        if (Number(directEditForm.maxPoints) < Number(directEditForm.minToQualify)) {
+          throw new Error('Max points must be greater than min to qualify');
+        }
+      }
+
+      // Clean up the data
+      const cleanedData = {
+        ...directEditForm,
+        maxPoints: directEditForm.maxPoints ? Number(directEditForm.maxPoints) : null,
+        minToQualify: directEditForm.minToQualify ? Number(directEditForm.minToQualify) : null,
+        penalty: directEditForm.penalty ? Number(directEditForm.penalty) : null,
+        // Remove any remaining markdown formatting before saving
+        instructions: directEditForm.instructions.replace(/\*/g, ''),
+        signals: directEditForm.signals.replace(/\*/g, ''),
+        examples: directEditForm.examples.replace(/\*/g, '')
+      };
+
+      await onSave(attribute.id, cleanedData);
+      handleClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Update form field handler
+  const updateDirectEditField = (field, value) => {
+    setDirectEditForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
 
   if (!isOpen) return null;
+
+  const handleQuickAction = async (actionType, requestText) => {
+    setQuickActionMode(actionType);
+    setUserRequest(requestText);
+    setIsGenerating(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/attributes/${attribute.id}/ai-edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userRequest: requestText
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setAiSuggestion(result.suggestion);
+    } catch (err) {
+      console.error('Error generating AI suggestion:', err);
+      setError(`Failed to generate suggestion: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleGenerateAISuggestion = async () => {
     if (!userRequest.trim()) {
@@ -81,6 +217,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       setUserRequest('');
       setAiSuggestion(null);
       setError(null);
+      setQuickActionMode(null);
     } catch (err) {
       setError(`Failed to save changes: ${err.message}`);
     }
@@ -92,6 +229,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     setUserRequest('');
     setAiSuggestion(null);
     setError(null);
+    setQuickActionMode(null);
+    setIsSaving(false);
   };
 
   const renderFieldComparison = (fieldName, currentValue, suggestedValue, tooltip) => {
@@ -165,12 +304,18 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
       <div className="relative top-10 mx-auto p-5 border w-11/12 max-w-5xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b">
-          <div className="flex items-center space-x-3">
-            <SparklesIcon className="h-6 w-6 text-blue-600" />
+        <div className="flex items-center justify-between pb-6 border-b">
+          <div className="flex items-center space-x-4">
+            <SparklesIcon className="h-8 w-8 text-blue-600" />
             <div>
-              <h3 className="text-lg font-medium text-gray-900">Edit Attribute</h3>
-              <p className="text-sm text-gray-500">"{attribute.heading}"</p>
+              <h3 className="text-xl font-semibold text-gray-900">Edit Attribute</h3>
+              <div className="mt-1 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-lg font-medium text-blue-900">"{attribute.heading}"</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  Max: {attribute.maxPoints || 'Not set'} pts • 
+                  Status: {attribute.active ? 'Active' : 'Inactive'}
+                </p>
+              </div>
             </div>
           </div>
           <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
@@ -205,7 +350,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
         </div>
 
         {/* AI Mode */}
-        {editMode === 'ai' && !aiSuggestion && (
+        {editMode === 'ai' && !aiSuggestion && !isGenerating && (
           <div className="mt-8">
             <h4 className="text-lg font-medium text-gray-900 mb-4">
               What would you like to improve?
@@ -213,124 +358,222 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
             
             {/* Quick Actions */}
             <div className="mb-6">
-              <div className="text-sm text-gray-600 mb-3">✨ Popular improvements:</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="text-sm text-gray-600 mb-4">Choose an improvement to get instant AI suggestions:</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
-                  onClick={() => setUserRequest(`Improve the scoring instructions with specific point ranges and clearer criteria.`)}
-                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                  onClick={() => handleQuickAction('instructions', `Improve the scoring instructions with specific point ranges and clearer criteria. The maximum points available is ${attribute.maxPoints || 'not set'} points. Format the instructions with clear point ranges (e.g., "0-3 pts = minimal, 4-7 pts = moderate, 8-${attribute.maxPoints || 15} pts = strong") and use proper line breaks without markdown formatting.`)}
+                  className="p-5 text-left border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 hover:shadow-md transition-all duration-200"
                 >
-                  <div className="font-medium text-gray-900">📝 Better Instructions</div>
-                  <div className="text-sm text-gray-600">Add point ranges and clearer criteria</div>
+                  <div className="font-semibold text-gray-900 text-lg mb-2">📝 Instructions for AI scoring</div>
+                  <div className="text-sm text-gray-600">Add point ranges and clearer criteria for more consistent scoring</div>
                 </button>
                 <button
-                  onClick={() => setUserRequest(`Add concrete examples showing how different profiles would be scored.`)}
-                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
+                  onClick={() => handleQuickAction('examples', 'Add concrete examples showing how different profiles would be scored. Include specific point awards that align with the scoring ranges. Use clear, readable formatting without markdown.')}
+                  className="p-5 text-left border border-gray-200 rounded-xl hover:border-green-300 hover:bg-green-50 hover:shadow-md transition-all duration-200"
                 >
-                  <div className="font-medium text-gray-900">💡 Add Examples</div>
-                  <div className="text-sm text-gray-600">Concrete scoring scenarios</div>
+                  <div className="font-semibold text-gray-900 text-lg mb-2">💡 Add Examples</div>
+                  <div className="text-sm text-gray-600">Concrete scoring scenarios to guide AI decisions</div>
                 </button>
                 <button
-                  onClick={() => setUserRequest(`Expand the detection keywords to help AI better identify this attribute.`)}
-                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                  onClick={() => handleQuickAction('signals', 'Expand the detection keywords to help AI better identify this attribute. Provide a clean list of comma-separated keywords without markdown formatting.')}
+                  className="p-5 text-left border border-gray-200 rounded-xl hover:border-purple-300 hover:bg-purple-50 hover:shadow-md transition-all duration-200"
                 >
-                  <div className="font-medium text-gray-900">🔍 Better Detection</div>
-                  <div className="text-sm text-gray-600">Improve keyword signals</div>
-                </button>
-                <button
-                  onClick={() => setUserRequest(`Review and optimize the overall scoring approach for this attribute.`)}
-                  className="p-4 text-left border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors"
-                >
-                  <div className="font-medium text-gray-900">⚡ General Improvement</div>
-                  <div className="text-sm text-gray-600">Overall optimization</div>
+                  <div className="font-semibold text-gray-900 text-lg mb-2">🔍 Keyword Signals</div>
+                  <div className="text-sm text-gray-600">Improve keyword signals for more accurate identification</div>
                 </button>
               </div>
             </div>
 
-            {/* Custom Request */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Or describe your specific request:
-              </label>
-              <textarea
-                value={userRequest}
-                onChange={(e) => setUserRequest(e.target.value)}
-                placeholder="e.g., 'Make the instructions more specific for software engineers' or 'Add examples for e-commerce experience'"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                rows={3}
-              />
-            </div>
-
-            <div className="mt-6 flex justify-between items-center">
-              <button
-                onClick={handleGenerateAISuggestion}
-                disabled={isGenerating || !userRequest.trim()}
-                className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {isGenerating ? (
-                  <>
-                    <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
+            {/* Custom Request - Initially Hidden */}
+            <details className="mt-6">
+              <summary className="cursor-pointer text-blue-600 hover:text-blue-800 font-medium">
+                ✏️ Or write a custom request
+              </summary>
+              <div className="mt-4 p-4 border border-gray-200 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Describe your specific request:
+                </label>
+                <textarea
+                  value={userRequest}
+                  onChange={(e) => setUserRequest(e.target.value)}
+                  placeholder="e.g., 'Make the instructions more specific for software engineers' or 'Add examples for e-commerce experience'"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  rows={3}
+                />
+                <div className="mt-3">
+                  <button
+                    onClick={handleGenerateAISuggestion}
+                    disabled={isGenerating || !userRequest.trim()}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
                     <SparklesIcon className="h-4 w-4 mr-2" />
-                    Generate AI Suggestions
-                  </>
-                )}
-              </button>
-              
-              {error && (
-                <div className="text-red-600 text-sm">{error}</div>
-              )}
-            </div>
+                    Generate Custom Suggestions
+                  </button>
+                </div>
+              </div>
+            </details>
+
+            {/* Error Display */}
+            {error && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <div className="text-red-800 text-sm">{error}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Loading State */}
+        {isGenerating && (
+          <div className="mt-8 text-center py-12">
+            <ArrowPathIcon className="animate-spin h-8 w-8 mx-auto text-blue-600 mb-4" />
+            <h4 className="text-lg font-medium text-gray-900 mb-2">
+              {quickActionMode ? 'Analyzing current content...' : 'Generating AI suggestions...'}
+            </h4>
+            <p className="text-gray-600">
+              {quickActionMode ? 'Preparing comparison view' : 'This may take a few seconds'}
+            </p>
           </div>
         )}
 
         {/* AI Suggestions */}
         {aiSuggestion && (
           <div className="mt-8">
-            <h4 className="text-lg font-medium text-gray-900 mb-6 flex items-center">
-              <SparklesIcon className="h-5 w-5 mr-2 text-green-600" />
-              AI Suggestions
-            </h4>
+            <div className="flex items-center justify-between mb-6">
+              <h4 className="text-lg font-medium text-gray-900 flex items-center">
+                <SparklesIcon className="h-5 w-5 mr-2 text-green-600" />
+                AI Suggestions
+              </h4>
+              {quickActionMode && (
+                <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                  {quickActionMode === 'instructions' && '📝 Instructions for AI scoring'}
+                  {quickActionMode === 'examples' && '💡 Add Examples'}
+                  {quickActionMode === 'signals' && '🔍 Keyword Signals'}
+                </div>
+              )}
+            </div>
             
             <div className="space-y-6">
               {/* Only show fields that actually changed */}
-              {aiSuggestion.instructions !== attribute.instructions && (
+              {aiSuggestion.heading !== attribute.heading && (
                 <div className="border border-gray-200 rounded-lg p-4">
-                  <h5 className="font-medium text-gray-900 mb-3">Instructions</h5>
+                  <h5 className="font-medium text-gray-900 mb-3">Attribute Name</h5>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="text-xs text-gray-500 mb-2">Current</div>
                       <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
-                        {attribute.instructions || 'No instructions set'}
+                        {attribute.heading || 'No name set'}
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
                       <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                        {aiSuggestion.instructions}
+                        {aiSuggestion.heading}
                       </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Similar pattern for other changed fields */}
+              {aiSuggestion.instructions !== attribute.instructions && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Instructions for AI Scoring</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm whitespace-pre-wrap">
+                        {formatTextForDisplay(attribute.instructions)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm whitespace-pre-wrap">
+                        {formatTextForDisplay(aiSuggestion.instructions)}
+                      </div>
+                      {/* Validation warning */}
+                      {!validateScoringRanges(aiSuggestion.instructions, aiSuggestion.maxPoints || attribute.maxPoints) && (
+                        <div className="mt-2 text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                          ⚠️ Warning: Scoring ranges may exceed max points ({aiSuggestion.maxPoints || attribute.maxPoints})
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiSuggestion.maxPoints !== attribute.maxPoints && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Maximum Points</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
+                        {attribute.maxPoints || 'Not set'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                        {aiSuggestion.maxPoints}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiSuggestion.minToQualify !== attribute.minToQualify && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Minimum to Qualify</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
+                        {attribute.minToQualify || 'Not set'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                        {aiSuggestion.minToQualify}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiSuggestion.penalty !== attribute.penalty && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Penalty Points</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
+                        {attribute.penalty || 'Not set'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                        {aiSuggestion.penalty}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {aiSuggestion.signals !== attribute.signals && (
                 <div className="border border-gray-200 rounded-lg p-4">
                   <h5 className="font-medium text-gray-900 mb-3">Detection Keywords</h5>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="text-xs text-gray-500 mb-2">Current</div>
-                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
-                        {attribute.signals || 'No signals set'}
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm whitespace-pre-wrap">
+                        {formatTextForDisplay(attribute.signals)}
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
-                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                        {aiSuggestion.signals}
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm whitespace-pre-wrap">
+                        {formatTextForDisplay(aiSuggestion.signals)}
                       </div>
                     </div>
                   </div>
@@ -343,14 +586,54 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm whitespace-pre-wrap">
+                        {formatTextForDisplay(attribute.examples)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm whitespace-pre-wrap">
+                        {formatTextForDisplay(aiSuggestion.examples)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiSuggestion.disqualifying !== attribute.disqualifying && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Disqualifying Criteria</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
                       <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
-                        {attribute.examples || 'No examples set'}
+                        {attribute.disqualifying || 'No disqualifying criteria set'}
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
                       <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
-                        {aiSuggestion.examples}
+                        {aiSuggestion.disqualifying}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiSuggestion.active !== attribute.active && (
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900 mb-3">Status</h5>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">Current</div>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded text-sm">
+                        {attribute.active ? 'Active' : 'Inactive'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">AI Suggestion</div>
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm">
+                        {aiSuggestion.active ? 'Active' : 'Inactive'}
                       </div>
                     </div>
                   </div>
@@ -366,7 +649,11 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                 Accept & Save Changes
               </button>
               <button
-                onClick={() => setAiSuggestion(null)}
+                onClick={() => {
+                  setAiSuggestion(null);
+                  setQuickActionMode(null);
+                  setUserRequest('');
+                }}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Try Different Request
@@ -380,38 +667,132 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           <div className="mt-8">
             <h4 className="text-lg font-medium text-gray-900 mb-6">Direct Edit</h4>
             <div className="text-gray-600 mb-6">
-              Quick edits for points, thresholds, and status. For complex text changes, use AI Assistant.
+              Quick edits for all attribute fields. For AI-powered improvements, use AI Assistant mode.
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              {/* Attribute Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Max Points</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Attribute Name <span className="text-red-500">*</span>
+                </label>
                 <input
-                  type="number"
-                  defaultValue={attribute.maxPoints || ''}
+                  type="text"
+                  value={directEditForm.heading}
+                  onChange={(e) => updateDirectEditField('heading', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Software Development Experience"
+                  required
                 />
               </div>
+
+              {/* Instructions */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Min to Qualify</label>
-                <input
-                  type="number"
-                  defaultValue={attribute.minToQualify || ''}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Instructions for AI Scoring</label>
+                <div className="mb-2 text-xs text-gray-600">
+                  Max points: {directEditForm.maxPoints || 'Not set'} - Ensure scoring ranges don't exceed this limit
+                </div>
+                <textarea
+                  value={directEditForm.instructions}
+                  onChange={(e) => updateDirectEditField('instructions', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  rows={6}
+                  placeholder={`Detailed scoring criteria with point ranges:
+
+0-${Math.floor((directEditForm.maxPoints || 15) * 0.2)} pts = Minimal/No evidence
+${Math.floor((directEditForm.maxPoints || 15) * 0.2) + 1}-${Math.floor((directEditForm.maxPoints || 15) * 0.6)} pts = Some evidence  
+${Math.floor((directEditForm.maxPoints || 15) * 0.6) + 1}-${directEditForm.maxPoints || 15} pts = Strong evidence
+
+Describe specific criteria for each range...`}
                 />
               </div>
+
+              {/* Points and Thresholds */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Max Points</label>
+                  <input
+                    type="number"
+                    value={directEditForm.maxPoints}
+                    onChange={(e) => updateDirectEditField('maxPoints', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 15"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Min to Qualify</label>
+                  <input
+                    type="number"
+                    value={directEditForm.minToQualify}
+                    onChange={(e) => updateDirectEditField('minToQualify', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., 3"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Penalty Points</label>
+                  <input
+                    type="number"
+                    value={directEditForm.penalty}
+                    onChange={(e) => updateDirectEditField('penalty', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="e.g., -5"
+                    max="0"
+                  />
+                </div>
+                {/* Validation warnings */}
+                {directEditForm.maxPoints && directEditForm.minToQualify && 
+                 Number(directEditForm.maxPoints) < Number(directEditForm.minToQualify) && (
+                  <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+                    ⚠️ Max points must be greater than min to qualify
+                  </div>
+                )}
+              </div>
+
+              {/* Keywords and Examples */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Detection Keywords</label>
+                  <textarea
+                    value={directEditForm.signals}
+                    onChange={(e) => updateDirectEditField('signals', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    rows={3}
+                    placeholder="software, programming, coding, developer..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Examples</label>
+                  <textarea
+                    value={directEditForm.examples}
+                    onChange={(e) => updateDirectEditField('examples', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    rows={3}
+                    placeholder="Concrete scoring scenarios..."
+                  />
+                </div>
+              </div>
+
+              {/* Disqualifying Criteria */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Penalty</label>
-                <input
-                  type="number"
-                  defaultValue={attribute.penalty || ''}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Disqualifying Criteria</label>
+                <textarea
+                  value={directEditForm.disqualifying}
+                  onChange={(e) => updateDirectEditField('disqualifying', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  rows={2}
+                  placeholder="Criteria that would disqualify a candidate..."
                 />
               </div>
+
+              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
                 <select
-                  defaultValue={attribute.active ? 'active' : 'inactive'}
+                  value={directEditForm.active ? 'active' : 'inactive'}
+                  onChange={(e) => updateDirectEditField('active', e.target.value === 'active')}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="active">Active</option>
@@ -420,16 +801,34 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
               </div>
             </div>
 
-            <div className="mt-8">
-              <button className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                Save Changes
+            <div className="mt-8 flex space-x-3">
+              <button 
+                onClick={handleDirectEditSave}
+                disabled={isSaving}
+                className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {isSaving ? (
+                  <>
+                    <ArrowPathIcon className="animate-spin h-4 w-4 mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </button>
+              <button
+                onClick={handleClose}
+                disabled={isSaving}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-300"
+              >
+                Cancel
               </button>
             </div>
           </div>
         )}
 
         {/* Close button */}
-        {!aiSuggestion && editMode === 'ai' && (
+        {!aiSuggestion && !isGenerating && editMode === 'ai' && (
           <div className="mt-8 flex justify-end">
             <button
               onClick={handleClose}
