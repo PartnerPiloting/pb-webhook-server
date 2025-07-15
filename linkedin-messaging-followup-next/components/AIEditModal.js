@@ -279,28 +279,50 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setUserRequest("Make the instructions more specific with clear point ranges")}
+                onClick={() => setUserRequest(`Make the current instructions more specific with clear point ranges.
+
+CURRENT INSTRUCTIONS:
+${attribute.instructions || 'No instructions set'}
+
+Please improve these by adding specific point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong).`)}
                 className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded-full hover:bg-blue-100 border border-blue-200"
               >
                 Improve instructions
               </button>
               <button
                 type="button"
-                onClick={() => setUserRequest("Add specific examples and scenarios for scoring")}
+                onClick={() => setUserRequest(`Add specific examples and scenarios for scoring this attribute.
+
+CURRENT EXAMPLES:
+${attribute.examples || 'No examples set'}
+
+Please add concrete examples showing how different profiles would be scored for this attribute.`)}
                 className="px-3 py-1 text-xs bg-green-50 text-green-700 rounded-full hover:bg-green-100 border border-green-200"
               >
                 Add examples
               </button>
               <button
                 type="button"
-                onClick={() => setUserRequest("Add more detection keywords and signals")}
+                onClick={() => setUserRequest(`Add more detection keywords and signals to help AI identify this attribute.
+
+CURRENT SIGNALS:
+${attribute.signals || 'No signals set'}
+
+Please expand these keywords to help AI better detect when this attribute applies.`)}
                 className="px-3 py-1 text-xs bg-purple-50 text-purple-700 rounded-full hover:bg-purple-100 border border-purple-200"
               >
                 Improve signals
               </button>
               <button
                 type="button"
-                onClick={() => setUserRequest("Increase the maximum points to make this more important")}
+                onClick={() => setUserRequest(`Adjust the scoring points for this attribute.
+
+CURRENT SETTINGS:
+- Max Points: ${attribute.maxPoints || 'Not set'}
+- Min to Qualify: ${attribute.minToQualify || 'Not set'}
+- Penalty: ${attribute.penalty || '0'}
+
+Please suggest appropriate changes to make this attribute more/less important in scoring.`)}
                 className="px-3 py-1 text-xs bg-orange-50 text-orange-700 rounded-full hover:bg-orange-100 border border-orange-200"
               >
                 Adjust points
