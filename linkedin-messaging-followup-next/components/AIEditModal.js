@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon, ArrowPathIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { getAISuggestions } from '../services/api';
 
 const FieldTooltip = ({ title, description, children }) => {
   const [showTooltip, setShowTooltip] = useState(false);
@@ -260,23 +261,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     setError(null);
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/attributes/${attribute.id}/ai-edit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userRequest: userRequest.trim(),
-          currentData: formData,
-          focusedField: focusedField
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const result = await getAISuggestions(attribute.id, userRequest.trim());
       
       // Add to chat history
       setChatHistory(prev => [...prev, {
@@ -358,8 +343,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           <div className="mb-6">
             <h4 className="text-lg font-medium text-gray-900 mb-2">Edit Attribute Fields</h4>
             <p className="text-sm text-gray-600">
-              Make changes to individual fields, then use Update to mark them ready for saving. 
-              Use the AI helper below for guidance and suggestions.
+              Click into a field and then use AI (see below) to gain suggestions or help improve. 
+              Then use Update to mark them ready for saving.
             </p>
           </div>
 
@@ -469,9 +454,9 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
             {/* Instructions */}
             <div className="bg-white border border-gray-200 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
-                <FieldTooltip title="Instructions" description="The detailed criteria sent to AI for scoring. Include clear point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong)">
+                <FieldTooltip title="Instructions for AI Scoring" description="The detailed criteria sent to AI for scoring. Include clear point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong)">
                   <label className="block text-sm font-medium text-gray-700">
-                    Instructions
+                    Instructions for AI Scoring
                     <span className="ml-2 text-xs text-blue-600 cursor-help" title="Use point ranges like '0-3 pts = minimal experience'">
                       ⓘ Point Range Guide
                     </span>
