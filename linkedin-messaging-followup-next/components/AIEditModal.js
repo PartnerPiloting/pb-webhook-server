@@ -3,6 +3,93 @@ import React, { useState, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon, ArrowPathIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { getAISuggestions } from '../services/api';
 
+const FieldAIHelper = ({ field, isOpen, onToggle, currentValue, onAIAssist, isGenerating, userRequest, onRequestChange, history, guidanceText }) => {
+  if (!isOpen) {
+    return (
+      <div className="flex justify-center mt-2">
+        <button
+          onClick={onToggle}
+          className="inline-flex items-center px-3 py-1 text-xs font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded-full hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+        >
+          <SparklesIcon className="h-3 w-3 mr-1" />
+          Get AI Help
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-2">
+          <SparklesIcon className="h-4 w-4 text-purple-600" />
+          <span className="text-sm font-medium text-purple-900">AI Helper</span>
+        </div>
+        <button
+          onClick={onToggle}
+          className="text-xs text-purple-600 hover:text-purple-800"
+        >
+          Hide
+        </button>
+      </div>
+      
+      <div className="mb-3 p-2 bg-blue-100 border border-blue-200 rounded text-xs text-blue-800">
+        {guidanceText}
+      </div>
+      
+      {/* Current Value Display */}
+      <div className="mb-3 p-2 bg-gray-50 border border-gray-200 rounded">
+        <div className="text-xs font-medium text-gray-700 mb-1">Current Value:</div>
+        <div className="text-sm text-gray-900">{currentValue || 'Not set'}</div>
+      </div>
+      
+      {/* Chat History */}
+      {history && history.length > 0 && (
+        <div className="mb-3 max-h-32 overflow-y-auto space-y-2 p-2 bg-white border border-gray-200 rounded">
+          {history.map((msg, index) => (
+            <div key={index} className={`text-xs ${msg.type === 'user' ? 'text-purple-800' : 'text-gray-700'}`}>
+              <div className="flex items-center space-x-1 mb-1">
+                <strong>{msg.type === 'user' ? 'You' : 'AI'}:</strong>
+                <span className="text-gray-500">
+                  {new Date(msg.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              <div className="whitespace-pre-wrap">{msg.message}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* AI Input */}
+      <div>
+        <textarea
+          value={userRequest || ''}
+          onChange={(e) => onRequestChange(e.target.value)}
+          placeholder={`How would you like to improve this ${field}?`}
+          className="w-full h-16 px-2 py-1 text-sm border border-purple-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500"
+        />
+        <div className="flex justify-end mt-2">
+          <button
+            onClick={onAIAssist}
+            disabled={isGenerating || !userRequest?.trim()}
+            className="inline-flex items-center px-3 py-1 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 rounded disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <>
+                <ArrowPathIcon className="h-3 w-3 mr-1 animate-spin" />
+                Thinking...
+              </>
+            ) : (
+              <>
+                <SparklesIcon className="h-3 w-3 mr-1" />
+                Ask AI
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 const FieldTooltip = ({ title, description, children }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -28,15 +115,13 @@ const FieldTooltip = ({ title, description, children }) => {
     </div>
   );
 };
-
-const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   console.log('AIEditModal: Component rendered, isOpen:', isOpen, 'attribute:', attribute);
   const [error, setError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [showAIHelper, setShowAIHelper] = useState(true); // Auto-expand AI Helper
-  const [userRequest, setUserRequest] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [chatHistory, setChatHistory] = useState([]);
+  const [fieldAIHelpers, setFieldAIHelpers] = useState({}); // Track AI helper state per field
+  const [fieldAIRequests, setFieldAIRequests] = useState({}); // Track AI requests per field
+  const [fieldAIGenerating, setFieldAIGenerating] = useState({}); // Track AI generation per field
+  const [fieldAIHistory, setFieldAIHistory] = useState({}); // Track AI history per field
   const [focusedField, setFocusedField] = useState(null);
   
   // Form state for current values
@@ -119,15 +204,111 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       if (attribute.examples) currentValues.push(`**Examples:** ${formatTextForDisplay(attribute.examples)}`);
       currentValues.push(`**Status:** ${attribute.active ? 'Active' : 'Inactive'}`);
       
-      if (currentValues.length > 1) { // More than just status
-        setChatHistory([{
-          type: 'ai',
-          message: `Here's what we currently have for "${attribute.heading}":\n\n${currentValues.join('\n\n')}`,
+  // Initialize field AI helpers
+  useEffect(() => {
+    if (attribute) {
+      const fieldHelpers = {};
+      const fieldHistory = {};
+      
+      // Initialize AI helpers for each field
+      const fields = ['heading', 'maxPoints', 'instructions', 'minToQualify', 'signals', 'examples', 'active'];
+      fields.forEach(field => {
+        fieldHelpers[field] = false; // Start collapsed
+        fieldHistory[field] = []; // Empty history
+      });
+      
+      setFieldAIHelpers(fieldHelpers);
+      setFieldAIHistory(fieldHistory);
+      setFieldAIRequests({});
+      setFieldAIGenerating({});
+    }
+  }, [attribute]);
+
+  // Toggle AI helper for specific field
+  const toggleFieldAIHelper = (field) => {
+    setFieldAIHelpers(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+  };
+
+  // Update field AI request
+  const updateFieldAIRequest = (field, value) => {
+    setFieldAIRequests(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Handle field-specific AI assistance
+  const handleFieldAIAssist = async (field) => {
+    const request = fieldAIRequests[field];
+    if (!request || !request.trim()) {
+      setError(`Please describe what you need help with for ${field}`);
+      return;
+    }
+
+    setFieldAIGenerating(prev => ({ ...prev, [field]: true }));
+    setError(null);
+    
+    try {
+      // Build field-specific context
+      const fieldContext = {
+        heading: `Here's your current Attribute Name: "${formData.heading || 'Not set'}"`,
+        maxPoints: `Here's your current Max Points: ${formData.maxPoints || 'Not set'}`,
+        instructions: `Here's your current Instructions: "${formData.instructions || 'Not set'}"`,
+        minToQualify: `Here's your current Min to Qualify: ${formData.minToQualify || 'Not set'}`,
+        signals: `Here's your current Detection Keywords: "${formData.signals || 'Not set'}"`,
+        examples: `Here's your current Examples: "${formData.examples || 'Not set'}"`,
+        active: `Here's your current Status: ${formData.active ? 'Active' : 'Inactive'}`
+      };
+
+      const fieldPrompt = `${fieldContext[field]}\n\nUser request: ${request.trim()}`;
+      const result = await getAISuggestions(attribute.id, fieldPrompt);
+      
+      // Add to field-specific chat history
+      setFieldAIHistory(prev => ({
+        ...prev,
+        [field]: [...(prev[field] || []), {
+          type: 'user',
+          message: request.trim(),
           timestamp: new Date().toISOString()
-        }]);
-      } else {
-        setChatHistory([]);
+        }, {
+          type: 'ai',
+          message: result.response || 'Suggestions applied to form',
+          timestamp: new Date().toISOString()
+        }]
+      }));
+      
+      // Apply AI suggestions to form (only the relevant field)
+      if (result.suggestion) {
+        if (field in result.suggestion) {
+          setFormData(prev => ({
+            ...prev,
+            [field]: result.suggestion[field]
+          }));
+        } else {
+          // Apply all suggestions if field-specific not available
+          setFormData(prev => ({
+            ...prev,
+            ...result.suggestion
+          }));
+        }
       }
+      
+      // Clear the field request
+      setFieldAIRequests(prev => ({
+        ...prev,
+        [field]: ''
+      }));
+      
+    } catch (err) {
+      console.error(`Error generating AI suggestion for ${field}:`, err);
+      setError(`Failed to generate suggestion for ${field}: ${err.message}`);
+    } finally {
+      setFieldAIGenerating(prev => ({ ...prev, [field]: false }));
+    }
+  };
     }
   }, [attribute]);
 
@@ -204,18 +385,18 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     return null;
   };
 
-  // Get contextual guidance for focused field
-  const getFieldGuidance = (field) => {
+  // Get field-specific AI guidance
+  const getFieldAIGuidance = (field) => {
     const guidanceMap = {
-      heading: "The display name for this attribute in the scoring interface. Keep it concise and descriptive.",
-      maxPoints: "The highest score this attribute can award. Consider the relative importance compared to other attributes.",
-      instructions: "Detailed scoring criteria for AI. Use clear point ranges (e.g., '0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong').",
-      minToQualify: "Minimum score required to pass this attribute. Set to 0 if no minimum threshold needed.",
-      signals: "Keywords and phrases that help AI identify when this attribute applies. Separate with commas.",
-      examples: "Concrete scenarios showing how points are awarded. Be specific about experience levels and corresponding scores.",
-      active: "Whether this attribute should be used in scoring. Inactive attributes are ignored during evaluation."
+      heading: "I can help you create a clear, descriptive name for this attribute. Tell me what you'd like to change or improve.",
+      maxPoints: "I can help you set appropriate point values based on the attribute's importance. What scoring range are you considering?",
+      instructions: "I can help you write clear scoring criteria with point ranges. What specific improvements do you need?",
+      minToQualify: "I can help you set the right threshold for this attribute. What minimum score makes sense?",
+      signals: "I can help you identify the best keywords for AI detection. What terms should trigger this attribute?",
+      examples: "I can help you create concrete scoring examples. What scenarios should I include?",
+      active: "I can help you decide whether this attribute should be active in scoring. What's your use case?"
     };
-    return guidanceMap[field] || "Edit this field and use the Update button to mark it ready for saving.";
+    return guidanceMap[field] || "I can help you improve this field. What would you like to change?";
   };
 
   // Handle save all pending changes
@@ -255,57 +436,23 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     }
   };
 
-  // Handle AI assistance
+  // Handle AI assistance (kept for backward compatibility, but not used in new UI)
   const handleAIAssist = async () => {
-    if (!userRequest.trim()) {
-      setError('Please describe what you need help with');
-      return;
-    }
-
-    setIsGenerating(true);
-    setError(null);
-    
-    try {
-      const result = await getAISuggestions(attribute.id, userRequest.trim());
-      
-      // Add to chat history
-      setChatHistory(prev => [...prev, {
-        type: 'user',
-        message: userRequest.trim(),
-        timestamp: new Date().toISOString()
-      }, {
-        type: 'ai',
-        message: result.response || 'Suggestions applied to form',
-        timestamp: new Date().toISOString()
-      }]);
-      
-      // Apply AI suggestions to form
-      if (result.suggestion) {
-        setFormData(prev => ({
-          ...prev,
-          ...result.suggestion
-        }));
-      }
-      
-      setUserRequest('');
-    } catch (err) {
-      console.error('Error generating AI suggestion:', err);
-      setError(`Failed to generate suggestion: ${err.message}`);
-    } finally {
-      setIsGenerating(false);
-    }
+    // This function is kept for backward compatibility but not used in the new field-specific UI
+    return;
   };
 
   const handleClose = () => {
     onClose();
     // Reset state
-    setUserRequest('');
     setError(null);
-    setShowAIHelper(false);
     setIsSaving(false);
-    // Don't clear chat history - it will be reset on next open
     setFocusedField(null);
     setPendingChanges({});
+    setFieldAIHelpers({});
+    setFieldAIRequests({});
+    setFieldAIGenerating({});
+    setFieldAIHistory({});
   };
 
   if (!isOpen) return null;
@@ -348,8 +495,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           <div className="mb-6">
             <h4 className="text-lg font-medium text-gray-900 mb-2">Edit Attribute Fields</h4>
             <p className="text-sm text-gray-600">
-              Click into a field and then use AI (see below) to gain suggestions or help improve. 
-              Then use Update to mark them ready for saving.
+              Edit each field individually and use the "Get AI Help" button for field-specific assistance.
+              Click "Update" to mark fields ready for saving.
             </p>
           </div>
 
@@ -404,6 +551,20 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   Update
                 </button>
               </div>
+              
+              {/* Field-specific AI Helper */}
+              <FieldAIHelper
+                field="heading"
+                isOpen={fieldAIHelpers.heading}
+                onToggle={() => toggleFieldAIHelper('heading')}
+                currentValue={formData.heading}
+                onAIAssist={() => handleFieldAIAssist('heading')}
+                isGenerating={fieldAIGenerating.heading}
+                userRequest={fieldAIRequests.heading}
+                onRequestChange={(value) => updateFieldAIRequest('heading', value)}
+                history={fieldAIHistory.heading}
+                guidanceText={getFieldAIGuidance('heading')}
+              />
             </div>
 
             {/* Max Points */}
@@ -454,6 +615,20 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   Update
                 </button>
               </div>
+              
+              {/* Field-specific AI Helper */}
+              <FieldAIHelper
+                field="maxPoints"
+                isOpen={fieldAIHelpers.maxPoints}
+                onToggle={() => toggleFieldAIHelper('maxPoints')}
+                currentValue={formData.maxPoints || 'Not set'}
+                onAIAssist={() => handleFieldAIAssist('maxPoints')}
+                isGenerating={fieldAIGenerating.maxPoints}
+                userRequest={fieldAIRequests.maxPoints}
+                onRequestChange={(value) => updateFieldAIRequest('maxPoints', value)}
+                history={fieldAIHistory.maxPoints}
+                guidanceText={getFieldAIGuidance('maxPoints')}
+              />
             </div>
 
             {/* Instructions */}
@@ -506,6 +681,20 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   Update
                 </button>
               </div>
+              
+              {/* Field-specific AI Helper */}
+              <FieldAIHelper
+                field="instructions"
+                isOpen={fieldAIHelpers.instructions}
+                onToggle={() => toggleFieldAIHelper('instructions')}
+                currentValue={formData.instructions}
+                onAIAssist={() => handleFieldAIAssist('instructions')}
+                isGenerating={fieldAIGenerating.instructions}
+                userRequest={fieldAIRequests.instructions}
+                onRequestChange={(value) => updateFieldAIRequest('instructions', value)}
+                history={fieldAIHistory.instructions}
+                guidanceText={getFieldAIGuidance('instructions')}
+              />
             </div>
 
             {/* Min to Qualify */}
@@ -556,6 +745,20 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   Update
                 </button>
               </div>
+              
+              {/* Field-specific AI Helper */}
+              <FieldAIHelper
+                field="minToQualify"
+                isOpen={fieldAIHelpers.minToQualify}
+                onToggle={() => toggleFieldAIHelper('minToQualify')}
+                currentValue={formData.minToQualify || 'Not set'}
+                onAIAssist={() => handleFieldAIAssist('minToQualify')}
+                isGenerating={fieldAIGenerating.minToQualify}
+                userRequest={fieldAIRequests.minToQualify}
+                onRequestChange={(value) => updateFieldAIRequest('minToQualify', value)}
+                history={fieldAIHistory.minToQualify}
+                guidanceText={getFieldAIGuidance('minToQualify')}
+              />
             </div>
 
             {/* Detection Keywords */}
@@ -605,6 +808,20 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   Update
                 </button>
               </div>
+              
+              {/* Field-specific AI Helper */}
+              <FieldAIHelper
+                field="signals"
+                isOpen={fieldAIHelpers.signals}
+                onToggle={() => toggleFieldAIHelper('signals')}
+                currentValue={formData.signals}
+                onAIAssist={() => handleFieldAIAssist('signals')}
+                isGenerating={fieldAIGenerating.signals}
+                userRequest={fieldAIRequests.signals}
+                onRequestChange={(value) => updateFieldAIRequest('signals', value)}
+                history={fieldAIHistory.signals}
+                guidanceText={getFieldAIGuidance('signals')}
+              />
             </div>
 
             {/* Examples */}
@@ -654,6 +871,20 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   Update
                 </button>
               </div>
+              
+              {/* Field-specific AI Helper */}
+              <FieldAIHelper
+                field="examples"
+                isOpen={fieldAIHelpers.examples}
+                onToggle={() => toggleFieldAIHelper('examples')}
+                currentValue={formData.examples}
+                onAIAssist={() => handleFieldAIAssist('examples')}
+                isGenerating={fieldAIGenerating.examples}
+                userRequest={fieldAIRequests.examples}
+                onRequestChange={(value) => updateFieldAIRequest('examples', value)}
+                history={fieldAIHistory.examples}
+                guidanceText={getFieldAIGuidance('examples')}
+              />
             </div>
 
             {/* Status */}
@@ -705,93 +936,21 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   Update
                 </button>
               </div>
+              
+              {/* Field-specific AI Helper */}
+              <FieldAIHelper
+                field="active"
+                isOpen={fieldAIHelpers.active}
+                onToggle={() => toggleFieldAIHelper('active')}
+                currentValue={formData.active ? 'Active' : 'Inactive'}
+                onAIAssist={() => handleFieldAIAssist('active')}
+                isGenerating={fieldAIGenerating.active}
+                userRequest={fieldAIRequests.active}
+                onRequestChange={(value) => updateFieldAIRequest('active', value)}
+                history={fieldAIHistory.active}
+                guidanceText={getFieldAIGuidance('active')}
+              />
             </div>
-          </div>
-
-          {/* AI Helper Box */}
-          <div className="mt-8 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <SparklesIcon className="h-6 w-6 text-purple-600" />
-                <div>
-                  <h5 className="text-lg font-medium text-purple-900">AI Helper</h5>
-                  <p className="text-sm text-purple-700">
-                    Get field-specific guidance or chat about your attribute
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowAIHelper(!showAIHelper)}
-                className="text-purple-600 hover:text-purple-800"
-              >
-                {showAIHelper ? 'Hide' : 'Show'}
-              </button>
-            </div>
-
-            {/* Field Guidance */}
-            {focusedField && (
-              <div className="mb-4 p-3 bg-blue-100 border border-blue-300 rounded-lg">
-                <div className="flex items-center space-x-2 mb-2">
-                  <InformationCircleIcon className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-800">
-                    Guidance for {focusedField.charAt(0).toUpperCase() + focusedField.slice(1)}
-                  </span>
-                </div>
-                <p className="text-sm text-blue-700">
-                  {getFieldGuidance(focusedField)}
-                </p>
-              </div>
-            )}
-
-            {showAIHelper && (
-              <div className="space-y-4">
-                {/* Chat History */}
-                {chatHistory.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto space-y-3 p-4 bg-white border border-gray-200 rounded-lg">
-                    {chatHistory.map((msg, index) => (
-                      <div key={index} className={`${msg.type === 'user' ? 'text-purple-800' : 'text-gray-700'}`}>
-                        <div className="flex items-center space-x-2 mb-1">
-                          <strong className="text-sm">{msg.type === 'user' ? 'You' : 'AI'}:</strong>
-                          <span className="text-xs text-gray-500">
-                            {new Date(msg.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        <div className="text-sm whitespace-pre-wrap">{msg.message}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* AI Input */}
-                <div>
-                  <textarea
-                    value={userRequest}
-                    onChange={(e) => setUserRequest(e.target.value)}
-                    placeholder="Ask for help with any field, request improvements, or get suggestions..."
-                    className="w-full h-20 px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                  <div className="flex justify-end mt-2">
-                    <button
-                      onClick={handleAIAssist}
-                      disabled={isGenerating || !userRequest.trim()}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
-                          Thinking...
-                        </>
-                      ) : (
-                        <>
-                          <SparklesIcon className="h-4 w-4 mr-2" />
-                          Ask AI
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Action Buttons */}
