@@ -33,7 +33,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   console.log('AIEditModal: Component rendered, isOpen:', isOpen, 'attribute:', attribute);
   const [error, setError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [showAIHelper, setShowAIHelper] = useState(false);
+  const [showAIHelper, setShowAIHelper] = useState(true); // Auto-expand AI Helper
   const [userRequest, setUserRequest] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
