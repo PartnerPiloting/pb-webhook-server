@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CogIcon, AcademicCapIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { getAttributes, saveAttribute } from '../services/api';
-import AIEditModal from './AIEditModal';
+import AIEditModalFieldSpecific from './AIEditModalFieldSpecific';
 
 const Settings = () => {
   const searchParams = useSearchParams();
@@ -248,7 +248,7 @@ const Settings = () => {
       </div>
 
       {/* AI Edit Modal */}
-      <AIEditModal
+      <AIEditModalFieldSpecific
         isOpen={isAIModalOpen}
         onClose={handleCloseAIModal}
         attribute={selectedAttribute}
