@@ -30,6 +30,7 @@ const FieldTooltip = ({ title, description, children }) => {
 };
 
 const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
+  console.log('AIEditModal: Component rendered, isOpen:', isOpen, 'attribute:', attribute);
   const [error, setError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showAIHelper, setShowAIHelper] = useState(false);
@@ -93,6 +94,10 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   // Initialize form when attribute changes
   useEffect(() => {
     if (attribute) {
+      console.log('AIEditModal: Initializing with attribute:', attribute);
+      console.log('AIEditModal: attribute.instructions raw:', attribute.instructions);
+      console.log('AIEditModal: getRawTextForEditing result:', getRawTextForEditing(attribute.instructions));
+      
       setFormData({
         heading: attribute.heading || '',
         maxPoints: attribute.maxPoints || '',
