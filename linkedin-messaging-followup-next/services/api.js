@@ -480,8 +480,7 @@ export const getAISuggestions = async (attributeId, userRequest, currentAttribut
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        userRequest,
-        current: currentAttribute
+        userRequest
       })
     });
     
