@@ -270,6 +270,11 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     }
   };
 
+  // Don't render if modal is closed or attribute is null
+  if (!isOpen || !attribute) {
+    return null;
+  }
+
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
       <div className="relative top-10 mx-auto p-5 border w-11/12 max-w-5xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
