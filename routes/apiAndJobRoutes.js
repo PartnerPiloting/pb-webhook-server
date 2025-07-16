@@ -895,4 +895,112 @@ router.get("/api/attributes", async (req, res) => {
   }
 });
 
+// Field-specific AI help endpoint
+router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
+  try {
+    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help - Field-specific AI help`);
+    const attributeId = req.params.id;
+    const { fieldKey, userRequest, currentValue, currentAttribute } = req.body;
+    
+    if (!fieldKey || !userRequest || typeof userRequest !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: "fieldKey and userRequest are required"
+      });
+    }
+
+    // Field-specific prompt building
+    const fieldContext = {
+      heading: "Display name for this attribute. Keep it concise and descriptive.",
+      maxPoints: "Maximum points this attribute can award. Typically 3-20 points based on importance.",
+      instructions: "The core rubric content sent to AI for scoring. Should include clear point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong). This is the most important field.",
+      minToQualify: "Minimum score required to pass this attribute. Used for early elimination. Set to 0 if no minimum required.",
+      signals: "Keywords and phrases that help AI identify when this attribute applies. Examples: 'AI, machine learning, startup, founder, side project'",
+      examples: "Concrete scenarios showing how points are awarded. Include specific point values that align with scoring ranges.",
+      active: "Whether this attribute is currently used in scoring. Inactive attributes are ignored."
+    };
+
+    const prompt = `You are an expert AI assistant helping to improve lead scoring attributes.
+
+FIELD CONTEXT:
+Field: ${fieldKey}
+Description: ${fieldContext[fieldKey] || 'Field for scoring attribute'}
+Current Value: ${currentValue || '(empty)'}
+
+FULL ATTRIBUTE CONTEXT:
+${JSON.stringify(currentAttribute, null, 2)}
+
+USER REQUEST:
+${userRequest}
+
+INSTRUCTIONS:
+- Provide specific, actionable advice for the "${fieldKey}" field
+- If suggesting a specific value, be concrete and practical
+- Keep response conversational and helpful
+- Focus specifically on the "${fieldKey}" field
+- If suggesting point ranges, ensure they don't exceed maxPoints (${currentAttribute.maxPoints || 'not set'})
+
+Respond in a helpful, conversational tone. If you have a specific suggested value, end with "SUGGESTED_VALUE: [your suggestion]"`;
+
+    // Call Gemini for field-specific help
+    if (!vertexAIClient) {
+      throw new Error("Gemini client not available");
+    }
+
+    const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+    const model = vertexAIClient.getGenerativeModel({
+      model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 1000
+      }
+    });
+
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+
+    const candidate = result.response.candidates?.[0];
+    if (!candidate) {
+      throw new Error("No response from AI");
+    }
+
+    const responseText = candidate.content?.parts?.[0]?.text?.trim();
+    if (!responseText) {
+      throw new Error("Empty response from AI");
+    }
+
+    // Extract suggested value if present
+    let suggestion = responseText;
+    let suggestedValue = null;
+    
+    if (responseText.includes('SUGGESTED_VALUE:')) {
+      const parts = responseText.split('SUGGESTED_VALUE:');
+      suggestion = parts[0].trim();
+      suggestedValue = parts[1].trim();
+    }
+
+    res.json({
+      success: true,
+      suggestion,
+      suggestedValue,
+      fieldKey,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help error:`, error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get AI help"
+    });
+  }
+});
+
 module.exports = router;
