@@ -748,6 +748,33 @@ router.post("/api/attributes/:id/save", async (req, res) => {
   }
 });
 
+// Helper function to extract plain text from rich text fields
+function extractPlainText(richTextValue) {
+  if (!richTextValue) return "";
+  if (typeof richTextValue === 'string') return richTextValue;
+  
+  // Handle Airtable rich text format
+  if (richTextValue && typeof richTextValue === 'object' && richTextValue.content) {
+    let text = "";
+    const extractText = (content) => {
+      if (Array.isArray(content)) {
+        content.forEach(item => extractText(item));
+      } else if (content && typeof content === 'object') {
+        if (content.text) {
+          text += content.text;
+        }
+        if (content.content) {
+          extractText(content.content);
+        }
+      }
+    };
+    extractText(richTextValue.content);
+    return text.trim();
+  }
+  
+  return String(richTextValue);
+}
+
 // List all attributes for the library view
 router.get("/api/attributes", async (req, res) => {
   try {
@@ -761,7 +788,8 @@ router.get("/api/attributes", async (req, res) => {
       .select({
         fields: [
           "Attribute Id", "Heading", "Category", "Max Points", 
-          "Min To Qualify", "Penalty", "Disqualifying", "Active"
+          "Min To Qualify", "Penalty", "Disqualifying", "Active",
+          "Instructions", "Signals", "Examples"
         ]
       })
       .all();
@@ -776,7 +804,10 @@ router.get("/api/attributes", async (req, res) => {
       penalty: record.get("Penalty") || 0,
       disqualifying: !!record.get("Disqualifying"),
       active: record.get("Active") !== false, // Default to true if field doesn't exist
-      isEmpty: !record.get("Heading") && !record.get("Instructions")
+      instructions: extractPlainText(record.get("Instructions")),
+      signals: extractPlainText(record.get("Signals")),
+      examples: extractPlainText(record.get("Examples")),
+      isEmpty: !record.get("Heading") && !extractPlainText(record.get("Instructions"))
     }));
 
     console.log(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} attributes for library view`);
