@@ -676,12 +676,24 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     
     // Call Gemini (using same model as scoring system for consistency)
     if (!vertexAIClient) {
+      console.error("apiAndJobRoutes.js: Gemini client not available - vertexAIClient is null");
       throw new Error("Gemini client not available - check config/geminiClient.js");
     }
+
+    // Debug: Check what we have available
+    console.log(`apiAndJobRoutes.js: Debug - vertexAIClient available: ${!!vertexAIClient}`);
+    console.log(`apiAndJobRoutes.js: Debug - geminiModelId: ${geminiModelId}`);
+    console.log(`apiAndJobRoutes.js: Debug - geminiConfig: ${JSON.stringify(geminiConfig ? Object.keys(geminiConfig) : 'null')}`);
 
     // Use the same model that works for scoring instead of a separate editing model
     const editingModelId = geminiModelId || "gemini-2.5-pro-preview-05-06";
     console.log(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing (same as scoring)`);
+    
+    // Validate model ID
+    if (!editingModelId || editingModelId === 'null' || editingModelId === 'undefined') {
+      console.error("apiAndJobRoutes.js: Invalid model ID:", editingModelId);
+      throw new Error("Invalid Gemini model ID - check environment configuration");
+    }
     
     // Use same configuration as working scorer
     const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
@@ -692,23 +704,56 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
         { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
         { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
         { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      ]
+      ],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+        maxOutputTokens: 8192
+      }
     });
     const prompt = buildAttributeEditPrompt(currentAttribute, userRequest);
     
     console.log(`apiAndJobRoutes.js: Sending prompt to Gemini for attribute ${req.params.id}`);
     
-    // Add timeout to prevent hanging
+    // Use same request structure as working scorer
+    const requestPayload = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    };
+    
+    // Add timeout to prevent hanging (same approach as working scorer)
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('AI request timed out after 30 seconds')), 30000);
     });
     
     const result = await Promise.race([
-      model.generateContent(prompt),
+      model.generateContent(requestPayload),
       timeoutPromise
     ]);
     
-    const responseText = result.response.text().trim();
+    // Extract response text using the same method as working scorer
+    if (!result || !result.response) {
+      throw new Error("Gemini API call returned no response object");
+    }
+    
+    const candidate = result.response.candidates?.[0];
+    if (!candidate) {
+      const blockReason = result.response.promptFeedback?.blockReason;
+      const safetyRatings = result.response.promptFeedback?.safetyRatings;
+      let sf = safetyRatings ? ` SafetyRatings: ${JSON.stringify(safetyRatings)}` : "";
+      if (blockReason) throw new Error(`Gemini API call blocked. Reason: ${blockReason}.${sf}`);
+      throw new Error(`Gemini API call returned no candidates.${sf}`);
+    }
+    
+    const finishReason = candidate.finishReason;
+    let responseText = "";
+    
+    if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
+      responseText = candidate.content.parts[0].text.trim();
+    } else {
+      console.warn(`apiAndJobRoutes.js: Candidate had no text content. Finish Reason: ${finishReason || 'Unknown'}.`);
+      throw new Error(`Gemini API call returned no text content. Finish Reason: ${finishReason || 'Unknown'}`);
+    }
+    
     console.log(`apiAndJobRoutes.js: Received response from Gemini: ${responseText.substring(0, 100)}...`);
     
     // Parse and validate AI response
