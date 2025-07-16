@@ -271,6 +271,8 @@ router.get('/leads/:id', async (req, res) => {
       companyName: record.fields['Company Name'],
       about: record.fields['About'],
       ashWorkshopEmail: record.fields['ASH Workshop Email'],
+      aiProfileAssessment: record.fields['AI Profile Assessment'],
+      aiAttributeBreakdown: record.fields['AI Attribute Breakdown'],
       // Include all original fields for compatibility
       ...record.fields
     };

@@ -674,18 +674,42 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     // Load current attribute (get ALL fields)
     const currentAttribute = await loadAttributeForEditing(attributeId);
     
-    // Call Gemini (using editing-specific model for quality over speed)
+    // Call Gemini (using same model as scoring system for consistency)
     if (!vertexAIClient) {
       throw new Error("Gemini client not available - check config/geminiClient.js");
     }
 
-    const editingModelId = process.env.GEMINI_EDITING_MODEL_ID || "gemini-2.5-pro";
-    console.log(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing`);
-    const model = vertexAIClient.getGenerativeModel({ model: editingModelId });
+    // Use the same model that works for scoring instead of a separate editing model
+    const editingModelId = geminiModelId || "gemini-2.5-pro-preview-05-06";
+    console.log(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing (same as scoring)`);
+    
+    // Use same configuration as working scorer
+    const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+    const model = vertexAIClient.getGenerativeModel({
+      model: editingModelId,
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+    });
     const prompt = buildAttributeEditPrompt(currentAttribute, userRequest);
     
-    const result = await model.generateContent(prompt);
+    console.log(`apiAndJobRoutes.js: Sending prompt to Gemini for attribute ${req.params.id}`);
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('AI request timed out after 30 seconds')), 30000);
+    });
+    
+    const result = await Promise.race([
+      model.generateContent(prompt),
+      timeoutPromise
+    ]);
+    
     const responseText = result.response.text().trim();
+    console.log(`apiAndJobRoutes.js: Received response from Gemini: ${responseText.substring(0, 100)}...`);
     
     // Parse and validate AI response
     let aiResponse;
