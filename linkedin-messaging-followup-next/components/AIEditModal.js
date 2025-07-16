@@ -34,6 +34,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   const [showAIPrompt, setShowAIPrompt] = useState(false);
   const [userRequest, setUserRequest] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [editMode, setEditMode] = useState('ai');
+  const [aiSuggestion, setAiSuggestion] = useState(null);
   
   // Proposed changes form state (starts as copy of current)
   const [proposedForm, setProposedForm] = useState({
@@ -160,7 +162,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     setError(null);
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/attributes/${attribute.id}/ai-edit`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attributes/${attribute.id}/ai-edit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -201,6 +203,56 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     setError(null);
     setShowAIPrompt(false);
     setIsSaving(false);
+  };
+
+  const handleGenerateAISuggestion = async () => {
+    if (!userRequest.trim()) {
+      setError('Please enter a request for the AI assistant');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      // Generate AI suggestion based on user request
+      const response = await fetch('/api/generate-ai-suggestion', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          attributeId: attribute.id,
+          userRequest: userRequest.trim(),
+          currentData: attribute
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAiSuggestion(data);
+      setShowAIPrompt(false);
+      setUserRequest('');
+    } catch (err) {
+      console.error('Error generating AI suggestion:', err);
+      setError(`Failed to generate suggestion: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAcceptSuggestion = () => {
+    if (aiSuggestion) {
+      setProposedForm({
+        ...proposedForm,
+        ...aiSuggestion
+      });
+      setAiSuggestion(null);
+      setEditMode('direct');
+    }
   };
 
   const renderFieldComparison = (fieldName, currentValue, suggestedValue, tooltip) => {
