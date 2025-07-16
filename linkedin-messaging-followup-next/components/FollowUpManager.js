@@ -298,6 +298,8 @@ const FollowUpManager = () => {
                 ashWorkshopEmail: Boolean(selectedLead['ASH Workshop Email']),
                 aiScore: selectedLead['AI Score'],
                 postsRelevancePercentage: selectedLead['Posts Relevance Percentage'],
+                aiAttributeBreakdown: safeRender(selectedLead['AI Attribute Breakdown']),
+                aiProfileAssessment: safeRender(selectedLead['AI Profile Assessment']),
                 source: safeRender(selectedLead['Source']),
                 status: safeRender(selectedLead['Status']),
                 priority: safeRender(selectedLead['Priority']),

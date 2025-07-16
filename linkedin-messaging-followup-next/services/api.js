@@ -152,6 +152,8 @@ export const getLeadById = async (leadId) => {
       'Company Name': lead.companyName,
       'About': lead.about,
       'ASH Workshop Email': lead.ashWorkshopEmail,
+      'AI Profile Assessment': lead.aiProfileAssessment,
+      'AI Attribute Breakdown': lead.aiAttributeBreakdown,
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,
