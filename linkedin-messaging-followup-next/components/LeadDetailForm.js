@@ -106,12 +106,6 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   // Initialize form data when lead changes
   useEffect(() => {
     if (lead) {
-      // Debug: Log the lead data to see what fields are available
-      console.log('LeadDetailForm: Lead data received:', lead);
-      console.log('LeadDetailForm: AI Attribute Breakdown:', lead.aiAttributeBreakdown);
-      console.log('LeadDetailForm: AI Profile Assessment:', lead.aiProfileAssessment);
-      console.log('LeadDetailForm: All lead keys:', Object.keys(lead));
-      
       setFormData({
         firstName: lead.firstName || '',
         lastName: lead.lastName || '',
@@ -622,29 +616,21 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">AI Attribute Breakdown</label>
             <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm max-h-40 overflow-y-auto">
-              {(() => {
-                console.log('LeadDetailForm: Checking aiAttributeBreakdown:', lead.aiAttributeBreakdown);
-                console.log('LeadDetailForm: Checking AI Attribute Breakdown:', lead['AI Attribute Breakdown']);
-                return lead.aiAttributeBreakdown || lead['AI Attribute Breakdown'] ? (
-                  <div className="whitespace-pre-wrap text-xs">{lead.aiAttributeBreakdown || lead['AI Attribute Breakdown']}</div>
-                ) : (
-                  'No breakdown available'
-                );
-              })()}
+              {lead.aiAttributeBreakdown || lead['AI Attribute Breakdown'] ? (
+                <div className="whitespace-pre-wrap text-xs">{lead.aiAttributeBreakdown || lead['AI Attribute Breakdown']}</div>
+              ) : (
+                'No breakdown available'
+              )}
             </div>
           </div>
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">AI Profile Assessment</label>
             <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm max-h-40 overflow-y-auto">
-              {(() => {
-                console.log('LeadDetailForm: Checking aiProfileAssessment:', lead.aiProfileAssessment);
-                console.log('LeadDetailForm: Checking AI Profile Assessment:', lead['AI Profile Assessment']);
-                return lead.aiProfileAssessment || lead['AI Profile Assessment'] ? (
-                  <div className="whitespace-pre-wrap text-xs">{lead.aiProfileAssessment || lead['AI Profile Assessment']}</div>
-                ) : (
-                  'No assessment available'
-                );
-              })()}
+              {lead.aiProfileAssessment || lead['AI Profile Assessment'] ? (
+                <div className="whitespace-pre-wrap text-xs">{lead.aiProfileAssessment || lead['AI Profile Assessment']}</div>
+              ) : (
+                'No assessment available'
+              )}
             </div>
           </div>
         </div>
