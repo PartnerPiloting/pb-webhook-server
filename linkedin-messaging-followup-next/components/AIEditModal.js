@@ -31,22 +31,25 @@ const FieldTooltip = ({ title, description, children }) => {
 const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   const [error, setError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [showAIPrompt, setShowAIPrompt] = useState(false);
+  const [showAIHelper, setShowAIHelper] = useState(false);
   const [userRequest, setUserRequest] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [focusedField, setFocusedField] = useState(null);
   
-  // Proposed changes form state (starts as copy of current)
-  const [proposedForm, setProposedForm] = useState({
+  // Form state for current values
+  const [formData, setFormData] = useState({
     heading: '',
-    instructions: '',
     maxPoints: '',
+    instructions: '',
     minToQualify: '',
-    penalty: '',
     signals: '',
     examples: '',
-    disqualifying: '',
     active: true
   });
+
+  // Track which fields have pending changes
+  const [pendingChanges, setPendingChanges] = useState({});
 
   // Helper function to clean and format text for display only
   const formatTextForDisplay = (text) => {
@@ -86,50 +89,155 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     return highestRange <= maxPoints;
   };
 
-  // Initialize proposed form when attribute changes
+  // Initialize form when attribute changes
   useEffect(() => {
     if (attribute) {
-      setProposedForm({
+      setFormData({
         heading: attribute.heading || '',
-        instructions: getRawTextForEditing(attribute.instructions),
         maxPoints: attribute.maxPoints || '',
+        instructions: getRawTextForEditing(attribute.instructions),
         minToQualify: attribute.minToQualify || '',
-        penalty: attribute.penalty || '',
         signals: getRawTextForEditing(attribute.signals),
         examples: getRawTextForEditing(attribute.examples),
-        disqualifying: attribute.disqualifying || '',
         active: attribute.active !== false
       });
+      setPendingChanges({});
+      
+      // Initialize chat with current values summary
+      const currentValues = [];
+      if (attribute.heading) currentValues.push(`**Attribute Name:** ${attribute.heading}`);
+      if (attribute.maxPoints) currentValues.push(`**Max Points:** ${attribute.maxPoints}`);
+      if (attribute.instructions) currentValues.push(`**Instructions:** ${formatTextForDisplay(attribute.instructions)}`);
+      if (attribute.minToQualify) currentValues.push(`**Min to Qualify:** ${attribute.minToQualify}`);
+      if (attribute.signals) currentValues.push(`**Detection Keywords:** ${formatTextForDisplay(attribute.signals)}`);
+      if (attribute.examples) currentValues.push(`**Examples:** ${formatTextForDisplay(attribute.examples)}`);
+      currentValues.push(`**Status:** ${attribute.active ? 'Active' : 'Inactive'}`);
+      
+      if (currentValues.length > 1) { // More than just status
+        setChatHistory([{
+          type: 'ai',
+          message: `Here's what we currently have for "${attribute.heading}":\n\n${currentValues.join('\n\n')}`,
+          timestamp: new Date().toISOString()
+        }]);
+      } else {
+        setChatHistory([]);
+      }
     }
   }, [attribute]);
 
-  // Handle save proposed changes
+  // Update field value
+  const updateField = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Mark field as ready to save
+  const markFieldReady = (field) => {
+    setPendingChanges(prev => ({
+      ...prev,
+      [field]: true
+    }));
+  };
+
+  // Revert field to original value
+  const revertField = (field) => {
+    const originalValue = field === 'heading' ? (attribute.heading || '') :
+                         field === 'maxPoints' ? (attribute.maxPoints || '') :
+                         field === 'instructions' ? getRawTextForEditing(attribute.instructions) :
+                         field === 'minToQualify' ? (attribute.minToQualify || '') :
+                         field === 'signals' ? getRawTextForEditing(attribute.signals) :
+                         field === 'examples' ? getRawTextForEditing(attribute.examples) :
+                         field === 'active' ? (attribute.active !== false) : '';
+    
+    setFormData(prev => ({
+      ...prev,
+      [field]: originalValue
+    }));
+    setPendingChanges(prev => {
+      const newChanges = { ...prev };
+      delete newChanges[field];
+      return newChanges;
+    });
+  };
+
+  // Check if field value changed from original
+  const isFieldChanged = (field) => {
+    const originalValue = field === 'heading' ? (attribute.heading || '') :
+                         field === 'maxPoints' ? (attribute.maxPoints || '') :
+                         field === 'instructions' ? getRawTextForEditing(attribute.instructions) :
+                         field === 'minToQualify' ? (attribute.minToQualify || '') :
+                         field === 'signals' ? getRawTextForEditing(attribute.signals) :
+                         field === 'examples' ? getRawTextForEditing(attribute.examples) :
+                         field === 'active' ? (attribute.active !== false) : '';
+    
+    return formData[field] !== originalValue;
+  };
+
+  // Check if field has validation errors
+  const getFieldError = (field) => {
+    if (field === 'heading' && !formData.heading.trim()) {
+      return 'Required';
+    }
+    if (field === 'maxPoints' && formData.maxPoints && formData.minToQualify) {
+      if (Number(formData.maxPoints) < Number(formData.minToQualify)) {
+        return 'Must be ≥ min to qualify';
+      }
+    }
+    if (field === 'minToQualify' && formData.maxPoints && formData.minToQualify) {
+      if (Number(formData.maxPoints) < Number(formData.minToQualify)) {
+        return 'Must be ≤ max points';
+      }
+    }
+    if (field === 'instructions' && formData.instructions && formData.maxPoints) {
+      if (!validateScoringRanges(formData.instructions, formData.maxPoints)) {
+        return 'Point ranges exceed max points';
+      }
+    }
+    return null;
+  };
+
+  // Get contextual guidance for focused field
+  const getFieldGuidance = (field) => {
+    const guidanceMap = {
+      heading: "The display name for this attribute in the scoring interface. Keep it concise and descriptive.",
+      maxPoints: "The highest score this attribute can award. Consider the relative importance compared to other attributes.",
+      instructions: "Detailed scoring criteria for AI. Use clear point ranges (e.g., '0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong').",
+      minToQualify: "Minimum score required to pass this attribute. Set to 0 if no minimum threshold needed.",
+      signals: "Keywords and phrases that help AI identify when this attribute applies. Separate with commas.",
+      examples: "Concrete scenarios showing how points are awarded. Be specific about experience levels and corresponding scores.",
+      active: "Whether this attribute should be used in scoring. Inactive attributes are ignored during evaluation."
+    };
+    return guidanceMap[field] || "Edit this field and use the Update button to mark it ready for saving.";
+  };
+
+  // Handle save all pending changes
   const handleSaveChanges = async () => {
     setIsSaving(true);
     setError(null);
 
     try {
       // Validation
-      if (!proposedForm.heading.trim()) {
+      if (!formData.heading.trim()) {
         throw new Error('Attribute name is required');
       }
       
-      if (proposedForm.maxPoints && proposedForm.minToQualify) {
-        if (Number(proposedForm.maxPoints) < Number(proposedForm.minToQualify)) {
+      if (formData.maxPoints && formData.minToQualify) {
+        if (Number(formData.maxPoints) < Number(formData.minToQualify)) {
           throw new Error('Max points must be greater than min to qualify');
         }
       }
 
-      // Clean up the data
+      // Clean up the data - only save fields that have pending changes
       const cleanedData = {
-        ...proposedForm,
-        maxPoints: proposedForm.maxPoints ? Number(proposedForm.maxPoints) : null,
-        minToQualify: proposedForm.minToQualify ? Number(proposedForm.minToQualify) : null,
-        penalty: proposedForm.penalty ? Number(proposedForm.penalty) : null,
-        // Remove any remaining markdown formatting before saving
-        instructions: proposedForm.instructions.replace(/\*/g, ''),
-        signals: proposedForm.signals.replace(/\*/g, ''),
-        examples: proposedForm.examples.replace(/\*/g, '')
+        heading: formData.heading,
+        maxPoints: formData.maxPoints ? Number(formData.maxPoints) : null,
+        instructions: formData.instructions.replace(/\*/g, ''),
+        minToQualify: formData.minToQualify ? Number(formData.minToQualify) : null,
+        signals: formData.signals.replace(/\*/g, ''),
+        examples: formData.examples.replace(/\*/g, ''),
+        active: formData.active
       };
 
       await onSave(attribute.id, cleanedData);
@@ -141,18 +249,10 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     }
   };
 
-  // Update proposed form field handler
-  const updateProposedField = (field, value) => {
-    setProposedForm(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
   // Handle AI assistance
   const handleAIAssist = async () => {
     if (!userRequest.trim()) {
-      setError('Please describe what you want to improve');
+      setError('Please describe what you need help with');
       return;
     }
 
@@ -166,7 +266,9 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userRequest: userRequest.trim()
+          userRequest: userRequest.trim(),
+          currentData: formData,
+          focusedField: focusedField
         })
       });
 
@@ -176,15 +278,25 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 
       const result = await response.json();
       
-      // Apply AI suggestions to proposed form
+      // Add to chat history
+      setChatHistory(prev => [...prev, {
+        type: 'user',
+        message: userRequest.trim(),
+        timestamp: new Date().toISOString()
+      }, {
+        type: 'ai',
+        message: result.response || 'Suggestions applied to form',
+        timestamp: new Date().toISOString()
+      }]);
+      
+      // Apply AI suggestions to form
       if (result.suggestion) {
-        setProposedForm(prev => ({
+        setFormData(prev => ({
           ...prev,
           ...result.suggestion
         }));
       }
       
-      setShowAIPrompt(false);
       setUserRequest('');
     } catch (err) {
       console.error('Error generating AI suggestion:', err);
@@ -199,8 +311,11 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     // Reset state
     setUserRequest('');
     setError(null);
-    setShowAIPrompt(false);
+    setShowAIHelper(false);
     setIsSaving(false);
+    // Don't clear chat history - it will be reset on next open
+    setFocusedField(null);
+    setPendingChanges({});
   };
 
   if (!isOpen) return null;
@@ -240,346 +355,479 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 
         {/* Main Content */}
         <div className="mt-6">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h4 className="text-lg font-medium text-gray-900">Direct Edit</h4>
-              <p className="text-sm text-gray-600">Compare current values with your proposed changes. AI Assist available on demand.</p>
-            </div>
-            <button
-              onClick={() => setShowAIPrompt(!showAIPrompt)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <SparklesIcon className="h-4 w-4 mr-2" />
-              AI Assist
-            </button>
+          <div className="mb-6">
+            <h4 className="text-lg font-medium text-gray-900 mb-2">Edit Attribute Fields</h4>
+            <p className="text-sm text-gray-600">
+              Make changes to individual fields, then use Update to mark them ready for saving. 
+              Use the AI helper below for guidance and suggestions.
+            </p>
           </div>
 
-          {/* AI Prompt Box */}
-          {showAIPrompt && (
-            <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-purple-900 mb-2">
-                  Tell AI how to improve your proposed changes:
-                </label>
-                <textarea
-                  value={userRequest}
-                  onChange={(e) => setUserRequest(e.target.value)}
-                  placeholder="e.g., 'Make the scoring instructions more specific with clearer point ranges' or 'Add better examples for senior-level candidates'"
-                  className="w-full h-20 px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleAIAssist}
-                  disabled={isGenerating || !userRequest.trim()}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
-                >
-                  {isGenerating ? (
-                    <>
-                      <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <SparklesIcon className="h-4 w-4 mr-2" />
-                      Improve
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => setShowAIPrompt(false)}
-                  className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Point Range Guide */}
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <h5 className="text-sm font-medium text-yellow-800 mb-2">📝 Point Range Guide for Instructions</h5>
-            <div className="text-sm text-yellow-700">
-              <p className="mb-2"><strong>Format:</strong> Use "X-Y pts" or "X pts" to define point ranges</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                <div>
-                  <strong>Examples:</strong>
-                  <ul className="ml-4 mt-1">
-                    <li>• "0-3 pts = minimal experience"</li>
-                    <li>• "4-7 pts = moderate background"</li>
-                    <li>• "8-15 pts = strong expertise"</li>
-                  </ul>
-                </div>
-                <div>
-                  <strong>Tips:</strong>
-                  <ul className="ml-4 mt-1">
-                    <li>• Keep ranges within Max Points limit</li>
-                    <li>• Be specific about criteria</li>
-                    <li>• Use consistent point gaps</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Two-Column Layout */}
+          {/* Single Column Form Fields */}
           <div className="space-y-6">
+            
             {/* Attribute Name */}
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <FieldTooltip title="Current Attribute Name" description="The current display name for this attribute">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Current
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <FieldTooltip title="Attribute Name" description="The human-readable name shown in the scoring interface">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Attribute Name
                   </label>
                 </FieldTooltip>
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
-                  {attribute.heading || 'Not set'}
+                <div className="flex items-center space-x-2">
+                  {pendingChanges.heading && (
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Ready to save
+                    </span>
+                  )}
+                  {isFieldChanged('heading') && (
+                    <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                      Modified
+                    </span>
+                  )}
                 </div>
               </div>
-              <div>
-                <FieldTooltip title="Proposed Attribute Name" description="The human-readable name shown in the scoring interface">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proposed
+              <input
+                type="text"
+                value={formData.heading}
+                onChange={(e) => updateField('heading', e.target.value)}
+                onFocus={() => setFocusedField('heading')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter attribute name"
+              />
+              {getFieldError('heading') && (
+                <p className="mt-1 text-sm text-red-600">{getFieldError('heading')}</p>
+              )}
+              <div className="flex justify-end mt-3 space-x-2">
+                <button
+                  onClick={() => revertField('heading')}
+                  disabled={!isFieldChanged('heading')}
+                  className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Revert
+                </button>
+                <button
+                  onClick={() => markFieldReady('heading')}
+                  disabled={!isFieldChanged('heading') || getFieldError('heading')}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update
+                </button>
+              </div>
+            </div>
+
+            {/* Max Points */}
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <FieldTooltip title="Max Points" description="The highest score this attribute can award">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Max Points
                   </label>
                 </FieldTooltip>
-                <input
-                  type="text"
-                  value={proposedForm.heading}
-                  onChange={(e) => updateProposedField('heading', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter attribute name"
-                />
+                <div className="flex items-center space-x-2">
+                  {pendingChanges.maxPoints && (
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Ready to save
+                    </span>
+                  )}
+                  {isFieldChanged('maxPoints') && (
+                    <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                      Modified
+                    </span>
+                  )}
+                </div>
+              </div>
+              <input
+                type="number"
+                value={formData.maxPoints}
+                onChange={(e) => updateField('maxPoints', e.target.value)}
+                onFocus={() => setFocusedField('maxPoints')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="15"
+              />
+              {getFieldError('maxPoints') && (
+                <p className="mt-1 text-sm text-red-600">{getFieldError('maxPoints')}</p>
+              )}
+              <div className="flex justify-end mt-3 space-x-2">
+                <button
+                  onClick={() => revertField('maxPoints')}
+                  disabled={!isFieldChanged('maxPoints')}
+                  className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Revert
+                </button>
+                <button
+                  onClick={() => markFieldReady('maxPoints')}
+                  disabled={!isFieldChanged('maxPoints') || getFieldError('maxPoints')}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update
+                </button>
               </div>
             </div>
 
             {/* Instructions */}
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <FieldTooltip title="Current Instructions" description="Current scoring criteria">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Current
-                  </label>
-                </FieldTooltip>
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-md h-32 overflow-y-auto whitespace-pre-wrap">
-                  {formatTextForDisplay(attribute.instructions)}
-                </div>
-              </div>
-              <div>
-                <FieldTooltip title="Proposed Instructions" description="The detailed criteria sent to AI for scoring. Include clear point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong)">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proposed
-                    <span className="ml-2 text-xs text-blue-600 cursor-help" title="Tip: Use point ranges like '0-3 pts = minimal experience' or '8-15 pts = strong background'">
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <FieldTooltip title="Instructions" description="The detailed criteria sent to AI for scoring. Include clear point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong)">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Instructions
+                    <span className="ml-2 text-xs text-blue-600 cursor-help" title="Use point ranges like '0-3 pts = minimal experience'">
                       ⓘ Point Range Guide
                     </span>
                   </label>
                 </FieldTooltip>
-                <textarea
-                  value={proposedForm.instructions}
-                  onChange={(e) => updateProposedField('instructions', e.target.value)}
-                  className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter scoring instructions with point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong)"
-                />
-                {proposedForm.instructions && proposedForm.maxPoints && !validateScoringRanges(proposedForm.instructions, proposedForm.maxPoints) && (
-                  <p className="mt-1 text-sm text-amber-600">⚠️ Instructions contain point ranges higher than Max Points ({proposedForm.maxPoints})</p>
-                )}
+                <div className="flex items-center space-x-2">
+                  {pendingChanges.instructions && (
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Ready to save
+                    </span>
+                  )}
+                  {isFieldChanged('instructions') && (
+                    <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                      Modified
+                    </span>
+                  )}
+                </div>
+              </div>
+              <textarea
+                value={formData.instructions}
+                onChange={(e) => updateField('instructions', e.target.value)}
+                onFocus={() => setFocusedField('instructions')}
+                className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter scoring instructions with point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong)"
+              />
+              {getFieldError('instructions') && (
+                <p className="mt-1 text-sm text-red-600">{getFieldError('instructions')}</p>
+              )}
+              <div className="flex justify-end mt-3 space-x-2">
+                <button
+                  onClick={() => revertField('instructions')}
+                  disabled={!isFieldChanged('instructions')}
+                  className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Revert
+                </button>
+                <button
+                  onClick={() => markFieldReady('instructions')}
+                  disabled={!isFieldChanged('instructions') || getFieldError('instructions')}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update
+                </button>
               </div>
             </div>
 
-            {/* Numeric Fields Row */}
-            <div className="grid grid-cols-3 gap-6">
-              {/* Max Points */}
-              <div>
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <FieldTooltip title="Current Max Points" description="Current maximum score">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Current Max
-                      </label>
-                    </FieldTooltip>
-                    <div className="p-2 bg-gray-50 border border-gray-200 rounded-md text-center">
-                      {attribute.maxPoints || 'Not set'}
-                    </div>
-                  </div>
-                  <div>
-                    <FieldTooltip title="Proposed Max Points" description="The highest score this attribute can award">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Proposed Max
-                      </label>
-                    </FieldTooltip>
-                    <input
-                      type="number"
-                      value={proposedForm.maxPoints}
-                      onChange={(e) => updateProposedField('maxPoints', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="15"
-                    />
-                  </div>
+            {/* Min to Qualify */}
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <FieldTooltip title="Min to Qualify" description="Threshold score required to pass this attribute">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Min to Qualify
+                  </label>
+                </FieldTooltip>
+                <div className="flex items-center space-x-2">
+                  {pendingChanges.minToQualify && (
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Ready to save
+                    </span>
+                  )}
+                  {isFieldChanged('minToQualify') && (
+                    <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                      Modified
+                    </span>
+                  )}
                 </div>
               </div>
-
-              {/* Min to Qualify */}
-              <div>
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <FieldTooltip title="Current Min to Qualify" description="Current minimum threshold">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Current Min
-                      </label>
-                    </FieldTooltip>
-                    <div className="p-2 bg-gray-50 border border-gray-200 rounded-md text-center">
-                      {attribute.minToQualify || 'Not set'}
-                    </div>
-                  </div>
-                  <div>
-                    <FieldTooltip title="Proposed Min to Qualify" description="Threshold score required to pass this attribute">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Proposed Min
-                      </label>
-                    </FieldTooltip>
-                    <input
-                      type="number"
-                      value={proposedForm.minToQualify}
-                      onChange={(e) => updateProposedField('minToQualify', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="0"
-                    />
-                    {proposedForm.maxPoints && proposedForm.minToQualify && Number(proposedForm.maxPoints) < Number(proposedForm.minToQualify) && (
-                      <p className="mt-1 text-sm text-red-600">⚠️ Min to qualify cannot be higher than max points</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Penalty Points */}
-              <div>
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <FieldTooltip title="Current Penalty" description="Current penalty points">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Current Penalty
-                      </label>
-                    </FieldTooltip>
-                    <div className="p-2 bg-gray-50 border border-gray-200 rounded-md text-center">
-                      {attribute.penalty || 'Not set'}
-                    </div>
-                  </div>
-                  <div>
-                    <FieldTooltip title="Proposed Penalty" description="Points deducted when this negative attribute is triggered">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Proposed Penalty
-                      </label>
-                    </FieldTooltip>
-                    <input
-                      type="number"
-                      value={proposedForm.penalty}
-                      onChange={(e) => updateProposedField('penalty', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="0 or negative number"
-                    />
-                  </div>
-                </div>
+              <input
+                type="number"
+                value={formData.minToQualify}
+                onChange={(e) => updateField('minToQualify', e.target.value)}
+                onFocus={() => setFocusedField('minToQualify')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0"
+              />
+              {getFieldError('minToQualify') && (
+                <p className="mt-1 text-sm text-red-600">{getFieldError('minToQualify')}</p>
+              )}
+              <div className="flex justify-end mt-3 space-x-2">
+                <button
+                  onClick={() => revertField('minToQualify')}
+                  disabled={!isFieldChanged('minToQualify')}
+                  className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Revert
+                </button>
+                <button
+                  onClick={() => markFieldReady('minToQualify')}
+                  disabled={!isFieldChanged('minToQualify') || getFieldError('minToQualify')}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update
+                </button>
               </div>
             </div>
 
             {/* Detection Keywords */}
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <FieldTooltip title="Current Detection Keywords" description="Current keywords for AI detection">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Current
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <FieldTooltip title="Detection Keywords" description="Keywords and phrases that help AI identify when this attribute applies">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Detection Keywords
                   </label>
                 </FieldTooltip>
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-md h-24 overflow-y-auto whitespace-pre-wrap">
-                  {formatTextForDisplay(attribute.signals)}
+                <div className="flex items-center space-x-2">
+                  {pendingChanges.signals && (
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Ready to save
+                    </span>
+                  )}
+                  {isFieldChanged('signals') && (
+                    <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                      Modified
+                    </span>
+                  )}
                 </div>
               </div>
-              <div>
-                <FieldTooltip title="Proposed Detection Keywords" description="Keywords and phrases that help AI identify when this attribute applies">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proposed
-                  </label>
-                </FieldTooltip>
-                <textarea
-                  value={proposedForm.signals}
-                  onChange={(e) => updateProposedField('signals', e.target.value)}
-                  className="w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="AI, machine learning, startup, founder, side project"
-                />
+              <textarea
+                value={formData.signals}
+                onChange={(e) => updateField('signals', e.target.value)}
+                onFocus={() => setFocusedField('signals')}
+                className="w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="AI, machine learning, startup, founder, side project"
+              />
+              {getFieldError('signals') && (
+                <p className="mt-1 text-sm text-red-600">{getFieldError('signals')}</p>
+              )}
+              <div className="flex justify-end mt-3 space-x-2">
+                <button
+                  onClick={() => revertField('signals')}
+                  disabled={!isFieldChanged('signals')}
+                  className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Revert
+                </button>
+                <button
+                  onClick={() => markFieldReady('signals')}
+                  disabled={!isFieldChanged('signals') || getFieldError('signals')}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update
+                </button>
               </div>
             </div>
 
             {/* Examples */}
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <FieldTooltip title="Current Examples" description="Current scoring examples">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Current
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <FieldTooltip title="Examples" description="Concrete scenarios showing how points are awarded">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Examples
                   </label>
                 </FieldTooltip>
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-md h-24 overflow-y-auto whitespace-pre-wrap">
-                  {formatTextForDisplay(attribute.examples)}
+                <div className="flex items-center space-x-2">
+                  {pendingChanges.examples && (
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Ready to save
+                    </span>
+                  )}
+                  {isFieldChanged('examples') && (
+                    <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                      Modified
+                    </span>
+                  )}
                 </div>
               </div>
-              <div>
-                <FieldTooltip title="Proposed Examples" description="Concrete scenarios showing how points are awarded">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proposed
-                  </label>
-                </FieldTooltip>
-                <textarea
-                  value={proposedForm.examples}
-                  onChange={(e) => updateProposedField('examples', e.target.value)}
-                  className="w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Example: Senior developer with 8+ years = 12-15 pts"
-                />
+              <textarea
+                value={formData.examples}
+                onChange={(e) => updateField('examples', e.target.value)}
+                onFocus={() => setFocusedField('examples')}
+                className="w-full h-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Example: Senior developer with 8+ years = 12-15 pts"
+              />
+              {getFieldError('examples') && (
+                <p className="mt-1 text-sm text-red-600">{getFieldError('examples')}</p>
+              )}
+              <div className="flex justify-end mt-3 space-x-2">
+                <button
+                  onClick={() => revertField('examples')}
+                  disabled={!isFieldChanged('examples')}
+                  className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Revert
+                </button>
+                <button
+                  onClick={() => markFieldReady('examples')}
+                  disabled={!isFieldChanged('examples') || getFieldError('examples')}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update
+                </button>
               </div>
             </div>
 
             {/* Status */}
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <FieldTooltip title="Current Status" description="Current activation status">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Current
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <FieldTooltip title="Status" description="Whether this attribute should be used in scoring">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Status
                   </label>
                 </FieldTooltip>
-                <div className="p-2 bg-gray-50 border border-gray-200 rounded-md text-center">
-                  {attribute.active ? 'Active' : 'Inactive'}
+                <div className="flex items-center space-x-2">
+                  {pendingChanges.active && (
+                    <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                      Ready to save
+                    </span>
+                  )}
+                  {isFieldChanged('active') && (
+                    <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                      Modified
+                    </span>
+                  )}
                 </div>
               </div>
-              <div>
-                <FieldTooltip title="Proposed Status" description="Whether this attribute should be used in scoring">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Proposed
-                  </label>
-                </FieldTooltip>
-                <select
-                  value={proposedForm.active}
-                  onChange={(e) => updateProposedField('active', e.target.value === 'true')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              <select
+                value={formData.active}
+                onChange={(e) => updateField('active', e.target.value === 'true')}
+                onFocus={() => setFocusedField('active')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+              {getFieldError('active') && (
+                <p className="mt-1 text-sm text-red-600">{getFieldError('active')}</p>
+              )}
+              <div className="flex justify-end mt-3 space-x-2">
+                <button
+                  onClick={() => revertField('active')}
+                  disabled={!isFieldChanged('active')}
+                  className="px-3 py-1 text-sm border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
+                  Revert
+                </button>
+                <button
+                  onClick={() => markFieldReady('active')}
+                  disabled={!isFieldChanged('active') || getFieldError('active')}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Update
+                </button>
               </div>
             </div>
           </div>
 
+          {/* AI Helper Box */}
+          <div className="mt-8 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <SparklesIcon className="h-6 w-6 text-purple-600" />
+                <div>
+                  <h5 className="text-lg font-medium text-purple-900">AI Helper</h5>
+                  <p className="text-sm text-purple-700">
+                    Get field-specific guidance or chat about your attribute
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAIHelper(!showAIHelper)}
+                className="text-purple-600 hover:text-purple-800"
+              >
+                {showAIHelper ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            {/* Field Guidance */}
+            {focusedField && (
+              <div className="mb-4 p-3 bg-blue-100 border border-blue-300 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <InformationCircleIcon className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    Guidance for {focusedField.charAt(0).toUpperCase() + focusedField.slice(1)}
+                  </span>
+                </div>
+                <p className="text-sm text-blue-700">
+                  {getFieldGuidance(focusedField)}
+                </p>
+              </div>
+            )}
+
+            {showAIHelper && (
+              <div className="space-y-4">
+                {/* Chat History */}
+                {chatHistory.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto space-y-3 p-4 bg-white border border-gray-200 rounded-lg">
+                    {chatHistory.map((msg, index) => (
+                      <div key={index} className={`${msg.type === 'user' ? 'text-purple-800' : 'text-gray-700'}`}>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <strong className="text-sm">{msg.type === 'user' ? 'You' : 'AI'}:</strong>
+                          <span className="text-xs text-gray-500">
+                            {new Date(msg.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <div className="text-sm whitespace-pre-wrap">{msg.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* AI Input */}
+                <div>
+                  <textarea
+                    value={userRequest}
+                    onChange={(e) => setUserRequest(e.target.value)}
+                    placeholder="Ask for help with any field, request improvements, or get suggestions..."
+                    className="w-full h-20 px-3 py-2 border border-purple-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={handleAIAssist}
+                      disabled={isGenerating || !userRequest.trim()}
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                          Thinking...
+                        </>
+                      ) : (
+                        <>
+                          <SparklesIcon className="h-4 w-4 mr-2" />
+                          Ask AI
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Action Buttons */}
-          <div className="mt-8 flex justify-end space-x-4 pt-6 border-t">
-            <button
-              onClick={handleClose}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSaveChanges}
-              disabled={isSaving || !proposedForm.heading.trim()}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </button>
+          <div className="mt-8 flex justify-between items-center pt-6 border-t">
+            <div className="text-sm text-gray-600">
+              {Object.keys(pendingChanges).length > 0 && (
+                <span className="text-blue-600">
+                  {Object.keys(pendingChanges).length} field{Object.keys(pendingChanges).length === 1 ? '' : 's'} ready to save
+                </span>
+              )}
+            </div>
+            <div className="flex space-x-4">
+              <button
+                onClick={handleClose}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveChanges}
+                disabled={isSaving || Object.keys(pendingChanges).length === 0}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? 'Saving...' : `Save ${Object.keys(pendingChanges).length > 0 ? `${Object.keys(pendingChanges).length} Changes` : 'Changes'}`}
+              </button>
+            </div>
           </div>
         </div>
       </div>
