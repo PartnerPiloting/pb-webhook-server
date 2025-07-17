@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { getAttributes, saveAttribute } from '../services/api';
 import { CogIcon } from '@heroicons/react/24/outline';
-import AIEditModalFieldSpecific from './AIEditModalFieldSpecific';
+import TestModal from './TestModal';
 
 const Settings = () => {
   const [attributes, setAttributes] = useState([]);
@@ -181,13 +181,12 @@ const Settings = () => {
         </div>
       </div>
 
-      {/* Phase 2: AI Edit Modal - Only render when we have an attribute */}
+      {/* Phase 2: Test Modal - Simple version to isolate the problem */}
       {selectedAttribute && (
-        <AIEditModalFieldSpecific
+        <TestModal
           isOpen={isAIModalOpen}
           onClose={handleCloseAIModal}
           attribute={selectedAttribute}
-          onSave={handleSaveAttribute}
         />
       )}
     </div>
