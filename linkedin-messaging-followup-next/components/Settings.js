@@ -121,11 +121,11 @@ const Settings = () => {
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">Lead Scoring Attributes</h3>
             <p className="text-sm text-gray-500 mt-1">
-              {attributes.length} attributes configured • AI editing available
+              {String(attributes.length || 0)} attributes configured • AI editing available
             </p>
             {/* Debug info */}
             <div className="text-xs text-gray-400 mt-1">
-              Loading: {loading ? 'true' : 'false'} | Error: {error || 'none'} | Attributes: {JSON.stringify(attributes).slice(0, 100)}...
+              Loading: {String(loading)} | Error: {String(error || 'none')} | Attributes: {String(attributes.length || 0)} found
             </div>
           </div>
           
@@ -136,7 +136,7 @@ const Settings = () => {
               </div>
             ) : attributes.length === 0 ? (
               <div className="px-6 py-8 text-center text-gray-500">
-                No attributes found. Debug: {JSON.stringify({loading, error, attributesLength: attributes.length})}
+                No attributes found. Debug: Loading={String(loading)}, Error={String(error || 'none')}, Count={String(attributes.length || 0)}
               </div>
             ) : (
               attributes.map((attribute) => (
@@ -145,7 +145,7 @@ const Settings = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-3 mb-2">
                         <h4 className="text-sm font-medium text-gray-900">
-                          {attribute.heading || '[Unnamed Attribute]'}
+                          {String(attribute.heading || '[Unnamed Attribute]')}
                         </h4>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         attribute.active !== false 
@@ -161,10 +161,10 @@ const Settings = () => {
                       )}
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <span>Max Points: {attribute.maxPoints}</span>
-                      <span>Min to Qualify: {attribute.minToQualify}</span>
-                      {attribute.penalty && <span>Penalty: {attribute.penalty}</span>}
-                      <span className="capitalize">{attribute.category}</span>
+                      <span>Max Points: {String(attribute.maxPoints || 0)}</span>
+                      <span>Min to Qualify: {String(attribute.minToQualify || 0)}</span>
+                      {attribute.penalty && <span>Penalty: {String(attribute.penalty)}</span>}
+                      <span className="capitalize">{String(attribute.category || 'uncategorized')}</span>
                     </div>
                   </div>
                   <div className="flex-shrink-0">

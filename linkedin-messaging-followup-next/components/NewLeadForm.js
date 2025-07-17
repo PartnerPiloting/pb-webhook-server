@@ -299,7 +299,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
             )}
             <span>
               {duplicateCheck.duplicates.length === 1 
-                ? `Duplicate lead found: ${duplicateCheck.duplicates[0]['First Name']} ${duplicateCheck.duplicates[0]['Last Name']}`
+                ? `Duplicate lead found: ${String(duplicateCheck.duplicates[0]['First Name'] || '')} ${String(duplicateCheck.duplicates[0]['Last Name'] || '')}`
                 : `${duplicateCheck.duplicates.length} duplicate leads found with this LinkedIn profile`
               }
             </span>
@@ -386,7 +386,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
                         )}
                         <span className="text-sm font-medium text-red-800">
                           {duplicateCheck.duplicates.length === 1 
-                            ? `Duplicate found: ${duplicateCheck.duplicates[0]['First Name']} ${duplicateCheck.duplicates[0]['Last Name']}`
+                            ? `Duplicate found: ${String(duplicateCheck.duplicates[0]['First Name'] || '')} ${String(duplicateCheck.duplicates[0]['Last Name'] || '')}`
                             : `${duplicateCheck.duplicates.length} duplicates found`
                           }
                         </span>
