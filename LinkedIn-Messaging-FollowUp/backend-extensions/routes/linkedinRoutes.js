@@ -163,11 +163,12 @@ router.get('/leads/search', async (req, res) => {
     // Build filter formula based on query and priority
     let filterParts = [];
     
-    // Add name search filter
+    // Add name and LinkedIn URL search filter
     if (query && query.trim() !== '') {
       filterParts.push(`OR(
         SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
-        SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0
+        SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0,
+        SEARCH(LOWER("${query}"), LOWER({LinkedIn Profile URL})) > 0
       )`);
     }
     
