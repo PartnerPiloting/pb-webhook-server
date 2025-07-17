@@ -55,15 +55,48 @@ const NewLeadForm = ({ onLeadCreated }) => {
       };
 
       const normalizedInputUrl = normalizeLinkedInUrl(formData.linkedinProfileUrl);
+      console.log('🔍 Checking for duplicates:');
+      console.log('Input URL:', formData.linkedinProfileUrl);
+      console.log('Normalized Input URL:', normalizedInputUrl);
       
-      // Search for leads with similar LinkedIn URLs
-      const results = await searchLeads(formData.linkedinProfileUrl, 'all');
+      // Extract username from LinkedIn URL for better search
+      const extractLinkedInUsername = (url) => {
+        if (!url) return '';
+        const match = url.match(/linkedin\.com\/in\/([^\/\?]+)/i);
+        return match ? match[1] : '';
+      };
+      
+      const username = extractLinkedInUsername(formData.linkedinProfileUrl);
+      console.log('Extracted username:', username);
+      
+      // Search for leads with the LinkedIn username (more flexible than full URL)
+      const searchTerm = username || formData.linkedinProfileUrl;
+      console.log('Search term:', searchTerm);
+      
+      const results = await searchLeads(searchTerm, 'all');
+      console.log('Search results:', results);
       
       // Filter for exact LinkedIn URL matches
       const duplicates = results.filter(lead => {
         const leadLinkedInUrl = normalizeLinkedInUrl(lead['LinkedIn Profile URL']);
-        return leadLinkedInUrl === normalizedInputUrl;
+        const leadUsername = extractLinkedInUsername(lead['LinkedIn Profile URL']);
+        
+        console.log('Comparing lead:', lead['LinkedIn Profile URL']);
+        console.log('Lead normalized:', leadLinkedInUrl);
+        console.log('Lead username:', leadUsername);
+        console.log('Input normalized:', normalizedInputUrl);
+        console.log('Input username:', username);
+        
+        // Match on both normalized URL and username
+        const urlMatch = leadLinkedInUrl === normalizedInputUrl;
+        const usernameMatch = leadUsername && username && leadUsername === username;
+        
+        console.log('URL match:', urlMatch, 'Username match:', usernameMatch);
+        
+        return urlMatch || usernameMatch;
       });
+      
+      console.log('Found duplicates:', duplicates);
       
       setDuplicateCheck({ isChecking: false, duplicates });
       return duplicates;
