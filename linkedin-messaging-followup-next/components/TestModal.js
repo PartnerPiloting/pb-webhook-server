@@ -52,13 +52,38 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
       ]
     }));
     
-    // Simulate AI response
-    setTimeout(() => {
+    // Step 6: Try actual API call instead of simulation
+    try {
+      console.log('TestModal: Making real API call...');
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attributes/${attribute.id}/ai-field-help`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fieldKey: activeFieldHelper,
+          userRequest: aiInput,
+          currentValue: fieldValues[activeFieldHelper],
+          currentAttribute: fieldValues
+        }),
+      });
+      
+      const result = await response.json();
+      console.log('TestModal: API response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to get AI help');
+      }
+      
+      // Add AI response to chat history - THIS IS WHERE THE BUG MIGHT BE!
       const aiResponse = {
         type: 'ai',
-        message: `AI suggestion for ${activeFieldHelper}: ${aiInput}`,
+        message: result.suggestion, // <-- THIS MIGHT BE AN OBJECT!
         timestamp: new Date().toLocaleTimeString()
       };
+      
+      console.log('TestModal: AI response message:', result.suggestion, 'type:', typeof result.suggestion);
       
       setChatHistory(prev => ({
         ...prev,
@@ -68,9 +93,33 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
         ]
       }));
       
+      // If AI provided a specific value suggestion, update the field
+      if (result.suggestedValue !== undefined) {
+        handleFieldChange(activeFieldHelper, result.suggestedValue);
+      }
+      
       setAiInput('');
+      
+    } catch (err) {
+      console.error('TestModal: Error getting AI help:', err);
+      
+      // Add error message to chat history
+      const errorMessage = {
+        type: 'error',
+        message: `❌ Failed to get AI help: ${err.message}`,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      
+      setChatHistory(prev => ({
+        ...prev,
+        [activeFieldHelper]: [
+          ...(prev[activeFieldHelper] || []),
+          errorMessage
+        ]
+      }));
+    } finally {
       setIsGenerating(false);
-    }, 1000);
+    }
   };
 
   // Add the useEffect from complex modal
@@ -94,14 +143,25 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
     if (isOpen && attribute) {
       console.log('TestModal: Setting up chatHistory for attribute:', attribute.id);
       
-      // Initialize with system message like the complex modal
+      // Initialize with system message like the complex modal - but as OBJECT not array!
       const systemMessage = {
         role: 'system',
         content: `You are helping to configure a lead scoring attribute: ${String(attribute.heading || 'Unnamed Attribute')}`
       };
       
-      console.log('TestModal: Initial chat history:', [systemMessage]);
-      setChatHistory([systemMessage]);
+      // Initialize as object with field keys, not array
+      const initialChatHistory = {
+        heading: [systemMessage],
+        maxPoints: [],
+        instructions: [],
+        minToQualify: [],
+        signals: [],
+        examples: [],
+        active: []
+      };
+      
+      console.log('TestModal: Initial chat history:', initialChatHistory);
+      setChatHistory(initialChatHistory);
     }
   }, [isOpen, attribute]);
 
@@ -110,7 +170,7 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50">
       <div className="relative top-10 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <h3 className="text-lg font-semibold">Test Modal - Step 5: Add AI chat interface</h3>
+        <h3 className="text-lg font-semibold">Test Modal - Step 7: Fix chatHistory bug + add instructions field</h3>
         <p>ID: {String(attribute?.id || 'N/A')}</p>
         <p>Name: {String(attribute?.heading || 'N/A')}</p>
         <p>Max Points: {String(attribute?.maxPoints || 'N/A')}</p>
@@ -143,6 +203,17 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
                 value={fieldValues.maxPoints || ''}
                 onChange={(e) => handleFieldChange('maxPoints', e.target.value)}
                 className="w-full px-2 py-1 border rounded text-xs"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium">Instructions:</label>
+              <textarea 
+                value={fieldValues.instructions || ''}
+                onChange={(e) => handleFieldChange('instructions', e.target.value)}
+                className="w-full px-2 py-1 border rounded text-xs"
+                rows="3"
+                placeholder="Enter AI scoring instructions..."
               />
             </div>
             
