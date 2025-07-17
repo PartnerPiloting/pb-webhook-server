@@ -176,11 +176,25 @@ User → FollowUpManager.js → Lead updates → Scheduling
 
 ## 📚 Additional Documentation
 
-- **Technical Details**: `PB-Webhook-Server-Documentation.md`
-- **Working Preferences**: `GENERAL-INSTRUCTIONS.md`
-- **Deployment Info**: `README-LIVE-DEPLOYMENTS.md`
-- **Environment Setup**: `ENVIRONMENT-MANAGEMENT.md`
-- **Debugging**: `DEBUGGING-GUIDE.md`
+### **Core System Documentation**
+- **SYSTEM-OVERVIEW.md** - This file (central navigation)
+- **GENERAL-INSTRUCTIONS.md** - User working style and approach
+- **ENVIRONMENT-MANAGEMENT.md** - Environment variables and deployment
+- **DEBUGGING-GUIDE.md** - Common issues and solutions
+
+### **Backend Documentation**
+- **BACKEND-DEEP-DIVE.md** - Comprehensive backend architecture and components
+- **BACKEND-QUICK-REFERENCE.md** - Most commonly modified functions and patterns
+- **PB-Webhook-Server-Documentation.md** - Legacy technical documentation
+
+### **Frontend/LinkedIn Documentation**
+- **linkedin-messaging-followup-next/README.md** - Frontend system overview
+- **LinkedIn-Messaging-FollowUp/QUICK-REFERENCE.md** - Quick solutions
+- **LinkedIn-Messaging-FollowUp/BOOTSTRAP_FOR_NEW_DEVS.md** - Developer onboarding
+
+### **Deployment Documentation**
+- **README-LIVE-DEPLOYMENTS.md** - Live deployment information
+- **TASK-LIST.md** - Current development tasks
 
 ---
 
