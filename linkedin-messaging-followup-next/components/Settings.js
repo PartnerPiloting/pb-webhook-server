@@ -1,11 +1,39 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { getAttributes } from '../services/api';
+import { getAttributes, saveAttribute } from '../services/api';
+import { CogIcon } from '@heroicons/react/24/outline';
+import AIEditModalFieldSpecific from './AIEditModalFieldSpecific';
 
 const Settings = () => {
   const [attributes, setAttributes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Phase 2: Add AI modal state
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [selectedAttribute, setSelectedAttribute] = useState(null);
+
+  // Phase 2: AI modal handlers
+  const handleOpenAIEdit = (attribute) => {
+    setSelectedAttribute(attribute);
+    setIsAIModalOpen(true);
+  };
+
+  const handleCloseAIModal = () => {
+    setIsAIModalOpen(false);
+    setSelectedAttribute(null);
+  };
+
+  const handleSaveAttribute = async (attributeId, updatedData) => {
+    try {
+      await saveAttribute(attributeId, updatedData);
+      // Reload attributes to show changes
+      const data = await getAttributes();
+      setAttributes(data.attributes || []);
+    } catch (err) {
+      console.error('Error saving attribute:', err);
+      throw err;
+    }
+  };
 
   // Phase 1: Load attributes with bulletproof error handling
   useEffect(() => {
@@ -81,7 +109,7 @@ const Settings = () => {
           </p>
         </div>
         
-        <div className="divide-y divide-gray-200">
+        <div className="divide-y divide-gray-200 max-w-4xl">
           {attributes.length === 0 ? (
             <div className="px-6 py-8 text-center text-gray-500">
               No attributes found
@@ -98,8 +126,8 @@ const Settings = () => {
               
               return (
                 <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-start space-x-4">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-3 mb-2">
                         <h4 className="text-sm font-medium text-gray-900">{name}</h4>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -121,10 +149,11 @@ const Settings = () => {
                     </div>
                     <div className="flex-shrink-0">
                       <button 
-                        className="px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                        onClick={() => alert('Edit functionality coming in Phase 2!')}
+                        className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                        onClick={() => handleOpenAIEdit(attribute)}
                       >
-                        Edit
+                        <CogIcon className="h-3 w-3 mr-1" />
+                        Edit with AI
                       </button>
                     </div>
                   </div>
@@ -134,6 +163,14 @@ const Settings = () => {
           )}
         </div>
       </div>
+
+      {/* Phase 2: AI Edit Modal */}
+      <AIEditModalFieldSpecific
+        isOpen={isAIModalOpen}
+        onClose={handleCloseAIModal}
+        attribute={selectedAttribute}
+        onSave={handleSaveAttribute}
+      />
     </div>
   );
 };
