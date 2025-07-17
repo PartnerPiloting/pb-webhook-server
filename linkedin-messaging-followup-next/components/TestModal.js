@@ -170,7 +170,7 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50">
       <div className="relative top-10 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <h3 className="text-lg font-semibold">Test Modal - Step 7: Fix chatHistory bug + add instructions field</h3>
+        <h3 className="text-lg font-semibold">Test Modal - Step 8: Add signals and examples fields</h3>
         <p>ID: {String(attribute?.id || 'N/A')}</p>
         <p>Name: {String(attribute?.heading || 'N/A')}</p>
         <p>Max Points: {String(attribute?.maxPoints || 'N/A')}</p>
@@ -179,6 +179,9 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
           <h4 className="font-medium">Field Values State:</h4>
           <p>Heading: {fieldValues.heading}</p>
           <p>Max Points: {fieldValues.maxPoints}</p>
+          <p>Instructions: {String(fieldValues.instructions || '').substring(0, 30)}...</p>
+          <p>Signals: {String(fieldValues.signals || '').substring(0, 30)}...</p>
+          <p>Examples: {String(fieldValues.examples || '').substring(0, 30)}...</p>
           <p>Active: {String(fieldValues.active)}</p>
         </div>
         
@@ -214,6 +217,28 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
                 className="w-full px-2 py-1 border rounded text-xs"
                 rows="3"
                 placeholder="Enter AI scoring instructions..."
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium">Signals:</label>
+              <textarea 
+                value={fieldValues.signals || ''}
+                onChange={(e) => handleFieldChange('signals', e.target.value)}
+                className="w-full px-2 py-1 border rounded text-xs"
+                rows="2"
+                placeholder="Keywords that help AI identify when this applies..."
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium">Examples:</label>
+              <textarea 
+                value={fieldValues.examples || ''}
+                onChange={(e) => handleFieldChange('examples', e.target.value)}
+                className="w-full px-2 py-1 border rounded text-xs"
+                rows="3"
+                placeholder="Example scenarios with point values..."
               />
             </div>
             
