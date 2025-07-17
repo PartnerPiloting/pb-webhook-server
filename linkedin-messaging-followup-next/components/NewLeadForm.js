@@ -121,16 +121,20 @@ const NewLeadForm = ({ onLeadCreated }) => {
       return;
     }
 
-    // Check for duplicates before creating
+    // Check for duplicates before creating (force fresh check)
+    console.log('Form submitted, checking for duplicates...');
     const duplicates = await checkForDuplicates();
+    console.log('Duplicate check result:', duplicates);
     if (duplicates.length > 0) {
+      console.log('Duplicates found, preventing creation');
       setMessage({ 
         type: 'error', 
-        text: 'Duplicate lead found. Please check the details.' 
+        text: 'Duplicate LinkedIn Profile found. Please check the details.' 
       });
       return;
     }
 
+    console.log('No duplicates found, proceeding with creation');
     setIsCreating(true);
     setMessage({ type: '', text: '' });
 
@@ -181,6 +185,9 @@ const NewLeadForm = ({ onLeadCreated }) => {
       }, 5000);
       
     } catch (error) {
+      console.error('Error creating lead:', error);
+      console.error('Error message:', error.message);
+      console.error('Error response:', error.response?.data);
       setMessage({ 
         type: 'error', 
         text: error.message || 'Failed to create lead. Please try again.' 
@@ -328,6 +335,10 @@ const NewLeadForm = ({ onLeadCreated }) => {
                   value={formData.linkedinProfileUrl}
                   onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
                   onBlur={checkForDuplicates}
+                  onPaste={(e) => {
+                    // Trigger duplicate check after paste event processes
+                    setTimeout(() => checkForDuplicates(), 100);
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   placeholder="https://www.linkedin.com/in/username (optional)"
                 />
