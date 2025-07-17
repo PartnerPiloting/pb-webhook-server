@@ -297,8 +297,12 @@ const NewLeadForm = ({ onLeadCreated }) => {
             {ExclamationTriangleIcon && (
               <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
             )}
-            Duplicate lead found: {duplicateCheck.duplicates.map(lead => `${lead['First Name']} ${lead['Last Name']}`).join(', ')}.
-            Please check the details.
+            <span>
+              {duplicateCheck.duplicates.length === 1 
+                ? `Duplicate lead found: ${duplicateCheck.duplicates[0]['First Name']} ${duplicateCheck.duplicates[0]['Last Name']}`
+                : `${duplicateCheck.duplicates.length} duplicate leads found with this LinkedIn profile`
+              }
+            </span>
           </div>
         </div>
       )}
@@ -381,21 +385,11 @@ const NewLeadForm = ({ onLeadCreated }) => {
                           <ExclamationTriangleIcon className="h-5 w-5 text-red-600 mr-2" />
                         )}
                         <span className="text-sm font-medium text-red-800">
-                          Duplicate LinkedIn Profile found!
+                          {duplicateCheck.duplicates.length === 1 
+                            ? `Duplicate found: ${duplicateCheck.duplicates[0]['First Name']} ${duplicateCheck.duplicates[0]['Last Name']}`
+                            : `${duplicateCheck.duplicates.length} duplicates found`
+                          }
                         </span>
-                      </div>
-                      <div className="mt-2 text-sm text-red-700">
-                        {duplicateCheck.duplicates.map((duplicate, index) => (
-                          <div key={index} className="flex items-center justify-between">
-                            <span>
-                              {duplicate['First Name']} {duplicate['Last Name']} 
-                              {duplicate['Status'] && ` (${duplicate['Status']})`}
-                            </span>
-                            <span className="text-xs text-red-600">
-                              Priority: {duplicate['Priority'] || 'None'}
-                            </span>
-                          </div>
-                        ))}
                       </div>
                     </div>
                   ) : (
