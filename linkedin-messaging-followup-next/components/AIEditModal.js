@@ -383,11 +383,6 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 };
 
 export default AIEditModal;
-  });
-
-  // Helper function to clean and format text for display only
-  const formatTextForDisplay = (text) => {
-    if (!text) return 'Not set';
     
     return text
       .replace(/\\n/g, '\n')  // Convert \n to actual line breaks
