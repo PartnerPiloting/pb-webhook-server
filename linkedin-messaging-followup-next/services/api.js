@@ -166,9 +166,6 @@ export const getLeadById = async (leadId) => {
 
 export const createLead = async (leadData) => {
   try {
-    // DEBUG: Log the incoming data
-    console.log('🔍 API Service: Received leadData:', leadData);
-    
     // Map frontend field names to Airtable field names (same mapping as updateLead)
     const backendData = {};
     const fieldMapping = {
@@ -205,9 +202,6 @@ export const createLead = async (leadData) => {
         backendData[backendField] = value;
       }
     });
-    
-    // DEBUG: Log the mapped backend data
-    console.log('🔍 API Service: Mapped backendData:', backendData);
     
     const response = await api.post('/leads', backendData, {
       params: {
