@@ -164,13 +164,15 @@ const Settings = () => {
         </div>
       </div>
 
-      {/* Phase 2: AI Edit Modal */}
-      <AIEditModalFieldSpecific
-        isOpen={isAIModalOpen}
-        onClose={handleCloseAIModal}
-        attribute={selectedAttribute}
-        onSave={handleSaveAttribute}
-      />
+      {/* Phase 2: AI Edit Modal - Only render when we have an attribute */}
+      {selectedAttribute && (
+        <AIEditModalFieldSpecific
+          isOpen={isAIModalOpen}
+          onClose={handleCloseAIModal}
+          attribute={selectedAttribute}
+          onSave={handleSaveAttribute}
+        />
+      )}
     </div>
   );
 };
