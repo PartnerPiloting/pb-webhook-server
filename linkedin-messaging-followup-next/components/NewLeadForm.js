@@ -82,6 +82,19 @@ const NewLeadForm = ({ onLeadCreated }) => {
       // Prepare data for creation
       const createData = { ...formData };
       
+      // DEBUG: Log the data being sent
+      console.log('🔍 NewLeadForm: Form data being sent:', createData);
+      console.log('🔍 NewLeadForm: Individual fields:');
+      console.log('  firstName:', createData.firstName);
+      console.log('  lastName:', createData.lastName);
+      console.log('  linkedinProfileUrl:', createData.linkedinProfileUrl);
+      console.log('  email:', createData.email);
+      console.log('  phone:', createData.phone);
+      console.log('  source:', createData.source);
+      console.log('  status:', createData.status);
+      console.log('  priority:', createData.priority);
+      console.log('  notes:', createData.notes);
+      
       // Show helper message if LinkedIn URL will be auto-generated
       if (!createData.linkedinProfileUrl || createData.linkedinProfileUrl.trim() === '') {
         setShowLinkedInHelper(true);
@@ -210,6 +223,12 @@ const NewLeadForm = ({ onLeadCreated }) => {
           </p>
         </div>
       )}
+
+      {/* DEBUG: Show current form state */}
+      <div className="mb-6 p-4 bg-gray-100 rounded-lg">
+        <h4 className="font-semibold mb-2">DEBUG: Current Form State</h4>
+        <pre className="text-xs">{JSON.stringify(formData, null, 2)}</pre>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         
