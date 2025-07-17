@@ -1,13 +1,14 @@
 "use client";
 import React, { useState } from 'react';
-import { createLead } from '../services/api';
+import { createLead, searchLeads } from '../services/api';
 
 // Import icons using require to avoid Next.js issues
-let UserPlusIcon, CheckIcon;
+let UserPlusIcon, CheckIcon, ExclamationTriangleIcon;
 try {
   const icons = require('@heroicons/react/24/outline');
   UserPlusIcon = icons.UserPlusIcon;
   CheckIcon = icons.CheckIcon;
+  ExclamationTriangleIcon = icons.ExclamationTriangleIcon;
 } catch (error) {
   console.error('Failed to import icons:', error);
 }
@@ -32,6 +33,39 @@ const NewLeadForm = ({ onLeadCreated }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showLinkedInHelper, setShowLinkedInHelper] = useState(false);
+  const [duplicateCheck, setDuplicateCheck] = useState({ isChecking: false, duplicates: [] });
+
+  // Check for duplicate leads
+  const checkForDuplicates = async () => {
+    if (!formData.firstName || !formData.lastName) {
+      return [];
+    }
+
+    setDuplicateCheck(prev => ({ ...prev, isChecking: true }));
+    
+    try {
+      // Search for leads with the same first and last name
+      const searchQuery = `${formData.firstName} ${formData.lastName}`;
+      const results = await searchLeads(searchQuery, 'all');
+      
+      // Filter for exact name matches
+      const duplicates = results.filter(lead => {
+        const leadFirstName = (lead['First Name'] || '').toLowerCase();
+        const leadLastName = (lead['Last Name'] || '').toLowerCase();
+        const formFirstName = formData.firstName.toLowerCase();
+        const formLastName = formData.lastName.toLowerCase();
+        
+        return leadFirstName === formFirstName && leadLastName === formLastName;
+      });
+      
+      setDuplicateCheck({ isChecking: false, duplicates });
+      return duplicates;
+    } catch (error) {
+      console.error('Error checking for duplicates:', error);
+      setDuplicateCheck({ isChecking: false, duplicates: [] });
+      return [];
+    }
+  };
 
   // Handle form field changes
   const handleChange = (field, value) => {
@@ -43,6 +77,11 @@ const NewLeadForm = ({ onLeadCreated }) => {
     // Clear any existing messages when user starts typing
     if (message.text) {
       setMessage({ type: '', text: '' });
+    }
+    
+    // Clear duplicate check when name fields change
+    if (field === 'firstName' || field === 'lastName') {
+      setDuplicateCheck({ isChecking: false, duplicates: [] });
     }
   };
 
@@ -72,6 +111,16 @@ const NewLeadForm = ({ onLeadCreated }) => {
     e.preventDefault();
     
     if (!validateForm()) {
+      return;
+    }
+
+    // Check for duplicates before creating
+    const duplicates = await checkForDuplicates();
+    if (duplicates.length > 0) {
+      setMessage({ 
+        type: 'error', 
+        text: 'Duplicate lead found. Please check the details.' 
+      });
       return;
     }
 
@@ -211,6 +260,19 @@ const NewLeadForm = ({ onLeadCreated }) => {
         </div>
       )}
 
+      {/* Duplicate lead warning message */}
+      {duplicateCheck.duplicates.length > 0 && (
+        <div className="mb-6 p-4 rounded-lg bg-yellow-100 text-yellow-800">
+          <div className="flex items-center">
+            {ExclamationTriangleIcon && (
+              <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
+            )}
+            Duplicate lead found: {duplicateCheck.duplicates.map(lead => `${lead['First Name']} ${lead['Last Name']}`).join(', ')}.
+            Please check the details.
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
         
         {/* Basic Information - Required Fields First */}
@@ -242,11 +304,55 @@ const NewLeadForm = ({ onLeadCreated }) => {
                 type="text"
                 value={formData.lastName || ''}
                 onChange={(e) => handleChange('lastName', e.target.value)}
+                onBlur={checkForDuplicates}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 required
                 placeholder="Enter last name"
               />
             </div>
+
+            {/* Duplicate Check Results */}
+            {formData.firstName && formData.lastName && (
+              <div className="flex">
+                <div className="w-32 flex-shrink-0"></div>
+                <div className="flex-1">
+                  {duplicateCheck.isChecking ? (
+                    <div className="flex items-center text-blue-600 text-sm">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
+                      Checking for duplicates...
+                    </div>
+                  ) : duplicateCheck.duplicates.length > 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+                      <div className="flex items-center">
+                        {ExclamationTriangleIcon && (
+                          <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 mr-2" />
+                        )}
+                        <span className="text-sm font-medium text-yellow-800">
+                          Potential duplicate found:
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        {duplicateCheck.duplicates.map((duplicate, index) => (
+                          <div key={index} className="flex items-center justify-between">
+                            <span>
+                              {duplicate['First Name']} {duplicate['Last Name']} 
+                              {duplicate['Status'] && ` (${duplicate['Status']})`}
+                            </span>
+                            <span className="text-xs text-yellow-600">
+                              Priority: {duplicate['Priority'] || 'None'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-green-600 text-sm">
+                      ✓ No duplicates found
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex">
               <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
@@ -476,4 +582,4 @@ const NewLeadForm = ({ onLeadCreated }) => {
   );
 };
 
-export default NewLeadForm; 
+export default NewLeadForm;

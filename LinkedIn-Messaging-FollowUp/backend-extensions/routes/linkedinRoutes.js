@@ -313,13 +313,10 @@ router.post('/leads', async (req, res) => {
         'Status': 'On The Radar'
       }
     };
-    console.log('🔍 LinkedIn Routes: Sending to Airtable:', JSON.stringify(recordToCreate, null, 2));
 
     // Create the lead in Airtable
     const createdRecords = await airtableBase('Leads').create([recordToCreate]);
     
-    console.log('🔍 LinkedIn Routes: Airtable response:', JSON.stringify(createdRecords[0].fields, null, 2));
-
     if (createdRecords.length === 0) {
       return res.status(500).json({ error: 'Failed to create lead' });
     }
