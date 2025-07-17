@@ -12,10 +12,27 @@ const Settings = () => {
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedAttribute, setSelectedAttribute] = useState(null);
 
-  // Phase 2: AI modal handlers
+  // Phase 2: AI modal handlers - with debugging
   const handleOpenAIEdit = (attribute) => {
-    setSelectedAttribute(attribute);
-    setIsAIModalOpen(true);
+    console.log('=== DEBUGGING CLICK ===');
+    console.log('1. Raw attribute:', attribute);
+    console.log('2. Attribute type:', typeof attribute);
+    console.log('3. Attribute keys:', Object.keys(attribute));
+    
+    // Check each property
+    Object.keys(attribute).forEach(key => {
+      console.log(`4. ${key} =`, attribute[key], 'type:', typeof attribute[key]);
+    });
+    
+    try {
+      console.log('5. About to set state...');
+      setSelectedAttribute(attribute);
+      setIsAIModalOpen(true);
+      console.log('6. State set successfully!');
+    } catch (err) {
+      console.error('7. ERROR in handleOpenAIEdit:', err);
+      alert('Error: ' + err.message);
+    }
   };
 
   const handleCloseAIModal = () => {
