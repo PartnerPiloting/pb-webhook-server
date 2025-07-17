@@ -166,6 +166,8 @@ export const getLeadById = async (leadId) => {
 
 export const createLead = async (leadData) => {
   try {
+    console.log('🔍 Frontend API: createLead called with:', leadData);
+    
     // Map frontend field names to Airtable field names (same mapping as updateLead)
     const backendData = {};
     const fieldMapping = {
@@ -202,6 +204,8 @@ export const createLead = async (leadData) => {
         backendData[backendField] = value;
       }
     });
+    
+    console.log('🔍 Frontend API: Mapped to backend format:', backendData);
     
     const response = await api.post('/leads', backendData, {
       params: {

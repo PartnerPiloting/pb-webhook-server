@@ -306,33 +306,19 @@ router.post('/leads', async (req, res) => {
     
     console.log('LinkedIn Routes: Creating lead with data:', leadData, 'Client:', clientId);
 
-    // Transform frontend field names to backend/Airtable field names
-    const airtableFields = {
-      'First Name': leadData.firstName,
-      'Last Name': leadData.lastName,
-      'LinkedIn Profile URL': leadData.linkedinProfileUrl,
-      'View In Sales Navigator': leadData.viewInSalesNavigator,
-      'Email': leadData.email,
-      'Phone': leadData.phone,
-      'Notes': leadData.notes,
-      'Follow-Up Date': leadData.followUpDate,
-      'Follow Up Notes': leadData.followUpNotes,
-      'Source': leadData.source,
-      'Status': leadData.status,
-      'Priority': leadData.priority,
-      'LinkedIn Connection Status': leadData.linkedinConnectionStatus,
-      'ASH Workshop Email': leadData.ashWorkshopEmail
-    };
-
-    // Remove undefined values
-    Object.keys(airtableFields).forEach(key => {
-      if (airtableFields[key] === undefined) {
-        delete airtableFields[key];
+    // DEBUG: Log exactly what we're sending to Airtable
+    const recordToCreate = {
+      fields: {
+        ...leadData,
+        'Status': 'On The Radar'
       }
-    });
+    };
+    console.log('🔍 LinkedIn Routes: Sending to Airtable:', JSON.stringify(recordToCreate, null, 2));
 
     // Create the lead in Airtable
-    const createdRecords = await airtableBase('Leads').create([{ fields: airtableFields }]);
+    const createdRecords = await airtableBase('Leads').create([recordToCreate]);
+    
+    console.log('🔍 LinkedIn Routes: Airtable response:', JSON.stringify(createdRecords[0].fields, null, 2));
 
     if (createdRecords.length === 0) {
       return res.status(500).json({ error: 'Failed to create lead' });
