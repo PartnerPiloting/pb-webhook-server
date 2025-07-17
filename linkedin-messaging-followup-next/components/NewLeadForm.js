@@ -35,27 +35,34 @@ const NewLeadForm = ({ onLeadCreated }) => {
   const [showLinkedInHelper, setShowLinkedInHelper] = useState(false);
   const [duplicateCheck, setDuplicateCheck] = useState({ isChecking: false, duplicates: [] });
 
-  // Check for duplicate leads
+  // Check for duplicate leads based on LinkedIn Profile URL
   const checkForDuplicates = async () => {
-    if (!formData.firstName || !formData.lastName) {
+    if (!formData.linkedinProfileUrl || !formData.linkedinProfileUrl.trim()) {
+      setDuplicateCheck({ isChecking: false, duplicates: [] });
       return [];
     }
 
     setDuplicateCheck(prev => ({ ...prev, isChecking: true }));
     
     try {
-      // Search for leads with the same first and last name
-      const searchQuery = `${formData.firstName} ${formData.lastName}`;
-      const results = await searchLeads(searchQuery, 'all');
+      // Normalize the LinkedIn URL for comparison
+      const normalizeLinkedInUrl = (url) => {
+        if (!url) return '';
+        return url.toLowerCase()
+          .replace(/^https?:\/\//, '')
+          .replace(/\/$/, '')
+          .replace(/^www\./, '');
+      };
+
+      const normalizedInputUrl = normalizeLinkedInUrl(formData.linkedinProfileUrl);
       
-      // Filter for exact name matches
+      // Search for leads with similar LinkedIn URLs
+      const results = await searchLeads(formData.linkedinProfileUrl, 'all');
+      
+      // Filter for exact LinkedIn URL matches
       const duplicates = results.filter(lead => {
-        const leadFirstName = (lead['First Name'] || '').toLowerCase();
-        const leadLastName = (lead['Last Name'] || '').toLowerCase();
-        const formFirstName = formData.firstName.toLowerCase();
-        const formLastName = formData.lastName.toLowerCase();
-        
-        return leadFirstName === formFirstName && leadLastName === formLastName;
+        const leadLinkedInUrl = normalizeLinkedInUrl(lead['LinkedIn Profile URL']);
+        return leadLinkedInUrl === normalizedInputUrl;
       });
       
       setDuplicateCheck({ isChecking: false, duplicates });
@@ -79,8 +86,8 @@ const NewLeadForm = ({ onLeadCreated }) => {
       setMessage({ type: '', text: '' });
     }
     
-    // Clear duplicate check when name fields change
-    if (field === 'firstName' || field === 'lastName') {
+    // Clear duplicate check when LinkedIn URL changes
+    if (field === 'linkedinProfileUrl') {
       setDuplicateCheck({ isChecking: false, duplicates: [] });
     }
   };
@@ -311,49 +318,6 @@ const NewLeadForm = ({ onLeadCreated }) => {
               />
             </div>
 
-            {/* Duplicate Check Results */}
-            {formData.firstName && formData.lastName && (
-              <div className="flex">
-                <div className="w-32 flex-shrink-0"></div>
-                <div className="flex-1">
-                  {duplicateCheck.isChecking ? (
-                    <div className="flex items-center text-blue-600 text-sm">
-                      <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
-                      Checking for duplicates...
-                    </div>
-                  ) : duplicateCheck.duplicates.length > 0 ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-                      <div className="flex items-center">
-                        {ExclamationTriangleIcon && (
-                          <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 mr-2" />
-                        )}
-                        <span className="text-sm font-medium text-yellow-800">
-                          Potential duplicate found:
-                        </span>
-                      </div>
-                      <div className="mt-2 text-sm text-yellow-700">
-                        {duplicateCheck.duplicates.map((duplicate, index) => (
-                          <div key={index} className="flex items-center justify-between">
-                            <span>
-                              {duplicate['First Name']} {duplicate['Last Name']} 
-                              {duplicate['Status'] && ` (${duplicate['Status']})`}
-                            </span>
-                            <span className="text-xs text-yellow-600">
-                              Priority: {duplicate['Priority'] || 'None'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-green-600 text-sm">
-                      ✓ No duplicates found
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             <div className="flex">
               <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
                 LinkedIn Profile URL
@@ -363,6 +327,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
                   type="url"
                   value={formData.linkedinProfileUrl}
                   onChange={(e) => handleChange('linkedinProfileUrl', e.target.value)}
+                  onBlur={checkForDuplicates}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   placeholder="https://www.linkedin.com/in/username (optional)"
                 />
@@ -371,6 +336,49 @@ const NewLeadForm = ({ onLeadCreated }) => {
                 </p>
               </div>
             </div>
+
+            {/* Duplicate Check Results */}
+            {formData.linkedinProfileUrl && formData.linkedinProfileUrl.trim() && (
+              <div className="flex">
+                <div className="w-32 flex-shrink-0"></div>
+                <div className="flex-1">
+                  {duplicateCheck.isChecking ? (
+                    <div className="flex items-center text-blue-600 text-sm">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
+                      Checking for duplicates...
+                    </div>
+                  ) : duplicateCheck.duplicates.length > 0 ? (
+                    <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                      <div className="flex items-center">
+                        {ExclamationTriangleIcon && (
+                          <ExclamationTriangleIcon className="h-5 w-5 text-red-600 mr-2" />
+                        )}
+                        <span className="text-sm font-medium text-red-800">
+                          Duplicate LinkedIn Profile found!
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm text-red-700">
+                        {duplicateCheck.duplicates.map((duplicate, index) => (
+                          <div key={index} className="flex items-center justify-between">
+                            <span>
+                              {duplicate['First Name']} {duplicate['Last Name']} 
+                              {duplicate['Status'] && ` (${duplicate['Status']})`}
+                            </span>
+                            <span className="text-xs text-red-600">
+                              Priority: {duplicate['Priority'] || 'None'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-green-600 text-sm">
+                      ✓ No duplicate LinkedIn profiles found
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex">
               <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
