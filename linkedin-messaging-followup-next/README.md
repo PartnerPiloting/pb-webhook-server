@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LinkedIn Follow-Up Portal (Next.js Frontend)
 
-## Getting Started
+## Overview
+This is the frontend interface for the LinkedIn Lead Management system. It provides a web-based portal for searching, filtering, and managing LinkedIn leads with follow-up scheduling capabilities.
 
-First, run the development server:
+## System Context
+- **Backend API**: Node.js server in parent directory (deployed on Render)
+- **Database**: Airtable integration
+- **Deployment**: Vercel platform
+- **Purpose**: Lead management UI for LinkedIn outreach optimization
 
+## Key Features
+- **Lead Search & Filtering**: Search by name, filter by priority/status
+- **Lead Management**: View, edit, and update lead information
+- **Follow-Up Scheduling**: Schedule and track follow-up activities
+- **AI Integration**: Display AI-generated lead scores and analysis
+- **Real-time Updates**: Automatic refresh after data changes
+
+## Architecture
+Built with Next.js 14 using:
+- **React 18** for UI components
+- **Tailwind CSS** for styling
+- **Heroicons** for icons
+- **Axios** for API communication
+
+## Critical Components
+
+### `components/LeadSearchUpdate.js`
+**Primary interface** for lead management
+- Search functionality with debounced queries
+- Priority filtering (All/One/Two/Three)
+- Lead selection and detail viewing
+- Update handling with automatic list refresh
+
+### `components/LeadDetailForm.js`
+Lead editing interface with:
+- Form fields for all lead properties
+- AI-powered attribute editing
+- Save/delete functionality
+- Validation and error handling
+
+### `services/api.js`
+API client for backend communication:
+- `searchLeads()` - Search with filters
+- `updateLead()` - Update lead data
+- `getLeadById()` - Get full lead details
+- `createLead()` - Create new leads
+
+## Development
+
+### Local Development
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
+Open [http://localhost:3000](http://localhost:3000) to view in browser.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Production Deployment
+Automatically deployed to Vercel on git push to main branch.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Common Issues & Solutions
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Priority Filtering
+**Issue**: Leads don't disappear when priority changes
+**Solution**: Check `handleLeadUpdate()` in `LeadSearchUpdate.js`
 
-## Learn More
+### Search Performance
+**Issue**: Search results lag or don't update
+**Solution**: Verify debounced search logic and race condition handling
 
-To learn more about Next.js, take a look at the following resources:
+### Data Sync
+**Issue**: Updates not persisting
+**Solution**: Check API endpoints and Airtable field mapping
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Related Documentation
+- **System Overview**: `../SYSTEM-OVERVIEW.md` (READ FIRST)
+- **Backend API**: `../index.js` and `../services/`
+- **User Guide**: `../LinkedIn-Messaging-FollowUp/README.md`
+- **Quick Reference**: `../LinkedIn-Messaging-FollowUp/QUICK-REFERENCE.md`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## For AI Development Assistance
+When working with AI assistants on this project:
+1. Always reference `../SYSTEM-OVERVIEW.md` first
+2. User prefers plain English explanations
+3. Focus on specific components mentioned in requests
+4. Test on deployed Vercel environment, not locally
