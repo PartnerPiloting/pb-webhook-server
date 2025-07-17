@@ -1,53 +1,388 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { XMarkIcon, SparklesIcon, ArrowPathIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, SparklesIcon } from '@heroicons/react/24/outline';
 
-const FieldTooltip = ({ title, description, children }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
+const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
+  const [fieldValues, setFieldValues] = useState({});
+  const [chatHistory, setChatHistory] = useState({});
+  const [activeFieldHelper, setActiveFieldHelper] = useState(null);
+  const [aiInput, setAiInput] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Field definitions - same as original broken modal
+  const fields = [
+    {
+      key: 'heading',
+      label: 'Attribute Name',
+      type: 'text',
+      placeholder: 'Enter attribute name',
+      description: 'The display name shown in the scoring interface'
+    },
+    {
+      key: 'maxPoints',
+      label: 'Max Points',
+      type: 'number',
+      placeholder: '15',
+      description: 'Maximum points this attribute can award'
+    },
+    {
+      key: 'instructions',
+      label: 'Instructions for AI Scoring',
+      type: 'textarea',
+      placeholder: 'Enter scoring instructions with point ranges...',
+      description: 'Core rubric content sent to AI for scoring (most important field)',
+      rows: 6
+    },
+    {
+      key: 'minToQualify',
+      label: 'Min to Qualify',
+      type: 'number',
+      placeholder: '0',
+      description: 'Minimum score required to pass this attribute'
+    },
+    {
+      key: 'signals',
+      label: 'Detection Keywords',
+      type: 'textarea',
+      placeholder: 'AI, machine learning, programming, developer...',
+      description: 'Keywords that help AI identify when this attribute applies',
+      rows: 3
+    },
+    {
+      key: 'examples',
+      label: 'Examples',
+      type: 'textarea',
+      placeholder: 'Example scenarios with point values...',
+      description: 'Concrete scoring scenarios that help AI understand nuances',
+      rows: 4
+    },
+    {
+      key: 'active',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { value: true, label: 'Active' },
+        { value: false, label: 'Inactive' }
+      ],
+      description: 'Whether this attribute is used in scoring'
+    }
+  ];
+
+  // Initialize field values when attribute changes
+  useEffect(() => {
+    if (attribute) {
+      console.log('AIEditModal: Setting field values for attribute:', attribute);
+      setFieldValues({
+        heading: String(attribute.heading || ''),
+        maxPoints: String(attribute.maxPoints || ''),
+        instructions: String(attribute.instructions || ''),
+        minToQualify: String(attribute.minToQualify || ''),
+        signals: String(attribute.signals || ''),
+        examples: String(attribute.examples || ''),
+        active: attribute.active !== false
+      });
+      
+      // Initialize chat history for each field
+      const initialChatHistory = {};
+      fields.forEach(field => {
+        initialChatHistory[field.key] = [];
+      });
+      setChatHistory(initialChatHistory);
+    }
+  }, [attribute]);
+
+  const handleFieldChange = (fieldKey, value) => {
+    console.log('AIEditModal: Field change:', fieldKey, 'value:', value, 'type:', typeof value);
+    setFieldValues(prev => ({
+      ...prev,
+      [fieldKey]: value
+    }));
+  };
+
+  const handleOpenFieldAI = (fieldKey) => {
+    console.log('AIEditModal: Opening AI help for field:', fieldKey);
+    setActiveFieldHelper(fieldKey);
+    setAiInput('');
+    setError(null);
+    
+    // Initialize chat history for this field if not exists
+    if (!chatHistory[fieldKey]) {
+      setChatHistory(prev => ({
+        ...prev,
+        [fieldKey]: []
+      }));
+    }
+  };
+
+  const handleAIHelp = async () => {
+    if (!aiInput.trim() || !activeFieldHelper) return;
+    
+    console.log('AIEditModal: Sending AI help request:', aiInput);
+    setIsGenerating(true);
+    setError(null);
+    
+    // Add user message to chat history
+    const userMessage = {
+      type: 'user',
+      message: aiInput,
+      timestamp: new Date().toLocaleTimeString()
+    };
+    
+    setChatHistory(prev => ({
+      ...prev,
+      [activeFieldHelper]: [
+        ...(prev[activeFieldHelper] || []),
+        userMessage
+      ]
+    }));
+    
+    try {
+      console.log('AIEditModal: Making real API call...');
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attributes/${attribute.id}/ai-field-help`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fieldKey: activeFieldHelper,
+          userRequest: aiInput,
+          currentValue: fieldValues[activeFieldHelper],
+          currentAttribute: fieldValues
+        }),
+      });
+      
+      const result = await response.json();
+      console.log('AIEditModal: API response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to get AI help');
+      }
+      
+      // Add AI response to chat history - with defensive string conversion
+      const aiResponse = {
+        type: 'ai',
+        message: String(result.suggestion || 'No suggestion provided'),
+        timestamp: new Date().toLocaleTimeString()
+      };
+      
+      setChatHistory(prev => ({
+        ...prev,
+        [activeFieldHelper]: [
+          ...(prev[activeFieldHelper] || []),
+          aiResponse
+        ]
+      }));
+      
+      // If AI provided a specific value suggestion, update the field
+      if (result.suggestedValue !== undefined) {
+        handleFieldChange(activeFieldHelper, String(result.suggestedValue));
+      }
+      
+      setAiInput('');
+      
+    } catch (err) {
+      console.error('AIEditModal: Error getting AI help:', err);
+      
+      // Add error message to chat history
+      const errorMessage = {
+        type: 'error',
+        message: `❌ Failed to get AI help: ${err.message}`,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      
+      setChatHistory(prev => ({
+        ...prev,
+        [activeFieldHelper]: [
+          ...(prev[activeFieldHelper] || []),
+          errorMessage
+        ]
+      }));
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      setError(null);
+      
+      // Convert fields to proper types
+      const updatedData = {
+        ...fieldValues,
+        maxPoints: fieldValues.maxPoints ? Number(fieldValues.maxPoints) : null,
+        minToQualify: fieldValues.minToQualify ? Number(fieldValues.minToQualify) : null
+      };
+      
+      console.log('AIEditModal: Saving data:', updatedData);
+      
+      if (onSave) {
+        await onSave(attribute.id, updatedData);
+      }
+      
+      onClose();
+      
+    } catch (err) {
+      console.error('AIEditModal: Save error:', err);
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <div className="relative">
-      <div className="flex items-center space-x-2">
-        {children}
-        <button
-          type="button"
-          onMouseEnter={() => setShowTooltip(true)}
-          onMouseLeave={() => setShowTooltip(false)}
-          className="text-gray-400 hover:text-gray-600"
-        >
-          <InformationCircleIcon className="h-4 w-4" />
-        </button>
-      </div>
-      {showTooltip && (
-        <div className="absolute z-50 bottom-full left-0 mb-2 w-80 p-3 bg-gray-900 text-white text-sm rounded-lg shadow-lg">
-          <div className="font-medium mb-1">{title}</div>
-          <div className="text-gray-300">{description}</div>
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50">
+      <div className="relative top-10 mx-auto p-6 border w-full max-w-4xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">Edit Attribute: {String(attribute?.heading || 'Unnamed')}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <XMarkIcon className="h-6 w-6" />
+          </button>
         </div>
-      )}
+        
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
+          </div>
+        )}
+        
+        <div className="space-y-6">
+          {fields.map(field => (
+            <div key={field.key} className="border rounded-lg p-4 bg-gray-50">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {field.label}
+                  </label>
+                  <p className="text-xs text-gray-500">{field.description}</p>
+                </div>
+                <button
+                  onClick={() => handleOpenFieldAI(field.key)}
+                  className="flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                >
+                  <SparklesIcon className="h-3 w-3 mr-1" />
+                  AI Help
+                </button>
+              </div>
+              
+              {field.type === 'text' && (
+                <input
+                  type="text"
+                  value={fieldValues[field.key] || ''}
+                  onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+              
+              {field.type === 'number' && (
+                <input
+                  type="number"
+                  value={fieldValues[field.key] || ''}
+                  onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+              
+              {field.type === 'textarea' && (
+                <textarea
+                  value={fieldValues[field.key] || ''}
+                  onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  rows={field.rows || 3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+              
+              {field.type === 'select' && (
+                <select
+                  value={fieldValues[field.key]}
+                  onChange={(e) => handleFieldChange(field.key, e.target.value === 'true')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {field.options.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              
+              {/* AI Chat for this field */}
+              {activeFieldHelper === field.key && (
+                <div className="mt-3 p-3 bg-white border rounded">
+                  <h4 className="text-sm font-medium mb-2">AI Assistant for {field.label}</h4>
+                  
+                  {/* Chat history */}
+                  {chatHistory[field.key] && chatHistory[field.key].length > 0 && (
+                    <div className="mb-3 max-h-32 overflow-y-auto space-y-2">
+                      {chatHistory[field.key].map((message, index) => (
+                        <div key={index} className={`text-xs p-2 rounded ${
+                          message.type === 'user' ? 'bg-blue-100' : 
+                          message.type === 'error' ? 'bg-red-100' : 'bg-green-100'
+                        }`}>
+                          <span className="font-medium">{message.type === 'user' ? 'You' : 'AI'}:</span> {String(message.message)}
+                          <span className="text-gray-500 ml-2">{message.timestamp}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* AI input */}
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={aiInput}
+                      onChange={(e) => setAiInput(e.target.value)}
+                      placeholder={`Ask AI about ${field.label.toLowerCase()}...`}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onKeyPress={(e) => e.key === 'Enter' && handleAIHelp()}
+                    />
+                    <button
+                      onClick={handleAIHelp}
+                      disabled={isGenerating || !aiInput.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 disabled:bg-gray-300"
+                    >
+                      {isGenerating ? 'Thinking...' : 'Ask AI'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        {/* Bottom buttons */}
+        <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300"
+          >
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
 
-const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
-  const [error, setError] = useState(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [showAIPrompt, setShowAIPrompt] = useState(false);
-  const [userRequest, setUserRequest] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [editMode, setEditMode] = useState('ai');
-  const [aiSuggestion, setAiSuggestion] = useState(null);
-  
-  // Proposed changes form state (starts as copy of current)
-  const [proposedForm, setProposedForm] = useState({
-    heading: '',
-    instructions: '',
-    maxPoints: '',
-    minToQualify: '',
-    penalty: '',
-    signals: '',
-    examples: '',
-    disqualifying: '',
-    active: true
+export default AIEditModal;
   });
 
   // Helper function to clean and format text for display only
