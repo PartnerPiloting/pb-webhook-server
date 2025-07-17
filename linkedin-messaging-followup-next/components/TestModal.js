@@ -57,7 +57,7 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50">
       <div className="relative top-10 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <h3 className="text-lg font-semibold">Test Modal - Step 3: Add field handlers + sparkle logic</h3>
+        <h3 className="text-lg font-semibold">Test Modal - Step 4: Add actual field rendering</h3>
         <p>ID: {String(attribute?.id || 'N/A')}</p>
         <p>Name: {String(attribute?.heading || 'N/A')}</p>
         <p>Max Points: {String(attribute?.maxPoints || 'N/A')}</p>
@@ -69,49 +69,47 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
           <p>Active: {String(fieldValues.active)}</p>
         </div>
         
-        <div className="mt-4 p-2 bg-blue-100 rounded">
-          <h4 className="font-medium">Chat History State:</h4>
-          <p>Messages: {chatHistory.length}</p>
-          <p>First message: {chatHistory[0]?.content?.substring(0, 50) || 'None'}...</p>
-        </div>
-        
         <div className="mt-4 p-2 bg-green-100 rounded">
-          <h4 className="font-medium">Step 3: Field Helper State:</h4>
-          <p>Active Field Helper: {activeFieldHelper || 'None'}</p>
-          <button 
-            onClick={() => handleOpenFieldAI('heading')}
-            className="mt-2 px-2 py-1 bg-purple-500 text-white rounded text-xs"
-          >
-            ✨ Test Sparkle (Heading)
-          </button>
-          <button 
-            onClick={() => handleOpenFieldAI('active')}
-            className="mt-2 ml-2 px-2 py-1 bg-purple-500 text-white rounded text-xs"
-          >
-            ✨ Test Sparkle (Active)
-          </button>
+          <h4 className="font-medium">Step 4: Test Real Field Rendering:</h4>
+          
+          <div className="mt-2 space-y-2">
+            <div>
+              <label className="block text-xs font-medium">Heading:</label>
+              <input 
+                type="text" 
+                value={fieldValues.heading || ''}
+                onChange={(e) => handleFieldChange('heading', e.target.value)}
+                className="w-full px-2 py-1 border rounded text-xs"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium">Max Points:</label>
+              <input 
+                type="number" 
+                value={fieldValues.maxPoints || ''}
+                onChange={(e) => handleFieldChange('maxPoints', e.target.value)}
+                className="w-full px-2 py-1 border rounded text-xs"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium">Active:</label>
+              <select 
+                value={fieldValues.active}
+                onChange={(e) => handleFieldChange('active', e.target.value === 'true')}
+                className="w-full px-2 py-1 border rounded text-xs"
+              >
+                <option value={true}>Active</option>
+                <option value={false}>Inactive</option>
+              </select>
+            </div>
+          </div>
         </div>
         
-        <div className="mt-4 p-2 bg-yellow-100 rounded">
-          <h4 className="font-medium">Step 3: Test Field Change (Boolean Bug?):</h4>
-          <button 
-            onClick={() => handleFieldChange('active', true)}
-            className="mt-2 px-2 py-1 bg-red-500 text-white rounded text-xs"
-          >
-            Test Boolean True
-          </button>
-          <button 
-            onClick={() => handleFieldChange('active', false)}
-            className="mt-2 ml-2 px-2 py-1 bg-red-500 text-white rounded text-xs"
-          >
-            Test Boolean False
-          </button>
-          <button 
-            onClick={() => handleFieldChange('active', 'true' === 'true')}
-            className="mt-2 ml-2 px-2 py-1 bg-red-500 text-white rounded text-xs"
-          >
-            Test Boolean Expression
-          </button>
+        <div className="mt-4 p-2 bg-blue-100 rounded">
+          <h4 className="font-medium">Chat History: {chatHistory.length} messages</h4>
+          <p>Active Field Helper: {activeFieldHelper || 'None'}</p>
         </div>
         
         <button 
