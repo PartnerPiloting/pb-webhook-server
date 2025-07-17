@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 
 const TestModal = ({ isOpen, onClose, attribute }) => {
   const [fieldValues, setFieldValues] = useState({});
+  const [chatHistory, setChatHistory] = useState([]);
 
   // Add the useEffect from complex modal
   useEffect(() => {
@@ -20,12 +21,28 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
     }
   }, [attribute]);
 
+  // Step 2: Add chatHistory state management from complex modal
+  useEffect(() => {
+    if (isOpen && attribute) {
+      console.log('TestModal: Setting up chatHistory for attribute:', attribute.id);
+      
+      // Initialize with system message like the complex modal
+      const systemMessage = {
+        role: 'system',
+        content: `You are helping to configure a lead scoring attribute: ${String(attribute.heading || 'Unnamed Attribute')}`
+      };
+      
+      console.log('TestModal: Initial chat history:', [systemMessage]);
+      setChatHistory([systemMessage]);
+    }
+  }, [isOpen, attribute]);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50">
       <div className="relative top-10 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <h3 className="text-lg font-semibold">Test Modal - Step 1: useEffect + fieldValues</h3>
+        <h3 className="text-lg font-semibold">Test Modal - Step 2: useEffect + fieldValues + chatHistory</h3>
         <p>ID: {String(attribute?.id || 'N/A')}</p>
         <p>Name: {String(attribute?.heading || 'N/A')}</p>
         <p>Max Points: {String(attribute?.maxPoints || 'N/A')}</p>
@@ -35,6 +52,12 @@ const TestModal = ({ isOpen, onClose, attribute }) => {
           <p>Heading: {fieldValues.heading}</p>
           <p>Max Points: {fieldValues.maxPoints}</p>
           <p>Active: {String(fieldValues.active)}</p>
+        </div>
+        
+        <div className="mt-4 p-2 bg-blue-100 rounded">
+          <h4 className="font-medium">Chat History State:</h4>
+          <p>Messages: {chatHistory.length}</p>
+          <p>First message: {chatHistory[0]?.content?.substring(0, 50) || 'None'}...</p>
         </div>
         
         <button 
