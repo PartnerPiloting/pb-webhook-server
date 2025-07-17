@@ -142,19 +142,38 @@ const LeadSearchUpdate = () => {
       const updated = await updateLead(selectedLead.id || selectedLead['Profile Key'], updatedData);
       
       setSelectedLead(updated);
-      setMessage({ type: 'success', text: 'Lead updated successfully!' });
       
-      // Update the lead in the search results too
-      setLeads(prevLeads => 
-        prevLeads.map(lead => 
+      // Check if lead was removed due to priority change
+      const leadStillInList = priority === 'all' || updated['Priority'] === priority;
+      if (!leadStillInList) {
+        setSelectedLead(null); // Clear selection since lead was removed
+        setMessage({ type: 'success', text: `Lead updated successfully! Moved to Priority: ${updated['Priority'] || 'None'}` });
+      } else {
+        setMessage({ type: 'success', text: 'Lead updated successfully!' });
+      }
+      
+      // Update the lead in the search results, but remove it if priority changed
+      setLeads(prevLeads => {
+        const updatedLeads = prevLeads.map(lead => 
           lead['Profile Key'] === (updated.id || updated['Profile Key']) ? {
             ...lead,
             'First Name': updated['First Name'] || '',
             'Last Name': updated['Last Name'] || '',
-            'Status': updated['Status'] || ''
+            'Status': updated['Status'] || '',
+            'Priority': updated['Priority'] || ''
           } : lead
-        )
-      );
+        );
+        
+        // If priority filter is active and updated lead doesn't match, remove it
+        if (priority !== 'all') {
+          return updatedLeads.filter(lead => 
+            lead['Profile Key'] !== (updated.id || updated['Profile Key']) || 
+            lead['Priority'] === priority
+          );
+        }
+        
+        return updatedLeads;
+      });
       
       // Clear success message after 3 seconds
       setTimeout(() => {
