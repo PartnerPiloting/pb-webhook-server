@@ -189,6 +189,9 @@ export const createLead = async (leadData) => {
     // List of dropdown fields that need empty string handling
     const dropdownFields = ['source', 'status', 'priority', 'linkedinConnectionStatus'];
     
+    // List of date fields that need empty string handling
+    const dateFields = ['followUpDate'];
+    
     Object.keys(leadData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
       if (backendField) {
@@ -196,6 +199,11 @@ export const createLead = async (leadData) => {
         
         // Convert empty strings to null for dropdown fields to avoid Airtable permissions error
         if (dropdownFields.includes(frontendField) && value === '') {
+          value = null;
+        }
+        
+        // Convert empty strings to null for date fields to avoid Airtable parsing error
+        if (dateFields.includes(frontendField) && value === '') {
           value = null;
         }
         
