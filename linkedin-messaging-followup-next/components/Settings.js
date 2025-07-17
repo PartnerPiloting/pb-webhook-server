@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAttributes, saveAttribute } from '../services/api';
 import { CogIcon } from '@heroicons/react/24/outline';
-import TestModal from './TestModal';
 import AIEditModal from './AIEditModal';
 
 const Settings = () => {
