@@ -221,7 +221,8 @@ Need help writing scoring instructions? Ask below for examples and templates.`;
       const aiResponse = {
         type: 'ai',
         message: String(result.suggestion || 'No suggestion provided'),
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString(),
+        suggestedValue: result.suggestedValue // Store the suggested value but don't auto-apply
       };
       
       setChatHistory(prev => ({
@@ -232,10 +233,10 @@ Need help writing scoring instructions? Ask below for examples and templates.`;
         ]
       }));
       
-      // If AI provided a specific value suggestion, update the field
-      if (result.suggestedValue !== undefined) {
-        handleFieldChange(activeFieldHelper, String(result.suggestedValue));
-      }
+      // Remove automatic field updating - let user choose
+      // if (result.suggestedValue !== undefined) {
+      //   handleFieldChange(activeFieldHelper, String(result.suggestedValue));
+      // }
       
       setAiInput('');
       
@@ -259,6 +260,26 @@ Need help writing scoring instructions? Ask below for examples and templates.`;
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // New function to apply AI suggestions
+  const handleApplySuggestion = (fieldKey, suggestedValue) => {
+    handleFieldChange(fieldKey, String(suggestedValue));
+    
+    // Add confirmation message to chat
+    const confirmationMessage = {
+      type: 'system',
+      message: '✅ Applied suggestion to field',
+      timestamp: new Date().toLocaleTimeString()
+    };
+    
+    setChatHistory(prev => ({
+      ...prev,
+      [fieldKey]: [
+        ...(prev[fieldKey] || []),
+        confirmationMessage
+      ]
+    }));
   };
 
   const handleSave = async () => {
@@ -384,10 +405,32 @@ Need help writing scoring instructions? Ask below for examples and templates.`;
                       {chatHistory[field.key].map((message, index) => (
                         <div key={index} className={`text-xs p-2 rounded ${
                           message.type === 'user' ? 'bg-blue-100' : 
-                          message.type === 'error' ? 'bg-red-100' : 'bg-green-100'
+                          message.type === 'error' ? 'bg-red-100' : 
+                          message.type === 'system' ? 'bg-gray-100' : 'bg-green-100'
                         }`}>
-                          <span className="font-medium">{message.type === 'user' ? 'You' : 'AI'}:</span> {String(message.message)}
-                          <span className="text-gray-500 ml-2">{message.timestamp}</span>
+                          <div>
+                            <span className="font-medium">
+                              {message.type === 'user' ? 'You' : 
+                               message.type === 'system' ? 'System' : 'AI'}:
+                            </span> {String(message.message)}
+                            <span className="text-gray-500 ml-2">{message.timestamp}</span>
+                          </div>
+                          
+                          {/* Show Apply button if AI provided a suggested value */}
+                          {message.type === 'ai' && message.suggestedValue !== undefined && message.suggestedValue !== null && (
+                            <div className="mt-2 pt-2 border-t border-gray-300">
+                              <div className="text-xs text-gray-600 mb-1">Suggested value:</div>
+                              <div className="bg-white p-2 rounded text-xs font-mono max-h-20 overflow-y-auto mb-2">
+                                {String(message.suggestedValue)}
+                              </div>
+                              <button
+                                onClick={() => handleApplySuggestion(field.key, message.suggestedValue)}
+                                className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                              >
+                                Apply to Field
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

@@ -1079,6 +1079,8 @@ USER REQUEST: ${userRequest}`;
       
       const prompt = `You are helping users write AI scoring instructions - the most critical field for lead scoring.
 
+CURRENT INSTRUCTIONS: "${currentValue || '(empty)'}"
+
 CONTEXT: Instructions must include clear point ranges from 0 to ${maxPoints} points.
 
 WHEN USER ASKS FOR HELP OR TEMPLATES:
@@ -1092,10 +1094,12 @@ WHEN USER PROVIDES TEXT:
 - Verify ranges add up to maxPoints
 - End with: SUGGESTED_VALUE: [the improved instructions]
 
-WHEN USER ASKS FOR IMPROVEMENTS:
+WHEN USER ASKS FOR IMPROVEMENTS OR FORMATTING CHANGES:
+- Look at the CURRENT INSTRUCTIONS above
+- Apply the requested changes (like removing rich text formatting)
 - Focus on clarity and specificity
 - Ensure point ranges are logical
-- Add concrete criteria for each range
+- End with: SUGGESTED_VALUE: [the cleaned/improved instructions]
 
 KEEP RESPONSES FOCUSED ON PRACTICAL SCORING CRITERIA.
 ALWAYS include SUGGESTED_VALUE when making changes.
