@@ -107,13 +107,29 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     setAiInput('');
     setError(null);
     
-    // Initialize chat history for this field if not exists
-    if (!chatHistory[fieldKey]) {
-      setChatHistory(prev => ({
-        ...prev,
-        [fieldKey]: []
-      }));
+    // Get current field value
+    const currentValue = fieldValues[fieldKey];
+    const hasValue = currentValue && currentValue.trim() !== '' && currentValue !== 'null';
+    
+    // Create automatic initial message based on field state
+    let initialMessage;
+    if (hasValue) {
+      initialMessage = `Current Name: ${currentValue}\n\nWould you like to make a change?`;
+    } else {
+      initialMessage = "Currently we have no name for this attribute - tell me what you are thinking and I'll give you some ideas to play with.";
     }
+    
+    // Initialize chat history with automatic initial message
+    const initialChatHistory = [{
+      type: 'assistant',
+      message: initialMessage,
+      timestamp: new Date().toLocaleTimeString()
+    }];
+    
+    setChatHistory(prev => ({
+      ...prev,
+      [fieldKey]: initialChatHistory
+    }));
   };
 
   const handleAIHelp = async () => {
