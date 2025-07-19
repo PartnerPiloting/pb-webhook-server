@@ -140,9 +140,12 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     
     try {
       console.log('AIEditModal: Making real API call...');
-      console.log('API URL:', `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attributes/${attribute.id}/ai-field-help`);
+      // Strip /api/linkedin suffix like other API calls do
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+      const apiUrl = `${baseUrl}/api/attributes/${attribute.id}/ai-field-help`;
+      console.log('API URL:', apiUrl);
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attributes/${attribute.id}/ai-field-help`, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
