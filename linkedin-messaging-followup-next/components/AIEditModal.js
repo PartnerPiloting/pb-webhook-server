@@ -111,12 +111,24 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     const currentValue = fieldValues[fieldKey];
     const hasValue = currentValue && currentValue.trim() !== '' && currentValue !== 'null';
     
-    // Create automatic initial message based on field state
+    // Create automatic initial message based on field type and state
     let initialMessage;
-    if (hasValue) {
-      initialMessage = `Current Name: ${currentValue}\n\nWould you like to make a change?`;
+    
+    if (fieldKey === 'heading') {
+      if (hasValue) {
+        initialMessage = `Current Name: ${currentValue}\n\nWould you like to make a change?`;
+      } else {
+        initialMessage = "Currently we have no name for this attribute - tell me what you are thinking and I'll give you some ideas to play with.";
+      }
+    } else if (fieldKey === 'maxPoints') {
+      initialMessage = `The maximum number of points for this attribute determines how important you consider this attribute is compared with other attributes. If you would like me to change this, just tell me the new max and I'll set it.\n\nCurrent Max Points: ${currentValue || '0'}`;
     } else {
-      initialMessage = "Currently we have no name for this attribute - tell me what you are thinking and I'll give you some ideas to play with.";
+      // Default message for other fields
+      if (hasValue) {
+        initialMessage = `Current Value: ${currentValue}\n\nWould you like to make a change?`;
+      } else {
+        initialMessage = "This field is currently empty. Tell me what you'd like to set and I'll help you configure it.";
+      }
     }
     
     // Initialize chat history with automatic initial message
