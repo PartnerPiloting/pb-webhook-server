@@ -1071,6 +1071,91 @@ USER REQUEST: ${userRequest}`;
       return;
     }
 
+    // Special handling for instructions field - the most critical field for scoring
+    if (fieldKey === 'instructions') {
+      const maxPoints = currentAttribute.maxPoints || 15;
+      const lowRange = Math.floor(maxPoints * 0.2);
+      const midRange = Math.floor(maxPoints * 0.6);
+      
+      const prompt = `You are helping users write AI scoring instructions - the most critical field for lead scoring.
+
+CONTEXT: Instructions must include clear point ranges from 0 to ${maxPoints} points.
+
+WHEN USER ASKS FOR HELP OR TEMPLATES:
+- Provide template: "0-${lowRange} pts = minimal experience/skills, ${lowRange + 1}-${midRange} pts = moderate experience/skills, ${midRange + 1}-${maxPoints} pts = strong experience/skills"
+- Add specific criteria for each range based on the attribute
+- Always use actual point numbers, not percentages
+
+WHEN USER PROVIDES TEXT:
+- Ensure it includes point ranges 0-${maxPoints}
+- Make it concise but specific
+- Verify ranges add up to maxPoints
+- End with: SUGGESTED_VALUE: [the improved instructions]
+
+WHEN USER ASKS FOR IMPROVEMENTS:
+- Focus on clarity and specificity
+- Ensure point ranges are logical
+- Add concrete criteria for each range
+
+KEEP RESPONSES FOCUSED ON PRACTICAL SCORING CRITERIA.
+ALWAYS include SUGGESTED_VALUE when making changes.
+
+USER REQUEST: ${userRequest}`;
+
+      // Call Gemini for field-specific help
+      if (!vertexAIClient) {
+        throw new Error("Gemini client not available");
+      }
+
+      const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+      const model = vertexAIClient.getGenerativeModel({
+        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000
+        }
+      });
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const candidate = result.response.candidates?.[0];
+      if (!candidate) {
+        throw new Error("No response from AI");
+      }
+
+      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      if (!responseText) {
+        throw new Error("Empty response from AI");
+      }
+
+      // Extract suggested value if present
+      let suggestion = responseText;
+      let suggestedValue = null;
+      
+      if (responseText.includes('SUGGESTED_VALUE:')) {
+        const parts = responseText.split('SUGGESTED_VALUE:');
+        suggestion = parts[0].trim();
+        suggestedValue = parts[1].trim();
+      }
+
+      res.json({
+        success: true,
+        suggestion,
+        suggestedValue,
+        fieldKey,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
     // Default prompt for all other fields
     const prompt = `You are an expert AI assistant helping to improve lead scoring attributes.
 
