@@ -121,7 +121,11 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
         initialMessage = "Currently we have no name for this attribute - tell me what you are thinking and I'll give you some ideas to play with.";
       }
     } else if (fieldKey === 'maxPoints') {
-      initialMessage = `The maximum number of points for this attribute determines how important you consider this attribute is compared with other attributes. If you would like me to change this, just tell me the new max and I'll set it.\n\nCurrent Max Points: ${currentValue || '0'}`;
+      initialMessage = `Max Points determines how important this attribute is compared to others in your scoring system. Higher numbers = more important.
+
+Current Max Points: ${currentValue || '0'}
+
+To change this number, just tell me the new value. If you need an explanation of how scoring works, ask below.`;
     } else {
       // Default message for other fields
       if (hasValue) {

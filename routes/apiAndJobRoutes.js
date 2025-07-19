@@ -993,6 +993,84 @@ USER REQUEST: ${userRequest}`;
       return;
     }
 
+    // Special handling for maxPoints field with concise behavioral instructions
+    if (fieldKey === 'maxPoints') {
+      const prompt = `You are helping users set the maximum points for this scoring attribute.
+
+CONTEXT: Max points determines how important this attribute is compared to others. Higher numbers = more important.
+
+KEEP RESPONSES SHORT AND DIRECT.
+
+WHEN USER GIVES A NUMBER:
+- Immediately respond with: "I've updated max points to [number]. This makes the attribute [more/less] important in scoring."
+- Always end with: SUGGESTED_VALUE: [the number they provided]
+
+WHEN USER ASKS FOR HELP:
+- Suggest: "Typical ranges: Critical skills (15-25), Important qualifications (10-15), Nice-to-have (5-10)"
+- Always ask: "What number would you like?"
+
+WHEN USER ASKS FOR EXPLANATION:
+- Briefly explain: "Max points controls importance. Higher = more weight in final scores. All attributes compete for points."
+
+NEVER give long explanations about scoring algorithms.
+ALWAYS include SUGGESTED_VALUE when making changes.
+
+USER REQUEST: ${userRequest}`;
+
+      // Call Gemini for field-specific help
+      if (!vertexAIClient) {
+        throw new Error("Gemini client not available");
+      }
+
+      const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+      const model = vertexAIClient.getGenerativeModel({
+        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000
+        }
+      });
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const candidate = result.response.candidates?.[0];
+      if (!candidate) {
+        throw new Error("No response from AI");
+      }
+
+      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      if (!responseText) {
+        throw new Error("Empty response from AI");
+      }
+
+      // Extract suggested value if present
+      let suggestion = responseText;
+      let suggestedValue = null;
+      
+      if (responseText.includes('SUGGESTED_VALUE:')) {
+        const parts = responseText.split('SUGGESTED_VALUE:');
+        suggestion = parts[0].trim();
+        suggestedValue = parts[1].trim();
+      }
+
+      res.json({
+        success: true,
+        suggestion,
+        suggestedValue,
+        fieldKey,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
     // Default prompt for all other fields
     const prompt = `You are an expert AI assistant helping to improve lead scoring attributes.
 
