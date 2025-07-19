@@ -126,6 +126,16 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 Current Max Points: ${currentValue || '0'}
 
 To change this number, just tell me the new value. If you need an explanation of how scoring works, ask below.`;
+    } else if (fieldKey === 'instructions') {
+      const truncatedText = currentValue && currentValue.length > 100 ? 
+        currentValue.substring(0, 100) + '...' : 
+        currentValue || '(empty)';
+      
+      initialMessage = `Instructions are the core rubric sent to the AI for scoring - this is the most important field. Must include clear point ranges based on your max points.
+
+Current Instructions: ${truncatedText}
+
+Need help writing scoring instructions? Ask below for examples and templates.`;
     } else {
       // Default message for other fields
       if (hasValue) {
