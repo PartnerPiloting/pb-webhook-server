@@ -909,7 +909,7 @@ router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
       });
     }
 
-    // Field-specific prompt building
+    // Field-specific prompt building with enhanced instructions for heading field
     const fieldContext = {
       heading: "Display name for this attribute. Keep it concise and descriptive.",
       maxPoints: "Maximum points this attribute can award. Typically 3-20 points based on importance.",
@@ -920,6 +920,80 @@ router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
       active: "Whether this attribute is currently used in scoring. Inactive attributes are ignored."
     };
 
+    // Special handling for heading field with specific behavioral instructions
+    if (fieldKey === 'heading') {
+      const headingValue = currentValue && currentValue.trim() !== '' && currentValue !== 'null';
+      
+      const prompt = `You are an agent that helps users determine the name for this attribute.
+
+${headingValue ? 
+  `This attribute is currently named: "${currentValue}". Do you want to make any changes?` : 
+  `Ok at the moment we have no name for this attribute, what would you like to call it?`
+}
+
+INSTRUCTIONS FOR YOU:
+- If the user asks you to make a change, apply the change to the attribute name field immediately
+- Do not attempt to save to the database yet as that will be done when the update form button is clicked
+- When you provide a new name, end your response with: SUGGESTED_VALUE: [the new name]
+- Be helpful but direct - focus on making the change they request
+
+USER REQUEST: ${userRequest}`;
+
+      // Call Gemini for field-specific help
+      if (!vertexAIClient) {
+        throw new Error("Gemini client not available");
+      }
+
+      const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+      const model = vertexAIClient.getGenerativeModel({
+        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000
+        }
+      });
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const candidate = result.response.candidates?.[0];
+      if (!candidate) {
+        throw new Error("No response from AI");
+      }
+
+      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      if (!responseText) {
+        throw new Error("Empty response from AI");
+      }
+
+      // Extract suggested value if present
+      let suggestion = responseText;
+      let suggestedValue = null;
+      
+      if (responseText.includes('SUGGESTED_VALUE:')) {
+        const parts = responseText.split('SUGGESTED_VALUE:');
+        suggestion = parts[0].trim();
+        suggestedValue = parts[1].trim();
+      }
+
+      res.json({
+        success: true,
+        suggestion,
+        suggestedValue,
+        fieldKey,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Default prompt for all other fields
     const prompt = `You are an expert AI assistant helping to improve lead scoring attributes.
 
 FIELD CONTEXT:
