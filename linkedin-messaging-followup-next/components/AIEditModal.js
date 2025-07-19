@@ -140,6 +140,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     
     try {
       console.log('AIEditModal: Making real API call...');
+      console.log('API URL:', `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attributes/${attribute.id}/ai-field-help`);
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attributes/${attribute.id}/ai-field-help`, {
         method: 'POST',
@@ -153,6 +154,16 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           currentAttribute: fieldValues
         }),
       });
+      
+      console.log('AIEditModal: Response status:', response.status);
+      console.log('AIEditModal: Response ok:', response.ok);
+      
+      // Check if response is ok before trying to parse JSON
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('AIEditModal: Error response text:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
       
       const result = await response.json();
       console.log('AIEditModal: API response:', result);
