@@ -75,12 +75,12 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     if (attribute) {
       console.log('AIEditModal: Setting field values for attribute:', attribute);
       setFieldValues({
-        heading: String(attribute.heading || ''),
-        maxPoints: String(attribute.maxPoints || ''),
-        instructions: String(attribute.instructions || ''),
-        minToQualify: String(attribute.minToQualify || ''),
-        signals: String(attribute.signals || ''),
-        examples: String(attribute.examples || ''),
+        heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
+        maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
+        instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
+        minToQualify: (attribute.minToQualify && attribute.minToQualify !== 'null') ? String(attribute.minToQualify) : '',
+        signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
+        examples: (attribute.examples && attribute.examples !== 'null') ? String(attribute.examples) : '',
         active: attribute.active !== false
       });
       
@@ -338,7 +338,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
                   
                   {/* Chat history */}
                   {chatHistory[field.key] && chatHistory[field.key].length > 0 && (
-                    <div className="mb-3 max-h-32 overflow-y-auto space-y-2">
+                    <div className="mb-3 max-h-96 overflow-y-auto space-y-2 border border-gray-200 rounded p-2 bg-gray-50">
                       {chatHistory[field.key].map((message, index) => (
                         <div key={index} className={`text-xs p-2 rounded ${
                           message.type === 'user' ? 'bg-blue-100' : 
