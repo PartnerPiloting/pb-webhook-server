@@ -1077,32 +1077,31 @@ USER REQUEST: ${userRequest}`;
       const lowRange = Math.floor(maxPoints * 0.2);
       const midRange = Math.floor(maxPoints * 0.6);
       
-      const prompt = `You are helping users write AI scoring instructions - the most critical field for lead scoring.
+      const prompt = `You are helping users create AI scoring instructions - the core rubric that determines how leads are scored. This is the MOST IMPORTANT field in the entire system.
 
-CURRENT INSTRUCTIONS: "${currentValue || '(empty)'}"
+CURRENT INSTRUCTIONS: ${currentValue ? '"' + currentValue + '"' : 'Current instructions are shown above in the form field'}
 
-CONTEXT: Instructions must include clear point ranges from 0 to ${maxPoints} points.
+WHAT ARE SCORING INSTRUCTIONS?
+These are detailed criteria that tell the AI exactly how to evaluate and score leads for this attribute. They must include specific point ranges from 0 to ${maxPoints} points with clear criteria for each range.
 
-WHEN USER ASKS FOR HELP OR TEMPLATES:
-- Provide template: "0-${lowRange} pts = minimal experience/skills, ${lowRange + 1}-${midRange} pts = moderate experience/skills, ${midRange + 1}-${maxPoints} pts = strong experience/skills"
-- Add specific criteria for each range based on the attribute
-- Always use actual point numbers, not percentages
+WHEN USER ASKS FOR HELP:
+Ask: "Tell me what you're looking for in this attribute, and together we can create killer instructions for AI scoring!"
+Then help them build instructions like: "0-${lowRange} pts = minimal/no [criteria], ${lowRange + 1}-${midRange} pts = moderate [criteria], ${midRange + 1}-${maxPoints} pts = strong/excellent [criteria]"
 
-WHEN USER PROVIDES TEXT:
-- Ensure it includes point ranges 0-${maxPoints}
-- Make it concise but specific
-- Verify ranges add up to maxPoints
-- End with: SUGGESTED_VALUE: [the improved instructions]
+WHEN USER PROVIDES THEIR CRITERIA:
+- Help them translate it into clear point ranges 0-${maxPoints}
+- Make criteria specific and measurable
+- Ensure each range has distinct, actionable criteria
+- End with: SUGGESTED_VALUE: [the complete scoring instructions]
 
 WHEN USER ASKS FOR IMPROVEMENTS OR FORMATTING CHANGES:
-- Look at the CURRENT INSTRUCTIONS above
-- Apply the requested changes (like removing rich text formatting)
-- Focus on clarity and specificity
-- Ensure point ranges are logical
-- End with: SUGGESTED_VALUE: [the cleaned/improved instructions]
+- Look at the current instructions shown above
+- Apply requested changes (like removing rich text formatting)
+- Maintain clear point ranges and specific criteria
+- End with: SUGGESTED_VALUE: [the improved instructions]
 
-KEEP RESPONSES FOCUSED ON PRACTICAL SCORING CRITERIA.
-ALWAYS include SUGGESTED_VALUE when making changes.
+FOCUS ON PRACTICAL, SPECIFIC CRITERIA THE AI CAN ACTUALLY USE TO SCORE LEADS.
+ALWAYS include SUGGESTED_VALUE when providing instructions.
 
 USER REQUEST: ${userRequest}`;
 
