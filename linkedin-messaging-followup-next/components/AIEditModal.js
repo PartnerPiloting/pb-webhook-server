@@ -135,7 +135,7 @@ To change this number, just tell me the new value. If you need an explanation of
       
       initialMessage = `The current instructions to AI on how to score ${attribute.heading || 'this attribute'} ${hasInstructions ? 'are as above' : 'have not been set'}.
 
-Below start with "I am looking for people who [enter your criteria]. I'm not sure what they would have on their profiles that would indicate this or how we should create 3 scoring ranges up to the maximum points possible for this attribute. Can you help me develop the ranges and suggestions of what to look for in each range?"`;
+Enter below "I am looking for people who [enter your criteria]"`;
     } else {
       // Default message for other fields
       if (hasValue) {
@@ -438,13 +438,13 @@ Below start with "I am looking for people who [enter your criteria]. I'm not sur
                   
                   {/* AI input */}
                   <div className="flex space-x-2">
-                    <input
-                      type="text"
+                    <textarea
                       value={aiInput}
                       onChange={(e) => setAiInput(e.target.value)}
                       placeholder={`Ask AI about ${field.label.toLowerCase()}...`}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      onKeyPress={(e) => e.key === 'Enter' && handleAIHelp()}
+                      rows={5}
+                      onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleAIHelp()}
                     />
                     <button
                       onClick={handleAIHelp}
