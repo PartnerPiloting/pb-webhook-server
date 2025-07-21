@@ -997,26 +997,24 @@ USER REQUEST: ${userRequest}`;
     if (fieldKey === 'maxPoints') {
       const prompt = `You are an expert assistant helping users understand max points for scoring attributes.
 
-USER QUESTION: ${userRequest}
+USER'S QUESTION: "${userRequest}"
 
-ANSWER THEIR SPECIFIC QUESTION DIRECTLY AND HELPFULLY:
+RESPOND DIRECTLY TO THEIR SPECIFIC QUESTION. Here's context to help you answer:
 
-Max points determines the weight/importance of this attribute in the overall scoring system. Here's how it works:
+CORE CONCEPT: Max points determines the weight/importance of this attribute in the overall scoring system.
 
+KEY POINTS:
 • Higher max points = more important attribute = bigger impact on final scores
 • Lower max points = less important attribute = smaller impact on final scores
 • All attributes compete for points in the final scoring calculation
-
-Think of it like a competition where attributes with higher max points can contribute more to the final score, making them more influential in hiring decisions.
+• Think of it like a competition where attributes with higher max points can contribute more to the final score
 
 IMPORTANCE LEVELS:
 • Critical skills (high importance): Qualifications that heavily influence hiring decisions
-• Important qualifications (moderate importance): Valuable skills that give candidates an edge  
+• Important qualifications (moderate importance): Valuable skills that give candidates an edge
 • Nice-to-have (low importance): Bonus qualities that are good but not essential
 
-To set your max points, simply type the number you want in the field above this chat.
-
-Is there anything specific about max points you'd like me to explain further?`;
+Answer their question directly and conversationally. If they ask about changing values, remind them to type the number in the field above.`;
 
       // Call Gemini for field-specific help
       if (!vertexAIClient) {
@@ -1038,19 +1036,30 @@ Is there anything specific about max points you'd like me to explain further?`;
         }
       });
 
+      console.log(`apiAndJobRoutes.js: Sending maxPoints prompt to Gemini:`, prompt.substring(0, 200) + '...');
+
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
 
+      console.log(`apiAndJobRoutes.js: Gemini response structure:`, JSON.stringify(result.response, null, 2));
+
       const candidate = result.response.candidates?.[0];
       if (!candidate) {
+        console.error(`apiAndJobRoutes.js: No candidates in maxPoints response. Full response:`, JSON.stringify(result.response, null, 2));
         throw new Error("No response from AI");
       }
 
+      console.log(`apiAndJobRoutes.js: maxPoints candidate structure:`, JSON.stringify(candidate, null, 2));
+
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
-        throw new Error("Empty response from AI");
+        console.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
+        console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
+
+      console.log(`apiAndJobRoutes.js: maxPoints AI response:`, responseText.substring(0, 100) + '...');
 
       // Extract suggested value if present
       let suggestion = responseText;
