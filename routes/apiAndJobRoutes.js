@@ -1151,6 +1151,100 @@ USER REQUEST: ${userRequest}`;
       return;
     }
 
+    // Special handling for signals field - detection keywords that help AI find this attribute
+    if (fieldKey === 'signals') {
+      const instructions = currentAttribute.instructions || currentValue || '(no instructions set)';
+      const attributeName = currentAttribute.heading || 'this attribute';
+      
+      const prompt = `You are helping users create detection keywords for "${attributeName}" - words and phrases that help AI identify when this attribute applies to a LinkedIn profile.
+
+CURRENT INSTRUCTIONS FOR AI SCORING:
+${instructions}
+
+CURRENT DETECTION KEYWORDS: ${currentValue || '(none set)'}
+
+WHAT ARE DETECTION KEYWORDS?
+These are specific words, phrases, job titles, skills, or indicators that suggest someone has this attribute. When the AI sees these in a LinkedIn profile, it knows to evaluate this attribute more carefully.
+
+WHEN USER ASKS FOR SUGGESTIONS (phrases like "what keywords would you suggest", "looking at the instructions", "based on the scoring criteria"):
+- Analyze the scoring instructions above
+- Extract key terms, skills, job titles, technologies, or indicators mentioned
+- Suggest 8-12 relevant keywords/phrases separated by commas
+- Include both technical terms and common variations
+- ALWAYS end with: SUGGESTED_VALUE: [comma-separated keywords]
+
+WHEN USER ASKS TO ADD KEYWORDS (phrases like "add...", "include...", "also add..."):
+- Take the current keywords above and add the new ones
+- Remove duplicates and organize logically
+- ALWAYS end with: SUGGESTED_VALUE: [updated comma-separated keywords]
+
+WHEN USER ASKS FOR HELP:
+- Ask: "I can analyze your scoring instructions and suggest keywords that help AI detect this attribute. What would you like me to focus on?"
+
+EXAMPLES OF GOOD KEYWORDS:
+- Job titles: "CTO, VP Engineering, Technical Lead"
+- Skills: "machine learning, AI, data science"
+- Technologies: "Python, TensorFlow, AWS"
+- Experience indicators: "startup founder, side projects, open source"
+
+ALWAYS include SUGGESTED_VALUE when providing or updating keywords.
+
+USER REQUEST: ${userRequest}`;
+
+      // Call Gemini for field-specific help
+      if (!vertexAIClient) {
+        throw new Error("Gemini client not available");
+      }
+
+      const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+      const model = vertexAIClient.getGenerativeModel({
+        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000
+        }
+      });
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const candidate = result.response.candidates?.[0];
+      if (!candidate) {
+        throw new Error("No response from AI");
+      }
+
+      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      if (!responseText) {
+        throw new Error("Empty response from AI");
+      }
+
+      // Extract suggested value if present
+      let suggestion = responseText;
+      let suggestedValue = null;
+      
+      if (responseText.includes('SUGGESTED_VALUE:')) {
+        const parts = responseText.split('SUGGESTED_VALUE:');
+        suggestion = parts[0].trim();
+        suggestedValue = parts[1].trim();
+      }
+
+      res.json({
+        success: true,
+        suggestion,
+        suggestedValue,
+        fieldKey,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
     // Special handling for instructions field - the most critical field for scoring
     if (fieldKey === 'instructions') {
       // Use the current max points from the form, not the database
