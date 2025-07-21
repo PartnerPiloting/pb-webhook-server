@@ -1073,13 +1073,14 @@ USER REQUEST: ${userRequest}`;
 
     // Special handling for instructions field - the most critical field for scoring
     if (fieldKey === 'instructions') {
+      // Use the current max points from the form, not the database
       const maxPoints = currentAttribute.maxPoints || 15;
       const lowRange = Math.floor(maxPoints * 0.2);
       const midRange = Math.floor(maxPoints * 0.6);
       
       const prompt = `You are helping users create AI scoring instructions - the core rubric that determines how leads are scored. This is the MOST IMPORTANT field in the entire system.
 
-CURRENT INSTRUCTIONS: Current instructions are as above
+CURRENT INSTRUCTIONS: ${currentValue || '(no current instructions)'}
 
 WHAT ARE SCORING INSTRUCTIONS?
 These are detailed criteria that tell the AI exactly how to evaluate and score leads for this attribute. They must include specific point ranges from 0 to ${maxPoints} points with clear criteria for each range.
@@ -1089,7 +1090,13 @@ WHEN USER PROVIDES THEIR CRITERIA (phrases like "I am looking for people who..."
 - Make criteria specific and measurable
 - Ensure each range has distinct, actionable criteria
 - Format each scoring range on its own line for readability
-- End with: SUGGESTED_VALUE: [the complete scoring instructions]
+- ALWAYS end with: SUGGESTED_VALUE: [the complete scoring instructions]
+
+WHEN USER ASKS FOR MODIFICATIONS (phrases like "add something about...", "include...", "change the top range to..."):
+- Take the current instructions above and apply the requested changes
+- Maintain the 0-${maxPoints} point range structure
+- Keep the format with each range on its own line
+- ALWAYS end with: SUGGESTED_VALUE: [the updated scoring instructions]
 
 WHEN USER ASKS FOR HELP (phrases like "help me", "what should I do", "how does this work", "I don't know"):
 Ask: "Tell me what you're looking for in this attribute, and together we can create killer instructions for AI scoring!"
@@ -1098,14 +1105,7 @@ Then help them build instructions with clear ranges formatted on separate lines 
 ${lowRange + 1}-${midRange} pts = moderate [criteria]  
 ${midRange + 1}-${maxPoints} pts = strong/excellent [criteria]"
 
-WHEN USER ASKS FOR IMPROVEMENTS OR FORMATTING CHANGES:
-- Look at the current instructions shown above
-- Apply requested changes (like removing rich text formatting)
-- Maintain clear point ranges and specific criteria
-- End with: SUGGESTED_VALUE: [the improved instructions]
-
-FOCUS ON PRACTICAL, SPECIFIC CRITERIA THE AI CAN ACTUALLY USE TO SCORE LEADS.
-ALWAYS include SUGGESTED_VALUE when providing instructions.
+CRITICAL: ALWAYS include SUGGESTED_VALUE in your response when providing or updating instructions.
 
 USER REQUEST: ${userRequest}`;
 

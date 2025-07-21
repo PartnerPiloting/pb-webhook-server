@@ -399,28 +399,40 @@ Enter below "I am looking for people who [enter your criteria]"`;
                 <div className="mt-3 p-3 bg-white border rounded">
                   <h4 className="text-sm font-medium mb-2">AI Assistant for {field.label}</h4>
                   
-                  {/* Chat history */}
+                  {/* Chat history - Show only suggested values, not AI explanations */}
                   {chatHistory[field.key] && chatHistory[field.key].length > 0 && (
-                    <div className="mb-3 max-h-96 overflow-y-auto space-y-2 border border-gray-200 rounded p-2 bg-gray-50">
+                    <div className="mb-3 space-y-2">
                       {chatHistory[field.key].map((message, index) => (
-                        <div key={index} className={`text-xs p-2 rounded ${
-                          message.type === 'user' ? 'bg-blue-100' : 
-                          message.type === 'error' ? 'bg-red-100' : 
-                          message.type === 'system' ? 'bg-gray-100' : 'bg-green-100'
-                        }`}>
-                          <div>
-                            <span className="font-medium">
-                              {message.type === 'user' ? 'You' : 
-                               message.type === 'system' ? 'System' : 'AI'}:
-                            </span> {String(message.message)}
-                            <span className="text-gray-500 ml-2">{message.timestamp}</span>
-                          </div>
+                        <div key={index}>
+                          {/* Show user messages */}
+                          {message.type === 'user' && (
+                            <div className="text-xs p-2 rounded bg-blue-100 mb-2">
+                              <span className="font-medium">You:</span> {String(message.message)}
+                              <span className="text-gray-500 ml-2">{message.timestamp}</span>
+                            </div>
+                          )}
                           
-                          {/* Show Apply button if AI provided a suggested value */}
+                          {/* Show error messages */}
+                          {message.type === 'error' && (
+                            <div className="text-xs p-2 rounded bg-red-100 mb-2">
+                              <span className="font-medium">Error:</span> {String(message.message)}
+                              <span className="text-gray-500 ml-2">{message.timestamp}</span>
+                            </div>
+                          )}
+                          
+                          {/* Show system messages */}
+                          {message.type === 'system' && (
+                            <div className="text-xs p-2 rounded bg-gray-100 mb-2">
+                              <span className="font-medium">System:</span> {String(message.message)}
+                              <span className="text-gray-500 ml-2">{message.timestamp}</span>
+                            </div>
+                          )}
+                          
+                          {/* Show only suggested values from AI, not the explanation text */}
                           {message.type === 'ai' && message.suggestedValue !== undefined && message.suggestedValue !== null && (
-                            <div className="mt-2 pt-2 border-t border-gray-300">
+                            <div className="border border-gray-300 rounded p-3 bg-white">
                               <div className="text-xs text-gray-600 mb-1">Suggested value:</div>
-                              <div className="bg-white p-2 rounded text-xs font-mono h-40 overflow-y-auto mb-2 whitespace-pre-wrap border border-gray-200">
+                              <div className="bg-gray-50 p-2 rounded text-xs font-mono h-40 overflow-y-auto mb-2 whitespace-pre-wrap border border-gray-200">
                                 {String(message.suggestedValue)}
                               </div>
                               <button
