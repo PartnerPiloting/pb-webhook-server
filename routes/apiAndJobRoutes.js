@@ -970,6 +970,10 @@ USER REQUEST: ${userRequest}`;
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
+        }
         throw new Error("Empty response from AI");
       }
 
@@ -1056,6 +1060,12 @@ Answer their question directly and conversationally. If they ask about changing 
       if (!responseText) {
         console.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
         console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
+        }
+        
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
 
@@ -1137,6 +1147,10 @@ What level of requirement do you want this attribute to have?`;
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
+        }
         throw new Error("Empty response from AI");
       }
 
@@ -1216,7 +1230,7 @@ USER REQUEST: ${userRequest}`;
         ],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 1000
+          maxOutputTokens: 2000  // Increased for signals field keyword analysis
         }
       });
 
@@ -1231,6 +1245,10 @@ USER REQUEST: ${userRequest}`;
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
+        }
         throw new Error("Empty response from AI");
       }
 
@@ -1321,6 +1339,12 @@ Answer their question directly and conversationally. If you have specific update
       if (!responseText) {
         console.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
         console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
+        }
+        
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
 
@@ -1400,6 +1424,10 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
 
     const responseText = candidate.content?.parts?.[0]?.text?.trim();
     if (!responseText) {
+      // Check if it's a token limit issue for better UX
+      if (candidate.finishReason === 'MAX_TOKENS') {
+        throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
+      }
       throw new Error("Empty response from AI");
     }
 
