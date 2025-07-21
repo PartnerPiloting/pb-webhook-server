@@ -1084,19 +1084,19 @@ CURRENT INSTRUCTIONS: Current instructions are as above
 WHAT ARE SCORING INSTRUCTIONS?
 These are detailed criteria that tell the AI exactly how to evaluate and score leads for this attribute. They must include specific point ranges from 0 to ${maxPoints} points with clear criteria for each range.
 
-WHEN USER ASKS FOR HELP:
+WHEN USER PROVIDES THEIR CRITERIA (phrases like "I am looking for people who...", "I want to find...", "I need people with...", or describes specific qualities/skills):
+- IMMEDIATELY translate it into clear point ranges 0-${maxPoints}
+- Make criteria specific and measurable
+- Ensure each range has distinct, actionable criteria
+- Format each scoring range on its own line for readability
+- End with: SUGGESTED_VALUE: [the complete scoring instructions]
+
+WHEN USER ASKS FOR HELP (phrases like "help me", "what should I do", "how does this work", "I don't know"):
 Ask: "Tell me what you're looking for in this attribute, and together we can create killer instructions for AI scoring!"
 Then help them build instructions with clear ranges formatted on separate lines like:
 "0-${lowRange} pts = minimal/no [criteria]
 ${lowRange + 1}-${midRange} pts = moderate [criteria]  
 ${midRange + 1}-${maxPoints} pts = strong/excellent [criteria]"
-
-WHEN USER PROVIDES THEIR CRITERIA:
-- Help them translate it into clear point ranges 0-${maxPoints}
-- Make criteria specific and measurable
-- Ensure each range has distinct, actionable criteria
-- Format each scoring range on its own line for readability
-- End with: SUGGESTED_VALUE: [the complete scoring instructions]
 
 WHEN USER ASKS FOR IMPROVEMENTS OR FORMATTING CHANGES:
 - Look at the current instructions shown above
