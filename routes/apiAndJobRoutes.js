@@ -995,24 +995,26 @@ USER REQUEST: ${userRequest}`;
 
     // Special handling for maxPoints field with concise behavioral instructions
     if (fieldKey === 'maxPoints') {
-      const prompt = `You are helping users understand the maximum points for this scoring attribute.
+      const prompt = `You are an expert assistant helping users understand max points for scoring attributes.
 
-CONTEXT: Max points determines how important this attribute is compared to others. Higher numbers = more important.
+USER QUESTION: ${userRequest}
 
-WHEN USER ASKS FOR HELP OR EXPLANATION:
-- Explain: "Max points controls importance. Higher = more weight in final scores. All attributes compete for points."
-- Suggest: "Typical ranges: Critical skills (15-25), Important qualifications (10-15), Nice-to-have (5-10)"
-- Guide them to type their desired number in the field above
+RESPOND DIRECTLY TO THEIR QUESTION WITH HELPFUL INFORMATION:
 
-WHEN USER ASKS ABOUT NUMBERS:
-- Provide guidance on appropriate ranges for different importance levels
-- Help them understand the impact of different point values
-- Direct them to type the value in the field above
+Yes, max points essentially determines the weight/importance of this attribute in the overall scoring system. Here's how it works:
 
-NEVER suggest specific values with SUGGESTED_VALUE.
-KEEP RESPONSES SHORT AND CONVERSATIONAL.
+• Higher max points = more important attribute = bigger impact on final scores
+• Lower max points = less important attribute = smaller impact on final scores
+• All attributes compete for points in the final scoring calculation
 
-USER REQUEST: ${userRequest}`;
+IMPORTANCE LEVELS:
+• Critical skills (high importance): Qualifications that heavily influence hiring decisions
+• Important qualifications (moderate importance): Valuable skills that give candidates an edge  
+• Nice-to-have (low importance): Bonus qualities that are good but not essential
+
+To set your max points, simply type the number you want in the field above this chat.
+
+What level of importance do you want this attribute to have in your scoring?`;
 
       // Call Gemini for field-specific help
       if (!vertexAIClient) {
@@ -1070,26 +1072,28 @@ USER REQUEST: ${userRequest}`;
 
     // Special handling for minToQualify field with concise behavioral instructions
     if (fieldKey === 'minToQualify') {
-      const prompt = `You are helping users understand the minimum points threshold for this scoring attribute.
+      const prompt = `You are an expert assistant helping users understand minimum qualifying points for scoring attributes.
 
-CONTEXT: Profiles with points for this attribute less than your specified minimum will automatically score zero overall.
+USER QUESTION: ${userRequest}
 
 CURRENT VALUE: ${currentValue || '0 (no minimum required)'}
 
-WHEN USER ASKS FOR HELP OR EXPLANATION:
-- Explain: "This eliminates profiles that don't meet basic requirements. Set to 0 if everyone should be fully scored regardless of this attribute."
-- Suggest: "Common thresholds: No minimum (0), Basic requirement (20-30% of max points), Important requirement (40-60% of max points)"
-- Guide them to type their desired number in the field above
+RESPOND DIRECTLY TO THEIR QUESTION WITH HELPFUL INFORMATION:
 
-WHEN USER ASKS ABOUT NUMBERS:
-- Provide guidance on appropriate threshold percentages
-- Help them understand the impact of different minimums
-- Direct them to type the value in the field above
+Min to Qualify is a threshold that eliminates candidates who don't meet basic requirements for this attribute. Here's how it works:
 
-NEVER suggest specific values with SUGGESTED_VALUE.
-KEEP RESPONSES SHORT AND CONVERSATIONAL.
+• If someone scores below your minimum on this attribute, they automatically get 0% overall (eliminated)
+• If they meet or exceed the minimum, they continue through normal scoring
+• Set to 0 if you want everyone scored regardless of this attribute
 
-USER REQUEST: ${userRequest}`;
+THRESHOLD APPROACHES:
+• No minimum: Everyone gets fully scored regardless
+• Basic requirement: Must show some evidence of this attribute
+• Important requirement: Must have solid demonstration of this attribute
+
+To set your minimum, simply type the number you want in the field above this chat.
+
+What level of requirement do you want this attribute to have?`;
 
       // Call Gemini for field-specific help
       if (!vertexAIClient) {
