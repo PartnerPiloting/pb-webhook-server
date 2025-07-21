@@ -995,25 +995,22 @@ USER REQUEST: ${userRequest}`;
 
     // Special handling for maxPoints field with concise behavioral instructions
     if (fieldKey === 'maxPoints') {
-      const prompt = `You are helping users set the maximum points for this scoring attribute.
+      const prompt = `You are helping users understand the maximum points for this scoring attribute.
 
 CONTEXT: Max points determines how important this attribute is compared to others. Higher numbers = more important.
 
-KEEP RESPONSES SHORT AND DIRECT.
-
-WHEN USER GIVES A NUMBER:
-- Immediately respond with: "I've updated max points to [number]. This makes the attribute [more/less] important in scoring."
-- Always end with: SUGGESTED_VALUE: [the number they provided]
-
-WHEN USER ASKS FOR HELP:
+WHEN USER ASKS FOR HELP OR EXPLANATION:
+- Explain: "Max points controls importance. Higher = more weight in final scores. All attributes compete for points."
 - Suggest: "Typical ranges: Critical skills (15-25), Important qualifications (10-15), Nice-to-have (5-10)"
-- Always ask: "What number would you like?"
+- Guide them to type their desired number in the field above
 
-WHEN USER ASKS FOR EXPLANATION:
-- Briefly explain: "Max points controls importance. Higher = more weight in final scores. All attributes compete for points."
+WHEN USER ASKS ABOUT NUMBERS:
+- Provide guidance on appropriate ranges for different importance levels
+- Help them understand the impact of different point values
+- Direct them to type the value in the field above
 
-NEVER give long explanations about scoring algorithms.
-ALWAYS include SUGGESTED_VALUE when making changes.
+NEVER suggest specific values with SUGGESTED_VALUE.
+KEEP RESPONSES SHORT AND CONVERSATIONAL.
 
 USER REQUEST: ${userRequest}`;
 
@@ -1073,27 +1070,24 @@ USER REQUEST: ${userRequest}`;
 
     // Special handling for minToQualify field with concise behavioral instructions
     if (fieldKey === 'minToQualify') {
-      const prompt = `You are helping users set the minimum points threshold for this scoring attribute.
+      const prompt = `You are helping users understand the minimum points threshold for this scoring attribute.
 
 CONTEXT: Profiles with points for this attribute less than your specified minimum will automatically score zero overall.
 
 CURRENT VALUE: ${currentValue || '0 (no minimum required)'}
 
-KEEP RESPONSES SHORT AND DIRECT.
-
-WHEN USER GIVES A NUMBER:
-- Immediately respond with: "I've set the minimum qualifying points to [number]. Profiles scoring below this will automatically get zero overall."
-- Always end with: SUGGESTED_VALUE: [the number they provided]
-
-WHEN USER ASKS FOR HELP:
+WHEN USER ASKS FOR HELP OR EXPLANATION:
+- Explain: "This eliminates profiles that don't meet basic requirements. Set to 0 if everyone should be fully scored regardless of this attribute."
 - Suggest: "Common thresholds: No minimum (0), Basic requirement (20-30% of max points), Important requirement (40-60% of max points)"
-- Always ask: "What minimum points would you like?"
+- Guide them to type their desired number in the field above
 
-WHEN USER ASKS FOR EXPLANATION:
-- Briefly explain: "This eliminates profiles that don't meet basic requirements. Set to 0 if everyone should be fully scored regardless of this attribute."
+WHEN USER ASKS ABOUT NUMBERS:
+- Provide guidance on appropriate threshold percentages
+- Help them understand the impact of different minimums
+- Direct them to type the value in the field above
 
-NEVER give long explanations about scoring algorithms.
-ALWAYS include SUGGESTED_VALUE when making changes.
+NEVER suggest specific values with SUGGESTED_VALUE.
+KEEP RESPONSES SHORT AND CONVERSATIONAL.
 
 USER REQUEST: ${userRequest}`;
 
