@@ -125,13 +125,13 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
 
 Current Max Points: ${currentValue || '0'}
 
-To change this number, just tell me the new value. If you need an explanation of how scoring works, ask below.`;
+To change this number, type the new value into the field above. If you need an explanation of how scoring works, ask below.`;
     } else if (fieldKey === 'minToQualify') {
       initialMessage = `Profiles with points for this attribute less than your specified minimum will automatically score zero overall.
 
 Current Min to Qualify: ${currentValue || '0'}
 
-To change this number, just tell me the new value. If you need an explanation of how scoring works, ask below.`;
+To change this number, type the new value into the field above. If you need an explanation of how scoring works, ask below.`;
     } else if (fieldKey === 'instructions') {
       const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
       
