@@ -135,9 +135,7 @@ To change this number, just tell me the new value. If you need an explanation of
       
       initialMessage = `The current instructions to AI on how to score ${attribute.heading || 'this attribute'} ${hasInstructions ? 'are as above' : 'have not been set'}.
 
-What would the candidates you are seeking likely have in their headline, about or experience sections?
-
-Click the "AI Help" button and start by saying: "This is what I am looking for in this attribute [enter your thoughts] - what should the AI scoring be looking for on LinkedIn profiles to help me find such people in terms of scoring ranges with the max points for this attribute?"`;
+Below start with "I am looking for people who [enter your criteria]. I'm not sure what they would have on their profiles that would indicate this or how we should create 3 scoring ranges up to the maximum points possible for this attribute. Can you help me develop the ranges and suggestions of what to look for in each range?"`;
     } else {
       // Default message for other fields
       if (hasValue) {
