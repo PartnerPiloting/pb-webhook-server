@@ -914,7 +914,7 @@ router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
       heading: "Display name for this attribute. Keep it concise and descriptive.",
       maxPoints: "Maximum points this attribute can award. Typically 3-20 points based on importance.",
       instructions: "The core rubric content sent to AI for scoring. Should include clear point ranges (e.g., 0-3 pts = minimal, 4-7 pts = moderate, 8-15 pts = strong). This is the most important field.",
-      minToQualify: "Minimum score required to pass this attribute. Used for early elimination. Set to 0 if no minimum required.",
+      minToQualify: "Minimum score required to avoid early elimination. Profiles scoring below this threshold are disqualified before full evaluation. Set to 0 if no minimum required.",
       signals: "Keywords and phrases that help AI identify when this attribute applies. Examples: 'AI, machine learning, startup, founder, side project'",
       examples: "Concrete scenarios showing how points are awarded. Include specific point values that align with scoring ranges.",
       active: "Whether this attribute is currently used in scoring. Inactive attributes are ignored."
@@ -1011,6 +1011,86 @@ WHEN USER ASKS FOR HELP:
 
 WHEN USER ASKS FOR EXPLANATION:
 - Briefly explain: "Max points controls importance. Higher = more weight in final scores. All attributes compete for points."
+
+NEVER give long explanations about scoring algorithms.
+ALWAYS include SUGGESTED_VALUE when making changes.
+
+USER REQUEST: ${userRequest}`;
+
+      // Call Gemini for field-specific help
+      if (!vertexAIClient) {
+        throw new Error("Gemini client not available");
+      }
+
+      const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+      const model = vertexAIClient.getGenerativeModel({
+        model: geminiModelId || "gemini-2.5-pro-preview-05-06",
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000
+        }
+      });
+
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const candidate = result.response.candidates?.[0];
+      if (!candidate) {
+        throw new Error("No response from AI");
+      }
+
+      const responseText = candidate.content?.parts?.[0]?.text?.trim();
+      if (!responseText) {
+        throw new Error("Empty response from AI");
+      }
+
+      // Extract suggested value if present
+      let suggestion = responseText;
+      let suggestedValue = null;
+      
+      if (responseText.includes('SUGGESTED_VALUE:')) {
+        const parts = responseText.split('SUGGESTED_VALUE:');
+        suggestion = parts[0].trim();
+        suggestedValue = parts[1].trim();
+      }
+
+      res.json({
+        success: true,
+        suggestion,
+        suggestedValue,
+        fieldKey,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // Special handling for minToQualify field with concise behavioral instructions
+    if (fieldKey === 'minToQualify') {
+      const prompt = `You are helping users set the minimum score threshold for this scoring attribute.
+
+CONTEXT: Min to Qualify is the minimum score a profile must achieve for this attribute to avoid early elimination. Profiles scoring below this threshold get disqualified before full scoring.
+
+CURRENT VALUE: ${currentValue || '0 (no minimum required)'}
+
+KEEP RESPONSES SHORT AND DIRECT.
+
+WHEN USER GIVES A NUMBER:
+- Immediately respond with: "I've set the minimum qualifying score to [number]. Profiles scoring below this will be eliminated early."
+- Always end with: SUGGESTED_VALUE: [the number they provided]
+
+WHEN USER ASKS FOR HELP:
+- Suggest: "Common thresholds: No minimum (0), Basic requirement (20-30% of max points), Important requirement (40-60% of max points)"
+- Always ask: "What minimum score would you like?"
+
+WHEN USER ASKS FOR EXPLANATION:
+- Briefly explain: "This eliminates profiles that don't meet basic requirements. Set to 0 if everyone should be fully scored regardless of this attribute."
 
 NEVER give long explanations about scoring algorithms.
 ALWAYS include SUGGESTED_VALUE when making changes.
