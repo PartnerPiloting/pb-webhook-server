@@ -135,7 +135,7 @@ To change this number, just tell me the new value. If you need an explanation of
 
 Current Instructions: ${truncatedText}
 
-Need help writing scoring instructions? Ask below for examples and templates.`;
+Tell me what you're looking for in this attribute, and together we can create killer instructions for AI scoring!`;
     } else {
       // Default message for other fields
       if (hasValue) {
