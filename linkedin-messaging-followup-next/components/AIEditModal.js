@@ -420,7 +420,7 @@ Enter below "I am looking for people who [enter your criteria]"`;
                           {message.type === 'ai' && message.suggestedValue !== undefined && message.suggestedValue !== null && (
                             <div className="mt-2 pt-2 border-t border-gray-300">
                               <div className="text-xs text-gray-600 mb-1">Suggested value:</div>
-                              <div className="bg-white p-2 rounded text-xs font-mono max-h-20 overflow-y-auto mb-2">
+                              <div className="bg-white p-2 rounded text-xs font-mono max-h-40 overflow-y-auto mb-2 whitespace-pre-wrap">
                                 {String(message.suggestedValue)}
                               </div>
                               <button
