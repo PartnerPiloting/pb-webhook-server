@@ -40,7 +40,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       label: 'Min to Qualify',
       type: 'number',
       placeholder: '0',
-      description: 'Minimum score required to avoid early elimination. Profiles scoring below this threshold are disqualified before full evaluation. Set to 0 if no minimum required.'
+      description: 'Minimum points required to qualify for scoring'
     },
     {
       key: 'signals',
@@ -124,6 +124,12 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       initialMessage = `Max Points determines how important this attribute is compared to others in your scoring system. Higher numbers = more important.
 
 Current Max Points: ${currentValue || '0'}
+
+To change this number, just tell me the new value. If you need an explanation of how scoring works, ask below.`;
+    } else if (fieldKey === 'minToQualify') {
+      initialMessage = `Profiles with points for this attribute less than your specified minimum will automatically score zero overall.
+
+Current Min to Qualify: ${currentValue || '0'}
 
 To change this number, just tell me the new value. If you need an explanation of how scoring works, ask below.`;
     } else if (fieldKey === 'instructions') {
