@@ -1086,12 +1086,16 @@ These are detailed criteria that tell the AI exactly how to evaluate and score l
 
 WHEN USER ASKS FOR HELP:
 Ask: "Tell me what you're looking for in this attribute, and together we can create killer instructions for AI scoring!"
-Then help them build instructions like: "0-${lowRange} pts = minimal/no [criteria], ${lowRange + 1}-${midRange} pts = moderate [criteria], ${midRange + 1}-${maxPoints} pts = strong/excellent [criteria]"
+Then help them build instructions with clear ranges formatted on separate lines like:
+"0-${lowRange} pts = minimal/no [criteria]
+${lowRange + 1}-${midRange} pts = moderate [criteria]  
+${midRange + 1}-${maxPoints} pts = strong/excellent [criteria]"
 
 WHEN USER PROVIDES THEIR CRITERIA:
 - Help them translate it into clear point ranges 0-${maxPoints}
 - Make criteria specific and measurable
 - Ensure each range has distinct, actionable criteria
+- Format each scoring range on its own line for readability
 - End with: SUGGESTED_VALUE: [the complete scoring instructions]
 
 WHEN USER ASKS FOR IMPROVEMENTS OR FORMATTING CHANGES:
