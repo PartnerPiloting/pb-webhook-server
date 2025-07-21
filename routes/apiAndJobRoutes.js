@@ -1256,41 +1256,30 @@ USER REQUEST: ${userRequest}`;
 
     // Special handling for instructions field - the most critical field for scoring
     if (fieldKey === 'instructions') {
-      // Use the current max points from the form, not the database
       const maxPoints = currentAttribute.maxPoints || 15;
-      const lowRange = Math.floor(maxPoints * 0.2);
-      const midRange = Math.floor(maxPoints * 0.6);
       
-      const prompt = `You are helping users create AI scoring instructions - the core rubric that determines how leads are scored. This is the MOST IMPORTANT field in the entire system.
+      const prompt = `You are an expert assistant helping users create scoring instructions for lead attributes.
+
+USER'S QUESTION: "${userRequest}"
 
 CURRENT INSTRUCTIONS: ${currentValue || '(no current instructions)'}
 
-WHAT ARE SCORING INSTRUCTIONS?
-These are detailed criteria that tell the AI exactly how to evaluate and score leads for this attribute. They must include specific point ranges from 0 to ${maxPoints} points with clear criteria for each range.
+RESPOND DIRECTLY TO THEIR SPECIFIC QUESTION. Here's context to help you answer:
 
-WHEN USER PROVIDES THEIR CRITERIA (phrases like "I am looking for people who...", "I want to find...", "I need people with...", or describes specific qualities/skills):
-- IMMEDIATELY translate it into clear point ranges 0-${maxPoints}
-- Make criteria specific and measurable
-- Ensure each range has distinct, actionable criteria
-- Format each scoring range on its own line for readability
-- ALWAYS end with: SUGGESTED_VALUE: [the complete scoring instructions]
+CORE PURPOSE: Instructions tell AI exactly how to score leads for this attribute from 0 to ${maxPoints} points.
 
-WHEN USER ASKS FOR MODIFICATIONS (phrases like "add something about...", "include...", "change the top range to..."):
-- Take the current instructions above and apply the requested changes
-- Maintain the 0-${maxPoints} point range structure
-- Keep the format with each range on its own line
-- ALWAYS end with: SUGGESTED_VALUE: [the updated scoring instructions]
+KEY ELEMENTS:
+• Clear point ranges (e.g., "0-3 pts = minimal evidence, 4-7 pts = moderate, 8-${maxPoints} pts = strong")
+• Specific criteria for each range
+• Measurable qualifications
+• Examples of what qualifies for each point range
 
-WHEN USER ASKS FOR HELP (phrases like "help me", "what should I do", "how does this work", "I don't know"):
-Ask: "Tell me what you're looking for in this attribute, and together we can create killer instructions for AI scoring!"
-Then help them build instructions with clear ranges formatted on separate lines like:
-"0-${lowRange} pts = minimal/no [criteria]
-${lowRange + 1}-${midRange} pts = moderate [criteria]  
-${midRange + 1}-${maxPoints} pts = strong/excellent [criteria]"
+GUIDANCE:
+• If they're asking for general advice, help them understand scoring instructions
+• If they're asking for specific changes, apply them while keeping the 0-${maxPoints} structure
+• If they're asking you to create instructions, provide clear scoring ranges
 
-CRITICAL: ALWAYS include SUGGESTED_VALUE in your response when providing or updating instructions.
-
-USER REQUEST: ${userRequest}`;
+Answer their question directly and conversationally. If you have specific updated instructions to suggest, end with "SUGGESTED_VALUE: [your suggestion]"`;
 
       // Call Gemini for field-specific help
       if (!vertexAIClient) {
@@ -1312,19 +1301,30 @@ USER REQUEST: ${userRequest}`;
         }
       });
 
+      console.log(`apiAndJobRoutes.js: Sending instructions prompt to Gemini:`, prompt.substring(0, 200) + '...');
+
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
 
+      console.log(`apiAndJobRoutes.js: Instructions Gemini response structure:`, JSON.stringify(result.response, null, 2));
+
       const candidate = result.response.candidates?.[0];
       if (!candidate) {
+        console.error(`apiAndJobRoutes.js: No candidates in instructions response. Full response:`, JSON.stringify(result.response, null, 2));
         throw new Error("No response from AI");
       }
 
+      console.log(`apiAndJobRoutes.js: Instructions candidate structure:`, JSON.stringify(candidate, null, 2));
+
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
-        throw new Error("Empty response from AI");
+        console.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
+        console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
+
+      console.log(`apiAndJobRoutes.js: Instructions AI response:`, responseText.substring(0, 100) + '...');
 
       // Extract suggested value if present
       let suggestion = responseText;
