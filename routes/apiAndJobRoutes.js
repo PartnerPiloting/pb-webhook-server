@@ -1079,7 +1079,7 @@ USER REQUEST: ${userRequest}`;
       
       const prompt = `You are helping users create AI scoring instructions - the core rubric that determines how leads are scored. This is the MOST IMPORTANT field in the entire system.
 
-CURRENT INSTRUCTIONS: ${currentValue ? '"' + currentValue + '"' : 'Current instructions are shown above in the form field'}
+CURRENT INSTRUCTIONS: Current instructions are as above
 
 WHAT ARE SCORING INSTRUCTIONS?
 These are detailed criteria that tell the AI exactly how to evaluate and score leads for this attribute. They must include specific point ranges from 0 to ${maxPoints} points with clear criteria for each range.
