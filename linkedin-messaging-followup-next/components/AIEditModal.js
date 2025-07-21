@@ -40,7 +40,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       label: 'Min to Qualify',
       type: 'number',
       placeholder: '0',
-      description: 'Minimum score required to pass this attribute'
+      description: 'Minimum score required to avoid early elimination. Profiles scoring below this threshold are disqualified before full evaluation. Set to 0 if no minimum required.'
     },
     {
       key: 'signals',
