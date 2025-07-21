@@ -999,13 +999,15 @@ USER REQUEST: ${userRequest}`;
 
 USER QUESTION: ${userRequest}
 
-RESPOND DIRECTLY TO THEIR QUESTION WITH HELPFUL INFORMATION:
+ANSWER THEIR SPECIFIC QUESTION DIRECTLY AND HELPFULLY:
 
-Yes, max points essentially determines the weight/importance of this attribute in the overall scoring system. Here's how it works:
+Max points determines the weight/importance of this attribute in the overall scoring system. Here's how it works:
 
 • Higher max points = more important attribute = bigger impact on final scores
 • Lower max points = less important attribute = smaller impact on final scores
 • All attributes compete for points in the final scoring calculation
+
+Think of it like a competition where attributes with higher max points can contribute more to the final score, making them more influential in hiring decisions.
 
 IMPORTANCE LEVELS:
 • Critical skills (high importance): Qualifications that heavily influence hiring decisions
@@ -1014,7 +1016,7 @@ IMPORTANCE LEVELS:
 
 To set your max points, simply type the number you want in the field above this chat.
 
-What level of importance do you want this attribute to have in your scoring?`;
+Is there anything specific about max points you'd like me to explain further?`;
 
       // Call Gemini for field-specific help
       if (!vertexAIClient) {
