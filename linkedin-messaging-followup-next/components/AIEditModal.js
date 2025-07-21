@@ -446,19 +446,28 @@ Examples:
                             </div>
                           )}
                           
-                          {/* Show only suggested values from AI, not the explanation text */}
-                          {message.type === 'ai' && message.suggestedValue !== undefined && message.suggestedValue !== null && (
-                            <div className="border border-green-300 rounded p-3 bg-green-50">
-                              <div className="text-xs text-green-700 font-medium mb-1">✨ AI Suggestion:</div>
-                              <div className="bg-white p-3 rounded text-xs font-mono h-40 overflow-y-auto mb-2 whitespace-pre-wrap border border-green-200">
-                                {String(message.suggestedValue)}
-                              </div>
-                              <button
-                                onClick={() => handleApplySuggestion(field.key, message.suggestedValue)}
-                                className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                              >
-                                Apply to Field
-                              </button>
+                          {/* Show AI conversational responses */}
+                          {message.type === 'ai' && (
+                            <div className="text-xs p-3 rounded bg-blue-100 border border-blue-200 mb-2">
+                              <div className="text-blue-700 font-medium mb-1">🤖 AI:</div>
+                              <div className="text-blue-800 whitespace-pre-line">{String(message.message)}</div>
+                              <span className="text-blue-600 text-xs mt-1 block">{message.timestamp}</span>
+                              
+                              {/* Show suggested value if present */}
+                              {message.suggestedValue !== undefined && message.suggestedValue !== null && (
+                                <div className="border border-green-300 rounded p-3 bg-green-50 mt-2">
+                                  <div className="text-xs text-green-700 font-medium mb-1">✨ AI Suggestion:</div>
+                                  <div className="bg-white p-3 rounded text-xs font-mono h-40 overflow-y-auto mb-2 whitespace-pre-wrap border border-green-200">
+                                    {String(message.suggestedValue)}
+                                  </div>
+                                  <button
+                                    onClick={() => handleApplySuggestion(field.key, message.suggestedValue)}
+                                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                                  >
+                                    Apply to Field
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
