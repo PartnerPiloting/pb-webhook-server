@@ -1297,7 +1297,7 @@ Answer their question directly and conversationally. If you have specific update
         ],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 1000
+          maxOutputTokens: 4000  // Increased to handle longer Instructions field responses
         }
       });
 
