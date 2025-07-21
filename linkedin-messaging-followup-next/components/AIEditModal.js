@@ -127,15 +127,18 @@ Current Max Points: ${currentValue || '0'}
 
 To change this number, just tell me the new value. If you need an explanation of how scoring works, ask below.`;
     } else if (fieldKey === 'instructions') {
-      const truncatedText = currentValue && currentValue.length > 100 ? 
-        currentValue.substring(0, 100) + '...' : 
-        currentValue || '(empty)';
-      
       const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
       
-      initialMessage = `The current instructions to AI on how to score ${attribute.heading || 'this attribute'} ${hasInstructions ? 'are as above' : 'have not been set'}.
+      initialMessage = `I'll help you create scoring instructions for ${attribute.heading || 'this attribute'}.
 
-Enter below "I am looking for people who [enter your criteria]"`;
+${hasInstructions ? 'Current instructions are shown above.' : 'No instructions are currently set.'}
+
+Just tell me what you're looking for in candidates and I'll create the scoring breakdown for you.
+
+Examples:
+• "I want people with AI experience"  
+• "Looking for startup founders"
+• "Need someone with Python skills"`;
     } else {
       // Default message for other fields
       if (hasValue) {
@@ -412,6 +415,15 @@ Enter below "I am looking for people who [enter your criteria]"`;
                             </div>
                           )}
                           
+                          {/* Show AI assistant messages (initial helpful messages) */}
+                          {message.type === 'assistant' && (
+                            <div className="text-xs p-3 rounded bg-green-100 border border-green-200 mb-2">
+                              <div className="text-green-700 font-medium mb-1">🤖 AI Assistant:</div>
+                              <div className="text-green-800 whitespace-pre-line">{String(message.message)}</div>
+                              <span className="text-green-600 text-xs mt-1 block">{message.timestamp}</span>
+                            </div>
+                          )}
+                          
                           {/* Show error messages */}
                           {message.type === 'error' && (
                             <div className="text-xs p-2 rounded bg-red-100 mb-2">
@@ -430,9 +442,9 @@ Enter below "I am looking for people who [enter your criteria]"`;
                           
                           {/* Show only suggested values from AI, not the explanation text */}
                           {message.type === 'ai' && message.suggestedValue !== undefined && message.suggestedValue !== null && (
-                            <div className="border border-gray-300 rounded p-3 bg-white">
-                              <div className="text-xs text-gray-600 mb-1">Suggested value:</div>
-                              <div className="bg-gray-50 p-2 rounded text-xs font-mono h-40 overflow-y-auto mb-2 whitespace-pre-wrap border border-gray-200">
+                            <div className="border border-green-300 rounded p-3 bg-green-50">
+                              <div className="text-xs text-green-700 font-medium mb-1">✨ AI Suggestion:</div>
+                              <div className="bg-white p-3 rounded text-xs font-mono h-40 overflow-y-auto mb-2 whitespace-pre-wrap border border-green-200">
                                 {String(message.suggestedValue)}
                               </div>
                               <button
