@@ -131,11 +131,13 @@ To change this number, just tell me the new value. If you need an explanation of
         currentValue.substring(0, 100) + '...' : 
         currentValue || '(empty)';
       
-      initialMessage = `Instructions are the core rubric sent to the AI for scoring - this is the most important field. Must include clear point ranges based on your max points.
+      const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
+      
+      initialMessage = `The current instructions to AI on how to score ${attribute.heading || 'this attribute'} ${hasInstructions ? 'are as above' : 'have not been set'}.
 
-Current Instructions: ${truncatedText}
+What would the candidates you are seeking likely have in their headline, about or experience sections?
 
-Tell me what you're looking for in this attribute, and together we can create killer instructions for AI scoring!`;
+Click the "AI Help" button and start by saying: "This is what I am looking for in this attribute [enter your thoughts] - what should the AI scoring be looking for on LinkedIn profiles to help me find such people in terms of scoring ranges with the max points for this attribute?"`;
     } else {
       // Default message for other fields
       if (hasValue) {
