@@ -18,7 +18,8 @@ const { buildPrompt, slimLead } = require("./promptBuilder");
 const { loadAttributes } = require("./attributeLoader");
 const { computeFinalScore } = require("./scoring");
 const { buildAttributeBreakdown } = require("./breakdown");
-const { alertAdmin, isMissingCritical } = require('./utils/appHelpers.js'); 
+const { alertAdmin, isMissingCritical } = require('./utils/appHelpers.js');
+const { costGovernanceService } = require('./services/costGovernanceService.js'); 
 
 /* ---------- ENV CONFIGURATION for Batch Scorer Operations ----------- */
 const DEFAULT_MODEL_ID_FALLBACK = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06";

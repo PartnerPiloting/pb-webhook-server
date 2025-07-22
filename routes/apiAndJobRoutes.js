@@ -567,6 +567,164 @@ router.get("/api/json-quality-analysis", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Token Budget Management (TESTING - Hardcoded 15K limit)
+// ---------------------------------------------------------------
+
+// Calculate tokens for attribute text fields (approximation: ~4 chars per token)
+function calculateAttributeTokens(instructions, examples, signals) {
+  const instructionsText = extractPlainText(instructions) || '';
+  const examplesText = extractPlainText(examples) || '';
+  const signalsText = extractPlainText(signals) || '';
+  
+  const totalText = `${instructionsText} ${examplesText} ${signalsText}`;
+  const tokenCount = Math.ceil(totalText.length / 4);
+  
+  console.log(`Token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
+  return tokenCount;
+}
+
+// Get current token usage for all active attributes
+async function getCurrentTokenUsage() {
+  try {
+    const { loadAttributes } = require("../attributeLoader.js");
+    const { positives, negatives } = await loadAttributes();
+    
+    let totalTokens = 0;
+    const attributeDetails = [];
+    
+    // Count tokens for active positive attributes
+    for (const [id, attr] of Object.entries(positives)) {
+      const tokens = calculateAttributeTokens(attr.instructions, attr.examples, attr.signals);
+      totalTokens += tokens;
+      attributeDetails.push({
+        id,
+        heading: attr.heading || id,
+        category: 'Positive',
+        tokens,
+        active: true
+      });
+    }
+    
+    // Count tokens for active negative attributes  
+    for (const [id, attr] of Object.entries(negatives)) {
+      const tokens = calculateAttributeTokens(attr.instructions, attr.examples, attr.signals);
+      totalTokens += tokens;
+      attributeDetails.push({
+        id,
+        heading: attr.heading || id,
+        category: 'Negative', 
+        tokens,
+        active: true
+      });
+    }
+    
+    return {
+      totalTokens,
+      attributeDetails,
+      limit: 15000, // HARDCODED FOR TESTING
+      remaining: 15000 - totalTokens,
+      percentUsed: Math.round((totalTokens / 15000) * 100)
+    };
+    
+  } catch (error) {
+    console.error("Error calculating token usage:", error);
+    throw error;
+  }
+}
+
+// Check if activating an attribute would exceed budget
+async function validateTokenBudget(attributeId, updatedData) {
+  try {
+    const currentUsage = await getCurrentTokenUsage();
+    
+    // Calculate tokens for the updated attribute
+    const newTokens = calculateAttributeTokens(
+      updatedData.instructions,
+      updatedData.examples, 
+      updatedData.signals
+    );
+    
+    // If attribute is already active, subtract its current tokens
+    const existingAttr = currentUsage.attributeDetails.find(attr => attr.id === attributeId);
+    const currentTokensForThisAttr = existingAttr ? existingAttr.tokens : 0;
+    
+    const projectedTotal = currentUsage.totalTokens - currentTokensForThisAttr + newTokens;
+    
+    return {
+      isValid: projectedTotal <= 15000,
+      currentTotal: currentUsage.totalTokens,
+      newTokens,
+      projectedTotal,
+      limit: 15000,
+      wouldExceedBy: Math.max(0, projectedTotal - 15000)
+    };
+    
+  } catch (error) {
+    console.error("Error validating token budget:", error);
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------
+// Token Budget API Endpoints
+// ---------------------------------------------------------------
+
+// Get current token usage status
+router.get("/api/token-usage", async (req, res) => {
+  try {
+    console.log("apiAndJobRoutes.js: GET /api/token-usage - Getting current token usage");
+    
+    const usage = await getCurrentTokenUsage();
+    
+    res.json({
+      success: true,
+      usage,
+      message: `Using ${usage.totalTokens} of ${usage.limit} tokens (${usage.percentUsed}%)`
+    });
+    
+  } catch (error) {
+    console.error("apiAndJobRoutes.js: GET /api/token-usage error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get token usage"
+    });
+  }
+});
+
+// Validate if attribute save would exceed budget
+router.post("/api/attributes/:id/validate-budget", async (req, res) => {
+  try {
+    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget - Validating token budget`);
+    const attributeId = req.params.id;
+    const updatedData = req.body;
+    
+    if (!updatedData || typeof updatedData !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: "updatedData is required and must be an object"
+      });
+    }
+    
+    const validation = await validateTokenBudget(attributeId, updatedData);
+    
+    res.json({
+      success: true,
+      validation,
+      message: validation.isValid 
+        ? `Attribute would use ${validation.newTokens} tokens. Total: ${validation.projectedTotal}/${validation.limit}`
+        : `Budget exceeded! Would use ${validation.wouldExceedBy} tokens over limit.`
+    });
+    
+  } catch (error) {
+    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget error:`, error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to validate token budget"
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // AI-Powered Attribute Editing Routes (NEW)
 // ---------------------------------------------------------------
 
@@ -798,6 +956,37 @@ router.post("/api/attributes/:id/save", async (req, res) => {
         success: false,
         error: "updatedData is required and must be an object"
       });
+    }
+    
+    // Check token budget before saving (only if activating)
+    if (updatedData.active === true || updatedData.active === 'true') {
+      console.log(`apiAndJobRoutes.js: Checking token budget for activating attribute ${attributeId}`);
+      
+      try {
+        const budgetValidation = await validateTokenBudget(attributeId, updatedData);
+        
+        if (!budgetValidation.isValid) {
+          console.log(`apiAndJobRoutes.js: Token budget exceeded for attribute ${attributeId}`);
+          return res.status(400).json({
+            success: false,
+            error: "Token budget exceeded",
+            details: {
+              message: `Activating this attribute would exceed your token budget by ${budgetValidation.wouldExceedBy} tokens.`,
+              currentUsage: budgetValidation.currentTotal,
+              newTokens: budgetValidation.newTokens,
+              projectedTotal: budgetValidation.projectedTotal,
+              limit: budgetValidation.limit,
+              suggestion: "Try reducing the text in Instructions, Examples, or Signals fields, or deactivate other attributes first."
+            }
+          });
+        }
+        
+        console.log(`apiAndJobRoutes.js: Token budget OK for attribute ${attributeId} (${budgetValidation.newTokens} tokens)`);
+        
+      } catch (budgetError) {
+        console.error(`apiAndJobRoutes.js: Token budget check failed for ${attributeId}:`, budgetError.message);
+        // Don't block save if budget check fails - just log warning
+      }
     }
     
     await updateAttribute(attributeId, updatedData);
