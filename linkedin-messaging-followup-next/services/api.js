@@ -529,6 +529,32 @@ export const saveAttributeChanges = async (attributeId, improvedRubric) => {
   }
 };
 
+export const toggleAttributeActive = async (attributeId, isActive) => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        improvedRubric: {
+          active: isActive
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to toggle active status: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in toggleAttributeActive:', error);
+    throw new Error('Failed to toggle active status');
+  }
+};
+
 // Alias for backwards compatibility
 export const saveAttribute = saveAttributeChanges;
 

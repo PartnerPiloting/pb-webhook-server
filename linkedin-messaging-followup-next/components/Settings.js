@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { getAttributes, saveAttribute } from '../services/api';
+import { getAttributes, saveAttribute, toggleAttributeActive } from '../services/api';
 import { CogIcon } from '@heroicons/react/24/outline';
 import AIEditModal from './AIEditModal';
 
@@ -49,6 +49,19 @@ const Settings = () => {
     } catch (err) {
       console.error('Error saving attribute:', err);
       throw err;
+    }
+  };
+
+  const handleToggleActive = async (attributeId, currentActiveStatus) => {
+    try {
+      const newActiveStatus = !currentActiveStatus;
+      await toggleAttributeActive(attributeId, newActiveStatus);
+      // Reload attributes to show changes
+      const data = await getAttributes();
+      setAttributes(data.attributes || []);
+    } catch (err) {
+      console.error('Error toggling active status:', err);
+      alert('Failed to toggle active status. Please try again.');
     }
   };
 
@@ -179,8 +192,25 @@ const Settings = () => {
                     </div>
                   </div>
                   
-                  {/* Right Column: Edit Button */}
-                  <div className="flex-shrink-0">
+                  {/* Right Column: Toggle Active + Edit Button */}
+                  <div className="flex-shrink-0 flex items-center space-x-2">
+                    {/* Active/Inactive Toggle */}
+                    <button 
+                      className={`inline-flex items-center px-3 py-1.5 border text-xs font-medium rounded transition-colors ${
+                        isActive 
+                          ? 'border-green-600 text-green-700 bg-green-50 hover:bg-green-100' 
+                          : 'border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100'
+                      }`}
+                      onClick={() => handleToggleActive(attributeId, isActive)}
+                      title={isActive ? 'Click to deactivate' : 'Click to activate'}
+                    >
+                      <div className={`w-2 h-2 rounded-full mr-2 ${
+                        isActive ? 'bg-green-500' : 'bg-gray-400'
+                      }`} />
+                      {isActive ? 'Active' : 'Inactive'}
+                    </button>
+                    
+                    {/* Edit Button */}
                     <button 
                       className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
                       onClick={() => handleOpenAIEdit(attribute)}

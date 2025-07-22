@@ -51,8 +51,15 @@ async function loadAttributes() {
       const id    = String(r.get("Attribute Id") || "").trim();
       const cat   = String(r.get("Category")     || "").toLowerCase(); 
       const label = String(r.get("Heading")      || "").trim();
+      const isActive = r.get("Active") !== false; // Default to true if field doesn't exist
 
-      if (!id) return; 
+      if (!id) return;
+      
+      // Skip inactive attributes (unless they're PREAMBLE/meta)
+      if (!isActive && id !== "PREAMBLE" && cat !== "meta") {
+        console.log(`attributeLoader.js: Skipping inactive attribute ${id}`);
+        return;
+      } 
 
       if (id === "PREAMBLE" || cat === "meta") {
         preamble = r.get("Instructions") ? String(r.get("Instructions")) : "";
