@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { getAttributes, saveAttribute, toggleAttributeActive } from '../services/api';
+import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage } from '../services/api';
 import { CogIcon } from '@heroicons/react/24/outline';
 import AIEditModal from './AIEditModal';
 
@@ -8,6 +8,8 @@ const Settings = () => {
   const [attributes, setAttributes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tokenUsage, setTokenUsage] = useState(null);
+  const [tokenLoading, setTokenLoading] = useState(true);
   // Phase 2: Add AI modal state
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedAttribute, setSelectedAttribute] = useState(null);
@@ -43,9 +45,17 @@ const Settings = () => {
   const handleSaveAttribute = async (attributeId, updatedData) => {
     try {
       await saveAttribute(attributeId, updatedData);
-      // Reload attributes to show changes
+      // Reload attributes and token usage to show changes
       const data = await getAttributes();
       setAttributes(data.attributes || []);
+      
+      // Refresh token usage
+      try {
+        const tokenData = await getTokenUsage();
+        setTokenUsage(tokenData.usage);
+      } catch (tokenErr) {
+        console.error('Error refreshing token usage:', tokenErr);
+      }
     } catch (err) {
       console.error('Error saving attribute:', err);
       throw err;
@@ -56,23 +66,46 @@ const Settings = () => {
     try {
       const newActiveStatus = !currentActiveStatus;
       await toggleAttributeActive(attributeId, newActiveStatus);
-      // Reload attributes to show changes
+      // Reload attributes and token usage to show changes
       const data = await getAttributes();
       setAttributes(data.attributes || []);
+      
+      // Refresh token usage
+      try {
+        const tokenData = await getTokenUsage();
+        setTokenUsage(tokenData.usage);
+      } catch (tokenErr) {
+        console.error('Error refreshing token usage:', tokenErr);
+      }
     } catch (err) {
       console.error('Error toggling active status:', err);
       alert('Failed to toggle active status. Please try again.');
     }
   };
 
-  // Phase 1: Load attributes with bulletproof error handling
+  // Phase 1: Load attributes and token usage with bulletproof error handling
   useEffect(() => {
-    const loadAttributes = async () => {
+    const loadData = async () => {
       try {
         setLoading(true);
         setError(null);
+        
+        // Load attributes
         const data = await getAttributes();
         setAttributes(data.attributes || []);
+        
+        // Load token usage
+        try {
+          setTokenLoading(true);
+          const tokenData = await getTokenUsage();
+          setTokenUsage(tokenData.usage);
+        } catch (tokenErr) {
+          console.error('Error loading token usage:', tokenErr);
+          // Don't fail the whole page if token usage fails
+        } finally {
+          setTokenLoading(false);
+        }
+        
       } catch (err) {
         const errorMessage = err?.message || 'Failed to load attributes';
         setError(errorMessage);
@@ -81,7 +114,7 @@ const Settings = () => {
       }
     };
 
-    loadAttributes();
+    loadData();
   }, []);
 
   // Phase 1: Simple loading state
@@ -236,6 +269,62 @@ const Settings = () => {
         <p className="mt-1 text-sm text-gray-500">
           Configure your lead scoring system
         </p>
+      </div>
+
+      {/* Token Usage Display */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="flex-shrink-0">
+              <CogIcon className="h-5 w-5 text-gray-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-900">Token Usage</h3>
+              {tokenLoading ? (
+                <p className="text-sm text-gray-500">Loading usage...</p>
+              ) : tokenUsage ? (
+                <div className="flex items-center space-x-4">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-semibold text-gray-900">
+                      {tokenUsage.totalTokens?.toLocaleString() || '0'}
+                    </span>
+                    {' of '}
+                    <span className="font-semibold">
+                      {tokenUsage.limit?.toLocaleString() || '15,000'}
+                    </span>
+                    {' tokens used'}
+                  </p>
+                  <div className="flex-1 max-w-xs">
+                    <div className="bg-gray-200 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          tokenUsage.percentUsed >= 90 ? 'bg-red-500' :
+                          tokenUsage.percentUsed >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min(tokenUsage.percentUsed || 0, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-medium ${
+                    tokenUsage.percentUsed >= 90 ? 'text-red-600' :
+                    tokenUsage.percentUsed >= 75 ? 'text-yellow-600' : 'text-green-600'
+                  }`}>
+                    {tokenUsage.percentUsed || 0}%
+                  </span>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Token usage unavailable</p>
+              )}
+            </div>
+          </div>
+          {tokenUsage && tokenUsage.percentUsed >= 90 && (
+            <div className="text-right">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                Budget Nearly Full
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Centered container with narrower width */}
