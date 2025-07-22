@@ -1234,7 +1234,8 @@ USER REQUEST: ${userRequest}`;
           { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
         ],
         generationConfig: {
-          temperature: 0.7
+          temperature: 0.7,
+          maxOutputTokens: 1000
         }
       });
 
@@ -1249,6 +1250,9 @@ USER REQUEST: ${userRequest}`;
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
         }
         throw new Error("Empty response from AI");
       }
@@ -1311,7 +1315,8 @@ Answer their question directly and conversationally. If they ask about changing 
           { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
         ],
         generationConfig: {
-          temperature: 0.7
+          temperature: 0.7,
+          maxOutputTokens: 1000
         }
       });
 
@@ -1336,6 +1341,9 @@ Answer their question directly and conversationally. If they ask about changing 
         console.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
         console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
         
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
         }
         
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
@@ -1403,7 +1411,8 @@ What level of requirement do you want this attribute to have?`;
           { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
         ],
         generationConfig: {
-          temperature: 0.7
+          temperature: 0.7,
+          maxOutputTokens: 1000
         }
       });
 
@@ -1418,6 +1427,9 @@ What level of requirement do you want this attribute to have?`;
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
         }
         throw new Error("Empty response from AI");
       }
@@ -1497,7 +1509,8 @@ USER REQUEST: ${userRequest}`;
           { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
         ],
         generationConfig: {
-          temperature: 0.7
+          temperature: 0.7,
+          maxOutputTokens: 2000  // Increased for signals field keyword analysis
         }
       });
 
@@ -1512,6 +1525,9 @@ USER REQUEST: ${userRequest}`;
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
         }
         throw new Error("Empty response from AI");
       }
@@ -1578,7 +1594,8 @@ Answer their question directly and conversationally. If you have specific update
           { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
         ],
         generationConfig: {
-          temperature: 0.7
+          temperature: 0.7,
+          maxOutputTokens: 4000  // Increased to handle longer Instructions field responses
         }
       });
 
@@ -1603,6 +1620,9 @@ Answer their question directly and conversationally. If you have specific update
         console.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
         console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
         
+        // Check if it's a token limit issue for better UX
+        if (candidate.finishReason === 'MAX_TOKENS') {
+          throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
         }
         
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
@@ -1668,7 +1688,8 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
         { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
       ],
       generationConfig: {
-        temperature: 0.7
+        temperature: 0.7,
+        maxOutputTokens: 1000
       }
     });
 
@@ -1683,6 +1704,9 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
 
     const responseText = candidate.content?.parts?.[0]?.text?.trim();
     if (!responseText) {
+      // Check if it's a token limit issue for better UX
+      if (candidate.finishReason === 'MAX_TOKENS') {
+        throw new Error("Response was too long for this field. Please try asking a more specific question or break your request into smaller parts.");
       }
       throw new Error("Empty response from AI");
     }
