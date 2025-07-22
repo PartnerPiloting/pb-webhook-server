@@ -910,6 +910,82 @@ router.get("/api/attributes", async (req, res) => {
   }
 });
 
+// Verify Active/Inactive filtering is working
+router.get("/api/attributes/verify-active-filtering", async (req, res) => {
+  try {
+    console.log("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering - Testing active/inactive filtering");
+    
+    const { loadAttributes } = require("../attributeLoader.js");
+    
+    // Load attributes using the same function that scoring uses
+    const { positives, negatives } = await loadAttributes();
+    
+    // Get all attributes from Airtable to compare
+    const allRecords = await airtableBase("Scoring Attributes")
+      .select({
+        fields: ["Attribute Id", "Heading", "Category", "Active"],
+        filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
+      })
+      .all();
+    
+    const allAttributes = allRecords.map(record => ({
+      id: record.get("Attribute Id"),
+      heading: record.get("Heading") || "[Unnamed]",
+      category: record.get("Category"),
+      active: !!record.get("Active")
+    }));
+    
+    // Find which attributes are loaded vs skipped
+    const loadedPositiveIds = Object.keys(positives);
+    const loadedNegativeIds = Object.keys(negatives);
+    const loadedIds = [...loadedPositiveIds, ...loadedNegativeIds];
+    
+    const activeAttributes = allAttributes.filter(attr => attr.active);
+    const inactiveAttributes = allAttributes.filter(attr => !attr.active);
+    
+    const skippedAttributes = inactiveAttributes.filter(attr => 
+      !loadedIds.includes(attr.id)
+    );
+    
+    const unexpectedlyLoaded = inactiveAttributes.filter(attr => 
+      loadedIds.includes(attr.id)
+    );
+    
+    const unexpectedlySkipped = activeAttributes.filter(attr => 
+      !loadedIds.includes(attr.id)
+    );
+    
+    res.json({
+      success: true,
+      verification: {
+        totalAttributesInAirtable: allAttributes.length,
+        activeInAirtable: activeAttributes.length,
+        inactiveInAirtable: inactiveAttributes.length,
+        loadedIntoScoringSystem: loadedIds.length,
+        correctlySkipped: skippedAttributes.length,
+        unexpectedlyLoaded: unexpectedlyLoaded.length,
+        unexpectedlySkipped: unexpectedlySkipped.length
+      },
+      details: {
+        activeAttributes: activeAttributes.map(attr => `${attr.id}: ${attr.heading}`),
+        inactiveAttributes: inactiveAttributes.map(attr => `${attr.id}: ${attr.heading}`),
+        loadedAttributes: loadedIds,
+        correctlySkippedAttributes: skippedAttributes.map(attr => `${attr.id}: ${attr.heading}`),
+        unexpectedlyLoadedAttributes: unexpectedlyLoaded.map(attr => `${attr.id}: ${attr.heading}`),
+        unexpectedlySkippedAttributes: unexpectedlySkipped.map(attr => `${attr.id}: ${attr.heading}`)
+      },
+      isFilteringWorking: unexpectedlyLoaded.length === 0 && unexpectedlySkipped.length === 0
+    });
+    
+  } catch (error) {
+    console.error("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to verify active filtering"
+    });
+  }
+});
+
 // Field-specific AI help endpoint
 router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
   try {
