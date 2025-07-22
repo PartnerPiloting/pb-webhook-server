@@ -873,7 +873,7 @@ router.get("/api/attributes", async (req, res) => {
       minToQualify: record.get("Min To Qualify") || 0,
       penalty: record.get("Penalty") || 0,
       disqualifying: !!record.get("Disqualifying"),
-      active: record.get("Active") !== false, // Default to true if field doesn't exist
+      active: !!record.get("Active"), // Convert to boolean: unchecked = false, checked = true
       instructions: extractPlainText(record.get("Instructions")),
       signals: extractPlainText(record.get("Signals")),
       examples: extractPlainText(record.get("Examples")),

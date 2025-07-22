@@ -51,7 +51,7 @@ async function loadAttributes() {
       const id    = String(r.get("Attribute Id") || "").trim();
       const cat   = String(r.get("Category")     || "").toLowerCase(); 
       const label = String(r.get("Heading")      || "").trim();
-      const isActive = r.get("Active") !== false; // Default to true if field doesn't exist
+      const isActive = !!r.get("Active"); // Convert to boolean: unchecked = false, checked = true
 
       if (!id) return;
       
@@ -137,7 +137,7 @@ async function loadAttributeForEditing(attributeId) {
       disqualifying: !!record.get("Disqualifying"),
       signals: record.get("Signals") || "",
       examples: record.get("Examples") || "",
-      active: record.get("Active") !== false // Default to true if field doesn't exist
+      active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
     };
     
     console.log(`attributeLoader.js: Successfully loaded attribute ${attributeId}`);
@@ -215,7 +215,7 @@ async function listAttributesForEditing() {
       minToQualify: Number(record.get("Min To Qualify") || 0),
       penalty: Number(record.get("Penalty") || 0),
       disqualifying: !!record.get("Disqualifying"),
-      active: record.get("Active") !== false, // Default to true if field doesn't exist
+      active: !!record.get("Active"), // Convert to boolean: unchecked = false, checked = true
       isEmpty: !record.get("Heading") && !record.get("Instructions")
     }));
     
