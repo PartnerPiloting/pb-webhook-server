@@ -538,9 +538,7 @@ export const toggleAttributeActive = async (attributeId, isActive) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        improvedRubric: {
-          active: isActive
-        }
+        active: isActive
       })
     });
     
