@@ -201,7 +201,7 @@ const Settings = () => {
                           ? 'border-green-600 text-green-700 bg-green-50 hover:bg-green-100' 
                           : 'border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100'
                       }`}
-                      onClick={() => handleToggleActive(attributeId, isActive)}
+                      onClick={() => handleToggleActive(attribute.id, isActive)}
                       title={isActive ? 'Click to deactivate' : 'Click to activate'}
                     >
                       <div className={`w-2 h-2 rounded-full mr-2 ${
