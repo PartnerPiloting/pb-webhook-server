@@ -859,7 +859,8 @@ router.get("/api/attributes", async (req, res) => {
           "Attribute Id", "Heading", "Category", "Max Points", 
           "Min To Qualify", "Penalty", "Disqualifying", "Active",
           "Instructions", "Signals", "Examples"
-        ]
+        ],
+        filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
       })
       .all();
 
@@ -878,6 +879,20 @@ router.get("/api/attributes", async (req, res) => {
       examples: extractPlainText(record.get("Examples")),
       isEmpty: !record.get("Heading") && !extractPlainText(record.get("Instructions"))
     }));
+
+    // Sort attributes: Positives first (A-Z), then Negatives (N1, N2, etc.)
+    attributes.sort((a, b) => {
+      // First sort by category: Positive before Negative
+      if (a.category !== b.category) {
+        if (a.category === 'Positive') return -1;
+        if (b.category === 'Positive') return 1;
+      }
+      
+      // Then sort alphabetically by Attribute ID within each category
+      const aId = a.attributeId || '';
+      const bId = b.attributeId || '';
+      return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     console.log(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} attributes for library view`);
     res.json({
