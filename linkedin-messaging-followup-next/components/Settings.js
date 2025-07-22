@@ -108,7 +108,97 @@ const Settings = () => {
     );
   }
 
-  // Phase 1: Simple attribute list - no complex logic
+  // Group attributes by category for better organization
+  const positiveAttributes = attributes.filter(attr => attr.category === 'Positive');
+  const negativeAttributes = attributes.filter(attr => attr.category === 'Negative');
+
+  // Component to render attribute section
+  const AttributeSection = ({ title, sectionAttributes, bgColor, textColor }) => (
+    <div className="bg-white rounded-lg border border-gray-200 mb-6">
+      <div className={`px-6 py-3 border-b border-gray-200 ${bgColor}`}>
+        <h3 className={`text-lg font-semibold ${textColor}`}>{title}</h3>
+        <p className="text-sm text-gray-600 mt-1">
+          {sectionAttributes.length} {title.toLowerCase()} configured
+        </p>
+      </div>
+      
+      <div className="divide-y divide-gray-200">
+        {sectionAttributes.length === 0 ? (
+          <div className="px-6 py-8 text-center text-gray-500">
+            No {title.toLowerCase()} found
+          </div>
+        ) : (
+          sectionAttributes.map((attribute) => {
+            // Convert everything to strings immediately - no risk of object rendering
+            const attributeId = String(attribute.attributeId || '');
+            const name = String(attribute.heading || 'Unnamed Attribute');
+            const maxPoints = String(attribute.maxPoints || 0);
+            const minToQualify = String(attribute.minToQualify || 0);
+            const penalty = String(attribute.penalty || 0);
+            const isActive = attribute.active !== false;
+            const needsSetup = Boolean(attribute.isEmpty);
+            const isPositive = attribute.category === 'Positive';
+            
+            return (
+              <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
+                <div className="flex items-start space-x-6">
+                  {/* Left Column: Attribute ID */}
+                  <div className="flex-shrink-0 w-12">
+                    <span className="inline-flex items-center justify-center w-10 h-10 bg-blue-100 text-blue-800 text-sm font-bold rounded-full">
+                      {attributeId}
+                    </span>
+                  </div>
+                  
+                  {/* Main Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h4 className="text-sm font-medium text-gray-900">{name}</h4>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {isActive ? 'Active' : 'Inactive'}
+                      </span>
+                      {needsSetup && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Needs Setup
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                      {isPositive ? (
+                        <>
+                          <span>Max Points: {maxPoints}</span>
+                          <span>Min to Qualify: {minToQualify}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Penalty: {penalty}</span>
+                          <span>Min to Qualify: {minToQualify}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Right Column: Edit Button */}
+                  <div className="flex-shrink-0">
+                    <button 
+                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                      onClick={() => handleOpenAIEdit(attribute)}
+                    >
+                      <CogIcon className="h-3 w-3 mr-1" />
+                      Edit with AI
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  // Phase 1: Simple attribute list with improved UX
   return (
     <div className="space-y-6">
       <div>
@@ -118,65 +208,31 @@ const Settings = () => {
         </p>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Lead Scoring Attributes</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            {attributes.length} attributes configured
-          </p>
-        </div>
-        
-        <div className="divide-y divide-gray-200 max-w-4xl">
+      {/* Centered container with narrower width */}
+      <div className="flex justify-center">
+        <div className="w-full max-w-3xl">
           {attributes.length === 0 ? (
-            <div className="px-6 py-8 text-center text-gray-500">
+            <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center text-gray-500">
               No attributes found
             </div>
           ) : (
-            attributes.map((attribute) => {
-              // Phase 1: Convert everything to strings immediately - no risk of object rendering
-              const name = String(attribute.heading || 'Unnamed Attribute');
-              const maxPoints = String(attribute.maxPoints || 0);
-              const minToQualify = String(attribute.minToQualify || 0);
-              const category = String(attribute.category || 'uncategorized');
-              const isActive = attribute.active !== false;
-              const needsSetup = Boolean(attribute.isEmpty);
+            <>
+              {/* Positive Attributes Section */}
+              <AttributeSection 
+                title="Positive Attributes" 
+                sectionAttributes={positiveAttributes}
+                bgColor="bg-green-50"
+                textColor="text-green-800"
+              />
               
-              return (
-                <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
-                  <div className="flex items-start space-x-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h4 className="text-sm font-medium text-gray-900">{name}</h4>
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {isActive ? 'Active' : 'Inactive'}
-                        </span>
-                        {needsSetup && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            Needs Setup
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-4 text-sm text-gray-500">
-                        <span>Max Points: {maxPoints}</span>
-                        <span>Min to Qualify: {minToQualify}</span>
-                        <span className="capitalize">{category}</span>
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <button 
-                        className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-                        onClick={() => handleOpenAIEdit(attribute)}
-                      >
-                        <CogIcon className="h-3 w-3 mr-1" />
-                        Edit with AI
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+              {/* Negative Attributes Section */}
+              <AttributeSection 
+                title="Negative Attributes" 
+                sectionAttributes={negativeAttributes}
+                bgColor="bg-red-50"
+                textColor="text-red-800"
+              />
+            </>
           )}
         </div>
       </div>
