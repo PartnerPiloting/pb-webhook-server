@@ -404,29 +404,31 @@ const SettingsWithParams = () => {
             const isPositive = attribute.category === 'Positive';
             
             return (
-              <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
-                <div className="flex items-start space-x-6">
+              <div key={attribute.id} className="px-6 py-6 hover:bg-gray-50">
+                <div className="flex items-start space-x-4">
                   {/* Left Column: Attribute ID */}
-                  <div className="flex-shrink-0 w-12">
-                    <span className="inline-flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-800 text-sm font-bold rounded-full">
-                      {attributeId}
-                    </span>
+                  <div className="flex-shrink-0 w-16">
+                    <div className="inline-flex items-center justify-center w-14 h-14 bg-purple-100 text-purple-800 text-[10px] font-bold rounded-full text-center p-1">
+                      <span className="break-all leading-[1.1]">{attributeId}</span>
+                    </div>
                   </div>
                   
                   {/* Main Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h4 className="text-sm font-medium text-gray-900">{name}</h4>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {isActive ? 'Active' : 'Inactive'}
-                      </span>
-                      {needsSetup && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                          Needs Setup
+                    <div className="flex items-start space-x-3 mb-3">
+                      <h4 className="text-sm font-medium text-gray-900 leading-relaxed">{name}</h4>
+                      <div className="flex-shrink-0 flex items-center space-x-2">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {isActive ? 'Active' : 'Inactive'}
                         </span>
-                      )}
+                        {needsSetup && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            Needs Setup
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
                       {isPositive ? (
@@ -444,7 +446,7 @@ const SettingsWithParams = () => {
                   </div>
                   
                   {/* Right Column: Toggle Active + Edit Button */}
-                  <div className="flex-shrink-0 flex items-center space-x-2">
+                  <div className="flex-shrink-0 flex flex-col items-end space-y-2">
                     {/* Active/Inactive Toggle */}
                     <button 
                       className={`inline-flex items-center px-3 py-1.5 border text-xs font-medium rounded transition-colors ${
