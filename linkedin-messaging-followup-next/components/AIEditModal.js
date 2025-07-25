@@ -81,7 +81,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     }
   ];
 
-  // Post Scoring Fields - Simple scoring system focused on content relevance
+  // Post Scoring Fields - Rich fields matching Airtable structure
   const postFields = [
     {
       key: 'heading',
@@ -110,26 +110,42 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     },
     {
       key: 'instructions',
-      label: 'Instructions for AI Scoring',
+      label: 'Scoring Instructions',
       type: 'textarea',
-      placeholder: 'Enter scoring instructions for posts...',
+      placeholder: 'Enter detailed scoring rubric and guidelines...',
       description: 'Core rubric content sent to AI for post scoring (most important field)',
       rows: 6
     },
     {
-      key: 'signals',
-      label: 'Detection Keywords',
+      key: 'positiveIndicators',
+      label: 'Keywords/Positive Indicators',
       type: 'textarea',
-      placeholder: 'startup, innovation, technology, growth...',
-      description: 'Keywords that help AI identify when this criterion applies to posts',
-      rows: 3
+      placeholder: 'startup, innovation, growth, technology, leadership...',
+      description: 'Keywords and phrases that should increase the score for this criterion',
+      rows: 4
     },
     {
-      key: 'examples',
-      label: 'Examples',
+      key: 'negativeIndicators',
+      label: 'Keywords/Negative Indicators',
       type: 'textarea',
-      placeholder: 'Example post scenarios with point values...',
-      description: 'Concrete scoring scenarios that help AI understand post nuances',
+      placeholder: 'spam, off-topic, irrelevant, promotional...',
+      description: 'Keywords and phrases that should decrease the score for this criterion',
+      rows: 4
+    },
+    {
+      key: 'highScoreExample',
+      label: 'High Score Example',
+      type: 'textarea',
+      placeholder: 'Example of a post that would score high on this criterion...',
+      description: 'Concrete example of content that exemplifies a high score',
+      rows: 4
+    },
+    {
+      key: 'lowScoreExample',
+      label: 'Low Score Example',
+      type: 'textarea',
+      placeholder: 'Example of a post that would score low on this criterion...',
+      description: 'Concrete example of content that exemplifies a low score',
       rows: 4
     },
     {
@@ -153,14 +169,16 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       console.log('AIEditModal: Setting field values for attribute:', attribute);
       
       if (attribute.isPostAttribute) {
-        // Post Scoring Criteria - completely different fields
+        // Post Scoring Criteria - using rich Airtable fields
         setFieldValues({
           heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
           maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
           scoringType: (attribute.scoringType && attribute.scoringType !== 'null') ? String(attribute.scoringType) : 'Scale',
           instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
-          signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
-          examples: (attribute.examples && attribute.examples !== 'null') ? String(attribute.examples) : '',
+          positiveIndicators: (attribute.positiveIndicators && attribute.positiveIndicators !== 'null') ? String(attribute.positiveIndicators) : '',
+          negativeIndicators: (attribute.negativeIndicators && attribute.negativeIndicators !== 'null') ? String(attribute.negativeIndicators) : '',
+          highScoreExample: (attribute.highScoreExample && attribute.highScoreExample !== 'null') ? String(attribute.highScoreExample) : '',
+          lowScoreExample: (attribute.lowScoreExample && attribute.lowScoreExample !== 'null') ? String(attribute.lowScoreExample) : '',
           active: attribute.active !== false
         });
       } else {
@@ -249,7 +267,19 @@ To change this setting, simply check or uncheck the box above. Would you like gu
     } else if (fieldKey === 'instructions') {
       const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
       
-      initialMessage = `I'll help you create scoring instructions for ${attribute.heading || 'this attribute'}.
+      if (isPostAttribute) {
+        initialMessage = `I'll help you create scoring instructions for ${attribute.heading || 'this post criterion'}.
+
+${hasInstructions ? 'Current instructions are shown above.' : 'No instructions are currently set.'}
+
+Just tell me what you're looking for in posts and I'll create the scoring breakdown for you.
+
+Examples:
+• "I want posts about AI and technology"  
+• "Looking for thought leadership content"
+• "Need posts about startup growth"`;
+      } else {
+        initialMessage = `I'll help you create scoring instructions for ${attribute.heading || 'this attribute'}.
 
 ${hasInstructions ? 'Current instructions are shown above.' : 'No instructions are currently set.'}
 
@@ -259,6 +289,55 @@ Examples:
 • "I want people with AI experience"  
 • "Looking for startup founders"
 • "Need someone with Python skills"`;
+      }
+    } else if (fieldKey === 'positiveIndicators') {
+      const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
+      initialMessage = `I'll help you identify positive keywords and indicators for ${attribute.heading || 'this criterion'}.
+
+${hasValue ? 'Current positive indicators are shown above.' : 'No positive indicators are currently set.'}
+
+Tell me what type of content you want to score highly and I'll suggest keywords and phrases to look for.
+
+Examples:
+• "Posts about innovation and startups"
+• "Content showing industry expertise"  
+• "Thought leadership and insights"`;
+    } else if (fieldKey === 'negativeIndicators') {
+      const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
+      initialMessage = `I'll help you identify negative keywords and indicators for ${attribute.heading || 'this criterion'}.
+
+${hasValue ? 'Current negative indicators are shown above.' : 'No negative indicators are currently set.'}
+
+Tell me what type of content should score poorly and I'll suggest keywords and phrases to watch for.
+
+Examples:
+• "Spam or promotional content"
+• "Off-topic or irrelevant posts"
+• "Low-quality or generic content"`;
+    } else if (fieldKey === 'highScoreExample') {
+      const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
+      initialMessage = `I'll help you create a high-scoring example for ${attribute.heading || 'this criterion'}.
+
+${hasValue ? 'Current example is shown above.' : 'No high-score example is currently set.'}
+
+Describe the type of post content that should score highly, and I'll create a realistic example.
+
+Examples:
+• "A post about successful startup funding"
+• "Thought leadership about industry trends"
+• "Technical insights about AI development"`;
+    } else if (fieldKey === 'lowScoreExample') {
+      const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
+      initialMessage = `I'll help you create a low-scoring example for ${attribute.heading || 'this criterion'}.
+
+${hasValue ? 'Current example is shown above.' : 'No low-score example is currently set.'}
+
+Describe the type of post content that should score poorly, and I'll create a realistic example.
+
+Examples:
+• "Generic promotional content"
+• "Off-topic or irrelevant posts"
+• "Low-quality or spammy content"`;
     } else {
       // Default message for other fields
       if (hasValue) {
