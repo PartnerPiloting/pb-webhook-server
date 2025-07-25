@@ -27,6 +27,14 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       placeholder: '15',
       description: 'Maximum points this attribute can award'
     },
+    // Only show Bonus Points field for positive attributes
+    ...(attribute?.category === 'Positive' ? [{
+      key: 'bonusPoints',
+      label: 'Bonus Points',
+      type: 'checkbox',
+      description: 'Bonus points contribute 25% to scoring denominator instead of 100%. Use for nice-to-have qualities that shouldn\'t heavily impact overall scores.',
+      icon: '✨'
+    }] : []),
     {
       key: 'instructions',
       label: 'Instructions for AI Scoring',
@@ -77,6 +85,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       setFieldValues({
         heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
         maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
+        bonusPoints: !!attribute.bonusPoints, // Convert to boolean, default false
         instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
         minToQualify: (attribute.minToQualify && attribute.minToQualify !== 'null') ? String(attribute.minToQualify) : '',
         signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
@@ -132,6 +141,27 @@ To change this number, type the new value into the field above. If you need an e
 Current Min to Qualify: ${currentValue || '0'}
 
 To change this number, type the new value into the field above. If you need an explanation of how min to qualify works, ask below.`;
+    } else if (fieldKey === 'bonusPoints') {
+      const isBonus = currentValue === true;
+      initialMessage = `Bonus Points help you reward candidates for great qualities without making them mandatory for high scores.
+
+CURRENT SETTING: ${isBonus ? 'Bonus Points (25% weight)' : 'Standard Points (100% weight)'}
+
+HOW IT WORKS:
+• Standard points: Full weight in scoring calculations (100% of denominator)
+• Bonus points: Reduced weight in scoring calculations (25% of denominator)
+
+WHEN TO USE BONUS POINTS:
+✅ Nice-to-have skills that give candidates an edge
+✅ Impressive achievements that aren't core requirements  
+✅ Qualities you want to reward but not require
+
+WHEN TO USE STANDARD POINTS:
+✅ Core job requirements and essential skills
+✅ Must-have qualifications for the role
+✅ Critical attributes that heavily influence hiring decisions
+
+To change this setting, simply check or uncheck the box above. Would you like guidance on whether this attribute should be bonus or standard points?`;
     } else if (fieldKey === 'instructions') {
       const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
       
@@ -401,6 +431,32 @@ Examples:
                     </option>
                   ))}
                 </select>
+              )}
+              
+              {field.type === 'checkbox' && (
+                <div className="flex items-start space-x-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id={`checkbox-${field.key}`}
+                      checked={fieldValues[field.key] || false}
+                      onChange={(e) => handleFieldChange(field.key, e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label htmlFor={`checkbox-${field.key}`} className="flex items-center text-sm font-medium text-gray-900 cursor-pointer">
+                      {field.icon && <span className="mr-1">{field.icon}</span>}
+                      {fieldValues[field.key] ? 'Bonus Points (25% weight)' : 'Standard Points (100% weight)'}
+                    </label>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {fieldValues[field.key] 
+                        ? 'This attribute will contribute 25% to the scoring denominator - ideal for nice-to-have qualities'
+                        : 'This attribute will contribute 100% to the scoring denominator - ideal for core requirements'
+                      }
+                    </p>
+                  </div>
+                </div>
               )}
               
               {/* AI Chat for this field */}
