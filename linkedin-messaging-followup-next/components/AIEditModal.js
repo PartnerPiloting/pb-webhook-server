@@ -31,8 +31,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     ...(attribute?.category === 'Positive' ? [{
       key: 'bonusPoints',
       label: 'Bonus Points',
-      type: 'checkbox',
-      description: 'Bonus points contribute 25% to scoring denominator instead of 100%. Use for nice-to-have qualities that shouldn\'t heavily impact overall scores.',
+      type: 'toggle',
+      description: 'Bonus points contribute 25% to scoring denominator instead of 100%.\nUse for nice-to-have qualities that shouldn\'t heavily impact overall scores.',
       icon: '✨'
     }] : []),
     {
@@ -433,6 +433,49 @@ Examples:
                 </select>
               )}
               
+              {field.type === 'toggle' && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      {field.icon && <span className="text-lg">{field.icon}</span>}
+                      <span className="text-sm font-medium text-gray-900">Scoring Weight</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <span className={`text-sm font-medium ${!fieldValues[field.key] ? 'text-blue-600' : 'text-gray-500'}`}>
+                        Standard
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleFieldChange(field.key, !fieldValues[field.key])}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                          fieldValues[field.key] ? 'bg-green-600' : 'bg-blue-600'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            fieldValues[field.key] ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-sm font-medium ${fieldValues[field.key] ? 'text-green-600' : 'text-gray-500'}`}>
+                        Bonus
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-gray-900 mb-1">
+                      {fieldValues[field.key] ? 'Bonus Points (25% weight)' : 'Standard Points (100% weight)'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {fieldValues[field.key] 
+                        ? 'This attribute contributes 25% to the scoring denominator - ideal for nice-to-have qualities'
+                        : 'This attribute contributes 100% to the scoring denominator - ideal for core requirements'
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {field.type === 'checkbox' && (
                 <div className="flex items-start space-x-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-center">
