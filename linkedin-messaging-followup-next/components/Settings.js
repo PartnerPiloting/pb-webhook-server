@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage } from '../services/api';
+import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
 import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import AIEditModal from './AIEditModal';
 
@@ -15,7 +15,9 @@ const SettingsWithParams = () => {
   const [currentView, setCurrentView] = useState('menu'); // 'menu', 'profile', 'posts'
   
   const [attributes, setAttributes] = useState([]);
+  const [postAttributes, setPostAttributes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [postLoading, setPostLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tokenUsage, setTokenUsage] = useState(null);
   const [tokenLoading, setTokenLoading] = useState(true);
@@ -114,6 +116,73 @@ const SettingsWithParams = () => {
     }
   };
 
+  // Post attribute handlers
+  const handleEditPostAttribute = async (attribute) => {
+    try {
+      const editData = await getPostAttributeForEditing(attribute.id);
+      setSelectedAttribute({
+        ...attribute,
+        ...editData,
+        isPostAttribute: true
+      });
+      setIsAIModalOpen(true);
+    } catch (err) {
+      console.error('Error loading post attribute for editing:', err);
+      alert('Failed to load post attribute for editing. Please try again.');
+    }
+  };
+
+  const handleSavePostAttribute = async (attributeId, updatedData) => {
+    try {
+      await savePostAttributeChanges(attributeId, updatedData);
+      // Reload post attributes
+      await loadPostAttributes();
+      
+      // Refresh token usage
+      try {
+        const tokenData = await getTokenUsage();
+        setTokenUsage(tokenData.usage);
+      } catch (tokenErr) {
+        console.error('Error refreshing token usage:', tokenErr);
+      }
+    } catch (err) {
+      console.error('Error saving post attribute:', err);
+      throw err;
+    }
+  };
+
+  const handleTogglePostAttributeActive = async (attributeId, currentActiveStatus) => {
+    try {
+      const newActiveStatus = !currentActiveStatus;
+      await togglePostAttributeActive(attributeId, newActiveStatus);
+      // Reload post attributes
+      await loadPostAttributes();
+      
+      // Refresh token usage
+      try {
+        const tokenData = await getTokenUsage();
+        setTokenUsage(tokenData.usage);
+      } catch (tokenErr) {
+        console.error('Error refreshing token usage:', tokenErr);
+      }
+    } catch (err) {
+      console.error('Error toggling post active status:', err);
+      alert('Failed to toggle post active status. Please try again.');
+    }
+  };
+
+  const loadPostAttributes = async () => {
+    try {
+      setPostLoading(true);
+      const data = await getPostAttributes();
+      setPostAttributes(data.attributes || []);
+    } catch (err) {
+      console.error('Error loading post attributes:', err);
+    } finally {
+      setPostLoading(false);
+    }
+  };
+
   // Phase 1: Load attributes and token usage with bulletproof error handling
   useEffect(() => {
     const loadData = async () => {
@@ -121,7 +190,7 @@ const SettingsWithParams = () => {
         setLoading(true);
         setError(null);
         
-        // Load attributes
+        // Load profile attributes
         const data = await getAttributes();
         setAttributes(data.attributes || []);
         
@@ -147,6 +216,13 @@ const SettingsWithParams = () => {
 
     loadData();
   }, []);
+
+  // Load post attributes when switching to posts view
+  useEffect(() => {
+    if (currentView === 'posts') {
+      loadPostAttributes();
+    }
+  }, [currentView]);
 
   // Phase 1: Simple loading state
   if (loading) {
@@ -188,6 +264,10 @@ const SettingsWithParams = () => {
   // Group attributes by category for better organization
   const positiveAttributes = attributes.filter(attr => attr.category === 'Positive');
   const negativeAttributes = attributes.filter(attr => attr.category === 'Negative');
+
+  // Group post attributes by category
+  const positivePostAttributes = postAttributes.filter(attr => attr.category === 'Positive');
+  const negativePostAttributes = postAttributes.filter(attr => attr.category === 'Negative');
 
   // Component to render attribute section
   const AttributeSection = ({ title, sectionAttributes, bgColor, textColor }) => (
@@ -278,6 +358,109 @@ const SettingsWithParams = () => {
                     <button 
                       className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
                       onClick={() => handleOpenAIEdit(attribute)}
+                    >
+                      <CogIcon className="h-3 w-3 mr-1" />
+                      Edit with AI
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  // Component to render post attribute section  
+  const PostAttributeSection = ({ title, sectionAttributes, bgColor, textColor }) => (
+    <div className="bg-white rounded-lg border border-gray-200 mb-6">
+      <div className={`px-6 py-3 border-b border-gray-200 ${bgColor}`}>
+        <h3 className={`text-lg font-semibold ${textColor}`}>{title}</h3>
+        <p className="text-sm text-gray-600 mt-1">
+          {sectionAttributes.length} {title.toLowerCase()} configured
+        </p>
+      </div>
+      
+      <div className="divide-y divide-gray-200">
+        {sectionAttributes.length === 0 ? (
+          <div className="px-6 py-8 text-center text-gray-500">
+            No {title.toLowerCase()} found
+          </div>
+        ) : (
+          sectionAttributes.map((attribute) => {
+            // Convert everything to strings immediately - no risk of object rendering
+            const attributeId = String(attribute.attributeId || '');
+            const name = String(attribute.heading || 'Unnamed Attribute');
+            const maxPoints = String(attribute.maxPoints || 0);
+            const minToQualify = String(attribute.minToQualify || 0);
+            const penalty = String(attribute.penalty || 0);
+            const isActive = attribute.active !== false;
+            const needsSetup = Boolean(attribute.isEmpty);
+            const isPositive = attribute.category === 'Positive';
+            
+            return (
+              <div key={attribute.id} className="px-6 py-4 hover:bg-gray-50">
+                <div className="flex items-start space-x-6">
+                  {/* Left Column: Attribute ID */}
+                  <div className="flex-shrink-0 w-12">
+                    <span className="inline-flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-800 text-sm font-bold rounded-full">
+                      {attributeId}
+                    </span>
+                  </div>
+                  
+                  {/* Main Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h4 className="text-sm font-medium text-gray-900">{name}</h4>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {isActive ? 'Active' : 'Inactive'}
+                      </span>
+                      {needsSetup && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Needs Setup
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                      {isPositive ? (
+                        <>
+                          <span>Max Points: {maxPoints}</span>
+                          <span>Min to Qualify: {minToQualify}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Penalty: {penalty}</span>
+                          <span>Min to Qualify: {minToQualify}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Right Column: Toggle Active + Edit Button */}
+                  <div className="flex-shrink-0 flex items-center space-x-2">
+                    {/* Active/Inactive Toggle */}
+                    <button 
+                      className={`inline-flex items-center px-3 py-1.5 border text-xs font-medium rounded transition-colors ${
+                        isActive 
+                          ? 'border-green-600 text-green-700 bg-green-50 hover:bg-green-100' 
+                          : 'border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100'
+                      }`}
+                      onClick={() => handleTogglePostAttributeActive(attribute.id, isActive)}
+                      title={isActive ? 'Click to deactivate' : 'Click to activate'}
+                    >
+                      <div className={`w-2 h-2 rounded-full mr-2 ${
+                        isActive ? 'bg-green-500' : 'bg-gray-400'
+                      }`} />
+                      {isActive ? 'Active' : 'Inactive'}
+                    </button>
+                    
+                    {/* Edit Button */}
+                    <button 
+                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+                      onClick={() => handleEditPostAttribute(attribute)}
                     >
                       <CogIcon className="h-3 w-3 mr-1" />
                       Edit with AI
@@ -500,19 +683,36 @@ const SettingsWithParams = () => {
 
       {/* Show different content based on view */}
       {isPostsView ? (
-        // Placeholder for post scoring attributes
+        // Post scoring attributes view
         <div className="flex justify-center">
           <div className="w-full max-w-3xl">
-            <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center">
-              <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Post Scoring Attributes</h3>
-              <p className="text-gray-500 mb-4">
-                Post scoring attribute configuration will be available soon.
-              </p>
-              <p className="text-sm text-gray-400">
-                This feature is currently under development and will allow you to configure how AI scores LinkedIn posts for relevance and engagement opportunities.
-              </p>
-            </div>
+            {postLoading ? (
+              <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center">
+                <p className="text-gray-500">Loading post attributes...</p>
+              </div>
+            ) : postAttributes.length === 0 ? (
+              <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center text-gray-500">
+                No post attributes found
+              </div>
+            ) : (
+              <>
+                {/* Positive Post Attributes Section */}
+                <PostAttributeSection 
+                  title="Positive Attributes" 
+                  sectionAttributes={positivePostAttributes}
+                  bgColor="bg-green-50"
+                  textColor="text-green-800"
+                />
+                
+                {/* Negative Post Attributes Section */}
+                <PostAttributeSection 
+                  title="Negative Attributes" 
+                  sectionAttributes={negativePostAttributes}
+                  bgColor="bg-red-50"
+                  textColor="text-red-800"
+                />
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -607,7 +807,7 @@ const SettingsWithParams = () => {
           isOpen={isAIModalOpen}
           onClose={handleCloseAIModal}
           attribute={selectedAttribute}
-          onSave={handleSaveAttribute}
+          onSave={selectedAttribute.isPostAttribute ? handleSavePostAttribute : handleSaveAttribute}
         />
       )}
     </div>

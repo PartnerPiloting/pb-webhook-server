@@ -1,0 +1,178 @@
+# Airtable Field Analysis Report
+Generated: 2025-07-25T11:25:09.574Z
+Table: "Scoring Attributes"
+Base ID: appXySOLo6V9PfMfa
+Records Analyzed: 10
+Total Fields: 11
+
+## Field Definitions
+
+| Field Name | Primary Type | All Types | Sample Values | Notes |
+|------------|--------------|-----------|---------------|-------|
+| `Active` | boolean | boolean | true | - |
+| `Attribute Id` | string | string | A | K | STEP-A | - |
+| `Category` | string | string | Positive | Step | Negative | - |
+| `Examples` | string | string | 
+ | - |
+| `Heading` | string | string | Interest in Emerging Tech / AI Enthusiasm | Financial Ability from Income/Career | Disqualifying Check (Immediate Stop) | - |
+| `Instructions` | Long Text | string, Long Text | Scoring Range
+0–3 pts = minimal or vague interest (e.g. one-off “AI is interesting” comment).
+4–7 pts = occasional mentions or passive sharing of AI articles.
+8–11 pts = regular AI/ML posts, online courses, or project updates.
+12–15 pts = strong advocate: publishes thought-leadership, demos tools, speaks at AI events.
+Award points based on the depth, frequency, and recency of demonstrated engagement with emerging tech or AI.
+ | 0–4 pts = Early-career, unstable job history, frequent short stints (< 1 yr), low-level titles. Minimal capacity for funding or dedicated focus on external ventures.
+5–9 pts = Mid-career stability (3–5 yrs per role) or first supervisory title; evidence of stable, modest disposable income, suggesting capacity for modest investment or time commitment.
+10–14 pts = Senior contributor or manager; 5 + yrs in field; clear salary head-room; some savings/investment mentions. Strong indicators of both financial capacity and potential for dedicated time/focus.
+15–20 pts = Executive / Director / Partner; long tenure, stock options, or passive income streams; explicit comments about “next chapter” or investing in ventures. Clear capacity for significant funding and a strong intent/ability to dedicate focus to new ventures.
+
+Award points based on a holistic assessment of the candidate’s financial head-room, seniority, and tenure stability. The aim is to gauge their overall capacity to fund and dedicate time/focus to a side venture. When conflicting signals exist (e.g., high seniority but unstable tenure), prioritize the highest indicators of potential for both funding and focus.
+ | \n1. If any \*\*negative\*\* attribute with \*\*Disqualifying = Yes\*\* is triggered:\n - Assign \*\*Final Score = 0 %\*\*\n - \*\*Stop\*\* all further scoring\n - Record \*\*which disqualifier fired\*\*\n
+ | - |
+| `Last Updated` | Date | string, Date | 2025-07-22T11:42:34.000Z | 2025-07-21T23:00:51.000Z | 2025-07-15T12:07:51.000Z | - |
+| `Max Points` | Integer | number, Integer | 15 | 20 | 10 | - |
+| `Min To Qualify` | Integer | number, Integer | 5 | 0 | 6 | - |
+| `Penalty` | Integer | number, Integer | 5 | - |
+| `Signals` | Long Text | string, Long Text | machine learning, Deep Learning, Generative AI, LLMs, prompt engineering, AI ethics, MLOps, AI Engineer, Machine Learning Engineer, AI Researcher, AI Speaker, AI side project
+ | titles like Manager, Director, VP, Head of …; 8 + yrs tenure; LinkedIn shows bonuses, equity, RSUs; posts about investing, property portfolio, FIRE journey; consistent career progression; mentions of “financial freedom”
+ | %, revenue $, cost-savings, ROI, KPIs, OKRs, exceeded targets, data-driven results, making a difference, driving change, problem-solver, proactive approach, impactful contributions, value creation, goal-oriented
+ | - |
+
+## Detailed Field Information
+
+### `Active`
+- **Primary Type:** boolean
+- **All Detected Types:** boolean
+- **Sample Values:**
+  - true
+- **Nullable:** No
+- **Array Field:** No
+
+### `Attribute Id`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - A
+  - K
+  - STEP-A
+- **Nullable:** No
+- **Array Field:** No
+
+### `Category`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - Positive
+  - Step
+  - Negative
+- **Nullable:** No
+- **Array Field:** No
+
+### `Examples`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - 
+
+- **Nullable:** No
+- **Array Field:** No
+
+### `Heading`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - Interest in Emerging Tech / AI Enthusiasm
+  - Financial Ability from Income/Career
+  - Disqualifying Check (Immediate Stop)
+- **Nullable:** No
+- **Array Field:** No
+
+### `Instructions`
+- **Primary Type:** Long Text
+- **All Detected Types:** string, Long Text
+- **Sample Values:**
+  - Scoring Range
+0–3 pts = minimal or vague interest (e.g. one-off “AI is interesting” comment).
+4–7 pts = occasional mentions or passive sharing of AI articles.
+8–11 pts = regular AI/ML posts, online courses, or project updates.
+12–15 pts = strong advocate: publishes thought-leadership, demos tools, speaks at AI events.
+Award points based on the depth, frequency, and recency of demonstrated engagement with emerging tech or AI.
+
+  - 0–4 pts = Early-career, unstable job history, frequent short stints (< 1 yr), low-level titles. Minimal capacity for funding or dedicated focus on external ventures.
+5–9 pts = Mid-career stability (3–5 yrs per role) or first supervisory title; evidence of stable, modest disposable income, suggesting capacity for modest investment or time commitment.
+10–14 pts = Senior contributor or manager; 5 + yrs in field; clear salary head-room; some savings/investment mentions. Strong indicators of both financial capacity and potential for dedicated time/focus.
+15–20 pts = Executive / Director / Partner; long tenure, stock options, or passive income streams; explicit comments about “next chapter” or investing in ventures. Clear capacity for significant funding and a strong intent/ability to dedicate focus to new ventures.
+
+Award points based on a holistic assessment of the candidate’s financial head-room, seniority, and tenure stability. The aim is to gauge their overall capacity to fund and dedicate time/focus to a side venture. When conflicting signals exist (e.g., high seniority but unstable tenure), prioritize the highest indicators of potential for both funding and focus.
+
+  - \n1. If any \*\*negative\*\* attribute with \*\*Disqualifying = Yes\*\* is triggered:\n - Assign \*\*Final Score = 0 %\*\*\n - \*\*Stop\*\* all further scoring\n - Record \*\*which disqualifier fired\*\*\n
+
+- **Nullable:** No
+- **Array Field:** No
+
+### `Last Updated`
+- **Primary Type:** Date
+- **All Detected Types:** string, Date
+- **Sample Values:**
+  - 2025-07-22T11:42:34.000Z
+  - 2025-07-21T23:00:51.000Z
+  - 2025-07-15T12:07:51.000Z
+- **Nullable:** No
+- **Array Field:** No
+
+### `Max Points`
+- **Primary Type:** Integer
+- **All Detected Types:** number, Integer
+- **Sample Values:**
+  - 15
+  - 20
+  - 10
+- **Nullable:** No
+- **Array Field:** No
+
+### `Min To Qualify`
+- **Primary Type:** Integer
+- **All Detected Types:** number, Integer
+- **Sample Values:**
+  - 5
+  - 0
+  - 6
+- **Nullable:** No
+- **Array Field:** No
+
+### `Penalty`
+- **Primary Type:** Integer
+- **All Detected Types:** number, Integer
+- **Sample Values:**
+  - 5
+- **Nullable:** No
+- **Array Field:** No
+
+### `Signals`
+- **Primary Type:** Long Text
+- **All Detected Types:** string, Long Text
+- **Sample Values:**
+  - machine learning, Deep Learning, Generative AI, LLMs, prompt engineering, AI ethics, MLOps, AI Engineer, Machine Learning Engineer, AI Researcher, AI Speaker, AI side project
+
+  - titles like Manager, Director, VP, Head of …; 8 + yrs tenure; LinkedIn shows bonuses, equity, RSUs; posts about investing, property portfolio, FIRE journey; consistent career progression; mentions of “financial freedom”
+
+  - %, revenue $, cost-savings, ROI, KPIs, OKRs, exceeded targets, data-driven results, making a difference, driving change, problem-solver, proactive approach, impactful contributions, value creation, goal-oriented
+
+- **Nullable:** No
+- **Array Field:** No
+
+## Recommended Airtable Field Types
+
+Based on the analysis, here are the recommended Airtable field types:
+
+- **`Active`**: Checkbox
+- **`Attribute Id`**: Single Line Text
+- **`Category`**: Single Line Text
+- **`Examples`**: Single Line Text
+- **`Heading`**: Single Line Text
+- **`Instructions`**: Long Text
+- **`Last Updated`**: Date
+- **`Max Points`**: Number (Integer only)
+- **`Min To Qualify`**: Number (Integer only)
+- **`Penalty`**: Number (Integer only)
+- **`Signals`**: Long Text

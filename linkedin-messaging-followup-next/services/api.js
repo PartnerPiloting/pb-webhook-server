@@ -437,7 +437,7 @@ export const syncLeadData = async (syncData) => {
   }
 };
 
-// Attribute management functions (NEW)
+// Attribute management functions (Profile Scoring)
 export const getAttributes = async () => {
   try {
     // Call your deployed backend directly - use full base URL without /api/linkedin
@@ -460,6 +460,28 @@ export const getAttributes = async () => {
   }
 };
 
+// Post Scoring Attributes management functions
+export const getPostAttributes = async () => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/post-attributes`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load post attributes: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getPostAttributes:', error);
+    throw new Error('Failed to load post attributes');
+  }
+};
+
 export const getAttributeForEditing = async (attributeId) => {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
@@ -478,6 +500,27 @@ export const getAttributeForEditing = async (attributeId) => {
   } catch (error) {
     console.error('Error in getAttributeForEditing:', error);
     throw new Error('Failed to load attribute for editing');
+  }
+};
+
+export const getPostAttributeForEditing = async (attributeId) => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/edit`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load post attribute: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getPostAttributeForEditing:', error);
+    throw new Error('Failed to load post attribute for editing');
   }
 };
 
@@ -505,6 +548,30 @@ export const getAISuggestions = async (attributeId, userRequest, currentAttribut
   }
 };
 
+export const getPostAISuggestions = async (attributeId, userRequest, currentAttribute) => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/ai-edit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userRequest
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get post AI suggestions: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getPostAISuggestions:', error);
+    throw new Error('Failed to get post AI suggestions');
+  }
+};
+
 export const saveAttributeChanges = async (attributeId, improvedRubric) => {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
@@ -529,6 +596,30 @@ export const saveAttributeChanges = async (attributeId, improvedRubric) => {
   }
 };
 
+export const savePostAttributeChanges = async (attributeId, improvedRubric) => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        improvedRubric
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to save post changes: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in savePostAttributeChanges:', error);
+    throw new Error('Failed to save post attribute changes');
+  }
+};
+
 export const toggleAttributeActive = async (attributeId, isActive) => {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
@@ -550,6 +641,30 @@ export const toggleAttributeActive = async (attributeId, isActive) => {
   } catch (error) {
     console.error('Error in toggleAttributeActive:', error);
     throw new Error('Failed to toggle active status');
+  }
+};
+
+export const togglePostAttributeActive = async (attributeId, isActive) => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        active: isActive
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to toggle post active status: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in togglePostAttributeActive:', error);
+    throw new Error('Failed to toggle post active status');
   }
 };
 
