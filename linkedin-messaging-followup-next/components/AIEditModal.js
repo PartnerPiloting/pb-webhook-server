@@ -11,14 +11,17 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  // Field definitions - same as original broken modal
-  const fields = [
+  // Completely separate field definitions for profile vs post scoring
+  const isPostAttribute = attribute?.isPostAttribute === true;
+  
+  // Profile Scoring Fields - Complex scoring system with bonuses, qualifications, etc.
+  const profileFields = [
     {
       key: 'heading',
       label: 'Attribute Name',
       type: 'text',
       placeholder: 'Enter attribute name',
-      description: 'The display name shown in the scoring interface'
+      description: 'The display name shown in the profile scoring interface'
     },
     {
       key: 'maxPoints',
@@ -27,7 +30,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       placeholder: '15',
       description: 'Maximum points this attribute can award'
     },
-    // Only show Bonus Points field for positive attributes
+    // Only show Bonus Points field for positive profile attributes
     ...(attribute?.category === 'Positive' ? [{
       key: 'bonusPoints',
       label: 'Bonus Points',
@@ -74,24 +77,105 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
         { value: true, label: 'Active' },
         { value: false, label: 'Inactive' }
       ],
-      description: 'Whether this attribute is used in scoring'
+      description: 'Whether this attribute is used in profile scoring'
     }
   ];
+
+  // Post Scoring Fields - Simple scoring system focused on content relevance
+  const postFields = [
+    {
+      key: 'heading',
+      label: 'Criterion Name',
+      type: 'text',
+      placeholder: 'Enter criterion name',
+      description: 'The display name shown in the post scoring interface'
+    },
+    {
+      key: 'maxPoints',
+      label: 'Max Points',
+      type: 'number',
+      placeholder: '20',
+      description: 'Maximum points this criterion can award'
+    },
+    {
+      key: 'scoringType',
+      label: 'Scoring Type',
+      type: 'select',
+      options: [
+        { value: 'Scale', label: 'Scale - AI assigns 0 to Max Score based on degree of match' },
+        { value: 'Fixed Penalty', label: 'Fixed Penalty - All-or-nothing negative score application' },
+        { value: 'Fixed Bonus', label: 'Fixed Bonus - All-or-nothing positive score application' }
+      ],
+      description: 'How the AI should apply scoring for this criterion'
+    },
+    {
+      key: 'instructions',
+      label: 'Instructions for AI Scoring',
+      type: 'textarea',
+      placeholder: 'Enter scoring instructions for posts...',
+      description: 'Core rubric content sent to AI for post scoring (most important field)',
+      rows: 6
+    },
+    {
+      key: 'signals',
+      label: 'Detection Keywords',
+      type: 'textarea',
+      placeholder: 'startup, innovation, technology, growth...',
+      description: 'Keywords that help AI identify when this criterion applies to posts',
+      rows: 3
+    },
+    {
+      key: 'examples',
+      label: 'Examples',
+      type: 'textarea',
+      placeholder: 'Example post scenarios with point values...',
+      description: 'Concrete scoring scenarios that help AI understand post nuances',
+      rows: 4
+    },
+    {
+      key: 'active',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { value: true, label: 'Active' },
+        { value: false, label: 'Inactive' }
+      ],
+      description: 'Whether this criterion is used in post scoring'
+    }
+  ];
+
+  // Use the appropriate field set based on attribute type
+  const fields = isPostAttribute ? postFields : profileFields;
 
   // Initialize field values when attribute changes
   useEffect(() => {
     if (attribute) {
       console.log('AIEditModal: Setting field values for attribute:', attribute);
-      setFieldValues({
-        heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
-        maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
-        bonusPoints: !!attribute.bonusPoints, // Convert to boolean, default false
-        instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
-        minToQualify: (attribute.minToQualify && attribute.minToQualify !== 'null') ? String(attribute.minToQualify) : '',
-        signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
-        examples: (attribute.examples && attribute.examples !== 'null') ? String(attribute.examples) : '',
-        active: attribute.active !== false
-      });
+      
+      if (attribute.isPostAttribute) {
+        // Post Scoring Criteria - completely different fields
+        setFieldValues({
+          heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
+          maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
+          scoringType: (attribute.scoringType && attribute.scoringType !== 'null') ? String(attribute.scoringType) : 'Scale',
+          instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
+          signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
+          examples: (attribute.examples && attribute.examples !== 'null') ? String(attribute.examples) : '',
+          active: attribute.active !== false
+        });
+      } else {
+        // Profile Scoring Attributes - traditional complex scoring
+        setFieldValues({
+          heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
+          maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
+          bonusPoints: !!attribute.bonusPoints,
+          instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
+          minToQualify: (attribute.minToQualify && attribute.minToQualify !== 'null') ? String(attribute.minToQualify) : '',
+          signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
+          examples: (attribute.examples && attribute.examples !== 'null') ? String(attribute.examples) : '',
+          active: attribute.active !== false
+        });
+      }
       
       // Initialize chat history for each field
       const initialChatHistory = {};
@@ -326,12 +410,33 @@ Examples:
       setIsSaving(true);
       setError(null);
       
-      // Convert fields to proper types
-      const updatedData = {
-        ...fieldValues,
-        maxPoints: fieldValues.maxPoints ? Number(fieldValues.maxPoints) : null,
-        minToQualify: fieldValues.minToQualify ? Number(fieldValues.minToQualify) : null
-      };
+      // Create update data based on attribute type
+      let updatedData;
+      
+      if (attribute.isPostAttribute) {
+        // Post Scoring Criteria - different field set
+        updatedData = {
+          heading: fieldValues.heading,
+          maxPoints: fieldValues.maxPoints ? Number(fieldValues.maxPoints) : null,
+          scoringType: fieldValues.scoringType,
+          instructions: fieldValues.instructions,
+          signals: fieldValues.signals,
+          examples: fieldValues.examples,
+          active: fieldValues.active
+        };
+      } else {
+        // Profile Scoring Attributes - traditional field set
+        updatedData = {
+          heading: fieldValues.heading,
+          maxPoints: fieldValues.maxPoints ? Number(fieldValues.maxPoints) : null,
+          bonusPoints: fieldValues.bonusPoints,
+          instructions: fieldValues.instructions,
+          minToQualify: fieldValues.minToQualify ? Number(fieldValues.minToQualify) : null,
+          signals: fieldValues.signals,
+          examples: fieldValues.examples,
+          active: fieldValues.active
+        };
+      }
       
       console.log('AIEditModal: Saving data:', updatedData);
       
@@ -355,7 +460,9 @@ Examples:
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 z-50">
       <div className="relative top-10 mx-auto p-6 border w-full max-w-4xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Edit Attribute: {String(attribute?.heading || 'Unnamed')}</h3>
+          <h3 className="text-lg font-semibold">
+            Edit {isPostAttribute ? 'Criterion' : 'Attribute'}: {String(attribute?.heading || 'Unnamed')}
+          </h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
