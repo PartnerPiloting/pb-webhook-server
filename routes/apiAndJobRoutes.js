@@ -1737,6 +1737,7 @@ router.get("/api/post-attributes", async (req, res) => {
       heading: record.get("Criterion Name") || "[Unnamed Attribute]",
       category: record.get("Category") === "Positive Scoring Factor" ? "Positive" : "Negative",
       maxPoints: record.get("Max Score / Point Value") || 0,
+      scoringType: record.get("Scoring Type") || "Scale", // Add scoring type
       minToQualify: 0, // Not used in post scoring
       penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
       disqualifying: false, // Not used in post scoring

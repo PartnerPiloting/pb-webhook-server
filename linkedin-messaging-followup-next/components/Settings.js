@@ -75,6 +75,20 @@ const SettingsWithParams = () => {
     setCurrentView('posts');
   };
 
+  // Helper function to get scoring type explanations
+  const getScoringTypeExplanation = (scoringType) => {
+    switch (scoringType) {
+      case 'Scale':
+        return 'AI assigns 0 to Max Score based on degree of match - flexible scoring where partial matches get partial points';
+      case 'Fixed Penalty':
+        return 'All-or-nothing application of negative Max Score - if criterion is met, full penalty is applied';
+      case 'Fixed Bonus':
+        return 'All-or-nothing application of positive Max Score - if criterion is met, full bonus is applied';
+      default:
+        return 'Click to see scoring type details';
+    }
+  };
+
   const handleSaveAttribute = async (attributeId, updatedData) => {
     try {
       await saveAttribute(attributeId, updatedData);
@@ -376,29 +390,28 @@ const SettingsWithParams = () => {
     </div>
   );
 
-  // Component to render post attribute section  
-  const PostAttributeSection = ({ title, sectionAttributes, bgColor, textColor }) => (
+  // Component to render post criteria section  
+  const PostCriteriaSection = ({ title, sectionAttributes, bgColor, textColor }) => (
     <div className="bg-white rounded-lg border border-gray-200 mb-6">
       <div className={`px-6 py-3 border-b border-gray-200 ${bgColor}`}>
         <h3 className={`text-lg font-semibold ${textColor}`}>{title}</h3>
         <p className="text-sm text-gray-600 mt-1">
-          {sectionAttributes.length} {title.toLowerCase()} configured
+          {sectionAttributes.length} {title.toLowerCase().replace('attributes', 'criteria')} configured
         </p>
       </div>
       
       <div className="divide-y divide-gray-200">
         {sectionAttributes.length === 0 ? (
           <div className="px-6 py-8 text-center text-gray-500">
-            No {title.toLowerCase()} found
+            No {title.toLowerCase().replace('attributes', 'criteria')} found
           </div>
         ) : (
           sectionAttributes.map((attribute) => {
             // Convert everything to strings immediately - no risk of object rendering
             const attributeId = String(attribute.attributeId || '');
-            const name = String(attribute.heading || 'Unnamed Attribute');
+            const name = String(attribute.heading || 'Unnamed Criterion');
             const maxPoints = String(attribute.maxPoints || 0);
-            const minToQualify = String(attribute.minToQualify || 0);
-            const penalty = String(attribute.penalty || 0);
+            const scoringType = String(attribute.scoringType || 'N/A');
             const isActive = attribute.active !== false;
             const needsSetup = Boolean(attribute.isEmpty);
             const isPositive = attribute.category === 'Positive';
@@ -406,10 +419,10 @@ const SettingsWithParams = () => {
             return (
               <div key={attribute.id} className="px-6 py-6 hover:bg-gray-50">
                 <div className="flex items-start space-x-4">
-                  {/* Left Column: Attribute ID */}
+                  {/* Left Column: Criterion ID */}
                   <div className="flex-shrink-0 w-16">
-                    <div className="inline-flex items-center justify-center w-14 h-14 bg-purple-100 text-purple-800 text-[10px] font-bold rounded-full text-center p-1">
-                      <span className="break-all leading-[1.1]">{attributeId}</span>
+                    <div className="inline-flex items-center justify-center w-14 h-14 bg-purple-100 text-purple-800 text-lg font-bold rounded-full">
+                      {attributeId}
                     </div>
                   </div>
                   
@@ -431,17 +444,10 @@ const SettingsWithParams = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      {isPositive ? (
-                        <>
-                          <span>Max Points: {maxPoints}</span>
-                          <span>Min to Qualify: {minToQualify}</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>Penalty: {penalty}</span>
-                          <span>Min to Qualify: {minToQualify}</span>
-                        </>
-                      )}
+                      <span>Max Points: {maxPoints}</span>
+                      <span title={getScoringTypeExplanation(scoringType)}>
+                        Scoring Type: {scoringType}
+                      </span>
                     </div>
                   </div>
                   
@@ -521,7 +527,7 @@ const SettingsWithParams = () => {
                 </div>
               </div>
 
-              {/* LinkedIn Post Scoring Attributes */}
+              {/* LinkedIn Post Scoring Criteria */}
               <div 
                 className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
                 onClick={handleViewPostAttributes}
@@ -532,7 +538,7 @@ const SettingsWithParams = () => {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">
-                      LinkedIn Post Scoring Attributes
+                      LinkedIn Post Scoring Criteria
                     </h3>
                   </div>
                 </div>
@@ -606,7 +612,7 @@ const SettingsWithParams = () => {
   // Profile attributes view (for both service levels) or posts view
   const isProfileView = currentView === 'profile';
   const isPostsView = currentView === 'posts';
-  const viewTitle = isProfileView ? 'LinkedIn Profile Scoring Attributes' : 'LinkedIn Post Scoring Attributes';
+  const viewTitle = isProfileView ? 'LinkedIn Profile Scoring Attributes' : 'LinkedIn Post Scoring Criteria';
   const viewDescription = isProfileView 
     ? 'Configure how AI scores LinkedIn profiles' 
     : 'Configure how AI scores LinkedIn posts';
@@ -694,25 +700,25 @@ const SettingsWithParams = () => {
           <div className="w-full max-w-3xl">
             {postLoading ? (
               <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center">
-                <p className="text-gray-500">Loading post attributes...</p>
+                <p className="text-gray-500">Loading post criteria...</p>
               </div>
             ) : postAttributes.length === 0 ? (
               <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center text-gray-500">
-                No post attributes found
+                No post criteria found
               </div>
             ) : (
               <>
-                {/* Positive Post Attributes Section */}
-                <PostAttributeSection 
-                  title="Positive Attributes" 
+                {/* Positive Post Criteria Section */}
+                <PostCriteriaSection 
+                  title="Positive Criteria" 
                   sectionAttributes={positivePostAttributes}
                   bgColor="bg-green-50"
                   textColor="text-green-800"
                 />
                 
-                {/* Negative Post Attributes Section */}
-                <PostAttributeSection 
-                  title="Negative Attributes" 
+                {/* Negative Post Criteria Section */}
+                <PostCriteriaSection 
+                  title="Negative Criteria" 
                   sectionAttributes={negativePostAttributes}
                   bgColor="bg-red-50"
                   textColor="text-red-800"
