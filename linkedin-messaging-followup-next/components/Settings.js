@@ -1,10 +1,19 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage } from '../services/api';
-import { CogIcon } from '@heroicons/react/24/outline';
+import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import AIEditModal from './AIEditModal';
 
-const Settings = () => {
+// Component that uses useSearchParams wrapped in Suspense
+const SettingsWithParams = () => {
+  const searchParams = useSearchParams();
+  // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
+  const serviceLevel = parseInt(searchParams.get('level') || '2');
+  
+  // State for which settings section to show
+  const [currentView, setCurrentView] = useState('menu'); // 'menu', 'profile', 'posts'
+  
   const [attributes, setAttributes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -14,7 +23,16 @@ const Settings = () => {
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedAttribute, setSelectedAttribute] = useState(null);
 
-  // Phase 2: AI modal handlers - with debugging
+  // Set initial view based on service level
+  useEffect(() => {
+    if (serviceLevel === 1) {
+      // Service level 1 goes directly to profile attributes
+      setCurrentView('profile');
+    } else {
+      // Service level 2+ shows the menu
+      setCurrentView('menu');
+    }
+  }, [serviceLevel]);
   const handleOpenAIEdit = (attribute) => {
     console.log('=== DEBUGGING CLICK ===');
     console.log('1. Raw attribute:', attribute);
@@ -40,6 +58,19 @@ const Settings = () => {
   const handleCloseAIModal = () => {
     setIsAIModalOpen(false);
     setSelectedAttribute(null);
+  };
+
+  // Navigation handlers
+  const handleBackToMenu = () => {
+    setCurrentView('menu');
+  };
+
+  const handleViewProfileAttributes = () => {
+    setCurrentView('profile');
+  };
+
+  const handleViewPostAttributes = () => {
+    setCurrentView('posts');
   };
 
   const handleSaveAttribute = async (attributeId, updatedData) => {
@@ -261,14 +292,158 @@ const Settings = () => {
     </div>
   );
 
+  // Render different views based on current view and service level
+  if (currentView === 'menu' && serviceLevel >= 2) {
+    // Main settings menu for service level 2+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Configure your lead scoring system
+          </p>
+        </div>
+
+        {/* Settings Options */}
+        <div className="flex justify-center">
+          <div className="w-full max-w-2xl">
+            <div className="grid gap-6 md:grid-cols-2">
+              
+              {/* LinkedIn Profile Scoring Attributes */}
+              <div 
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
+                onClick={handleViewProfileAttributes}
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex-shrink-0">
+                    <UserGroupIcon className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      LinkedIn Profile Scoring Attributes
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Configure how AI scores LinkedIn profiles based on experience, skills, and background.
+                </p>
+                <div className="flex items-center text-sm text-blue-600 font-medium">
+                  Configure Profile Scoring →
+                </div>
+              </div>
+
+              {/* LinkedIn Post Scoring Attributes */}
+              <div 
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
+                onClick={handleViewPostAttributes}
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex-shrink-0">
+                    <DocumentTextIcon className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      LinkedIn Post Scoring Attributes
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Configure how AI scores LinkedIn posts for relevance and engagement opportunities.
+                </p>
+                <div className="flex items-center text-sm text-green-600 font-medium">
+                  Configure Post Scoring →
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {/* Token Usage Display - Centered */}
+        <div className="flex justify-center">
+          <div className="w-full max-w-md">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="text-center">
+                <div className="flex items-center justify-center space-x-2 mb-3">
+                  <CogIcon className="h-5 w-5 text-gray-400" />
+                  <h3 className="text-sm font-medium text-gray-900">Token Usage</h3>
+                </div>
+                {tokenLoading ? (
+                  <p className="text-sm text-gray-500">Loading usage...</p>
+                ) : tokenUsage ? (
+                  <div className="space-y-3">
+                    <p className="text-lg font-semibold text-gray-900">
+                      {tokenUsage.totalTokens?.toLocaleString() || '0'}
+                      <span className="text-sm font-normal text-gray-600 mx-1">of</span>
+                      {tokenUsage.limit?.toLocaleString() || '15,000'}
+                      <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
+                    </p>
+                    <div className="w-full">
+                      <div className="bg-gray-200 rounded-full h-2.5">
+                        <div 
+                          className={`h-2.5 rounded-full transition-all duration-300 ${
+                            tokenUsage.percentUsed >= 90 ? 'bg-red-500' :
+                            tokenUsage.percentUsed >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}
+                          style={{ width: `${Math.min(tokenUsage.percentUsed || 0, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-center space-x-2">
+                      <span className={`text-sm font-medium ${
+                        tokenUsage.percentUsed >= 90 ? 'text-red-600' :
+                        tokenUsage.percentUsed >= 75 ? 'text-yellow-600' : 'text-green-600'
+                      }`}>
+                        {tokenUsage.percentUsed || 0}% used
+                      </span>
+                      {tokenUsage && tokenUsage.percentUsed >= 90 && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          Budget Nearly Full
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">Token usage unavailable</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Profile attributes view (for both service levels) or posts view
+  const isProfileView = currentView === 'profile';
+  const isPostsView = currentView === 'posts';
+  const viewTitle = isProfileView ? 'LinkedIn Profile Scoring Attributes' : 'LinkedIn Post Scoring Attributes';
+  const viewDescription = isProfileView 
+    ? 'Configure how AI scores LinkedIn profiles' 
+    : 'Configure how AI scores LinkedIn posts';
+
   // Phase 1: Simple attribute list with improved UX
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Configure your lead scoring system
-        </p>
+        <div className="flex items-center space-x-3">
+          {/* Back button for service level 2+ */}
+          {serviceLevel >= 2 && (
+            <button
+              onClick={handleBackToMenu}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-1" />
+              Back to Settings
+            </button>
+          )}
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">{viewTitle}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {viewDescription}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Token Usage Display - Centered */}
@@ -323,34 +498,108 @@ const Settings = () => {
         </div>
       </div>
 
-      {/* Centered container with narrower width */}
-      <div className="flex justify-center">
-        <div className="w-full max-w-3xl">
-          {attributes.length === 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center text-gray-500">
-              No attributes found
+      {/* Show different content based on view */}
+      {isPostsView ? (
+        // Placeholder for post scoring attributes
+        <div className="flex justify-center">
+          <div className="w-full max-w-3xl">
+            <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center">
+              <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Post Scoring Attributes</h3>
+              <p className="text-gray-500 mb-4">
+                Post scoring attribute configuration will be available soon.
+              </p>
+              <p className="text-sm text-gray-400">
+                This feature is currently under development and will allow you to configure how AI scores LinkedIn posts for relevance and engagement opportunities.
+              </p>
             </div>
-          ) : (
-            <>
-              {/* Positive Attributes Section */}
-              <AttributeSection 
-                title="Positive Attributes" 
-                sectionAttributes={positiveAttributes}
-                bgColor="bg-green-50"
-                textColor="text-green-800"
-              />
-              
-              {/* Negative Attributes Section */}
-              <AttributeSection 
-                title="Negative Attributes" 
-                sectionAttributes={negativeAttributes}
-                bgColor="bg-red-50"
-                textColor="text-red-800"
-              />
-            </>
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        // Profile attributes view (existing functionality)
+        <>
+          {/* Token Usage Display - Centered */}
+          <div className="flex justify-center">
+            <div className="w-full max-w-md">
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="text-center">
+                  <div className="flex items-center justify-center space-x-2 mb-3">
+                    <CogIcon className="h-5 w-5 text-gray-400" />
+                    <h3 className="text-sm font-medium text-gray-900">Token Usage</h3>
+                  </div>
+                  {tokenLoading ? (
+                    <p className="text-sm text-gray-500">Loading usage...</p>
+                  ) : tokenUsage ? (
+                    <div className="space-y-3">
+                      <p className="text-lg font-semibold text-gray-900">
+                        {tokenUsage.totalTokens?.toLocaleString() || '0'}
+                        <span className="text-sm font-normal text-gray-600 mx-1">of</span>
+                        {tokenUsage.limit?.toLocaleString() || '15,000'}
+                        <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
+                      </p>
+                      <div className="w-full">
+                        <div className="bg-gray-200 rounded-full h-2.5">
+                          <div 
+                            className={`h-2.5 rounded-full transition-all duration-300 ${
+                              tokenUsage.percentUsed >= 90 ? 'bg-red-500' :
+                              tokenUsage.percentUsed >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                            }`}
+                            style={{ width: `${Math.min(tokenUsage.percentUsed || 0, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-center space-x-2">
+                        <span className={`text-sm font-medium ${
+                          tokenUsage.percentUsed >= 90 ? 'text-red-600' :
+                          tokenUsage.percentUsed >= 75 ? 'text-yellow-600' : 'text-green-600'
+                        }`}>
+                          {tokenUsage.percentUsed || 0}% used
+                        </span>
+                        {tokenUsage && tokenUsage.percentUsed >= 90 && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            Budget Nearly Full
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Token usage unavailable</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Centered container with narrower width */}
+          <div className="flex justify-center">
+            <div className="w-full max-w-3xl">
+              {attributes.length === 0 ? (
+                <div className="bg-white rounded-lg border border-gray-200 px-6 py-8 text-center text-gray-500">
+                  No attributes found
+                </div>
+              ) : (
+                <>
+                  {/* Positive Attributes Section */}
+                  <AttributeSection 
+                    title="Positive Attributes" 
+                    sectionAttributes={positiveAttributes}
+                    bgColor="bg-green-50"
+                    textColor="text-green-800"
+                  />
+                  
+                  {/* Negative Attributes Section */}
+                  <AttributeSection 
+                    title="Negative Attributes" 
+                    sectionAttributes={negativeAttributes}
+                    bgColor="bg-red-50"
+                    textColor="text-red-800"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* New AIEditModal - converted from working TestModal */}
       {selectedAttribute && (
@@ -362,6 +611,15 @@ const Settings = () => {
         />
       )}
     </div>
+  );
+};
+
+// Main Settings component with Suspense wrapper
+const Settings = () => {
+  return (
+    <Suspense fallback={<div>Loading settings...</div>}>
+      <SettingsWithParams />
+    </Suspense>
   );
 };
 
