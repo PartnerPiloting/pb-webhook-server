@@ -1707,4 +1707,237 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
   }
 });
 
+// ============================================================================
+// POST SCORING ATTRIBUTES ENDPOINTS
+// ============================================================================
+
+// List all post attributes for the library view
+router.get("/api/post-attributes", async (req, res) => {
+  try {
+    console.log("apiAndJobRoutes.js: GET /api/post-attributes - Loading post attribute library");
+    
+    if (!airtableBase) {
+      throw new Error("Airtable not available - check config/airtableClient.js");
+    }
+
+    const records = await airtableBase("Post Scoring Attributes")
+      .select({
+        fields: [
+          "Attribute Id", "Heading", "Category", "Max Points", 
+          "Min To Qualify", "Penalty", "Disqualifying", "Bonus Points", "Active",
+          "Instructions", "Signals", "Examples"
+        ],
+        filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
+      })
+      .all();
+
+    const attributes = records.map(record => ({
+      id: record.id,
+      attributeId: record.get("Attribute Id"),
+      heading: record.get("Heading") || "[Unnamed Attribute]",
+      category: record.get("Category"),
+      maxPoints: record.get("Max Points") || 0,
+      minToQualify: record.get("Min To Qualify") || 0,
+      penalty: record.get("Penalty") || 0,
+      disqualifying: !!record.get("Disqualifying"),
+      bonusPoints: !!record.get("Bonus Points"),
+      active: !!record.get("Active"),
+      instructions: extractPlainText(record.get("Instructions")),
+      signals: extractPlainText(record.get("Signals")),
+      examples: extractPlainText(record.get("Examples")),
+      isEmpty: !record.get("Heading") && !extractPlainText(record.get("Instructions"))
+    }));
+
+    // Sort attributes: Positives first (A-Z), then Negatives (N1, N2, etc.)
+    attributes.sort((a, b) => {
+      // First sort by category: Positive before Negative
+      if (a.category !== b.category) {
+        if (a.category === 'Positive') return -1;
+        if (b.category === 'Positive') return 1;
+      }
+      
+      // Then sort alphabetically by Attribute ID within each category
+      const aId = a.attributeId || '';
+      const bId = b.attributeId || '';
+      return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    console.log(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} post attributes for library view`);
+    res.json({
+      success: true,
+      attributes,
+      count: attributes.length
+    });
+    
+  } catch (error) {
+    console.error("apiAndJobRoutes.js: GET /api/post-attributes error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to load post attributes"
+    });
+  }
+});
+
+// Get post attribute for editing
+router.get("/api/post-attributes/:id/edit", async (req, res) => {
+  try {
+    console.log(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit - Loading attribute for editing`);
+    
+    if (!airtableBase) {
+      throw new Error("Airtable not available - check config/airtableClient.js");
+    }
+
+    const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
+    
+    const attribute = {
+      id: record.id,
+      attributeId: record.get("Attribute Id"),
+      heading: record.get("Heading") || "",
+      category: record.get("Category"),
+      maxPoints: record.get("Max Points") || 0,
+      minToQualify: record.get("Min To Qualify") || 0,
+      penalty: record.get("Penalty") || 0,
+      disqualifying: !!record.get("Disqualifying"),
+      bonusPoints: !!record.get("Bonus Points"),
+      active: !!record.get("Active"),
+      instructions: extractPlainText(record.get("Instructions")) || "",
+      signals: extractPlainText(record.get("Signals")) || "",
+      examples: extractPlainText(record.get("Examples")) || ""
+    };
+
+    console.log(`apiAndJobRoutes.js: Successfully loaded post attribute ${req.params.id} for editing`);
+    res.json({
+      success: true,
+      attribute
+    });
+    
+  } catch (error) {
+    console.error(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit error:`, error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to load post attribute for editing"
+    });
+  }
+});
+
+// Generate AI suggestions for post attribute
+router.post("/api/post-attributes/:id/ai-edit", async (req, res) => {
+  try {
+    console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
+    
+    if (!airtableBase) {
+      throw new Error("Airtable not available - check config/airtableClient.js");
+    }
+
+    const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
+    
+    const { requestType, currentData } = req.body;
+    
+    // Build prompt based on request type
+    let prompt = "";
+    const heading = currentData.heading || record.get("Heading") || "[Unnamed Attribute]";
+    const category = currentData.category || record.get("Category") || "Unknown";
+    
+    if (requestType === "improve_all") {
+      prompt = `I'm working on LinkedIn post scoring attributes for lead generation. Please help me improve this ${category.toLowerCase()} attribute:
+
+**Current Attribute: "${heading}"**
+**Category:** ${category}
+**Current Instructions:** ${currentData.instructions || "None"}
+**Current Signals:** ${currentData.signals || "None"}  
+**Current Examples:** ${currentData.examples || "None"}
+
+Please provide improved content for:
+1. **Instructions** - Clear guidance for human reviewers on how to evaluate this attribute in LinkedIn posts
+2. **Signals** - Specific things to look for in post content that indicate this attribute
+3. **Examples** - 2-3 concrete examples of posts that would score well/poorly for this attribute
+
+Focus on LinkedIn post content analysis and lead generation effectiveness.`;
+
+    } else if (requestType === "instructions") {
+      prompt = `Write clear instructions for evaluating the "${heading}" attribute in LinkedIn posts for lead generation. 
+      
+Current instructions: ${currentData.instructions || "None"}
+Category: ${category}
+
+Provide improved instructions that help human reviewers consistently evaluate this attribute.`;
+
+    } else if (requestType === "signals") {
+      prompt = `List specific signals to look for in LinkedIn posts that indicate the "${heading}" attribute.
+      
+Current signals: ${currentData.signals || "None"}
+Category: ${category}
+Instructions: ${currentData.instructions || "None"}
+
+Provide concrete, observable signals in post content.`;
+
+    } else if (requestType === "examples") {
+      prompt = `Provide 2-3 concrete examples of LinkedIn posts that demonstrate the "${heading}" attribute.
+      
+Current examples: ${currentData.examples || "None"}
+Category: ${category}
+Instructions: ${currentData.instructions || "None"}
+
+Include brief explanations of why each example fits this attribute.`;
+    } else {
+      throw new Error("Invalid request type");
+    }
+
+    // Use Gemini to generate suggestions
+    const { generateWithGemini } = require("../config/geminiClient.js");
+    const suggestions = await generateWithGemini(prompt);
+
+    console.log(`apiAndJobRoutes.js: Successfully generated AI suggestions for post attribute ${req.params.id}`);
+    res.json({
+      success: true,
+      suggestions,
+      requestType
+    });
+    
+  } catch (error) {
+    console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit error:`, error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to generate AI suggestions"
+    });
+  }
+});
+
+// Save post attribute changes
+router.post("/api/post-attributes/:id/save", async (req, res) => {
+  try {
+    console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save - Saving post attribute changes`);
+    
+    if (!airtableBase) {
+      throw new Error("Airtable not available - check config/airtableClient.js");
+    }
+
+    const { heading, instructions, signals, examples, active } = req.body;
+    
+    // Prepare update data - only include fields that are provided
+    const updateData = {};
+    if (heading !== undefined) updateData["Heading"] = heading;
+    if (instructions !== undefined) updateData["Instructions"] = instructions;
+    if (signals !== undefined) updateData["Signals"] = signals;
+    if (examples !== undefined) updateData["Examples"] = examples;
+    if (active !== undefined) updateData["Active"] = active;
+
+    // Update the record
+    await airtableBase("Post Scoring Attributes").update(req.params.id, updateData);
+
+    console.log(`apiAndJobRoutes.js: Successfully saved post attribute ${req.params.id}`);
+    res.json({
+      success: true,
+      message: "Post attribute updated successfully"
+    });
+    
+  } catch (error) {
+    console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save error:`, error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to save post attribute"
+    });
+  }
+});
+
 module.exports = router;
