@@ -412,6 +412,11 @@ const SettingsWithParams = () => {
             const name = String(attribute.heading || 'Unnamed Criterion');
             const maxPoints = String(attribute.maxPoints || 0);
             const scoringType = String(attribute.scoringType || 'N/A');
+            const positiveIndicators = String(attribute.positiveIndicators || '');
+            const negativeIndicators = String(attribute.negativeIndicators || '');
+            const highScoreExample = String(attribute.highScoreExample || '');
+            const lowScoreExample = String(attribute.lowScoreExample || '');
+            const instructions = String(attribute.instructions || '');
             const isActive = attribute.active !== false;
             const needsSetup = Boolean(attribute.isEmpty);
             const isPositive = attribute.category === 'Positive';
@@ -443,11 +448,71 @@ const SettingsWithParams = () => {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
+                    
+                    {/* Scoring Details */}
+                    <div className="flex items-center space-x-4 text-sm text-gray-500 mb-4">
                       <span>Max Points: {maxPoints}</span>
                       <span title={getScoringTypeExplanation(scoringType)}>
                         Scoring Type: {scoringType}
                       </span>
+                    </div>
+
+                    {/* Keywords and Examples Section */}
+                    <div className="space-y-3">
+                      {/* Instructions/Rubric */}
+                      {instructions && (
+                        <div>
+                          <h5 className="text-xs font-medium text-gray-700 mb-1">Scoring Instructions:</h5>
+                          <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                            {instructions.length > 150 ? `${instructions.substring(0, 150)}...` : instructions}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Positive Indicators */}
+                      {positiveIndicators && (
+                        <div>
+                          <h5 className="text-xs font-medium text-green-700 mb-1">Keywords/Positive Indicators:</h5>
+                          <p className="text-xs text-gray-600 bg-green-50 p-2 rounded">
+                            {positiveIndicators.length > 150 ? `${positiveIndicators.substring(0, 150)}...` : positiveIndicators}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Negative Indicators */}
+                      {negativeIndicators && (
+                        <div>
+                          <h5 className="text-xs font-medium text-red-700 mb-1">Keywords/Negative Indicators:</h5>
+                          <p className="text-xs text-gray-600 bg-red-50 p-2 rounded">
+                            {negativeIndicators.length > 150 ? `${negativeIndicators.substring(0, 150)}...` : negativeIndicators}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Examples Row */}
+                      {(highScoreExample || lowScoreExample) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {/* High Score Example */}
+                          {highScoreExample && (
+                            <div>
+                              <h5 className="text-xs font-medium text-blue-700 mb-1">Example - High Score:</h5>
+                              <p className="text-xs text-gray-600 bg-blue-50 p-2 rounded">
+                                {highScoreExample.length > 100 ? `${highScoreExample.substring(0, 100)}...` : highScoreExample}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Low Score Example */}
+                          {lowScoreExample && (
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-700 mb-1">Example - Low Score:</h5>
+                              <p className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                                {lowScoreExample.length > 100 ? `${lowScoreExample.substring(0, 100)}...` : lowScoreExample}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   

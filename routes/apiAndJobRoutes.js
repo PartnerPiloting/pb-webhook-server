@@ -1744,6 +1744,12 @@ router.get("/api/post-attributes", async (req, res) => {
       bonusPoints: false, // Not used in post scoring
       active: true, // Default to active since there's no Active field
       instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
+      // Return all separate fields for richer UX display
+      positiveIndicators: record.get("Keywords/Positive Indicators") || "",
+      negativeIndicators: record.get("Keywords/Negative Indicators") || "",
+      highScoreExample: record.get("Example - High Score / Applies") || "",
+      lowScoreExample: record.get("Example - Low Score / Does Not Apply") || "",
+      // Keep combined fields for backward compatibility
       signals: record.get("Keywords/Positive Indicators") || record.get("Keywords/Negative Indicators") || "",
       examples: record.get("Example - High Score / Applies") || record.get("Example - Low Score / Does Not Apply") || "",
       isEmpty: !record.get("Criterion Name") && !record.get("Detailed Instructions for AI (Scoring Rubric)")
@@ -1796,12 +1802,19 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
       heading: record.get("Criterion Name") || "",
       category: record.get("Category") === "Positive Scoring Factor" ? "Positive" : "Negative",
       maxPoints: record.get("Max Score / Point Value") || 0,
+      scoringType: record.get("Scoring Type") || "Scale",
       minToQualify: 0,
       penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
       disqualifying: false,
       bonusPoints: false,
       active: true,
       instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
+      // Return all separate fields for richer UX display
+      positiveIndicators: record.get("Keywords/Positive Indicators") || "",
+      negativeIndicators: record.get("Keywords/Negative Indicators") || "",
+      highScoreExample: record.get("Example - High Score / Applies") || "",
+      lowScoreExample: record.get("Example - Low Score / Does Not Apply") || "",
+      // Keep combined fields for backward compatibility
       signals: record.get("Keywords/Positive Indicators") || record.get("Keywords/Negative Indicators") || "",
       examples: record.get("Example - High Score / Applies") || record.get("Example - Low Score / Does Not Apply") || ""
     };
