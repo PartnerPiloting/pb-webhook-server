@@ -434,3 +434,116 @@ Primary fields for natural language editing:
 - **Structure:** Flat table, no relationships
 
 *Scoring Attributes data exported: 2025-07-13*
+
+## "Post Scoring Attributes" Table Fields
+
+### **Table Information**
+- **Table Name:** `Post Scoring Attributes`
+- **Base ID:** `appXySOLo6V9PfMfa`
+- **Total Records:** 5
+- **Purpose:** AI scoring rubric definitions for LinkedIn post content analysis
+
+### **Primary Fields**
+| Field Name | Type | Editable | Required | Usage in Backend | Description |
+|------------|------|----------|----------|------------------|-------------|
+| `Attribute ID` | Text | No | Yes | Primary key for `attributesById` object mapping | Unique identifier (POST_AI_SENTIMENT, POST_AI_INSIGHTFULNESS, etc.) - Used as key in scoring logic |
+| `Category` | Text | Yes | Yes | Separates positive vs negative attributes in prompt building | Scoring factor type ("Positive Scoring Factor", "Negative Scoring Factor") - Controls rubric sections |
+| `Criterion Name` | Text | Yes | Yes | `criterionName` property in attribute objects, displayed in AI prompt | Human-readable attribute name shown in scoring rubric for AI |
+| `Detailed Instructions for AI (Scoring Rubric)` | Long Text | Yes | Yes | `detailedInstructions` - Core content fed to Gemini for scoring logic | Complete scoring guidelines with Low/Medium/High point ranges - Primary field that teaches AI how to score |
+
+### **Scoring Configuration**
+| Field Name | Type | Editable | Required | Range | Usage in Backend | Description |
+|------------|------|----------|----------|-------|------------------|-------------|
+| `Max Score / Point Value` | Number | Yes | Yes | Positive/Negative values | `maxScorePointValue` - Used in prompt to show AI max points available | Points awarded (e.g., 20) or penalty (e.g., -20) - Defines scoring scale limits |
+| `Scoring Type` | Text | Yes | Yes | "Scale" or "Fixed Penalty" | `scoringType` - Informs AI whether to use graduated scoring or binary penalty | Determines scoring methodology - "Scale" for 0-20 range, "Fixed Penalty" for binary application |
+
+### **Example Data & Keywords**
+| Field Name | Type | Editable | Required | Usage in Backend | Description |
+|------------|------|----------|----------|------------------|-------------|
+| `Example - High Score / Applies` | Long Text | Yes | Optional | `exampleHigh` - Training examples shown to AI in prompt | Sample posts that demonstrate high scoring criteria - Guides AI consistency |
+| `Example - Low Score / Does Not Apply` | Long Text | Yes | Optional | `exampleLow` - Training examples shown to AI in prompt | Sample posts that demonstrate low scoring or non-applicable criteria - Guides AI consistency |
+| `Keywords/Positive Indicators` | Long Text | Yes | Optional | `positiveKeywords` - Displayed in AI prompt as pattern matching guidance | Keywords/phrases that indicate high scores for this attribute - Helps AI identify relevant content |
+| `Keywords/Negative Indicators` | Long Text | Yes | Optional | `negativeKeywords` - Displayed in AI prompt as pattern matching guidance | Keywords/phrases that indicate low scores or penalties - Helps AI identify problematic content |
+
+### **Sample Attributes**
+| Attribute ID | Category | Criterion Name | Max Score | Scoring Type |
+|-------------|----------|----------------|-----------|--------------|
+| `POST_AI_SENTIMENT` | Positive Scoring Factor | Positive Sentiment Towards AI | 20 | Scale |
+| `POST_AI_INSIGHTFULNESS` | Positive Scoring Factor | Demonstrates Open-Mindedness/Insightful Discussion about AI | 20 | Scale |
+| `POST_PROMOTIONAL_PENALTY` | Negative Scoring Factor | Primarily Self-Promotional Content (Penalty) | -20 | Fixed Penalty |
+
+### **Backend Integration & AI Usage Flow**
+
+#### **1. Data Loading (postAttributeLoader.js)**
+- All fields loaded into `attributesById` object with `Attribute ID` as key
+- Field mapping: `Criterion Name` → `criterionName`, `Category` → `Category`, etc.
+- Used by: `postPromptBuilder.js` and scoring pipeline
+
+#### **2. AI Prompt Building (postPromptBuilder.js)**
+The system dynamically builds Gemini prompts using these fields:
+- **`Category`**: Separates attributes into "Positive Scoring Attributes" and "Negative Scoring Attributes (Penalties)" sections
+- **`Attribute ID`**: Used as section headers (e.g., "### Attribute ID: POST_AI_SENTIMENT")
+- **`Criterion Name`**: Displayed as human-readable attribute name for AI
+- **`Scoring Type`**: Shows AI whether to use scale or binary penalty
+- **`Max Score / Point Value`**: Tells AI the point range (e.g., 0-20 for positive, -20 for penalties)
+- **`Detailed Instructions for AI (Scoring Rubric)`**: **CORE FIELD** - Complete scoring instructions with Low/Medium/High breakdowns
+- **`Keywords/Positive Indicators`**: Pattern matching guidance for high scores
+- **`Keywords/Negative Indicators`**: Pattern matching guidance for low scores/penalties  
+- **`Example - High Score / Applies`**: Training examples for high scoring posts
+- **`Example - Low Score / Does Not Apply`**: Training examples for low scoring posts
+
+#### **3. AI Scoring Process (postGeminiScorer.js)**
+- Gemini receives the built prompt with all field data
+- Returns JSON array with `post_url`, `post_score`, and `scoring_rationale`
+- Score range typically 0-100 (sum of all positive attributes minus penalties)
+
+#### **4. Results Processing (postAnalysisService.js)**
+- Finds highest scoring post from AI response array
+- Updates Airtable lead record with final score and top scoring post details
+- Stores full AI response for debugging and analysis
+
+#### **5. Field Impact on User Experience**
+- **`Detailed Instructions for AI (Scoring Rubric)`**: Primary field that determines scoring accuracy - most important for editing
+- **`Max Score / Point Value`**: Directly affects final lead scores - changes impact lead ranking
+- **`Keywords/Positive Indicators` & `Keywords/Negative Indicators`**: Guide AI pattern recognition - improve scoring consistency
+- **`Example - High Score / Applies` & `Example - Low Score / Does Not Apply`**: Training data for AI - improve scoring accuracy over time
+- **`Criterion Name`**: User-facing field in UI - should be clear and descriptive
+- **`Scoring Type`**: Affects how AI applies scoring logic - "Scale" for nuanced scoring, "Fixed Penalty" for binary decisions
+
+### **AI Editing Target Fields**
+Primary fields for natural language editing with impact levels:
+
+#### **Critical Impact Fields (Changes Affect All Future Scoring)**
+- **`Detailed Instructions for AI (Scoring Rubric)`** - **HIGHEST IMPACT** - Core scoring logic, affects how AI evaluates all posts
+- **`Max Score / Point Value`** - **HIGH IMPACT** - Changes point values, directly affects lead ranking and final scores
+
+#### **Moderate Impact Fields (Improve Scoring Accuracy)**  
+- **`Keywords/Positive Indicators`** - Helps AI identify high-scoring content patterns
+- **`Keywords/Negative Indicators`** - Helps AI identify problematic content patterns
+- **`Example - High Score / Applies`** - Training data for AI consistency
+- **`Example - Low Score / Does Not Apply`** - Training data for AI consistency
+
+#### **Low Impact Fields (UI and Organization)**
+- **`Criterion Name`** - User-facing display name, doesn't affect AI scoring logic
+- **`Scoring Type`** - Rarely changed, affects AI methodology (Scale vs Fixed Penalty)
+
+#### **Field Editing Guidelines**
+- **When editing `Detailed Instructions for AI (Scoring Rubric)`**: Be specific about point ranges (Low: 0-5, Medium: 6-14, High: 15-20), provide clear criteria, include edge cases
+- **When editing `Max Score / Point Value`**: Consider impact on overall lead scoring balance, positive attributes typically 5-20 points, penalties typically -5 to -20
+- **When editing Keywords**: Use comma-separated phrases, include variations and plurals, focus on content indicators not just word matching
+- **When editing Examples**: Use real LinkedIn post examples, show clear contrast between high/low scoring content, include rationale
+
+### **Field Constraints**
+- **Immutable:** `Attribute ID` (primary key)
+- **Scoring Logic:** Positive factors use 0-20 scale, Negative factors use penalty values
+- **Content Focus:** Specifically designed for LinkedIn post content analysis
+- **AI Training:** Examples and keywords guide AI scoring consistency
+
+### **API Implementation Notes**
+- **Primary Key:** `Attribute ID`
+- **Table Focus:** LinkedIn post content scoring (vs. profile scoring)
+- **Multi-tenant:** Compatible with existing ?client= parameter system
+- **Integration:** Works with postAttributeLoader.js and post scoring pipeline
+- **Structure:** Flat table, no relationships
+
+*Post Scoring Attributes data extracted: 2025-07-25*

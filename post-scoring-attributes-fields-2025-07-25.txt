@@ -1,0 +1,179 @@
+# Airtable Field Analysis Report
+Generated: 2025-07-25T11:24:31.789Z
+Table: "Post Scoring Attributes"
+Base ID: appXySOLo6V9PfMfa
+Records Analyzed: 5
+Total Fields: 10
+
+## Field Definitions
+
+| Field Name | Primary Type | All Types | Sample Values | Notes |
+|------------|--------------|-----------|---------------|-------|
+| `Attribute ID` | string | string | POST_AI_SENTIMENT | POST_AI_INSIGHTFULNESS | POST_PROMOTIONAL_PENALTY | - |
+| `Category` | string | string | Positive Scoring Factor | Negative Scoring Factor | - |
+| `Criterion Name` | string | string | Positive Sentiment Towards AI | Demonstrates Open-Mindedness/Insightful Discussion about AI | Primarily Self-Promotional Content (Penalty) | - |
+| `Detailed Instructions for AI (Scoring Rubric)` | Long Text | string, Long Text | Evaluate the overall sentiment expressed towards AI in the post.
+
+Low (0-5 points): AI is mentioned neutrally, factually, without explicit positive framing, or the sentiment is mixed, vague, or any positive hints are minor and overshadowed by neutrality, concerns, or a purely technical/objective discussion.
+
+Medium (6-14 points): A clearly positive sentiment towards AI is expressed. The post highlights benefits, opportunities, or constructive uses of AI. The tone is generally optimistic or appreciative of AI's capabilities or potential.
+
+High (15-20 points): Strongly positive and enthusiastic sentiment. The post champions AI's advantages, shows significant excitement for its current or future applications, strongly advocates for its positive aspects, or expresses a clear belief in its transformative power for good." | Evaluate the degree to which the post demonstrates an open-minded perspective towards AI, offers insightful commentary, asks thoughtful questions, or aims to foster a deeper, nuanced discussion, rather than just stating facts or superficial opinions.
+
+Low (0-5 points): Post mentions AI but offers no original thought, insight, or questions. It might be a simple news share, a factual statement without analysis, or a very generic opinion. Lacks depth or an invitation to broader thinking.
+
+Medium (6-14 points): Post shows some level of original thought or analysis regarding AI. It might raise interesting points, connect AI to other concepts in a non-obvious way, or ask questions that encourage further discussion. Shows a willingness to explore AI's implications.
+
+High (15-20 points): Post offers significant insights, a unique perspective, or poses deep, thought-provoking questions about AI, its impact, or its future. It clearly demonstrates critical thinking, intellectual curiosity, and an open-minded approach to understanding AI's complexities and potential. It actively seeks to engage others in a meaningful discussion. | Determine if the post's primary purpose is to directly sell or market the author's own specific product, service, or company, or to directly solicit leads/demos for their business, without offering significant broader insights, educational value, or genuine discussion that stands independently of the promotional aspect.
+
+Condition for Penalty: The penalty applies if the post reads more like an advertisement or a direct sales pitch than a contribution to a broader discussion or sharing of general insights. Mentioning one's company, work, or product is acceptable and often natural if it's part of a larger insightful discussion, case study, or sharing of expertise. The penalty is intended for posts where the promotional call to action or focus on selling is the dominant theme and overshadows any other value.
+
+If condition is met, apply the specified Point Value (e.g., -20). If not met, this attribute contributes 0 to the score. | - |
+| `Example - High Score / Applies` | Long Text | string, Long Text | Absolutely thrilled by the advancements in AI for medical diagnosis! It's incredible how AI is helping doctors save lives and improve patient outcomes. The potential here is truly limitless and overwhelmingly positive.
+ | While many focus on AI replacing jobs, I'm more interested in how AI could redefine 'work' itself. What new human-AI collaborative roles will emerge? How do we prepare our education systems for a future where AI handles routine tasks, freeing humans for more creative and strategic endeavors? Let's discuss the deeper societal shifts.
+ | Our revolutionary AI-powered sales tool will skyrocket your revenue! Limited-time 50% discount for new users. DM me to schedule your personalized demo today and see how 'SalesMax AI' can change your business! #AI #SalesTool #Promo
+ | - |
+| `Example - Low Score / Does Not Apply` | Long Text | string, Long Text | This report discusses AI. It outlines several use cases." (This is neutral/factual, low score). OR "While AI offers some tools, the ethical concerns and job displacement issues are significant and need to be addressed before widespread adoption." (Mixed/concerned, low score for positive sentiment).
+ | AI is a technology." (Fact, no insight). OR "Company X just launched an AI product." (News, no discussion). OR "AI is going to take over the world!" (Sensationalist, not insightful discussion).
+ | We've been exploring how AI can enhance customer support. At MyCompany, our new AI chatbot has helped reduce response times by 40% while maintaining high satisfaction. It's interesting to see AI augmenting human teams. What are other companies experiencing with AI in customer service? #AI #CustomerExperience #Innovation
+ | - |
+| `Keywords/Negative Indicators` | Long Text | string, Long Text | AI risks (without balancing positives), AI fears, dangers of AI, AI replacing jobs (as a primary negative focus), critical of AI development, AI limitations (as main theme) | Closed-minded statements about AI, purely factual reporting without analysis, superficial or cliché comments, rants without constructive points, dismissal of AI without reasoned argument. | (Keywords or contexts that indicate it's not primarily promotional, even if a company is mentioned) "sharing our research, lessons learned, industry insights, discussing trends, case study (if educational), seeking feedback, asking open questions | - |
+| `Keywords/Positive Indicators` | Long Text | string, Long Text | Excited about AI, AI benefits, AI opportunities, AI transforming, optimistic about AI, AI for good, powerful AI, AI innovation, AI progress, appreciate AI | thoughts on AI, what if AI, exploring AI's impact, AI ethics discussion, future implications of AI, AI and society, deeper dive into AI, questions about AI, seeking perspectives on AI, challenging AI assumptions | (Keywords that indicate it IS promotional) "DM me for a demo, buy now, special offer, our product, visit our website to purchase, sign up for our service, limited time discount, contact us for sales | - |
+| `Max Score / Point Value` | Integer | number, Integer | 20 | -20 | - |
+| `Scoring Type` | string | string | Scale | Fixed Penalty | - |
+
+## Detailed Field Information
+
+### `Attribute ID`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - POST_AI_SENTIMENT
+  - POST_AI_INSIGHTFULNESS
+  - POST_PROMOTIONAL_PENALTY
+- **Nullable:** No
+- **Array Field:** No
+
+### `Category`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - Positive Scoring Factor
+  - Negative Scoring Factor
+- **Nullable:** No
+- **Array Field:** No
+
+### `Criterion Name`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - Positive Sentiment Towards AI
+  - Demonstrates Open-Mindedness/Insightful Discussion about AI
+  - Primarily Self-Promotional Content (Penalty)
+- **Nullable:** No
+- **Array Field:** No
+
+### `Detailed Instructions for AI (Scoring Rubric)`
+- **Primary Type:** Long Text
+- **All Detected Types:** string, Long Text
+- **Sample Values:**
+  - Evaluate the overall sentiment expressed towards AI in the post.
+
+Low (0-5 points): AI is mentioned neutrally, factually, without explicit positive framing, or the sentiment is mixed, vague, or any positive hints are minor and overshadowed by neutrality, concerns, or a purely technical/objective discussion.
+
+Medium (6-14 points): A clearly positive sentiment towards AI is expressed. The post highlights benefits, opportunities, or constructive uses of AI. The tone is generally optimistic or appreciative of AI's capabilities or potential.
+
+High (15-20 points): Strongly positive and enthusiastic sentiment. The post champions AI's advantages, shows significant excitement for its current or future applications, strongly advocates for its positive aspects, or expresses a clear belief in its transformative power for good."
+  - Evaluate the degree to which the post demonstrates an open-minded perspective towards AI, offers insightful commentary, asks thoughtful questions, or aims to foster a deeper, nuanced discussion, rather than just stating facts or superficial opinions.
+
+Low (0-5 points): Post mentions AI but offers no original thought, insight, or questions. It might be a simple news share, a factual statement without analysis, or a very generic opinion. Lacks depth or an invitation to broader thinking.
+
+Medium (6-14 points): Post shows some level of original thought or analysis regarding AI. It might raise interesting points, connect AI to other concepts in a non-obvious way, or ask questions that encourage further discussion. Shows a willingness to explore AI's implications.
+
+High (15-20 points): Post offers significant insights, a unique perspective, or poses deep, thought-provoking questions about AI, its impact, or its future. It clearly demonstrates critical thinking, intellectual curiosity, and an open-minded approach to understanding AI's complexities and potential. It actively seeks to engage others in a meaningful discussion.
+  - Determine if the post's primary purpose is to directly sell or market the author's own specific product, service, or company, or to directly solicit leads/demos for their business, without offering significant broader insights, educational value, or genuine discussion that stands independently of the promotional aspect.
+
+Condition for Penalty: The penalty applies if the post reads more like an advertisement or a direct sales pitch than a contribution to a broader discussion or sharing of general insights. Mentioning one's company, work, or product is acceptable and often natural if it's part of a larger insightful discussion, case study, or sharing of expertise. The penalty is intended for posts where the promotional call to action or focus on selling is the dominant theme and overshadows any other value.
+
+If condition is met, apply the specified Point Value (e.g., -20). If not met, this attribute contributes 0 to the score.
+- **Nullable:** No
+- **Array Field:** No
+
+### `Example - High Score / Applies`
+- **Primary Type:** Long Text
+- **All Detected Types:** string, Long Text
+- **Sample Values:**
+  - Absolutely thrilled by the advancements in AI for medical diagnosis! It's incredible how AI is helping doctors save lives and improve patient outcomes. The potential here is truly limitless and overwhelmingly positive.
+
+  - While many focus on AI replacing jobs, I'm more interested in how AI could redefine 'work' itself. What new human-AI collaborative roles will emerge? How do we prepare our education systems for a future where AI handles routine tasks, freeing humans for more creative and strategic endeavors? Let's discuss the deeper societal shifts.
+
+  - Our revolutionary AI-powered sales tool will skyrocket your revenue! Limited-time 50% discount for new users. DM me to schedule your personalized demo today and see how 'SalesMax AI' can change your business! #AI #SalesTool #Promo
+
+- **Nullable:** No
+- **Array Field:** No
+
+### `Example - Low Score / Does Not Apply`
+- **Primary Type:** Long Text
+- **All Detected Types:** string, Long Text
+- **Sample Values:**
+  - This report discusses AI. It outlines several use cases." (This is neutral/factual, low score). OR "While AI offers some tools, the ethical concerns and job displacement issues are significant and need to be addressed before widespread adoption." (Mixed/concerned, low score for positive sentiment).
+
+  - AI is a technology." (Fact, no insight). OR "Company X just launched an AI product." (News, no discussion). OR "AI is going to take over the world!" (Sensationalist, not insightful discussion).
+
+  - We've been exploring how AI can enhance customer support. At MyCompany, our new AI chatbot has helped reduce response times by 40% while maintaining high satisfaction. It's interesting to see AI augmenting human teams. What are other companies experiencing with AI in customer service? #AI #CustomerExperience #Innovation
+
+- **Nullable:** No
+- **Array Field:** No
+
+### `Keywords/Negative Indicators`
+- **Primary Type:** Long Text
+- **All Detected Types:** string, Long Text
+- **Sample Values:**
+  - AI risks (without balancing positives), AI fears, dangers of AI, AI replacing jobs (as a primary negative focus), critical of AI development, AI limitations (as main theme)
+  - Closed-minded statements about AI, purely factual reporting without analysis, superficial or cliché comments, rants without constructive points, dismissal of AI without reasoned argument.
+  - (Keywords or contexts that indicate it's not primarily promotional, even if a company is mentioned) "sharing our research, lessons learned, industry insights, discussing trends, case study (if educational), seeking feedback, asking open questions
+- **Nullable:** No
+- **Array Field:** No
+
+### `Keywords/Positive Indicators`
+- **Primary Type:** Long Text
+- **All Detected Types:** string, Long Text
+- **Sample Values:**
+  - Excited about AI, AI benefits, AI opportunities, AI transforming, optimistic about AI, AI for good, powerful AI, AI innovation, AI progress, appreciate AI
+  - thoughts on AI, what if AI, exploring AI's impact, AI ethics discussion, future implications of AI, AI and society, deeper dive into AI, questions about AI, seeking perspectives on AI, challenging AI assumptions
+  - (Keywords that indicate it IS promotional) "DM me for a demo, buy now, special offer, our product, visit our website to purchase, sign up for our service, limited time discount, contact us for sales
+- **Nullable:** No
+- **Array Field:** No
+
+### `Max Score / Point Value`
+- **Primary Type:** Integer
+- **All Detected Types:** number, Integer
+- **Sample Values:**
+  - 20
+  - -20
+- **Nullable:** No
+- **Array Field:** No
+
+### `Scoring Type`
+- **Primary Type:** string
+- **All Detected Types:** string
+- **Sample Values:**
+  - Scale
+  - Fixed Penalty
+- **Nullable:** No
+- **Array Field:** No
+
+## Recommended Airtable Field Types
+
+Based on the analysis, here are the recommended Airtable field types:
+
+- **`Attribute ID`**: Single Line Text
+- **`Category`**: Single Line Text
+- **`Criterion Name`**: Single Line Text
+- **`Detailed Instructions for AI (Scoring Rubric)`**: Long Text
+- **`Example - High Score / Applies`**: Long Text
+- **`Example - Low Score / Does Not Apply`**: Long Text
+- **`Keywords/Negative Indicators`**: Long Text
+- **`Keywords/Positive Indicators`**: Long Text
+- **`Max Score / Point Value`**: Number (Integer only)
+- **`Scoring Type`**: Single Line Text
