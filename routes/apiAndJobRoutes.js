@@ -1045,7 +1045,7 @@ router.get("/api/attributes", async (req, res) => {
       .select({
         fields: [
           "Attribute Id", "Heading", "Category", "Max Points", 
-          "Min To Qualify", "Penalty", "Disqualifying", "Active",
+          "Min To Qualify", "Penalty", "Disqualifying", "Bonus Points", "Active",
           "Instructions", "Signals", "Examples"
         ],
         filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
@@ -1061,6 +1061,7 @@ router.get("/api/attributes", async (req, res) => {
       minToQualify: record.get("Min To Qualify") || 0,
       penalty: record.get("Penalty") || 0,
       disqualifying: !!record.get("Disqualifying"),
+      bonusPoints: !!record.get("Bonus Points"), // Convert to boolean: unchecked = false, checked = true
       active: !!record.get("Active"), // Convert to boolean: unchecked = false, checked = true
       instructions: extractPlainText(record.get("Instructions")),
       signals: extractPlainText(record.get("Signals")),
@@ -1111,7 +1112,7 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
     // Get all attributes from Airtable to compare
     const allRecords = await airtableBase("Scoring Attributes")
       .select({
-        fields: ["Attribute Id", "Heading", "Category", "Active"],
+        fields: ["Attribute Id", "Heading", "Category", "Bonus Points", "Active"],
         filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
       })
       .all();
@@ -1120,6 +1121,7 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
       id: record.get("Attribute Id"),
       heading: record.get("Heading") || "[Unnamed]",
       category: record.get("Category"),
+      bonusPoints: !!record.get("Bonus Points"),
       active: !!record.get("Active")
     }));
     

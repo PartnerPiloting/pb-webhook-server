@@ -135,6 +135,7 @@ async function loadAttributeForEditing(attributeId) {
       minToQualify: Number(record.get("Min To Qualify") || 0),
       penalty: Number(record.get("Penalty") || 0),
       disqualifying: !!record.get("Disqualifying"),
+      bonusPoints: !!record.get("Bonus Points"), // Convert to boolean: unchecked = false, checked = true
       signals: record.get("Signals") || "",
       examples: record.get("Examples") || "",
       active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
@@ -168,6 +169,7 @@ async function updateAttribute(attributeId, data) {
     if (data.minToQualify !== undefined) updateFields["Min To Qualify"] = Number(data.minToQualify);
     if (data.penalty !== undefined) updateFields["Penalty"] = Number(data.penalty);
     if (data.disqualifying !== undefined) updateFields["Disqualifying"] = !!data.disqualifying;
+    if (data.bonusPoints !== undefined) updateFields["Bonus Points"] = !!data.bonusPoints;
     if (data.signals !== undefined) updateFields["Signals"] = data.signals;
     if (data.examples !== undefined) updateFields["Examples"] = data.examples;
     if (data.active !== undefined) updateFields["Active"] = !!data.active;
@@ -201,7 +203,7 @@ async function listAttributesForEditing() {
       .select({
         fields: [
           "Attribute Id", "Heading", "Category", "Max Points", 
-          "Min To Qualify", "Penalty", "Disqualifying", "Active"
+          "Min To Qualify", "Penalty", "Disqualifying", "Bonus Points", "Active"
         ]
       })
       .all();
@@ -215,6 +217,7 @@ async function listAttributesForEditing() {
       minToQualify: Number(record.get("Min To Qualify") || 0),
       penalty: Number(record.get("Penalty") || 0),
       disqualifying: !!record.get("Disqualifying"),
+      bonusPoints: !!record.get("Bonus Points"), // Convert to boolean: unchecked = false, checked = true
       active: !!record.get("Active"), // Convert to boolean: unchecked = false, checked = true
       isEmpty: !record.get("Heading") && !record.get("Instructions")
     }));
