@@ -464,18 +464,27 @@ export const getAttributes = async () => {
 export const getPostAttributes = async () => {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
-    const response = await fetch(`${baseUrl}/api/post-attributes`, {
+    const url = `${baseUrl}/api/post-attributes`;
+    console.log('🌐 Making API call to:', url);
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
       }
     });
     
+    console.log('📡 Response status:', response.status, response.statusText);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API error response:', errorText);
       throw new Error(`Failed to load post attributes: ${response.statusText}`);
     }
     
-    return await response.json();
+    const data = await response.json();
+    console.log('📄 API response data:', data);
+    return data;
   } catch (error) {
     console.error('Error in getPostAttributes:', error);
     throw new Error('Failed to load post attributes');

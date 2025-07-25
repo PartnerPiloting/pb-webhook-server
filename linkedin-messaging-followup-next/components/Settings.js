@@ -174,10 +174,14 @@ const SettingsWithParams = () => {
   const loadPostAttributes = async () => {
     try {
       setPostLoading(true);
+      console.log('🔍 Loading post attributes...');
       const data = await getPostAttributes();
+      console.log('📋 Post attributes data received:', data);
       setPostAttributes(data.attributes || []);
+      console.log('✅ Post attributes set to state:', data.attributes || []);
     } catch (err) {
-      console.error('Error loading post attributes:', err);
+      console.error('❌ Error loading post attributes:', err);
+      console.error('❌ Error details:', err.message);
     } finally {
       setPostLoading(false);
     }

@@ -1723,29 +1723,29 @@ router.get("/api/post-attributes", async (req, res) => {
     const records = await airtableBase("Post Scoring Attributes")
       .select({
         fields: [
-          "Attribute Id", "Heading", "Category", "Max Points", 
-          "Min To Qualify", "Penalty", "Disqualifying", "Bonus Points", "Active",
-          "Instructions", "Signals", "Examples"
-        ],
-        filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
+          "Attribute ID", "Criterion Name", "Category", "Max Score / Point Value", 
+          "Scoring Type", "Detailed Instructions for AI (Scoring Rubric)", 
+          "Example - High Score / Applies", "Example - Low Score / Does Not Apply",
+          "Keywords/Positive Indicators", "Keywords/Negative Indicators"
+        ]
       })
       .all();
 
     const attributes = records.map(record => ({
       id: record.id,
-      attributeId: record.get("Attribute Id"),
-      heading: record.get("Heading") || "[Unnamed Attribute]",
-      category: record.get("Category"),
-      maxPoints: record.get("Max Points") || 0,
-      minToQualify: record.get("Min To Qualify") || 0,
-      penalty: record.get("Penalty") || 0,
-      disqualifying: !!record.get("Disqualifying"),
-      bonusPoints: !!record.get("Bonus Points"),
-      active: !!record.get("Active"),
-      instructions: extractPlainText(record.get("Instructions")),
-      signals: extractPlainText(record.get("Signals")),
-      examples: extractPlainText(record.get("Examples")),
-      isEmpty: !record.get("Heading") && !extractPlainText(record.get("Instructions"))
+      attributeId: record.get("Attribute ID"),
+      heading: record.get("Criterion Name") || "[Unnamed Attribute]",
+      category: record.get("Category") === "Positive Scoring Factor" ? "Positive" : "Negative",
+      maxPoints: record.get("Max Score / Point Value") || 0,
+      minToQualify: 0, // Not used in post scoring
+      penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
+      disqualifying: false, // Not used in post scoring
+      bonusPoints: false, // Not used in post scoring
+      active: true, // Default to active since there's no Active field
+      instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
+      signals: record.get("Keywords/Positive Indicators") || record.get("Keywords/Negative Indicators") || "",
+      examples: record.get("Example - High Score / Applies") || record.get("Example - Low Score / Does Not Apply") || "",
+      isEmpty: !record.get("Criterion Name") && !record.get("Detailed Instructions for AI (Scoring Rubric)")
     }));
 
     // Sort attributes: Positives first (A-Z), then Negatives (N1, N2, etc.)
@@ -1791,18 +1791,18 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
     
     const attribute = {
       id: record.id,
-      attributeId: record.get("Attribute Id"),
-      heading: record.get("Heading") || "",
-      category: record.get("Category"),
-      maxPoints: record.get("Max Points") || 0,
-      minToQualify: record.get("Min To Qualify") || 0,
-      penalty: record.get("Penalty") || 0,
-      disqualifying: !!record.get("Disqualifying"),
-      bonusPoints: !!record.get("Bonus Points"),
-      active: !!record.get("Active"),
-      instructions: extractPlainText(record.get("Instructions")) || "",
-      signals: extractPlainText(record.get("Signals")) || "",
-      examples: extractPlainText(record.get("Examples")) || ""
+      attributeId: record.get("Attribute ID"),
+      heading: record.get("Criterion Name") || "",
+      category: record.get("Category") === "Positive Scoring Factor" ? "Positive" : "Negative",
+      maxPoints: record.get("Max Score / Point Value") || 0,
+      minToQualify: 0,
+      penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
+      disqualifying: false,
+      bonusPoints: false,
+      active: true,
+      instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
+      signals: record.get("Keywords/Positive Indicators") || record.get("Keywords/Negative Indicators") || "",
+      examples: record.get("Example - High Score / Applies") || record.get("Example - Low Score / Does Not Apply") || ""
     };
 
     console.log(`apiAndJobRoutes.js: Successfully loaded post attribute ${req.params.id} for editing`);
@@ -1835,8 +1835,8 @@ router.post("/api/post-attributes/:id/ai-edit", async (req, res) => {
     
     // Build prompt based on request type
     let prompt = "";
-    const heading = currentData.heading || record.get("Heading") || "[Unnamed Attribute]";
-    const category = currentData.category || record.get("Category") || "Unknown";
+    const heading = currentData.heading || record.get("Criterion Name") || "[Unnamed Attribute]";
+    const category = record.get("Category") === "Positive Scoring Factor" ? "Positive" : "Negative";
     
     if (requestType === "improve_all") {
       prompt = `I'm working on LinkedIn post scoring attributes for lead generation. Please help me improve this ${category.toLowerCase()} attribute:
@@ -1914,13 +1914,31 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
 
     const { heading, instructions, signals, examples, active } = req.body;
     
+    // First get the current record to determine category for proper field mapping
+    const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
+    const category = record.get("Category");
+    
     // Prepare update data - only include fields that are provided
     const updateData = {};
-    if (heading !== undefined) updateData["Heading"] = heading;
-    if (instructions !== undefined) updateData["Instructions"] = instructions;
-    if (signals !== undefined) updateData["Signals"] = signals;
-    if (examples !== undefined) updateData["Examples"] = examples;
-    if (active !== undefined) updateData["Active"] = active;
+    if (heading !== undefined) updateData["Criterion Name"] = heading;
+    if (instructions !== undefined) updateData["Detailed Instructions for AI (Scoring Rubric)"] = instructions;
+    if (signals !== undefined) {
+      // Update the appropriate signals field based on category
+      if (category === "Positive Scoring Factor") {
+        updateData["Keywords/Positive Indicators"] = signals;
+      } else {
+        updateData["Keywords/Negative Indicators"] = signals;
+      }
+    }
+    if (examples !== undefined) {
+      // Update the appropriate examples field based on category
+      if (category === "Positive Scoring Factor") {
+        updateData["Example - High Score / Applies"] = examples;
+      } else {
+        updateData["Example - Low Score / Does Not Apply"] = examples;
+      }
+    }
+    // Note: No active field in Post Scoring Attributes table
 
     // Update the record
     await airtableBase("Post Scoring Attributes").update(req.params.id, updateData);
