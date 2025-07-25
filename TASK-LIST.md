@@ -16,6 +16,15 @@
 
 ## High Priority Tasks 🔥
 
+### Bonus Points System Implementation
+- [ ] **Phase 1: Frontend UX for Bonus Points**
+  - [ ] Add "Bonus Points" Yes/No checkbox to attribute editing interface
+  - [ ] Update attribute library view to show bonus point indicators
+  - [ ] Implement UI validation and user experience flow
+  - [ ] **Backend Decision**: Bonus points get 25% added to denominator
+  - [ ] **Implementation Strategy**: Don't touch backend scoring initially - focus on UX first
+  - [ ] Test frontend changes before any backend modifications
+
 ### LinkedIn Follow-Up System - Next Phase
 - [ ] **Chrome Extension Development**
   - [ ] Build Chrome extension for in-LinkedIn lead actions
