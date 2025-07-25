@@ -85,7 +85,8 @@ async function loadAttributes() {
         positives[id] = {
           ...common,
           maxPoints : Number(r.get("Max Points")     || 0),
-          minQualify: Number(r.get("Min To Qualify") || 0)
+          minQualify: Number(r.get("Min To Qualify") || 0),
+          bonusPoints: !!r.get("Bonus Points")
         };
       } else if (cat === "negative") {
         const penalty = Number(r.get("Penalty") || 0);

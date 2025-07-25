@@ -56,7 +56,8 @@ function computeFinalScore(
       def.max_points ??  // alt snake_case
       def.max ??         // legacy field
       0;
-    return sum + (parseInt(String(raw), 10) || 0);
+    const weight = def.bonusPoints ? 0.25 : 1.0; // 25% weight for bonus points
+    return sum + (parseInt(String(raw), 10) || 0) * weight;
   }, 0);
 
   /* ---------- Percentage (guard ÷0) ----------------------------- */
