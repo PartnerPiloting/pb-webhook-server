@@ -732,58 +732,6 @@ const SettingsWithParams = () => {
       ) : (
         // Profile attributes view (existing functionality)
         <>
-          {/* Token Usage Display - Centered */}
-          <div className="flex justify-center">
-            <div className="w-full max-w-md">
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <div className="text-center">
-                  <div className="flex items-center justify-center space-x-2 mb-3">
-                    <CogIcon className="h-5 w-5 text-gray-400" />
-                    <h3 className="text-sm font-medium text-gray-900">Token Usage</h3>
-                  </div>
-                  {tokenLoading ? (
-                    <p className="text-sm text-gray-500">Loading usage...</p>
-                  ) : tokenUsage ? (
-                    <div className="space-y-3">
-                      <p className="text-lg font-semibold text-gray-900">
-                        {tokenUsage.totalTokens?.toLocaleString() || '0'}
-                        <span className="text-sm font-normal text-gray-600 mx-1">of</span>
-                        {tokenUsage.limit?.toLocaleString() || '15,000'}
-                        <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
-                      </p>
-                      <div className="w-full">
-                        <div className="bg-gray-200 rounded-full h-2.5">
-                          <div 
-                            className={`h-2.5 rounded-full transition-all duration-300 ${
-                              tokenUsage.percentUsed >= 90 ? 'bg-red-500' :
-                              tokenUsage.percentUsed >= 75 ? 'bg-yellow-500' : 'bg-green-500'
-                            }`}
-                            style={{ width: `${Math.min(tokenUsage.percentUsed || 0, 100)}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-center space-x-2">
-                        <span className={`text-sm font-medium ${
-                          tokenUsage.percentUsed >= 90 ? 'text-red-600' :
-                          tokenUsage.percentUsed >= 75 ? 'text-yellow-600' : 'text-green-600'
-                        }`}>
-                          {tokenUsage.percentUsed || 0}% used
-                        </span>
-                        {tokenUsage && tokenUsage.percentUsed >= 90 && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            Budget Nearly Full
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">Token usage unavailable</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Centered container with narrower width */}
           <div className="flex justify-center">
             <div className="w-full max-w-3xl">
