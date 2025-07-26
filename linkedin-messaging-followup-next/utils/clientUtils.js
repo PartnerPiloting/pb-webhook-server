@@ -10,24 +10,46 @@ let clientProfile = null;
  */
 export async function getCurrentClientProfile() {
   try {
-    // Use relative path to leverage existing authentication headers
-    const response = await fetch('/api/linkedin/user/profile', {
+    // Check for test client parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const testClient = urlParams.get('testClient');
+    
+    let apiUrl = '/api/auth/test';
+    
+    // If test client specified, add it as parameter
+    if (testClient) {
+      console.log(`ClientUtils: Using test client from URL: ${testClient}`);
+      apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
+    }
+
+    // Use absolute URL to backend for authentication
+    const fullUrl = `https://pb-webhook-server.onrender.com${apiUrl}`;
+    
+    console.log(`ClientUtils: Fetching client profile from: ${fullUrl}`);
+    
+    const response = await fetch(fullUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        // Authentication headers will be added by axios interceptor
       }
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`ClientUtils: API Error ${response.status}:`, errorText);
       throw new Error(`Failed to get user profile: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
+    console.log('ClientUtils: Received client profile:', data);
     
     // Cache the client info
     currentClientId = data.client?.clientId;
-    clientProfile = data;
+    clientProfile = {
+      client: data.client,
+      authentication: data.authentication,
+      features: data.features
+    };
     
     console.log('ClientUtils: Retrieved client profile:', {
       clientId: currentClientId,
