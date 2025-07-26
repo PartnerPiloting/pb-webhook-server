@@ -91,28 +91,31 @@ const LeadSearchUpdate = () => {
   );
 
   // Load initial results on component mount
-  useEffect(() => {
-    // Trigger initial search with empty query
-    currentSearchRef.current += 1;
-    performSearch('', priority, currentSearchRef.current);
-  }, [performSearch, priority]);
+  // DISABLED: Don't automatically search on mount to prevent memory issues
+  // useEffect(() => {
+  //   // Trigger initial search with empty query
+  //   currentSearchRef.current += 1;
+  //   performSearch('', priority, currentSearchRef.current);
+  // }, [performSearch, priority]);
 
   // Effect to trigger search when query or priority changes
   useEffect(() => {
+    // Only search if there's actually a search query
+    if (!search.trim()) {
+      // For empty search, clear results instead of loading all leads
+      setLeads([]);
+      return;
+    }
+    
     // Increment request ID to cancel any pending searches
     currentSearchRef.current += 1;
     const requestId = currentSearchRef.current;
     
     console.log(`🔍 Search triggered: "${search}" priority: "${priority}" (ID: ${requestId})`);
     
-    if (search.trim()) {
-      // Use debounced search for user typing
-      debouncedSearch(search, priority, requestId);
-    } else {
-      // For empty search, load initial leads immediately without debounce
-      performSearch('', priority, requestId);
-    }
-  }, [search, priority, debouncedSearch, performSearch]);
+    // Use debounced search for user typing
+    debouncedSearch(search, priority, requestId);
+  }, [search, priority, debouncedSearch]);
 
   // Handle lead selection - fetch full details
   const handleLeadSelect = async (lead) => {
