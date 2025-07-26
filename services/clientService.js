@@ -4,7 +4,7 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
-const { parseServiceLevel } = require('../middleware/authMiddleware');
+const { parseServiceLevel } = require('../utils/serviceLevel');
 
 // Cache for client data to avoid repeated API calls
 let clientsCache = null;
