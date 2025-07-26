@@ -3,6 +3,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
+import { getCurrentClientId } from '../utils/clientUtils.js';
 
 // Component that uses useSearchParams wrapped in Suspense
 const TopScoringPostsWithParams = () => {
@@ -14,7 +15,7 @@ const TopScoringPostsWithParams = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   
   const searchParams = useSearchParams();
-  const client = searchParams.get('client') || 'Guy-Wilson';
+  const client = searchParams.get('client') || getCurrentClientId();
 
   // Field names from master field list - single source of truth
   const FIELD_NAMES = {
@@ -39,9 +40,13 @@ const TopScoringPostsWithParams = () => {
     setError(null);
     
     try {
-      // Get client from URL parameters
+      // Get client from URL parameters or current authenticated client
       const urlParams = new URLSearchParams(window.location.search);
-      const client = urlParams.get('client') || 'Guy-Wilson';
+      const client = urlParams.get('client') || getCurrentClientId();
+      
+      if (!client) {
+        throw new Error('Client ID not available. Please ensure you are authenticated.');
+      }
       
       // API call to get leads with Posts Actioned empty and Posts Relevance Status = "Relevant"
       // Sorted by First Name, Last Name

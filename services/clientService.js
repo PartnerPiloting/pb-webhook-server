@@ -4,6 +4,7 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { parseServiceLevel } = require('../middleware/authMiddleware');
 
 // Cache for client data to avoid repeated API calls
 let clientsCache = null;
@@ -71,7 +72,8 @@ async function getAllClients() {
                 const airtableBaseId = record.get('Airtable Base ID');
                 const executionLog = record.get('Execution Log') || '';
                 const wpUserId = record.get('WordPress User ID');
-                const serviceLevel = record.get('Service Level') || 1;
+                const serviceLevelRaw = record.get('Service Level') || 1;
+                const serviceLevel = parseServiceLevel(serviceLevelRaw); // Parse "2-Lead Scoring + Post Scoring" → 2
                 const comment = record.get('Comment') || '';
                 const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 5000;
                 const postScoringTokenLimit = record.get('Post Scoring Token Limit') || 3000;
@@ -389,6 +391,40 @@ async function getClientTokenLimits(clientId) {
     }
 }
 
+/**
+ * Clear the clients cache (useful for testing or forced refresh)
+ */
+function clearCache() {
+    clientsCache = null;
+    clientsCacheTimestamp = null;
+    console.log("Client cache cleared");
+}
+
+/**
+ * Get Airtable base connection for a specific client
+ * @param {string} airtableBaseId - The Airtable Base ID for the client
+ * @returns {Object} Airtable base instance
+ */
+function getClientBase(airtableBaseId) {
+    if (!airtableBaseId) {
+        throw new Error("Airtable Base ID is required");
+    }
+    
+    if (!process.env.AIRTABLE_API_KEY) {
+        throw new Error("AIRTABLE_API_KEY environment variable is not set");
+    }
+
+    // Configure Airtable if not already done
+    const Airtable = require('airtable');
+    Airtable.configure({
+        apiKey: process.env.AIRTABLE_API_KEY
+    });
+
+    const base = Airtable.base(airtableBaseId);
+    console.log(`Created Airtable base connection for: ${airtableBaseId}`);
+    return base;
+}
+
 module.exports = {
     getAllClients,
     getAllActiveClients,
@@ -400,5 +436,6 @@ module.exports = {
     logExecution,     // Add the new logging function
     formatExecutionLog,
     clearCache,
-    getClientTokenLimits  // Add the new token limits function
+    getClientTokenLimits,  // Add the new token limits function
+    getClientBase     // Add the new base connection function
 };
