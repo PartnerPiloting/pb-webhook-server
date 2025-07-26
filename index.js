@@ -242,7 +242,23 @@ if (mountQueue && typeof mountQueue === 'function') {
 }
 
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
-try { const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); app.use('/api/linkedin', linkedinRoutes); console.log("index.js: LinkedIn routes mounted at /api/linkedin"); } catch(e) { console.error("index.js: Error mounting LinkedIn routes", e.message, e.stack); }
+
+// Use authenticated LinkedIn routes instead of old non-authenticated ones
+try { 
+    const linkedinRoutesWithAuth = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutesWithAuth.js'); 
+    app.use('/api/linkedin', linkedinRoutesWithAuth); 
+    console.log("index.js: Authenticated LinkedIn routes mounted at /api/linkedin"); 
+} catch(e) { 
+    console.error("index.js: Error mounting authenticated LinkedIn routes", e.message, e.stack); 
+    // Fallback to old routes if new ones fail
+    try { 
+        const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); 
+        app.use('/api/linkedin', linkedinRoutes); 
+        console.log("index.js: Fallback: Old LinkedIn routes mounted at /api/linkedin"); 
+    } catch(fallbackError) { 
+        console.error("index.js: Error mounting fallback LinkedIn routes", fallbackError.message, fallbackError.stack); 
+    }
+}
 
 // Authentication test routes
 try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/api/auth', authTestRoutes); console.log("index.js: Authentication test routes mounted at /api/auth"); } catch(e) { console.error("index.js: Error mounting authentication test routes", e.message, e.stack); }

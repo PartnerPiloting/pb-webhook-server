@@ -1,8 +1,42 @@
 "use client";
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
+import { initializeClient } from '../utils/clientUtils.js';
+
+// Client initialization hook
+const useClientInitialization = () => {
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [error, setError] = useState(null);
+  const searchParams = useSearchParams();
+  
+  useEffect(() => {
+    const initClient = async () => {
+      try {
+        console.log('Layout: Starting client initialization...');
+        
+        // Check for test client parameter in URL
+        const testClient = searchParams.get('testClient');
+        if (testClient) {
+          console.log(`Layout: Found test client parameter: ${testClient}`);
+        }
+        
+        await initializeClient();
+        setIsInitialized(true);
+        console.log('Layout: Client initialization successful');
+      } catch (error) {
+        console.error('Layout: Client initialization failed:', error);
+        setError(error);
+        setIsInitialized(true); // Still set to true to allow fallback behavior
+      }
+    };
+    
+    initClient();
+  }, [searchParams]);
+  
+  return { isInitialized, error };
+};
 
 // Component that uses useSearchParams wrapped in Suspense
 const NavigationWithParams = ({ pathname, children }) => {
@@ -88,6 +122,26 @@ const NavigationWithParams = ({ pathname, children }) => {
 
 const Layout = ({ children }) => {
   const pathname = usePathname();
+  
+  // Initialize client authentication
+  const { isInitialized, error } = useClientInitialization();
+
+  // Show loading state while initializing
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="text-center">
+          <p className="text-gray-500">Initializing authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if initialization failed
+  if (error) {
+    console.warn('Layout: Client initialization failed, continuing with fallback:', error);
+    // Continue anyway to allow fallback behavior
+  }
 
   // Ensure children is defined
   if (!children) {
