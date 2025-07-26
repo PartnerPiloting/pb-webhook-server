@@ -264,6 +264,31 @@ WHEN TO USE STANDARD POINTS:
 ✅ Critical attributes that heavily influence hiring decisions
 
 To change this setting, simply check or uncheck the box above. Would you like guidance on whether this attribute should be bonus or standard points?`;
+    } else if (fieldKey === 'scoringType') {
+      const currentType = currentValue || 'Scale';
+      initialMessage = `I'll explain the scoring types available for ${attribute.heading || 'this criterion'}.
+
+CURRENT SETTING: ${currentType}
+
+🎯 **SCALE SCORING** (Recommended for most criteria)
+• AI assigns 0 to Max Score based on degree of match
+• Flexible scoring where partial matches get partial points
+• Example: Post mentioning AI gets 8/20, post strongly advocating for AI gets 18/20
+• Best for: Most content evaluation scenarios
+
+⚠️ **FIXED PENALTY** (All-or-nothing negative)
+• Full negative score applied when criterion is clearly met
+• No partial scoring - either 0 or full penalty
+• Example: Spam content = full -10 points, not spam = 0 points
+• Best for: Clear violations or unwanted content
+
+✅ **FIXED BONUS** (All-or-nothing positive)
+• Full positive score applied when criterion is clearly met
+• No partial scoring - either 0 or full bonus
+• Example: Mentions specific keyword = full +15 points, doesn't mention = 0 points
+• Best for: Specific requirements or rare positive indicators
+
+You can't change this value directly, but I can help you understand which type would work best for your criterion. What type of content evaluation are you trying to achieve?`;
     } else if (fieldKey === 'instructions') {
       const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
       
@@ -493,14 +518,16 @@ Examples:
       let updatedData;
       
       if (attribute.isPostAttribute) {
-        // Post Scoring Criteria - different field set
+        // Post Scoring Criteria - using rich Airtable fields
         updatedData = {
           heading: fieldValues.heading,
           maxPoints: fieldValues.maxPoints ? Number(fieldValues.maxPoints) : null,
           scoringType: fieldValues.scoringType,
           instructions: fieldValues.instructions,
-          signals: fieldValues.signals,
-          examples: fieldValues.examples,
+          positiveIndicators: fieldValues.positiveIndicators,
+          negativeIndicators: fieldValues.negativeIndicators,
+          highScoreExample: fieldValues.highScoreExample,
+          lowScoreExample: fieldValues.lowScoreExample,
           active: fieldValues.active
         };
       } else {
@@ -607,8 +634,16 @@ Examples:
               
               {field.type === 'select' && (
                 <select
-                  value={fieldValues[field.key]}
-                  onChange={(e) => handleFieldChange(field.key, e.target.value === 'true')}
+                  value={fieldValues[field.key] || ''}
+                  onChange={(e) => {
+                    // Handle different value types properly
+                    if (field.key === 'active') {
+                      handleFieldChange(field.key, e.target.value === 'true');
+                    } else {
+                      handleFieldChange(field.key, e.target.value);
+                    }
+                  }}
+                  aria-label={field.label}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {field.options.map(option => (
