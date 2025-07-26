@@ -607,6 +607,13 @@ export const saveAttributeChanges = async (attributeId, improvedRubric) => {
 
 export const savePostAttributeChanges = async (attributeId, updatedData) => {
   try {
+    console.log('savePostAttributeChanges - sending data:', {
+      attributeId,
+      updatedData,
+      activeField: updatedData.active,
+      activeType: typeof updatedData.active
+    });
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/save`, {
       method: 'POST',
