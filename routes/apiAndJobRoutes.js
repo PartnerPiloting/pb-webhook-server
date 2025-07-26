@@ -1723,7 +1723,7 @@ router.get("/api/post-attributes", async (req, res) => {
     const records = await airtableBase("Post Scoring Attributes")
       .select({
         fields: [
-          "Attribute ID", "Criterion Name", "Category", "Max Score / Point Value", 
+          "Attribute ID", "Active", "Criterion Name", "Category", "Max Score / Point Value", 
           "Scoring Type", "Detailed Instructions for AI (Scoring Rubric)", 
           "Example - High Score / Applies", "Example - Low Score / Does Not Apply",
           "Keywords/Positive Indicators", "Keywords/Negative Indicators"
@@ -1742,7 +1742,7 @@ router.get("/api/post-attributes", async (req, res) => {
       penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
       disqualifying: false, // Not used in post scoring
       bonusPoints: false, // Not used in post scoring
-      active: true, // Default to active since there's no Active field
+      active: record.get("Active") === true || record.get("Active") === null || record.get("Active") === undefined, // Default to true if empty/null
       instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
       // Return all separate fields for richer UX display
       positiveIndicators: record.get("Keywords/Positive Indicators") || "",
@@ -1807,7 +1807,7 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
       penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
       disqualifying: false,
       bonusPoints: false,
-      active: true,
+      active: record.get("Active") === true || record.get("Active") === null || record.get("Active") === undefined, // Default to true if empty/null
       instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
       // Return all separate fields for richer UX display
       positiveIndicators: record.get("Keywords/Positive Indicators") || "",
@@ -1858,13 +1858,17 @@ router.post("/api/post-attributes/:id/ai-edit", async (req, res) => {
 **Current Attribute: "${heading}"**
 **Category:** ${category}
 **Current Instructions:** ${currentData.instructions || "None"}
-**Current Signals:** ${currentData.signals || "None"}  
-**Current Examples:** ${currentData.examples || "None"}
+**Current Positive Indicators:** ${currentData.positiveIndicators || "None"}  
+**Current Negative Indicators:** ${currentData.negativeIndicators || "None"}  
+**Current High Score Example:** ${currentData.highScoreExample || "None"}
+**Current Low Score Example:** ${currentData.lowScoreExample || "None"}
 
 Please provide improved content for:
 1. **Instructions** - Clear guidance for human reviewers on how to evaluate this attribute in LinkedIn posts
-2. **Signals** - Specific things to look for in post content that indicate this attribute
-3. **Examples** - 2-3 concrete examples of posts that would score well/poorly for this attribute
+2. **Positive Indicators** - Specific things to look for in post content that indicate this attribute positively
+3. **Negative Indicators** - Specific things to look for in post content that indicate this attribute negatively  
+4. **High Score Example** - Concrete example of a post that would score well for this attribute
+5. **Low Score Example** - Concrete example of a post that would score poorly for this attribute
 
 Focus on LinkedIn post content analysis and lead generation effectiveness.`;
 
@@ -1876,23 +1880,41 @@ Category: ${category}
 
 Provide improved instructions that help human reviewers consistently evaluate this attribute.`;
 
-    } else if (requestType === "signals") {
-      prompt = `List specific signals to look for in LinkedIn posts that indicate the "${heading}" attribute.
+    } else if (requestType === "positiveIndicators") {
+      prompt = `List specific positive indicators to look for in LinkedIn posts that indicate the "${heading}" attribute.
       
-Current signals: ${currentData.signals || "None"}
+Current positive indicators: ${currentData.positiveIndicators || "None"}
 Category: ${category}
 Instructions: ${currentData.instructions || "None"}
 
-Provide concrete, observable signals in post content.`;
+Provide concrete, observable positive indicators in post content.`;
 
-    } else if (requestType === "examples") {
-      prompt = `Provide 2-3 concrete examples of LinkedIn posts that demonstrate the "${heading}" attribute.
+    } else if (requestType === "negativeIndicators") {
+      prompt = `List specific negative indicators to look for in LinkedIn posts that indicate the "${heading}" attribute.
       
-Current examples: ${currentData.examples || "None"}
+Current negative indicators: ${currentData.negativeIndicators || "None"}
 Category: ${category}
 Instructions: ${currentData.instructions || "None"}
 
-Include brief explanations of why each example fits this attribute.`;
+Provide concrete, observable negative indicators in post content.`;
+
+    } else if (requestType === "highScoreExample") {
+      prompt = `Provide a concrete example of a LinkedIn post that demonstrates a HIGH SCORE for the "${heading}" attribute.
+      
+Current high score example: ${currentData.highScoreExample || "None"}
+Category: ${category}
+Instructions: ${currentData.instructions || "None"}
+
+Include a brief explanation of why this example fits this attribute.`;
+
+    } else if (requestType === "lowScoreExample") {
+      prompt = `Provide a concrete example of a LinkedIn post that demonstrates a LOW SCORE for the "${heading}" attribute.
+      
+Current low score example: ${currentData.lowScoreExample || "None"}
+Category: ${category}
+Instructions: ${currentData.instructions || "None"}
+
+Include a brief explanation of why this example fits this attribute.`;
     } else {
       throw new Error("Invalid request type");
     }
@@ -1926,7 +1948,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
       throw new Error("Airtable not available - check config/airtableClient.js");
     }
 
-    const { heading, instructions, signals, examples, active } = req.body;
+    const { heading, instructions, positiveIndicators, negativeIndicators, highScoreExample, lowScoreExample, active, maxPoints, scoringType } = req.body;
     
     // First get the current record to determine category for proper field mapping
     const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
@@ -1936,23 +1958,18 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     const updateData = {};
     if (heading !== undefined) updateData["Criterion Name"] = heading;
     if (instructions !== undefined) updateData["Detailed Instructions for AI (Scoring Rubric)"] = instructions;
-    if (signals !== undefined) {
-      // Update the appropriate signals field based on category
-      if (category === "Positive Scoring Factor") {
-        updateData["Keywords/Positive Indicators"] = signals;
-      } else {
-        updateData["Keywords/Negative Indicators"] = signals;
-      }
-    }
-    if (examples !== undefined) {
-      // Update the appropriate examples field based on category
-      if (category === "Positive Scoring Factor") {
-        updateData["Example - High Score / Applies"] = examples;
-      } else {
-        updateData["Example - Low Score / Does Not Apply"] = examples;
-      }
-    }
-    // Note: No active field in Post Scoring Attributes table
+    if (maxPoints !== undefined) updateData["Max Score / Point Value"] = maxPoints;
+    if (scoringType !== undefined) updateData["Scoring Type"] = scoringType;
+    
+    // Handle Keywords fields separately
+    if (positiveIndicators !== undefined) updateData["Keywords/Positive Indicators"] = positiveIndicators;
+    if (negativeIndicators !== undefined) updateData["Keywords/Negative Indicators"] = negativeIndicators;
+    
+    // Handle Example fields separately  
+    if (highScoreExample !== undefined) updateData["Example - High Score / Applies"] = highScoreExample;
+    if (lowScoreExample !== undefined) updateData["Example - Low Score / Does Not Apply"] = lowScoreExample;
+    
+    if (active !== undefined) updateData["Active"] = active; // Handle Active field updates
 
     // Update the record
     await airtableBase("Post Scoring Attributes").update(req.params.id, updateData);

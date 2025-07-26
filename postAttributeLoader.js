@@ -66,7 +66,8 @@ async function loadPostScoringAirtableConfig(base, config) {
                     positiveKeywords: record.get('Keywords/Positive Indicators'),
                     negativeKeywords: record.get('Keywords/Negative Indicators'),
                     exampleHigh: record.get('Example - High Score / Applies'),
-                    exampleLow: record.get('Example - Low Score / Does Not Apply')
+                    exampleLow: record.get('Example - Low Score / Does Not Apply'),
+                    active: record.get('Active') === true || record.get('Active') === null || record.get('Active') === undefined // Default to true if empty/null
                 };
             }
         }
