@@ -92,7 +92,7 @@ export const searchLeads = async (query, priority = 'all') => {
     
     const params = { 
       q: query,
-      client: clientId
+      testClient: clientId
     };
     
     // Only add priority parameter if it's not 'all'
@@ -137,7 +137,7 @@ export const getLeadById = async (leadId) => {
     
     const response = await api.get(`/leads/${leadId}`, {
       params: {
-        client: clientId
+        testClient: clientId
       }
     });
     
@@ -236,7 +236,7 @@ export const createLead = async (leadData) => {
     
     const response = await api.post('/leads', backendData, {
       params: {
-        client: clientId
+        testClient: clientId
       }
     });
     
@@ -326,7 +326,7 @@ export const updateLead = async (leadId, updateData) => {
     
     const response = await api.put(`/leads/${leadId}`, backendData, {
       params: {
-        client: clientId
+        testClient: clientId
       }
     });
     
@@ -380,7 +380,7 @@ export const deleteLead = async (leadId) => {
     
     const response = await api.delete(`/leads/${leadId}`, {
       params: {
-        client: clientId
+        testClient: clientId
       }
     });
     
@@ -407,7 +407,7 @@ export const getFollowUps = async () => {
     
     const response = await api.get('/leads/follow-ups', {
       params: {
-        client: clientId
+        testClient: clientId
       },
       timeout: 30000 // 30 seconds for follow-ups to handle larger datasets
     });
