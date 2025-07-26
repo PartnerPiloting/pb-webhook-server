@@ -584,8 +584,12 @@ function calculateAttributeTokens(instructions, examples, signals) {
 }
 
 // Get current token usage for all active attributes
-async function getCurrentTokenUsage(clientId = 'Guy-Wilson') {
+async function getCurrentTokenUsage(clientId) {
   try {
+    if (!clientId) {
+      throw new Error('Client ID is required for token usage calculation');
+    }
+    
     // Get client token limits
     const clientService = require('../services/clientService');
     const tokenLimits = await clientService.getClientTokenLimits(clientId);
@@ -644,8 +648,12 @@ async function getCurrentTokenUsage(clientId = 'Guy-Wilson') {
 }
 
 // Check if activating an attribute would exceed budget
-async function validateTokenBudget(attributeId, updatedData, clientId = 'Guy-Wilson') {
+async function validateTokenBudget(attributeId, updatedData, clientId) {
   try {
+    if (!clientId) {
+      throw new Error('Client ID is required for token budget validation');
+    }
+    
     const currentUsage = await getCurrentTokenUsage(clientId);
     
     // Calculate tokens for the updated attribute
@@ -700,8 +708,12 @@ function calculatePostAttributeTokens(detailedInstructions, positiveKeywords, ne
 }
 
 // Get current post token usage for all active post attributes
-async function getCurrentPostTokenUsage(clientId = 'Guy-Wilson') {
+async function getCurrentPostTokenUsage(clientId) {
   try {
+    if (!clientId) {
+      throw new Error('Client ID is required for post token usage calculation');
+    }
+    
     // Get client token limits
     const clientService = require('../services/clientService');
     const tokenLimits = await clientService.getClientTokenLimits(clientId);
@@ -764,8 +776,11 @@ async function getCurrentPostTokenUsage(clientId = 'Guy-Wilson') {
 }
 
 // Check if activating a post attribute would exceed budget
-async function validatePostTokenBudget(attributeId, updatedData, clientId = 'Guy-Wilson') {
+async function validatePostTokenBudget(attributeId, updatedData, clientId) {
   try {
+    if (!clientId) {
+      throw new Error('Client ID is required for post token budget validation');
+    }
     const currentUsage = await getCurrentPostTokenUsage(clientId);
     
     // Calculate tokens for the updated attribute
@@ -812,7 +827,13 @@ router.get("/api/token-usage", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/token-usage - Getting current token usage");
     
-    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
+    const clientId = req.query.client;
+    if (!clientId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Client ID is required. Please provide ?client=your-client-id parameter.'
+      });
+    }
     const usage = await getCurrentTokenUsage(clientId);
     
     // Add warning levels
@@ -842,7 +863,14 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
     console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget - Validating token budget`);
     const attributeId = req.params.id;
     const updatedData = req.body;
-    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
+    const clientId = req.query.client;
+    
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Client ID is required. Please provide ?client=your-client-id parameter.'
+      });
+    }
     
     if (!updatedData || typeof updatedData !== 'object') {
       return res.status(400).json({
@@ -879,7 +907,14 @@ router.get("/api/post-token-usage", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/post-token-usage - Getting current post token usage");
     
-    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
+    const clientId = req.query.client;
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Client ID is required. Please provide ?client=your-client-id parameter.'
+      });
+    }
+    
     const usage = await getCurrentPostTokenUsage(clientId);
     
     // Add warning levels
@@ -909,7 +944,14 @@ router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
     console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget - Validating post token budget`);
     const attributeId = req.params.id;
     const updatedData = req.body;
-    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
+    const clientId = req.query.client;
+    
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Client ID is required. Please provide ?client=your-client-id parameter.'
+      });
+    }
     
     if (!updatedData || typeof updatedData !== 'object') {
       return res.status(400).json({

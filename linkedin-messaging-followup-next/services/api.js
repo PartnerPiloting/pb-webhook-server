@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getCurrentClientId } from '../utils/clientUtils.js';
 
 // API configuration
 // In Next.js, environment variables must be prefixed with NEXT_PUBLIC_ to be available in the browser
@@ -55,7 +56,14 @@ api.interceptors.request.use(
       config.params = {};
     }
     if (!config.params.client) {
-      config.params.client = 'Guy-Wilson'; // TODO: Make this dynamic
+      const clientId = getCurrentClientId();
+      if (clientId) {
+        config.params.client = clientId;
+      } else {
+        console.warn('API: No client ID available, request may fail. Make sure to call initializeClient() first.');
+        // For development/testing fallback
+        config.params.client = 'Guy-Wilson';
+      }
     }
     
     return config;
@@ -77,9 +85,14 @@ api.interceptors.response.use(
 // Lead search and management functions
 export const searchLeads = async (query, priority = 'all') => {
   try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
     const params = { 
       q: query,
-      client: 'Guy-Wilson' // TODO: Make this dynamic based on logged-in user
+      client: clientId
     };
     
     // Only add priority parameter if it's not 'all'
@@ -117,9 +130,14 @@ export const searchLeads = async (query, priority = 'all') => {
 
 export const getLeadById = async (leadId) => {
   try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
     const response = await api.get(`/leads/${leadId}`, {
       params: {
-        client: 'Guy-Wilson' // TODO: Make this dynamic
+        client: clientId
       }
     });
     
@@ -211,9 +229,14 @@ export const createLead = async (leadData) => {
       }
     });
     
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
     const response = await api.post('/leads', backendData, {
       params: {
-        client: 'Guy-Wilson' // Backend expects this as URL parameter
+        client: clientId
       }
     });
     
@@ -296,9 +319,14 @@ export const updateLead = async (leadId, updateData) => {
       }
     });
     
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
     const response = await api.put(`/leads/${leadId}`, backendData, {
       params: {
-        client: 'Guy-Wilson' // Backend expects this as URL parameter for now
+        client: clientId
       }
     });
     
@@ -345,9 +373,14 @@ export const updateLead = async (leadId, updateData) => {
 
 export const deleteLead = async (leadId) => {
   try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
     const response = await api.delete(`/leads/${leadId}`, {
       params: {
-        client: 'Guy-Wilson' // Backend expects this as URL parameter
+        client: clientId
       }
     });
     
@@ -367,9 +400,14 @@ export const deleteLead = async (leadId) => {
 
 export const getFollowUps = async () => {
   try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
     const response = await api.get('/leads/follow-ups', {
       params: {
-        client: 'Guy-Wilson' // Backend expects this as URL parameter
+        client: clientId
       },
       timeout: 30000 // 30 seconds for follow-ups to handle larger datasets
     });
