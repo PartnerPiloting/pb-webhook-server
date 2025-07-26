@@ -1969,7 +1969,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     if (highScoreExample !== undefined) updateData["Example - High Score / Applies"] = highScoreExample;
     if (lowScoreExample !== undefined) updateData["Example - Low Score / Does Not Apply"] = lowScoreExample;
     
-    if (active !== undefined) updateData["Active"] = active; // Handle Active field updates
+    if (active !== undefined) updateData["Active"] = !!active; // Handle Active field updates with boolean conversion
 
     // Update the record
     await airtableBase("Post Scoring Attributes").update(req.params.id, updateData);
