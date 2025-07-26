@@ -179,7 +179,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           negativeIndicators: (attribute.negativeIndicators && attribute.negativeIndicators !== 'null') ? String(attribute.negativeIndicators) : '',
           highScoreExample: (attribute.highScoreExample && attribute.highScoreExample !== 'null') ? String(attribute.highScoreExample) : '',
           lowScoreExample: (attribute.lowScoreExample && attribute.lowScoreExample !== 'null') ? String(attribute.lowScoreExample) : '',
-          active: attribute.active !== false
+          active: Boolean(attribute.active)
         });
       } else {
         // Profile Scoring Attributes - traditional complex scoring
@@ -191,7 +191,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
           minToQualify: (attribute.minToQualify && attribute.minToQualify !== 'null') ? String(attribute.minToQualify) : '',
           signals: (attribute.signals && attribute.signals !== 'null') ? String(attribute.signals) : '',
           examples: (attribute.examples && attribute.examples !== 'null') ? String(attribute.examples) : '',
-          active: attribute.active !== false
+          active: Boolean(attribute.active)
         });
       }
       
