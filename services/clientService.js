@@ -73,6 +73,8 @@ async function getAllClients() {
                 const wpUserId = record.get('WordPress User ID');
                 const serviceLevel = record.get('Service Level') || 1;
                 const comment = record.get('Comment') || '';
+                const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 5000;
+                const postScoringTokenLimit = record.get('Post Scoring Token Limit') || 3000;
                 
                 clients.push({
                     id: record.id,
@@ -83,7 +85,9 @@ async function getAllClients() {
                     executionLog: executionLog,
                     wpUserId: wpUserId,
                     serviceLevel: serviceLevel,
-                    comment: comment
+                    comment: comment,
+                    profileScoringTokenLimit: profileScoringTokenLimit,
+                    postScoringTokenLimit: postScoringTokenLimit
                 });
             });
             fetchNextPage();
@@ -360,6 +364,31 @@ function clearCache() {
     console.log("Clients cache cleared");
 }
 
+/**
+ * Get token limits for a specific client
+ * @param {string} clientId - The Client ID to get limits for
+ * @returns {Promise<Object|null>} Token limits object or null if not found
+ */
+async function getClientTokenLimits(clientId) {
+    try {
+        const client = await getClientById(clientId);
+        if (!client) {
+            console.log(`Client not found for token limits: ${clientId}`);
+            return null;
+        }
+
+        return {
+            profileLimit: client.profileScoringTokenLimit,
+            postLimit: client.postScoringTokenLimit,
+            clientName: client.clientName
+        };
+
+    } catch (error) {
+        console.error(`Error getting token limits for client ${clientId}:`, error);
+        throw error;
+    }
+}
+
 module.exports = {
     getAllClients,
     getAllActiveClients,
@@ -370,5 +399,6 @@ module.exports = {
     updateExecutionLog,
     logExecution,     // Add the new logging function
     formatExecutionLog,
-    clearCache
+    clearCache,
+    getClientTokenLimits  // Add the new token limits function
 };

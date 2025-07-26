@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
+import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
 import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import AIEditModal from './AIEditModal';
 
@@ -69,10 +69,12 @@ const SettingsWithParams = () => {
 
   const handleViewProfileAttributes = () => {
     setCurrentView('profile');
+    loadTokenUsage('profile'); // Load profile token usage
   };
 
   const handleViewPostAttributes = () => {
     setCurrentView('posts');
+    loadTokenUsage('posts'); // Load post token usage
   };
 
   // Helper function to get scoring type explanations
@@ -89,6 +91,28 @@ const SettingsWithParams = () => {
     }
   };
 
+  // Load token usage based on current view
+  const loadTokenUsage = async (view = currentView) => {
+    try {
+      setTokenLoading(true);
+      let tokenData;
+      
+      if (view === 'posts') {
+        tokenData = await getPostTokenUsage();
+      } else {
+        // Default to profile token usage for 'profile' and 'menu' views
+        tokenData = await getTokenUsage();
+      }
+      
+      setTokenUsage(tokenData.usage);
+    } catch (tokenErr) {
+      console.error('Error loading token usage:', tokenErr);
+      setTokenUsage(null);
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
   const handleSaveAttribute = async (attributeId, updatedData) => {
     try {
       await saveAttribute(attributeId, updatedData);
@@ -96,13 +120,8 @@ const SettingsWithParams = () => {
       const data = await getAttributes();
       setAttributes(data.attributes || []);
       
-      // Refresh token usage
-      try {
-        const tokenData = await getTokenUsage();
-        setTokenUsage(tokenData.usage);
-      } catch (tokenErr) {
-        console.error('Error refreshing token usage:', tokenErr);
-      }
+      // Refresh token usage for current view
+      await loadTokenUsage();
     } catch (err) {
       console.error('Error saving attribute:', err);
       throw err;
@@ -117,13 +136,8 @@ const SettingsWithParams = () => {
       const data = await getAttributes();
       setAttributes(data.attributes || []);
       
-      // Refresh token usage
-      try {
-        const tokenData = await getTokenUsage();
-        setTokenUsage(tokenData.usage);
-      } catch (tokenErr) {
-        console.error('Error refreshing token usage:', tokenErr);
-      }
+      // Refresh token usage for current view
+      await loadTokenUsage();
     } catch (err) {
       console.error('Error toggling active status:', err);
       alert('Failed to toggle active status. Please try again.');
@@ -152,13 +166,8 @@ const SettingsWithParams = () => {
       // Reload post attributes
       await loadPostAttributes();
       
-      // Refresh token usage
-      try {
-        const tokenData = await getTokenUsage();
-        setTokenUsage(tokenData.usage);
-      } catch (tokenErr) {
-        console.error('Error refreshing token usage:', tokenErr);
-      }
+      // Refresh token usage for current view (should be 'posts')
+      await loadTokenUsage();
     } catch (err) {
       console.error('Error saving post attribute:', err);
       throw err;
@@ -172,13 +181,8 @@ const SettingsWithParams = () => {
       // Reload post attributes
       await loadPostAttributes();
       
-      // Refresh token usage
-      try {
-        const tokenData = await getTokenUsage();
-        setTokenUsage(tokenData.usage);
-      } catch (tokenErr) {
-        console.error('Error refreshing token usage:', tokenErr);
-      }
+      // Refresh token usage for current view (should be 'posts')
+      await loadTokenUsage();
     } catch (err) {
       console.error('Error toggling post active status:', err);
       alert('Failed to toggle post active status. Please try again.');
@@ -239,6 +243,13 @@ const SettingsWithParams = () => {
   useEffect(() => {
     if (currentView === 'posts') {
       loadPostAttributes();
+    }
+  }, [currentView]);
+
+  // Load appropriate token usage when view changes
+  useEffect(() => {
+    if (currentView === 'profile' || currentView === 'posts') {
+      loadTokenUsage(currentView);
     }
   }, [currentView]);
 
@@ -569,18 +580,23 @@ const SettingsWithParams = () => {
                   <p className="text-sm text-gray-500">Loading usage...</p>
                 ) : tokenUsage ? (
                   <div className="space-y-3">
-                    <p className="text-lg font-semibold text-gray-900">
-                      {tokenUsage.totalTokens?.toLocaleString() || '0'}
-                      <span className="text-sm font-normal text-gray-600 mx-1">of</span>
-                      {tokenUsage.limit?.toLocaleString() || '15,000'}
-                      <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
-                    </p>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        {currentView === 'posts' ? 'Post Scoring' : 'Profile Scoring'} Token Usage
+                      </p>
+                      <p className="text-lg font-semibold text-gray-900 mt-1">
+                        {tokenUsage.totalTokens?.toLocaleString() || '0'}
+                        <span className="text-sm font-normal text-gray-600 mx-1">of</span>
+                        {tokenUsage.limit?.toLocaleString() || '5,000'}
+                        <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
+                      </p>
+                    </div>
                     <div className="w-full">
                       <div className="bg-gray-200 rounded-full h-2.5">
                         <div 
                           className={`h-2.5 rounded-full transition-all duration-300 ${
-                            tokenUsage.percentUsed >= 90 ? 'bg-red-500' :
-                            tokenUsage.percentUsed >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                            tokenUsage.percentUsed >= 95 ? 'bg-red-500' :
+                            tokenUsage.percentUsed >= 90 ? 'bg-yellow-500' : 'bg-green-500'
                           }`}
                           style={{ width: `${Math.min(tokenUsage.percentUsed || 0, 100)}%` }}
                         ></div>
@@ -588,14 +604,19 @@ const SettingsWithParams = () => {
                     </div>
                     <div className="flex items-center justify-center space-x-2">
                       <span className={`text-sm font-medium ${
-                        tokenUsage.percentUsed >= 90 ? 'text-red-600' :
-                        tokenUsage.percentUsed >= 75 ? 'text-yellow-600' : 'text-green-600'
+                        tokenUsage.percentUsed >= 95 ? 'text-red-600' :
+                        tokenUsage.percentUsed >= 90 ? 'text-yellow-600' : 'text-green-600'
                       }`}>
                         {tokenUsage.percentUsed || 0}% used
                       </span>
-                      {tokenUsage && tokenUsage.percentUsed >= 90 && (
+                      {tokenUsage && tokenUsage.percentUsed >= 95 && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          Budget Nearly Full
+                          At Limit (105% max)
+                        </span>
+                      )}
+                      {tokenUsage && tokenUsage.percentUsed >= 90 && tokenUsage.percentUsed < 95 && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          Near Limit
                         </span>
                       )}
                     </div>
@@ -656,18 +677,23 @@ const SettingsWithParams = () => {
                 <p className="text-sm text-gray-500">Loading usage...</p>
               ) : tokenUsage ? (
                 <div className="space-y-3">
-                  <p className="text-lg font-semibold text-gray-900">
-                    {tokenUsage.totalTokens?.toLocaleString() || '0'}
-                    <span className="text-sm font-normal text-gray-600 mx-1">of</span>
-                    {tokenUsage.limit?.toLocaleString() || '15,000'}
-                    <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
-                  </p>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      {currentView === 'posts' ? 'Post Scoring' : 'Profile Scoring'} Token Usage
+                    </p>
+                    <p className="text-lg font-semibold text-gray-900 mt-1">
+                      {tokenUsage.totalTokens?.toLocaleString() || '0'}
+                      <span className="text-sm font-normal text-gray-600 mx-1">of</span>
+                      {tokenUsage.limit?.toLocaleString() || '3,000'}
+                      <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
+                    </p>
+                  </div>
                   <div className="w-full">
                     <div className="bg-gray-200 rounded-full h-2.5">
                       <div 
                         className={`h-2.5 rounded-full transition-all duration-300 ${
-                          tokenUsage.percentUsed >= 90 ? 'bg-red-500' :
-                          tokenUsage.percentUsed >= 75 ? 'bg-yellow-500' : 'bg-green-500'
+                          tokenUsage.percentUsed >= 95 ? 'bg-red-500' :
+                          tokenUsage.percentUsed >= 90 ? 'bg-yellow-500' : 'bg-green-500'
                         }`}
                         style={{ width: `${Math.min(tokenUsage.percentUsed || 0, 100)}%` }}
                       ></div>
@@ -675,14 +701,19 @@ const SettingsWithParams = () => {
                   </div>
                   <div className="flex items-center justify-center space-x-2">
                     <span className={`text-sm font-medium ${
-                      tokenUsage.percentUsed >= 90 ? 'text-red-600' :
-                      tokenUsage.percentUsed >= 75 ? 'text-yellow-600' : 'text-green-600'
+                      tokenUsage.percentUsed >= 95 ? 'text-red-600' :
+                      tokenUsage.percentUsed >= 90 ? 'text-yellow-600' : 'text-green-600'
                     }`}>
                       {tokenUsage.percentUsed || 0}% used
                     </span>
-                    {tokenUsage && tokenUsage.percentUsed >= 90 && (
+                    {tokenUsage && tokenUsage.percentUsed >= 95 && (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Budget Nearly Full
+                        At Limit (105% max)
+                      </span>
+                    )}
+                    {tokenUsage && tokenUsage.percentUsed >= 90 && tokenUsage.percentUsed < 95 && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Near Limit
                       </span>
                     )}
                   </div>
