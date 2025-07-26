@@ -685,12 +685,14 @@ async function validateTokenBudget(attributeId, updatedData, clientId = 'Guy-Wil
 // ---------------------------------------------------------------
 
 // Calculate tokens for post attribute text fields
-function calculatePostAttributeTokens(instructions, examples, signals) {
-  const instructionsText = extractPlainText(instructions) || '';
-  const examplesText = extractPlainText(examples) || '';
-  const signalsText = extractPlainText(signals) || '';
+function calculatePostAttributeTokens(detailedInstructions, positiveKeywords, negativeKeywords, exampleHigh, exampleLow) {
+  const instructionsText = extractPlainText(detailedInstructions) || '';
+  const positiveText = extractPlainText(positiveKeywords) || '';
+  const negativeText = extractPlainText(negativeKeywords) || '';
+  const exampleHighText = extractPlainText(exampleHigh) || '';
+  const exampleLowText = extractPlainText(exampleLow) || '';
   
-  const totalText = `${instructionsText} ${examplesText} ${signalsText}`;
+  const totalText = `${instructionsText} ${positiveText} ${negativeText} ${exampleHighText} ${exampleLowText}`;
   const tokenCount = Math.ceil(totalText.length / 4);
   
   console.log(`Post token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
@@ -720,11 +722,16 @@ async function getCurrentPostTokenUsage(clientId = 'Guy-Wilson') {
       filterByFormula: 'Active = TRUE()'
     }).eachPage((records, fetchNextPage) => {
       records.forEach(record => {
-        const instructions = record.get('Instructions') || '';
-        const examples = record.get('Examples') || '';  
-        const signals = record.get('Signals') || '';
+        // Post Scoring Attributes table field names from documentation
+        const detailedInstructions = record.get('Detailed Instructions for AI (Scoring Rubric)') || '';
+        const positiveKeywords = record.get('Keywords/Positive Indicators') || '';
+        const negativeKeywords = record.get('Keywords/Negative Indicators') || '';
+        const exampleHigh = record.get('Example - High Score / Applies') || '';
+        const exampleLow = record.get('Example - Low Score / Does Not Apply') || '';
         
-        const tokens = calculatePostAttributeTokens(instructions, examples, signals);
+        console.log(`Post attribute ${record.get('Attribute ID') || 'Unknown'}: instructions=${detailedInstructions.length}chars, pos=${positiveKeywords.length}chars, neg=${negativeKeywords.length}chars, high=${exampleHigh.length}chars, low=${exampleLow.length}chars`);
+        
+        const tokens = calculatePostAttributeTokens(detailedInstructions, positiveKeywords, negativeKeywords, exampleHigh, exampleLow);
         totalTokens += tokens;
         
         attributeDetails.push({
@@ -763,9 +770,11 @@ async function validatePostTokenBudget(attributeId, updatedData, clientId = 'Guy
     
     // Calculate tokens for the updated attribute
     const newTokens = calculatePostAttributeTokens(
-      updatedData.instructions,
-      updatedData.examples, 
-      updatedData.signals
+      updatedData.detailedInstructions || updatedData.instructions || '',
+      updatedData.positiveKeywords || updatedData.examples || '',
+      updatedData.negativeKeywords || updatedData.signals || '',
+      updatedData.exampleHigh || '',
+      updatedData.exampleLow || ''
     );
     
     // If attribute is already active, subtract its current tokens

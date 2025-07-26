@@ -1,1 +1,1 @@
-force redeploy - client-specific token limits with Profile 5K + Post 3K limits - FORCE REBUILD - 2025-07-26 16:55
+fix post token calculation - using correct field names from documentation - 2025-07-26 17:05
