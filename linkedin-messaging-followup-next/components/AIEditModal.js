@@ -84,7 +84,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   // Post Scoring Fields - Rich fields matching Airtable structure
   const postFields = [
     {
-      key: 'criterionName',
+      key: 'heading',
       label: 'Criterion Name',
       type: 'text',
       placeholder: 'Enter criterion name',
@@ -171,7 +171,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       if (attribute.isPostAttribute) {
         // Post Scoring Criteria - using rich Airtable fields
         setFieldValues({
-          criterionName: (attribute.criterionName && attribute.criterionName !== 'null') ? String(attribute.criterionName) : '',
+          heading: (attribute.heading && attribute.heading !== 'null') ? String(attribute.heading) : '',
           maxPoints: (attribute.maxPoints && attribute.maxPoints !== 'null') ? String(attribute.maxPoints) : '',
           scoringType: (attribute.scoringType && attribute.scoringType !== 'null') ? String(attribute.scoringType) : 'Scale',
           instructions: (attribute.instructions && attribute.instructions !== 'null') ? String(attribute.instructions) : '',
@@ -225,7 +225,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
     // Create automatic initial message based on field type and state
     let initialMessage;
     
-    if (fieldKey === 'criterionName') {
+    if (fieldKey === 'heading') {
       if (hasValue) {
         initialMessage = `Current Name: ${currentValue}\n\nWould you like to make a change?`;
       } else {
@@ -266,7 +266,7 @@ WHEN TO USE STANDARD POINTS:
 To change this setting, simply check or uncheck the box above. Would you like guidance on whether this attribute should be bonus or standard points?`;
     } else if (fieldKey === 'scoringType') {
       const currentType = currentValue || 'Scale';
-      initialMessage = `I'll explain the scoring types available for ${attribute.criterionName || 'this criterion'}.
+      initialMessage = `I'll explain the scoring types available for ${attribute.heading || 'this criterion'}.
 
 CURRENT SETTING: ${currentType}
 
@@ -293,7 +293,7 @@ You can't change this value directly, but I can help you understand which type w
       const hasInstructions = currentValue && currentValue.trim() && currentValue !== 'null';
       
       if (isPostAttribute) {
-        initialMessage = `I'll help you create scoring instructions for ${attribute.criterionName || 'this post criterion'}.
+        initialMessage = `I'll help you create scoring instructions for ${attribute.heading || 'this post criterion'}.
 
 ${hasInstructions ? 'Current instructions are shown above.' : 'No instructions are currently set.'}
 
@@ -304,7 +304,7 @@ Examples:
 • "Looking for thought leadership content"
 • "Need posts about startup growth"`;
       } else {
-        initialMessage = `I'll help you create scoring instructions for ${attribute.criterionName || 'this attribute'}.
+        initialMessage = `I'll help you create scoring instructions for ${attribute.heading || 'this attribute'}.
 
 ${hasInstructions ? 'Current instructions are shown above.' : 'No instructions are currently set.'}
 
@@ -317,7 +317,7 @@ Examples:
       }
     } else if (fieldKey === 'positiveIndicators') {
       const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
-      initialMessage = `I'll help you identify positive keywords and indicators for ${attribute.criterionName || 'this criterion'}.
+      initialMessage = `I'll help you identify positive keywords and indicators for ${attribute.heading || 'this criterion'}.
 
 ${hasValue ? 'Current positive indicators are shown above.' : 'No positive indicators are currently set.'}
 
@@ -329,7 +329,7 @@ Examples:
 • "Thought leadership and insights"`;
     } else if (fieldKey === 'negativeIndicators') {
       const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
-      initialMessage = `I'll help you identify negative keywords and indicators for ${attribute.criterionName || 'this criterion'}.
+      initialMessage = `I'll help you identify negative keywords and indicators for ${attribute.heading || 'this criterion'}.
 
 ${hasValue ? 'Current negative indicators are shown above.' : 'No negative indicators are currently set.'}
 
@@ -341,7 +341,7 @@ Examples:
 • "Low-quality or generic content"`;
     } else if (fieldKey === 'highScoreExample') {
       const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
-      initialMessage = `I'll help you create a high-scoring example for ${attribute.criterionName || 'this criterion'}.
+      initialMessage = `I'll help you create a high-scoring example for ${attribute.heading || 'this criterion'}.
 
 ${hasValue ? 'Current example is shown above.' : 'No high-score example is currently set.'}
 
@@ -353,7 +353,7 @@ Examples:
 • "Technical insights about AI development"`;
     } else if (fieldKey === 'lowScoreExample') {
       const hasValue = currentValue && currentValue.trim() && currentValue !== 'null';
-      initialMessage = `I'll help you create a low-scoring example for ${attribute.criterionName || 'this criterion'}.
+      initialMessage = `I'll help you create a low-scoring example for ${attribute.heading || 'this criterion'}.
 
 ${hasValue ? 'Current example is shown above.' : 'No low-score example is currently set.'}
 
@@ -520,7 +520,7 @@ Examples:
       if (attribute.isPostAttribute) {
         // Post Scoring Criteria - using rich Airtable fields
         updatedData = {
-          criterionName: fieldValues.criterionName,
+          heading: fieldValues.heading,
           maxPoints: fieldValues.maxPoints ? Number(fieldValues.maxPoints) : null,
           scoringType: fieldValues.scoringType,
           instructions: fieldValues.instructions,
@@ -567,7 +567,7 @@ Examples:
       <div className="relative top-10 mx-auto p-6 border w-full max-w-4xl shadow-lg rounded-md bg-white max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">
-            Edit {isPostAttribute ? 'Criterion' : 'Attribute'}: {String(attribute?.criterionName || attribute?.heading || 'Unnamed')}
+            Edit {isPostAttribute ? 'Criterion' : 'Attribute'}: {String(attribute?.heading || 'Unnamed')}
           </h3>
           <button
             onClick={onClose}
