@@ -623,11 +623,17 @@ export const savePostAttributeChanges = async (attributeId, updatedData) => {
       body: JSON.stringify(updatedData)
     });
     
+    console.log('savePostAttributeChanges - response status:', response.status, response.statusText);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('savePostAttributeChanges - error response:', errorText);
       throw new Error(`Failed to save post changes: ${response.statusText}`);
     }
     
-    return await response.json();
+    const result = await response.json();
+    console.log('savePostAttributeChanges - success response:', result);
+    return result;
   } catch (error) {
     console.error('Error in savePostAttributeChanges:', error);
     throw new Error('Failed to save post attribute changes');
