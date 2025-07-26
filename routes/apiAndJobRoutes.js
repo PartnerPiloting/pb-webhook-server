@@ -1950,6 +1950,12 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
 
     const { heading, instructions, positiveIndicators, negativeIndicators, highScoreExample, lowScoreExample, active, maxPoints, scoringType } = req.body;
     
+    console.log('Post attribute save - active field:', {
+      receivedActive: active,
+      typeOfActive: typeof active,
+      willSaveAs: active !== undefined ? !!active : 'not updating'
+    });
+    
     // First get the current record to determine category for proper field mapping
     const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
     const category = record.get("Category");
@@ -1970,6 +1976,8 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     if (lowScoreExample !== undefined) updateData["Example - Low Score / Does Not Apply"] = lowScoreExample;
     
     if (active !== undefined) updateData["Active"] = !!active; // Handle Active field updates with boolean conversion
+
+    console.log('Update data being sent to Airtable:', updateData);
 
     // Update the record
     await airtableBase("Post Scoring Attributes").update(req.params.id, updateData);
