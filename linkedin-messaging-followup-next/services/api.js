@@ -710,6 +710,28 @@ export const getTokenUsage = async () => {
   }
 };
 
+// Get current post token usage
+export const getPostTokenUsage = async () => {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const response = await fetch(`${baseUrl}/api/post-token-usage`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get post token usage: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getPostTokenUsage:', error);
+    throw new Error('Failed to get post token usage');
+  }
+};
+
 // Alias for backwards compatibility
 export const saveAttribute = saveAttributeChanges;
 

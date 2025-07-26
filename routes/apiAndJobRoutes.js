@@ -584,8 +584,16 @@ function calculateAttributeTokens(instructions, examples, signals) {
 }
 
 // Get current token usage for all active attributes
-async function getCurrentTokenUsage() {
+async function getCurrentTokenUsage(clientId = 'Guy-Wilson') {
   try {
+    // Get client token limits
+    const clientService = require('../services/clientService');
+    const tokenLimits = await clientService.getClientTokenLimits(clientId);
+    
+    if (!tokenLimits) {
+      throw new Error(`Token limits not found for client: ${clientId}`);
+    }
+
     const { loadAttributes } = require("../attributeLoader.js");
     const { positives, negatives } = await loadAttributes();
     
@@ -618,12 +626,15 @@ async function getCurrentTokenUsage() {
       });
     }
     
+    const limit = tokenLimits.profileLimit;
+    
     return {
       totalTokens,
       attributeDetails,
-      limit: 15000, // HARDCODED FOR TESTING
-      remaining: 15000 - totalTokens,
-      percentUsed: Math.round((totalTokens / 15000) * 100)
+      limit: limit,
+      remaining: limit - totalTokens,
+      percentUsed: Math.round((totalTokens / limit) * 100),
+      clientName: tokenLimits.clientName
     };
     
   } catch (error) {
@@ -633,9 +644,9 @@ async function getCurrentTokenUsage() {
 }
 
 // Check if activating an attribute would exceed budget
-async function validateTokenBudget(attributeId, updatedData) {
+async function validateTokenBudget(attributeId, updatedData, clientId = 'Guy-Wilson') {
   try {
-    const currentUsage = await getCurrentTokenUsage();
+    const currentUsage = await getCurrentTokenUsage(clientId);
     
     // Calculate tokens for the updated attribute
     const newTokens = calculateAttributeTokens(
@@ -649,18 +660,136 @@ async function validateTokenBudget(attributeId, updatedData) {
     const currentTokensForThisAttr = existingAttr ? existingAttr.tokens : 0;
     
     const projectedTotal = currentUsage.totalTokens - currentTokensForThisAttr + newTokens;
+    const limit = currentUsage.limit;
+    const maxAllowed = Math.floor(limit * 1.05); // 105% buffer
     
     return {
-      isValid: projectedTotal <= 15000,
+      isValid: projectedTotal <= maxAllowed,
       currentTotal: currentUsage.totalTokens,
       newTokens,
       projectedTotal,
-      limit: 15000,
-      wouldExceedBy: Math.max(0, projectedTotal - 15000)
+      limit: limit,
+      maxAllowed: maxAllowed,
+      wouldExceedBy: Math.max(0, projectedTotal - maxAllowed),
+      percentUsed: Math.round((projectedTotal / limit) * 100)
     };
     
   } catch (error) {
     console.error("Error validating token budget:", error);
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------
+// Post Scoring Token Functions
+// ---------------------------------------------------------------
+
+// Calculate tokens for post attribute text fields
+function calculatePostAttributeTokens(instructions, examples, signals) {
+  const instructionsText = extractPlainText(instructions) || '';
+  const examplesText = extractPlainText(examples) || '';
+  const signalsText = extractPlainText(signals) || '';
+  
+  const totalText = `${instructionsText} ${examplesText} ${signalsText}`;
+  const tokenCount = Math.ceil(totalText.length / 4);
+  
+  console.log(`Post token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
+  return tokenCount;
+}
+
+// Get current post token usage for all active post attributes
+async function getCurrentPostTokenUsage(clientId = 'Guy-Wilson') {
+  try {
+    // Get client token limits
+    const clientService = require('../services/clientService');
+    const tokenLimits = await clientService.getClientTokenLimits(clientId);
+    
+    if (!tokenLimits) {
+      throw new Error(`Token limits not found for client: ${clientId}`);
+    }
+
+    // Get client-specific base for post attributes
+    const { getClientBase } = require('../config/airtableClient');
+    const clientBase = await getClientBase(clientId);
+    
+    let totalTokens = 0;
+    const attributeDetails = [];
+    
+    // Get all post attributes from client's base
+    await clientBase('Post Scoring Attributes').select({
+      filterByFormula: 'Active = TRUE()'
+    }).eachPage((records, fetchNextPage) => {
+      records.forEach(record => {
+        const instructions = record.get('Instructions') || '';
+        const examples = record.get('Examples') || '';  
+        const signals = record.get('Signals') || '';
+        
+        const tokens = calculatePostAttributeTokens(instructions, examples, signals);
+        totalTokens += tokens;
+        
+        attributeDetails.push({
+          id: record.get('Attribute Id'),
+          heading: record.get('Heading') || record.get('Attribute Id'),
+          category: record.get('Category') || 'Post',
+          tokens,
+          active: true
+        });
+      });
+      fetchNextPage();
+    });
+    
+    const limit = tokenLimits.postLimit;
+    
+    return {
+      totalTokens,
+      attributeDetails,
+      limit: limit,
+      remaining: limit - totalTokens,
+      percentUsed: Math.round((totalTokens / limit) * 100),
+      clientName: tokenLimits.clientName,
+      type: 'post'
+    };
+    
+  } catch (error) {
+    console.error("Error calculating post token usage:", error);
+    throw error;
+  }
+}
+
+// Check if activating a post attribute would exceed budget
+async function validatePostTokenBudget(attributeId, updatedData, clientId = 'Guy-Wilson') {
+  try {
+    const currentUsage = await getCurrentPostTokenUsage(clientId);
+    
+    // Calculate tokens for the updated attribute
+    const newTokens = calculatePostAttributeTokens(
+      updatedData.instructions,
+      updatedData.examples, 
+      updatedData.signals
+    );
+    
+    // If attribute is already active, subtract its current tokens
+    const existingAttr = currentUsage.attributeDetails.find(attr => attr.id === attributeId);
+    const currentTokensForThisAttr = existingAttr ? existingAttr.tokens : 0;
+    
+    const projectedTotal = currentUsage.totalTokens - currentTokensForThisAttr + newTokens;
+    const limit = currentUsage.limit;
+    const maxAllowed = Math.floor(limit * 1.05); // 105% buffer
+    
+    return {
+      isValid: projectedTotal <= maxAllowed,
+      currentTotal: currentUsage.totalTokens,
+      newTokens,
+      projectedTotal,
+      limit: limit,
+      maxAllowed: maxAllowed,
+      wouldExceedBy: Math.max(0, projectedTotal - maxAllowed),
+      percentUsed: Math.round((projectedTotal / limit) * 100),
+      type: 'post'
+    };
+    
+  } catch (error) {
+    console.error("Error validating post token budget:", error);
     throw error;
   }
 }
@@ -674,11 +803,18 @@ router.get("/api/token-usage", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/token-usage - Getting current token usage");
     
-    const usage = await getCurrentTokenUsage();
+    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
+    const usage = await getCurrentTokenUsage(clientId);
+    
+    // Add warning levels
+    const warningLevel = usage.percentUsed >= 95 ? 'danger' : usage.percentUsed >= 90 ? 'warning' : 'normal';
     
     res.json({
       success: true,
-      usage,
+      usage: {
+        ...usage,
+        warningLevel
+      },
       message: `Using ${usage.totalTokens} of ${usage.limit} tokens (${usage.percentUsed}%)`
     });
     
@@ -697,6 +833,7 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
     console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget - Validating token budget`);
     const attributeId = req.params.id;
     const updatedData = req.body;
+    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
     
     if (!updatedData || typeof updatedData !== 'object') {
       return res.status(400).json({
@@ -705,14 +842,14 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
       });
     }
     
-    const validation = await validateTokenBudget(attributeId, updatedData);
+    const validation = await validateTokenBudget(attributeId, updatedData, clientId);
     
     res.json({
       success: true,
       validation,
       message: validation.isValid 
-        ? `Attribute would use ${validation.newTokens} tokens. Total: ${validation.projectedTotal}/${validation.limit}`
-        : `Budget exceeded! Would use ${validation.wouldExceedBy} tokens over limit.`
+        ? `Attribute would use ${validation.newTokens} tokens. Total: ${validation.projectedTotal}/${validation.limit} (${validation.percentUsed}%)`
+        : `Cannot save - would exceed maximum allowed (${validation.maxAllowed} tokens). Would use ${validation.wouldExceedBy} tokens over limit.`
     });
     
   } catch (error) {
@@ -720,6 +857,73 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || "Failed to validate token budget"
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// Post Scoring Token Budget API Endpoints
+// ---------------------------------------------------------------
+
+// Get current post token usage status
+router.get("/api/post-token-usage", async (req, res) => {
+  try {
+    console.log("apiAndJobRoutes.js: GET /api/post-token-usage - Getting current post token usage");
+    
+    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
+    const usage = await getCurrentPostTokenUsage(clientId);
+    
+    // Add warning levels
+    const warningLevel = usage.percentUsed >= 95 ? 'danger' : usage.percentUsed >= 90 ? 'warning' : 'normal';
+    
+    res.json({
+      success: true,
+      usage: {
+        ...usage,
+        warningLevel
+      },
+      message: `Using ${usage.totalTokens} of ${usage.limit} post tokens (${usage.percentUsed}%)`
+    });
+    
+  } catch (error) {
+    console.error("apiAndJobRoutes.js: GET /api/post-token-usage error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to get post token usage"
+    });
+  }
+});
+
+// Validate if post attribute save would exceed budget
+router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
+  try {
+    console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget - Validating post token budget`);
+    const attributeId = req.params.id;
+    const updatedData = req.body;
+    const clientId = req.query.client || 'Guy-Wilson'; // Hardcoded for testing
+    
+    if (!updatedData || typeof updatedData !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: "updatedData is required and must be an object"
+      });
+    }
+    
+    const validation = await validatePostTokenBudget(attributeId, updatedData, clientId);
+    
+    res.json({
+      success: true,
+      validation,
+      message: validation.isValid 
+        ? `Post attribute would use ${validation.newTokens} tokens. Total: ${validation.projectedTotal}/${validation.limit} (${validation.percentUsed}%)`
+        : `Cannot save - would exceed maximum allowed (${validation.maxAllowed} tokens). Would use ${validation.wouldExceedBy} tokens over limit.`
+    });
+    
+  } catch (error) {
+    console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget error:`, error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to validate post token budget"
     });
   }
 });
