@@ -74,8 +74,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       label: 'Status',
       type: 'select',
       options: [
-        { value: true, label: 'Active' },
-        { value: false, label: 'Inactive' }
+        { value: 'true', label: 'Active' },
+        { value: 'false', label: 'Inactive' }
       ],
       description: 'Whether this attribute is used in profile scoring'
     }
@@ -153,8 +153,8 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
       label: 'Status',
       type: 'select',
       options: [
-        { value: true, label: 'Active' },
-        { value: false, label: 'Inactive' }
+        { value: 'true', label: 'Active' },
+        { value: 'false', label: 'Inactive' }
       ],
       description: 'Whether this criterion is used in post scoring'
     }
@@ -634,7 +634,7 @@ Examples:
               
               {field.type === 'select' && (
                 <select
-                  value={fieldValues[field.key] || ''}
+                  value={field.key === 'active' ? String(fieldValues[field.key]) : (fieldValues[field.key] || '')}
                   onChange={(e) => {
                     // Handle different value types properly
                     if (field.key === 'active') {
