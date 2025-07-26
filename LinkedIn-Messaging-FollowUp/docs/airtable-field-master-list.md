@@ -447,6 +447,7 @@ Primary fields for natural language editing:
 | Field Name | Type | Editable | Required | Usage in Backend | Description |
 |------------|------|----------|----------|------------------|-------------|
 | `Attribute ID` | Text | No | Yes | Primary key for `attributesById` object mapping | Unique identifier (POST_AI_SENTIMENT, POST_AI_INSIGHTFULNESS, etc.) - Used as key in scoring logic |
+| `Active` | Checkbox | Yes | No | Controls whether attribute is included in scoring pipeline | Boolean flag to enable/disable individual scoring criteria - Filtered during attribute loading |
 | `Category` | Text | Yes | Yes | Separates positive vs negative attributes in prompt building | Scoring factor type ("Positive Scoring Factor", "Negative Scoring Factor") - Controls rubric sections |
 | `Criterion Name` | Text | Yes | Yes | `criterionName` property in attribute objects, displayed in AI prompt | Human-readable attribute name shown in scoring rubric for AI |
 | `Detailed Instructions for AI (Scoring Rubric)` | Long Text | Yes | Yes | `detailedInstructions` - Core content fed to Gemini for scoring logic | Complete scoring guidelines with Low/Medium/High point ranges - Primary field that teaches AI how to score |

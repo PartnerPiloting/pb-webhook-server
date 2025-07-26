@@ -54,8 +54,16 @@ function buildScoringRubricSection(attributesById) {
     const negativeAttrs = [];
 
     // Separate attributes into positive and negative categories for clarity
+    // Only include ACTIVE attributes in the scoring rubric
     for (const attrId in attributesById) {
         const attr = attributesById[attrId];
+        
+        // Skip inactive attributes - they should not be included in AI scoring
+        if (attr.active === false) {
+            console.log(`PostPromptBuilder: Skipping inactive attribute '${attr.id}' from scoring rubric`);
+            continue;
+        }
+        
         if (attr.Category === 'Positive Scoring Factor') {
             positiveAttrs.push(attr);
         } else if (attr.Category === 'Negative Scoring Factor') {
