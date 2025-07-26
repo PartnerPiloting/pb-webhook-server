@@ -1742,7 +1742,7 @@ router.get("/api/post-attributes", async (req, res) => {
       penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
       disqualifying: false, // Not used in post scoring
       bonusPoints: false, // Not used in post scoring
-      active: record.get("Active") === true || record.get("Active") === null || record.get("Active") === undefined, // Default to true if empty/null
+      active: !!record.get("Active"), // Simple boolean conversion - false means inactive, true means active
       instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
       // Return all separate fields for richer UX display
       positiveIndicators: record.get("Keywords/Positive Indicators") || "",
@@ -1807,7 +1807,7 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
       penalty: record.get("Category") === "Negative Scoring Factor" ? Math.abs(record.get("Max Score / Point Value") || 0) : 0,
       disqualifying: false,
       bonusPoints: false,
-      active: record.get("Active") === true || record.get("Active") === null || record.get("Active") === undefined, // Default to true if empty/null
+      active: !!record.get("Active"), // Simple boolean conversion - false means inactive, true means active
       instructions: record.get("Detailed Instructions for AI (Scoring Rubric)") || "",
       // Return all separate fields for richer UX display
       positiveIndicators: record.get("Keywords/Positive Indicators") || "",
@@ -1942,6 +1942,7 @@ Include a brief explanation of why this example fits this attribute.`;
 // Save post attribute changes
 router.post("/api/post-attributes/:id/save", async (req, res) => {
   try {
+    console.log(`🔥 BACKEND HIT: POST /api/post-attributes/${req.params.id}/save - Starting...`);
     console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save - Saving post attribute changes`);
     
     if (!airtableBase) {
