@@ -113,11 +113,13 @@ app.use(cors({
         'http://localhost:3001',
         'https://pb-webhook-server.vercel.app',
         'https://pb-webhook-server-*.vercel.app', // Allow preview deployments
-        'https://*.vercel.app' // Allow all Vercel deployments for now
+        'https://*.vercel.app', // Allow all Vercel deployments for now
+        'https://australiansidehustles.com.au', // Allow requests from ASH website
+        'https://www.australiansidehustles.com.au' // Allow requests from ASH www subdomain
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie']
 }));
 console.log("CORS enabled for Vercel frontend");
 
@@ -262,6 +264,9 @@ try {
 
 // Authentication test routes
 try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/api/auth', authTestRoutes); console.log("index.js: Authentication test routes mounted at /api/auth"); } catch(e) { console.error("index.js: Error mounting authentication test routes", e.message, e.stack); }
+
+// WordPress Authentication Bridge routes
+try { const wpAuthBridge = require('./routes/wpAuthBridge.js'); app.use('/api/auth', wpAuthBridge); console.log("index.js: WordPress authentication bridge mounted at /api/auth"); } catch(e) { console.error("index.js: Error mounting WordPress authentication bridge", e.message, e.stack); }
 
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
