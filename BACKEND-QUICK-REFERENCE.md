@@ -55,7 +55,7 @@ Key Processing Steps:
 // Lead fetching: fetchLeads()
 
 Key Configuration:
-- CHUNK_SIZE: 55 leads per batch
+- CHUNK_SIZE: 40 leads per batch
 - GEMINI_TIMEOUT_MS: 900000 (15 minutes)
 - Filter: {Scoring Status} = "To Be Scored"
 ```

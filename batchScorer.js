@@ -23,7 +23,7 @@ const { costGovernanceService } = require('./services/costGovernanceService.js')
 
 /* ---------- ENV CONFIGURATION for Batch Scorer Operations ----------- */
 const DEFAULT_MODEL_ID_FALLBACK = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06";
-const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "55", 10)); 
+const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10)); 
 // ***** INCREASED TIMEOUT FOR DEBUGGING LARGER BATCHES *****
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "900000", 10)); // 15 minutes
 

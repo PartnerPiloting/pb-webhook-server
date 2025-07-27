@@ -210,21 +210,21 @@ if (existing.length) {
 **Size**: 632 lines
 **Key Features**:
 - Multi-tenant support
-- Chunk processing (55 leads per batch)
+- Chunk processing (40 leads per batch)
 - Error isolation and recovery
 - Timeout handling (15-minute timeout)
 
 **Critical Configuration**:
 ```javascript
 // Lines 16-20: Configuration
-const CHUNK_SIZE = 55;
+const CHUNK_SIZE = 40;
 const GEMINI_TIMEOUT_MS = 900000; // 15 minutes
 const DEFAULT_MODEL_ID = "gemini-2.5-pro-preview-05-06";
 ```
 
 **Processing Flow**:
 1. Fetch leads with `{Scoring Status} = "To Be Scored"`
-2. Process in chunks of 55 leads
+2. Process in chunks of 40 leads
 3. Generate AI prompts for each lead
 4. Score leads using Gemini AI
 5. Update Airtable with scores and assessments
@@ -365,7 +365,7 @@ PhantomBuster → /api/pb-webhook → JSON Processing → Airtable Updates
 ## 🚀 Performance Considerations
 
 ### **Batch Processing**
-- **Chunk Size**: 55 leads per batch (optimized for Gemini API)
+- **Chunk Size**: 40 leads per batch (optimized for Gemini API token limits)
 - **Timeout**: 15-minute timeout for AI requests
 - **Queue System**: Internal queuing for chunk processing
 - **Error Isolation**: Failed chunks don't affect others
