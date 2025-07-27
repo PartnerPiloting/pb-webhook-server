@@ -265,9 +265,6 @@ try {
 // Authentication test routes
 try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/api/auth', authTestRoutes); console.log("index.js: Authentication test routes mounted at /api/auth"); } catch(e) { console.error("index.js: Error mounting authentication test routes", e.message, e.stack); }
 
-// WordPress Authentication Bridge routes
-try { const wpAuthBridge = require('./routes/wpAuthBridge.js'); app.use('/api/auth', wpAuthBridge); console.log("index.js: WordPress authentication bridge mounted at /api/auth"); } catch(e) { console.error("index.js: Error mounting WordPress authentication bridge", e.message, e.stack); }
-
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
     res.json({ 

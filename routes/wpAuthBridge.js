@@ -17,14 +17,23 @@ router.get('/check-wp-auth', async (req, res) => {
   try {
     console.log('WP Auth Bridge: Checking WordPress authentication...');
     
-    // Extract cookies from the request
+    // Method 1: Check for authentication token (from ASH redirect)
+    const authToken = req.query.token || req.headers['x-auth-token'];
+    if (authToken) {
+      console.log('WP Auth Bridge: Found authentication token, validating...');
+      // TODO: Implement token validation with ASH
+      // For now, we'll implement the cookie-based method and add token support later
+    }
+    
+    // Method 2: Extract cookies from the request
     const cookies = req.headers.cookie;
     if (!cookies) {
       console.log('WP Auth Bridge: No cookies provided');
       return res.status(401).json({
         status: 'error',
         code: 'NO_COOKIES',
-        message: 'No authentication cookies found'
+        message: 'No authentication cookies found',
+        suggestion: 'Please access this portal through the ASH member dashboard'
       });
     }
 
@@ -38,7 +47,8 @@ router.get('/check-wp-auth', async (req, res) => {
       return res.status(401).json({
         status: 'error',
         code: 'NOT_LOGGED_IN_WP',
-        message: 'Not logged into WordPress'
+        message: 'Not logged into WordPress',
+        suggestion: 'Please log into Australian Side Hustles first'
       });
     }
 

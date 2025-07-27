@@ -148,7 +148,36 @@ const Layout = ({ children }) => {
       console.warn('Layout: Authentication failed in developer mode, but continuing:', error);
       // Continue to render the app for developers
     } else {
-      // No testClient - show authentication error for regular users
+      // Parse error message and provide specific UI based on error type
+      const errorMessage = error.message || 'Access restricted';
+      let title = 'Access Restricted';
+      let message = errorMessage;
+      let details = null;
+      let showLoginButton = false;
+      
+      // Handle specific error scenarios
+      if (errorMessage.includes('log into australiansidehustles.com.au')) {
+        title = 'Login Required';
+        message = 'Please log into australiansidehustles.com.au to proceed.';
+        showLoginButton = true;
+      } else if (errorMessage.includes('Check with your coach to gain access')) {
+        title = 'Access Not Yet Activated';
+        message = 'Check with your coach to gain access.';
+        details = 'Your Australian Side Hustles account was found, but you don\'t have access to the LinkedIn Portal yet. Please contact Australian Side Hustles Support for assistance.';
+      } else if (errorMessage.includes('membership may have expired')) {
+        title = 'Membership Issue';
+        message = 'Looks like your membership may have expired - check with your coach.';
+        details = 'Your LinkedIn Portal access is currently inactive. Please contact Australian Side Hustles Support to reactivate your access.';
+      } else if (errorMessage.includes('System temporarily unavailable')) {
+        title = 'System Temporarily Unavailable';
+        message = 'System temporarily unavailable. Please try again in a moment.';
+        details = 'If this persists, contact Australian Side Hustles Support.';
+      } else {
+        // Generic fallback
+        message = 'This portal is available to authorized users only.';
+        details = 'Please ensure you are logged into your Australian Side Hustles account, then access this portal through the member dashboard.';
+      }
+      
       return (
         <div className="min-h-screen bg-gray-50 p-8">
           <div className="text-center">
@@ -158,13 +187,27 @@ const Layout = ({ children }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 15.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
               </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h2>
-              <p className="text-gray-600 mb-4">
-                This portal is available to authorized users only.
-              </p>
-              <div className="text-sm text-gray-500">
-                <p>Please ensure you are logged into your Australian Side Hustles account, then access this portal through the member dashboard.</p>
-              </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">{title}</h2>
+              <p className="text-gray-600 mb-4">{message}</p>
+              
+              {details && (
+                <div className="text-sm text-gray-500 mb-4">
+                  <p>{details}</p>
+                </div>
+              )}
+              
+              {showLoginButton && (
+                <div className="mt-6">
+                  <a 
+                    href="https://australiansidehustles.com.au/wp-login.php"
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Login to Australian Side Hustles
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
