@@ -100,6 +100,73 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
 });
 
 /**
+ * GET /api/linkedin/leads/follow-ups
+ * Get leads that need follow-ups (with follow-up dates today or earlier)
+ */
+router.get('/leads/follow-ups', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/follow-ups called');
+  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const airtableBase = await getAirtableBase(req);
+
+    // Get leads with Follow-Up Date set (including overdue dates)
+    // This includes leads with follow-up dates today or earlier as per frontend expectations
+    const leads = await airtableBase('Leads').select({
+      filterByFormula: `AND(
+        {Follow-Up Date} != '',
+        {Follow-Up Date} <= TODAY()
+      )`,
+      sort: [
+        { field: 'Follow-Up Date', direction: 'asc' },
+        { field: 'First Name', direction: 'asc' }
+      ],
+      maxRecords: 50 // Memory limit protection
+    }).all();
+
+    console.log(`LinkedIn Routes: Found ${leads.length} follow-ups for client ${req.client.clientId}`);
+
+    // Transform to expected format with days calculation
+    const transformedLeads = leads.map(record => {
+      const followUpDate = record.fields['Follow-Up Date'];
+      let daysUntilFollowUp = null;
+      
+      if (followUpDate) {
+        const today = new Date();
+        const followUp = new Date(followUpDate);
+        daysUntilFollowUp = Math.ceil((followUp - today) / (1000 * 60 * 60 * 24));
+      }
+
+      return {
+        id: record.id,
+        recordId: record.id,
+        profileKey: record.id, // Use Airtable record ID as profile key
+        firstName: record.fields['First Name'],
+        lastName: record.fields['Last Name'],
+        linkedinProfileUrl: record.fields['LinkedIn Profile URL'],
+        followUpDate: record.fields['Follow-Up Date'],
+        aiScore: record.fields['AI Score'],
+        status: record.fields['Status'],
+        lastMessageDate: record.fields['Last Message Date'],
+        notes: record.fields['Notes'],
+        daysUntilFollowUp: daysUntilFollowUp,
+        // Include all original fields for compatibility
+        ...record.fields
+      };
+    });
+
+    res.json(transformedLeads);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch follow-ups',
+      details: error.message 
+    });
+  }
+});
+
+/**
  * GET /api/linkedin/leads/search?query=searchTerm&priority=priorityLevel
  * Search for leads with optional query and priority filters
  */

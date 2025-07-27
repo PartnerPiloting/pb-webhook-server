@@ -435,6 +435,47 @@ export const getFollowUps = async () => {
   }
 };
 
+export const getTopScoringPosts = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.get('/leads/top-scoring-posts', {
+      params: {
+        testClient: clientId
+      },
+      timeout: 30000 // 30 seconds to handle larger datasets
+    });
+    
+    // Backend returns data in correct format, just map to frontend field names
+    return response.data.map(lead => ({
+      'Profile Key': lead.id || '',
+      'First Name': lead.firstName || '',
+      'Last Name': lead.lastName || '',
+      'LinkedIn Profile URL': lead.linkedinProfileUrl || '',
+      'View In Sales Navigator': lead.viewInSalesNavigator || '',
+      'LinkedIn Connection Status': lead.linkedinConnectionStatus || '',
+      'Notes': lead.notes || '',
+      'AI Profile Assessment': lead.aiProfileAssessment || '',
+      'AI Score': lead.aiScore,
+      'Posts Relevance Percentage': lead.postsRelevancePercentage,
+      'Top Scoring Post': lead.topScoringPost || '',
+      'Posts Actioned': lead.postsActioned,
+      'Posts Relevance Score': lead.postsRelevanceScore,
+      'Posts Relevance Status': lead.postsRelevanceStatus || '',
+      // Additional fields for compatibility
+      id: lead.id,
+      // Include raw backend data for compatibility
+      ...lead
+    }));
+  } catch (error) {
+    console.error('Get top scoring posts error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to load top scoring posts');
+  }
+};
+
 export const getLeadByLinkedInUrl = async (linkedinUrl) => {
   try {
     const response = await api.get('/leads/by-linkedin-url', {
