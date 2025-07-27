@@ -65,7 +65,8 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       sort: [
         { field: FIELD_NAMES.FIRST_NAME },
         { field: FIELD_NAMES.LAST_NAME }
-      ]
+      ],
+      maxRecords: 100  // Limit to 100 records to prevent memory overflow
     }).all();
 
     console.log(`LinkedIn Routes: Found ${records.length} top scoring posts leads`);
@@ -145,7 +146,8 @@ router.get('/leads/search', async (req, res) => {
     console.log('LinkedIn Routes: Using filter:', filterFormula);
 
     const selectOptions = {
-      sort: [{ field: 'First Name' }, { field: 'Last Name' }]
+      sort: [{ field: 'First Name' }, { field: 'Last Name' }],
+      maxRecords: 100  // Limit to 100 records to prevent memory overflow
     };
     
     if (filterFormula) {
