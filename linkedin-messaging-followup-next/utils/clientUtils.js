@@ -14,24 +14,47 @@ export async function getCurrentClientProfile() {
     const urlParams = new URLSearchParams(window.location.search);
     const testClient = urlParams.get('testClient');
     
-    let apiUrl = '/api/auth/test';
-    
-    // If test client specified, add it as parameter
+    // If test client specified, use the existing test mode
     if (testClient) {
       console.log(`ClientUtils: Using test client from URL: ${testClient}`);
-      apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
+      const apiUrl = `/api/auth/test?testClient=${encodeURIComponent(testClient)}`;
+      const fullUrl = `https://pb-webhook-server.onrender.com${apiUrl}`;
+      
+      console.log(`ClientUtils: Fetching test client profile from: ${fullUrl}`);
+      
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`ClientUtils: Test API Error ${response.status}:`, errorText);
+        throw new Error(`Failed to get test user profile: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('ClientUtils: Received test client profile:', data);
+      
+      // Cache the client info
+      currentClientId = data.client?.clientId;
+      clientProfile = data;
+      
+      return data;
     }
 
-    // Use absolute URL to backend for authentication
-    const fullUrl = `https://pb-webhook-server.onrender.com${apiUrl}`;
+    // For regular users, try WordPress authentication bridge
+    console.log('ClientUtils: Attempting WordPress authentication bridge...');
+    const wpAuthUrl = 'https://pb-webhook-server.onrender.com/api/auth/check-wp-auth';
     
-    console.log(`ClientUtils: Fetching client profile from: ${fullUrl}`);
-    
-    const response = await fetch(fullUrl, {
+    const response = await fetch(wpAuthUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-      }
+      },
+      credentials: 'include' // Include cookies for WordPress authentication
     });
 
     if (!response.ok) {
@@ -90,9 +113,17 @@ export async function getCurrentClientProfile() {
       
       return clientProfile;
     } else {
-      // No testClient parameter - authentication failed, block access
+      // No testClient parameter - authentication failed, provide specific error messages
       console.error('ClientUtils: Authentication failed and no testClient parameter provided');
-      throw new Error('Authentication required. Please log in to access this portal.');
+      
+      // Try to parse error response for better error messages
+      if (error.message.includes('401')) {
+        throw new Error('Please log in to Australian Side Hustles before accessing this portal.');
+      } else if (error.message.includes('403')) {
+        throw new Error('Your account does not have access to this portal. Please contact your coach.');
+      } else {
+        throw new Error('Authentication required. Please log in to access this portal.');
+      }
     }
   }
 }

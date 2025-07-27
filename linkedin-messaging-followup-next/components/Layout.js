@@ -158,15 +158,12 @@ const Layout = ({ children }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 15.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
               </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Authentication Required</h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Restricted</h2>
               <p className="text-gray-600 mb-4">
-                {error.message || 'You must be logged in to access this portal.'}
+                This portal is available to authorized users only.
               </p>
               <div className="text-sm text-gray-500">
-                <p>Please log in through australiansidehustles.com.au to access this portal.</p>
-                <p className="mt-2">
-                  For developers: Add <code className="bg-gray-100 px-1 rounded">?testClient=Guy-Wilson</code> to the URL for development access.
-                </p>
+                <p>Please ensure you are logged into your Australian Side Hustles account, then access this portal through the member dashboard.</p>
               </div>
             </div>
           </div>
