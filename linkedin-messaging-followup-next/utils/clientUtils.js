@@ -13,7 +13,8 @@ export async function getCurrentClientProfile() {
     // Check for test client parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
     const testClient = urlParams.get('testClient');
-    const wpUserId = urlParams.get('wpUserId');
+    // Handle case-insensitive wpUserId parameter
+    const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid');
     
     let apiUrl = '/api/auth/test';
     
