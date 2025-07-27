@@ -109,19 +109,22 @@ router.get('/leads/search', async (req, res) => {
   
   try {
     const airtableBase = await getAirtableBase(req);
-    const { query, priority } = req.query;
+    const { query, priority, q } = req.query;
     
-    console.log('LinkedIn Routes: Search query:', query, 'Priority:', priority);
+    // Support both 'query' and 'q' parameter names for backward compatibility
+    const searchTerm = query || q;
+    
+    console.log('LinkedIn Routes: Search query:', searchTerm, 'Priority:', priority);
     
     // Build filter formula based on query and priority
     let filterParts = [];
     
     // Add name and LinkedIn URL search filter
-    if (query && query.trim() !== '') {
+    if (searchTerm && searchTerm.trim() !== '') {
       filterParts.push(`OR(
-        SEARCH(LOWER("${query}"), LOWER({First Name})) > 0,
-        SEARCH(LOWER("${query}"), LOWER({Last Name})) > 0,
-        SEARCH(LOWER("${query}"), LOWER({LinkedIn Profile URL})) > 0
+        SEARCH(LOWER("${searchTerm}"), LOWER({First Name})) > 0,
+        SEARCH(LOWER("${searchTerm}"), LOWER({Last Name})) > 0,
+        SEARCH(LOWER("${searchTerm}"), LOWER({LinkedIn Profile URL})) > 0
       )`);
     }
     
