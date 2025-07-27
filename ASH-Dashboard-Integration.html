@@ -1,0 +1,93 @@
+<!-- ASH Dashboard Integration for LinkedIn Follow-Up Portal -->
+<!-- Add this code snippet to your ASH member dashboard -->
+
+<div class="linkedin-portal-section" style="margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+    <h3 style="margin-top: 0; color: #333;">LinkedIn Follow-Up Portal</h3>
+    <p style="color: #666; margin-bottom: 15px;">
+        Access your personalized LinkedIn lead management portal with AI-powered post scoring and follow-up automation.
+    </p>
+    
+    <!-- Portal Access Button -->
+    <button 
+        onclick="openLinkedInPortal()" 
+        style="background: #0066cc; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 500;"
+        onmouseover="this.style.background='#0052a3'" 
+        onmouseout="this.style.background='#0066cc'"
+    >
+        🚀 Open LinkedIn Portal
+    </button>
+    
+    <div style="margin-top: 10px; font-size: 12px; color: #888;">
+        Opens in new tab • Automatic authentication via your ASH account
+    </div>
+</div>
+
+<script>
+function openLinkedInPortal() {
+    console.log('ASH Dashboard: Opening LinkedIn Follow-Up Portal...');
+    
+    // Get the current user's WordPress User ID
+    // Method 1: Try to get from global WordPress variables
+    let wpUserId = null;
+    
+    if (typeof window.wp_user_id !== 'undefined') {
+        wpUserId = window.wp_user_id;
+        console.log('ASH Dashboard: Found WordPress User ID from global variable:', wpUserId);
+    }
+    // Method 2: Try to get from REST API nonce (contains user info)
+    else if (typeof wpApiSettings !== 'undefined' && wpApiSettings.nonce) {
+        // Parse user ID from REST API settings if available
+        console.log('ASH Dashboard: Attempting to get User ID from WordPress REST API settings...');
+        // This would need to be customized based on your WordPress setup
+    }
+    // Method 3: Try to get from current page context
+    else if (typeof current_user_id !== 'undefined') {
+        wpUserId = current_user_id;
+        console.log('ASH Dashboard: Found WordPress User ID from current_user_id:', wpUserId);
+    }
+    
+    // If no user ID found, show helpful message
+    if (!wpUserId) {
+        console.warn('ASH Dashboard: Could not determine WordPress User ID');
+        alert('Unable to auto-authenticate. Please ensure you are logged in and try again.');
+        return;
+    }
+    
+    // Construct portal URL with authentication
+    const portalBaseUrl = 'https://pb-webhook-server.vercel.app';
+    const portalUrl = `${portalBaseUrl}/?level=2&wpUserId=${encodeURIComponent(wpUserId)}`;
+    
+    console.log('ASH Dashboard: Opening portal URL:', portalUrl);
+    
+    // Open portal in new tab
+    const newWindow = window.open(portalUrl, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+    
+    if (!newWindow) {
+        console.error('ASH Dashboard: Popup blocked');
+        alert('Popup was blocked. Please allow popups for this site and try again.');
+    } else {
+        console.log('ASH Dashboard: Portal opened successfully');
+    }
+}
+
+// Alternative method for getting WordPress User ID
+// This function can be called from PHP to inject the user ID
+function setWordPressUserId(userId) {
+    window.wp_user_id = userId;
+    console.log('ASH Dashboard: WordPress User ID set via PHP:', userId);
+}
+</script>
+
+<!-- 
+PHP Integration Example:
+In your WordPress dashboard template, add this PHP code to inject the user ID:
+
+<?php if (is_user_logged_in()) : ?>
+<script>
+    // Inject current user ID for portal authentication
+    window.wp_user_id = '<?php echo get_current_user_id(); ?>';
+</script>
+<?php endif; ?>
+
+This ensures the WordPress User ID is available for portal authentication.
+-->

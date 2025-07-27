@@ -108,8 +108,9 @@ async function authenticateUser(req, res, next) {
             return res.status(401).json({
                 status: 'error',
                 code: 'NOT_LOGGED_IN',
-                message: 'Please login to ASH',
-                action: 'redirect_to_login'
+                message: 'Please log into australiansidehustles.com.au to proceed.',
+                action: 'redirect_to_login',
+                loginUrl: 'https://australiansidehustles.com.au/wp-login.php'
             });
         }
         
@@ -123,7 +124,9 @@ async function authenticateUser(req, res, next) {
             return res.status(403).json({
                 status: 'error',
                 code: 'ACCESS_DENIED',
-                message: 'It looks like you may not have access to the ASH LinkedIn portal - can you check with the person who is coaching you',
+                message: 'Check with your coach to gain access.',
+                details: 'Your Australian Side Hustles account was found, but you don\'t have access to the LinkedIn Portal yet.',
+                supportContact: 'Please contact Australian Side Hustles Support for assistance.',
                 wpUserId: wpUserId
             });
         }
@@ -136,7 +139,9 @@ async function authenticateUser(req, res, next) {
             return res.status(403).json({
                 status: 'error',
                 code: 'ACCOUNT_INACTIVE',
-                message: 'Hey you may need to check if your ASH account is Active',
+                message: 'Looks like your membership may have expired - check with your coach.',
+                details: 'Your LinkedIn Portal access is currently inactive.',
+                supportContact: 'Please contact Australian Side Hustles Support to reactivate your access.',
                 clientId: client.clientId,
                 status: client.status
             });
@@ -151,11 +156,35 @@ async function authenticateUser(req, res, next) {
         
     } catch (error) {
         console.error('AuthMiddleware: Error during authentication:', error);
+        
+        // Handle different types of database/system errors
+        if (error.message && error.message.includes('timeout')) {
+            return res.status(503).json({
+                status: 'error',
+                code: 'SERVICE_TIMEOUT',
+                message: 'System temporarily unavailable. Please try again in a moment.',
+                supportContact: 'If this persists, contact Australian Side Hustles Support.',
+                retryAfter: 30
+            });
+        }
+        
+        if (error.message && error.message.includes('connection')) {
+            return res.status(503).json({
+                status: 'error',
+                code: 'SERVICE_UNAVAILABLE',
+                message: 'Unable to verify access at this time. Please try again.',
+                supportContact: 'If this continues, contact Australian Side Hustles Support.',
+                retryAfter: 60
+            });
+        }
+        
+        // Generic error for unexpected issues
         return res.status(500).json({
             status: 'error',
             code: 'AUTH_ERROR',
             message: 'Authentication system error. Please try again.',
-            details: error.message
+            supportContact: 'If this continues, contact Australian Side Hustles Support.',
+            details: process.env.NODE_ENV === 'development' ? error.message : 'Internal error'
         });
     }
 }
