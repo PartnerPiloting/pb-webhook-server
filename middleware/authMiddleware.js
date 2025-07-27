@@ -25,7 +25,11 @@ const { parseServiceLevel, hasServiceLevelAccess } = require('../utils/serviceLe
 async function getWordPressUserId(req) {
     try {
         // For testing - check for test header or query parameter first
-        const testWpUserId = req.headers['x-wp-user-id'] || req.query.wpUserId;
+        // Handle case-insensitive wpUserId parameter (wpUserId, wpuserid, etc.)
+        const testWpUserId = req.headers['x-wp-user-id'] || 
+                           req.query.wpUserId || 
+                           req.query.wpuserid || 
+                           req.query.wpUserId;
         if (testWpUserId) {
             console.log(`AuthMiddleware: Using test WordPress User ID: ${testWpUserId}`);
             return parseInt(testWpUserId, 10);
