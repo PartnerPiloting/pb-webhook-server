@@ -17,7 +17,7 @@ Go to: https://dashboard.render.com → Your Service → Environment
 **Optional Variables:**
 - [ ] `GEMINI_MODEL_ID` - Set to `gemini-2.5-pro-preview-05-06` (or desired model)
 - [ ] `PB_WEBHOOK_SECRET` - Set to secure random string
-- [ ] `BATCH_CHUNK_SIZE` - Set to `55` (or desired batch size)
+- [ ] `BATCH_CHUNK_SIZE` - Set to `40` (or desired batch size)
 - [ ] `GEMINI_TIMEOUT_MS` - Set to `900000` (15 minutes)
 - [ ] `DEBUG_RAW_GEMINI` - Set to `0` (for production)
 
