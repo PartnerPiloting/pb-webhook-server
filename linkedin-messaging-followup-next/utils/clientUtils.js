@@ -125,7 +125,8 @@ export async function initializeClient() {
     return true;
   } catch (error) {
     console.error('ClientUtils: Failed to initialize client:', error);
-    return false;
+    // Re-throw the error so Layout.js can handle authentication failures properly
+    throw error;
   }
 }
 
