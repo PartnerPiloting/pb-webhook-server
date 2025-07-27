@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { updateLead } from '../services/api';
+import { updateLead, getTopScoringPosts } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 import { getCurrentClientId } from '../utils/clientUtils.js';
 
@@ -40,26 +40,11 @@ const TopScoringPostsWithParams = () => {
     setError(null);
     
     try {
-      // Get client from URL parameters or current authenticated client
-      const urlParams = new URLSearchParams(window.location.search);
-      const client = urlParams.get('client') || getCurrentClientId();
-      
-      if (!client) {
-        throw new Error('Client ID not available. Please ensure you are authenticated.');
-      }
-      
-      // API call to get leads with Posts Actioned empty and Posts Relevance Status = "Relevant"
-      // Sorted by First Name, Last Name
-      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts?client=${client}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
+      console.log('🎯 Loading top scoring posts');
+      const results = await getTopScoringPosts();
       
       // Filter client-side as backup for API filtering
-      const filteredLeads = (data || []).filter(lead => 
+      const filteredLeads = (results || []).filter(lead => 
         !lead[FIELD_NAMES.POSTS_ACTIONED] && 
         lead[FIELD_NAMES.POSTS_RELEVANCE_STATUS] === 'Relevant'
       );
@@ -78,6 +63,7 @@ const TopScoringPostsWithParams = () => {
       });
       
       setLeads(filteredLeads);
+      console.log(`🎯 Loaded ${filteredLeads.length} top scoring posts`);
       
       // Auto-select first lead if any
       if (filteredLeads.length > 0) {
