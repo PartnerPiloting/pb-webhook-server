@@ -66,7 +66,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
         { field: FIELD_NAMES.FIRST_NAME },
         { field: FIELD_NAMES.LAST_NAME }
       ],
-      maxRecords: 100  // Limit to 100 records to prevent memory overflow
+      maxRecords: 50  // Limit to 50 records for Load More pattern
     }).all();
 
     console.log(`LinkedIn Routes: Found ${records.length} top scoring posts leads`);
@@ -119,7 +119,7 @@ router.get('/leads/search', async (req, res) => {
     // Build filter formula based on query and priority
     let filterParts = [];
     
-    // Add name and LinkedIn URL search filter
+    // Add name and LinkedIn URL search filter (only if search term provided)
     if (searchTerm && searchTerm.trim() !== '') {
       filterParts.push(`OR(
         SEARCH(LOWER("${searchTerm}"), LOWER({First Name})) > 0,
@@ -141,16 +141,14 @@ router.get('/leads/search', async (req, res) => {
       SEARCH("tenant", LOWER({Last Name})) > 0
     ))`);
     
-    // Combine all filter parts
-    const filterFormula = filterParts.length > 0 ? 
-      (filterParts.length === 1 ? filterParts[0] : `AND(${filterParts.join(', ')})`) : 
-      '';
+    // Combine all filter parts - if no search/priority, just show all client leads
+    const filterFormula = filterParts.length > 1 ? `AND(${filterParts.join(', ')})` : filterParts[0];
 
     console.log('LinkedIn Routes: Using filter:', filterFormula);
 
     const selectOptions = {
       sort: [{ field: 'First Name' }, { field: 'Last Name' }],
-      maxRecords: 100  // Limit to 100 records to prevent memory overflow
+      maxRecords: 50  // Always limit to 50 records for Load More pattern
     };
     
     if (filterFormula) {
