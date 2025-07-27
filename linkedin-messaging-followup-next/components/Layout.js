@@ -28,7 +28,7 @@ const useClientInitialization = () => {
       } catch (error) {
         console.error('Layout: Client initialization failed:', error);
         setError(error);
-        setIsInitialized(true); // Still set to true to allow fallback behavior
+        setIsInitialized(true); // Set to true to show error message instead of loading
       }
     };
     
@@ -139,8 +139,29 @@ const Layout = ({ children }) => {
 
   // Show error state if initialization failed
   if (error) {
-    console.warn('Layout: Client initialization failed, continuing with fallback:', error);
-    // Continue anyway to allow fallback behavior
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="text-center">
+          <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-sm border border-red-200">
+            <div className="text-red-600 mb-4">
+              <svg className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 15.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Authentication Required</h2>
+            <p className="text-gray-600 mb-4">
+              {error.message || 'You must be logged in to access this portal.'}
+            </p>
+            <div className="text-sm text-gray-500">
+              <p>Please log in through australiansidehustles.com.au to access this portal.</p>
+              <p className="mt-2">
+                For developers: Add <code className="bg-gray-100 px-1 rounded">?testClient=Guy-Wilson</code> to the URL for development access.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Ensure children is defined

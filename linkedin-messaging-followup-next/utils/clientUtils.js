@@ -62,28 +62,38 @@ export async function getCurrentClientProfile() {
   } catch (error) {
     console.error('ClientUtils: Error fetching client profile:', error);
     
-    // Fallback to Guy-Wilson for development/testing
-    console.warn('ClientUtils: Falling back to Guy-Wilson for development');
-    currentClientId = 'Guy-Wilson';
-    clientProfile = {
-      client: {
-        clientId: 'Guy-Wilson',
-        clientName: 'Guy Wilson (Fallback)',
-        status: 'Active',
-        serviceLevel: 2
-      },
-      authentication: {
-        testMode: true
-      },
-      features: {
-        leadSearch: true,
-        leadManagement: true,
-        postScoring: true,
-        topScoringPosts: true
-      }
-    };
+    // Check for test client parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const testClient = urlParams.get('testClient');
     
-    return clientProfile;
+    // Only allow fallback if testClient parameter is explicitly provided
+    if (testClient) {
+      console.warn(`ClientUtils: Using development fallback for testClient: ${testClient}`);
+      currentClientId = testClient;
+      clientProfile = {
+        client: {
+          clientId: testClient,
+          clientName: `${testClient} (Development Mode)`,
+          status: 'Active',
+          serviceLevel: 2
+        },
+        authentication: {
+          testMode: true
+        },
+        features: {
+          leadSearch: true,
+          leadManagement: true,
+          postScoring: true,
+          topScoringPosts: true
+        }
+      };
+      
+      return clientProfile;
+    } else {
+      // No testClient parameter - authentication failed, block access
+      console.error('ClientUtils: Authentication failed and no testClient parameter provided');
+      throw new Error('Authentication required. Please log in to access this portal.');
+    }
   }
 }
 
