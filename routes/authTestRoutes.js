@@ -23,13 +23,16 @@ const { testWordPressConnection } = require('../utils/wordpressAuth');
 
 router.get('/test', authenticateUserWithTestMode, (req, res) => {
   try {
+    console.log('Auth Test: Building response for client:', req.client.clientName);
+    console.log('Auth Test: Client object:', JSON.stringify(req.client, null, 2));
+    
     const response = {
       status: 'success',
       message: 'Authentication successful!',
       client: {
-        clientId: req.client.clientId,
-        clientName: req.client.clientName,
-        status: req.client.status,
+        clientId: req.client.clientId || 'unknown',
+        clientName: req.client.clientName || 'unknown',
+        status: req.client.status || 'unknown',
         airtableBaseId: req.client.airtableBaseId || null,
         serviceLevel: req.client.serviceLevel || 1
       },
@@ -45,7 +48,8 @@ router.get('/test', authenticateUserWithTestMode, (req, res) => {
       }
     };
 
-    console.log('Auth Test: Success for', req.client.clientName);
+    console.log('Auth Test: Response object constructed:', JSON.stringify(response, null, 2));
+    console.log('Auth Test: Sending response for', req.client.clientName);
     res.json(response);
 
   } catch (error) {
@@ -123,6 +127,21 @@ router.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     message: 'Authentication system is running'
   });
+});
+
+/**
+ * Simple test endpoint to compare with the main test endpoint
+ * This will help us identify where the JSON corruption is happening
+ */
+router.get('/simple', (req, res) => {
+  console.log('Auth Simple Test: Creating simple response');
+  const response = {
+    status: 'success',
+    message: 'Simple test successful!',
+    test: true
+  };
+  console.log('Auth Simple Test: Response object:', JSON.stringify(response));
+  res.json(response);
 });
 
 module.exports = router;
