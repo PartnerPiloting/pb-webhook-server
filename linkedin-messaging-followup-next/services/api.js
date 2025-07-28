@@ -771,7 +771,18 @@ export const togglePostAttributeActive = async (attributeId, isActive) => {
 export const getTokenUsage = async () => {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
-    const response = await fetch(`${baseUrl}/api/token-usage`, {
+    
+    // Get client parameter from URL for authentication
+    const urlParams = new URLSearchParams(window.location.search);
+    const testClient = urlParams.get('testClient');
+    const client = urlParams.get('client');
+    const clientId = testClient || client;
+    
+    if (!clientId) {
+      throw new Error('Client ID not found in URL parameters');
+    }
+    
+    const response = await fetch(`${baseUrl}/api/token-usage?client=${encodeURIComponent(clientId)}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
@@ -793,7 +804,18 @@ export const getTokenUsage = async () => {
 export const getPostTokenUsage = async () => {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
-    const response = await fetch(`${baseUrl}/api/post-token-usage`, {
+    
+    // Get client parameter from URL for authentication
+    const urlParams = new URLSearchParams(window.location.search);
+    const testClient = urlParams.get('testClient');
+    const client = urlParams.get('client');
+    const clientId = testClient || client;
+    
+    if (!clientId) {
+      throw new Error('Client ID not found in URL parameters');
+    }
+    
+    const response = await fetch(`${baseUrl}/api/post-token-usage?client=${encodeURIComponent(clientId)}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
