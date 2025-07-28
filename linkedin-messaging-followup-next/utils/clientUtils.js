@@ -14,9 +14,16 @@ export async function getCurrentClientProfile() {
   try {
     // Check for test client parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
+    console.log('ClientUtils: Current URL:', window.location.href);
+    console.log('ClientUtils: URL search params:', window.location.search);
+    console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
+    
     const testClient = urlParams.get('testClient');
-    // Handle case-insensitive wpUserId parameter
-    const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid');
+    // Handle case-insensitive wpUserId parameter variations
+    const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
+    
+    console.log('ClientUtils: Extracted testClient:', testClient);
+    console.log('ClientUtils: Extracted wpUserId:', wpUserId);
     
     let apiUrl = '/api/auth/test';
     
