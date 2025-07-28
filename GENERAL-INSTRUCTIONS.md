@@ -1,5 +1,21 @@
 # General Instructions for Working Together
 
+## 🚨 MANDATORY FIRST STEP: Read the following documentation files before responding to any request:
+
+**SYSTEM-OVERVIEW.md** - Read this first for system architecture and file structure  
+**AIRTABLE-FIELD-REFERENCE.md** - Read this for ALL field names and API contracts  
+**JSON-CORRUPTION-ISSUE.md** - Read this for critical JSON parsing fix (prevents debugging waste)  
+**GENERAL-INSTRUCTIONS.md** - Read this for my working style preferences  
+
+**PROVE YOU'VE READ THE DOCUMENTATION** by providing:
+- A brief summary of what SYSTEM-OVERVIEW.md says about the data flow for lead management
+- Quote 3-5 specific field names from the AIRTABLE-FIELD-REFERENCE.md (with their exact spacing/formatting)
+- One sentence about my working style from GENERAL-INSTRUCTIONS.md
+
+**FIELD MAPPING CRITICAL RULE**: Always reference the AIRTABLE-FIELD-REFERENCE.md for exact field names before making any API or database changes. Field mapping issues are the #1 cause of bugs in this system.
+
+Only after completing the above documentation review and proof should you proceed with my actual request.
+
 ## About Me
 - I am not a coder but with the assistance of AI I have created many apps with many thousands of lines of code
 - I like things explained in plain English one step at a time

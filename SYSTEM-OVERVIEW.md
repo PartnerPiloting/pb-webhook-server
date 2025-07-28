@@ -181,6 +181,7 @@ User → FollowUpManager.js → Lead updates → Scheduling
 - **GENERAL-INSTRUCTIONS.md** - User working style and approach
 - **ENVIRONMENT-MANAGEMENT.md** - Environment variables and deployment
 - **DEBUGGING-GUIDE.md** - Common issues and solutions
+- **JSON-CORRUPTION-ISSUE.md** - 🚨 CRITICAL: Known JSON parsing issue and fix
 
 ### **Backend Documentation**
 - **BACKEND-DEEP-DIVE.md** - Comprehensive backend architecture and components
