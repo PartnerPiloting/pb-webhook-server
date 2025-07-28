@@ -387,4 +387,72 @@ router.patch('/leads/:id', async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/linkedin/leads/:id
+ * Update a specific lead (same as PATCH for compatibility)
+ */
+router.put('/leads/:id', async (req, res) => {
+  console.log('LinkedIn Routes: PUT /leads/:id called');
+  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const leadId = req.params.id;
+    const updates = req.body;
+    
+    console.log('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
+
+    // Update the lead in Airtable
+    const updatedRecords = await airtableBase('Leads').update([
+      {
+        id: leadId,
+        fields: updates
+      }
+    ]);
+
+    if (updatedRecords.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    // Return the updated lead in the expected format
+    const updatedLead = {
+      id: updatedRecords[0].id,
+      recordId: updatedRecords[0].id,
+      profileKey: updatedRecords[0].id, // Use Airtable record ID as profile key
+      firstName: updatedRecords[0].fields['First Name'],
+      lastName: updatedRecords[0].fields['Last Name'],
+      linkedinProfileUrl: updatedRecords[0].fields['LinkedIn Profile URL'],
+      viewInSalesNavigator: updatedRecords[0].fields['View In Sales Navigator'],
+      email: updatedRecords[0].fields['Email'],
+      phone: updatedRecords[0].fields['Phone'],
+      notes: updatedRecords[0].fields['Notes'],
+      followUpDate: updatedRecords[0].fields['Follow-Up Date'],
+      followUpNotes: updatedRecords[0].fields['Follow Up Notes'],
+      source: updatedRecords[0].fields['Source'],
+      status: updatedRecords[0].fields['Status'],
+      priority: updatedRecords[0].fields['Priority'],
+      linkedinConnectionStatus: updatedRecords[0].fields['LinkedIn Connection Status'],
+      ashWorkshopEmail: updatedRecords[0].fields['ASH Workshop Email'],
+      aiScore: updatedRecords[0].fields['AI Score'],
+      postsRelevanceScore: updatedRecords[0].fields['Posts Relevance Score'],
+      postsRelevancePercentage: updatedRecords[0].fields['Posts Relevance Percentage'],
+      // Include all original fields for compatibility
+      ...updatedRecords[0].fields
+    };
+
+    console.log('LinkedIn Routes: Lead updated successfully');
+    res.json(updatedLead);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error updating lead:', error);
+    if (error.statusCode === 404) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+    res.status(500).json({ 
+      error: 'Failed to update lead',
+      details: error.message 
+    });
+  }
+});
+
 module.exports = router;
