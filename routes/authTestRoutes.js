@@ -30,8 +30,8 @@ router.get('/test', authenticateUserWithTestMode, (req, res) => {
         clientId: req.client.clientId,
         clientName: req.client.clientName,
         status: req.client.status,
-        airtableBaseId: req.client.airtableBaseId,
-        serviceLevel: req.client.serviceLevel
+        airtableBaseId: req.client.airtableBaseId || null,
+        serviceLevel: req.client.serviceLevel || 1
       },
       authentication: {
         wpUserId: req.wpUserId || 'test mode',
@@ -40,8 +40,8 @@ router.get('/test', authenticateUserWithTestMode, (req, res) => {
       features: {
         leadSearch: true,
         leadManagement: true,
-        postScoring: req.client.serviceLevel >= 2,
-        topScoringPosts: req.client.serviceLevel >= 2
+        postScoring: (req.client.serviceLevel || 1) >= 2,
+        topScoringPosts: (req.client.serviceLevel || 1) >= 2
       }
     };
 
