@@ -188,11 +188,20 @@ router.get('/leads/search', async (req, res) => {
     
     // Add name and LinkedIn URL search filter (only if search term provided)
     if (searchTerm && searchTerm.trim() !== '') {
-      filterParts.push(`OR(
-        SEARCH(LOWER("${searchTerm}"), LOWER({First Name})) > 0,
-        SEARCH(LOWER("${searchTerm}"), LOWER({Last Name})) > 0,
-        SEARCH(LOWER("${searchTerm}"), LOWER({LinkedIn Profile URL})) > 0
-      )`);
+      // Split search term into words for better name matching
+      const searchWords = searchTerm.toLowerCase().trim().split(/\s+/);
+      
+      // Create search conditions for each word
+      const wordSearches = searchWords.map(word => 
+        `OR(
+          SEARCH(LOWER("${word}"), LOWER({First Name})) > 0,
+          SEARCH(LOWER("${word}"), LOWER({Last Name})) > 0,
+          SEARCH(LOWER("${word}"), LOWER({LinkedIn Profile URL})) > 0
+        )`
+      );
+      
+      // Join with AND so "sally kuter" finds records that match "sally" AND "kuter"
+      filterParts.push(`AND(${wordSearches.join(', ')})`);
     }
     
     // Add priority filter
