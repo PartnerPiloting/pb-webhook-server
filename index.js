@@ -129,6 +129,22 @@ app.get('/basic-test', (req, res) => {
 });
 console.log("Basic test route added at /basic-test");
 
+// JSON DIAGNOSTIC TEST - Tests if Express/Node/Render can produce clean JSON
+app.get('/api/test/minimal-json', (req, res) => {
+    // No middleware, no async, no database calls - just pure Express JSON response
+    console.log('Minimal JSON Test: Sending pure Express JSON response');
+    res.json({ 
+        test: 'minimal',
+        status: 'success', 
+        number: 123,
+        boolean: true,
+        array: [1, 2, 3],
+        nested: { key: 'value', another: 'data' },
+        timestamp: new Date().toISOString()
+    });
+});
+console.log("JSON diagnostic test route added at /api/test/minimal-json");
+
 // --- ADMIN REPAIR ENDPOINT (SECURE) ---
 // Full import for repair script
 const repairAirtablePostsContentQuotes = require('./utils/repairAirtablePostsContentQuotes');

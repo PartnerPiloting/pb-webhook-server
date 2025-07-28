@@ -1,8 +1,6 @@
 // utils/clientUtils.js
 // Dynamic client management for frontend authentication
 
-import dirtyjson from 'dirtyjson';
-
 let currentClientId = null;
 let clientProfile = null;
 
@@ -56,30 +54,12 @@ export async function getCurrentClientProfile() {
       throw new Error(`Failed to get user profile: ${response.status} ${response.statusText}`);
     }
 
-    // Use dirtyjson to handle malformed JSON responses (extra commas, etc.)
+    // Parse JSON response
     const responseText = await response.text();
     console.log('ClientUtils: Raw response text:', responseText);
     
-    let data;
-    try {
-      // First try standard JSON parsing
-      data = JSON.parse(responseText);
-      console.log('ClientUtils: Standard JSON parsing succeeded');
-    } catch (jsonError) {
-      console.log('ClientUtils: Standard JSON parsing failed, trying dirtyjson...');
-      try {
-        // Fallback to dirtyjson for malformed JSON
-        data = dirtyjson.parse(responseText);
-        console.log('ClientUtils: DirtyJSON parsing succeeded!');
-      } catch (dirtyJsonError) {
-        console.error('ClientUtils: Both JSON and DirtyJSON parsing failed:', {
-          jsonError: jsonError.message,
-          dirtyJsonError: dirtyJsonError.message,
-          responseText: responseText
-        });
-        throw new Error(`Failed to parse response: ${dirtyJsonError.message}`);
-      }
-    }
+    const data = JSON.parse(responseText);
+    console.log('ClientUtils: Successfully parsed JSON response');
     console.log('ClientUtils: Received client profile:', data);
     
     // Cache the client info
