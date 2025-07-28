@@ -5,6 +5,24 @@ let currentClientId = null;
 let clientProfile = null;
 
 /**
+ * Simple function to fix malformed JSON with double commas
+ * @param {string} jsonText - Raw JSON text that might have double commas
+ * @returns {Object} - Parsed JSON object
+ */
+function parseJSONWithFix(jsonText) {
+  try {
+    // Fix the specific corruption we're seeing: ,, → ,
+    const fixedText = jsonText.replace(/,,/g, ',');
+    return JSON.parse(fixedText);
+  } catch (error) {
+    console.error('ClientUtils: JSON parse error even after fix:', error);
+    console.error('ClientUtils: Original text:', jsonText);
+    console.error('ClientUtils: Fixed text:', jsonText.replace(/,,/g, ','));
+    throw error;
+  }
+}
+
+/**
  * Fetch current user's client profile from the backend
  * This replaces hardcoded client references
  */
@@ -54,12 +72,12 @@ export async function getCurrentClientProfile() {
       throw new Error(`Failed to get user profile: ${response.status} ${response.statusText}`);
     }
 
-    // Parse JSON response
+    // Parse JSON response with corruption fix
     const responseText = await response.text();
     console.log('ClientUtils: Raw response text:', responseText);
     
-    const data = JSON.parse(responseText);
-    console.log('ClientUtils: Successfully parsed JSON response');
+    const data = parseJSONWithFix(responseText);
+    console.log('ClientUtils: Successfully parsed JSON response with fix');
     console.log('ClientUtils: Received client profile:', data);
     
     // Cache the client info
