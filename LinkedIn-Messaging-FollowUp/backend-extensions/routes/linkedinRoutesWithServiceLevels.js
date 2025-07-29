@@ -357,4 +357,82 @@ router.get('/user/profile', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/linkedin/leads/by-linkedin-url?url=linkedinUrl
+ * Find a lead by their LinkedIn profile URL
+ */
+router.get('/leads/by-linkedin-url', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/by-linkedin-url called');
+  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'LinkedIn URL parameter is required' });
+    }
+    
+    console.log('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
+
+    // Normalize the URL (remove trailing slash if present)
+    let normalizedUrl = url;
+    if (typeof normalizedUrl === 'string' && normalizedUrl.endsWith('/')) {
+      normalizedUrl = normalizedUrl.slice(0, -1);
+    }
+
+    // Search for the lead by LinkedIn Profile URL
+    const records = await airtableBase('Leads').select({
+      maxRecords: 1,
+      filterByFormula: `{LinkedIn Profile URL} = "${normalizedUrl}"`
+    }).firstPage();
+
+    if (!records || records.length === 0) {
+      console.log('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
+      return res.status(404).json({ error: 'Lead not found with that LinkedIn URL' });
+    }
+
+    const record = records[0];
+    const leadData = {
+      id: record.id,
+      recordId: record.id,
+      profileKey: record.id,
+      firstName: record.get('First Name') || '',
+      lastName: record.get('Last Name') || '', 
+      linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
+      viewInSalesNavigator: record.get('View In Sales Navigator') || '',
+      email: record.get('Email') || '',
+      phone: record.get('Phone') || '',
+      notes: record.get('Notes') || '',
+      followUpDate: record.get('Follow-Up Date') || null,
+      followUpNotes: record.get('Follow Up Notes') || '',
+      source: record.get('Source') || '',
+      status: record.get('Status') || '',
+      priority: record.get('Priority') || '',
+      linkedinConnectionStatus: record.get('LinkedIn Connection Status') || '',
+      ashWorkshopEmail: record.get('ASH Workshop Email') || '',
+      company: record.get('Company') || '',
+      jobTitle: record.get('Job Title') || '',
+      industry: record.get('Industry') || '',
+      location: record.get('Location') || '',
+      tags: record.get('Tags') || '',
+      score: record.get('Score') || null,
+      leadScoringStatus: record.get('Lead Scoring Status') || '',
+      dateScored: record.get('Date Scored') || null,
+      dateAdded: record.get('Date Added') || null,
+      lastContactDate: record.get('Last Contact Date') || null
+    };
+
+    console.log('LinkedIn Routes: Found lead:', leadData.firstName, leadData.lastName);
+    res.json(leadData);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error searching for lead by LinkedIn URL:', error);
+    res.status(500).json({ 
+      error: 'Failed to search for lead',
+      details: error.message 
+    });
+  }
+});
+
 module.exports = router;

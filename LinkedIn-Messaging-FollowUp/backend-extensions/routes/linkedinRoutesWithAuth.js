@@ -464,4 +464,137 @@ router.put('/leads/:id', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/linkedin/leads/by-linkedin-url?url=linkedinUrl
+ * Find a lead by their LinkedIn profile URL
+ */
+router.get('/leads/by-linkedin-url', async (req, res) => {
+  console.log('LinkedIn Routes: GET /leads/by-linkedin-url called');
+  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'LinkedIn URL parameter is required' });
+    }
+    
+    console.log('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
+
+    // Normalize the URL (remove trailing slash if present)
+    let normalizedUrl = url;
+    if (typeof normalizedUrl === 'string' && normalizedUrl.endsWith('/')) {
+      normalizedUrl = normalizedUrl.slice(0, -1);
+    }
+
+    // Search for the lead by LinkedIn Profile URL
+    const records = await airtableBase('Leads').select({
+      maxRecords: 1,
+      filterByFormula: `{LinkedIn Profile URL} = "${normalizedUrl}"`
+    }).firstPage();
+
+    if (!records || records.length === 0) {
+      console.log('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
+      return res.status(404).json({ error: 'Lead not found with that LinkedIn URL' });
+    }
+
+    const record = records[0];
+    const leadData = {
+      id: record.id,
+      firstName: record.get('First Name') || '',
+      lastName: record.get('Last Name') || '', 
+      linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
+      company: record.get('Company') || '',
+      jobTitle: record.get('Job Title') || '',
+      industry: record.get('Industry') || '',
+      location: record.get('Location') || '',
+      priority: record.get('Priority') || '',
+      notes: record.get('Notes') || '',
+      tags: record.get('Tags') || '',
+      status: record.get('Status') || '',
+      score: record.get('Score') || null,
+      leadScoringStatus: record.get('Lead Scoring Status') || '',
+      dateScored: record.get('Date Scored') || null,
+      dateAdded: record.get('Date Added') || null,
+      lastContactDate: record.get('Last Contact Date') || null
+    };
+
+    console.log('LinkedIn Routes: Found lead:', leadData.firstName, leadData.lastName);
+    res.json(leadData);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error searching for lead by LinkedIn URL:', error);
+    res.status(500).json({ 
+      error: 'Failed to search for lead',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/linkedin/leads
+ * Creates a new lead in Airtable
+ */
+router.post('/leads', async (req, res) => {
+  console.log('LinkedIn Routes: POST /leads called');
+  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const leadData = req.body;
+    const airtableBase = await getAirtableBase(req);
+    
+    console.log('LinkedIn Routes: Creating lead with data:', leadData);
+
+    // DEBUG: Log exactly what we're sending to Airtable
+    const recordToCreate = {
+      fields: {
+        ...leadData,
+        'Status': 'On The Radar'
+      }
+    };
+
+    console.log('LinkedIn Routes: Record to create:', recordToCreate);
+
+    // Create the lead in Airtable
+    const createdRecords = await airtableBase('Leads').create([recordToCreate]);
+    
+    if (createdRecords.length === 0) {
+      return res.status(500).json({ error: 'Failed to create lead' });
+    }
+
+    const newLead = {
+      id: createdRecords[0].id,
+      recordId: createdRecords[0].id,
+      profileKey: createdRecords[0].id, // Use Airtable record ID as profile key
+      firstName: createdRecords[0].fields['First Name'],
+      lastName: createdRecords[0].fields['Last Name'],
+      linkedinProfileUrl: createdRecords[0].fields['LinkedIn Profile URL'],
+      viewInSalesNavigator: createdRecords[0].fields['View In Sales Navigator'],
+      email: createdRecords[0].fields['Email'],
+      phone: createdRecords[0].fields['Phone'],
+      notes: createdRecords[0].fields['Notes'],
+      followUpDate: createdRecords[0].fields['Follow-Up Date'],
+      followUpNotes: createdRecords[0].fields['Follow Up Notes'],
+      source: createdRecords[0].fields['Source'],
+      status: createdRecords[0].fields['Status'],
+      priority: createdRecords[0].fields['Priority'],
+      linkedinConnectionStatus: createdRecords[0].fields['LinkedIn Connection Status'],
+      ashWorkshopEmail: createdRecords[0].fields['ASH Workshop Email'],
+      // Include all original fields for compatibility
+      ...createdRecords[0].fields
+    };
+
+    console.log('LinkedIn Routes: Lead created successfully:', newLead.firstName, newLead.lastName);
+    res.status(201).json(newLead);
+
+  } catch (error) {
+    console.error('LinkedIn Routes: Error creating lead:', error);
+    res.status(500).json({ 
+      error: 'Failed to create lead',
+      details: error.message 
+    });
+  }
+});
+
 module.exports = router;

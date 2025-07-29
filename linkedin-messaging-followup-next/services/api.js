@@ -60,9 +60,9 @@ api.interceptors.request.use(
       if (clientId) {
         config.params.client = clientId;
       } else {
-        console.warn('API: No client ID available, request may fail. Make sure to call initializeClient() first.');
-        // For development/testing fallback
-        config.params.client = 'Guy-Wilson';
+        console.error('API: No client ID available. Authentication required.');
+        // Reject requests without proper client authentication
+        return Promise.reject(new Error('Client authentication required. Please log in through Australian Side Hustles.'));
       }
     }
     
