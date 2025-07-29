@@ -28,7 +28,11 @@ const TopScoringPosts = () => {
     try {
       // Get client from URL parameters
       const urlParams = new URLSearchParams(window.location.search);
-      const client = urlParams.get('client') || 'Guy-Wilson';
+      const client = urlParams.get('client');
+      
+      if (!client) {
+        throw new Error('Client parameter is required. Please ensure you are accessing this page through the proper authentication flow.');
+      }
       
       // API call to get leads with Posts Actioned empty and Posts Relevance Status = "Relevant"
       // Sorted by First Name, Last Name
