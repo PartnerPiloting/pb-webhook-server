@@ -207,7 +207,6 @@ async function upsertLeadToClientBase(leadData, airtableBase, clientId) {
 
         // Create comprehensive fields object matching old system
         const fields = {
-            "Profile Key": profileKey,
             "LinkedIn Profile URL": finalUrl,
             "First Name": firstName,
             "Last Name": lastName,
