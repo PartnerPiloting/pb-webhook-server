@@ -515,7 +515,7 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
       tags: record.get('Tags') || '',
       status: record.get('Status') || '',
       score: record.get('Score') || null,
-      leadScoringStatus: record.get('Lead Scoring Status') || '',
+      leadScoringStatus: record.get('Scoring Status') || '',
       dateScored: record.get('Date Scored') || null,
       dateAdded: record.get('Date Added') || null,
       lastContactDate: record.get('Last Contact Date') || null

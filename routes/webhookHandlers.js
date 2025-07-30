@@ -144,7 +144,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     "Company Name": lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
                     "About": lh.summary || lh.bio || "", 
                     "Source": "LinkedHelper",
-                    "Lead Scoring Status": scoringStatusForThisLead, 
+                    "Scoring Status": scoringStatusForThisLead, 
                     "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
                 };
                 
@@ -175,10 +175,10 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
  * Similar to leadService.upsertLead but uses provided Airtable base
  */
 async function upsertLeadToClientBase(lead, airtableBase, clientId) {
-    const firstName = lead["First Name"] || "";
-    const lastName = lead["Last Name"] || "";
-    const linkedinProfileUrl = lead["LinkedIn Profile URL"] || "";
-    const scoringStatus = lead["Lead Scoring Status"];
+    const firstName = lead.firstName || "";
+    const lastName = lead.lastName || "";
+    const linkedinProfileUrl = lead.linkedinProfileUrl || "";
+    const scoringStatus = lead.scoringStatus;
 
     if (!linkedinProfileUrl) {
         console.warn(`webhookHandlers.js: Skipping upsert for client ${clientId}. No LinkedIn URL provided for lead:`, firstName, lastName);
@@ -192,7 +192,7 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
         // Check if lead already exists
         const existing = await airtableBase('Leads').select({
             maxRecords: 1,
-            filterByFormula: `{LinkedIn Profile URL} = "${finalUrl}"`
+            filterByFormula: `{linkedinProfileUrl} = "${finalUrl}"`
         }).firstPage();
 
         if (existing && existing.length > 0) {
@@ -203,11 +203,11 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
             const updateFields = { ...lead };
             delete updateFields["LinkedIn Profile URL"]; // Don't update the URL field
             
-            // Only update Lead Scoring Status if we have a value and it's not already set
-            if (scoringStatus && !existing[0].fields['Lead Scoring Status']) {
-                updateFields["Lead Scoring Status"] = scoringStatus;
+            // Only update Scoring Status if we have a value and it's not already set
+            if (scoringStatus && !existing[0].fields['Scoring Status']) {
+                updateFields["Scoring Status"] = scoringStatus;
             } else {
-                delete updateFields["Lead Scoring Status"];
+                delete updateFields["Scoring Status"];
             }
 
             await airtableBase('Leads').update([{
@@ -221,7 +221,7 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
             const createFields = {
                 ...lead,
                 "LinkedIn Profile URL": finalUrl,
-                "Lead Scoring Status": scoringStatus || 'To Be Scored'
+                "Scoring Status": scoringStatus || 'To Be Scored'
             };
 
             await airtableBase('Leads').create([{
