@@ -10,7 +10,7 @@ const router = express.Router();
 // --- Dependencies needed for /lh-webhook/upsertLeadOnly ---
 const airtableBase = require('../config/airtableClient.js'); // For upsertLead via leadService
 const { upsertLead } = require('../services/leadService.js');
-const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
+const { alertAdmin, canonicalUrl, safeDate } = require('../utils/appHelpers.js'); // For error alerting and URL normalization
 
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
@@ -143,9 +143,14 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     "Job Title": lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     "Company Name": lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
                     "About": lh.summary || lh.bio || "", 
+                    "Job History": (lh.experience && Array.isArray(lh.experience)) ? 
+                        lh.experience.slice(0, 3).map(exp => `${exp.title || ''} at ${exp.company || ''}`).join('; ') : "",
                     "Source": "SalesNav + LH Scrape",
                     "Scoring Status": scoringStatusForThisLead, 
-                    "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
+                    "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate"),
+                    // Additional fields to match old system
+                    "Profile Full JSON": JSON.stringify(lh),
+                    "Raw Profile Data": JSON.stringify(lh)
                 };
                 
                 // Use client-specific Airtable base for upsert instead of global leadService
@@ -172,61 +177,90 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
 /**
  * Client-aware upsert function for webhook use
- * Similar to leadService.upsertLead but uses provided Airtable base
+ * Based on the proven leadService.upsertLead logic with Profile Key matching
  */
-async function upsertLeadToClientBase(lead, airtableBase, clientId) {
-    const firstName = lead["First Name"] || "";
-    const lastName = lead["Last Name"] || "";
-    const linkedinProfileUrl = lead["LinkedIn Profile URL"] || "";
-    const scoringStatus = lead["Scoring Status"];
+async function upsertLeadToClientBase(leadData, airtableBase, clientId) {
+    const firstName = leadData["First Name"] || "";
+    const lastName = leadData["Last Name"] || "";
+    const linkedinProfileUrl = leadData["LinkedIn Profile URL"] || "";
+    const scoringStatus = leadData["Scoring Status"];
+    const connectionStatus = leadData["LinkedIn Connection Status"] || "Candidate";
 
     if (!linkedinProfileUrl) {
         console.warn(`webhookHandlers.js: Skipping upsert for client ${clientId}. No LinkedIn URL provided for lead:`, firstName, lastName);
         return;
     }
 
-    // Normalize URL (remove trailing slash)
+    // Normalize URL and create Profile Key (matching old system)
     const finalUrl = linkedinProfileUrl.replace(/\/$/, "");
+    const profileKey = canonicalUrl(finalUrl);
 
+    // Determine if this is a connection update vs new lead
+    const isConnection = connectionStatus === "Connected";
+    
     try {
-        // Check if lead already exists
+        // Use Profile Key for matching (like old system)
         const existing = await airtableBase('Leads').select({
             maxRecords: 1,
-            filterByFormula: `{LinkedIn Profile URL} = "${finalUrl}"`
+            filterByFormula: `{Profile Key} = "${profileKey}"`
         }).firstPage();
+
+        // Create comprehensive fields object matching old system
+        const fields = {
+            "Profile Key": profileKey,
+            "LinkedIn Profile URL": finalUrl,
+            "First Name": firstName,
+            "Last Name": lastName,
+            "Headline": leadData["Headline"] || "",
+            "Job Title": leadData["Job Title"] || "",
+            "Company Name": leadData["Company Name"] || "",
+            "About": leadData["About"] || "",
+            "Job History": leadData["Job History"] || "",
+            "LinkedIn Connection Status": connectionStatus,
+            "Status": "In Process", // Default status like old system
+            "Location": leadData["Location"] || "",
+            "Email": leadData["Email"] || "",
+            "Phone": leadData["Phone"] || "",
+            "View In Sales Navigator": leadData["View In Sales Navigator"] || null,
+            "Source": leadData["Source"] || "SalesNav + LH Scrape"
+        };
 
         if (existing && existing.length > 0) {
             // Update existing lead
             console.log(`webhookHandlers.js: Updating existing lead for client ${clientId}: ${finalUrl} (ID: ${existing[0].id})`);
             
-            // Prepare update fields (exclude LinkedIn Profile URL since it's the identifier)
-            const updateFields = { ...lead };
-            delete updateFields["LinkedIn Profile URL"]; // Don't update the URL field
-            
+            // Handle Date Connected logic like old system
+            if (isConnection && !existing[0].fields["Date Connected"] && !fields["Date Connected"]) {
+                fields["Date Connected"] = new Date().toISOString();
+            }
+
             // Only update Scoring Status if we have a value and it's not already set
             if (scoringStatus && !existing[0].fields['Scoring Status']) {
-                updateFields["Scoring Status"] = scoringStatus;
-            } else {
-                delete updateFields["Scoring Status"];
+                fields["Scoring Status"] = scoringStatus;
             }
 
             await airtableBase('Leads').update([{
                 id: existing[0].id,
-                fields: updateFields
+                fields: fields
             }]);
+            
+            return existing[0].id;
         } else {
             // Create new lead
             console.log(`webhookHandlers.js: Creating new lead for client ${clientId}: ${finalUrl}`);
             
-            const createFields = {
-                ...lead,
-                "LinkedIn Profile URL": finalUrl,
-                "Scoring Status": scoringStatus || 'To Be Scored'
-            };
+            // Set default Scoring Status for new leads
+            if (!fields["Scoring Status"]) {
+                fields["Scoring Status"] = scoringStatus || "To Be Scored";
+            }
 
-            await airtableBase('Leads').create([{
-                fields: createFields
-            }]);
+            // Set Date Connected for new connections
+            if (isConnection && !fields["Date Connected"]) {
+                fields["Date Connected"] = new Date().toISOString();
+            }
+
+            const createdRecords = await airtableBase('Leads').create([{ fields }]);
+            return createdRecords[0].id;
         }
     } catch (error) {
         console.error(`webhookHandlers.js: Error in upsertLeadToClientBase for client ${clientId}:`, error);
