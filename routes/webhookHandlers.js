@@ -139,11 +139,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     phone: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
                     email: lh.email || lh.workEmail || "",
                     linkedinProfileUrl: rawUrl ? rawUrl.replace(/\/$/, "") : null, 
-                    
-                    // ***** CORRECTED FIELD NAME CAPITALIZATION *****
                     "View In Sales Navigator": salesNavigatorUrl, 
-                    // ***** END OF CORRECTION *****
-
                     linkedinJobTitle: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     linkedinCompanyName: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
                     linkedinDescription: lh.summary || lh.bio || "", 
@@ -210,13 +206,13 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
             // Update existing lead
             console.log(`webhookHandlers.js: Updating existing lead for client ${clientId}: ${finalUrl} (ID: ${existing[0].id})`);
             
-            // Prepare update fields (exclude scoringStatus if it would overwrite existing)
+            // Prepare update fields (exclude linkedinProfileUrl since it's the identifier)
             const updateFields = { ...lead };
             delete updateFields.linkedinProfileUrl; // Don't update the URL field
             
             // Only update scoringStatus if we have a value and it's not already set
             if (scoringStatus && !existing[0].fields['Lead Scoring Status']) {
-                updateFields['Lead Scoring Status'] = scoringStatus;
+                updateFields.scoringStatus = scoringStatus;
             } else {
                 delete updateFields.scoringStatus;
             }
@@ -231,11 +227,9 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
             
             const createFields = {
                 ...lead,
-                'LinkedIn Profile URL': finalUrl,
-                'Lead Scoring Status': scoringStatus || 'To Be Scored'
+                linkedinProfileUrl: finalUrl,
+                scoringStatus: scoringStatus || 'To Be Scored'
             };
-            delete createFields.linkedinProfileUrl; // Use the Airtable field name
-            delete createFields.scoringStatus; // Use the Airtable field name
 
             await airtableBase('Leads').create([{
                 fields: createFields
