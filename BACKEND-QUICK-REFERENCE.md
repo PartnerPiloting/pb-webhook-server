@@ -140,34 +140,19 @@ const records = await clientBase("Leads").select().all();
 
 ---
 
-## 📊 Key Database Fields
+## 📊 Database Schema Reference
 
-### **Leads Table (Airtable)**
-```javascript
-// Primary fields used in leadService.js
-{
-    "Profile Key": "canonical_url",           // Line 45
-    "LinkedIn Profile URL": "full_url",       // Line 50
-    "First Name": "string",                   // Line 51
-    "Last Name": "string",                    // Line 52
-    "Scoring Status": "To Be Scored|Scored", // Line 75
-    "AI Score": "number",                     // Line 85
-    "Date Connected": "datetime",             // Line 65
-    "LinkedIn Connection Status": "string",   // Line 63
-    "View In Sales Navigator": "url"          // Line 78
-}
-```
+**⚠️ MOVED TO SINGLE SOURCE OF TRUTH**
+> Complete field definitions are now in `AIRTABLE-FIELD-REFERENCE.md`
+> This includes all Leads table fields, Master Clients fields, and Scoring Attributes
 
-### **Clients Table (Multi-tenant)**
-```javascript
-// Used in clientService.js
-{
-    "Client ID": "string",
-    "Client Name": "string", 
-    "Base ID": "string",
-    "Status": "Active|Inactive"
-}
-```
+### Quick Field Lookup
+- **Core Identity:** First Name, Last Name, LinkedIn Profile URL
+- **Scoring:** AI Score, AI Profile Assessment, Posts Relevance Status
+- **Management:** Status, Priority, Follow-Up Date, Notes
+- **Contact:** Email, Phone, Company, Job Title
+
+**Full documentation:** See `AIRTABLE-FIELD-REFERENCE.md`
 
 ---
 
