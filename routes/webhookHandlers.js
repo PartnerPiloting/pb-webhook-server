@@ -175,10 +175,10 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
  * Similar to leadService.upsertLead but uses provided Airtable base
  */
 async function upsertLeadToClientBase(lead, airtableBase, clientId) {
-    const firstName = lead.firstName || "";
-    const lastName = lead.lastName || "";
-    const linkedinProfileUrl = lead.linkedinProfileUrl || "";
-    const scoringStatus = lead.scoringStatus;
+    const firstName = lead["First Name"] || "";
+    const lastName = lead["Last Name"] || "";
+    const linkedinProfileUrl = lead["LinkedIn Profile URL"] || "";
+    const scoringStatus = lead["Scoring Status"];
 
     if (!linkedinProfileUrl) {
         console.warn(`webhookHandlers.js: Skipping upsert for client ${clientId}. No LinkedIn URL provided for lead:`, firstName, lastName);
@@ -192,7 +192,7 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
         // Check if lead already exists
         const existing = await airtableBase('Leads').select({
             maxRecords: 1,
-            filterByFormula: `{linkedinProfileUrl} = "${finalUrl}"`
+            filterByFormula: `{LinkedIn Profile URL} = "${finalUrl}"`
         }).firstPage();
 
         if (existing && existing.length > 0) {
