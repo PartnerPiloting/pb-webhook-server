@@ -150,7 +150,9 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate"),
                     // Additional fields to match old system
                     "Profile Full JSON": JSON.stringify(lh),
-                    "Raw Profile Data": JSON.stringify(lh)
+                    "Raw Profile Data": JSON.stringify(lh),
+                    // Include original data for connection degree detection
+                    originalLeadData: lh
                 };
                 
                 // Use client-specific Airtable base for upsert instead of global leadService
@@ -184,7 +186,7 @@ async function upsertLeadToClientBase(leadData, airtableBase, clientId) {
     const lastName = leadData["Last Name"] || "";
     const linkedinProfileUrl = leadData["LinkedIn Profile URL"] || "";
     const scoringStatus = leadData["Scoring Status"];
-    const connectionStatus = leadData["LinkedIn Connection Status"] || "Candidate";
+    const originalLeadData = leadData.originalLeadData || leadData;
 
     if (!linkedinProfileUrl) {
         console.warn(`webhookHandlers.js: Skipping upsert for client ${clientId}. No LinkedIn URL provided for lead:`, firstName, lastName);
@@ -195,8 +197,29 @@ async function upsertLeadToClientBase(leadData, airtableBase, clientId) {
     const finalUrl = linkedinProfileUrl.replace(/\/$/, "");
     const profileKey = canonicalUrl(finalUrl);
 
+    // Determine connection status with same logic as old system
+    let currentConnectionStatus = "Candidate";
+    
+    // Check for 1st degree connection indicators (like old system)
+    const isFirstDegree = (
+        (typeof originalLeadData.distance === "string" && originalLeadData.distance.endsWith("_1")) ||
+        (typeof originalLeadData.member_distance === "string" && originalLeadData.member_distance.endsWith("_1")) ||
+        originalLeadData.degree === 1 ||
+        originalLeadData.connectionDegree === "1st"
+    );
+    
+    if (isFirstDegree) {
+        currentConnectionStatus = "Connected";
+    } else if (leadData["LinkedIn Connection Status"] === "Pending" || originalLeadData.linkedinConnectionStatus === "Pending") {
+        currentConnectionStatus = "Pending";
+    } else if (originalLeadData.connectionStatus) {
+        currentConnectionStatus = originalLeadData.connectionStatus;
+    } else if (leadData["LinkedIn Connection Status"]) {
+        currentConnectionStatus = leadData["LinkedIn Connection Status"];
+    }
+
     // Determine if this is a connection update vs new lead
-    const isConnection = connectionStatus === "Connected";
+    const isConnection = currentConnectionStatus === "Connected";
     
     try {
         // Use Profile Key for matching (like old system)
@@ -215,14 +238,20 @@ async function upsertLeadToClientBase(leadData, airtableBase, clientId) {
             "Company Name": leadData["Company Name"] || "",
             "About": leadData["About"] || "",
             "Job History": leadData["Job History"] || "",
-            "LinkedIn Connection Status": connectionStatus,
+            "LinkedIn Connection Status": currentConnectionStatus,
             "Status": "In Process", // Default status like old system
             "Location": leadData["Location"] || "",
             "Email": leadData["Email"] || "",
             "Phone": leadData["Phone"] || "",
-            "View In Sales Navigator": leadData["View In Sales Navigator"] || null,
-            "Source": leadData["Source"] || "SalesNav + LH Scrape"
+            "View In Sales Navigator": leadData["View In Sales Navigator"] || null
         };
+
+        // Set Source field with same logic as old system
+        if (!leadData["Source"]) {
+            fields["Source"] = isFirstDegree ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
+        } else {
+            fields["Source"] = leadData["Source"];
+        }
 
         if (existing && existing.length > 0) {
             // Update existing lead
