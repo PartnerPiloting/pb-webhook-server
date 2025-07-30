@@ -132,27 +132,20 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 // ***** END: Construct Sales Navigator URL *****
 
                 const leadForUpsert = {
-                    firstName: lh.firstName || lh.first_name || "", 
-                    lastName: lh.lastName || lh.last_name || "",
-                    headline: lh.headline || "", 
-                    locationName: lh.locationName || lh.location_name || lh.location || "",
-                    phone: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
-                    email: lh.email || lh.workEmail || "",
-                    linkedinProfileUrl: rawUrl ? rawUrl.replace(/\/$/, "") : null, 
+                    "First Name": lh.firstName || lh.first_name || "", 
+                    "Last Name": lh.lastName || lh.last_name || "",
+                    "Headline": lh.headline || "", 
+                    "Location": lh.locationName || lh.location_name || lh.location || "",
+                    "Phone": (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
+                    "Email": lh.email || lh.workEmail || "",
+                    "LinkedIn Profile URL": rawUrl ? rawUrl.replace(/\/$/, "") : null, 
                     "View In Sales Navigator": salesNavigatorUrl, 
-                    linkedinJobTitle: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
-                    linkedinCompanyName: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
-                    linkedinDescription: lh.summary || lh.bio || "", 
-                    linkedinJobDateRange: (lh.experience && lh.experience[0] ? (lh.experience[0].dateRange || lh.experience[0].dates) : "") || "",
-                    linkedinJobDescription: (lh.experience && lh.experience[0] ? lh.experience[0].description : "") || "",
-                    linkedinPreviousJobDateRange: (lh.experience && lh.experience[1] ? (lh.experience[1].dateRange || lh.experience[1].dates) : "") || "",
-                    linkedinPreviousJobDescription: (lh.experience && lh.experience[1] ? lh.experience[1].description : "") || "",
-                    connectionDegree: lh.connectionDegree || ((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1 ? "1st" : (lh.degree ? String(lh.degree) : "")),
-                    connectionSince: lh.connectionDate || lh.connected_at_iso || lh.connected_at || lh.invited_date_iso || null,
-                    refreshedAt: lh.lastRefreshed || lh.profileLastRefreshedDate || new Date().toISOString(),
-                    raw: lh, 
-                    scoringStatus: scoringStatusForThisLead, 
-                    linkedinConnectionStatus: lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
+                    "Job Title": lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
+                    "Company Name": lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
+                    "About": lh.summary || lh.bio || "", 
+                    "Source": "LinkedHelper",
+                    "Lead Scoring Status": scoringStatusForThisLead, 
+                    "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
                 };
                 
                 // Use client-specific Airtable base for upsert instead of global leadService
@@ -182,10 +175,10 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
  * Similar to leadService.upsertLead but uses provided Airtable base
  */
 async function upsertLeadToClientBase(lead, airtableBase, clientId) {
-    const { 
-        firstName = "", lastName = "", linkedinProfileUrl = "",
-        scoringStatus
-    } = lead;
+    const firstName = lead["First Name"] || "";
+    const lastName = lead["Last Name"] || "";
+    const linkedinProfileUrl = lead["LinkedIn Profile URL"] || "";
+    const scoringStatus = lead["Lead Scoring Status"];
 
     if (!linkedinProfileUrl) {
         console.warn(`webhookHandlers.js: Skipping upsert for client ${clientId}. No LinkedIn URL provided for lead:`, firstName, lastName);
@@ -206,15 +199,15 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
             // Update existing lead
             console.log(`webhookHandlers.js: Updating existing lead for client ${clientId}: ${finalUrl} (ID: ${existing[0].id})`);
             
-            // Prepare update fields (exclude linkedinProfileUrl since it's the identifier)
+            // Prepare update fields (exclude LinkedIn Profile URL since it's the identifier)
             const updateFields = { ...lead };
-            delete updateFields.linkedinProfileUrl; // Don't update the URL field
+            delete updateFields["LinkedIn Profile URL"]; // Don't update the URL field
             
-            // Only update scoringStatus if we have a value and it's not already set
+            // Only update Lead Scoring Status if we have a value and it's not already set
             if (scoringStatus && !existing[0].fields['Lead Scoring Status']) {
-                updateFields.scoringStatus = scoringStatus;
+                updateFields["Lead Scoring Status"] = scoringStatus;
             } else {
-                delete updateFields.scoringStatus;
+                delete updateFields["Lead Scoring Status"];
             }
 
             await airtableBase('Leads').update([{
@@ -227,8 +220,8 @@ async function upsertLeadToClientBase(lead, airtableBase, clientId) {
             
             const createFields = {
                 ...lead,
-                linkedinProfileUrl: finalUrl,
-                scoringStatus: scoringStatus || 'To Be Scored'
+                "LinkedIn Profile URL": finalUrl,
+                "Lead Scoring Status": scoringStatus || 'To Be Scored'
             };
 
             await airtableBase('Leads').create([{

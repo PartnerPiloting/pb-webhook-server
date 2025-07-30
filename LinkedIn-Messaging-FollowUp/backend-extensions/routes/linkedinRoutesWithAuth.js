@@ -82,6 +82,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       aiScore: record.fields[FIELD_NAMES.AI_SCORE],
       status: record.fields[FIELD_NAMES.STATUS],
       priority: record.fields[FIELD_NAMES.PRIORITY],
+      topScoringPost: record.fields['Top Scoring Post'],
       postsRelevanceStatus: record.fields[FIELD_NAMES.POSTS_RELEVANCE_STATUS],
       postsActioned: record.fields[FIELD_NAMES.POSTS_ACTIONED],
       // Include all original fields for compatibility
