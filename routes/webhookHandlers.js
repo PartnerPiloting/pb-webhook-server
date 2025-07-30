@@ -143,7 +143,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     "Job Title": lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     "Company Name": lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
                     "About": lh.summary || lh.bio || "", 
-                    "Source": "LinkedHelper",
+                    "Source": "SalesNav + LH Scrape",
                     "Scoring Status": scoringStatusForThisLead, 
                     "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate")
                 };
