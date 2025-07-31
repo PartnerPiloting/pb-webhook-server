@@ -1,16 +1,14 @@
 // routes/webhookHandlers.js
 // This version includes updated logic for handling 'scoringStatus' for /lh-webhook/upsertLeadOnly
 // and the corrected regex for trailing slash removal.
-// It has the /pb-webhook/scrapeLeads route removed.
 // MODIFIED: Corrected capitalization for "View In Sales Navigator".
 
 const express = require('express');
 const router = express.Router();
 
 // --- Dependencies needed for /lh-webhook/upsertLeadOnly ---
-const airtableBase = require('../config/airtableClient.js'); // For upsertLead via leadService
 const { upsertLead } = require('../services/leadService.js');
-const { alertAdmin, canonicalUrl, safeDate } = require('../utils/appHelpers.js'); // For error alerting and URL normalization
+const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
 
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
