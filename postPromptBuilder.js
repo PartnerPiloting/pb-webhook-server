@@ -1,5 +1,6 @@
 // File: postPromptBuilder.js
 
+const StructuredLogger = require('./utils/structuredLogger');
 // We import the function to load all necessary data from Airtable
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 
@@ -9,18 +10,30 @@ const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
  *
  * @param {object} base - The initialized Airtable base instance.
  * @param {object} config - The postAnalysisConfig object from index.js, containing table names.
+ * @param {object} logger - Optional StructuredLogger instance for consistent logging.
  * @returns {Promise<string>} A promise that resolves to the fully constructed system prompt string.
  */
-async function buildPostScoringPrompt(base, config) {
+async function buildPostScoringPrompt(base, config, logger = null) {
+    // Initialize logger if not provided (backward compatibility)
+    if (!logger) {
+        logger = new StructuredLogger('SYSTEM', 'PROMPT');
+    }
+
+    logger.setup('buildPostScoringPrompt', 'Starting post scoring prompt construction');
+
     // 1. Load the structured data (prompt components and attributes) from Airtable
-    const { promptComponents, attributesById } = await loadPostScoringAirtableConfig(base, config);
+    const { promptComponents, attributesById } = await loadPostScoringAirtableConfig(base, config, logger);
 
     if (!promptComponents || promptComponents.length === 0) {
+        logger.error('buildPostScoringPrompt', 'No prompt components loaded from Airtable');
         throw new Error("PostPromptBuilder: Cannot build prompt. No prompt components were loaded from Airtable.");
     }
     if (!attributesById || Object.keys(attributesById).length === 0) {
+        logger.error('buildPostScoringPrompt', 'No scoring attributes loaded from Airtable');
         throw new Error("PostPromptBuilder: Cannot build prompt. No scoring attributes were loaded from Airtable.");
     }
+
+    logger.process('buildPostScoringPrompt', `Assembling prompt from ${promptComponents.length} components and ${Object.keys(attributesById).length} attributes`);
 
     // 2. Assemble the prompt by iterating through the ordered components from Table 2
     let finalPrompt = "";
@@ -29,7 +42,7 @@ async function buildPostScoringPrompt(base, config) {
         // its text, followed by the entire detailed attribute breakdown.
         if (component.componentId === 'SCORING_HEADER') {
             finalPrompt += component.instructionText + "\n";
-            finalPrompt += buildScoringRubricSection(attributesById); // Add the detailed rubric here
+            finalPrompt += buildScoringRubricSection(attributesById, logger); // Add the detailed rubric here
         }
         // The OUTPUT_JSON_STRUCTURE is just another component, so its text gets added in its sorted order.
         else {
@@ -37,6 +50,7 @@ async function buildPostScoringPrompt(base, config) {
         }
     });
 
+    logger.summary('buildPostScoringPrompt', `Successfully built prompt with ${finalPrompt.length} characters`);
     return finalPrompt.trim();
 }
 
@@ -44,14 +58,16 @@ async function buildPostScoringPrompt(base, config) {
  * (Internal helper function) Takes the loaded attributes and formats them into a
  * readable rubric string for the AI prompt.
  * @param {object} attributesById - The structured attributes object from the loader.
+ * @param {object} logger - StructuredLogger instance for consistent logging.
  * @returns {string} A formatted string containing all scoring attribute details.
  */
-function buildScoringRubricSection(attributesById) {
+function buildScoringRubricSection(attributesById, logger) {
     let rubricParts = [];
     rubricParts.push("================= SCORING ATTRIBUTES (Criteria & Details) =================");
 
     const positiveAttrs = [];
     const negativeAttrs = [];
+    let skippedCount = 0;
 
     // Separate attributes into positive and negative categories for clarity
     // Only include ACTIVE attributes in the scoring rubric
@@ -60,7 +76,8 @@ function buildScoringRubricSection(attributesById) {
         
         // Skip inactive attributes - they should not be included in AI scoring
         if (attr.active === false) {
-            console.log(`PostPromptBuilder: Skipping inactive attribute '${attr.id}' from scoring rubric`);
+            logger.debug('buildScoringRubricSection', `Skipping inactive attribute '${attr.id}' from scoring rubric`);
+            skippedCount++;
             continue;
         }
         
@@ -70,10 +87,12 @@ function buildScoringRubricSection(attributesById) {
             negativeAttrs.push(attr);
         } else {
             // Add any other attributes to a default list if needed
-            console.warn(`PostPromptBuilder: Attribute '${attr.id}' has an unhandled category: '${attr.Category}'.`);
+            logger.warn('buildScoringRubricSection', `Attribute '${attr.id}' has unhandled category: '${attr.Category}' - defaulting to positive`);
             positiveAttrs.push(attr); // Defaulting to list under positives
         }
     }
+
+    logger.process('buildScoringRubricSection', `Processed attributes: ${positiveAttrs.length} positive, ${negativeAttrs.length} negative, ${skippedCount} skipped (inactive)`);
 
     // Format the positive attributes section
     if (positiveAttrs.length > 0) {
