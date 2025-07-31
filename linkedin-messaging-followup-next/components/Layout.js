@@ -243,10 +243,13 @@ const Layout = ({ children }) => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
-                {clientProfile?.clientName 
-                  ? `${clientProfile.clientName}'s LinkedIn Follow-Up Portal` 
-                  : 'LinkedIn Follow-Up Portal'
-                }
+                {(() => {
+                  // Handle both normal and test mode client profile structures
+                  const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
+                  return clientName 
+                    ? `${clientName}'s LinkedIn Follow-Up Portal` 
+                    : 'LinkedIn Follow-Up Portal';
+                })()}
               </h1>
             </div>
             <div className="flex items-center space-x-4">
