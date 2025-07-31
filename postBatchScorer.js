@@ -16,6 +16,9 @@ const { parsePlainTextPosts } = require('./utils/parsePlainTextPosts');
 const { repairAndParseJson } = require('./utils/jsonRepair');
 const { alertAdmin } = require('./utils/appHelpers.js');
 
+// --- Structured Logging ---
+const { StructuredLogger } = require('./utils/structuredLogger');
+
 // --- Centralized Dependencies (will be passed into 'run' function) ---
 let POST_BATCH_SCORER_VERTEX_AI_CLIENT;
 let POST_BATCH_SCORER_GEMINI_MODEL_ID;
@@ -38,8 +41,11 @@ const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS
  * @returns {Object} - Summary of execution across all clients
  */
 async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId = null, limit = null) {
-    console.log("=== STARTING MULTI-TENANT POST SCORING ===");
-    console.log(`Parameters: clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}`);
+    // Create system-level logger for multi-tenant operations
+    const systemLogger = new StructuredLogger('SYSTEM');
+    
+    systemLogger.setup("=== STARTING MULTI-TENANT POST SCORING ===");
+    systemLogger.setup(`Parameters: clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}`);
     
     // Set global dependencies
     POST_BATCH_SCORER_VERTEX_AI_CLIENT = geminiClient;
@@ -62,23 +68,27 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
         const clientsToProcess = await clientService.getActiveClients(clientId);
         results.totalClients = clientsToProcess.length;
         
-        console.log(`Found ${clientsToProcess.length} client(s) to process for post scoring`);
+        systemLogger.setup(`Found ${clientsToProcess.length} client(s) to process for post scoring`);
         
         // Process each client sequentially
         for (const client of clientsToProcess) {
-            console.log(`\n--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
+            // Create client-specific logger with shared session ID
+            const clientLogger = new StructuredLogger(client.clientId, systemLogger.getSessionId());
+            clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
             
             try {
-                const clientResult = await processClientPostScoring(client, limit);
+                const clientResult = await processClientPostScoring(client, limit, clientLogger);
                 results.clientResults.push(clientResult);
                 
                 if (clientResult.status === 'success') {
                     results.successfulClients++;
                     results.totalPostsProcessed += clientResult.postsProcessed || 0;
                     results.totalPostsScored += clientResult.postsScored || 0;
+                    clientLogger.summary(`SUCCESS - Processed: ${clientResult.postsProcessed}, Scored: ${clientResult.postsScored}, Duration: ${clientResult.duration}s`);
                 } else {
                     results.failedClients++;
                     results.totalErrors += clientResult.errors || 0;
+                    clientLogger.error(`COMPLETED WITH ERRORS - Errors: ${clientResult.errors}, Details: ${clientResult.errorDetails?.join('; ')}`);
                 }
                 
                 // Log execution for this client
@@ -93,7 +103,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
                 });
                 
             } catch (clientError) {
-                console.error(`Failed to process client ${client.clientId}:`, clientError.message);
+                const clientLogger = new StructuredLogger(client.clientId, systemLogger.getSessionId());
+                clientLogger.error(`Failed to process client ${client.clientId}: ${clientError.message}`);
                 
                 const failedResult = {
                     clientId: client.clientId,
@@ -124,7 +135,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
         }
         
     } catch (globalError) {
-        console.error("Global error in multi-tenant post scoring:", globalError.message);
+        systemLogger.error("Global error in multi-tenant post scoring:", globalError.message);
         await alertAdmin("Multi-Tenant Post Scoring Global Error", `Error: ${globalError.message}\nStack: ${globalError.stack}`);
         throw globalError;
     }
@@ -133,12 +144,12 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     const endTime = new Date();
     results.duration = Math.round((endTime - startTime) / 1000); // seconds
     
-    console.log("\n=== MULTI-TENANT POST SCORING SUMMARY ===");
-    console.log(`Clients: ${results.successfulClients}/${results.totalClients} successful`);
-    console.log(`Posts processed: ${results.totalPostsProcessed}`);
-    console.log(`Posts scored: ${results.totalPostsScored}`);
-    console.log(`Errors: ${results.totalErrors}`);
-    console.log(`Duration: ${results.duration}s`);
+    systemLogger.summary("=== MULTI-TENANT POST SCORING SUMMARY ===");
+    systemLogger.summary(`Clients: ${results.successfulClients}/${results.totalClients} successful`);
+    systemLogger.summary(`Posts processed: ${results.totalPostsProcessed}`);
+    systemLogger.summary(`Posts scored: ${results.totalPostsScored}`);
+    systemLogger.summary(`Errors: ${results.totalErrors}`);
+    systemLogger.summary(`Duration: ${results.duration}s`);
     
     return results;
 }
@@ -147,7 +158,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     Process Single Client Post Scoring
 =================================================================== */
 
-async function processClientPostScoring(client, limit) {
+async function processClientPostScoring(client, limit, logger) {
     const clientStartTime = new Date();
     const clientResult = {
         clientId: client.clientId,
@@ -167,39 +178,39 @@ async function processClientPostScoring(client, limit) {
             throw new Error(`Failed to connect to Airtable base: ${client.airtableBaseId}`);
         }
         
-        console.log(`Connected to client base: ${client.airtableBaseId}`);
+        logger.setup(`Connected to client base: ${client.airtableBaseId}`);
         
         // Load client-specific configuration
         const config = await loadClientPostScoringConfig(clientBase);
         
         // Get leads with posts to be scored
         const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit);
-        console.log(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
+        logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
         
         if (leadsToProcess.length === 0) {
             clientResult.status = 'success';
             clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
-            console.log(`No posts to score for client ${client.clientId}`);
+            logger.summary(`No posts to score for client ${client.clientId}`);
             return clientResult;
         }
         
         // Process leads in chunks
         const chunks = chunkArray(leadsToProcess, CHUNK_SIZE);
-        console.log(`Processing ${leadsToProcess.length} leads in ${chunks.length} chunk(s) of max ${CHUNK_SIZE}`);
+        logger.process(`Processing ${leadsToProcess.length} leads in ${chunks.length} chunk(s) of max ${CHUNK_SIZE}`);
         
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
-            console.log(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} leads) for client ${client.clientId}`);
+            logger.process(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} leads) for client ${client.clientId}`);
             
             try {
-                const chunkResult = await processPostScoringChunk(chunk, clientBase, config, client.clientId);
+                const chunkResult = await processPostScoringChunk(chunk, clientBase, config, client.clientId, logger);
                 clientResult.postsProcessed += chunkResult.processed;
                 clientResult.postsScored += chunkResult.scored;
                 clientResult.errors += chunkResult.errors;
                 clientResult.errorDetails.push(...chunkResult.errorDetails);
                 
             } catch (chunkError) {
-                console.error(`Error processing chunk ${i + 1} for client ${client.clientId}:`, chunkError.message);
+                logger.error(`Error processing chunk ${i + 1} for client ${client.clientId}: ${chunkError.message}`);
                 clientResult.errors++;
                 clientResult.errorDetails.push(`Chunk ${i + 1}: ${chunkError.message}`);
             }
@@ -211,7 +222,7 @@ async function processClientPostScoring(client, limit) {
         clientResult.status = 'failed';
         clientResult.errors++;
         clientResult.errorDetails.push(error.message);
-        console.error(`Failed to process client ${client.clientId}:`, error.message);
+        logger.error(`Failed to process client ${client.clientId}: ${error.message}`);
     }
     
     clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
@@ -264,7 +275,7 @@ async function getLeadsForPostScoring(clientBase, config, limit) {
     return records;
 }
 
-async function processPostScoringChunk(records, clientBase, config, clientId) {
+async function processPostScoringChunk(records, clientBase, config, clientId, logger) {
     const chunkResult = {
         processed: 0,
         scored: 0,
@@ -272,23 +283,23 @@ async function processPostScoringChunk(records, clientBase, config, clientId) {
         errorDetails: []
     };
     
-    console.log(`Processing ${records.length} leads for post scoring in client ${clientId}`);
+    logger.process(`Processing ${records.length} leads for post scoring in client ${clientId}`);
     
     for (const leadRecord of records) {
         try {
             chunkResult.processed++;
             
-            const result = await analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId);
+            const result = await analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger);
             
             if (result.status === 'success' || result.status === 'scored') {
                 chunkResult.scored++;
             } else if (result.status && result.status.startsWith('Skipped')) {
                 // Skipped records are not counted as errors - they'll be retried next time
-                console.log(`Lead ${leadRecord.id}: ${result.status}`);
+                logger.debug(`Lead ${leadRecord.id}: ${result.status}`);
             }
             
         } catch (leadError) {
-            console.error(`Error processing lead ${leadRecord.id} in client ${clientId}:`, leadError.message);
+            logger.error(`Error processing lead ${leadRecord.id} in client ${clientId}: ${leadError.message}`);
             chunkResult.errors++;
             chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${leadError.message}`);
         }
@@ -300,13 +311,13 @@ async function processPostScoringChunk(records, clientBase, config, clientId) {
 /**
  * Analyze and score posts for a single lead - adapted from postAnalysisService.js
  */
-async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId) {
-    console.log(`Analyzing posts for lead ${leadRecord.id} in client ${clientId}`);
+async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger) {
+    logger.debug(`Analyzing posts for lead ${leadRecord.id} in client ${clientId}`);
     
     // Parse posts content
     const rawPostsContent = leadRecord.fields[config.fields.postsContent];
     if (!rawPostsContent) {
-        console.log(`Lead ${leadRecord.id}: No posts content, skipping`);
+        logger.debug(`Lead ${leadRecord.id}: No posts content, skipping`);
         return { status: "skipped", reason: "No posts content" };
     }
     
@@ -317,7 +328,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         
         if (repairResult.success) {
             parsedPostsArray = repairResult.data;
-            console.log(`Lead ${leadRecord.id}: JSON parsed successfully using method: ${repairResult.method}`);
+            logger.debug(`Lead ${leadRecord.id}: JSON parsed successfully using method: ${repairResult.method}`);
             
             // Update Posts JSON Status field - simple pass/fail tracking
             const jsonStatus = repairResult.success ? 'Parsed' : 'Failed';
@@ -328,12 +339,12 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
                 });
             } catch (e) { /* Field might not exist yet */ }
         } else {
-            console.error(`Lead ${leadRecord.id}: All JSON parsing methods failed:`, repairResult.error);
+            logger.error(`Lead ${leadRecord.id}: All JSON parsing methods failed: ${repairResult.error}`);
             
             // Enhanced diagnostic logging
-            console.log(`Lead ${leadRecord.id}: Raw JSON length: ${rawPostsContent.length}`);
-            console.log(`Lead ${leadRecord.id}: First 200 chars: ${rawPostsContent.substring(0, 200)}`);
-            console.log(`Lead ${leadRecord.id}: Last 200 chars: ${rawPostsContent.substring(rawPostsContent.length - 200)}`);
+            logger.debug(`Lead ${leadRecord.id}: Raw JSON length: ${rawPostsContent.length}`);
+            logger.debug(`Lead ${leadRecord.id}: First 200 chars: ${rawPostsContent.substring(0, 200)}`);
+            logger.debug(`Lead ${leadRecord.id}: Last 200 chars: ${rawPostsContent.substring(rawPostsContent.length - 200)}`);
             
             // Mark as processed with detailed error info
             await clientBase(config.leadsTableName).update(leadRecord.id, {
@@ -379,10 +390,10 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
 
     try {
         // Load scoring configuration (no global filtering - let attributes handle relevance)
-        const config_data = await loadPostScoringAirtableConfig(clientBase, config);
+        const config_data = await loadPostScoringAirtableConfig(clientBase, config, logger);
         
         // Score all original posts using client's specific attributes
-        console.log(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria.`);
+        logger.process(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria`);
         
         // Score posts with Gemini
         const systemPrompt = await buildPostScoringPrompt(clientBase, config);
@@ -430,7 +441,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
              throw new Error("Could not determine the highest scoring post from the AI response.");
         }
         
-        console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
+        logger.process(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}`);
         
         // Format top scoring post text (matching original)
         function safeFormatDate(dateStr) {
@@ -453,7 +464,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             [config.fields.dateScored]: new Date().toISOString()
         });
         
-        console.log(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
+        logger.summary(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
         return { status: "success", relevanceScore: highestScoringPost.post_score };
 
     } catch (error) {

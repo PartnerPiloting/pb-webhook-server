@@ -1,5 +1,7 @@
 // File: postAttributeLoader.js
 
+const { StructuredLogger } = require('./utils/structuredLogger');
+
 /**
  * Fetches and structures the post scoring configuration from Airtable.
  * This includes general prompt components (from Table 2) and
@@ -7,22 +9,26 @@
  *
  * @param {object} base - The initialized Airtable base instance.
  * @param {object} config - The postAnalysisConfig object from index.js, containing table names.
+ * @param {object} logger - Optional StructuredLogger instance (will create one if not provided)
  * @returns {Promise<object>} A promise that resolves to an object containing structured data.
  * e.g., { promptComponents: [...], attributesById: {...} }
  * @throws {Error} If fetching from Airtable fails or data is missing.
  */
-async function loadPostScoringAirtableConfig(base, config) {
+async function loadPostScoringAirtableConfig(base, config, logger = null) {
     if (!base) throw new Error("Airtable base instance is required.");
     if (!config || !config.attributesTableName || !config.promptComponentsTableName) {
         throw new Error("Airtable table names for attributes and prompt components are required in config.");
     }
+
+    // Create logger if not provided (fallback for direct calls)
+    const log = logger || new StructuredLogger('CONFIG');
 
     const tableNames = {
         attributes: config.attributesTableName,
         promptComponents: config.promptComponentsTableName
     };
 
-    console.log(`PostAttributeLoader: Loading data from Airtable tables: Attributes ('${tableNames.attributes}'), PromptComponents ('${tableNames.promptComponents}')`);
+    log.setup(`Loading data from Airtable tables: Attributes ('${tableNames.attributes}'), PromptComponents ('${tableNames.promptComponents}')`);
 
     try {
         // --- 1. Fetch General Prompt Components (from Table 2) ---
@@ -41,7 +47,7 @@ async function loadPostScoringAirtableConfig(base, config) {
         }));
 
         if (promptComponents.length === 0) {
-            console.warn(`PostAttributeLoader: No prompt components found in table '${tableNames.promptComponents}'.`);
+            log.warn(`No prompt components found in table '${tableNames.promptComponents}'`);
         }
 
         // --- 2. Fetch Scoring Attributes (from Table 1) ---
@@ -70,14 +76,14 @@ async function loadPostScoringAirtableConfig(base, config) {
         }
 
         if (Object.keys(attributesById).length === 0) {
-            console.warn(`PostAttributeLoader: No scoring attributes found in table '${tableNames.attributes}'.`);
+            log.warn(`No scoring attributes found in table '${tableNames.attributes}'`);
         }
 
         // --- 3. All configuration loaded ---
         // Note: Removed global keyword filtering to support true multi-tenancy
         // Each client's scoring attributes handle content relevance through their own keywords
         
-        console.log(`PostAttributeLoader: Loaded ${promptComponents.length} prompt components and ${Object.keys(attributesById).length} scoring attributes.`);
+        log.setup(`Loaded ${promptComponents.length} prompt components and ${Object.keys(attributesById).length} scoring attributes`);
 
         // Return all loaded configuration in one structured object
         return {
@@ -86,7 +92,7 @@ async function loadPostScoringAirtableConfig(base, config) {
         };
 
     } catch (error) {
-        console.error(`PostAttributeLoader: Error loading configuration from Airtable. Error: ${error.message}`, error.stack);
+        log.error(`Error loading configuration from Airtable. Error: ${error.message}`, error.stack);
         throw new Error(`Failed to load post scoring configuration from Airtable: ${error.message}`);
     }
 }
