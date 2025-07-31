@@ -139,33 +139,29 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     "Phone": (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
                     "Email": lh.email || lh.workEmail || "",
                     "LinkedIn Profile URL": rawUrl ? rawUrl.replace(/\/$/, "") : null, 
+                    linkedinProfileUrl: rawUrl ? rawUrl.replace(/\/$/, "") : null,  // Property name the function expects
                     "View In Sales Navigator": salesNavigatorUrl, 
                     "Job Title": lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
                     "Company Name": lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
                     "About": lh.summary || lh.bio || "", 
-                    "Job History": (lh.experience && Array.isArray(lh.experience)) ? 
-                        lh.experience.slice(0, 3).map(exp => `${exp.title || ''} at ${exp.company || ''}`).join('; ') : "",
-                    "Source": "SalesNav + LH Scrape",
                     "Scoring Status": scoringStatusForThisLead, 
-                    "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || (((typeof lh.distance === "string" && lh.distance.endsWith("_1")) || (typeof lh.member_distance === "string" && lh.member_distance.endsWith("_1")) || lh.degree === 1) ? "Connected" : "Candidate"),
-                    // Additional fields to match old system
+                    "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || "Unknown",
                     "Profile Full JSON": JSON.stringify(lh),
                     "Raw Profile Data": JSON.stringify(lh),
-                    // Include original data for connection degree detection
-                    originalLeadData: lh
+                    raw: lh  // originalLeadData for fallback URL lookup
                 };
                 
                 // Use the original working upsertLead function from leadService.js
+                // Pass the entire leadForUpsert object and the client-specific Airtable base
                 await upsertLead(
-                    leadForUpsert["First Name"] || '',
-                    leadForUpsert["Last Name"] || '',
-                    rawUrl || '',  // Use the cleaned URL we already extracted
-                    leadForUpsert["Company Name"] || '',
-                    leadForUpsert["Job Title"] || '',
-                    leadForUpsert["Email"] || '',
-                    leadForUpsert["Phone"] || '',
-                    leadForUpsert["Scoring Status"] || '',
-                    leadForUpsert,  // Pass the original lead data as rawDataFromWebhook
+                    leadForUpsert,      // The complete lead object
+                    null,               // finalScore
+                    null,               // aiProfileAssessment  
+                    null,               // attribute_reasoning_obj
+                    null,               // attributeBreakdown
+                    null,               // auFlag
+                    null,               // ai_excluded_val
+                    null,               // exclude_details_val
                     clientAirtableBase  // Use the client-specific Airtable base
                 );
                 processedCount++;
