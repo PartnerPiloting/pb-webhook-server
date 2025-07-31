@@ -157,14 +157,14 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 
                 // Use the original working upsertLead function from leadService.js
                 await upsertLead(
-                    leadForUpsert.firstName || '',
-                    leadForUpsert.lastName || '',
-                    leadForUpsert.profileUrl || leadForUpsert.linkedinProfileUrl || leadForUpsert.profile_url || '',
-                    leadForUpsert.companyName || '',
-                    leadForUpsert.jobTitle || '',
-                    leadForUpsert.email || '',
-                    leadForUpsert.phone || '',
-                    leadForUpsert.scoringStatus || '',
+                    leadForUpsert["First Name"] || '',
+                    leadForUpsert["Last Name"] || '',
+                    rawUrl || '',  // Use the cleaned URL we already extracted
+                    leadForUpsert["Company Name"] || '',
+                    leadForUpsert["Job Title"] || '',
+                    leadForUpsert["Email"] || '',
+                    leadForUpsert["Phone"] || '',
+                    leadForUpsert["Scoring Status"] || '',
                     leadForUpsert,  // Pass the original lead data as rawDataFromWebhook
                     clientAirtableBase  // Use the client-specific Airtable base
                 );
