@@ -216,7 +216,7 @@ const TopScoringPostsWithParams = () => {
                       In Process • Score: {lead[FIELD_NAMES.AI_SCORE] || 0}
                     </div>
                     <div className="text-sm text-green-600 mt-1">
-                      Posts Relevance: {lead[FIELD_NAMES.POSTS_RELEVANCE_SCORE] || 0}
+                      Posts Relevance: {Math.round(lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0)}%
                     </div>
                   </div>
                 </div>
@@ -237,7 +237,7 @@ const TopScoringPostsWithParams = () => {
               </h2>
               <div className="text-sm text-gray-600 mt-1">
                 AI Score: {selectedLead[FIELD_NAMES.AI_SCORE] || 0}% • 
-                Posts Relevance: {selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0}%
+                Posts Relevance: {Math.round(selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0)}%
               </div>
             </div>
 

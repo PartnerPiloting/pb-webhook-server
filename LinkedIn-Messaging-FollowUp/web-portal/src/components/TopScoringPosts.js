@@ -181,7 +181,7 @@ const TopScoringPosts = () => {
                 </div>
                 <div className="text-sm text-gray-600 mt-1">
                   AI Score: {lead[FIELD_NAMES.AI_SCORE]}% • 
-                  Posts Relevance: {lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE]}%
+                  Posts Relevance: {Math.round(lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0)}%
                 </div>
                 {lead[FIELD_NAMES.TOP_SCORING_POST] && (
                   <div className="text-xs text-gray-500 mt-1 truncate">

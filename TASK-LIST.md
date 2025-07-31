@@ -16,6 +16,21 @@
 
 ## High Priority Tasks 🔥
 
+### Post Scoring Content Display Fix
+- [ ] **Fix "Top Scoring Post" empty content issue**
+  - [ ] Problem: Occasional empty Content and URL in "Top Scoring Post" field despite valid post data
+  - [ ] Root cause: URL matching failure between AI response and original post data during merge
+  - [ ] **Solution Option 1 (Low Risk)**: Implement normalized URL comparison
+    - Add `normalizeUrl()` function to handle protocol/www/trailing slash differences
+    - Update URL matching logic in `postBatchScorer.js` lines 425-435
+    - Minimal code change, preserves existing flow
+  - [ ] **Solution Option 2 (Safety Net)**: Fallback lookup from Posts Content field
+    - Only triggers when current method fails (missing content)
+    - Re-reads "Posts Content" field and finds post by normalized URL
+    - Keeps existing logic intact while fixing edge cases
+  - [ ] **Testing Strategy**: Test with one client first, monitor logs, compare success rates
+  - [ ] **Priority**: Medium-High (affects user experience but system mostly works)
+
 ### Bonus Points System Implementation
 - [ ] **Phase 1: Frontend UX for Bonus Points**
   - [ ] Add "Bonus Points" Yes/No checkbox to attribute editing interface
