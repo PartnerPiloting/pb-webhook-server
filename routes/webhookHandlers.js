@@ -155,8 +155,19 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     originalLeadData: lh
                 };
                 
-                // Use client-specific Airtable base for upsert instead of global leadService
-                await upsertLeadToClientBase(leadForUpsert, clientAirtableBase, clientId);
+                // Use the original working upsertLead function from leadService.js
+                await upsertLead(
+                    leadForUpsert.firstName || '',
+                    leadForUpsert.lastName || '',
+                    leadForUpsert.profileUrl || leadForUpsert.linkedinProfileUrl || leadForUpsert.profile_url || '',
+                    leadForUpsert.companyName || '',
+                    leadForUpsert.jobTitle || '',
+                    leadForUpsert.email || '',
+                    leadForUpsert.phone || '',
+                    leadForUpsert.scoringStatus || '',
+                    leadForUpsert,  // Pass the original lead data as rawDataFromWebhook
+                    clientAirtableBase  // Use the client-specific Airtable base
+                );
                 processedCount++;
             } catch (upsertError) {
                 errorCount++;
@@ -176,124 +187,5 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         }
     }
 });
-
-/**
- * Client-aware upsert function for webhook use
- * Based on the proven leadService.upsertLead logic with Profile Key matching
- */
-async function upsertLeadToClientBase(leadData, airtableBase, clientId) {
-    const firstName = leadData["First Name"] || "";
-    const lastName = leadData["Last Name"] || "";
-    const linkedinProfileUrl = leadData["LinkedIn Profile URL"] || "";
-    const scoringStatus = leadData["Scoring Status"];
-    const originalLeadData = leadData.originalLeadData || leadData;
-
-    if (!linkedinProfileUrl) {
-        console.warn(`webhookHandlers.js: Skipping upsert for client ${clientId}. No LinkedIn URL provided for lead:`, firstName, lastName);
-        return;
-    }
-
-    // Normalize URL and create Profile Key (matching old system)
-    const finalUrl = linkedinProfileUrl.replace(/\/$/, "");
-    const profileKey = canonicalUrl(finalUrl);
-
-    // Determine connection status with same logic as old system
-    let currentConnectionStatus = "Candidate";
-    
-    // Check for 1st degree connection indicators (like old system)
-    const isFirstDegree = (
-        (typeof originalLeadData.distance === "string" && originalLeadData.distance.endsWith("_1")) ||
-        (typeof originalLeadData.member_distance === "string" && originalLeadData.member_distance.endsWith("_1")) ||
-        originalLeadData.degree === 1 ||
-        originalLeadData.connectionDegree === "1st"
-    );
-    
-    if (isFirstDegree) {
-        currentConnectionStatus = "Connected";
-    } else if (leadData["LinkedIn Connection Status"] === "Pending" || originalLeadData.linkedinConnectionStatus === "Pending") {
-        currentConnectionStatus = "Pending";
-    } else if (originalLeadData.connectionStatus) {
-        currentConnectionStatus = originalLeadData.connectionStatus;
-    } else if (leadData["LinkedIn Connection Status"]) {
-        currentConnectionStatus = leadData["LinkedIn Connection Status"];
-    }
-
-    // Determine if this is a connection update vs new lead
-    const isConnection = currentConnectionStatus === "Connected";
-    
-    try {
-        // Use Profile Key for matching (like old system)
-        const existing = await airtableBase('Leads').select({
-            maxRecords: 1,
-            filterByFormula: `{Profile Key} = "${profileKey}"`
-        }).firstPage();
-
-        // Create comprehensive fields object matching old system
-        const fields = {
-            "LinkedIn Profile URL": finalUrl,
-            "First Name": firstName,
-            "Last Name": lastName,
-            "Headline": leadData["Headline"] || "",
-            "Job Title": leadData["Job Title"] || "",
-            "Company Name": leadData["Company Name"] || "",
-            "About": leadData["About"] || "",
-            "Job History": leadData["Job History"] || "",
-            "LinkedIn Connection Status": currentConnectionStatus,
-            "Status": "In Process", // Default status like old system
-            "Location": leadData["Location"] || "",
-            "Email": leadData["Email"] || "",
-            "Phone": leadData["Phone"] || "",
-            "View In Sales Navigator": leadData["View In Sales Navigator"] || null
-        };
-
-        // Set Source field with same logic as old system
-        if (!leadData["Source"]) {
-            fields["Source"] = isFirstDegree ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
-        } else {
-            fields["Source"] = leadData["Source"];
-        }
-
-        if (existing && existing.length > 0) {
-            // Update existing lead
-            console.log(`webhookHandlers.js: Updating existing lead for client ${clientId}: ${finalUrl} (ID: ${existing[0].id})`);
-            
-            // Handle Date Connected logic like old system
-            if (isConnection && !existing[0].fields["Date Connected"] && !fields["Date Connected"]) {
-                fields["Date Connected"] = new Date().toISOString();
-            }
-
-            // Only update Scoring Status if we have a value and it's not already set
-            if (scoringStatus && !existing[0].fields['Scoring Status']) {
-                fields["Scoring Status"] = scoringStatus;
-            }
-
-            await airtableBase('Leads').update([{
-                id: existing[0].id,
-                fields: fields
-            }]);
-            
-            return existing[0].id;
-        } else {
-            // Create new lead
-            console.log(`webhookHandlers.js: Creating new lead for client ${clientId}: ${finalUrl}`);
-            
-            // Set default Scoring Status for new leads
-            if (!fields["Scoring Status"]) {
-                fields["Scoring Status"] = scoringStatus || "To Be Scored";
-            }
-
-            // Set Date Connected for new connections
-            if (isConnection && !fields["Date Connected"]) {
-                fields["Date Connected"] = new Date().toISOString();
-            }
-
-            const createdRecords = await airtableBase('Leads').create([{ fields }]);
-            return createdRecords[0].id;
-        }
-    } catch (error) {
-        console.error(`webhookHandlers.js: Error in upsertLeadToClientBase for client ${clientId}:`, error);
-        throw error;
-    }
-}
 
 module.exports = router;

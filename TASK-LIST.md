@@ -47,6 +47,43 @@
   - Set up environment variables for prod vs test
   - Document safe development process
 
+### Load More Pagination System 📄
+- [ ] **Complete Load More Implementation**
+  - [x] Backend pagination logic with 50-record limits (✅ implemented)
+  - [x] Cursor-based pagination with record ID offsets (✅ implemented)
+  - [ ] Frontend Load More button UI components 
+  - [ ] Test pagination across all lead search/filter scenarios
+  - [ ] Verify infinite scroll behavior and performance
+  - [ ] Documentation update for Load More UX patterns
+- [ ] **Referenced in**: `PAGINATION-IMPLEMENTATION-PLAN.md` - comprehensive implementation guide
+- [ ] **Current Status**: Backend ready, frontend Load More buttons may need completion
+
+### Custom Monitoring & Alerting System 📊
+- [ ] **Phase 1: Basic Monitoring Infrastructure**
+  - [ ] Implement Render Logs API integration for automated log monitoring
+  - [ ] Create `/api/monitor/all-clients` endpoint for client health tracking
+  - [ ] Build `/api/monitor/client/:id` endpoint for individual client status
+  - [ ] Set up background monitoring processes with configurable intervals
+- [ ] **Phase 2: Email Alert System**
+  - [ ] Implement nodemailer-based email alerting for critical issues
+  - [ ] Create configurable alert rules per client (error thresholds, timeout detection)
+  - [ ] Build client-specific notification preferences and contact lists
+  - [ ] Add alert escalation and frequency management
+- [ ] **Phase 3: Real-time Dashboard**
+  - [ ] Create `/monitor` route with Chart.js visualizations for client health
+  - [ ] Implement real-time client status indicators and error tracking
+  - [ ] Build historical performance graphs and trend analysis
+  - [ ] Add client comparison views and system-wide health overview
+- [ ] **Phase 4: Advanced Alerting**
+  - [ ] Implement Slack webhook integration for team notifications
+  - [ ] Add SMS alerting via Twilio for critical system failures
+  - [ ] Create intelligent alert grouping and noise reduction
+  - [ ] Build alert acknowledgment and resolution tracking
+- [ ] **Estimated Implementation Time**: 
+  - Phase 1-2: 30-60 minutes (basic monitoring + email alerts)
+  - Phase 3-4: 2-3 hours (dashboard + advanced features)
+- [ ] **Benefits**: Zero ongoing costs, multi-tenant specific features, full customization vs BetterStack subscription
+
 ### Multi-Client Expansion
 - [ ] **Create client template base** from cleaned Guy Wilson base
 - [ ] **Add new client** (when ready):
@@ -64,6 +101,16 @@
 - [ ] **Add more robust error alerting** for failed processing
 - [ ] **Implement client-specific AI keywords** if needed
 - [ ] **Add batch processing metrics** and reporting
+
+### Legacy Code Cleanup (After Testing Period)
+- [ ] **Delete legacy single-tenant code** (WAIT 1-2 weeks after multi-tenant validation)
+  - [ ] Remove `services/leadService.js` (old single-tenant lead service)
+  - [ ] Remove old `/api/pb-webhook` route from `apiAndJobRoutes.js`
+  - [ ] Clean up unused imports in `routes/webhookHandlers.js` (line 11-12)
+  - [ ] Update documentation to remove references to old system
+  - [ ] **VALIDATION REQUIRED**: Confirm new multi-tenant webhook working perfectly
+  - [ ] **TESTING REQUIRED**: Multiple clients tested successfully with new webhook
+  - [ ] **BACKUP**: Ensure git history preserves old system for reference
 
 ### Lead Scoring System
 - [ ] **Review lead scoring multi-tenant support** (currently single-tenant)
