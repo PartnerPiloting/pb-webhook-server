@@ -129,9 +129,15 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 }
                 // ***** END: Construct Sales Navigator URL *****
 
+                // DEBUG: Log name fields to understand the data structure
+                console.log(`DEBUG - Name fields for ${rawUrl}: firstName=${lh.firstName}, lastName=${lh.lastName}, first_name=${lh.first_name}, last_name=${lh.last_name}`);
+                console.log(`DEBUG - All available fields:`, Object.keys(lh));
+                
                 const leadForUpsert = {
                     "First Name": lh.firstName || lh.first_name || "", 
                     "Last Name": lh.lastName || lh.last_name || "",
+                    firstName: lh.firstName || lh.first_name || "",  // Add camelCase for upsertLead function
+                    lastName: lh.lastName || lh.last_name || "",     // Add camelCase for upsertLead function
                     "Headline": lh.headline || "", 
                     "Location": lh.locationName || lh.location_name || lh.location || "",
                     "Phone": (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
