@@ -1,27 +1,36 @@
 // singleScorer.js - Final Clean Version
 
 require("dotenv").config();
+const StructuredLogger = require('./utils/structuredLogger');
 
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10));
 
-async function scoreLeadNow(fullLead = {}, dependencies) {
+async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     const { vertexAIClient, geminiModelId } = dependencies || {};
 
+    // Initialize logger if not provided (backward compatibility)
+    if (!logger) {
+        const leadId = fullLead?.id || fullLead?.public_id || 'UNKNOWN';
+        logger = new StructuredLogger(`SINGLE-${leadId.substring(0, 8)}`, 'SCORER');
+    }
+
+    logger.setup('scoreLeadNow', `Starting single lead scoring for lead: ${fullLead?.id || fullLead?.public_id || 'N/A'}`);
+
     if (!vertexAIClient || !geminiModelId) {
-        console.error("singleScorer.scoreLeadNow: vertexAIClient or geminiModelId was not provided.");
+        logger.error('scoreLeadNow', 'vertexAIClient or geminiModelId was not provided');
         throw new Error("Gemini client/model dependencies not available for single scoring.");
     }
 
-    const systemInstructionText = await buildPrompt();
+    const systemInstructionText = await buildPrompt(logger);
     const userLeadData = slimLead(fullLead);
     const userPromptContent = `Score the following single lead based on the criteria and JSON schema provided in the system instructions. The lead is: ${JSON.stringify(userLeadData, null, 2)}`;
     
     const maxOutputForSingleLead = 4096; // Production-appropriate value
 
-    console.log(`singleScorer: Calling Gemini for single lead. Model ID: ${geminiModelId}. Max output tokens: ${maxOutputForSingleLead}`);
+    logger.process('scoreLeadNow', `Calling Gemini for single lead - Model: ${geminiModelId}, Max tokens: ${maxOutputForSingleLead}`);
 
     let rawResponseText = ""; 
     let usageMetadata = {};
@@ -55,6 +64,7 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
         const result = await Promise.race([callPromise, timer]);
 
         if (!result || !result.response) {
+            logger.error('scoreLeadNow', 'Gemini API call returned no response object');
             throw new Error("Gemini API call (singleScorer) returned no response object.");
         }
         
@@ -65,7 +75,11 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
             const blockReason = result.response.promptFeedback?.blockReason;
             modelSafetyRatings = result.response.promptFeedback?.safetyRatings;
             let sf = modelSafetyRatings ? ` SafetyRatings: ${JSON.stringify(modelSafetyRatings)}`:"";
-            if (blockReason) throw new Error(`Gemini API call (singleScorer) blocked. Reason: ${blockReason}.${sf}`);
+            if (blockReason) {
+                logger.error('scoreLeadNow', `Gemini API call blocked - Reason: ${blockReason}${sf}`);
+                throw new Error(`Gemini API call (singleScorer) blocked. Reason: ${blockReason}.${sf}`);
+            }
+            logger.error('scoreLeadNow', `Gemini API call returned no candidates${sf}`);
             throw new Error(`Gemini API call (singleScorer) returned no candidates.${sf}`);
         }
 
@@ -75,41 +89,39 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
         if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
             rawResponseText = candidate.content.parts[0].text;
         } else {
-            console.warn(`singleScorer: Candidate had no text content. Finish Reason: ${modelFinishReason || 'Unknown'}.`);
+            logger.warn('scoreLeadNow', `Candidate had no text content - Finish Reason: ${modelFinishReason || 'Unknown'}`);
         }
 
         if (modelFinishReason === 'MAX_TOKENS') {
-            console.warn(`singleScorer: Gemini API call finished due to MAX_TOKENS (limit was ${maxOutputForSingleLead}). Output may be truncated. SafetyRatings: ${JSON.stringify(modelSafetyRatings)}`);
+            logger.warn('scoreLeadNow', `Gemini API call finished due to MAX_TOKENS (limit: ${maxOutputForSingleLead}) - Output may be truncated. SafetyRatings: ${JSON.stringify(modelSafetyRatings)}`);
             if (rawResponseText.trim() === "") {
-                 console.error("singleScorer: MAX_TOKENS finish reason AND no text content was returned. This will likely cause a parsing error.");
+                 logger.error('scoreLeadNow', 'MAX_TOKENS finish reason AND no text content returned - will likely cause parsing error');
             }
         } else if (modelFinishReason && modelFinishReason !== 'STOP') {
-            console.warn(`singleScorer: Gemini API call finished with non-STOP reason: ${modelFinishReason}. SafetyRatings: ${JSON.stringify(modelSafetyRatings)}`);
+            logger.warn('scoreLeadNow', `Gemini API call finished with non-STOP reason: ${modelFinishReason}. SafetyRatings: ${JSON.stringify(modelSafetyRatings)}`);
         }
 
     } catch (error) {
-        console.error(`singleScorer: Gemini API call failed for single lead: ${error.message}. Profile ID: ${fullLead.id || fullLead.public_id || 'N/A'}`);
+        logger.error('scoreLeadNow', `Gemini API call failed for single lead: ${error.message}. Profile ID: ${fullLead.id || fullLead.public_id || 'N/A'}`);
         error.finishReason = modelFinishReason;
         error.safetyRatings = modelSafetyRatings;
         throw error; 
     }
 
-    console.log(
-        "singleScorer: TOKENS single lead (Gemini) – Prompt: %s, Candidates: %s, Total: %s",
-        usageMetadata.promptTokenCount || "?",
-        usageMetadata.candidatesTokenCount || "?",
-        usageMetadata.totalTokenCount || "?"
+    logger.debug('scoreLeadNow',
+        `TOKENS single lead (Gemini) – Prompt: ${usageMetadata.promptTokenCount || "?"}, ` +
+        `Candidates: ${usageMetadata.candidatesTokenCount || "?"}, Total: ${usageMetadata.totalTokenCount || "?"}`
     );
 
     if (process.env.DEBUG_RAW_GEMINI === "1") {
-        console.log("singleScorer: DBG-RAW-GEMINI (Full Response Text):\n", rawResponseText);
+        logger.debug('scoreLeadNow', `DBG-RAW-GEMINI (Full Response Text): ${rawResponseText}`);
     } else if (modelFinishReason === 'MAX_TOKENS') {
-        console.log(`singleScorer: DBG-RAW-GEMINI (MAX_TOKENS - Snippet):\n${rawResponseText.substring(0, 1000)}...`);
+        logger.debug('scoreLeadNow', `DBG-RAW-GEMINI (MAX_TOKENS - Snippet): ${rawResponseText.substring(0, 1000)}...`);
     }
 
     if (rawResponseText.trim() === "") {
-        const errorMessage = `singleScorer: Gemini response text is empty. Finish Reason: ${modelFinishReason || 'Unknown'}. Cannot parse score.`;
-        console.error(errorMessage);
+        const errorMessage = `Gemini response text is empty. Finish Reason: ${modelFinishReason || 'Unknown'}. Cannot parse score.`;
+        logger.error('scoreLeadNow', errorMessage);
         const error = new Error(errorMessage);
         error.finishReason = modelFinishReason;
         error.safetyRatings = modelSafetyRatings;
@@ -121,16 +133,17 @@ async function scoreLeadNow(fullLead = {}, dependencies) {
         const parsedArrayOrObject = JSON.parse(cleanedJsonString);
 
         if (Array.isArray(parsedArrayOrObject) && parsedArrayOrObject.length > 0) {
+            logger.summary('scoreLeadNow', 'Successfully parsed single lead score from array format');
             return parsedArrayOrObject[0]; 
         } else if (!Array.isArray(parsedArrayOrObject) && typeof parsedArrayOrObject === 'object' && parsedArrayOrObject !== null) {
-            console.warn("singleScorer: Gemini returned a single object directly for single lead scoring. Using it.");
+            logger.warn('scoreLeadNow', 'Gemini returned single object directly for single lead scoring - using it');
             return parsedArrayOrObject;
         } else {
-            console.error("singleScorer: Gemini response was not a valid non-empty array or direct object. Parsed:", parsedArrayOrObject);
+            logger.error('scoreLeadNow', `Gemini response was not a valid non-empty array or direct object. Parsed: ${JSON.stringify(parsedArrayOrObject)}`);
             throw new Error("singleScorer: Gemini response format error: Expected array with one item or a single object.");
         }
     } catch (parseErr) {
-        console.error(`singleScorer: Failed to parse Gemini JSON: ${parseErr.message}. Raw (first 500 chars): ${rawResponseText.substring(0, 500)}... Finish Reason: ${modelFinishReason}`);
+        logger.error('scoreLeadNow', `Failed to parse Gemini JSON: ${parseErr.message}. Raw (first 500 chars): ${rawResponseText.substring(0, 500)}... Finish Reason: ${modelFinishReason}`);
         const error = new Error(`singleScorer: JSON Parse Error: ${parseErr.message}`);
         error.finishReason = modelFinishReason;
         error.safetyRatings = modelSafetyRatings;
