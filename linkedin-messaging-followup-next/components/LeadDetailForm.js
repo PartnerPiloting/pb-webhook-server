@@ -610,7 +610,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Top Post's Score</label>
             <div className="flex-1 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-gray-600 text-sm">
-              {lead.postsRelevancePercentage ? `${lead.postsRelevancePercentage}%` : 'No data'}
+              {lead.postsRelevancePercentage ? `${Math.round(lead.postsRelevancePercentage)}%` : 'No data'}
             </div>
           </div>
           <div className="flex">
