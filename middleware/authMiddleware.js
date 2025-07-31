@@ -1,6 +1,7 @@
 // middleware/authMiddleware.js
 // Simple authentication middleware for WordPress user validation and client lookup
 
+const StructuredLogger = require('../utils/structuredLogger');
 const clientService = require('../services/clientService');
 const { getCurrentWordPressUser } = require('../utils/wordpressAuth');
 const { parseServiceLevel, hasServiceLevelAccess } = require('../utils/serviceLevel');
@@ -23,6 +24,8 @@ const { parseServiceLevel, hasServiceLevelAccess } = require('../utils/serviceLe
  * @returns {Promise<number|null>} WordPress User ID or null if not logged in
  */
 async function getWordPressUserId(req) {
+    const logger = new StructuredLogger('AUTH');
+    
     try {
         // For testing - check for test header or query parameter first
         // Handle case-insensitive wpUserId parameter (wpUserId, wpuserid, etc.)
@@ -31,7 +34,7 @@ async function getWordPressUserId(req) {
                            req.query.wpuserid || 
                            req.query.wpUserId;
         if (testWpUserId) {
-            console.log(`AuthMiddleware: Using test WordPress User ID: ${testWpUserId}`);
+            logger.debug('getWordPressUserId', `Using test WordPress User ID: ${testWpUserId}`);
             return parseInt(testWpUserId, 10);
         }
 
@@ -39,14 +42,14 @@ async function getWordPressUserId(req) {
         const wpUser = await getCurrentWordPressUser(req);
         
         if (wpUser && wpUser.id) {
-            console.log(`AuthMiddleware: WordPress user authenticated: ${wpUser.name} (ID: ${wpUser.id})`);
+            logger.process('getWordPressUserId', `WordPress user authenticated: ${wpUser.name} (ID: ${wpUser.id})`);
             return wpUser.id;
         }
 
         return null;
 
     } catch (error) {
-        console.error('AuthMiddleware: Error getting WordPress User ID:', error);
+        logger.error('getWordPressUserId', `Error getting WordPress User ID: ${error.message}`);
         return null;
     }
 }
