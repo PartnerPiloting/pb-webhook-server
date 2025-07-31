@@ -14,9 +14,13 @@ async function upsertLead(
     attributeBreakdown = null,
     auFlag = null,
     ai_excluded_val = null,         
-    exclude_details_val = null   
+    exclude_details_val = null,
+    clientAirtableBase = null  // NEW: Optional client-specific Airtable base
 ) {
-    if (!base) {
+    // Use client-specific base if provided, otherwise use global base
+    const airtableBase = clientAirtableBase || base;
+    
+    if (!airtableBase) {
         console.error("CRITICAL ERROR in leadService/upsertLead: Airtable Base is not initialized. Cannot proceed.");
         throw new Error("Airtable base is not available in leadService. Check config/airtableClient.js logs.");
     }
@@ -110,7 +114,7 @@ async function upsertLead(
     if (ai_excluded_val !== null) fields["AI_Excluded"] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
     if (exclude_details_val !== null) fields["Exclude Details"] = exclude_details_val;
 
-    const existing = await base("Leads").select({ filterByFormula: `{Profile Key} = "${profileKey}"`, maxRecords: 1 }).firstPage();
+    const existing = await airtableBase("Leads").select({ filterByFormula: `{Profile Key} = "${profileKey}"`, maxRecords: 1 }).firstPage();
 
     if (existing.length) {
         console.log(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
@@ -118,7 +122,7 @@ async function upsertLead(
         if (currentConnectionStatus === "Connected" && !existing[0].fields["Date Connected"] && !fields["Date Connected"]) {
             fields["Date Connected"] = new Date().toISOString();
         }
-        await base("Leads").update(existing[0].id, fields);
+        await airtableBase("Leads").update(existing[0].id, fields);
         return existing[0].id; 
     } else {
         // If it's a new record, and scoringStatus wasn't explicitly set to "To Be Scored" (e.g. it was undefined)
@@ -133,7 +137,7 @@ async function upsertLead(
             fields["Source"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
         }
         console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
-        const createdRecords = await base("Leads").create([{ fields }]);
+        const createdRecords = await airtableBase("Leads").create([{ fields }]);
         return createdRecords[0].id; 
     }
 }
