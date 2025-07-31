@@ -3,7 +3,7 @@ import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
-import { initializeClient } from '../utils/clientUtils.js';
+import { initializeClient, getClientProfile } from '../utils/clientUtils.js';
 
 // Client initialization hook
 const useClientInitialization = () => {
@@ -234,7 +234,11 @@ const Layout = ({ children }) => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
-                LinkedIn Follow-Up Portal
+                {(() => {
+                  const clientProfile = getClientProfile();
+                  const clientName = clientProfile?.clientName;
+                  return clientName ? `${clientName}'s LinkedIn Follow-Up Portal` : 'LinkedIn Follow-Up Portal';
+                })()}
               </h1>
             </div>
             <div className="flex items-center space-x-4">
