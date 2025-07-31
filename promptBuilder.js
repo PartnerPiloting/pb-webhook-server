@@ -10,6 +10,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const StructuredLogger = require('./utils/structuredLogger');
 
 const { loadAttributes } = require("./attributeLoader");
 
@@ -75,9 +76,18 @@ function slimLead(profile = {}) {
    buildPrompt  –  returns the SYSTEM prompt string for Gemini
    (Schema updated for perfect alignment with helper functions)
 ------------------------------------------------------------------ */
-async function buildPrompt() {
+async function buildPrompt(logger = null) {
+    // Initialize logger if not provided (backward compatibility)
+    if (!logger) {
+        logger = new StructuredLogger('SYSTEM', 'PROMPT');
+    }
+
+    logger.setup('buildPrompt', 'Starting lead scoring prompt construction');
+
     // loadAttributes now returns { preamble, positives, negatives }
-    const { preamble, positives, negatives } = await loadAttributes();
+    const { preamble, positives, negatives } = await loadAttributes(logger);
+
+    logger.process('buildPrompt', `Loaded attributes: ${Object.keys(positives).length} positive, ${Object.keys(negatives).length} negative`);
 
     // This schema defines the structure for EACH lead object within the JSON array
     // that Gemini is instructed to return.
@@ -142,9 +152,10 @@ ${rulesAndOutputFormat}
     if (process.env.DEBUG_RAW_PROMPT === "1") {
         const fp = path.join(__dirname, "DEBUG_PROMPT_GEMINI.txt");
         fs.writeFileSync(fp, systemPrompt, "utf8");
-        console.log("▶︎ promptBuilder dumped DEBUG_PROMPT_GEMINI.txt");
+        logger.debug('buildPrompt', 'Dumped DEBUG_PROMPT_GEMINI.txt for debugging');
     }
 
+    logger.summary('buildPrompt', `Successfully built prompt with ${systemPrompt.length} characters`);
     return systemPrompt;
 }
 

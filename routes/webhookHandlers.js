@@ -13,6 +13,9 @@ const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
 
+// --- Structured Logging ---
+const { StructuredLogger } = require('../utils/structuredLogger');
+
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID – Linked Helper Webhook
     (This endpoint saves/updates lead data in client-specific Airtable bases.
@@ -26,8 +29,12 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         // Extract and validate client parameter
         const clientId = req.query.client;
         
+        // Create client-specific logger
+        const log = new StructuredLogger(clientId || 'UNKNOWN');
+        log.setup("=== WEBHOOK REQUEST: /lh-webhook/upsertLeadOnly ===");
+        
         if (!clientId) {
-            console.error("webhookHandlers.js - /lh-webhook/upsertLeadOnly: Missing required 'client' parameter");
+            log.error("Missing required 'client' parameter");
             return res.status(400).json({ 
                 error: "Missing required 'client' parameter. Use: /lh-webhook/upsertLeadOnly?client=YOUR_CLIENT_ID" 
             });
@@ -38,13 +45,13 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         try {
             client = await getClientById(clientId);
             if (!client) {
-                console.error(`webhookHandlers.js - /lh-webhook/upsertLeadOnly: Invalid client ID: ${clientId}`);
+                log.error(`Invalid client ID: ${clientId}`);
                 return res.status(401).json({ 
                     error: "Invalid client ID. Please check your client parameter." 
                 });
             }
         } catch (clientError) {
-            console.error(`webhookHandlers.js - /lh-webhook/upsertLeadOnly: Error validating client ${clientId}:`, clientError.message);
+            log.error(`Error validating client ${clientId}: ${clientError.message}`);
             return res.status(401).json({ 
                 error: "Failed to validate client. Please check your client parameter." 
             });
@@ -52,7 +59,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
         // Check if client is active - CRITICAL SECURITY CHECK
         if (client.status !== 'Active') {
-            console.warn(`webhookHandlers.js - /lh-webhook/upsertLeadOnly: Inactive client attempted webhook access: ${clientId} (status: ${client.status})`);
+            log.warn(`Inactive client attempted webhook access: ${clientId} (status: ${client.status})`);
             await alertAdmin("Inactive Client Webhook Attempt", `Client: ${clientId} (${client.clientName})\\nStatus: ${client.status}\\nAttempted webhook access denied`);
             return res.status(403).json({ 
                 error: "Client account is not active. Please check your account status.",
@@ -65,25 +72,25 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         try {
             clientAirtableBase = await getClientBase(client.airtableBaseId);
             if (!clientAirtableBase) {
-                console.error(`webhookHandlers.js - /lh-webhook/upsertLeadOnly: Cannot get Airtable base for client ${clientId}`);
+                log.error(`Cannot get Airtable base for client ${clientId}`);
                 return res.status(503).json({ 
                     error: "Service temporarily unavailable. Client's Airtable base not accessible." 
                 });
             }
         } catch (baseError) {
-            console.error(`webhookHandlers.js - /lh-webhook/upsertLeadOnly: Error getting Airtable base for client ${clientId}:`, baseError.message);
+            log.error(`Error getting Airtable base for client ${clientId}: ${baseError.message}`);
             return res.status(503).json({ 
                 error: "Service temporarily unavailable. Failed to access client's database." 
             });
         }
 
-        console.log(`webhookHandlers.js: ▶︎ /lh-webhook/upsertLeadOnly processing for client: ${client.clientName} (${clientId})`);
+        log.setup(`Processing for client: ${client.clientName} (${clientId})`);
 
         const rawLeadsFromWebhook = Array.isArray(req.body) ? req.body : (req.body ? [req.body] : []);
-        console.log(`webhookHandlers.js: ▶︎ /lh-webhook/upsertLeadOnly received ${rawLeadsFromWebhook.length} leads for client ${clientId}.`);
+        log.setup(`Received ${rawLeadsFromWebhook.length} leads for processing`);
         
         if (rawLeadsFromWebhook.length > 0) {
-            console.log("/lh-webhook/upsertLeadOnly first raw lead payload:", JSON.stringify(rawLeadsFromWebhook[0], null, 2));
+            log.debug("First raw lead payload:", JSON.stringify(rawLeadsFromWebhook[0], null, 2));
         }
 
         if (rawLeadsFromWebhook.length === 0) {
@@ -103,7 +110,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                                (lh.memberId ? `https://www.linkedin.com/profile/view?id=${lh.memberId}` : null);
 
                 if (!rawUrl) {
-                    console.warn("webhookHandlers.js: Skipping lead in /lh-webhook/upsertLeadOnly due to missing URL identifier. Lead data:", JSON.stringify(lh, null, 2));
+                    log.warn("Skipping lead due to missing URL identifier. Lead data:", JSON.stringify(lh, null, 2));
                     errorCount++; 
                     continue;
                 }
@@ -130,8 +137,8 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 // ***** END: Construct Sales Navigator URL *****
 
                 // DEBUG: Log name fields to understand the data structure
-                console.log(`DEBUG - Name fields for ${rawUrl}: firstName=${lh.firstName}, lastName=${lh.lastName}, first_name=${lh.first_name}, last_name=${lh.last_name}`);
-                console.log(`DEBUG - All available fields:`, Object.keys(lh));
+                log.debug(`Name fields for ${rawUrl}: firstName=${lh.firstName}, lastName=${lh.lastName}, first_name=${lh.first_name}, last_name=${lh.last_name}`);
+                log.debug(`All available fields:`, Object.keys(lh));
                 
                 const leadForUpsert = {
                     "First Name": lh.firstName || lh.first_name || "", 
@@ -171,16 +178,18 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 processedCount++;
             } catch (upsertError) {
                 errorCount++;
-                console.error(`webhookHandlers.js: Error upserting a lead in /lh-webhook/upsertLeadOnly for client ${clientId} (Attempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}):`, upsertError.message, upsertError.stack);
+                log.error(`Error upserting lead (Attempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}): ${upsertError.message}`, upsertError.stack);
                 await alertAdmin("Lead Upsert Error in /lh-webhook/upsertLeadOnly", `Client: ${clientId}\\nAttempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}\\nError: ${upsertError.message}`);
             }
         }
-        console.log(`webhookHandlers.js: /lh-webhook/upsertLeadOnly finished for client ${clientId}. Upserted/Updated: ${processedCount}, Failed: ${errorCount}`);
+        log.summary(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}`);
         if (!res.headersSent) {
             res.json({ message: `Client ${clientId}: Upserted/Updated ${processedCount} LH profiles, Failed: ${errorCount}` });
         }
     } catch (err) {
-        console.error(`webhookHandlers.js: Critical error in /lh-webhook/upsertLeadOnly for client ${req.query.client || 'unknown'}:`, err.message, err.stack);
+        const finalClientId = req.query.client || 'unknown';
+        const finalLog = log || new StructuredLogger(finalClientId);
+        finalLog.error(`Critical error in /lh-webhook/upsertLeadOnly: ${err.message}`, err.stack);
         await alertAdmin("Critical Error in /lh-webhook/upsertLeadOnly", `Client: ${req.query.client || 'unknown'}\\nError: ${err.message}`);
         if (!res.headersSent) {
             res.status(500).json({ error: err.message });

@@ -8,39 +8,44 @@ const { parsePlainTextPosts } = require('./utils/parsePlainTextPosts');
 const { repairAndParseJson } = require('./utils/jsonRepair');
 const dirtyJSON = require('dirty-json');
 
+// --- Structured Logging ---
+const { StructuredLogger } = require('./utils/structuredLogger');
+
 /**
  * Diagnostic helper for parsing the Posts Content field safely.
  * Logs type, length, head/tail, and prints raw value if parsing fails.
  */
-function diagnosePostsContent(rawField, recordId = '') {
-    console.log('------------------------');
-    console.log(`Diagnosing Posts Content for record: ${recordId}`);
-    console.log('Type:', typeof rawField);
+function diagnosePostsContent(rawField, recordId = '', logger = null) {
+    const log = logger || new StructuredLogger('DIAGNOSTICS');
+    
+    log.debug('------------------------');
+    log.debug(`Diagnosing Posts Content for record: ${recordId}`);
+    log.debug('Type:', typeof rawField);
     if (rawField == null) {
-        console.log('Field is null or undefined');
+        log.debug('Field is null or undefined');
         return [];
     }
     if (typeof rawField !== 'string') {
-        console.log('Field is not a string, returning as-is:', rawField);
+        log.debug('Field is not a string, returning as-is:', rawField);
         return Array.isArray(rawField) ? rawField : [];
     }
-    console.log('String length:', rawField.length);
-    console.log('First 300 chars:', rawField.slice(0, 300));
+    log.debug('String length:', rawField.length);
+    log.debug('First 300 chars:', rawField.slice(0, 300));
     if (rawField.length > 600) {
-        console.log('Last 300 chars:', rawField.slice(-300));
+        log.debug('Last 300 chars:', rawField.slice(-300));
     }
 
     try {
         const parsed = JSON.parse(rawField);
-        console.log('JSON successfully parsed. Type:', typeof parsed, Array.isArray(parsed) ? '(array)' : '');
+        log.debug('JSON successfully parsed. Type:', typeof parsed, Array.isArray(parsed) ? '(array)' : '');
         return parsed;
     } catch (err) {
-        console.error('JSON parse error:', err.message);
+        log.error('JSON parse error:', err.message);
         if (rawField.length > 1200) {
-            console.error('Problematic JSON (first 600 chars):', rawField.slice(0, 600));
-            console.error('Problematic JSON (last 600 chars):', rawField.slice(-600));
+            log.error('Problematic JSON (first 600 chars):', rawField.slice(0, 600));
+            log.error('Problematic JSON (last 600 chars):', rawField.slice(-600));
         } else {
-            console.error('Problematic JSON:', rawField);
+            log.error('Problematic JSON:', rawField);
         }
         return [];
     }
@@ -72,8 +77,10 @@ function filterOriginalPosts(postsArray, leadProfileUrl) {
  * (Internal helper function) Contains the common logic for analyzing and scoring
  * the posts for a single lead record.
  */
-async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config) {
-    console.log(`PostAnalysisService: Analyzing posts for lead: ${leadRecord.id}`);
+async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, logger = null) {
+    const log = logger || new StructuredLogger(`LEAD-${leadRecord.id}`);
+    
+    log.setup(`Analyzing posts for lead: ${leadRecord.id}`);
 
     // Read the JSON field and robustly parse it into structured posts
     const postsJsonField = leadRecord.fields[config.fields.postsContent];
@@ -84,20 +91,20 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         
         if (repairResult.success) {
             parsedPostsArray = repairResult.data;
-            console.log(`Lead ${leadRecord.id}: JSON parsed successfully using method: ${repairResult.method}`);
+            log.process(`JSON parsed successfully using method: ${repairResult.method}`);
             
             // Update Posts JSON Status field
             try {
-                await airtableBase('Leads').update(leadRecord.id, {
+                await base('Leads').update(leadRecord.id, {
                     'Posts JSON Status': 'Parsed'
                 });
             } catch (e) { /* Field might not exist */ }
         } else {
-            console.error(`Lead ${leadRecord.id}: All JSON parsing methods failed:`, repairResult.error);
+            log.error(`All JSON parsing methods failed:`, repairResult.error);
             
             // Update Posts JSON Status field and mark as processed
             try {
-                await airtableBase('Leads').update(leadRecord.id, {
+                await base('Leads').update(leadRecord.id, {
                     'Posts JSON Status': 'Failed'
                 });
             } catch (e) { /* Field might not exist */ }
@@ -109,16 +116,16 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         
         // Update Posts JSON Status field
         try {
-            await airtableBase('Leads').update(leadRecord.id, {
+            await base('Leads').update(leadRecord.id, {
                 'Posts JSON Status': 'Parsed'
             });
         } catch (e) { /* Field might not exist */ }
     } else {
-        console.warn(`Posts Content field for record ${leadRecord.id} is not a string or array, skipping.`);
+        log.warn(`Posts Content field is not a string or array, skipping`);
         
         // Update Posts JSON Status field
         try {
-            await airtableBase('Leads').update(leadRecord.id, {
+            await base('Leads').update(leadRecord.id, {
                 'Posts JSON Status': 'Failed'
             });
         } catch (e) { /* Field might not exist */ }
@@ -126,10 +133,10 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         return { status: "Skipped - Invalid Posts Content field", leadId: leadRecord.id };
     }
     if (!Array.isArray(parsedPostsArray)) {
-        console.warn(`Parsed Posts Content for record ${leadRecord.id} is not an array, skipping.`);
+        log.warn(`Parsed Posts Content is not an array, skipping`);
         return { status: "Skipped - Parsed Posts Content not array", leadId: leadRecord.id };
     }
-    console.log('DEBUG: Parsed posts array:', JSON.stringify(parsedPostsArray, null, 2));
+    log.debug('Parsed posts array:', JSON.stringify(parsedPostsArray, null, 2));
 
     // Define originalPosts before logging it
     function normalizeUrl(url) {
@@ -144,26 +151,26 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 
     try {
         // Load scoring configuration (no global filtering - let attributes handle relevance)
-        console.log(`Lead ${leadRecord.id}: Loading config from Airtable...`);
-        const config_data = await loadPostScoringAirtableConfig(base, config);
+        log.setup(`Loading config from Airtable...`);
+        const config_data = await loadPostScoringAirtableConfig(base, config, log);
         
         // Score all original posts using client's specific attributes
-        console.log(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria.`);
+        log.process(`Scoring all ${originalPosts.length} original posts using client's attribute criteria`);
         
         if (originalPosts.length === 0) {
-            console.log(`Lead ${leadRecord.id}: No original posts found, skipping scoring.`);
+            log.summary(`No original posts found, skipping scoring`);
             return { status: "No original posts found", leadId: leadRecord.id };
         }
 
         // Proceed with full AI scoring on all original posts
-        console.log(`Lead ${leadRecord.id}: Found ${originalPosts.length} original posts. Proceeding with Gemini scoring.`);
+        log.process(`Found ${originalPosts.length} original posts. Proceeding with Gemini scoring`);
 
         // Step 3: Build the full system prompt
-        console.log(`Lead ${leadRecord.id}: Building system prompt...`);
+        log.process(`Building system prompt...`);
         const systemPrompt = await buildPostScoringPrompt(base, config);
 
         // Step 4: Configure the Gemini Model instance with the system prompt
-        console.log(`Lead ${leadRecord.id}: Configuring Gemini model instance...`);
+        log.process(`Configuring Gemini model instance...`);
         const geminiModelId = process.env.GEMINI_MODEL_ID || (config.geminiConfig && config.geminiConfig.geminiModelId);
         const configuredGeminiModel = vertexAIClient.getGenerativeModel({
             model: geminiModelId,
@@ -178,7 +185,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         });
 
         // Step 5: Call the Gemini scorer with all original posts
-        console.log(`Lead ${leadRecord.id}: Calling Gemini scorer...`);
+        log.process(`Calling Gemini scorer...`);
         // --- FIX: Wrap posts in object with lead_id for Gemini ---
         const geminiInput = { lead_id: leadRecord.id, posts: originalPosts };
         const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
@@ -212,7 +219,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
              throw new Error("Could not determine the highest scoring post from the AI response.");
         }
         
-        console.log(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}.`);
+        log.process(`Highest scoring post has a score of ${highestScoringPost.post_score}`);
 
         // Step 7: Update Airtable with the results from the highest-scoring post
         // Use the date as-is if it's not a valid ISO string
@@ -236,11 +243,11 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             [config.fields.dateScored]: new Date().toISOString()
         });
 
-        console.log(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
+        log.summary(`Successfully scored. Final Score: ${highestScoringPost.post_score}`);
         return { status: "Successfully scored", leadId: leadRecord.id, final_score: highestScoringPost.post_score, full_analysis: aiResponseArray };
 
     } catch (error) {
-        console.error(`Lead ${leadRecord.id}: Error during AI scoring process. Error: ${error.message}`, error.stack);
+        log.error(`Error during AI scoring process: ${error.message}`, error.stack);
         // --- Improved error/debug messaging in Airtable ---
         const errorDetails = {
             errorMessage: error.message,
@@ -262,8 +269,10 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 /**
  * Processes posts for all leads in Airtable that haven't been scored yet.
  */
-async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, forceRescore, viewName) {
-    console.log("PostAnalysisService: processAllPendingLeadPosts - Called (Background task)");
+async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, forceRescore, viewName, logger = null) {
+    const log = logger || new StructuredLogger('POST-BATCH-PROCESSOR');
+    
+    log.setup("=== STARTING POST BATCH PROCESSING ===");
     let processedCount = 0, errorCount = 0;
     try {
         // Build select options
@@ -286,30 +295,32 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
         let recordsToProcess = await base(config.leadsTableName).select(selectOptions).all();
         if (typeof limit === 'number' && limit > 0) {
             recordsToProcess = recordsToProcess.slice(0, limit);
-            console.log(`Limiting batch to first ${limit} leads.`);
+            log.setup(`Limiting batch to first ${limit} leads`);
         }
-        console.log(`Found ${recordsToProcess.length} leads to process for post scoring.`);
+        log.setup(`Found ${recordsToProcess.length} leads to process for post scoring`);
         for (const leadRecord of recordsToProcess) {
             try {
-                await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config);
+                await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, log);
                 processedCount++;
             } catch (leadProcessingError) {
-                console.error(`Error processing lead ${leadRecord.id} in main loop. Continuing. Error: ${leadProcessingError.message}`);
+                log.error(`Error processing lead ${leadRecord.id} in main loop. Continuing. Error: ${leadProcessingError.message}`);
                 errorCount++;
             }
         }
     } catch (error) {
-        console.error(`Major error in processAllPendingLeadPosts (e.g., fetching records from Airtable): ${error.message}`, error.stack);
+        log.error(`Major error in processAllPendingLeadPosts (e.g., fetching records from Airtable): ${error.message}`, error.stack);
     }
-    console.log(`PostAnalysisService: processAllPendingLeadPosts - Finished. Processed: ${processedCount}, Errors: ${errorCount}.`);
+    log.summary(`Finished. Processed: ${processedCount}, Errors: ${errorCount}`);
 }
 
 /**
  * Fetches a specific lead by its Airtable Record ID, analyzes its posts,
  * and returns the scoring outcome.
  */
-async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config) {
-    console.log(`PostAnalysisService: scoreSpecificLeadPosts - Called for leadId: ${leadId}`);
+async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config, logger = null) {
+    const log = logger || new StructuredLogger(`SPECIFIC-LEAD-${leadId}`);
+    
+    log.setup(`Processing specific lead: ${leadId}`);
     try {
         const records = await base(config.leadsTableName).select({
             filterByFormula: `RECORD_ID() = '${leadId}'`,
@@ -318,13 +329,13 @@ async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config) {
         const leadRecord = records[0];
 
         if (!leadRecord) {
-            const notFoundMsg = `Lead with ID ${leadId} not found.`;
-            console.error(notFoundMsg);
+            const notFoundMsg = `Lead with ID ${leadId} not found`;
+            log.error(notFoundMsg);
             return { status: "Lead not found", error: notFoundMsg, leadId: leadId };
         }
-        return await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config);
+        return await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, log);
     } catch (error) {
-        console.error(`Error in scoreSpecificLeadPosts for lead ${leadId}: ${error.message}`, error.stack);
+        log.error(`Error in scoreSpecificLeadPosts: ${error.message}`, error.stack);
         if (error.statusCode === 404) return { status: "Lead not found", error: error.message, leadId: leadId };
         return { status: "Error scoring specific lead", error: error.message, leadId: leadId };
     }
