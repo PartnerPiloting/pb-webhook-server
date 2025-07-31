@@ -122,9 +122,18 @@ const NavigationWithParams = ({ pathname, children }) => {
 
 const Layout = ({ children }) => {
   const pathname = usePathname();
+  const [clientProfile, setClientProfile] = useState(null);
   
   // Initialize client authentication
   const { isInitialized, error } = useClientInitialization();
+
+  // Update client profile when initialization completes
+  useEffect(() => {
+    if (isInitialized && !error) {
+      const profile = getClientProfile();
+      setClientProfile(profile);
+    }
+  }, [isInitialized, error]);
 
   // Show loading state while initializing
   if (!isInitialized) {
@@ -234,11 +243,10 @@ const Layout = ({ children }) => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
-                {(() => {
-                  const clientProfile = getClientProfile();
-                  const clientName = clientProfile?.clientName;
-                  return clientName ? `${clientName}'s LinkedIn Follow-Up Portal` : 'LinkedIn Follow-Up Portal';
-                })()}
+                {clientProfile?.clientName 
+                  ? `${clientProfile.clientName}'s LinkedIn Follow-Up Portal` 
+                  : 'LinkedIn Follow-Up Portal'
+                }
               </h1>
             </div>
             <div className="flex items-center space-x-4">
