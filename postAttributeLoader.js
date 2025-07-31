@@ -8,7 +8,7 @@
  * @param {object} base - The initialized Airtable base instance.
  * @param {object} config - The postAnalysisConfig object from index.js, containing table names.
  * @returns {Promise<object>} A promise that resolves to an object containing structured data.
- * e.g., { promptComponents: [...], attributesById: {...}, aiKeywords: "..." }
+ * e.g., { promptComponents: [...], attributesById: {...} }
  * @throws {Error} If fetching from Airtable fails or data is missing.
  */
 async function loadPostScoringAirtableConfig(base, config) {
@@ -19,13 +19,10 @@ async function loadPostScoringAirtableConfig(base, config) {
 
     const tableNames = {
         attributes: config.attributesTableName,
-        promptComponents: config.promptComponentsTableName,
-        // You might have a dedicated 'credentials' or 'settings' table
-        // For this example, let's assume the keywords are in a table named 'Global Settings'
-        settings: config.settingsTableName || "Global Settings" // Using a configurable name with a default
+        promptComponents: config.promptComponentsTableName
     };
 
-    console.log(`PostAttributeLoader: Loading data from Airtable tables: Attributes ('${tableNames.attributes}'), PromptComponents ('${tableNames.promptComponents}'), Settings ('${tableNames.settings}')`);
+    console.log(`PostAttributeLoader: Loading data from Airtable tables: Attributes ('${tableNames.attributes}'), PromptComponents ('${tableNames.promptComponents}')`);
 
     try {
         // --- 1. Fetch General Prompt Components (from Table 2) ---
@@ -76,30 +73,16 @@ async function loadPostScoringAirtableConfig(base, config) {
             console.warn(`PostAttributeLoader: No scoring attributes found in table '${tableNames.attributes}'.`);
         }
 
-        // --- 3. Fetch AI Keywords (from your 'Global Settings' or 'Credentials' table) ---
-        let aiKeywordsString = "";
-        try {
-            // This assumes there's only ONE record in your "Global Settings" table that holds all such settings.
-            const settingsRecords = await base(tableNames.settings).select({ maxRecords: 1 }).firstPage();
-            if (settingsRecords && settingsRecords.length > 0) {
-                // Fetches the value from the 'Post Scoring AI Keywords' field you created.
-                aiKeywordsString = settingsRecords[0].get('Post Scoring AI Keywords') || "";
-            } else {
-                 console.warn(`PostAttributeLoader: No record found in settings table '${tableNames.settings}' to load AI Keywords from.`);
-            }
-        } catch (settingsError) {
-             console.error(`PostAttributeLoader: Could not fetch AI keywords from settings table '${tableNames.settings}'. Error: ${settingsError.message}. Will use fallback if available.`);
-        }
+        // --- 3. All configuration loaded ---
+        // Note: Removed global keyword filtering to support true multi-tenancy
+        // Each client's scoring attributes handle content relevance through their own keywords
         
-        const aiKeywords = aiKeywordsString.split(',').map(k => k.trim()).filter(Boolean); // Parse the string into an array
-
-        console.log(`PostAttributeLoader: Loaded ${promptComponents.length} prompt components, ${Object.keys(attributesById).length} scoring attributes, and ${aiKeywords.length} AI keywords.`);
+        console.log(`PostAttributeLoader: Loaded ${promptComponents.length} prompt components and ${Object.keys(attributesById).length} scoring attributes.`);
 
         // Return all loaded configuration in one structured object
         return {
             promptComponents,
-            attributesById,
-            aiKeywords
+            attributesById
         };
 
     } catch (error) {

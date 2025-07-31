@@ -143,81 +143,20 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     // console.log(`DEBUG: Original posts before filtering for lead ${leadRecord.id}:`, JSON.stringify(originalPosts, null, 2));
 
     try {
-        // Step 1: Load all dynamic configuration from Airtable (including keywords)
+        // Load scoring configuration (no global filtering - let attributes handle relevance)
         console.log(`Lead ${leadRecord.id}: Loading config from Airtable...`);
-        const { aiKeywords } = await loadPostScoringAirtableConfig(base, config);
-        console.log(`DEBUG: Loaded AI Keywords:`, aiKeywords);
-        // Step 2: Filter for all posts containing AI keywords (only from originals)
-        console.log(`Lead ${leadRecord.id}: Scanning ${originalPosts.length} original posts for AI keywords...`);
-        // Build regex patterns for each keyword/phrase
-        const keywordPatterns = aiKeywords.map(keyword => {
-            // Escape regex special chars
-            const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            // If phrase (contains space), match as phrase (with optional plural 's')
-            if (escaped.includes(' ')) {
-                return new RegExp(`\\b${escaped}s?\\b`, 'i');
-            }
-            // For 'AI', match as word or with hyphen/space and common suffixes
-            if (escaped.toLowerCase() === 'ai') {
-                return new RegExp('\\bAI(\\b|[-\s]?(powered|related|driven|enabled|based|focused|centric|solutions?))\\b', 'i');
-            }
-            // For other keywords, allow optional plural 's'
-            return new RegExp(`\\b${escaped}s?\\b`, 'i');
-        });
-        // Track edge cases for possible review
-        const edgeCases = [];
-        const relevantPosts = originalPosts.filter(post => {
-            let text = '';
-            if (typeof post === 'string') {
-                text = post;
-            } else if (post && typeof post === 'object' && post.postContent) {
-                text = post.postContent;
-            }
-            if (!text) return false;
-            // DEBUG: Print post content being checked
-            console.log(`DEBUG: Checking post content:`, text);
-            // Check for matches using regex patterns
-            const matches = aiKeywords.filter((keyword, idx) => keywordPatterns[idx].test(text));
-            if (matches.length > 0) {
-                console.log(`DEBUG: Keyword match for post:`, matches);
-                return true;
-            } else {
-                // Only mark as edge case if 'AI' is at a word boundary or hyphen/space (not inside another word)
-                const aiEdgeRegex = /\bAI\b|\bAI[-\s]/i;
-                if (aiEdgeRegex.test(text)) {
-                    let postUrl = '';
-                    if (typeof post === 'object' && post.postUrl) postUrl = post.postUrl;
-                    edgeCases.push(`EDGE CASE: post_url=${postUrl} | content="${text}"`);
-                }
-                // Manual review: log posts that contain any keyword fragment but didn't match strictly
-                const lowerText = text.toLowerCase();
-                const fragment = aiKeywords.find(k => lowerText.includes(k.toLowerCase()));
-                if (fragment) {
-                    console.log(`REVIEW: Post contains possible AI keyword fragment but did not pass strict filter:`, text);
-                }
-                console.log(`DEBUG: No AI keyword matches for this post.`);
-                return false;
-            }
-        });
-
-        console.log(`DEBUG: Relevant posts after AI keyword filtering for lead ${leadRecord.id}:`, JSON.stringify(relevantPosts, null, 2));
-
-        if (relevantPosts.length === 0) {
-          console.log(`Lead ${leadRecord.id}: No relevant posts with AI keywords found.`);
-          let aiEvalMsg = `Scanned ${originalPosts.length} original posts. No relevant AI keywords detected.`;
-          if (edgeCases.length > 0) {
-            aiEvalMsg += `\n${edgeCases.join('\n')}`;
-          }
-          await base(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.relevanceScore]: 0,
-            [config.fields.aiEvaluation]: aiEvalMsg,
-            [config.fields.dateScored]: new Date().toISOString()
-          });
-          return { status: "No AI keywords found", score: 0, leadId: leadRecord.id };
+        const config_data = await loadPostScoringAirtableConfig(base, config);
+        
+        // Score all original posts using client's specific attributes
+        console.log(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria.`);
+        
+        if (originalPosts.length === 0) {
+            console.log(`Lead ${leadRecord.id}: No original posts found, skipping scoring.`);
+            return { status: "No original posts found", leadId: leadRecord.id };
         }
 
-        // If keywords are found, proceed with full AI scoring
-        console.log(`Lead ${leadRecord.id}: Found ${relevantPosts.length} relevant posts. Proceeding with Gemini scoring.`);
+        // Proceed with full AI scoring on all original posts
+        console.log(`Lead ${leadRecord.id}: Found ${originalPosts.length} original posts. Proceeding with Gemini scoring.`);
 
         // Step 3: Build the full system prompt
         console.log(`Lead ${leadRecord.id}: Building system prompt...`);
@@ -238,16 +177,16 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             generationConfig: { temperature: 0, responseMimeType: "application/json" }
         });
 
-        // Step 5: Call the Gemini scorer with only the relevant posts
+        // Step 5: Call the Gemini scorer with all original posts
         console.log(`Lead ${leadRecord.id}: Calling Gemini scorer...`);
         // --- FIX: Wrap posts in object with lead_id for Gemini ---
-        const geminiInput = { lead_id: leadRecord.id, posts: relevantPosts };
+        const geminiInput = { lead_id: leadRecord.id, posts: originalPosts };
         const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
 
         // --- NEW: Merge original post data into AI response ---
         // Map post_url to original post for quick lookup
         const postUrlToOriginal = {};
-        for (const post of relevantPosts) {
+        for (const post of originalPosts) {
             const url = post.postUrl || post.post_url;
             if (url) postUrlToOriginal[url] = post;
         }
@@ -308,7 +247,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             finishReason: error.finishReason || null,
             safetyRatings: error.safetyRatings || null,
             rawResponseSnippet: error.rawResponseSnippet || null,
-            aiInputPosts: relevantPosts,
+            aiInputPosts: originalPosts,
             aiPrompt: systemPrompt || null,
             timestamp: new Date().toISOString(),
         };

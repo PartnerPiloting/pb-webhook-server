@@ -378,30 +378,13 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     }
 
     try {
-        // Load scoring configuration
-        const { aiKeywords } = await loadPostScoringAirtableConfig(clientBase, config);
+        // Load scoring configuration (no global filtering - let attributes handle relevance)
+        const config_data = await loadPostScoringAirtableConfig(clientBase, config);
         
-        // Filter for AI-relevant posts
-        const relevantPosts = filterRelevantPosts(originalPosts, aiKeywords);
-        
-        if (relevantPosts.length === 0) {
-            console.log(`Lead ${leadRecord.id}: No AI-relevant posts found, marking as scored with 0 relevance`);
-            
-            let aiEvalMsg = `Scanned ${originalPosts.length} original posts. No relevant AI keywords detected.`;
-            
-            // Update record to mark as processed (matching original format)
-            await clientBase(config.leadsTableName).update(leadRecord.id, {
-                [config.fields.relevanceScore]: 0,
-                [config.fields.aiEvaluation]: aiEvalMsg,
-                [config.fields.dateScored]: new Date().toISOString()
-            });
-            
-            return { status: "scored", relevanceScore: 0 };
-        }
+        // Score all original posts using client's specific attributes
+        console.log(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria.`);
         
         // Score posts with Gemini
-        console.log(`Lead ${leadRecord.id}: Found ${relevantPosts.length} relevant posts. Proceeding with Gemini scoring.`);
-        
         const systemPrompt = await buildPostScoringPrompt(clientBase, config);
         
         // Configure the Gemini Model instance with the system prompt
@@ -418,12 +401,12 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         });
         
         // Prepare input for Gemini
-        const geminiInput = { lead_id: leadRecord.id, posts: relevantPosts };
+        const geminiInput = { lead_id: leadRecord.id, posts: originalPosts };
         const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
         
         // Merge original post data into AI response (matching original)
         const postUrlToOriginal = {};
-        for (const post of relevantPosts) {
+        for (const post of originalPosts) {
             const url = post.postUrl || post.post_url;
             if (url) postUrlToOriginal[url] = post;
         }
@@ -507,32 +490,6 @@ function filterOriginalPosts(postsArray, leadProfileUrl) {
         const action = post?.pbMeta?.action?.toLowerCase() || '';
         const isOriginal = !action.includes('repost') && normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
         return isOriginal;
-    });
-}
-
-function filterRelevantPosts(originalPosts, aiKeywords) {
-    const keywordPatterns = aiKeywords.map(keyword => {
-        const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        if (escaped.includes(' ')) {
-            return new RegExp(`\\b${escaped}s?\\b`, 'i');
-        }
-        if (escaped.toLowerCase() === 'ai') {
-            return new RegExp('\\bAI(\\b|[-\s]?(powered|related|driven|enabled|based|focused|centric|solutions?))\\b', 'i');
-        }
-        return new RegExp(`\\b${escaped}s?\\b`, 'i');
-    });
-    
-    return originalPosts.filter(post => {
-        let text = '';
-        if (typeof post === 'string') {
-            text = post;
-        } else if (post && typeof post === 'object' && post.postContent) {
-            text = post.postContent;
-        }
-        
-        if (!text) return false;
-        
-        return keywordPatterns.some(pattern => pattern.test(text));
     });
 }
 
