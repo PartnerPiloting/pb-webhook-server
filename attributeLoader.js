@@ -1,6 +1,7 @@
 // attributeLoader.js - UPDATED to use centralized 'base' from config
 
 require("dotenv").config();
+const StructuredLogger = require('./utils/structuredLogger');
 // No longer need: const Airtable = require("airtable");
 
 // Import the centralized Airtable base instance
@@ -27,21 +28,28 @@ let cacheUntil = 0;
     loadAttributes – fetches Airtable rows (or fallback) and builds
     { preamble, positives, negatives } with token-saving clean-ups
 ----------------------------------------------------------------- */
-async function loadAttributes() {
+async function loadAttributes(logger = null) {
+  // Initialize logger if not provided (backward compatibility)
+  if (!logger) {
+    logger = new StructuredLogger('SYSTEM', 'ATTR');
+  }
+
+  logger.setup('loadAttributes', 'Starting attribute loading from Airtable');
+
   // Check if the centralized base was loaded successfully
   if (!base) {
-    console.error("⚠︎ attributeLoader.js: Airtable 'base' instance not available from config/airtableClient.js. Using fallback attributes.");
+    logger.error('loadAttributes', 'Airtable base instance not available from config/airtableClient.js - using fallback attributes');
     return fallbackAttributes(); // Proceed with fallback if base isn't available
   }
 
   const now = Date.now();
   if (cache && now < cacheUntil) {
-    // console.log("attributeLoader.js: Serving attributes from cache."); // Optional: for debugging cache hits
+    logger.debug('loadAttributes', 'Serving attributes from cache');
     return cache; // serve cached copy
   }
 
   try {
-    console.log("attributeLoader.js: Fetching attributes from Airtable...");
+    logger.process('loadAttributes', `Fetching attributes from Airtable table: ${TABLE_NAME}`);
     const rows = await base(TABLE_NAME).select().all(); // Uses the imported 'base'
     const positives = {};
     const negatives = {};
@@ -57,7 +65,7 @@ async function loadAttributes() {
       
       // Skip inactive attributes (unless they're PREAMBLE/meta)
       if (!isActive && id !== "PREAMBLE" && cat !== "meta") {
-        console.log(`attributeLoader.js: Skipping inactive attribute ${id}`);
+        logger.debug('loadAttributes', `Skipping inactive attribute ${id}`);
         return;
       } 
 
@@ -100,14 +108,13 @@ async function loadAttributes() {
 
     cache = { preamble, positives, negatives }; 
     cacheUntil = now + 10 * 60 * 1000;          // 10-minute cache
-    console.log(
-      `attributeLoader.js: • Loaded ${rows.length} rows  →  ` +
-      `${Object.keys(positives).length} positives, ` +
+    logger.summary('loadAttributes', 
+      `Loaded ${rows.length} rows → ${Object.keys(positives).length} positives, ` +
       `${Object.keys(negatives).length} negatives. Cached for 10 minutes.`
     );
     return cache;
   } catch (err) {
-    console.error("⚠︎ attributeLoader.js: Attribute fetch from Airtable failed – using fallback list.", err.message);
+    logger.error('loadAttributes', `Attribute fetch from Airtable failed - using fallback list: ${err.message}`);
     return fallbackAttributes();
   }
 }
@@ -116,11 +123,17 @@ async function loadAttributes() {
     loadAttributeForEditing – fetches a single attribute for editing
     Returns: complete attribute object with all fields
 ----------------------------------------------------------------- */
-async function loadAttributeForEditing(attributeId) {
+async function loadAttributeForEditing(attributeId, logger = null) {
+  // Initialize logger if not provided (backward compatibility)
+  if (!logger) {
+    logger = new StructuredLogger('ATTR-EDIT');
+  }
+
   try {
-    console.log(`attributeLoader.js: Loading attribute ${attributeId} for editing`);
+    logger.setup('loadAttributeForEditing', `Loading attribute ${attributeId} for editing`);
     
     if (!base) {
+      logger.error('loadAttributeForEditing', 'Airtable base not available from config/airtableClient.js');
       throw new Error("Airtable base not available from config/airtableClient.js");
     }
     
@@ -142,10 +155,10 @@ async function loadAttributeForEditing(attributeId) {
       active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
     };
     
-    console.log(`attributeLoader.js: Successfully loaded attribute ${attributeId}`);
+    logger.summary('loadAttributeForEditing', `Successfully loaded attribute ${attributeId}`);
     return attribute;
   } catch (error) {
-    console.error(`attributeLoader.js: Error loading attribute ${attributeId}:`, error.message);
+    logger.error('loadAttributeForEditing', `Error loading attribute ${attributeId}: ${error.message}`);
     throw new Error(`Failed to load attribute: ${error.message}`);
   }
 }
@@ -153,11 +166,17 @@ async function loadAttributeForEditing(attributeId) {
 /* ----------------------------------------------------------------
     updateAttribute – saves changes directly to live fields
 ----------------------------------------------------------------- */
-async function updateAttribute(attributeId, data) {
+async function updateAttribute(attributeId, data, logger = null) {
+  // Initialize logger if not provided (backward compatibility)
+  if (!logger) {
+    logger = new StructuredLogger('ATTR-UPDATE');
+  }
+
   try {
-    console.log(`attributeLoader.js: Updating attribute ${attributeId}:`, Object.keys(data));
+    logger.setup('updateAttribute', `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
     
     if (!base) {
+      logger.error('updateAttribute', 'Airtable base not available from config/airtableClient.js');
       throw new Error("Airtable base not available from config/airtableClient.js");
     }
     
@@ -181,10 +200,10 @@ async function updateAttribute(attributeId, data) {
     cache = null;
     cacheUntil = 0;
     
-    console.log(`attributeLoader.js: Successfully updated attribute ${attributeId}`);
+    logger.summary('updateAttribute', `Successfully updated attribute ${attributeId}`);
     return { success: true, id: record.id };
   } catch (error) {
-    console.error(`attributeLoader.js: Error updating attribute ${attributeId}:`, error.message);
+    logger.error('updateAttribute', `Error updating attribute ${attributeId}: ${error.message}`);
     throw new Error(`Failed to update attribute: ${error.message}`);
   }
 }
@@ -192,11 +211,17 @@ async function updateAttribute(attributeId, data) {
 /* ----------------------------------------------------------------
     listAttributesForEditing – fetches all attributes for the library view
 ----------------------------------------------------------------- */
-async function listAttributesForEditing() {
+async function listAttributesForEditing(logger = null) {
+  // Initialize logger if not provided (backward compatibility)
+  if (!logger) {
+    logger = new StructuredLogger('ATTR-LIST');
+  }
+
   try {
-    console.log("attributeLoader.js: Loading all attributes for editing");
+    logger.setup('listAttributesForEditing', 'Loading all attributes for editing');
     
     if (!base) {
+      logger.error('listAttributesForEditing', 'Airtable base not available from config/airtableClient.js');
       throw new Error("Airtable base not available from config/airtableClient.js");
     }
     
@@ -223,10 +248,10 @@ async function listAttributesForEditing() {
       isEmpty: !record.get("Heading") && !record.get("Instructions")
     }));
     
-    console.log(`attributeLoader.js: Successfully loaded ${attributes.length} attributes for editing`);
+    logger.summary('listAttributesForEditing', `Successfully loaded ${attributes.length} attributes for editing`);
     return attributes;
   } catch (error) {
-    console.error("attributeLoader.js: Error loading attributes for editing:", error.message);
+    logger.error('listAttributesForEditing', `Error loading attributes for editing: ${error.message}`);
     throw new Error(`Failed to load attributes: ${error.message}`);
   }
 }
