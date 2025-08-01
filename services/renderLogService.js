@@ -29,32 +29,46 @@ class RenderLogService {
                 }
             });
 
-            // DEBUG: Log the full response to understand structure
-            console.log('DEBUG - Full Response Status:', response.status);
-            console.log('DEBUG - Response Headers:', JSON.stringify(response.headers, null, 2));
-            console.log('DEBUG - Raw Response Data:', JSON.stringify(response.data, null, 2));
+            console.log('DEBUG - Response status:', response.status);
+            console.log('DEBUG - Raw response data:', JSON.stringify(response.data, null, 2));
             
-            const data = response.data;
+            // Handle different possible response structures
+            let services = response.data;
             
-            // Check if the response is wrapped in a services property
-            const services = data.services || data;
+            // If response is wrapped in a services property
+            if (services && services.services) {
+                services = services.services;
+            }
+            
+            // If response has a data property
+            if (services && services.data) {
+                services = services.data;
+            }
+            
+            // Ensure services is an array
+            if (!Array.isArray(services)) {
+                console.error('DEBUG - Services is not an array:', typeof services, services);
+                throw new Error('Services response is not an array');
+            }
+            
+            console.log('DEBUG - Processing', services.length, 'services');
+            console.log('DEBUG - First service (if exists):', services[0] || 'No services found');
             
             this.logger.summary('getAllServices', `Found ${services.length} services`);
             
-            // DEBUG: Log the actual response structure
-            console.log('DEBUG - Services Array:', JSON.stringify(services, null, 2));
-            if (services.length > 0) {
-                console.log('DEBUG - First service structure:', JSON.stringify(services[0], null, 2));
-            }
-            
-            return services.map(service => ({
-                id: service.id,
-                name: service.name,
-                type: service.type,
-                env: service.env,
-                suspended: service.suspended
-            }));
+            return services.map(service => {
+                console.log('DEBUG - Mapping service:', JSON.stringify(service, null, 2));
+                return {
+                    id: service.id || service.serviceId || service.service?.id,
+                    name: service.name || service.serviceName || service.service?.name,
+                    type: service.type || service.serviceType || service.service?.type,
+                    env: service.env || service.environment || service.service?.env,
+                    suspended: service.suspended || service.service?.suspended || false
+                };
+            });
         } catch (error) {
+            console.error('DEBUG - Error in getAllServices:', error.message);
+            console.error('DEBUG - Full error:', error);
             this.logger.error('getAllServices', `Failed to fetch services: ${error.message}`);
             throw error;
         }
