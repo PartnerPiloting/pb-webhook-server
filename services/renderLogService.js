@@ -1,6 +1,7 @@
 // services/renderLogService.js
 // Service for interacting with Render API to retrieve and analyze logs
 
+const axios = require('axios');
 const StructuredLogger = require('../utils/structuredLogger');
 
 class RenderLogService {
@@ -21,18 +22,14 @@ class RenderLogService {
         this.logger.setup('getAllServices', 'Fetching all Render services');
         
         try {
-            const response = await fetch(`${this.baseUrl}/services`, {
+            const response = await axios.get(`${this.baseUrl}/services`, {
                 headers: {
                     'Accept': 'application/json',
                     'Authorization': `Bearer ${this.apiKey}`
                 }
             });
 
-            if (!response.ok) {
-                throw new Error(`Render API error: ${response.status} ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const data = response.data;
             this.logger.summary('getAllServices', `Found ${data.length} services`);
             
             return data.map(service => ({
@@ -68,18 +65,14 @@ class RenderLogService {
             if (endTime) url += `&endTime=${endTime}`;
             if (cursor) url += `&cursor=${cursor}`;
 
-            const response = await fetch(url, {
+            const response = await axios.get(url, {
                 headers: {
                     'Accept': 'application/json',
                     'Authorization': `Bearer ${this.apiKey}`
                 }
             });
 
-            if (!response.ok) {
-                throw new Error(`Render API error: ${response.status} ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            const data = response.data;
             this.logger.process('getServiceLogs', `Retrieved ${data.logs?.length || 0} log entries for service ${serviceId}`);
             
             return data;
