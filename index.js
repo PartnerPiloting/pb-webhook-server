@@ -284,6 +284,9 @@ try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/ap
 // Debug routes for JSON serialization issues
 try { const debugRoutes = require('./routes/debugRoutes.js'); app.use('/api/debug', debugRoutes); console.log("index.js: Debug routes mounted at /api/debug"); } catch(e) { console.error("index.js: Error mounting debug routes", e.message, e.stack); }
 
+// Log analysis routes for Render log monitoring
+try { const logAnalysisRoutes = require('./routes/logAnalysis.js'); app.use('/api/logs', logAnalysisRoutes); console.log("index.js: Log analysis routes mounted at /api/logs"); } catch(e) { console.error("index.js: Error mounting log analysis routes", e.message, e.stack); }
+
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
     res.json({ 
