@@ -32,6 +32,12 @@ class RenderLogService {
             const data = response.data;
             this.logger.summary('getAllServices', `Found ${data.length} services`);
             
+            // DEBUG: Log the actual response structure
+            console.log('DEBUG - Render API Response:', JSON.stringify(data, null, 2));
+            if (data.length > 0) {
+                console.log('DEBUG - First service structure:', JSON.stringify(data[0], null, 2));
+            }
+            
             return data.map(service => ({
                 id: service.id,
                 name: service.name,
