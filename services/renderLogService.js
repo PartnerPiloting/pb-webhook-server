@@ -2,7 +2,7 @@
 // Service for interacting with Render API to retrieve and analyze logs
 
 const axios = require('axios');
-const StructuredLogger = require('../utils/structuredLogger');
+const { StructuredLogger } = require('../utils/structuredLogger');
 
 class RenderLogService {
     constructor() {
