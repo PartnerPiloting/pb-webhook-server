@@ -29,16 +29,25 @@ class RenderLogService {
                 }
             });
 
+            // DEBUG: Log the full response to understand structure
+            console.log('DEBUG - Full Response Status:', response.status);
+            console.log('DEBUG - Response Headers:', JSON.stringify(response.headers, null, 2));
+            console.log('DEBUG - Raw Response Data:', JSON.stringify(response.data, null, 2));
+            
             const data = response.data;
-            this.logger.summary('getAllServices', `Found ${data.length} services`);
+            
+            // Check if the response is wrapped in a services property
+            const services = data.services || data;
+            
+            this.logger.summary('getAllServices', `Found ${services.length} services`);
             
             // DEBUG: Log the actual response structure
-            console.log('DEBUG - Render API Response:', JSON.stringify(data, null, 2));
-            if (data.length > 0) {
-                console.log('DEBUG - First service structure:', JSON.stringify(data[0], null, 2));
+            console.log('DEBUG - Services Array:', JSON.stringify(services, null, 2));
+            if (services.length > 0) {
+                console.log('DEBUG - First service structure:', JSON.stringify(services[0], null, 2));
             }
             
-            return data.map(service => ({
+            return services.map(service => ({
                 id: service.id,
                 name: service.name,
                 type: service.type,
