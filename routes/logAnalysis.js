@@ -4,7 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const RenderLogService = require('../services/renderLogService');
-const StructuredLogger = require('../utils/structuredLogger');
+const { StructuredLogger } = require('../utils/structuredLogger');
 
 // Initialize log service
 let renderLogService;
