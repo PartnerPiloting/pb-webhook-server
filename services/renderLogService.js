@@ -29,9 +29,6 @@ class RenderLogService {
                 }
             });
 
-            console.log('DEBUG - Response status:', response.status);
-            console.log('DEBUG - Raw response data:', JSON.stringify(response.data, null, 2));
-            
             // Handle different possible response structures
             let services = response.data;
             
@@ -47,28 +44,19 @@ class RenderLogService {
             
             // Ensure services is an array
             if (!Array.isArray(services)) {
-                console.error('DEBUG - Services is not an array:', typeof services, services);
                 throw new Error('Services response is not an array');
             }
             
-            console.log('DEBUG - Processing', services.length, 'services');
-            console.log('DEBUG - First service (if exists):', services[0] || 'No services found');
-            
             this.logger.summary('getAllServices', `Found ${services.length} services`);
             
-            return services.map(service => {
-                console.log('DEBUG - Mapping service:', JSON.stringify(service, null, 2));
-                return {
-                    id: service.id || service.serviceId || service.service?.id,
-                    name: service.name || service.serviceName || service.service?.name,
-                    type: service.type || service.serviceType || service.service?.type,
-                    env: service.env || service.environment || service.service?.env,
-                    suspended: service.suspended || service.service?.suspended || false
-                };
-            });
+            return services.map(service => ({
+                id: service.id || service.serviceId || service.service?.id,
+                name: service.name || service.serviceName || service.service?.name,
+                type: service.type || service.serviceType || service.service?.type,
+                env: service.env || service.environment || service.service?.env,
+                suspended: service.suspended || service.service?.suspended || false
+            }));
         } catch (error) {
-            console.error('DEBUG - Error in getAllServices:', error.message);
-            console.error('DEBUG - Full error:', error);
             this.logger.error('getAllServices', `Failed to fetch services: ${error.message}`);
             throw error;
         }
@@ -208,17 +196,49 @@ class RenderLogService {
     }
 
     /**
-     * Helper: Filter logs by search terms
+     * Helper: Filter logs by search terms - handles mixed format logs
      */
     filterLogsByTerms(logs, searchTerms) {
         return logs.filter(log => {
             const logText = (log.message || log.text || '').toLowerCase();
-            return searchTerms.some(term => logText.includes(term.toLowerCase()));
+            
+            // Enhanced search for mixed format logs
+            return searchTerms.some(term => {
+                const termLower = term.toLowerCase();
+                
+                // Direct text match (works for both old and new formats)
+                if (logText.includes(termLower)) {
+                    return true;
+                }
+                
+                // Special handling for CLIENT: patterns in new structured logs
+                if (termLower.startsWith('client:')) {
+                    const clientPattern = termLower;
+                    return logText.includes(clientPattern);
+                }
+                
+                // Pattern-based matching for common log elements
+                if (termLower === 'error' || termLower === 'fail') {
+                    return logText.includes('error') || 
+                           logText.includes('fail') || 
+                           logText.includes('exception') ||
+                           logText.includes('fatal');
+                }
+                
+                if (termLower === 'success' || termLower === 'complete') {
+                    return logText.includes('success') || 
+                           logText.includes('complete') || 
+                           logText.includes('finished') ||
+                           logText.includes('done');
+                }
+                
+                return false;
+            });
         });
     }
 
     /**
-     * Helper: Categorize and analyze errors
+     * Helper: Categorize and analyze errors - handles mixed format logs
      */
     categorizeErrors(searchResults) {
         const analysis = {
@@ -226,7 +246,12 @@ class RenderLogService {
             affectedServices: searchResults.length,
             errorsByService: {},
             commonPatterns: {},
-            timeline: []
+            timeline: [],
+            formatAnalysis: {
+                structuredLogs: 0,
+                unstructuredLogs: 0,
+                mixedFormat: false
+            }
         };
 
         searchResults.forEach(result => {
@@ -234,19 +259,71 @@ class RenderLogService {
             analysis.errorsByService[serviceName] = result.totalMatches;
             analysis.totalErrors += result.totalMatches;
 
-            // Analyze error patterns
+            // Analyze error patterns and log formats
             result.matchingLogs.forEach(log => {
                 const message = log.message || log.text || '';
                 
-                // Extract common error patterns
-                if (message.includes('ERROR')) analysis.commonPatterns['ERROR'] = (analysis.commonPatterns['ERROR'] || 0) + 1;
-                if (message.includes('timeout')) analysis.commonPatterns['TIMEOUT'] = (analysis.commonPatterns['TIMEOUT'] || 0) + 1;
-                if (message.includes('Failed')) analysis.commonPatterns['FAILED_OPERATION'] = (analysis.commonPatterns['FAILED_OPERATION'] || 0) + 1;
-                if (message.includes('5xx')) analysis.commonPatterns['SERVER_ERROR'] = (analysis.commonPatterns['SERVER_ERROR'] || 0) + 1;
+                // Detect if this is a structured log (has CLIENT: pattern)
+                if (message.includes('CLIENT:')) {
+                    analysis.formatAnalysis.structuredLogs++;
+                } else {
+                    analysis.formatAnalysis.unstructuredLogs++;
+                }
+                
+                // Extract common error patterns for both formats
+                const patterns = this.extractErrorPatterns(message);
+                patterns.forEach(pattern => {
+                    analysis.commonPatterns[pattern] = (analysis.commonPatterns[pattern] || 0) + 1;
+                });
+
+                // Build timeline
+                analysis.timeline.push({
+                    timestamp: log.timestamp,
+                    service: serviceName,
+                    message: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
+                    isStructured: message.includes('CLIENT:')
+                });
             });
         });
+        
+        // Determine if we have mixed format data
+        analysis.formatAnalysis.mixedFormat = 
+            analysis.formatAnalysis.structuredLogs > 0 && 
+            analysis.formatAnalysis.unstructuredLogs > 0;
+
+        // Sort timeline by timestamp
+        analysis.timeline.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         return analysis;
+    }
+
+    /**
+     * Helper: Extract error patterns from log messages (works with both formats)
+     */
+    extractErrorPatterns(message) {
+        const patterns = [];
+        const lowerMessage = message.toLowerCase();
+        
+        // Common error patterns that work for both old and new formats
+        if (lowerMessage.includes('failed to')) patterns.push('failed_to_operation');
+        if (lowerMessage.includes('connection') && lowerMessage.includes('error')) patterns.push('connection_error');
+        if (lowerMessage.includes('timeout')) patterns.push('timeout_error');
+        if (lowerMessage.includes('not found') || lowerMessage.includes('404')) patterns.push('not_found_error');
+        if (lowerMessage.includes('unauthorized') || lowerMessage.includes('401')) patterns.push('auth_error');
+        if (lowerMessage.includes('rate limit')) patterns.push('rate_limit_error');
+        if (lowerMessage.includes('database') || lowerMessage.includes('db')) patterns.push('database_error');
+        if (lowerMessage.includes('airtable')) patterns.push('airtable_error');
+        if (lowerMessage.includes('gemini') || lowerMessage.includes('vertex')) patterns.push('ai_service_error');
+        
+        // Structured log specific patterns
+        if (lowerMessage.includes('client:')) {
+            const clientMatch = message.match(/CLIENT:([A-Z0-9_]+)/i);
+            if (clientMatch) {
+                patterns.push(`client_${clientMatch[1].toLowerCase()}_error`);
+            }
+        }
+        
+        return patterns;
     }
 }
 
