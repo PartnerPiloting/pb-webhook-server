@@ -307,6 +307,114 @@ app.get('/test/linkedin/debug', (req, res) => {
 
 console.log("index.js: Emergency debug routes added");
 
+// --- ENVIRONMENT MANAGEMENT ENDPOINTS ---
+// Environment status - tells you exactly where you are and what to do
+app.get('/api/environment/status', (req, res) => {
+    const currentEnv = process.env.NODE_ENV || 'development';
+    const renderCommit = process.env.RENDER_GIT_COMMIT || 'local';
+    const currentBranch = process.env.RENDER_GIT_BRANCH || 'main';
+    
+    // Determine environment based on URL or environment variables
+    let environment = 'development';
+    let chromeProfile = 'Development';
+    let visualIndicator = '🟢 DEVELOPMENT';
+    let safetyLevel = 'SAFE';
+    
+    if (req.get('host')?.includes('pb-webhook-server') && req.get('host')?.includes('render')) {
+        environment = 'production';
+        chromeProfile = 'Production';
+        visualIndicator = '🔴 PRODUCTION';
+        safetyLevel = 'DANGER - LIVE DATA';
+    } else if (req.get('host')?.includes('staging') || currentBranch === 'staging') {
+        environment = 'staging';
+        chromeProfile = 'Staging';
+        visualIndicator = '🟡 STAGING';
+        safetyLevel = 'CAUTION - TEST DATA';
+    }
+    
+    res.json({
+        environment: environment,
+        chromeProfile: chromeProfile,
+        visualIndicator: visualIndicator,
+        safetyLevel: safetyLevel,
+        instructions: {
+            currentLocation: `You are currently on: ${req.get('host')}`,
+            recommendedProfile: `Use Chrome Profile: "${chromeProfile}"`,
+            bookmarkThis: `Bookmark this URL in your ${chromeProfile} profile`,
+            nextSteps: environment === 'production' 
+                ? ['⚠️ You are in PRODUCTION', 'Double-check all changes', 'Consider testing in staging first']
+                : ['✅ Safe to experiment', 'Changes won\'t affect live users', 'Test freely']
+        },
+        technicalInfo: {
+            branch: currentBranch,
+            commit: renderCommit,
+            airtableBase: AIRTABLE_BASE_ID ? 'Connected' : 'Not configured',
+            timestamp: new Date().toISOString()
+        }
+    });
+});
+
+// Agent command endpoint - responds to plain English instructions
+app.post('/api/environment/agent-command', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    
+    const { command } = req.body;
+    const response = {
+        understood: command,
+        timestamp: new Date().toISOString()
+    };
+    
+    if (command?.toLowerCase().includes('production')) {
+        response.action = 'SWITCH TO PRODUCTION';
+        response.instructions = [
+            '1. Open Chrome Profile: "Production"',
+            '2. Navigate to: https://pb-webhook-server.onrender.com',
+            '3. Bookmark this URL in Production profile',
+            '4. ⚠️ WARNING: You will be working with LIVE DATA'
+        ];
+        response.chromeProfile = 'Production';
+        response.url = 'https://pb-webhook-server.onrender.com';
+        response.warning = '🔴 PRODUCTION ENVIRONMENT - BE CAREFUL!';
+    } else if (command?.toLowerCase().includes('staging') || command?.toLowerCase().includes('test')) {
+        response.action = 'SWITCH TO STAGING';
+        response.instructions = [
+            '1. Open Chrome Profile: "Staging"',
+            '2. Navigate to: https://pb-webhook-staging.onrender.com',
+            '3. Bookmark this URL in Staging profile',
+            '4. ✅ Safe to test - using test data'
+        ];
+        response.chromeProfile = 'Staging';
+        response.url = 'https://pb-webhook-staging.onrender.com';
+        response.warning = '🟡 STAGING ENVIRONMENT - TEST DATA';
+    } else if (command?.toLowerCase().includes('local') || command?.toLowerCase().includes('development')) {
+        response.action = 'SWITCH TO DEVELOPMENT';
+        response.instructions = [
+            '1. Open Chrome Profile: "Development"',
+            '2. Navigate to: http://localhost:3000',
+            '3. Make sure your local server is running',
+            '4. ✅ Completely safe - local only'
+        ];
+        response.chromeProfile = 'Development';
+        response.url = 'http://localhost:3000';
+        response.warning = '🟢 DEVELOPMENT ENVIRONMENT - LOCAL ONLY';
+    } else {
+        response.action = 'UNKNOWN COMMAND';
+        response.suggestions = [
+            'Try: "switch to production"',
+            'Try: "switch to staging"', 
+            'Try: "switch to development"',
+            'Try: "create hotfix branch"'
+        ];
+    }
+    
+    res.json(response);
+});
+
+console.log("index.js: Environment management endpoints added");
+
 try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
 // --- BROKEN PORTAL ROUTES REMOVED ---
