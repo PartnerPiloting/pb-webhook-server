@@ -1,6 +1,6 @@
 // File: postPromptBuilder.js
 
-const StructuredLogger = require('./utils/structuredLogger');
+const { StructuredLogger } = require('./utils/structuredLogger');
 // We import the function to load all necessary data from Airtable
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 

@@ -1,7 +1,7 @@
 // attributeLoader.js - UPDATED to use centralized 'base' from config
 
 require("dotenv").config();
-const StructuredLogger = require('./utils/structuredLogger');
+const { StructuredLogger } = require('./utils/structuredLogger');
 // No longer need: const Airtable = require("airtable");
 
 // Import the centralized Airtable base instance

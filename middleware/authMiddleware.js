@@ -1,7 +1,7 @@
 // middleware/authMiddleware.js
 // Simple authentication middleware for WordPress user validation and client lookup
 
-const StructuredLogger = require('../utils/structuredLogger');
+const { StructuredLogger } = require('../utils/structuredLogger');
 const clientService = require('../services/clientService');
 const { getCurrentWordPressUser } = require('../utils/wordpressAuth');
 const { parseServiceLevel, hasServiceLevelAccess } = require('../utils/serviceLevel');

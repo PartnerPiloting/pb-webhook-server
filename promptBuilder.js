@@ -10,7 +10,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const StructuredLogger = require('./utils/structuredLogger');
+const { StructuredLogger } = require('./utils/structuredLogger');
 
 const { loadAttributes } = require("./attributeLoader");
 

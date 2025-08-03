@@ -476,8 +476,18 @@ async function run(req, res, dependencies) {
 
                 clientLogger.setup(`Connected to client base: ${client.airtableBaseId}`);
 
-                // Fetch leads for this client
-                const leads = await fetchLeads(limit, clientBase, clientId, clientLogger);
+                // Fetch leads for this client (with error handling)
+                let leads;
+                try {
+                    leads = await fetchLeads(limit, clientBase, clientId, clientLogger);
+                } catch (fetchError) {
+                    const errorMsg = `Failed to fetch leads: ${fetchError.message}`;
+                    clientLogger.error(errorMsg);
+                    clientErrors.push(errorMsg);
+                    
+                    // Continue with empty leads array - all failures will be counted in the outer catch
+                    leads = [];
+                }
                 
                 if (!leads.length) {
                     clientLogger.summary(`No leads found in 'To Be Scored' to process`);
@@ -500,7 +510,8 @@ async function run(req, res, dependencies) {
                         failed: 0,
                         tokensUsed: 0,
                         duration: Math.round(duration / 1000),
-                        status: 'No leads to process'
+                        status: 'No leads to process',
+                        errorDetails: []  // ADD: Empty array for consistency
                     });
                     continue;
                 }
@@ -567,7 +578,8 @@ async function run(req, res, dependencies) {
                     failed: clientFailed,
                     tokensUsed: clientTokensUsed,
                     duration: Math.round(clientDuration / 1000),
-                    status: clientStatus
+                    status: clientStatus,
+                    errorDetails: clientErrors  // ADD: Include error details for debugging
                 });
 
                 console.log(`batchScorer.run: [${clientId}] Client processing completed. Processed: ${clientProcessed}, Successful: ${clientSuccessful}, Failed: ${clientFailed}, Tokens: ${clientTokensUsed}`);
@@ -597,7 +609,8 @@ async function run(req, res, dependencies) {
                     failed: 0,
                     tokensUsed: 0,
                     duration: Math.round(clientDuration / 1000),
-                    status: `Failed: ${clientError.message}`
+                    status: `Failed: ${clientError.message}`,
+                    errorDetails: [`Fatal error: ${clientError.message}`]  // ADD: Include fatal error details
                 });
 
                 // Alert admin but continue with other clients
