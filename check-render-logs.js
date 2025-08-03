@@ -363,10 +363,59 @@ async function checkSingleService(service, apiKey) {
                                                 
                                                 if (runFailures > 0) {
                                                     console.log(`      💥 TOTAL FAILURES IN THIS RUN: ${runFailures}`);
-                                                    console.log(`      📄 Output sample: ${output.substring(0, 200)}...`);
+                                                    console.log(`      📄 Full output analysis:`);
+                                                    
+                                                    // Split output into lines for better analysis
+                                                    const outputLines = output.split('\n');
+                                                    
+                                                    // Find lines with failure information
+                                                    const failureLines = outputLines.filter(line => 
+                                                        line.toLowerCase().includes('failed') ||
+                                                        line.toLowerCase().includes('error') ||
+                                                        line.toLowerCase().includes('exception')
+                                                    );
+                                                    
+                                                    console.log(`      🔍 Found ${failureLines.length} lines with failure/error information:`);
+                                                    failureLines.slice(0, 10).forEach((line, index) => {
+                                                        console.log(`         ${index + 1}. ${line.trim()}`);
+                                                    });
+                                                    
+                                                    if (failureLines.length > 10) {
+                                                        console.log(`         ... and ${failureLines.length - 10} more error lines`);
+                                                    }
+                                                    
+                                                    // Look for specific patterns that might indicate root cause
+                                                    const rootCausePatterns = [
+                                                        /timeout/i,
+                                                        /connection.*refused/i,
+                                                        /network.*error/i,
+                                                        /invalid.*data/i,
+                                                        /missing.*field/i,
+                                                        /authentication.*failed/i,
+                                                        /rate.*limit/i,
+                                                        /quota.*exceeded/i,
+                                                        /database.*error/i,
+                                                        /api.*error/i
+                                                    ];
+                                                    
+                                                    const rootCauses = [];
+                                                    rootCausePatterns.forEach(pattern => {
+                                                        const matches = outputLines.filter(line => pattern.test(line));
+                                                        if (matches.length > 0) {
+                                                            rootCauses.push(...matches.slice(0, 2));
+                                                        }
+                                                    });
+                                                    
+                                                    if (rootCauses.length > 0) {
+                                                        console.log(`      🎯 Potential root causes identified:`);
+                                                        rootCauses.forEach((cause, index) => {
+                                                            console.log(`         🚨 ${cause.trim()}`);
+                                                        });
+                                                    }
+                                                    
                                                 } else if (output.toLowerCase().includes('error') || output.toLowerCase().includes('failed')) {
                                                     console.log(`      ⚠️  Output contains error keywords`);
-                                                    console.log(`      📄 Output sample: ${output.substring(0, 200)}...`);
+                                                    console.log(`      📄 Output sample: ${output.substring(0, 300)}...`);
                                                     serviceIssues.errors++;
                                                 } else {
                                                     console.log(`      ✅ Run completed successfully`);
@@ -396,11 +445,11 @@ async function checkSingleService(service, apiKey) {
                 
                 // Use the correct Render logs API endpoint with proper timestamp format
                 const now = new Date();
-                const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
+                const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
                 
-                // Format timestamps as ISO 8601 strings
+                // Format timestamps as ISO 8601 strings - extend to 24 hours for better coverage
                 const endTime = now.toISOString();
-                const startTime = oneHourAgo.toISOString();
+                const startTime = twentyFourHoursAgo.toISOString();
                 
                 const logsOptions = {
                     hostname: 'api.render.com',
@@ -476,14 +525,109 @@ async function checkSingleService(service, apiKey) {
                             console.log(`   💥 TOTAL FAILURES DETECTED: ${totalFailures}`);
                             serviceIssues.errors += Math.min(totalFailures, 50); // Cap at 50 to avoid overflow
                             
-                            // Show top failure details
-                            failureDetails.slice(0, 3).forEach(failure => {
-                                console.log(`   🚨 ${failure.type}: ${failure.count} failures`);
-                                console.log(`      [${new Date(failure.timestamp).toLocaleString()}] ${failure.message.substring(0, 150)}...`);
+                            // ENHANCED: Deep dive into failure reasons
+                            failureDetails.slice(0, 5).forEach((failure, index) => {
+                                console.log(`\n   🚨 FAILURE ANALYSIS #${index + 1}: ${failure.type} (${failure.count} failures)`);
+                                console.log(`      ⏰ Timestamp: ${new Date(failure.timestamp).toLocaleString()}`);
+                                
+                                // Parse JSON if it's a structured log
+                                let parsedData = null;
+                                try {
+                                    parsedData = JSON.parse(failure.message);
+                                } catch (e) {
+                                    // Not JSON, treat as plain text
+                                }
+                                
+                                if (parsedData) {
+                                    console.log(`      📋 STRUCTURED FAILURE DATA:`);
+                                    
+                                    // Extract client-specific failure details
+                                    if (parsedData.clientResults) {
+                                        parsedData.clientResults.forEach(client => {
+                                            if (client.failed > 0) {
+                                                console.log(`         🔴 CLIENT: ${client.clientId || client.clientName || 'Unknown'}`);
+                                                console.log(`            ❌ Failed: ${client.failed}`);
+                                                console.log(`            ✅ Successful: ${client.successful || client.processed - client.failed || 0}`);
+                                                console.log(`            📊 Status: ${client.status || 'Unknown'}`);
+                                                
+                                                // Look for error details
+                                                if (client.errorDetails && Array.isArray(client.errorDetails)) {
+                                                    console.log(`            🚨 ERROR DETAILS (${client.errorDetails.length} errors):`);
+                                                    client.errorDetails.slice(0, 5).forEach((error, errorIndex) => {
+                                                        console.log(`               ${errorIndex + 1}. ${error.message || error.error || error}`);
+                                                        if (error.leadId) console.log(`                  Lead ID: ${error.leadId}`);
+                                                        if (error.code) console.log(`                  Error Code: ${error.code}`);
+                                                    });
+                                                    if (client.errorDetails.length > 5) {
+                                                        console.log(`               ... and ${client.errorDetails.length - 5} more errors`);
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    }
+                                    
+                                    // Look for summary-level error information
+                                    if (parsedData.summary) {
+                                        console.log(`         📈 SUMMARY:`);
+                                        Object.entries(parsedData.summary).forEach(([key, value]) => {
+                                            console.log(`            ${key}: ${value}`);
+                                        });
+                                    }
+                                    
+                                    // Look for any error arrays or messages at the root level
+                                    if (parsedData.errors && Array.isArray(parsedData.errors)) {
+                                        console.log(`         🚨 ROOT LEVEL ERRORS:`);
+                                        parsedData.errors.slice(0, 5).forEach((error, errorIndex) => {
+                                            console.log(`            ${errorIndex + 1}. ${error.message || error}`);
+                                        });
+                                    }
+                                    
+                                } else {
+                                    // Plain text log analysis
+                                    console.log(`      📄 TEXT LOG ANALYSIS:`);
+                                    const lines = failure.message.split('\n').filter(line => line.trim());
+                                    
+                                    // Look for specific error patterns
+                                    const errorPatterns = [
+                                        { name: 'API Errors', regex: /api.*error|error.*api/i },
+                                        { name: 'Database Errors', regex: /database.*error|sql.*error|connection.*error/i },
+                                        { name: 'Validation Errors', regex: /validation.*error|invalid.*data|missing.*field/i },
+                                        { name: 'Timeout Errors', regex: /timeout|timed.*out/i },
+                                        { name: 'Authentication Errors', regex: /auth.*error|unauthorized|forbidden/i },
+                                        { name: 'Rate Limit Errors', regex: /rate.*limit|quota.*exceeded|too.*many/i }
+                                    ];
+                                    
+                                    let foundErrorTypes = [];
+                                    errorPatterns.forEach(pattern => {
+                                        const matches = lines.filter(line => pattern.regex.test(line));
+                                        if (matches.length > 0) {
+                                            foundErrorTypes.push({
+                                                type: pattern.name,
+                                                examples: matches.slice(0, 2)
+                                            });
+                                        }
+                                    });
+                                    
+                                    if (foundErrorTypes.length > 0) {
+                                        console.log(`         🎯 ERROR CATEGORIES DETECTED:`);
+                                        foundErrorTypes.forEach(errorType => {
+                                            console.log(`            🔴 ${errorType.type}:`);
+                                            errorType.examples.forEach(example => {
+                                                console.log(`               • ${example.trim()}`);
+                                            });
+                                        });
+                                    }
+                                    
+                                    // Show raw context for manual inspection
+                                    console.log(`         📝 RAW MESSAGE SAMPLE:`);
+                                    console.log(`            ${failure.message.substring(0, 500)}${failure.message.length > 500 ? '...' : ''}`);
+                                }
+                                
+                                console.log(`      ${'─'.repeat(80)}`);
                             });
                             
-                            if (failureDetails.length > 3) {
-                                console.log(`      ... and ${failureDetails.length - 3} more failure patterns`);
+                            if (failureDetails.length > 5) {
+                                console.log(`      ... and ${failureDetails.length - 5} more failure patterns (run with detailed logging for full analysis)`);
                             }
                         }
                         
