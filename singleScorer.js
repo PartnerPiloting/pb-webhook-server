@@ -1,7 +1,7 @@
 // singleScorer.js - Final Clean Version
 
 require("dotenv").config();
-const StructuredLogger = require('./utils/structuredLogger');
+const { StructuredLogger } = require('./utils/structuredLogger');
 
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');

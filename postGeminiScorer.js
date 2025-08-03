@@ -1,5 +1,5 @@
 // File: services/postGeminiScorer.js
-const StructuredLogger = require('./utils/structuredLogger');
+const { StructuredLogger } = require('./utils/structuredLogger');
 const MAX_OUTPUT_TOKENS_FOR_POST_SCORING = 16384;
 const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10);
 
