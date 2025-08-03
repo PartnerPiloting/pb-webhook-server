@@ -278,10 +278,134 @@ async function checkSingleService(service, apiKey) {
         // Enhanced log analysis for cron jobs AND web services
         if (details && (details.type === 'cron_job' || details.type === 'web_service')) {
             try {
+                // For cron jobs, check individual runs for detailed status
+                if (details.type === 'cron_job') {
+                    console.log(`   🔍 Checking cron job runs for detailed status...`);
+                    
+                    // Get recent cron job runs from events
+                    const cronEvents = eventsResponse.statusCode === 200 ? eventsResponse.data : [];
+                    const cronRuns = cronEvents.filter(event => 
+                        event.event && event.event.type === 'cron_job_run_ended'
+                    );
+                    
+                    if (cronRuns.length > 0) {
+                        console.log(`   📊 Found ${cronRuns.length} recent cron runs`);
+                        
+                        // Check each cron run for detailed status
+                        for (const cronRun of cronRuns.slice(0, 5)) { // Check last 5 runs
+                            const runDetails = cronRun.event.details;
+                            const timestamp = new Date(cronRun.event.timestamp).toLocaleString();
+                            
+                            if (runDetails && runDetails.cronJobRunId) {
+                                // Try multiple endpoints for run details
+                                const runEndpoints = [
+                                    `/v1/services/${serviceId}/jobs/${runDetails.cronJobRunId}`,
+                                    `/v1/services/${serviceId}/jobs/${runDetails.cronJobRunId}/logs`,
+                                    `/v1/jobs/${runDetails.cronJobRunId}`,
+                                    `/v1/jobs/${runDetails.cronJobRunId}/logs`
+                                ];
+
+                                let foundOutput = false;
+                                
+                                for (const endpoint of runEndpoints) {
+                                    try {
+                                        const runOptions = {
+                                            hostname: 'api.render.com',
+                                            port: 443,
+                                            path: endpoint,
+                                            method: 'GET',
+                                            headers: {
+                                                'Authorization': `Bearer ${apiKey}`,
+                                                'Accept': 'application/json'
+                                            }
+                                        };
+
+                                        const runResponse = await makeRequest(runOptions);
+                                        if (runResponse.statusCode === 200) {
+                                            let output = '';
+                                            let runData = runResponse.data;
+                                            
+                                            // Handle different response formats
+                                            if (typeof runData === 'string') {
+                                                output = runData;
+                                            } else if (runData && runData.output) {
+                                                output = runData.output;
+                                            } else if (runData && runData.logs) {
+                                                output = Array.isArray(runData.logs) ? runData.logs.map(l => l.message || l.text || l).join('\n') : runData.logs;
+                                            } else if (Array.isArray(runData)) {
+                                                output = runData.map(item => item.message || item.text || item).join('\n');
+                                            }
+                                            
+                                            if (output && output.length > 0) {
+                                                foundOutput = true;
+                                                console.log(`   [${timestamp}] Run ${runDetails.cronJobRunId}: ${runDetails.status}`);
+                                                
+                                                // ENHANCED: Check for multiple failure patterns in cron output
+                                                const patterns = [
+                                                    { name: 'Failed Count', regex: /failed:\s*(\d+)/i },
+                                                    { name: 'Error Count', regex: /error:\s*(\d+)/i },
+                                                    { name: 'Timeout Count', regex: /timeout:\s*(\d+)/i },
+                                                    { name: 'Failed to Process', regex: /failed to \w+.*?(\d+)/i },
+                                                    { name: 'Processing Failed', regex: /processing.*?failed.*?(\d+)/i },
+                                                    { name: 'Could Not Process', regex: /could not process.*?(\d+)/i }
+                                                ];
+                                                
+                                                let runFailures = 0;
+                                                patterns.forEach(pattern => {
+                                                    const match = output.match(pattern.regex);
+                                                    if (match) {
+                                                        const count = parseInt(match[1]);
+                                                        runFailures += count;
+                                                        console.log(`      🚨 ${pattern.name}: ${count} failures detected`);
+                                                        serviceIssues.errors += count;
+                                                    }
+                                                });
+                                                
+                                                if (runFailures > 0) {
+                                                    console.log(`      💥 TOTAL FAILURES IN THIS RUN: ${runFailures}`);
+                                                    console.log(`      📄 Output sample: ${output.substring(0, 200)}...`);
+                                                } else if (output.toLowerCase().includes('error') || output.toLowerCase().includes('failed')) {
+                                                    console.log(`      ⚠️  Output contains error keywords`);
+                                                    console.log(`      📄 Output sample: ${output.substring(0, 200)}...`);
+                                                    serviceIssues.errors++;
+                                                } else {
+                                                    console.log(`      ✅ Run completed successfully`);
+                                                }
+                                                break; // Found output, no need to try other endpoints
+                                            }
+                                        }
+                                    } catch (runError) {
+                                        // Continue to next endpoint
+                                        continue;
+                                    }
+                                    
+                                    // Add small delay between endpoint attempts
+                                    await new Promise(resolve => setTimeout(resolve, 100));
+                                }
+                                
+                                if (!foundOutput) {
+                                    console.log(`   [${timestamp}] Run ${runDetails.cronJobRunId}: ${runDetails.status} (no detailed logs available)`);
+                                }
+                                
+                                // Add small delay to avoid rate limiting
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                            }
+                        }
+                    }
+                }
+                
+                // Use the correct Render logs API endpoint with proper timestamp format
+                const now = new Date();
+                const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
+                
+                // Format timestamps as ISO 8601 strings
+                const endTime = now.toISOString();
+                const startTime = oneHourAgo.toISOString();
+                
                 const logsOptions = {
                     hostname: 'api.render.com',
                     port: 443,
-                    path: `/v1/services/${serviceId}/logs?limit=50`, // More logs for web services
+                    path: `/v1/logs?ownerId=${encodeURIComponent(details?.ownerId || service.ownerId)}&resource=${serviceId}&startTime=${encodeURIComponent(startTime)}&endTime=${encodeURIComponent(endTime)}&limit=100`,
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${apiKey}`,
@@ -291,13 +415,28 @@ async function checkSingleService(service, apiKey) {
 
                 const logsResponse = await makeRequest(logsOptions);
                 
+                console.log(`   🔍 Logs API Status: ${logsResponse.statusCode}`);
+                
                 if (logsResponse.statusCode === 200) {
                     const logs = logsResponse.data;
-                    if (Array.isArray(logs) && logs.length > 0) {
-                        console.log(`   📋 Found ${logs.length} recent log entries`);
+                    console.log(`   📊 Raw logs response type: ${typeof logs}, isArray: ${Array.isArray(logs)}`);
+                    if (logs && logs.logs) {
+                        console.log(`   📊 Found ${logs.logs.length} log entries in logs.logs`);
+                        const actualLogs = logs.logs;
+                    } else if (Array.isArray(logs)) {
+                        console.log(`   📊 Found ${logs.length} log entries directly`);
+                        const actualLogs = logs;
+                    } else {
+                        console.log(`   📊 Unexpected logs structure:`, Object.keys(logs || {}));
+                        return serviceIssues;
+                    }
+                    
+                    const actualLogs = logs.logs || logs;
+                    if (Array.isArray(actualLogs) && actualLogs.length > 0) {
+                        console.log(`   📋 Found ${actualLogs.length} recent log entries`);
                         
                         // Check for errors in logs
-                        const errorLogs = logs.filter(log => {
+                        const errorLogs = actualLogs.filter(log => {
                             const message = (log.message || log.text || '').toLowerCase();
                             return message.includes('error') || message.includes('failed') || message.includes('exception');
                         });
@@ -315,7 +454,7 @@ async function checkSingleService(service, apiKey) {
                         let totalFailures = 0;
                         let failureDetails = [];
                         
-                        logs.forEach(log => {
+                        actualLogs.forEach(log => {
                             const message = log.message || log.text || '';
                             
                             patterns.forEach(pattern => {
@@ -358,9 +497,14 @@ async function checkSingleService(service, apiKey) {
                         } else if (totalFailures === 0) {
                             console.log(`   ✅ No errors in recent logs`);
                         }
+                    } else {
+                        console.log(`   📊 No log entries found in the last hour`);
                     }
                 } else {
                     console.log(`   ⚠️  Could not fetch logs (Status: ${logsResponse.statusCode})`);
+                    if (logsResponse.data) {
+                        console.log(`   📊 Error details: ${JSON.stringify(logsResponse.data).substring(0, 200)}`);
+                    }
                 }
             } catch (logError) {
                 console.log(`   ⚠️  Could not fetch logs: ${logError.message}`);
