@@ -275,13 +275,13 @@ async function checkSingleService(service, apiKey) {
             console.log(`   ⚠️  Could not fetch events (Status: ${eventsResponse.statusCode})`);
         }
 
-        // For cron jobs, also try to get logs directly
-        if (details && details.type === 'cron_job') {
+        // Enhanced log analysis for cron jobs AND web services
+        if (details && (details.type === 'cron_job' || details.type === 'web_service')) {
             try {
                 const logsOptions = {
                     hostname: 'api.render.com',
                     port: 443,
-                    path: `/v1/services/${serviceId}/logs?limit=20`,
+                    path: `/v1/services/${serviceId}/logs?limit=50`, // More logs for web services
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${apiKey}`,
@@ -302,6 +302,52 @@ async function checkSingleService(service, apiKey) {
                             return message.includes('error') || message.includes('failed') || message.includes('exception');
                         });
                         
+                        // ENHANCED: Check for multiple failure patterns
+                        const patterns = [
+                            { name: 'Failed Count', regex: /failed:\s*(\d+)/i },
+                            { name: 'Error Count', regex: /error:\s*(\d+)/i },
+                            { name: 'Timeout Count', regex: /timeout:\s*(\d+)/i },
+                            { name: 'Failed to Process', regex: /failed to \w+.*?(\d+)/i },
+                            { name: 'Processing Failed', regex: /processing.*?failed.*?(\d+)/i },
+                            { name: 'Could Not Process', regex: /could not process.*?(\d+)/i }
+                        ];
+                        
+                        let totalFailures = 0;
+                        let failureDetails = [];
+                        
+                        logs.forEach(log => {
+                            const message = log.message || log.text || '';
+                            
+                            patterns.forEach(pattern => {
+                                const match = message.match(pattern.regex);
+                                if (match) {
+                                    const count = parseInt(match[1]);
+                                    totalFailures += count;
+                                    failureDetails.push({
+                                        type: pattern.name,
+                                        count: count,
+                                        timestamp: log.timestamp,
+                                        message: message
+                                    });
+                                }
+                            });
+                        });
+                        
+                        if (totalFailures > 0) {
+                            console.log(`   💥 TOTAL FAILURES DETECTED: ${totalFailures}`);
+                            serviceIssues.errors += Math.min(totalFailures, 50); // Cap at 50 to avoid overflow
+                            
+                            // Show top failure details
+                            failureDetails.slice(0, 3).forEach(failure => {
+                                console.log(`   🚨 ${failure.type}: ${failure.count} failures`);
+                                console.log(`      [${new Date(failure.timestamp).toLocaleString()}] ${failure.message.substring(0, 150)}...`);
+                            });
+                            
+                            if (failureDetails.length > 3) {
+                                console.log(`      ... and ${failureDetails.length - 3} more failure patterns`);
+                            }
+                        }
+                        
                         if (errorLogs.length > 0) {
                             console.log(`   🚨 ${errorLogs.length} error logs found`);
                             serviceIssues.errors += errorLogs.length;
@@ -309,7 +355,7 @@ async function checkSingleService(service, apiKey) {
                                 const timestamp = new Date(errorLog.timestamp).toLocaleString();
                                 console.log(`      [${timestamp}] ${errorLog.message || errorLog.text}`);
                             });
-                        } else {
+                        } else if (totalFailures === 0) {
                             console.log(`   ✅ No errors in recent logs`);
                         }
                     }
