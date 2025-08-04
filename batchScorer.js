@@ -197,6 +197,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
     let rawResponseText = "";
     let usageMetadataForBatch = {}; 
     let modelFinishReasonForBatch = null;
+    let requestStartTime = Date.now(); // Initialize here so it's available after try/catch
 
     try {
         const modelInstanceForRequest = BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
@@ -219,6 +220,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
             contents: [{ role: "user", parts: [{ text: generationPromptForGemini }] }],
         };
         
+        requestStartTime = Date.now(); // Update timing right before API call
         const callPromise = modelInstanceForRequest.generateContent(requestPayload);
         const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("Gemini API call timeout for batchScorer chunk")), GEMINI_TIMEOUT_MS));
         
@@ -264,6 +266,47 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 }; 
     }
 
+    // Enhanced debugging for JSON truncation investigation
+    const batchId = `BATCH_${new Date().toISOString().replace(/[:.]/g, '-')}_${scorable.length}leads`;
+    const responseEndTime = Date.now();
+    const responseTime = responseEndTime - requestStartTime;
+    
+    const batchDebugInfo = {
+        batchId: batchId,
+        chunkSize: scorable.length,
+        maxOutputTokens: maxOutputForRequest,
+        responseTime: `${responseTime}ms`,
+        finishReason: modelFinishReasonForBatch,
+        outputTokens: usageMetadataForBatch.candidatesTokenCount || 0,
+        promptTokens: usageMetadataForBatch.promptTokenCount || 0,
+        totalTokens: usageMetadataForBatch.totalTokenCount || 0,
+        hitTokenLimit: modelFinishReasonForBatch === 'MAX_TOKENS',
+        clientId: clientId || 'unknown',
+        firstLeadId: scorable[0]?.id || 'unknown',
+        lastLeadId: scorable[scorable.length - 1]?.id || 'unknown'
+    };
+    
+    log.process(`🎯 BATCH_SCORER_DEBUG: ${JSON.stringify(batchDebugInfo)}`);
+    
+    // Response completeness analysis 
+    const responseLength = rawResponseText.length;
+    const lastChar = rawResponseText[responseLength - 1];
+    const last50Chars = rawResponseText.substring(Math.max(0, responseLength - 50));
+    const hasClosingBracket = rawResponseText.trim().endsWith(']');
+    const hasClosingBrace = rawResponseText.trim().endsWith('}');
+    
+    const responseAnalysis = {
+        batchId: batchId,
+        responseLength: responseLength,
+        lastCharacter: lastChar,
+        last50Characters: last50Chars,
+        appearsComplete: hasClosingBracket || hasClosingBrace,
+        possiblyTruncated: !hasClosingBracket && !hasClosingBrace,
+        finishReason: modelFinishReasonForBatch
+    };
+    
+    log.process(`🔍 RESPONSE_ANALYSIS: ${JSON.stringify(responseAnalysis)}`);
+
     if (process.env.DEBUG_RAW_GEMINI === "1") {
         console.log(`batchScorer.scoreChunk: [${clientId || 'unknown'}] DBG-RAW-GEMINI (Full Batch Response Text):\n`, rawResponseText);
     } else if (modelFinishReasonForBatch === 'MAX_TOKENS' && rawResponseText) {
@@ -288,6 +331,18 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
             outputArray = [outputArray]; 
         }
     } catch (parseErr) { 
+        // Enhanced JSON parse error debugging
+        const jsonParseFailInfo = {
+            batchId: batchId,
+            errorMessage: parseErr.message,
+            responseLength: rawResponseText.length,
+            finishReason: modelFinishReasonForBatch,
+            wasTokenLimitHit: modelFinishReasonForBatch === 'MAX_TOKENS',
+            errorContext: rawResponseText.substring(0, 200),
+            last100Chars: rawResponseText.substring(Math.max(0, rawResponseText.length - 100))
+        };
+        
+        log.error(`🚨 JSON_PARSE_FAILED: ${JSON.stringify(jsonParseFailInfo)}`);
         log.error(`Failed to parse Gemini JSON: ${parseErr.message}. Raw (first 500 chars): ${rawResponseText.substring(0, 500)}... Finish Reason: ${modelFinishReasonForBatch}`);
         await alertAdmin("Gemini JSON Parse Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${parseErr.message}\nRaw: ${rawResponseText.substring(0, 500)}...\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Parse Error", "Date Scored": new Date().toISOString() } }));
