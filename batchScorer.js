@@ -156,7 +156,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
             log.debug(`Lead ${rec.id} profile too thin (aboutText length: ${aboutText.length}), skipping AI call`);
             airtableUpdatesForSkipped.push({
                 id: rec.id,
-                fields: { "AI Score": 0, "Scoring Status": "Skipped – Profile Too Thin", "AI Profile Assessment": "", "AI Attribute Breakdown": "" }
+                fields: { "AI Score": 0, "Scoring Status": "Skipped – Profile Too Thin", "AI Profile Assessment": "", "AI Attribute Breakdown": "", "Date Scored": new Date().toISOString() }
             });
             continue;
         }
