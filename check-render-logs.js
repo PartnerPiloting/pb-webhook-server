@@ -126,7 +126,7 @@ async function getRenderLogs() {
 
         // Summary report
         console.log('\n' + '='.repeat(80));
-        console.log('🎯 COMPREHENSIVE RENDER SERVICES ANALYSIS - LAST 24 HOURS');
+        console.log('🎯 COMPREHENSIVE RENDER SERVICES ANALYSIS - LAST 5 DAYS (WITH FULL PAGINATION)');
         console.log('='.repeat(80));
         
         console.log(`\n📊 OVERALL SUMMARY:`);
@@ -165,6 +165,131 @@ async function getRenderLogs() {
     }
 }
 
+// COMPREHENSIVE PAGINATION FUNCTION - Fetches ALL available logs
+async function fetchAllLogsWithPagination(serviceId, ownerId, apiKey) {
+    const allLogs = [];
+    let pageCount = 0;
+    let totalLogsFetched = 0;
+    
+    console.log(`   🚀 Starting comprehensive log retrieval...`);
+    
+    // Start from 5 days ago to capture all recent activity (within most retention periods)
+    const fiveDaysAgo = new Date(Date.now() - (5 * 24 * 60 * 60 * 1000));
+    const now = new Date();
+    
+    let currentStartTime = fiveDaysAgo.toISOString();
+    let currentEndTime = now.toISOString();
+    
+    // Use smaller time windows for better pagination control
+    const timeWindowHours = 6; // 6-hour windows to balance API calls vs completeness
+    
+    while (new Date(currentStartTime) < now) {
+        const windowEnd = new Date(Math.min(
+            new Date(currentStartTime).getTime() + (timeWindowHours * 60 * 60 * 1000),
+            now.getTime()
+        ));
+        
+        console.log(`   📍 Fetching logs from ${new Date(currentStartTime).toLocaleString()} to ${windowEnd.toLocaleString()}`);
+        
+        // Fetch logs for this time window with pagination
+        const windowLogs = await fetchLogsForTimeWindow(
+            serviceId, 
+            ownerId, 
+            apiKey, 
+            currentStartTime, 
+            windowEnd.toISOString()
+        );
+        
+        if (windowLogs.length > 0) {
+            allLogs.push(...windowLogs);
+            totalLogsFetched += windowLogs.length;
+            console.log(`      ✅ Retrieved ${windowLogs.length} logs (Total: ${totalLogsFetched})`);
+        } else {
+            console.log(`      📭 No logs found in this window`);
+        }
+        
+        // Move to next time window
+        currentStartTime = windowEnd.toISOString();
+        pageCount++;
+        
+        // Add delay to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Safety limit to prevent infinite loops
+        if (pageCount > 50) {
+            console.log(`   ⚠️  Reached safety limit of 50 time windows`);
+            break;
+        }
+    }
+    
+    console.log(`   🎉 PAGINATION COMPLETE: Retrieved ${totalLogsFetched} total logs across ${pageCount} time windows`);
+    
+    // Sort all logs by timestamp (oldest first for chronological analysis)
+    allLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    return allLogs;
+}
+
+// Fetch logs for a specific time window with internal pagination
+async function fetchLogsForTimeWindow(serviceId, ownerId, apiKey, startTime, endTime) {
+    const windowLogs = [];
+    let hasMore = true;
+    let currentStartTime = startTime;
+    let currentEndTime = endTime;
+    let paginationCount = 0;
+    
+    while (hasMore && paginationCount < 20) { // Max 20 pages per window
+        const logsOptions = {
+            hostname: 'api.render.com',
+            port: 443,
+            path: `/v1/logs?ownerId=${encodeURIComponent(ownerId)}&resource=${serviceId}&startTime=${encodeURIComponent(currentStartTime)}&endTime=${encodeURIComponent(currentEndTime)}`,
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Accept': 'application/json'
+            }
+        };
+
+        try {
+            const response = await makeRequest(logsOptions);
+            
+            if (response.statusCode === 200) {
+                const responseData = response.data;
+                const logs = responseData.logs || responseData;
+                
+                if (Array.isArray(logs) && logs.length > 0) {
+                    windowLogs.push(...logs);
+                    
+                    // Check for pagination
+                    if (responseData.hasMore && responseData.nextStartTime && responseData.nextEndTime) {
+                        currentStartTime = responseData.nextStartTime;
+                        currentEndTime = responseData.nextEndTime;
+                        hasMore = true;
+                        console.log(`         📄 Page ${paginationCount + 1}: ${logs.length} logs, continuing pagination...`);
+                    } else {
+                        hasMore = false;
+                    }
+                } else {
+                    hasMore = false;
+                }
+            } else {
+                console.log(`         ⚠️  API Error ${response.statusCode}, stopping window pagination`);
+                hasMore = false;
+            }
+        } catch (error) {
+            console.log(`         ❌ Error fetching logs: ${error.message}`);
+            hasMore = false;
+        }
+        
+        paginationCount++;
+        
+        // Small delay between pagination requests
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    return windowLogs;
+}
+
 async function checkSingleService(service, apiKey) {
     const serviceName = service.name || service.service?.name || 'Unknown Service';
     const serviceId = service.id || service.service?.id;
@@ -184,8 +309,8 @@ async function checkSingleService(service, apiKey) {
     }
 
     try {
-        // Calculate timestamp for 24 hours ago
-        const twentyFourHoursAgo = Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000);
+        // Calculate timestamp for 5 days ago to capture comprehensive recent activity
+        const fiveDaysAgo = Math.floor((Date.now() - 5 * 24 * 60 * 60 * 1000) / 1000);
         
         // Get service details first
         const detailsOptions = {
@@ -219,13 +344,13 @@ async function checkSingleService(service, apiKey) {
         if (eventsResponse.statusCode === 200) {
             const events = eventsResponse.data;
             
-            // Filter events from last 24 hours
+            // Filter events from last 5 days
             const recentEvents = events.filter(event => {
                 const eventTime = new Date(event.timestamp).getTime() / 1000;
-                return eventTime >= twentyFourHoursAgo;
+                return eventTime >= fiveDaysAgo;
             });
             
-            console.log(`📊 ${recentEvents.length} events in last 24h`);
+            console.log(`📊 ${recentEvents.length} events in last 5 days`);
             
             // Analyze events
             const deployments = recentEvents.filter(e => e.type === 'deploy');
@@ -340,6 +465,31 @@ async function checkSingleService(service, apiKey) {
                                                 foundOutput = true;
                                                 console.log(`   [${timestamp}] Run ${runDetails.cronJobRunId}: ${runDetails.status}`);
                                                 
+                                                // SEARCH FOR "91" PATTERN SPECIFICALLY
+                                                const contains91 = output.includes('91');
+                                                if (contains91) {
+                                                    console.log(`      🎯 FOUND "91" IN OUTPUT - ANALYZING...`);
+                                                    const lines = output.split('\n');
+                                                    const lines91 = lines.filter(line => line.includes('91'));
+                                                    console.log(`      📋 Lines containing "91" (${lines91.length} found):`);
+                                                    lines91.forEach((line, index) => {
+                                                        console.log(`         ${index + 1}. ${line.trim()}`);
+                                                    });
+                                                    
+                                                    // Look for full context around 91 mentions
+                                                    lines91.forEach((line91, index91) => {
+                                                        const lineIndex = lines.indexOf(line91);
+                                                        console.log(`      🔍 CONTEXT FOR "91" MENTION #${index91 + 1}:`);
+                                                        const start = Math.max(0, lineIndex - 5);
+                                                        const end = Math.min(lines.length - 1, lineIndex + 5);
+                                                        for (let i = start; i <= end; i++) {
+                                                            const marker = i === lineIndex ? '>>> ' : '    ';
+                                                            console.log(`         ${marker}${i + 1}: ${lines[i].trim()}`);
+                                                        }
+                                                        console.log('      ' + '─'.repeat(60));
+                                                    });
+                                                }
+                                                
                                                 // ENHANCED: Check for multiple failure patterns in cron output
                                                 const patterns = [
                                                     { name: 'Failed Count', regex: /failed:\s*(\d+)/i },
@@ -347,19 +497,98 @@ async function checkSingleService(service, apiKey) {
                                                     { name: 'Timeout Count', regex: /timeout:\s*(\d+)/i },
                                                     { name: 'Failed to Process', regex: /failed to \w+.*?(\d+)/i },
                                                     { name: 'Processing Failed', regex: /processing.*?failed.*?(\d+)/i },
-                                                    { name: 'Could Not Process', regex: /could not process.*?(\d+)/i }
+                                                    { name: 'Could Not Process', regex: /could not process.*?(\d+)/i },
+                                                    { name: 'Failed 91 Pattern', regex: /failed:\s*91/i },
+                                                    { name: '86 Successful Pattern', regex: /(successful|processed):\s*(86|91)/i },
+                                                    { name: 'Batch Summary', regex: /(\d+)\s*successful.*?(\d+)\s*failed/i }
                                                 ];
                                                 
                                                 let runFailures = 0;
+                                                let found91Pattern = false;
+                                                let batchSummaryData = null;
+                                                
                                                 patterns.forEach(pattern => {
                                                     const match = output.match(pattern.regex);
                                                     if (match) {
-                                                        const count = parseInt(match[1]);
-                                                        runFailures += count;
-                                                        console.log(`      🚨 ${pattern.name}: ${count} failures detected`);
-                                                        serviceIssues.errors += count;
+                                                        if (pattern.name === 'Failed 91 Pattern') {
+                                                            found91Pattern = true;
+                                                            console.log(`      🎯 FOUND "FAILED: 91" PATTERN!`);
+                                                        } else if (pattern.name === 'Batch Summary') {
+                                                            const successful = parseInt(match[1]);
+                                                            const failed = parseInt(match[2]);
+                                                            batchSummaryData = { successful, failed };
+                                                            console.log(`      📊 BATCH SUMMARY: ${successful} successful, ${failed} failed`);
+                                                        } else if (pattern.name === '86 Successful Pattern') {
+                                                            console.log(`      ✅ FOUND 86/91 SUCCESS PATTERN: ${match[0]}`);
+                                                        } else {
+                                                            const count = parseInt(match[1]);
+                                                            runFailures += count;
+                                                            console.log(`      🚨 ${pattern.name}: ${count} failures detected`);
+                                                            serviceIssues.errors += count;
+                                                        }
                                                     }
                                                 });
+                                                
+                                                // If we found the 91 pattern, do detailed chronological analysis
+                                                if (found91Pattern || (batchSummaryData && (batchSummaryData.successful === 86 || batchSummaryData.failed === 10))) {
+                                                    console.log(`      🔍 DETAILED CHRONOLOGICAL ANALYSIS OF 86/10 PATTERN:`);
+                                                    
+                                                    const lines = output.split('\n');
+                                                    const relevantLines = [];
+                                                    
+                                                    lines.forEach((line, index) => {
+                                                        if (line.toLowerCase().includes('chunk') || 
+                                                            line.toLowerCase().includes('batch') ||
+                                                            line.toLowerCase().includes('processing') ||
+                                                            line.toLowerCase().includes('failed') ||
+                                                            line.toLowerCase().includes('error') ||
+                                                            /\d+\s*(successful|failed|processed)/i.test(line)) {
+                                                            relevantLines.push({
+                                                                lineNumber: index + 1,
+                                                                content: line.trim(),
+                                                                type: line.toLowerCase().includes('failed') || line.toLowerCase().includes('error') ? 'failure' : 'info'
+                                                            });
+                                                        }
+                                                    });
+                                                    
+                                                    console.log(`      📋 CHRONOLOGICAL PROCESSING TIMELINE (${relevantLines.length} relevant events):`);
+                                                    relevantLines.forEach((event, index) => {
+                                                        const marker = event.type === 'failure' ? '🚨' : '📍';
+                                                        console.log(`         ${marker} Line ${event.lineNumber}: ${event.content}`);
+                                                    });
+                                                    
+                                                    // Analyze timing distribution of failures
+                                                    const failureLines = relevantLines.filter(e => e.type === 'failure');
+                                                    const totalRelevantLines = relevantLines.length;
+                                                    
+                                                    if (failureLines.length > 0) {
+                                                        const earlyFailures = failureLines.filter(f => {
+                                                            const position = relevantLines.indexOf(f) / totalRelevantLines;
+                                                            return position < 0.3;
+                                                        });
+                                                        const middleFailures = failureLines.filter(f => {
+                                                            const position = relevantLines.indexOf(f) / totalRelevantLines;
+                                                            return position >= 0.3 && position < 0.7;
+                                                        });
+                                                        const lateFailures = failureLines.filter(f => {
+                                                            const position = relevantLines.indexOf(f) / totalRelevantLines;
+                                                            return position >= 0.7;
+                                                        });
+                                                        
+                                                        console.log(`      ⏰ FAILURE TIMING ANALYSIS:`);
+                                                        console.log(`         🟥 Early phase (0-30%): ${earlyFailures.length} failures`);
+                                                        console.log(`         🟨 Middle phase (30-70%): ${middleFailures.length} failures`);
+                                                        console.log(`         🟩 Late phase (70-100%): ${lateFailures.length} failures`);
+                                                        
+                                                        if (lateFailures.length > earlyFailures.length + middleFailures.length) {
+                                                            console.log(`         🎯 PATTERN: Most failures in FINAL PHASE - suggests resource exhaustion`);
+                                                        } else if (earlyFailures.length > middleFailures.length + lateFailures.length) {
+                                                            console.log(`         🎯 PATTERN: Most failures in INITIAL PHASE - suggests initialization issues`);
+                                                        } else {
+                                                            console.log(`         🎯 PATTERN: Failures DISTRIBUTED throughout - suggests random response quality issues`);
+                                                        }
+                                                    }
+                                                }
                                                 
                                                 if (runFailures > 0) {
                                                     console.log(`      💥 TOTAL FAILURES IN THIS RUN: ${runFailures}`);
@@ -443,26 +672,17 @@ async function checkSingleService(service, apiKey) {
                     }
                 }
                 
-                // Use the correct Render logs API endpoint with proper timestamp format
-                const now = new Date();
-                const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+                // ENHANCED: Use comprehensive pagination to fetch ALL available logs
+                console.log(`   🔄 Fetching ALL available logs with pagination...`);
+                const allLogs = await fetchAllLogsWithPagination(serviceId, details?.ownerId || service.ownerId, apiKey);
                 
-                // Format timestamps as ISO 8601 strings - extend to 24 hours for better coverage
-                const endTime = now.toISOString();
-                const startTime = twentyFourHoursAgo.toISOString();
+                console.log(`   📊 TOTAL LOGS RETRIEVED: ${allLogs.length} entries across all time periods`);
                 
-                const logsOptions = {
-                    hostname: 'api.render.com',
-                    port: 443,
-                    path: `/v1/logs?ownerId=${encodeURIComponent(details?.ownerId || service.ownerId)}&resource=${serviceId}&startTime=${encodeURIComponent(startTime)}&endTime=${encodeURIComponent(endTime)}&limit=100`,
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Accept': 'application/json'
-                    }
+                // Process the comprehensive log data
+                const logsResponse = {
+                    statusCode: 200,
+                    data: { logs: allLogs }
                 };
-
-                const logsResponse = await makeRequest(logsOptions);
                 
                 console.log(`   🔍 Logs API Status: ${logsResponse.statusCode}`);
                 
@@ -490,21 +710,30 @@ async function checkSingleService(service, apiKey) {
                             return message.includes('error') || message.includes('failed') || message.includes('exception');
                         });
                         
-                        // ENHANCED: Check for multiple failure patterns
-                        const patterns = [
-                            { name: 'Failed Count', regex: /failed:\s*(\d+)/i },
-                            { name: 'Error Count', regex: /error:\s*(\d+)/i },
-                            { name: 'Timeout Count', regex: /timeout:\s*(\d+)/i },
-                            { name: 'Failed to Process', regex: /failed to \w+.*?(\d+)/i },
-                            { name: 'Processing Failed', regex: /processing.*?failed.*?(\d+)/i },
-                            { name: 'Could Not Process', regex: /could not process.*?(\d+)/i }
-                        ];
-                        
-                        let totalFailures = 0;
+                                        // ENHANCED: Check for multiple failure patterns
+                                        const patterns = [
+                                            { name: 'Failed Count', regex: /failed:\s*(\d+)/i },
+                                            { name: 'Error Count', regex: /error:\s*(\d+)/i },
+                                            { name: 'Timeout Count', regex: /timeout:\s*(\d+)/i },
+                                            { name: 'Failed to Process', regex: /failed to \w+.*?(\d+)/i },
+                                            { name: 'Processing Failed', regex: /processing.*?failed.*?(\d+)/i },
+                                            { name: 'Could Not Process', regex: /could not process.*?(\d+)/i },
+                                            { name: 'Failed 91 Pattern', regex: /failed:\s*91/i },
+                                            { name: '86 Successful Pattern', regex: /(successful|processed):\s*(86|91)/i },
+                                            { name: 'Batch Summary', regex: /(\d+)\s*successful.*?(\d+)\s*failed/i }
+                                        ];                        let totalFailures = 0;
                         let failureDetails = [];
                         
                         actualLogs.forEach(log => {
                             const message = log.message || log.text || '';
+                            
+                            // CHECK FOR "91" SPECIFICALLY
+                            if (message.includes('91')) {
+                                console.log(`   🎯 FOUND "91" IN LOG MESSAGE:`);
+                                console.log(`      ⏰ Timestamp: ${new Date(log.timestamp).toLocaleString()}`);
+                                console.log(`      📄 Full message: ${message}`);
+                                console.log('   ' + '─'.repeat(80));
+                            }
                             
                             patterns.forEach(pattern => {
                                 const match = message.match(pattern.regex);
