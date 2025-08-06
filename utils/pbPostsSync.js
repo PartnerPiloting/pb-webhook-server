@@ -1,7 +1,8 @@
-// utils/pbPostsSync.js
+// utils/pbPostsSync.js - MULTI-TENANT SUPPORT: Updated to use client-specific Airtable bases
 
 require("dotenv").config();
-const base = require('../config/airtableClient');
+const { getClientBase } = require('../config/airtableClient');
+const base = require('../config/airtableClient'); // Fallback for backward compatibility
 
 const AIRTABLE_LEADS_TABLE_NAME = "Leads";
 const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
@@ -20,10 +21,11 @@ function normalizeLinkedInUrl(url) {
 }
 
 // Fetch ALL leads and match by normalized LinkedIn Profile URL
-async function getAirtableRecordByProfileUrl(profileUrl) {
+// MULTI-TENANT: Now accepts clientBase parameter
+async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
     const normUrl = normalizeLinkedInUrl(profileUrl);
-    // Fetch all leads (fine for moderate dataset; for large datasets, use paginated queries)
-    const records = await base(AIRTABLE_LEADS_TABLE_NAME).select().all();
+    // Use client-specific base instead of global base
+    const records = await clientBase(AIRTABLE_LEADS_TABLE_NAME).select().all();
     return records.find(record => {
         const atUrl = record.get(AIRTABLE_LINKEDIN_URL_FIELD);
         return atUrl && normalizeLinkedInUrl(atUrl) === normUrl;
@@ -35,8 +37,72 @@ function isPostAlreadyStored(existingPostsArr, postObj) {
     return existingPostsArr.some(p => p.postUrl && postObj.postUrl && p.postUrl === postObj.postUrl);
 }
 
+// Multi-tenant helper: Identify which client base contains the LinkedIn profiles
+async function identifyClientForPosts(postsArray) {
+    const { getAllActiveClients } = require('../services/clientService');
+    const { getClientBase } = require('../config/airtableClient');
+    
+    // Extract unique profile URLs from posts
+    const profileUrls = [...new Set(
+        postsArray
+            .filter(post => post.profileUrl)
+            .map(post => normalizeLinkedInUrl(post.profileUrl))
+    )];
+    
+    if (profileUrls.length === 0) {
+        console.warn('No profile URLs found in posts for client identification');
+        return null;
+    }
+    
+    try {
+        const activeClients = await getAllActiveClients();
+        
+        // Check each client base to see which contains these profile URLs
+        for (const client of activeClients) {
+            const clientBase = getClientBase(client.id);
+            if (!clientBase) continue;
+            
+            try {
+                // Sample a few profile URLs to check if they exist in this client's base
+                const sampleUrls = profileUrls.slice(0, 3); // Check first 3 URLs
+                let foundCount = 0;
+                
+                for (const normUrl of sampleUrls) {
+                    const records = await clientBase(AIRTABLE_LEADS_TABLE_NAME)
+                        .select({ 
+                            filterByFormula: `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", "")) = "${normUrl}"`,
+                            maxRecords: 1 
+                        })
+                        .firstPage();
+                    
+                    if (records.length > 0) {
+                        foundCount++;
+                    }
+                }
+                
+                // If we found matches for most sample URLs, this is likely the correct client
+                if (foundCount > 0) {
+                    console.log(`PB Posts: Identified client ${client.id} (${client.name || 'Unnamed'}) based on ${foundCount}/${sampleUrls.length} profile URL matches`);
+                    return { clientId: client.id, clientBase };
+                }
+            } catch (clientError) {
+                console.warn(`Error checking client ${client.id}: ${clientError.message}`);
+                continue;
+            }
+        }
+        
+        console.warn('No client base found containing the profile URLs from PB posts');
+        return null;
+        
+    } catch (error) {
+        console.error('Error identifying client for PB posts:', error.message);
+        return null;
+    }
+}
+
 // Main sync function. Accepts EITHER an array of posts (webhook) or a JSON string (legacy/manual mode)
-async function syncPBPostsToAirtable(postsInput) {
+// MULTI-TENANT: Now accepts optional clientBase parameter for client-specific operations
+async function syncPBPostsToAirtable(postsInput, clientBase = null) {
     let pbPostsArr;
     if (Array.isArray(postsInput)) {
         pbPostsArr = postsInput;
@@ -44,6 +110,28 @@ async function syncPBPostsToAirtable(postsInput) {
         pbPostsArr = JSON.parse(postsInput);
     } else {
         throw new Error('PB Posts input must be an array of posts!');
+    }
+
+    let airtableBase = clientBase;
+    let clientId = null;
+    
+    // If no client base provided, try to auto-detect the correct client
+    if (!airtableBase) {
+        console.log('PB Posts: No client base provided, attempting auto-detection...');
+        const clientInfo = await identifyClientForPosts(pbPostsArr);
+        
+        if (clientInfo) {
+            airtableBase = clientInfo.clientBase;
+            clientId = clientInfo.clientId;
+        } else {
+            // Fallback to global base for backward compatibility
+            console.warn('PB Posts: Client auto-detection failed, falling back to global base');
+            airtableBase = base;
+        }
+    }
+    
+    if (!airtableBase) {
+        throw new Error('No Airtable base available for PB posts sync');
     }
 
     // Index posts by normalized profile URL
@@ -73,7 +161,7 @@ async function syncPBPostsToAirtable(postsInput) {
     let processedCount = 0, updatedCount = 0, skippedCount = 0;
     for (const [normProfileUrl, postsList] of Object.entries(postsByProfile)) {
         processedCount++;
-        const record = await getAirtableRecordByProfileUrl(normProfileUrl);
+        const record = await getAirtableRecordByProfileUrl(normProfileUrl, airtableBase);
         if (!record) {
             console.warn(`No Airtable lead found for: ${normProfileUrl}`);
             continue;
@@ -95,7 +183,7 @@ async function syncPBPostsToAirtable(postsInput) {
         });
 
         if (newPostsAdded > 0) {
-            await base(AIRTABLE_LEADS_TABLE_NAME).update([
+            await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
                 {
                     id: record.id,
                     fields: {

@@ -1,12 +1,11 @@
-// attributeLoader.js - UPDATED to use centralized 'base' from config
+// attributeLoader.js - MULTI-TENANT SUPPORT: Updated to use client-specific bases
 
 require("dotenv").config();
 const { StructuredLogger } = require('./utils/structuredLogger');
-// No longer need: const Airtable = require("airtable");
 
-// Import the centralized Airtable base instance
-// This path assumes attributeLoader.js is in the project root, and config/ is a subdirectory.
-const base = require('./config/airtableClient.js'); 
+// Import multi-tenant Airtable client functions
+const { getClientBase } = require('./config/airtableClient.js');
+const base = require('./config/airtableClient.js'); // Fallback for backward compatibility 
 
 /* ---------- configuration -------------------------------------- */
 const TABLE_NAME = process.env.ATTR_TABLE_NAME || "Scoring Attributes";
@@ -20,37 +19,52 @@ function clean(text = "") {
     .trim();
 }
 
-/* ---------- simple cache (10-min TTL) --------------------------- */
-let cache = null;
+/* ---------- simple cache (10-min TTL) - Multi-tenant aware --------------------------- */
+let cache = {}; // Changed to object to support per-client caching
 let cacheUntil = 0;
 
 /* ----------------------------------------------------------------
     loadAttributes – fetches Airtable rows (or fallback) and builds
     { preamble, positives, negatives } with token-saving clean-ups
+    MULTI-TENANT: Now accepts optional clientId parameter
 ----------------------------------------------------------------- */
-async function loadAttributes(logger = null) {
+async function loadAttributes(logger = null, clientId = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
     logger = new StructuredLogger('SYSTEM', 'ATTR');
   }
 
-  logger.setup('loadAttributes', 'Starting attribute loading from Airtable');
+  logger.setup('loadAttributes', `Starting attribute loading from Airtable${clientId ? ` for client: ${clientId}` : ''}`);
 
-  // Check if the centralized base was loaded successfully
-  if (!base) {
-    logger.error('loadAttributes', 'Airtable base instance not available from config/airtableClient.js - using fallback attributes');
-    return fallbackAttributes(); // Proceed with fallback if base isn't available
+  // Get the appropriate base instance
+  let attributeBase;
+  if (clientId) {
+    // Multi-tenant mode: use client-specific base
+    attributeBase = getClientBase(clientId);
+    if (!attributeBase) {
+      logger.error('loadAttributes', `Invalid client ID: ${clientId} - using fallback attributes`);
+      return fallbackAttributes();
+    }
+  } else {
+    // Legacy mode: use global base for backward compatibility
+    attributeBase = base;
+    if (!attributeBase) {
+      logger.error('loadAttributes', 'Airtable base instance not available from config/airtableClient.js - using fallback attributes');
+      return fallbackAttributes();
+    }
   }
 
   const now = Date.now();
-  if (cache && now < cacheUntil) {
-    logger.debug('loadAttributes', 'Serving attributes from cache');
-    return cache; // serve cached copy
+  // Use client-specific cache key to prevent cross-client cache pollution
+  const cacheKey = clientId || 'global';
+  if (cache && cache[cacheKey] && now < cacheUntil) {
+    logger.debug('loadAttributes', `Serving attributes from cache for ${cacheKey}`);
+    return cache[cacheKey]; // serve cached copy
   }
 
   try {
     logger.process('loadAttributes', `Fetching attributes from Airtable table: ${TABLE_NAME}`);
-    const rows = await base(TABLE_NAME).select().all(); // Uses the imported 'base'
+    const rows = await attributeBase(TABLE_NAME).select().all(); // Uses the client-specific base
     const positives = {};
     const negatives = {};
     let   preamble  = "";
@@ -106,13 +120,18 @@ async function loadAttributes(logger = null) {
       }
     });
 
-    cache = { preamble, positives, negatives }; 
+    const result = { preamble, positives, negatives };
+    
+    // Store in client-specific cache
+    if (!cache) cache = {};
+    cache[cacheKey] = result;
     cacheUntil = now + 10 * 60 * 1000;          // 10-minute cache
+    
     logger.summary('loadAttributes', 
       `Loaded ${rows.length} rows → ${Object.keys(positives).length} positives, ` +
-      `${Object.keys(negatives).length} negatives. Cached for 10 minutes.`
+      `${Object.keys(negatives).length} negatives. Cached for 10 minutes for ${cacheKey}.`
     );
-    return cache;
+    return result;
   } catch (err) {
     logger.error('loadAttributes', `Attribute fetch from Airtable failed - using fallback list: ${err.message}`);
     return fallbackAttributes();
@@ -122,6 +141,7 @@ async function loadAttributes(logger = null) {
 /* ----------------------------------------------------------------
     loadAttributeForEditing – fetches a single attribute for editing
     Returns: complete attribute object with all fields
+    LEGACY VERSION: Uses global base for backward compatibility
 ----------------------------------------------------------------- */
 async function loadAttributeForEditing(attributeId, logger = null) {
   // Initialize logger if not provided (backward compatibility)
