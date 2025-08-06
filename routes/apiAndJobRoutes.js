@@ -51,14 +51,14 @@ router.get("/health", (_req, res) => {
 // Initiate PB Message Sender (single lead)
 // ---------------------------------------------------------------
 router.get("/api/initiate-pb-message", async (req, res) => {
-  const { recordId } = req.query;
-  console.log("/api/initiate-pb-message for", recordId);
-  if (!recordId)
-    return res
-      .status(400)
-      .json({ success: false, error: "recordId query param required" });
+  const { recordId } = req.query;
+  console.log("/api/initiate-pb-message for", recordId);
+  if (!recordId)
+    return res
+      .status(400)
+      .json({ success: false, error: "recordId query param required" });
 
-  try {
+  try {
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
     if (!clientId) {
@@ -75,9 +75,7 @@ router.get("/api/initiate-pb-message", async (req, res) => {
         success: false,
         error: `Invalid client ID: ${clientId}`
       });
-    }
-
-    const [creds] = await clientBase("Credentials")
+    }    const [creds] = await clientBase("Credentials")
       .select({ maxRecords: 1 })
       .firstPage();
     if (!creds) throw new Error("No record in Credentials table.");
@@ -242,15 +240,16 @@ router.post("/api/pb-webhook", async (req, res) => {
 
 
 // ---------------------------------------------------------------
-// Manual Batch Score
+// Manual Batch Score (Admin/Batch Operation)
 // ---------------------------------------------------------------
 router.get("/run-batch-score", async (req, res) => {
-  // Extract client ID for multi-tenant support
+  // This is a batch operation endpoint - should use batch authentication
+  // For now, we'll require x-client-id header for client-specific operations
   const clientId = req.headers['x-client-id'];
   if (!clientId) {
     return res.status(400).json({
       success: false,
-      error: "Client ID required in x-client-id header"
+      error: "Client ID required in x-client-id header for batch operations"
     });
   }
 
@@ -465,21 +464,28 @@ router.get("/debug-gemini-info", (_req, res) => {
 const postBatchScorer = require("../postBatchScorer.js");
 
 // ---------------------------------------------------------------
-// Multi-Tenant Post Batch Score
+// Multi-Tenant Post Batch Score (Admin/Batch Operation)
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score", async (req, res) => {
   console.log("apiAndJobRoutes.js: /run-post-batch-score endpoint hit");
   
-  // Get client ID from header
+  // This is a batch operation endpoint - should have proper batch authentication
+  // For now, we'll require x-client-id header for client-specific operations
   const clientId = req.headers['x-client-id'];
   if (!clientId) {
-    return res.status(401).json({ error: 'Client ID required' });
+    return res.status(400).json({ 
+      error: 'Client ID required in x-client-id header for batch operations',
+      usage: 'Add x-client-id header with your client ID'
+    });
   }
 
   // Get client-specific base
   const clientBase = getClientBase(clientId);
   if (!clientBase) {
-    return res.status(401).json({ error: 'Invalid client ID' });
+    return res.status(400).json({ 
+      error: 'Invalid client ID',
+      clientId: clientId
+    });
   }
   
   if (!vertexAIClient || !geminiModelId) {
@@ -539,10 +545,20 @@ router.post("/run-post-batch-score", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// Debug endpoint for troubleshooting client discovery
+// Debug endpoint for troubleshooting client discovery (Admin Only)
 // ---------------------------------------------------------------
 router.get("/debug-clients", async (req, res) => {
   console.log("Debug clients endpoint hit");
+  
+  // This is an admin endpoint - should require admin authentication
+  // For now, we'll require a debug key to prevent unauthorized access
+  const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
+  if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for debug endpoints'
+    });
+  }
   
   try {
     const clientService = require("../services/clientService");
@@ -591,10 +607,19 @@ router.get("/debug-clients", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// JSON Quality Diagnostic endpoint
+// JSON Quality Diagnostic endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/api/json-quality-analysis", async (req, res) => {
   console.log("JSON quality analysis endpoint hit");
+  
+  // This is an admin endpoint - should require admin authentication
+  const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
+  if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for diagnostic endpoints'
+    });
+  }
   
   try {
     const { analyzeJsonQuality } = require("../jsonDiagnosticTool");
