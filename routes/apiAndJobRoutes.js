@@ -254,44 +254,34 @@ router.post("/api/pb-webhook", async (req, res) => {
 });
 
 
+
 // ---------------------------------------------------------------
-// Manual Batch Score (Admin/Batch Operation)
+// Manual Batch Score (Admin/Batch Operation) - Multi-Client
 // ---------------------------------------------------------------
 router.get("/run-batch-score", async (req, res) => {
-  // This is a batch operation endpoint - should use batch authentication
-  // For now, we'll require x-client-id header for client-specific operations
-  const clientId = req.headers['x-client-id'];
-  if (!clientId) {
-    return res.status(400).json({
+  console.log("Batch scoring requested (multi-client)");
+  
+  const limit = Number(req.query.limit) || 500;
+  
+  if (!vertexAIClient || !geminiModelId) {
+    console.warn(`Batch scoring unavailable: vertexAIClient=${!!vertexAIClient}, geminiModelId=${geminiModelId}`);
+    return res.status(503).json({
       success: false,
-      error: "Client ID required in x-client-id header for batch operations"
+      error: "Batch scoring unavailable (Google VertexAI config missing)",
+      details: {
+        vertexAIClient: !!vertexAIClient,
+        geminiModelId: geminiModelId || "not set"
+      }
     });
   }
-
-  // Get client-specific base
-  const clientBase = await getClientBase(clientId);
-  if (!clientBase) {
-    return res.status(400).json({
-      success: false,
-      error: `Invalid client ID: ${clientId}`
+  
+  batchScorer
+    .run(req, res, { vertexAIClient, geminiModelId, limit })
+    .catch((e) => {
+      if (!res.headersSent)
+        res.status(500).send("Batch scoring error: " + e.message);
     });
-  }
-
-  const limit = Number(req.query.limit) || 500;
-  if (!vertexAIClient || !geminiModelId )
-    return res
-      .status(503)
-      .send("Batch scoring unavailable (config missing).");
-
-  batchScorer
-    .run(req, res, { vertexAIClient, geminiModelId, clientBase, limit })
-    .catch((e) => {
-      if (!res.headersSent)
-        res.status(500).send("Batch scoring error: " + e.message);
-    });
 });
-
-// ---------------------------------------------------------------
 // Single Lead Scorer
 // ---------------------------------------------------------------
 router.get("/score-lead", async (req, res) => {
