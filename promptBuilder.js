@@ -48,7 +48,6 @@ function extractExperience(profile = {}) {
 
 /* ------------------------------------------------------------------
    slimLead  –  turns a huge scraped profile into a compact object
-   (Unchanged from your version)
 ------------------------------------------------------------------ */
 function slimLead(profile = {}) {
     const headline = (profile.headline || profile.jobTitle || "").trim();

@@ -11,6 +11,7 @@ const dirtyJSON = require('dirty-json');
 // ---------------------------------------------------------------
 const geminiConfig = require("../config/geminiClient.js");
 const airtableBase = require("../config/airtableClient.js");
+const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
 
 const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
@@ -58,7 +59,25 @@ router.get("/api/initiate-pb-message", async (req, res) => {
       .json({ success: false, error: "recordId query param required" });
 
   try {
-    const [creds] = await airtableBase("Credentials")
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+
+    const [creds] = await clientBase("Credentials")
       .select({ maxRecords: 1 })
       .firstPage();
     if (!creds) throw new Error("No record in Credentials table.");
@@ -70,7 +89,7 @@ router.get("/api/initiate-pb-message", async (req, res) => {
     if (!agentId || !pbKey || !sessionCookie || !userAgent)
       throw new Error("Missing PB message-sender credentials.");
 
-    const lead = await airtableBase("Leads").find(recordId);
+    const lead = await clientBase("Leads").find(recordId);
     if (!lead) throw new Error(`Lead ${recordId} not found.`);
     const profileUrl = lead.get("LinkedIn Profile URL");
     const message = lead.get("Message To Be Sent");
@@ -95,7 +114,7 @@ router.get("/api/initiate-pb-message", async (req, res) => {
       throw new Error(enqueueData.error || "Enqueue failed.");
 
     try {
-      await airtableBase("Leads").update(recordId, {
+      await clientBase("Leads").update(recordId, {
         "Message Status": "Queuing Initiated by Server",
       });
     } catch (e) {
@@ -226,14 +245,32 @@ router.post("/api/pb-webhook", async (req, res) => {
 // Manual Batch Score
 // ---------------------------------------------------------------
 router.get("/run-batch-score", async (req, res) => {
+  // Extract client ID for multi-tenant support
+  const clientId = req.headers['x-client-id'];
+  if (!clientId) {
+    return res.status(400).json({
+      success: false,
+      error: "Client ID required in x-client-id header"
+    });
+  }
+
+  // Get client-specific base
+  const clientBase = getClientBase(clientId);
+  if (!clientBase) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid client ID: ${clientId}`
+    });
+  }
+
   const limit = Number(req.query.limit) || 500;
-  if (!vertexAIClient || !geminiModelId || !airtableBase)
+  if (!vertexAIClient || !geminiModelId )
     return res
       .status(503)
       .send("Batch scoring unavailable (config missing).");
 
   batchScorer
-    .run(req, res, { vertexAIClient, geminiModelId, airtableBase, limit })
+    .run(req, res, { vertexAIClient, geminiModelId, clientBase, limit })
     .catch((e) => {
       if (!res.headersSent)
         res.status(500).send("Batch scoring error: " + e.message);
@@ -244,17 +281,33 @@ router.get("/run-batch-score", async (req, res) => {
 // Single Lead Scorer
 // ---------------------------------------------------------------
 router.get("/score-lead", async (req, res) => {
-  if (!vertexAIClient || !geminiModelId || !airtableBase)
-    return res
-      .status(503)
-      .json({ error: "Scoring unavailable (config missing)." });
+  try {
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
 
-  try {
-    const id = req.query.recordId;
-    if (!id)
-      return res.status(400).json({ error: "recordId query param required" });
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
 
-    const record = await airtableBase("Leads").find(id);
+    if (!vertexAIClient || !geminiModelId)
+      return res
+        .status(503)
+        .json({ error: "Scoring unavailable (config missing)." });
+
+    const id = req.query.recordId;
+    if (!id)
+      return res.status(400).json({ error: "recordId query param required" });    const record = await clientBase("Leads").find(id);
     if (!record) { 
         console.warn(`score-lead: Lead record not found for ID: ${id}`);
         return res.status(404).json({ error: `Lead record not found for ID: ${id}` });
@@ -262,7 +315,7 @@ router.get("/score-lead", async (req, res) => {
     const profileJsonString = record.get("Profile Full JSON");
     if (!profileJsonString) {
         console.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
-         await airtableBase("Leads").update(id, {
+         await clientBase("Leads").update(id, {
             "AI Score": 0,
             "Scoring Status": "Skipped – Profile JSON missing",
             "AI Profile Assessment": "",
@@ -279,7 +332,7 @@ router.get("/score-lead", async (req, res) => {
         profile.linkedinDescription ||
         "").trim();
     if (about.length < 40) {
-      await airtableBase("Leads").update(id, {
+      await clientBase("Leads").update(id, {
         "AI Score": 0,
         "Scoring Status": "Skipped – Profile JSON too small",
         "AI Profile Assessment": "",
@@ -369,7 +422,7 @@ router.get("/score-lead", async (req, res) => {
       null
     );
 
-    await airtableBase("Leads").update(id, {
+    await clientBase("Leads").update(id, {
       "AI Score": finalPct,
       "AI Profile Assessment": aiProfileAssessment,
       "AI Attribute Breakdown": breakdown,
@@ -420,6 +473,18 @@ const postBatchScorer = require("../postBatchScorer.js");
 router.post("/run-post-batch-score", async (req, res) => {
   console.log("apiAndJobRoutes.js: /run-post-batch-score endpoint hit");
   
+  // Get client ID from header
+  const clientId = req.headers['x-client-id'];
+  if (!clientId) {
+    return res.status(401).json({ error: 'Client ID required' });
+  }
+
+  // Get client-specific base
+  const clientBase = getClientBase(clientId);
+  if (!clientBase) {
+    return res.status(401).json({ error: 'Invalid client ID' });
+  }
+  
   if (!vertexAIClient || !geminiModelId) {
     console.error("Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
     return res.status(503).json({
@@ -430,10 +495,9 @@ router.post("/run-post-batch-score", async (req, res) => {
 
   try {
     // Parse query parameters
-    const clientId = req.query.clientId || null; // Optional: specific client
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
     
-    console.log(`Starting multi-tenant post scoring with clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}`);
+    console.log(`Starting post scoring for client: ${clientId}, limit=${limit || 'UNLIMITED'}`);
     
     // Start the multi-tenant post scoring process
     const results = await postBatchScorer.runMultiTenantPostScoring(
@@ -827,12 +891,16 @@ router.get("/api/token-usage", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/token-usage - Getting current token usage");
     
-    const clientId = req.query.client;
+    // Get client ID from header
+    const clientId = req.headers['x-client-id'];
     if (!clientId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Client ID is required. Please provide ?client=your-client-id parameter.'
-      });
+      return res.status(401).json({ error: 'Client ID required' });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(401).json({ error: 'Invalid client ID' });
     }
     const usage = await getCurrentTokenUsage(clientId);
     
@@ -861,16 +929,21 @@ router.get("/api/token-usage", async (req, res) => {
 router.post("/api/attributes/:id/validate-budget", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget - Validating token budget`);
+    
+    // Get client ID from header
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(401).json({ error: 'Client ID required' });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(401).json({ error: 'Invalid client ID' });
+    }
+
     const attributeId = req.params.id;
     const updatedData = req.body;
-    const clientId = req.query.client;
-    
-    if (!clientId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Client ID is required. Please provide ?client=your-client-id parameter.'
-      });
-    }
     
     if (!updatedData || typeof updatedData !== 'object') {
       return res.status(400).json({
@@ -907,12 +980,16 @@ router.get("/api/post-token-usage", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/post-token-usage - Getting current post token usage");
     
-    const clientId = req.query.client;
+    // Get client ID from header
+    const clientId = req.headers['x-client-id'];
     if (!clientId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Client ID is required. Please provide ?client=your-client-id parameter.'
-      });
+      return res.status(401).json({ error: 'Client ID required' });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(401).json({ error: 'Invalid client ID' });
     }
     
     const usage = await getCurrentPostTokenUsage(clientId);
@@ -942,16 +1019,21 @@ router.get("/api/post-token-usage", async (req, res) => {
 router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget - Validating post token budget`);
+    
+    // Get client ID from header
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(401).json({ error: 'Client ID required' });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(401).json({ error: 'Invalid client ID' });
+    }
+
     const attributeId = req.params.id;
     const updatedData = req.body;
-    const clientId = req.query.client;
-    
-    if (!clientId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Client ID is required. Please provide ?client=your-client-id parameter.'
-      });
-    }
     
     if (!updatedData || typeof updatedData !== 'object') {
       return res.status(400).json({
@@ -1093,6 +1175,25 @@ router.get("/api/attributes/:id/edit", async (req, res) => {
 router.post("/api/attributes/:id/ai-edit", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
+    
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+    
     const attributeId = req.params.id;
     const { userRequest } = req.body;
     
@@ -1103,8 +1204,8 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
       });
     }
 
-    // Load current attribute (get ALL fields)
-    const currentAttribute = await loadAttributeForEditing(attributeId);
+    // Load current attribute (get ALL fields) - use client-aware function
+    const currentAttribute = await loadAttributeForEditingWithClientBase(attributeId, clientBase);
     
     // Call Gemini (using same model as scoring system for consistency)
     if (!vertexAIClient) {
@@ -1411,13 +1512,31 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering - Testing active/inactive filtering");
     
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+    
     const { loadAttributes } = require("../attributeLoader.js");
     
     // Load attributes using the same function that scoring uses
     const { positives, negatives } = await loadAttributes();
     
     // Get all attributes from Airtable to compare
-    const allRecords = await airtableBase("Scoring Attributes")
+    const allRecords = await clientBase("Scoring Attributes")
       .select({
         fields: ["Attribute Id", "Heading", "Category", "Bonus Points", "Active"],
         filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')"
@@ -1487,6 +1606,19 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
 router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help - Field-specific AI help`);
+    
+    // Get client ID from header
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(401).json({ error: 'Client ID required' });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(401).json({ error: 'Invalid client ID' });
+    }
+
     const attributeId = req.params.id;
     const { fieldKey, userRequest, currentValue, currentAttribute } = req.body;
     
@@ -2174,11 +2306,25 @@ router.post("/api/post-attributes/:id/ai-edit", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
     
-    if (!airtableBase) {
-      throw new Error("Airtable not available - check config/airtableClient.js");
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
     }
 
-    const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+
+    const record = await clientBase("Post Scoring Attributes").find(req.params.id);
     
     const { requestType, currentData } = req.body;
     
