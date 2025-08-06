@@ -9,6 +9,7 @@ const router = express.Router();
 // --- Dependencies needed for /lh-webhook/upsertLeadOnly ---
 const { upsertLead } = require('../services/leadService.js');
 const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
+const dirtyJSON = require('dirty-json');
 
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
@@ -25,12 +26,13 @@ const { StructuredLogger } = require('../utils/structuredLogger');
     REQUIRED: client query parameter to specify which client's base to use
 ------------------------------------------------------------------*/
 router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
+    let log; // Define log here to be accessible in the final catch block
     try {
         // Extract and validate client parameter
         const clientId = req.query.client;
         
         // Create client-specific logger
-        const log = new StructuredLogger(clientId || 'UNKNOWN');
+        log = new StructuredLogger(clientId || 'UNKNOWN');
         log.setup("=== WEBHOOK REQUEST: /lh-webhook/upsertLeadOnly ===");
         
         if (!clientId) {
@@ -86,7 +88,56 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
         log.setup(`Processing for client: ${client.clientName} (${clientId})`);
 
-        const rawLeadsFromWebhook = Array.isArray(req.body) ? req.body : (req.body ? [req.body] : []);
+        // ADDED: Enhanced JSON processing with dirty-json fallback for malformed data
+        let processedBody;
+        try {
+            // If the body is a string, try to parse it as JSON.
+            if (typeof req.body === 'string') {
+                try {
+                    processedBody = JSON.parse(req.body);
+                } catch (e) {
+                    log.warn("Request body is a string but not valid JSON. Attempting to process as-is.");
+                    processedBody = req.body; // Keep as string if parsing fails
+                }
+            } else {
+                processedBody = req.body;
+            }
+
+            // Function to recursively parse stringified JSON within an object
+            function processObjectForStringifiedJSON(obj) {
+                if (!obj || typeof obj !== 'object') return obj;
+                
+                for (const [key, value] of Object.entries(obj)) {
+                    if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+                        try {
+                            obj[key] = JSON.parse(value);
+                            log.debug(`Successfully parsed stringified JSON in field: ${key}`);
+                        } catch (parseError) {
+                            try {
+                                obj[key] = dirtyJSON.parse(value);
+                                log.info(`dirty-json successfully parsed malformed JSON in field: ${key}`);
+                            } catch (dirtyError) {
+                                log.warn(`Failed to parse JSON in field ${key} with both JSON.parse and dirty-json. Keeping original string.`);
+                            }
+                        }
+                    } else if (typeof value === 'object') {
+                        processObjectForStringifiedJSON(value);
+                    }
+                }
+            }
+            
+            if (Array.isArray(processedBody)) {
+                processedBody.forEach(item => processObjectForStringifiedJSON(item));
+            } else if (typeof processedBody === 'object') {
+                processObjectForStringifiedJSON(processedBody);
+            }
+
+        } catch (bodyProcessingError) {
+            log.error("Error processing request body with enhanced JSON parsing:", bodyProcessingError.message);
+            processedBody = req.body; // Fallback
+        }
+
+        const rawLeadsFromWebhook = Array.isArray(processedBody) ? processedBody : (processedBody ? [processedBody] : []);
         log.setup(`Received ${rawLeadsFromWebhook.length} leads for processing`);
         
         if (rawLeadsFromWebhook.length > 0) {

@@ -90,7 +90,14 @@ ${JSON.stringify(geminiInputObject, null, 2)}
         }
 
         const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-        const parsedJsonObject = JSON.parse(cleanedJsonString);
+        
+        let parsedJsonObject;
+        try {
+            parsedJsonObject = JSON.parse(cleanedJsonString);
+        } catch (parseError) {
+            logger.error('scorePostsWithGemini', `Failed to parse Gemini's JSON response: ${parseError.message}`);
+            throw new Error(`PostGeminiScorer: Failed to parse Gemini's response. Raw response: ${rawResponseText.substring(0, 500)}...`);
+        }
 
         // Flexible parsing to handle multiple Gemini response formats
         if (Array.isArray(parsedJsonObject)) {
