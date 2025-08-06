@@ -833,7 +833,8 @@ export const getTokenUsage = async () => {
     const response = await fetch(`${baseUrl}/api/token-usage?client=${encodeURIComponent(clientId)}`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-client-id': clientId,
       }
     });
     
@@ -866,7 +867,8 @@ export const getPostTokenUsage = async () => {
     const response = await fetch(`${baseUrl}/api/post-token-usage?client=${encodeURIComponent(clientId)}`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-client-id': clientId,
       }
     });
     
