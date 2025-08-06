@@ -69,7 +69,7 @@ router.get("/api/initiate-pb-message", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -254,7 +254,7 @@ router.get("/run-batch-score", async (req, res) => {
   }
 
   // Get client-specific base
-  const clientBase = getClientBase(clientId);
+  const clientBase = await getClientBase(clientId);
   if (!clientBase) {
     return res.status(400).json({
       success: false,
@@ -291,7 +291,7 @@ router.get("/score-lead", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -480,7 +480,7 @@ router.post("/run-post-batch-score", async (req, res) => {
   }
 
   // Get client-specific base
-  const clientBase = getClientBase(clientId);
+  const clientBase = await getClientBase(clientId);
   if (!clientBase) {
     return res.status(400).json({ 
       error: 'Invalid client ID',
@@ -920,7 +920,7 @@ router.get("/api/token-usage", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(401).json({ error: 'Invalid client ID' });
     }
@@ -959,7 +959,7 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(401).json({ error: 'Invalid client ID' });
     }
@@ -1009,7 +1009,7 @@ router.get("/api/post-token-usage", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(401).json({ error: 'Invalid client ID' });
     }
@@ -1049,7 +1049,7 @@ router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(401).json({ error: 'Invalid client ID' });
     }
@@ -1168,7 +1168,7 @@ router.get("/api/attributes/:id/edit", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -1208,7 +1208,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -1396,7 +1396,7 @@ router.post("/api/attributes/:id/save", async (req, res) => {
     }
     
     // Get client-specific base and update attribute
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -1463,7 +1463,7 @@ router.get("/api/attributes", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -1544,7 +1544,7 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -1636,7 +1636,7 @@ router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(401).json({ error: 'Invalid client ID' });
     }
@@ -2187,7 +2187,7 @@ router.get("/api/post-attributes", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -2275,7 +2275,7 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -2338,7 +2338,7 @@ router.post("/api/post-attributes/:id/ai-edit", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
@@ -2458,7 +2458,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     }
 
     // Get client-specific base
-    const clientBase = getClientBase(clientId);
+    const clientBase = await getClientBase(clientId);
     if (!clientBase) {
       return res.status(400).json({
         success: false,
