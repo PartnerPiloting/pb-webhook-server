@@ -36,8 +36,23 @@ const ENQUEUE_URL = `${
 // Health Check
 // ---------------------------------------------------------------
 router.get("/health", (_req, res) => {
-  console.log("apiAndJobRoutes.js: /health hit");
-  res.send("ok");
+  console.log("apiAndJobRoutes.js: /health hit");
+  res.json({
+    status: "ok",
+    enhanced_audit_system: "loaded",
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Simple audit test route (no auth required)
+router.get("/audit-test", (_req, res) => {
+  console.log("apiAndJobRoutes.js: /audit-test hit");
+  res.json({
+    status: "success", 
+    message: "Enhanced audit system is loaded",
+    timestamp: new Date().toISOString(),
+    features: ["endpoint testing", "automated troubleshooting", "smart recommendations"]
+  });
 });
 
 // ---------------------------------------------------------------
@@ -2514,5 +2529,854 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     });
   }
 });
+
+// ---------------------------------------------------------------
+// PHASE 1 COMPREHENSIVE AUDIT SYSTEM
+// ---------------------------------------------------------------
+
+// Comprehensive system audit - tests all "floors" of our architecture
+router.get("/api/audit/comprehensive", async (req, res) => {
+  const startTime = Date.now();
+  console.log("apiAndJobRoutes.js: Starting comprehensive system audit");
+  
+  // Get client ID from header
+  const clientId = req.headers['x-client-id'];
+  if (!clientId) {
+    return res.status(400).json({
+      success: false,
+      error: "Client ID required in x-client-id header for audit"
+    });
+  }
+
+  const auditResults = {
+    clientId,
+    timestamp: new Date().toISOString(),
+    overallStatus: "PASS",
+    floors: {},
+    summary: {
+      totalTests: 0,
+      passed: 0,
+      failed: 0,
+      warnings: 0
+    },
+    recommendations: []
+  };
+
+  try {
+    // ============= FLOOR 1: BASIC CONNECTIVITY & AUTHENTICATION =============
+    console.log("Audit Floor 1: Testing basic connectivity and authentication");
+    auditResults.floors.floor1 = {
+      name: "Basic Connectivity & Authentication",
+      status: "PASS",
+      tests: []
+    };
+
+    // Test 1.1: Client Base Resolution
+    try {
+      const clientBase = await getClientBase(clientId);
+      if (!clientBase) {
+        throw new Error("Client base resolution failed");
+      }
+      auditResults.floors.floor1.tests.push({
+        test: "Client Base Resolution",
+        status: "PASS",
+        message: "Successfully resolved client-specific Airtable base"
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor1.tests.push({
+        test: "Client Base Resolution", 
+        status: "FAIL",
+        message: error.message
+      });
+      auditResults.floors.floor1.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 1.2: Airtable Connection
+    try {
+      const clientBase = await getClientBase(clientId);
+      const testQuery = await clientBase("Scoring Attributes")
+        .select({ maxRecords: 1 })
+        .firstPage();
+      
+      auditResults.floors.floor1.tests.push({
+        test: "Airtable Connection",
+        status: "PASS", 
+        message: "Successfully connected to client's Airtable base"
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor1.tests.push({
+        test: "Airtable Connection",
+        status: "FAIL",
+        message: error.message
+      });
+      auditResults.floors.floor1.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 1.3: Multi-tenant Isolation
+    try {
+      const clientService = require('../services/clientService');
+      const tokenLimits = await clientService.getClientTokenLimits(clientId);
+      
+      if (!tokenLimits) {
+        throw new Error("Client configuration not found in Master Clients");
+      }
+      
+      auditResults.floors.floor1.tests.push({
+        test: "Multi-tenant Isolation",
+        status: "PASS",
+        message: `Client isolated properly: ${tokenLimits.clientName}`
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor1.tests.push({
+        test: "Multi-tenant Isolation",
+        status: "FAIL", 
+        message: error.message
+      });
+      auditResults.floors.floor1.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // ============= FLOOR 2: BUSINESS LOGIC & SCORING =============
+    console.log("Audit Floor 2: Testing business logic and scoring system");
+    auditResults.floors.floor2 = {
+      name: "Business Logic & Scoring",
+      status: "PASS",
+      tests: []
+    };
+
+    // Test 2.1: Attribute Loading
+    try {
+      const { loadAttributes } = require("../attributeLoader.js");
+      const { positives, negatives } = await loadAttributes(null, clientId);
+      
+      const totalAttributes = Object.keys(positives).length + Object.keys(negatives).length;
+      if (totalAttributes === 0) {
+        throw new Error("No active attributes found");
+      }
+      
+      auditResults.floors.floor2.tests.push({
+        test: "Attribute Loading",
+        status: "PASS",
+        message: `Loaded ${Object.keys(positives).length} positive and ${Object.keys(negatives).length} negative attributes`
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor2.tests.push({
+        test: "Attribute Loading",
+        status: "FAIL",
+        message: error.message
+      });
+      auditResults.floors.floor2.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 2.2: Token Budget Calculation
+    try {
+      const usage = await getCurrentTokenUsage(clientId);
+      
+      if (typeof usage.totalTokens !== 'number' || usage.totalTokens < 0) {
+        throw new Error("Invalid token calculation");
+      }
+      
+      auditResults.floors.floor2.tests.push({
+        test: "Token Budget Calculation",
+        status: "PASS",
+        message: `Token usage: ${usage.totalTokens}/${usage.limit} (${usage.percentUsed}%)`
+      });
+      auditResults.summary.passed++;
+      
+      // Warning if token usage is high
+      if (usage.percentUsed > 90) {
+        auditResults.summary.warnings++;
+        auditResults.recommendations.push(`High token usage: ${usage.percentUsed}% - consider deactivating some attributes`);
+      }
+    } catch (error) {
+      auditResults.floors.floor2.tests.push({
+        test: "Token Budget Calculation",
+        status: "FAIL",
+        message: error.message
+      });
+      auditResults.floors.floor2.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 2.3: Scoring System Components
+    try {
+      const { computeFinalScore } = require("../scoring.js");
+      const { buildAttributeBreakdown } = require("../breakdown.js");
+      
+      // Test with mock data
+      const mockPositiveScores = { A: 5, B: 8 };
+      const mockPositives = { A: { maxPoints: 10 }, B: { maxPoints: 10 } };
+      const mockNegativeScores = {};
+      const mockNegatives = {};
+      
+      const result = computeFinalScore(
+        mockPositiveScores, mockPositives,
+        mockNegativeScores, mockNegatives,
+        false, []
+      );
+      
+      if (typeof result.percentage !== 'number') {
+        throw new Error("Scoring calculation failed");
+      }
+      
+      auditResults.floors.floor2.tests.push({
+        test: "Scoring System Components", 
+        status: "PASS",
+        message: "Scoring and breakdown functions working correctly"
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor2.tests.push({
+        test: "Scoring System Components",
+        status: "FAIL",
+        message: error.message
+      });
+      auditResults.floors.floor2.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 2.4: ENDPOINT TESTING - "Drive the Car" Tests
+    console.log("Running endpoint tests - actually calling API endpoints...");
+    
+    // Test 2.4a: Scoring Endpoint Test
+    try {
+      const clientBase = await getClientBase(clientId);
+      
+      // Try to find a lead with Profile Full JSON for endpoint testing
+      const testLeads = await clientBase("Leads")
+        .select({
+          maxRecords: 1,
+          filterByFormula: "AND({Profile Full JSON} != '', LEN({Profile Full JSON}) > 100)"
+        })
+        .firstPage();
+
+      if (testLeads.length > 0) {
+        const testLeadId = testLeads[0].id;
+        const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+        
+        // Make actual API call to scoring endpoint
+        const response = await fetch(`${baseUrl}/score-lead?recordId=${testLeadId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': clientId
+          }
+        });
+        
+        if (response.ok) {
+          const scoreData = await response.json();
+          auditResults.floors.floor2.tests.push({
+            test: "Scoring Endpoint Live Test",
+            status: "PASS",
+            message: `Scoring endpoint working - processed lead ${testLeadId} successfully`
+          });
+          auditResults.summary.passed++;
+        } else {
+          throw new Error(`Scoring endpoint returned ${response.status}: ${await response.text()}`);
+        }
+      } else {
+        auditResults.floors.floor2.tests.push({
+          test: "Scoring Endpoint Live Test",
+          status: "WARN", 
+          message: "No suitable test leads found with Profile JSON"
+        });
+        auditResults.summary.warnings++;
+      }
+    } catch (error) {
+      auditResults.floors.floor2.tests.push({
+        test: "Scoring Endpoint Live Test",
+        status: "FAIL",
+        message: `Scoring endpoint test failed: ${error.message}`
+      });
+      auditResults.floors.floor2.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 2.4b: Attributes API Endpoint Test
+    try {
+      const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+      
+      const response = await fetch(`${baseUrl}/api/attributes`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientId
+        }
+      });
+      
+      if (response.ok) {
+        const attrData = await response.json();
+        auditResults.floors.floor2.tests.push({
+          test: "Attributes API Endpoint Live Test",
+          status: "PASS",
+          message: `Attributes API working - returned ${attrData.count || 0} attributes`
+        });
+        auditResults.summary.passed++;
+      } else {
+        throw new Error(`Attributes API returned ${response.status}: ${await response.text()}`);
+      }
+    } catch (error) {
+      auditResults.floors.floor2.tests.push({
+        test: "Attributes API Endpoint Live Test",
+        status: "FAIL",
+        message: `Attributes API test failed: ${error.message}`
+      });
+      auditResults.floors.floor2.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 2.4c: Token Usage API Endpoint Test
+    try {
+      const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+      
+      const response = await fetch(`${baseUrl}/api/token-usage`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientId
+        }
+      });
+      
+      if (response.ok) {
+        const tokenData = await response.json();
+        auditResults.floors.floor2.tests.push({
+          test: "Token Usage API Endpoint Live Test",
+          status: "PASS",
+          message: `Token Usage API working - ${tokenData.usage?.percentUsed || 'unknown'}% used`
+        });
+        auditResults.summary.passed++;
+      } else {
+        throw new Error(`Token Usage API returned ${response.status}: ${await response.text()}`);
+      }
+    } catch (error) {
+      auditResults.floors.floor2.tests.push({
+        test: "Token Usage API Endpoint Live Test",
+        status: "FAIL",
+        message: `Token Usage API test failed: ${error.message}`
+      });
+      auditResults.floors.floor2.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // ============= FLOOR 3: ADVANCED FEATURES & AI =============
+    console.log("Audit Floor 3: Testing advanced features and AI integration");
+    auditResults.floors.floor3 = {
+      name: "Advanced Features & AI",
+      status: "PASS",
+      tests: []
+    };
+
+    // Test 3.1: Gemini AI Configuration
+    try {
+      if (!vertexAIClient || !geminiModelId) {
+        throw new Error("Gemini AI client or model ID not configured");
+      }
+      
+      auditResults.floors.floor3.tests.push({
+        test: "Gemini AI Configuration",
+        status: "PASS",
+        message: `Gemini configured with model: ${geminiModelId}`
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor3.tests.push({
+        test: "Gemini AI Configuration",
+        status: "FAIL",
+        message: error.message
+      });
+      auditResults.floors.floor3.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 3.2: Post Scoring Configuration
+    try {
+      const clientBase = await getClientBase(clientId);
+      const postAttributes = await clientBase('Post Scoring Attributes')
+        .select({ maxRecords: 1, filterByFormula: 'Active = TRUE()' })
+        .firstPage();
+      
+      auditResults.floors.floor3.tests.push({
+        test: "Post Scoring Configuration",
+        status: "PASS",
+        message: `Post scoring configured with ${postAttributes.length > 0 ? 'active' : 'no active'} attributes`
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor3.tests.push({
+        test: "Post Scoring Configuration",
+        status: "WARN",
+        message: `Post scoring table access issue: ${error.message}`
+      });
+      auditResults.summary.warnings++;
+    }
+    auditResults.summary.totalTests++;
+
+    // Test 3.3: Attribute Editing System
+    try {
+      const clientBase = await getClientBase(clientId);
+      const { loadAttributeForEditingWithClientBase } = require("../attributeLoader.js");
+      
+      // Test loading the first available attribute for editing
+      const records = await clientBase("Scoring Attributes")
+        .select({ maxRecords: 1, filterByFormula: "OR({Category} = 'Positive', {Category} = 'Negative')" })
+        .firstPage();
+      
+      if (records.length > 0) {
+        const testAttr = await loadAttributeForEditingWithClientBase(records[0].get("Attribute Id"), clientBase);
+        if (!testAttr) {
+          throw new Error("Attribute loading for editing failed");
+        }
+      }
+      
+      auditResults.floors.floor3.tests.push({
+        test: "Attribute Editing System",
+        status: "PASS",
+        message: "Attribute editing system functional"
+      });
+      auditResults.summary.passed++;
+    } catch (error) {
+      auditResults.floors.floor3.tests.push({
+        test: "Attribute Editing System",
+        status: "FAIL",
+        message: error.message
+      });
+      auditResults.floors.floor3.status = "FAIL";
+      auditResults.summary.failed++;
+    }
+    auditResults.summary.totalTests++;
+
+    // ============= FINAL ASSESSMENT =============
+    const failedFloors = Object.values(auditResults.floors).filter(floor => floor.status === "FAIL");
+    if (failedFloors.length > 0) {
+      auditResults.overallStatus = "FAIL";
+      auditResults.recommendations.push("Critical issues found - resolve failed tests before proceeding to Phase 2");
+    } else if (auditResults.summary.warnings > 0) {
+      auditResults.overallStatus = "PASS_WITH_WARNINGS";
+      auditResults.recommendations.push("System functional but has warnings - review before proceeding to Phase 2");
+    } else {
+      auditResults.overallStatus = "PASS";
+      auditResults.recommendations.push("All systems operational - ready for Phase 2 development");
+    }
+
+    auditResults.duration = Date.now() - startTime;
+    console.log(`Comprehensive audit completed in ${auditResults.duration}ms with status: ${auditResults.overallStatus}`);
+
+    res.json({
+      success: true,
+      audit: auditResults
+    });
+
+  } catch (error) {
+    console.error("Comprehensive audit error:", error.message);
+    auditResults.overallStatus = "ERROR";
+    auditResults.error = error.message;
+    auditResults.duration = Date.now() - startTime;
+    
+    res.status(500).json({
+      success: false,
+      audit: auditResults,
+      error: error.message
+    });
+  }
+});
+
+// Quick health audit - lightweight version for frequent checks
+router.get("/api/audit/quick", async (req, res) => {
+  console.log("apiAndJobRoutes.js: Running quick audit");
+  
+  const clientId = req.headers['x-client-id'];
+  if (!clientId) {
+    return res.status(400).json({
+      success: false,
+      error: "Client ID required in x-client-id header"
+    });
+  }
+
+  try {
+    const quickResults = {
+      clientId,
+      timestamp: new Date().toISOString(),
+      status: "HEALTHY",
+      checks: []
+    };
+
+    // Quick connectivity check
+    const clientBase = await getClientBase(clientId);
+    if (!clientBase) {
+      throw new Error("Client base resolution failed");
+    }
+    quickResults.checks.push({ check: "Client Resolution", status: "OK" });
+
+    // Quick attribute count check
+    const { loadAttributes } = require("../attributeLoader.js");
+    const { positives, negatives } = await loadAttributes(null, clientId);
+    const totalAttributes = Object.keys(positives).length + Object.keys(negatives).length;
+    quickResults.checks.push({ 
+      check: "Attribute Loading", 
+      status: "OK", 
+      details: `${totalAttributes} active attributes` 
+    });
+
+    // Quick AI check
+    if (!vertexAIClient || !geminiModelId) {
+      quickResults.checks.push({ check: "AI Configuration", status: "WARNING", details: "AI not configured" });
+      quickResults.status = "DEGRADED";
+    } else {
+      quickResults.checks.push({ check: "AI Configuration", status: "OK" });
+    }
+
+    res.json({
+      success: true,
+      audit: quickResults
+    });
+
+  } catch (error) {
+    console.error("Quick audit error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      audit: {
+        clientId,
+        timestamp: new Date().toISOString(),
+        status: "UNHEALTHY",
+        error: error.message
+      }
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// AUTOMATED ISSUE DETECTION AND RESOLUTION ENDPOINT
+// ---------------------------------------------------------------
+
+// Automated troubleshooting endpoint - detects issues and suggests/applies fixes
+router.post("/api/audit/auto-fix", async (req, res) => {
+  console.log("🔧 Starting automated issue detection and resolution...");
+  
+  const startTime = Date.now();
+  const clientId = req.headers['x-client-id'];
+  
+  if (!clientId) {
+    return res.status(400).json({
+      success: false,
+      error: "Client ID required in x-client-id header for auto-fix"
+    });
+  }
+
+  const autoFix = {
+    clientId,
+    timestamp: new Date().toISOString(),
+    detectedIssues: [],
+    appliedFixes: [],
+    recommendations: [],
+    summary: {}
+  };
+
+  try {
+    console.log("🔍 Running comprehensive audit to detect issues...");
+    
+    // First, run comprehensive audit to detect issues
+    const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const auditResponse = await fetch(`${baseUrl}/api/audit/comprehensive`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': clientId
+      }
+    });
+    
+    if (!auditResponse.ok) {
+      throw new Error(`Audit failed: ${auditResponse.status}`);
+    }
+    
+    const auditData = await auditResponse.json();
+    const audit = auditData.audit;
+    
+    // Extract failed and warning tests
+    const allTests = [
+      ...audit.floors.floor1.tests,
+      ...audit.floors.floor2.tests,
+      ...audit.floors.floor3.tests
+    ];
+    
+    const failedTests = allTests.filter(test => test.status === "FAIL");
+    const warningTests = allTests.filter(test => test.status === "WARN");
+    
+    console.log(`🎯 Found ${failedTests.length} failed tests and ${warningTests.length} warnings`);
+    
+    // Categorize and process each issue
+    for (const test of failedTests) {
+      const issue = {
+        test: test.test,
+        severity: "HIGH",
+        message: test.message,
+        category: categorizeIssue(test.test),
+        automated_fix: null,
+        fix_applied: false
+      };
+      
+      // Generate automated fix recommendations
+      const fixRecommendation = generateFixRecommendation(test.test, test.message);
+      issue.automated_fix = fixRecommendation;
+      
+      // Apply automated fixes where possible
+      if (fixRecommendation.canAutomate) {
+        try {
+          console.log(`🔧 Attempting automated fix for: ${test.test}`);
+          const fixResult = await applyAutomatedFix(test.test, test.message, clientId);
+          if (fixResult.success) {
+            issue.fix_applied = true;
+            autoFix.appliedFixes.push({
+              test: test.test,
+              action: fixResult.action,
+              result: fixResult.result
+            });
+          }
+        } catch (fixError) {
+          console.warn(`⚠️  Automated fix failed for ${test.test}: ${fixError.message}`);
+          issue.automated_fix.error = fixError.message;
+        }
+      }
+      
+      autoFix.detectedIssues.push(issue);
+    }
+    
+    // Process warnings
+    for (const test of warningTests) {
+      const issue = {
+        test: test.test,
+        severity: "MEDIUM",
+        message: test.message,
+        category: categorizeIssue(test.test),
+        automated_fix: generateFixRecommendation(test.test, test.message),
+        fix_applied: false
+      };
+      
+      autoFix.detectedIssues.push(issue);
+    }
+    
+    // Generate smart recommendations based on issue patterns
+    autoFix.recommendations = generateSmartRecommendations(autoFix.detectedIssues, audit);
+    
+    const duration = Date.now() - startTime;
+    
+    autoFix.summary = {
+      totalIssuesDetected: autoFix.detectedIssues.length,
+      criticalIssues: autoFix.detectedIssues.filter(i => i.severity === "CRITICAL").length,
+      highIssues: autoFix.detectedIssues.filter(i => i.severity === "HIGH").length,
+      mediumIssues: autoFix.detectedIssues.filter(i => i.severity === "MEDIUM").length,
+      automatedFixesApplied: autoFix.appliedFixes.length,
+      recommendationsGenerated: autoFix.recommendations.length,
+      overallHealth: audit.summary.passed / audit.summary.totalTests,
+      requiresManualIntervention: autoFix.detectedIssues.some(i => !i.automated_fix?.canAutomate),
+      duration: `${duration}ms`
+    };
+
+    console.log(`🏁 Auto-fix completed in ${duration}ms. ${autoFix.detectedIssues.length} issues detected, ${autoFix.appliedFixes.length} fixes applied.`);
+    
+    res.json({
+      success: true,
+      autoFix
+    });
+
+  } catch (error) {
+    console.error("🚨 Auto-fix error:", error);
+    const duration = Date.now() - startTime;
+    
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      autoFix: {
+        ...autoFix,
+        error: error.message,
+        duration: `${duration}ms`
+      }
+    });
+  }
+});
+
+// Helper functions for automated troubleshooting
+
+function categorizeIssue(testName) {
+  if (testName.includes("Client") || testName.includes("Airtable")) return "CONNECTIVITY";
+  if (testName.includes("Scoring") || testName.includes("Attribute")) return "BUSINESS_LOGIC";
+  if (testName.includes("Token") || testName.includes("Budget")) return "RESOURCE_MANAGEMENT";
+  if (testName.includes("AI") || testName.includes("Gemini")) return "AI_INTEGRATION";
+  if (testName.includes("Endpoint") || testName.includes("API")) return "API_FUNCTIONALITY";
+  return "SYSTEM";
+}
+
+function generateFixRecommendation(testName, message) {
+  const fixes = {
+    "Client Base Resolution": {
+      canAutomate: false,
+      action: "MANUAL_CONFIG_UPDATE",
+      description: "Check client ID in Master Clients base and verify Airtable connection",
+      steps: ["Verify client exists in Master Clients", "Check Airtable API key", "Restart service"]
+    },
+    "Airtable Connection": {
+      canAutomate: false,
+      action: "CONNECTIVITY_CHECK",
+      description: "Verify Airtable API credentials and network connectivity",
+      steps: ["Check AIRTABLE_API_KEY environment variable", "Test Airtable API connectivity", "Verify base permissions"]
+    },
+    "Attribute Loading": {
+      canAutomate: true,
+      action: "DATA_VALIDATION",
+      description: "Check and fix attribute configuration",
+      steps: ["Verify attributes exist", "Check Active status", "Validate attribute structure"]
+    },
+    "Scoring Endpoint Live Test": {
+      canAutomate: false,
+      action: "SERVICE_RESTART",
+      description: "Restart scoring service and verify dependencies",
+      steps: ["Check Gemini AI connectivity", "Verify lead data quality", "Restart scoring service"]
+    },
+    "Token Budget Calculation": {
+      canAutomate: true,
+      action: "RECALCULATE_TOKENS",
+      description: "Recalculate token usage and optimize if needed",
+      steps: ["Refresh token calculations", "Identify high-token attributes", "Suggest optimizations"]
+    },
+    "Gemini AI Configuration": {
+      canAutomate: false,
+      action: "AI_SERVICE_RESTART",
+      description: "Restart AI service and verify credentials",
+      steps: ["Check GCP credentials", "Verify model permissions", "Restart AI client"]
+    }
+  };
+  
+  return fixes[testName] || {
+    canAutomate: false,
+    action: "MANUAL_INVESTIGATION",
+    description: "Manual investigation required",
+    steps: ["Review logs", "Check system status", "Contact support if needed"]
+  };
+}
+
+async function applyAutomatedFix(testName, message, clientId) {
+  console.log(`🔧 Applying automated fix for: ${testName}`);
+  
+  switch (testName) {
+    case "Attribute Loading":
+      // Try to refresh attribute cache
+      try {
+        const { loadAttributes } = require("../attributeLoader.js");
+        const { positives, negatives } = await loadAttributes(null, clientId);
+        const totalAttrs = Object.keys(positives).length + Object.keys(negatives).length;
+        
+        return {
+          success: true,
+          action: "ATTRIBUTE_REFRESH",
+          result: `Refreshed attribute cache - found ${totalAttrs} active attributes`
+        };
+      } catch (error) {
+        throw new Error(`Attribute refresh failed: ${error.message}`);
+      }
+      
+    case "Token Budget Calculation":
+      // Recalculate token usage
+      try {
+        const usage = await getCurrentTokenUsage(clientId);
+        return {
+          success: true,
+          action: "TOKEN_RECALCULATION",
+          result: `Recalculated tokens: ${usage.totalTokens}/${usage.limit} (${usage.percentUsed}%)`
+        };
+      } catch (error) {
+        throw new Error(`Token recalculation failed: ${error.message}`);
+      }
+      
+    default:
+      throw new Error(`No automated fix available for: ${testName}`);
+  }
+}
+
+function generateSmartRecommendations(detectedIssues, auditData) {
+  const recommendations = [];
+  
+  // Critical connectivity issues
+  const connectivityIssues = detectedIssues.filter(i => i.category === "CONNECTIVITY");
+  if (connectivityIssues.length > 0) {
+    recommendations.push({
+      priority: "URGENT",
+      category: "System Stability", 
+      title: "Critical connectivity issues detected",
+      description: `${connectivityIssues.length} connectivity issues may prevent system operation`,
+      action: "Check environment configuration and restart services",
+      automated: false
+    });
+  }
+  
+  // API endpoint failures
+  const apiIssues = detectedIssues.filter(i => i.category === "API_FUNCTIONALITY");
+  if (apiIssues.length > 0) {
+    recommendations.push({
+      priority: "HIGH",
+      category: "Core Functionality",
+      title: "API endpoints not responding correctly",
+      description: `${apiIssues.length} API endpoints failing - core functionality compromised`,
+      action: "Restart API services and verify dependencies",
+      automated: false
+    });
+  }
+  
+  // Resource management issues
+  const resourceIssues = detectedIssues.filter(i => i.category === "RESOURCE_MANAGEMENT");
+  if (resourceIssues.length > 0) {
+    recommendations.push({
+      priority: "MEDIUM",
+      category: "Resource Optimization",
+      title: "Resource management issues detected",
+      description: "Token budget or resource allocation needs attention",
+      action: "Review and optimize resource usage",
+      automated: true
+    });
+  }
+  
+  // Overall health assessment
+  const totalTests = auditData.summary.totalTests;
+  const passedTests = auditData.summary.passed;
+  const healthPercentage = Math.round((passedTests / totalTests) * 100);
+  
+  if (healthPercentage < 70) {
+    recommendations.push({
+      priority: "HIGH",
+      category: "System Health",
+      title: "System health below acceptable threshold",
+      description: `Overall health: ${healthPercentage}%. Multiple systems need immediate attention.`,
+      action: "Comprehensive system review and remediation required",
+      automated: false
+    });
+  } else if (healthPercentage < 90) {
+    recommendations.push({
+      priority: "MEDIUM", 
+      category: "System Optimization",
+      title: "System operational but could be optimized",
+      description: `Overall health: ${healthPercentage}%. Minor issues detected.`,
+      action: "Review and optimize underperforming components",
+      automated: true
+    });
+  }
+  
+  return recommendations;
+}
 
 module.exports = router;

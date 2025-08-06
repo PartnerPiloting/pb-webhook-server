@@ -78,6 +78,13 @@ async function getAllClients() {
                 const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 5000;
                 const postScoringTokenLimit = record.get('Post Scoring Token Limit') || 3000;
                 
+                // Floor configuration fields
+                const primaryFloor = record.get('Primary Floor') || 70;
+                const secondaryFloor = record.get('Secondary Floor') || 50;
+                const minimumFloor = record.get('Minimum Floor') || 30;
+                const floorStrategy = record.get('Floor Strategy') || 'Progressive';
+                const autoAdjustFloors = record.get('Auto Adjust Floors') || false;
+                
                 clients.push({
                     id: record.id,
                     clientId: clientId,
@@ -89,7 +96,13 @@ async function getAllClients() {
                     serviceLevel: serviceLevel,
                     comment: comment,
                     profileScoringTokenLimit: profileScoringTokenLimit,
-                    postScoringTokenLimit: postScoringTokenLimit
+                    postScoringTokenLimit: postScoringTokenLimit,
+                    // Floor configuration
+                    primaryFloor: primaryFloor,
+                    secondaryFloor: secondaryFloor,
+                    minimumFloor: minimumFloor,
+                    floorStrategy: floorStrategy,
+                    autoAdjustFloors: autoAdjustFloors
                 });
             });
             fetchNextPage();
@@ -392,6 +405,152 @@ async function getClientTokenLimits(clientId) {
 }
 
 /**
+ * Get floor configuration for a specific client
+ * @param {string} clientId - The Client ID to get floor config for
+ * @returns {Promise<Object|null>} Floor configuration object or null if not found
+ */
+async function getClientFloorConfig(clientId) {
+    try {
+        const client = await getClientById(clientId);
+        if (!client) {
+            console.log(`Client not found for floor config: ${clientId}`);
+            return null;
+        }
+
+        return {
+            clientId: client.clientId,
+            clientName: client.clientName,
+            primaryFloor: client.primaryFloor,
+            secondaryFloor: client.secondaryFloor,
+            minimumFloor: client.minimumFloor,
+            floorStrategy: client.floorStrategy,
+            autoAdjustFloors: client.autoAdjustFloors
+        };
+
+    } catch (error) {
+        console.error(`Error getting floor config for client ${clientId}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Update floor configuration for a specific client
+ * @param {string} clientId - The Client ID to update
+ * @param {Object} floorConfig - Floor configuration object
+ * @returns {Promise<boolean>} True if update was successful
+ */
+async function updateClientFloorConfig(clientId, floorConfig) {
+    try {
+        const base = initializeClientsBase();
+        
+        // First, get the client's Airtable record ID
+        const client = await getClientById(clientId);
+        if (!client) {
+            throw new Error(`Client ${clientId} not found`);
+        }
+
+        // Prepare update fields
+        const updateFields = {};
+        if (floorConfig.primaryFloor !== undefined) updateFields['Primary Floor'] = floorConfig.primaryFloor;
+        if (floorConfig.secondaryFloor !== undefined) updateFields['Secondary Floor'] = floorConfig.secondaryFloor;
+        if (floorConfig.minimumFloor !== undefined) updateFields['Minimum Floor'] = floorConfig.minimumFloor;
+        if (floorConfig.floorStrategy !== undefined) updateFields['Floor Strategy'] = floorConfig.floorStrategy;
+        if (floorConfig.autoAdjustFloors !== undefined) updateFields['Auto Adjust Floors'] = floorConfig.autoAdjustFloors;
+
+        // Update the record
+        await base('Clients').update([
+            {
+                id: client.id,
+                fields: updateFields
+            }
+        ]);
+
+        console.log(`Floor configuration updated for client ${clientId}:`, updateFields);
+        
+        // Invalidate cache to force refresh on next read
+        clientsCache = null;
+        clientsCacheTimestamp = null;
+
+        return true;
+
+    } catch (error) {
+        console.error(`Error updating floor config for client ${clientId}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Validate if a lead meets the floor requirements for a specific strategy
+ * @param {number} leadScore - The lead's AI score (0-100)
+ * @param {Object} floorConfig - Floor configuration object
+ * @param {string} contactLevel - 'primary', 'secondary', or 'minimum'
+ * @returns {Object} Validation result with pass/fail and recommended action
+ */
+function validateLeadAgainstFloor(leadScore, floorConfig, contactLevel = 'primary') {
+    const floors = {
+        primary: floorConfig.primaryFloor,
+        secondary: floorConfig.secondaryFloor,
+        minimum: floorConfig.minimumFloor
+    };
+
+    const requiredFloor = floors[contactLevel];
+    const meetsFloor = leadScore >= requiredFloor;
+
+    let recommendedAction = 'reject';
+    let nextFloorOption = null;
+
+    if (meetsFloor) {
+        recommendedAction = contactLevel === 'primary' ? 'contact_primary' : 
+                           contactLevel === 'secondary' ? 'contact_secondary' : 'contact_minimum';
+    } else {
+        // Check if lead qualifies for a lower tier
+        if (contactLevel === 'primary' && leadScore >= floors.secondary) {
+            recommendedAction = 'consider_secondary';
+            nextFloorOption = 'secondary';
+        } else if ((contactLevel === 'primary' || contactLevel === 'secondary') && leadScore >= floors.minimum) {
+            recommendedAction = 'consider_minimum';
+            nextFloorOption = 'minimum';
+        }
+    }
+
+    return {
+        passes: meetsFloor,
+        leadScore: leadScore,
+        requiredFloor: requiredFloor,
+        contactLevel: contactLevel,
+        recommendedAction: recommendedAction,
+        nextFloorOption: nextFloorOption,
+        floorStrategy: floorConfig.floorStrategy,
+        margin: leadScore - requiredFloor
+    };
+}
+
+/**
+ * Get floor validation results for all floor levels
+ * @param {number} leadScore - The lead's AI score (0-100)
+ * @param {Object} floorConfig - Floor configuration object
+ * @returns {Object} Comprehensive floor validation results
+ */
+function getFloorValidationSummary(leadScore, floorConfig) {
+    const primary = validateLeadAgainstFloor(leadScore, floorConfig, 'primary');
+    const secondary = validateLeadAgainstFloor(leadScore, floorConfig, 'secondary');
+    const minimum = validateLeadAgainstFloor(leadScore, floorConfig, 'minimum');
+
+    const highestQualifyingLevel = primary.passes ? 'primary' : 
+                                   secondary.passes ? 'secondary' : 
+                                   minimum.passes ? 'minimum' : 'none';
+
+    return {
+        leadScore: leadScore,
+        floorResults: { primary, secondary, minimum },
+        highestQualifyingLevel: highestQualifyingLevel,
+        qualifiesForContact: highestQualifyingLevel !== 'none',
+        recommendedContactLevel: highestQualifyingLevel !== 'none' ? highestQualifyingLevel : null,
+        floorStrategy: floorConfig.floorStrategy
+    };
+}
+
+/**
  * Clear the clients cache (useful for testing or forced refresh)
  */
 function clearCache() {
@@ -437,5 +596,10 @@ module.exports = {
     formatExecutionLog,
     clearCache,
     getClientTokenLimits,  // Add the new token limits function
-    getClientBase     // Add the new base connection function
+    getClientBase,     // Add the new base connection function
+    // Floor system functions
+    getClientFloorConfig,
+    updateClientFloorConfig,
+    validateLeadAgainstFloor,
+    getFloorValidationSummary
 };
