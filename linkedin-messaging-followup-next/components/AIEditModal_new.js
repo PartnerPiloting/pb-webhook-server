@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon, ArrowPathIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { getCurrentClientId } from '../utils/clientUtils';
 
 const FieldTooltip = ({ title, description, children }) => {
   const [showTooltip, setShowTooltip] = useState(false);
@@ -164,6 +165,7 @@ const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-client-id': getCurrentClientId(),
         },
         body: JSON.stringify({
           userRequest: userRequest.trim()
