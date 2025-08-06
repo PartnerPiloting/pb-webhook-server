@@ -74,17 +74,18 @@ function slimLead(profile = {}) {
 /* ------------------------------------------------------------------
    buildPrompt  –  returns the SYSTEM prompt string for Gemini
    (Schema updated for perfect alignment with helper functions)
+   MULTI-TENANT: Now accepts optional clientId parameter
 ------------------------------------------------------------------ */
-async function buildPrompt(logger = null) {
+async function buildPrompt(logger = null, clientId = null) {
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
         logger = new StructuredLogger('SYSTEM', 'PROMPT');
     }
 
-    logger.setup('buildPrompt', 'Starting lead scoring prompt construction');
+    logger.setup('buildPrompt', `Starting lead scoring prompt construction${clientId ? ` for client: ${clientId}` : ''}`);
 
-    // loadAttributes now returns { preamble, positives, negatives }
-    const { preamble, positives, negatives } = await loadAttributes(logger);
+    // Pass clientId to loadAttributes for multi-tenant support
+    const { preamble, positives, negatives } = await loadAttributes(logger, clientId);
 
     logger.process('buildPrompt', `Loaded attributes: ${Object.keys(positives).length} positive, ${Object.keys(negatives).length} negative`);
 

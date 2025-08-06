@@ -181,7 +181,8 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
     }
     log.process(`Attempting to score ${scorable.length} leads with Gemini`);
 
-    const systemPromptInstructions = await buildPrompt(); 
+    // MULTI-TENANT: Pass clientId to buildPrompt to load client-specific attributes
+    const systemPromptInstructions = await buildPrompt(log, clientId); 
     const slimmedLeadsForChunk = scorable.map(({ profile }) => slimLead(profile));
     const leadsDataForUserPrompt = JSON.stringify({ leads: slimmedLeadsForChunk });
     const generationPromptForGemini = `Score the following ${scorable.length} leads based on the criteria and JSON schema defined in the system instructions. The leads are: ${leadsDataForUserPrompt}`;

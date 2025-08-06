@@ -341,34 +341,31 @@ router.get("/score-lead", async (req, res) => {
       return res.json({ ok: true, skipped: true, reason: "JSON too small" });
     }
 
-    if (isMissingCritical(profile)) {
-      console.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
-    }
+    if (isMissingCritical(profile)) {
+      console.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
+    }
 
-    const gOut = await scoreLeadNow(profile, {
-      vertexAIClient,
-      geminiModelId,
-    });
-    if (!gOut) {
-        console.error(`score-lead: singleScorer returned null for lead ID: ${id}`);
-        throw new Error("singleScorer returned null.");
-    }
+    const gOut = await scoreLeadNow(profile, {
+      vertexAIClient,
+      geminiModelId,
+      clientId,
+    });
+    if (!gOut) {
+        console.error(`score-lead: singleScorer returned null for lead ID: ${id}`);
+        throw new Error("singleScorer returned null.");
+    }
+    let {
+      positive_scores = {},
+      negative_scores = {},
+      attribute_reasoning = {},
+      contact_readiness = false,
+      unscored_attributes = [],
+      aiProfileAssessment = "N/A",
+      ai_excluded = "No",
+      exclude_details = "",
+    } = gOut;
 
-
-    let {
-      positive_scores = {},
-      negative_scores = {},
-      attribute_reasoning = {},
-      contact_readiness = false,
-      unscored_attributes = [],
-      aiProfileAssessment = "N/A",
-      ai_excluded = "No",
-      exclude_details = "",
-    } = gOut;
-
-    const { positives, negatives } = await loadAttributes();
-
-    // Ensure all positive attributes are present in positive_scores and attribute_reasoning
+    const { positives, negatives } = await loadAttributes(null, clientId);    // Ensure all positive attributes are present in positive_scores and attribute_reasoning
     for (const key of Object.keys(positives)) {
       if (!(key in positive_scores)) {
         positive_scores[key] = 0;
@@ -663,7 +660,7 @@ async function getCurrentTokenUsage(clientId) {
     }
 
     const { loadAttributes } = require("../attributeLoader.js");
-    const { positives, negatives } = await loadAttributes();
+    const { positives, negatives } = await loadAttributes(null, clientId);
     
     let totalTokens = 0;
     const attributeDetails = [];
@@ -1533,7 +1530,7 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
     const { loadAttributes } = require("../attributeLoader.js");
     
     // Load attributes using the same function that scoring uses
-    const { positives, negatives } = await loadAttributes();
+    const { positives, negatives } = await loadAttributes(null, clientId);
     
     // Get all attributes from Airtable to compare
     const allRecords = await clientBase("Scoring Attributes")

@@ -9,7 +9,7 @@ const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10));
 
 async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
-    const { vertexAIClient, geminiModelId } = dependencies || {};
+    const { vertexAIClient, geminiModelId, clientId } = dependencies || {};
 
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
@@ -17,14 +17,15 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         logger = new StructuredLogger(`SINGLE-${leadId.substring(0, 8)}`, 'SCORER');
     }
 
-    logger.setup('scoreLeadNow', `Starting single lead scoring for lead: ${fullLead?.id || fullLead?.public_id || 'N/A'}`);
+    logger.setup('scoreLeadNow', `Starting single lead scoring for lead: ${fullLead?.id || fullLead?.public_id || 'N/A'}${clientId ? ` (client: ${clientId})` : ''}`);
 
     if (!vertexAIClient || !geminiModelId) {
         logger.error('scoreLeadNow', 'vertexAIClient or geminiModelId was not provided');
         throw new Error("Gemini client/model dependencies not available for single scoring.");
     }
 
-    const systemInstructionText = await buildPrompt(logger);
+    // MULTI-TENANT: Pass clientId to buildPrompt to load client-specific attributes
+    const systemInstructionText = await buildPrompt(logger, clientId);
     const userLeadData = slimLead(fullLead);
     const userPromptContent = `Score the following single lead based on the criteria and JSON schema provided in the system instructions. The lead is: ${JSON.stringify(userLeadData, null, 2)}`;
     
