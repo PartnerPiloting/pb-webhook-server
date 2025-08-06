@@ -18,7 +18,7 @@ const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
 const { scoreLeadNow } = require("../singleScorer.js");
 const batchScorer = require("../batchScorer.js");
-const { loadAttributes, loadAttributeForEditing, updateAttribute } = require("../attributeLoader.js");
+const { loadAttributes, loadAttributeForEditing, loadAttributeForEditingWithClientBase, updateAttribute, updateAttributeWithClientBase } = require("../attributeLoader.js");
 const { computeFinalScore } = require("../scoring.js");
 const { buildAttributeBreakdown } = require("../breakdown.js");
 const {
@@ -1053,8 +1053,27 @@ function validateAttributeResponse(data) {
 router.get("/api/attributes/:id/edit", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit - Loading attribute for editing`);
+    
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+    
     const attributeId = req.params.id;
-    const attribute = await loadAttributeForEditing(attributeId);
+    const attribute = await loadAttributeForEditingWithClientBase(attributeId, clientBase);
     
     res.json({
       success: true,
@@ -1201,6 +1220,16 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
 router.post("/api/attributes/:id/save", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save - Saving attribute changes`);
+    
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
+    
     const attributeId = req.params.id;
     const { improvedRubric } = req.body; // Keep for backward compatibility
     const updatedData = improvedRubric || req.body; // Also accept data directly
@@ -1217,7 +1246,7 @@ router.post("/api/attributes/:id/save", async (req, res) => {
       console.log(`apiAndJobRoutes.js: Checking token budget for activating attribute ${attributeId}`);
       
       try {
-        const budgetValidation = await validateTokenBudget(attributeId, updatedData);
+        const budgetValidation = await validateTokenBudget(attributeId, updatedData, clientId);
         
         if (!budgetValidation.isValid) {
           console.log(`apiAndJobRoutes.js: Token budget exceeded for attribute ${attributeId}`);
@@ -1243,7 +1272,16 @@ router.post("/api/attributes/:id/save", async (req, res) => {
       }
     }
     
-    await updateAttribute(attributeId, updatedData);
+    // Get client-specific base and update attribute
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+
+    await updateAttributeWithClientBase(attributeId, updatedData, clientBase);
     
     console.log(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
     res.json({
@@ -1292,11 +1330,25 @@ router.get("/api/attributes", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/attributes - Loading attribute library");
     
-    if (!airtableBase) {
-      throw new Error("Airtable not available - check config/airtableClient.js");
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
     }
 
-    const records = await airtableBase("Scoring Attributes")
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+
+    const records = await clientBase("Scoring Attributes")
       .select({
         fields: [
           "Attribute Id", "Heading", "Category", "Max Points", 
@@ -1971,11 +2023,25 @@ router.get("/api/post-attributes", async (req, res) => {
   try {
     console.log("apiAndJobRoutes.js: GET /api/post-attributes - Loading post attribute library");
     
-    if (!airtableBase) {
-      throw new Error("Airtable not available - check config/airtableClient.js");
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
     }
 
-    const records = await airtableBase("Post Scoring Attributes")
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+
+    const records = await clientBase("Post Scoring Attributes")
       .select({
         fields: [
           "Attribute ID", "Active", "Criterion Name", "Category", "Max Score / Point Value", 
@@ -2045,11 +2111,25 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
   try {
     console.log(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit - Loading attribute for editing`);
     
-    if (!airtableBase) {
-      throw new Error("Airtable not available - check config/airtableClient.js");
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
     }
 
-    const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }
+
+    const record = await clientBase("Post Scoring Attributes").find(req.params.id);
     
     const attribute = {
       id: record.id,
@@ -2200,8 +2280,22 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     console.log(`🔥 BACKEND HIT: POST /api/post-attributes/${req.params.id}/save - Starting...`);
     console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save - Saving post attribute changes`);
     
-    if (!airtableBase) {
-      throw new Error("Airtable not available - check config/airtableClient.js");
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
+
+    // Get client-specific base
+    const clientBase = getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
     }
 
     const { heading, instructions, positiveIndicators, negativeIndicators, highScoreExample, lowScoreExample, active, maxPoints, scoringType } = req.body;
@@ -2213,7 +2307,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     });
     
     // First get the current record to determine category for proper field mapping
-    const record = await airtableBase("Post Scoring Attributes").find(req.params.id);
+    const record = await clientBase("Post Scoring Attributes").find(req.params.id);
     const category = record.get("Category");
     
     // Prepare update data - only include fields that are provided
@@ -2236,7 +2330,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     console.log('Update data being sent to Airtable:', updateData);
 
     // Update the record
-    await airtableBase("Post Scoring Attributes").update(req.params.id, updateData);
+    await clientBase("Post Scoring Attributes").update(req.params.id, updateData);
 
     console.log(`apiAndJobRoutes.js: Successfully saved post attribute ${req.params.id}`);
     res.json({

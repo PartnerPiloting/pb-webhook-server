@@ -257,6 +257,94 @@ async function listAttributesForEditing(logger = null) {
 }
 
 /* ---------- fallback list (unchanged, but with preamble:"") ----- */
+/* ----------------------------------------------------------------
+    loadAttributeForEditingWithClientBase – fetches a single attribute for editing from client-specific base
+    Returns: complete attribute object with all fields
+----------------------------------------------------------------- */
+async function loadAttributeForEditingWithClientBase(attributeId, clientBase, logger = null) {
+  // Initialize logger if not provided (backward compatibility)
+  if (!logger) {
+    logger = new StructuredLogger('ATTR-EDIT-CLIENT');
+  }
+
+  try {
+    logger.setup('loadAttributeForEditingWithClientBase', `Loading attribute ${attributeId} for editing from client base`);
+    
+    if (!clientBase) {
+      logger.error('loadAttributeForEditingWithClientBase', 'Client-specific Airtable base not provided');
+      throw new Error("Client-specific Airtable base not provided");
+    }
+    
+    const record = await clientBase(TABLE_NAME).find(attributeId);
+    
+    const attribute = {
+      id: record.id,
+      attributeId: record.get("Attribute Id") || "",
+      heading: record.get("Heading") || "",
+      category: record.get("Category") || "",
+      instructions: record.get("Instructions") || "",
+      maxPoints: Number(record.get("Max Points") || 0),
+      minToQualify: Number(record.get("Min To Qualify") || 0),
+      penalty: Number(record.get("Penalty") || 0),
+      disqualifying: !!record.get("Disqualifying"),
+      bonusPoints: !!record.get("Bonus Points"), // Convert to boolean: unchecked = false, checked = true
+      signals: record.get("Signals") || "",
+      examples: record.get("Examples") || "",
+      active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
+    };
+    
+    logger.summary('loadAttributeForEditingWithClientBase', `Successfully loaded attribute ${attributeId} from client base`);
+    return attribute;
+  } catch (error) {
+    logger.error('loadAttributeForEditingWithClientBase', `Error loading attribute ${attributeId}: ${error.message}`);
+    throw new Error(`Failed to load attribute: ${error.message}`);
+  }
+}
+
+/* ----------------------------------------------------------------
+    updateAttributeWithClientBase – saves changes to client-specific base
+----------------------------------------------------------------- */
+async function updateAttributeWithClientBase(attributeId, data, clientBase, logger = null) {
+  // Initialize logger if not provided (backward compatibility)
+  if (!logger) {
+    logger = new StructuredLogger('ATTR-UPDATE-CLIENT');
+  }
+
+  try {
+    logger.setup('updateAttributeWithClientBase', `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
+    
+    if (!clientBase) {
+      logger.error('updateAttributeWithClientBase', 'Client-specific Airtable base not provided');
+      throw new Error("Client-specific Airtable base not provided");
+    }
+    
+    const updateFields = {};
+    
+    // Only update fields that are provided
+    if (data.heading !== undefined) updateFields["Heading"] = data.heading;
+    if (data.instructions !== undefined) updateFields["Instructions"] = data.instructions;
+    if (data.maxPoints !== undefined) updateFields["Max Points"] = Number(data.maxPoints);
+    if (data.minToQualify !== undefined) updateFields["Min To Qualify"] = Number(data.minToQualify);
+    if (data.penalty !== undefined) updateFields["Penalty"] = Number(data.penalty);
+    if (data.disqualifying !== undefined) updateFields["Disqualifying"] = !!data.disqualifying;
+    if (data.bonusPoints !== undefined) updateFields["Bonus Points"] = !!data.bonusPoints;
+    if (data.signals !== undefined) updateFields["Signals"] = data.signals;
+    if (data.examples !== undefined) updateFields["Examples"] = data.examples;
+    if (data.active !== undefined) updateFields["Active"] = !!data.active;
+
+    const record = await clientBase(TABLE_NAME).update(attributeId, updateFields);
+    
+    // Clear cache since live data changed
+    cache = null;
+    
+    logger.summary('updateAttributeWithClientBase', `Successfully updated attribute ${attributeId}`);
+    return record;
+  } catch (error) {
+    logger.error('updateAttributeWithClientBase', `Error updating attribute ${attributeId}: ${error.message}`);
+    throw new Error(`Failed to update attribute: ${error.message}`);
+  }
+}
+
 function fallbackAttributes() {
   // ... (fallbackAttributes function remains the same as you provided)
   const positives = { A: { label:"Founder / Co-Founder",maxPoints:5,minQualify:0,instructions:"",examples:"",signals:""},B:{label:"C-Suite / Director",maxPoints:5,minQualify:0,instructions:"",examples:"",signals:""},C:{label:"Tech / Product seniority",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},D:{label:"Prior exit",maxPoints:5,minQualify:0,instructions:"",examples:"",signals:""},E:{label:"Raised funding",maxPoints:4,minQualify:0,instructions:"",examples:"",signals:""},F:{label:"Hiring team",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},G:{label:"Large AU network",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},H:{label:"Media / public speaker",maxPoints:2,minQualify:0,instructions:"",examples:"",signals:""},I:{label:"Ready for contact",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},J:{label:"Social proof",maxPoints:2,minQualify:0,instructions:"",examples:"",signals:""},K:{label:"Inbound warm-up",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""}};
@@ -267,6 +355,8 @@ function fallbackAttributes() {
 module.exports = { 
   loadAttributes, 
   loadAttributeForEditing, 
+  loadAttributeForEditingWithClientBase,
   updateAttribute,
+  updateAttributeWithClientBase,
   listAttributesForEditing 
 };
