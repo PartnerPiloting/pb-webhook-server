@@ -63,6 +63,7 @@ export async function getCurrentClientProfile() {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'x-client-id': testClient,
       }
     });
 

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { getCurrentClientId } from '../utils/clientUtils';
 
 const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   const [fieldValues, setFieldValues] = useState({});
@@ -418,6 +419,7 @@ Examples:
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-client-id': getCurrentClientId(),
         },
         body: JSON.stringify({
           fieldKey: activeFieldHelper,
