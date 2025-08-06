@@ -13,6 +13,20 @@ const api = axios.create({
   },
 });
 
+// Helper function to get authenticated headers for API calls
+const getAuthenticatedHeaders = () => {
+  const clientId = getCurrentClientId();
+  
+  if (!clientId) {
+    throw new Error('Client ID not available - user not authenticated');
+  }
+
+  return {
+    'Content-Type': 'application/json',
+    'x-client-id': clientId
+  };
+};
+
 // Get authentication headers
 const getAuthHeaders = () => {
   // Only access browser APIs on client side
@@ -523,9 +537,7 @@ export const getAttributes = async () => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthenticatedHeaders()
     });
     
     if (!response.ok) {
@@ -542,6 +554,14 @@ export const getAttributes = async () => {
 // Post Scoring Attributes management functions
 export const getPostAttributes = async () => {
   try {
+    // Import getCurrentClientId to get the client authentication
+    const { getCurrentClientId } = await import('../utils/clientUtils.js');
+    const clientId = getCurrentClientId();
+    
+    if (!clientId) {
+      throw new Error('Client ID not available - user not authenticated');
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const url = `${baseUrl}/api/post-attributes`;
     console.log('🌐 Making API call to:', url);
@@ -549,7 +569,8 @@ export const getPostAttributes = async () => {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-client-id': clientId
       }
     });
     
@@ -572,11 +593,20 @@ export const getPostAttributes = async () => {
 
 export const getAttributeForEditing = async (attributeId) => {
   try {
+    // Import getCurrentClientId to get the client authentication
+    const { getCurrentClientId } = await import('../utils/clientUtils.js');
+    const clientId = getCurrentClientId();
+    
+    if (!clientId) {
+      throw new Error('Client ID not available - user not authenticated');
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/edit`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-client-id': clientId
       }
     });
     
@@ -614,11 +644,20 @@ export const getPostAttributeForEditing = async (attributeId) => {
 
 export const getAISuggestions = async (attributeId, userRequest, currentAttribute) => {
   try {
+    // Import getCurrentClientId to get the client authentication
+    const { getCurrentClientId } = await import('../utils/clientUtils.js');
+    const clientId = getCurrentClientId();
+    
+    if (!clientId) {
+      throw new Error('Client ID not available - user not authenticated');
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/ai-edit`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-client-id': clientId
       },
       body: JSON.stringify({
         userRequest
@@ -662,11 +701,20 @@ export const getPostAISuggestions = async (attributeId, userRequest, currentAttr
 
 export const saveAttributeChanges = async (attributeId, improvedRubric) => {
   try {
+    // Import getCurrentClientId to get the client authentication
+    const { getCurrentClientId } = await import('../utils/clientUtils.js');
+    const clientId = getCurrentClientId();
+    
+    if (!clientId) {
+      throw new Error('Client ID not available - user not authenticated');
+    }
+
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/save`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-client-id': clientId
       },
       body: JSON.stringify({
         improvedRubric
