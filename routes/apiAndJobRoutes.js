@@ -235,14 +235,16 @@ router.post("/api/pb-webhook", async (req, res) => {
         });
         console.log(`PB Webhook: Filtered to ${filteredPostsInput.length} items after removing potential header.`);
 
-        if (filteredPostsInput.length > 0) {
-          const processed = await syncPBPostsToAirtable(filteredPostsInput);
-          console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
-        } else {
-          console.log("PB Webhook: No valid posts to sync after filtering.");
-        }
-
-      } catch (backgroundErr) {
+        if (filteredPostsInput.length > 0) {
+          // TEMP FIX: Use specific client base if auto-detection fails
+          const { getClientBase } = require('../config/airtableClient');
+          const clientBase = getClientBase('guy-wilson'); // Replace with your actual client ID
+          
+          const processed = await syncPBPostsToAirtable(filteredPostsInput, clientBase);
+          console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
+        } else {
+          console.log("PB Webhook: No valid posts to sync after filtering.");
+        }      } catch (backgroundErr) {
         console.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
       }
     })();
