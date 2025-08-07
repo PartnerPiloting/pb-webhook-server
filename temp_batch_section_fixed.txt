@@ -1,0 +1,45 @@
+
+// ---------------------------------------------------------------
+// Manual Batch Score (Admin/Batch Operation)
+// ---------------------------------------------------------------
+const { resolveClientId } = require('../utils/clientIdResolver');
+
+router.get("/run-batch-score", async (req, res) => {
+  // Use centralized client ID resolution
+  try {
+    const { clientId, clientBase } = await resolveClientId(req);
+    
+    console.log(`Batch scoring requested for client: ${clientId}`);
+
+    const limit = Number(req.query.limit) || 500;
+    
+    if (!vertexAIClient || !geminiModelId) {
+      console.warn(`Batch scoring unavailable for client ${clientId}: vertexAIClient=${!!vertexAIClient}, geminiModelId=${geminiModelId}`);
+      return res.status(503).json({
+        success: false,
+        error: "Batch scoring unavailable (Google VertexAI config missing)",
+        details: {
+          vertexAIClient: !!vertexAIClient,
+          geminiModelId: geminiModelId || "not set",
+          clientId: clientId
+        }
+      });
+    }
+    
+    batchScorer
+      .run(req, res, { vertexAIClient, geminiModelId, clientBase, limit })
+      .catch((e) => {
+        if (!res.headersSent)
+          res.status(500).send("Batch scoring error: " + e.message);
+      });
+  } catch (error) {
+    // Client ID resolution errors are already handled by resolveClientId
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: "Batch scoring initialization failed",
+        details: error.message
+      });
+    }
+  }
+});
