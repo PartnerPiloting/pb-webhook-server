@@ -356,7 +356,24 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         await alertAdmin("Gemini Result Count Mismatch (batchScorer)", `Client: ${clientId || 'unknown'}\nExpected ${scorable.length}, got ${outputArray.length}.`);
     }
 
-    const { positives, negatives } = await loadAttributes();
+    let positives, negatives;
+    try {
+        const attrs = await loadAttributes(null, clientId);
+        positives = attrs.positives;
+        negatives = attrs.negatives;
+    } catch (attrErr) {
+        log.error(`Failed to load attributes for client ${clientId || 'unknown'}: ${attrErr.message}`);
+        await alertAdmin("Attribute Loading Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${attrErr.message}`);
+        // Mark all leads as failed due to attribute loading error
+        const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Attribute Load Error", "Date Scored": new Date().toISOString(), "AI Profile Assessment": `Attribute Load Error: ${attrErr.message}` } }));
+        if (failedUpdates.length > 0 && clientBase) {
+            for (let i = 0; i < failedUpdates.length; i += 10) {
+                await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for attribute load failed leads: ${e.message}`));
+            }
+        }
+        return { processed: records.length, successful: 0, failed: records.length, tokensUsed: 0 };
+    }
+
     const airtableResultUpdates = [];
     let successfulUpdates = 0;
     let failedUpdates = 0;
