@@ -40,17 +40,17 @@ async function loadAttributes(logger = null, clientId = null) {
   let attributeBase;
   if (clientId) {
     // Multi-tenant mode: use client-specific base
-    attributeBase = getClientBase(clientId);
+    attributeBase = await getClientBase(clientId);
     if (!attributeBase) {
-      logger.error('loadAttributes', `Invalid client ID: ${clientId} - using fallback attributes`);
-      return fallbackAttributes();
+      logger.error('loadAttributes', `Invalid client ID: ${clientId} - cannot load attributes.`);
+      throw new Error(`Invalid client ID: ${clientId} - cannot load attributes.`);
     }
   } else {
     // Legacy mode: use global base for backward compatibility
     attributeBase = base;
     if (!attributeBase) {
-      logger.error('loadAttributes', 'Airtable base instance not available from config/airtableClient.js - using fallback attributes');
-      return fallbackAttributes();
+      logger.error('loadAttributes', 'Airtable base instance not available from config/airtableClient.js - cannot load attributes.');
+      throw new Error('Airtable base instance not available from config/airtableClient.js - cannot load attributes.');
     }
   }
 
@@ -133,8 +133,8 @@ async function loadAttributes(logger = null, clientId = null) {
     );
     return result;
   } catch (err) {
-    logger.error('loadAttributes', `Attribute fetch from Airtable failed - using fallback list: ${err.message}`);
-    return fallbackAttributes();
+    logger.error('loadAttributes', `Attribute fetch from Airtable failed for client ${clientId || 'global'}: ${err.message}`);
+    throw new Error(`Attribute fetch from Airtable failed for client ${clientId || 'global'}: ${err.message}`);
   }
 }
 
@@ -365,12 +365,7 @@ async function updateAttributeWithClientBase(attributeId, data, clientBase, logg
   }
 }
 
-function fallbackAttributes() {
-  // ... (fallbackAttributes function remains the same as you provided)
-  const positives = { A: { label:"Founder / Co-Founder",maxPoints:5,minQualify:0,instructions:"",examples:"",signals:""},B:{label:"C-Suite / Director",maxPoints:5,minQualify:0,instructions:"",examples:"",signals:""},C:{label:"Tech / Product seniority",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},D:{label:"Prior exit",maxPoints:5,minQualify:0,instructions:"",examples:"",signals:""},E:{label:"Raised funding",maxPoints:4,minQualify:0,instructions:"",examples:"",signals:""},F:{label:"Hiring team",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},G:{label:"Large AU network",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},H:{label:"Media / public speaker",maxPoints:2,minQualify:0,instructions:"",examples:"",signals:""},I:{label:"Ready for contact",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""},J:{label:"Social proof",maxPoints:2,minQualify:0,instructions:"",examples:"",signals:""},K:{label:"Inbound warm-up",maxPoints:3,minQualify:0,instructions:"",examples:"",signals:""}};
-  const negatives = {L1:{label:"Recruiter / consultant",penalty:-5,disqualifying:true,instructions:"",examples:"",signals:""},N1:{label:"Job-seeker keywords",penalty:-3,disqualifying:false,instructions:"",examples:"",signals:""},N2:{label:"Unrelated industry",penalty:-4,disqualifying:false,instructions:"",examples:"",signals:""},N3:{label:"Very short tenure",penalty:-2,disqualifying:false,instructions:"",examples:"",signals:""},N4:{label:"Spam-my headline",penalty:-2,disqualifying:false,instructions:"",examples:"",signals:""},N5:{label:"Low credibility signals",penalty:-3,disqualifying:false,instructions:"",examples:"",signals:""}};
-  return { preamble:"", positives, negatives };
-}
+
 
 module.exports = { 
   loadAttributes, 
