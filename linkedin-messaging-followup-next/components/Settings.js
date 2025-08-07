@@ -20,7 +20,7 @@ const SettingsWithParams = () => {
   const [postLoading, setPostLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tokenUsage, setTokenUsage] = useState(null);
-  const [tokenLoading, setTokenLoading] = useState(true);
+  const [tokenLoading, setTokenLoading] = useState(false);
   // Phase 2: Add AI modal state
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedAttribute, setSelectedAttribute] = useState(null);
@@ -77,6 +77,28 @@ const SettingsWithParams = () => {
     loadTokenUsage('posts'); // Load post token usage
   };
 
+  // Load token usage based on current view
+  const loadTokenUsage = async (view = currentView) => {
+    try {
+      setTokenLoading(true);
+      let tokenData;
+      
+      if (view === 'posts') {
+        tokenData = await getPostTokenUsage();
+      } else {
+        // Default to profile token usage for 'profile' view
+        tokenData = await getTokenUsage();
+      }
+      
+      setTokenUsage(tokenData.usage);
+    } catch (tokenErr) {
+      console.error('Error loading token usage:', tokenErr);
+      setTokenUsage(null);
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
   // Helper function to get scoring type explanations
   const getScoringTypeExplanation = (scoringType) => {
     switch (scoringType) {
@@ -91,37 +113,17 @@ const SettingsWithParams = () => {
     }
   };
 
-  // Load token usage based on current view
-  const loadTokenUsage = async (view = currentView) => {
-    try {
-      setTokenLoading(true);
-      let tokenData;
-      
-      if (view === 'posts') {
-        tokenData = await getPostTokenUsage();
-      } else {
-        // Default to profile token usage for 'profile' and 'menu' views
-        tokenData = await getTokenUsage();
-      }
-      
-      setTokenUsage(tokenData.usage);
-    } catch (tokenErr) {
-      console.error('Error loading token usage:', tokenErr);
-      setTokenUsage(null);
-    } finally {
-      setTokenLoading(false);
-    }
-  };
-
   const handleSaveAttribute = async (attributeId, updatedData) => {
     try {
       await saveAttribute(attributeId, updatedData);
-      // Reload attributes and token usage to show changes
+      // Reload attributes to show changes
       const data = await getAttributes();
       setAttributes(data.attributes || []);
       
-      // Refresh token usage for current view
-      await loadTokenUsage();
+      // Refresh token usage if on attribute screen
+      if (currentView === 'profile' || currentView === 'posts') {
+        await loadTokenUsage();
+      }
     } catch (err) {
       console.error('Error saving attribute:', err);
       throw err;
@@ -132,12 +134,14 @@ const SettingsWithParams = () => {
     try {
       const newActiveStatus = !currentActiveStatus;
       await toggleAttributeActive(attributeId, newActiveStatus);
-      // Reload attributes and token usage to show changes
+      // Reload attributes to show changes
       const data = await getAttributes();
       setAttributes(data.attributes || []);
       
-      // Refresh token usage for current view
-      await loadTokenUsage();
+      // Refresh token usage if on attribute screen
+      if (currentView === 'profile' || currentView === 'posts') {
+        await loadTokenUsage();
+      }
     } catch (err) {
       console.error('Error toggling active status:', err);
       alert('Failed to toggle active status. Please try again.');
@@ -166,8 +170,10 @@ const SettingsWithParams = () => {
       // Reload post attributes
       await loadPostAttributes();
       
-      // Refresh token usage for current view (should be 'posts')
-      await loadTokenUsage();
+      // Refresh token usage if on posts screen
+      if (currentView === 'posts') {
+        await loadTokenUsage();
+      }
     } catch (err) {
       console.error('Error saving post attribute:', err);
       throw err;
@@ -181,8 +187,10 @@ const SettingsWithParams = () => {
       // Reload post attributes
       await loadPostAttributes();
       
-      // Refresh token usage for current view (should be 'posts')
-      await loadTokenUsage();
+      // Refresh token usage if on posts screen
+      if (currentView === 'posts') {
+        await loadTokenUsage();
+      }
     } catch (err) {
       console.error('Error toggling post active status:', err);
       alert('Failed to toggle post active status. Please try again.');
@@ -216,18 +224,6 @@ const SettingsWithParams = () => {
         const data = await getAttributes();
         setAttributes(data.attributes || []);
         
-        // Load token usage
-        try {
-          setTokenLoading(true);
-          const tokenData = await getTokenUsage();
-          setTokenUsage(tokenData.usage);
-        } catch (tokenErr) {
-          console.error('Error loading token usage:', tokenErr);
-          // Don't fail the whole page if token usage fails
-        } finally {
-          setTokenLoading(false);
-        }
-        
       } catch (err) {
         const errorMessage = err?.message || 'Failed to load attributes';
         setError(errorMessage);
@@ -243,13 +239,6 @@ const SettingsWithParams = () => {
   useEffect(() => {
     if (currentView === 'posts') {
       loadPostAttributes();
-    }
-  }, [currentView]);
-
-  // Load appropriate token usage when view changes
-  useEffect(() => {
-    if (currentView === 'profile' || currentView === 'posts') {
-      loadTokenUsage(currentView);
     }
   }, [currentView]);
 
@@ -516,7 +505,6 @@ const SettingsWithParams = () => {
         <div className="flex justify-center">
           <div className="w-full max-w-2xl">
             <div className="grid gap-6 md:grid-cols-2">
-              
               {/* LinkedIn Profile Scoring Attributes */}
               <div 
                 className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
@@ -562,12 +550,47 @@ const SettingsWithParams = () => {
                   Configure Post Scoring →
                 </div>
               </div>
-
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        {/* Token Usage Display - Centered */}
+  // Profile attributes view (for both service levels) or posts view
+  const isProfileView = currentView === 'profile';
+  const isPostsView = currentView === 'posts';
+  const viewTitle = isProfileView ? 'LinkedIn Profile Scoring Attributes' : 'LinkedIn Post Scoring Criteria';
+  const viewDescription = isProfileView 
+    ? 'Configure how AI scores LinkedIn profiles' 
+    : 'Configure how AI scores LinkedIn posts';
+
+  // Phase 1: Simple attribute list with improved UX
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="flex items-center space-x-3">
+          {/* Back button for service level 2+ */}
+          {serviceLevel >= 2 && (
+            <button
+              onClick={handleBackToMenu}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-1" />
+              Back to Settings
+            </button>
+          )}
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">{viewTitle}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {viewDescription}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Token Usage Display - Only show on individual attribute screens (profile/posts) */}
+      {(currentView === 'profile' || currentView === 'posts') && (
         <div className="flex justify-center">
           <div className="w-full max-w-md">
             <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -587,7 +610,7 @@ const SettingsWithParams = () => {
                       <p className="text-lg font-semibold text-gray-900 mt-1">
                         {tokenUsage.totalTokens?.toLocaleString() || '0'}
                         <span className="text-sm font-normal text-gray-600 mx-1">of</span>
-                        {tokenUsage.limit?.toLocaleString() || '5,000'}
+                        {tokenUsage.limit?.toLocaleString() || '3,000'}
                         <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
                       </p>
                     </div>
@@ -628,103 +651,7 @@ const SettingsWithParams = () => {
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  // Profile attributes view (for both service levels) or posts view
-  const isProfileView = currentView === 'profile';
-  const isPostsView = currentView === 'posts';
-  const viewTitle = isProfileView ? 'LinkedIn Profile Scoring Attributes' : 'LinkedIn Post Scoring Criteria';
-  const viewDescription = isProfileView 
-    ? 'Configure how AI scores LinkedIn profiles' 
-    : 'Configure how AI scores LinkedIn posts';
-
-  // Phase 1: Simple attribute list with improved UX
-  return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center space-x-3">
-          {/* Back button for service level 2+ */}
-          {serviceLevel >= 2 && (
-            <button
-              onClick={handleBackToMenu}
-              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-            >
-              <ArrowLeftIcon className="h-4 w-4 mr-1" />
-              Back to Settings
-            </button>
-          )}
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">{viewTitle}</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              {viewDescription}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Token Usage Display - Centered */}
-      <div className="flex justify-center">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="text-center">
-              <div className="flex items-center justify-center space-x-2 mb-3">
-                <CogIcon className="h-5 w-5 text-gray-400" />
-                <h3 className="text-sm font-medium text-gray-900">Token Usage</h3>
-              </div>
-              {tokenLoading ? (
-                <p className="text-sm text-gray-500">Loading usage...</p>
-              ) : tokenUsage ? (
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      {currentView === 'posts' ? 'Post Scoring' : 'Profile Scoring'} Token Usage
-                    </p>
-                    <p className="text-lg font-semibold text-gray-900 mt-1">
-                      {tokenUsage.totalTokens?.toLocaleString() || '0'}
-                      <span className="text-sm font-normal text-gray-600 mx-1">of</span>
-                      {tokenUsage.limit?.toLocaleString() || '3,000'}
-                      <span className="text-sm font-normal text-gray-600 ml-1">tokens used</span>
-                    </p>
-                  </div>
-                  <div className="w-full">
-                    <div className="bg-gray-200 rounded-full h-2.5">
-                      <div 
-                        className={`h-2.5 rounded-full transition-all duration-300 ${
-                          tokenUsage.percentUsed >= 95 ? 'bg-red-500' :
-                          tokenUsage.percentUsed >= 90 ? 'bg-yellow-500' : 'bg-green-500'
-                        }`}
-                        style={{ width: `${Math.min(tokenUsage.percentUsed || 0, 100)}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-center space-x-2">
-                    <span className={`text-sm font-medium ${
-                      tokenUsage.percentUsed >= 95 ? 'text-red-600' :
-                      tokenUsage.percentUsed >= 90 ? 'text-yellow-600' : 'text-green-600'
-                    }`}>
-                      {tokenUsage.percentUsed || 0}% used
-                    </span>
-                    {tokenUsage && tokenUsage.percentUsed >= 95 && (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        At Limit (105% max)
-                      </span>
-                    )}
-                    {tokenUsage && tokenUsage.percentUsed >= 90 && tokenUsage.percentUsed < 95 && (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                        Near Limit
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">Token usage unavailable</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Show different content based on view */}
       {isPostsView ? (

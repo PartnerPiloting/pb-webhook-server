@@ -1,0 +1,256 @@
+// routes/apiAndJobRoutes.js
+
+const express = require("express");
+const router = express.Router();
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: f }) => f(...args));
+const dirtyJSON = require('dirty-json');
+
+// ---------------------------------------------------------------
+// Dependencies
+// ---------------------------------------------------------------
+const geminiConfig = require("../config/geminiClient.js");
+const airtableBase = require("../config/airtableClient.js");
+const { getClientBase } = require("../config/airtableClient.js");
+const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
+
+const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
+const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
+
+const { scoreLeadNow } = require("../singleScorer.js");
+const batchScorer = require("../batchScorer.js");
+const { loadAttributes, loadAttributeForEditing, loadAttributeForEditingWithClientBase, updateAttribute, updateAttributeWithClientBase } = require("../attributeLoader.js");
+const { computeFinalScore } = require("../scoring.js");
+const { buildAttributeBreakdown } = require("../breakdown.js");
+const {
+  alertAdmin,
+  isMissingCritical,
+} = require("../utils/appHelpers.js");
+
+const ENQUEUE_URL = `${
+  process.env.RENDER_EXTERNAL_URL ||
+  "http://localhost:" + (process.env.PORT || 3000)
+}/enqueue`;
+
+// ---------------------------------------------------------------
+// Health Check
+// ---------------------------------------------------------------
+router.get("/health", (_req, res) => {
+  console.log("apiAndJobRoutes.js: /health hit");
+  res.json({
+    status: "ok",
+    enhanced_audit_system: "loaded",
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Simple audit test route (no auth required)
+router.get("/audit-test", (_req, res) => {
+  console.log("apiAndJobRoutes.js: /audit-test hit");
+  res.json({
+    status: "success", 
+    message: "Enhanced audit system is loaded",
+    timestamp: new Date().toISOString(),
+    features: ["endpoint testing", "automated troubleshooting", "smart recommendations"]
+  });
+});
+
+// ---------------------------------------------------------------
+// LinkedIn Activity Extractor (today’s leads, limit 100)
+// THIS ROUTE HAS BEEN REMOVED AS PER THE NEW ARCHITECTURE
+// (Google Apps Script will populate the sheet, PB runs on schedule)
+// ---------------------------------------------------------------
+// router.post("/api/run-pb-activity-extractor", async (_req, res) => { ... }); // Entire block removed
+
+// ---------------------------------------------------------------
+// Initiate PB Message Sender (single lead)
+// ---------------------------------------------------------------
+router.get("/api/initiate-pb-message", async (req, res) => {
+  const { recordId } = req.query;
+  console.log("/api/initiate-pb-message for", recordId);
+  if (!recordId)
+    return res
+      .status(400)
+      .json({ success: false, error: "recordId query param required" });
+
+  try {
+    // Extract client ID for multi-tenant support
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        error: "Client ID required in x-client-id header"
+      });
+    }
+
+    // Get client-specific base
+    const clientBase = await getClientBase(clientId);
+    if (!clientBase) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid client ID: ${clientId}`
+      });
+    }    const [creds] = await clientBase("Credentials")
+      .select({ maxRecords: 1 })
+      .firstPage();
+    if (!creds) throw new Error("No record in Credentials table.");
+
+    const agentId = creds.get("PB Message Sender ID");
+    const pbKey = creds.get("Phantom API Key");
+    const sessionCookie = creds.get("LinkedIn Cookie");
+    const userAgent = creds.get("User-Agent");
+    if (!agentId || !pbKey || !sessionCookie || !userAgent)
+      throw new Error("Missing PB message-sender credentials.");
+
+    const lead = await clientBase("Leads").find(recordId);
+    if (!lead) throw new Error(`Lead ${recordId} not found.`);
+    const profileUrl = lead.get("LinkedIn Profile URL");
+    const message = lead.get("Message To Be Sent");
+    if (!profileUrl || !message)
+      throw new Error("Lead missing URL or message.");
+
+    const enqueueResp = await fetch(ENQUEUE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recordId,
+        agentId,
+        pbKey,
+        sessionCookie,
+        userAgent,
+        profileUrl,
+        message,
+      }),
+    });
+    const enqueueData = await enqueueResp.json();
+    if (!enqueueResp.ok || !enqueueData.queued)
+      throw new Error(enqueueData.error || "Enqueue failed.");
+
+    try {
+      await clientBase("Leads").update(recordId, {
+        "Message Status": "Queuing Initiated by Server",
+      });
+    } catch (e) {
+      console.warn("Airtable status update failed:", e.message);
+    }
+
+    res.json({
+      success: true,
+      message: `Lead ${recordId} queued.`,
+      enqueueResponse: enqueueData,
+    });
+  } catch (e) {
+    console.error("initiate-pb-message:", e);
+    await alertAdmin(
+      "Error /api/initiate-pb-message",
+      `ID:${recordId}\n${e.message}`
+    );
+    if (!res.headersSent)
+      res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ---------------------------------------------------------------
+// Manual PB Posts Sync
+// ---------------------------------------------------------------
+router.all("/api/sync-pb-posts", async (_req, res) => {
+  try {
+    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
+    res.json({
+      status: "success",
+      message: "PB posts sync completed.",
+      details: info,
+    });
+  } catch (err) {
+    console.error("sync-pb-posts error (manual trigger):", err);
+    res.status(500).json({ status: "error", error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------
+// PB Webhook
+// ---------------------------------------------------------------
+router.post("/api/pb-webhook", async (req, res) => {
+  try {
+    const secret = req.query.secret || req.body.secret;
+    if (secret !== process.env.PB_WEBHOOK_SECRET) {
+      console.warn("PB Webhook: Forbidden attempt with incorrect secret.");
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    console.log(
+      "PB Webhook: Received raw payload:",
+      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
+    );
+
+    res.status(200).json({ message: "Webhook received. Processing in background." });
+
+    (async () => {
+      try {
+        let rawResultObject = req.body.resultObject;
+
+        if (!rawResultObject) {
+            console.warn("PB Webhook: resultObject is missing in the payload.");
+            return;
+        }
+
+        let postsInputArray;
+        if (typeof rawResultObject === 'string') {
+          try {
+            // THE PERMANENT FIX: Clean trailing commas from the JSON string before parsing
+            const cleanedString = rawResultObject.replace(/,\s*([}\]])/g, "$1");
+            postsInputArray = JSON.parse(cleanedString);
+          } catch (parseError) {
+            console.error("PB Webhook: Error parsing resultObject string with JSON.parse:", parseError);
+            // Fallback: try dirty-json
+            try {
+              postsInputArray = dirtyJSON.parse(rawResultObject);
+              console.log("PB Webhook: dirty-json successfully parsed resultObject string.");
+            } catch (dirtyErr) {
+              console.error("PB Webhook: dirty-json also failed to parse resultObject string:", dirtyErr);
+              return;
+            }
+          }
+        } else if (Array.isArray(rawResultObject)) {
+          postsInputArray = rawResultObject;
+        } else if (typeof rawResultObject === 'object' && rawResultObject !== null) {
+          postsInputArray = [rawResultObject];
+        } else {
+          console.warn("PB Webhook: resultObject is not a string, array, or recognized object.");
+          return;
+        }
+        
+        if (!Array.isArray(postsInputArray)) {
+            console.warn("PB Webhook: Processed postsInput is not an array.");
+            return;
+        }
+
+        console.log(`PB Webhook: Extracted ${postsInputArray.length} items from resultObject for background processing.`);
+
+        const filteredPostsInput = postsInputArray.filter(item => {
+          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
+            return true;
+          }
+          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
+        });
+        console.log(`PB Webhook: Filtered to ${filteredPostsInput.length} items after removing potential header.`);
+
+        if (filteredPostsInput.length > 0) {
+          const processed = await syncPBPostsToAirtable(filteredPostsInput);
+          console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
+        } else {
+          console.log("PB Webhook: No valid posts to sync after filtering.");
+        }
+
+      } catch (backgroundErr) {
+        console.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
+      }
+    })();
+
+  } catch (initialErr) {
+    console.error("PB Webhook: Initial error:", initialErr.message, initialErr.stack);
+    res.status(500).json({ error: initialErr.message });
+  }
+});
+
+
