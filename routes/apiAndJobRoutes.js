@@ -238,7 +238,7 @@ router.post("/api/pb-webhook", async (req, res) => {
         if (filteredPostsInput.length > 0) {
           // TEMP FIX: Use specific client base if auto-detection fails
           const { getClientBase } = require('../config/airtableClient');
-          const clientBase = getClientBase('guy-wilson'); // Replace with your actual client ID
+          const clientBase = await getClientBase('Guy-Wilson'); // Fixed: Use correct client ID and await
           
           const processed = await syncPBPostsToAirtable(filteredPostsInput, clientBase);
           console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
