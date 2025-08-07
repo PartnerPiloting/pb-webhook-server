@@ -473,26 +473,7 @@ const postBatchScorer = require("../postBatchScorer.js");
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score", async (req, res) => {
   console.log("apiAndJobRoutes.js: /run-post-batch-score endpoint hit");
-  
-  // This is a batch operation endpoint - should have proper batch authentication
-  // For now, we'll require x-client-id header for client-specific operations
-  const clientId = req.headers['x-client-id'];
-  if (!clientId) {
-    return res.status(400).json({ 
-      error: 'Client ID required in x-client-id header for batch operations',
-      usage: 'Add x-client-id header with your client ID'
-    });
-  }
-
-  // Get client-specific base
-  const clientBase = await getClientBase(clientId);
-  if (!clientBase) {
-    return res.status(400).json({ 
-      error: 'Invalid client ID',
-      clientId: clientId
-    });
-  }
-  
+  // Multi-tenant batch operation: processes ALL clients, no x-client-id required
   if (!vertexAIClient || !geminiModelId) {
     console.error("Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
     return res.status(503).json({
@@ -500,21 +481,17 @@ router.post("/run-post-batch-score", async (req, res) => {
       message: "Multi-tenant post scoring unavailable (Gemini config missing)."
     });
   }
-
   try {
     // Parse query parameters
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
-    
-    console.log(`Starting post scoring for client: ${clientId}, limit=${limit || 'UNLIMITED'}`);
-    
-    // Start the multi-tenant post scoring process
+    console.log(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}`);
+    // Start the multi-tenant post scoring process for ALL clients
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
-      clientId,
+      null, // No specific client - process ALL
       limit
     );
-    
     // Return results immediately
     res.status(200).json({
       status: 'completed',
@@ -530,15 +507,12 @@ router.post("/run-post-batch-score", async (req, res) => {
       },
       clientResults: results.clientResults
     });
-    
   } catch (error) {
     console.error("Multi-tenant post scoring error:", error.message, error.stack);
-    
     let errorMessage = "Multi-tenant post scoring failed";
     if (error.message) {
       errorMessage += ` Details: ${error.message}`;
     }
-    
     if (!res.headersSent) {
       return res.status(500).json({
         status: 'error',
