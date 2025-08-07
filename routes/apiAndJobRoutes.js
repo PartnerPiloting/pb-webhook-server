@@ -734,7 +734,7 @@ async function validateTokenBudget(attributeId, updatedData, clientId) {
     
     const projectedTotal = currentUsage.totalTokens - currentTokensForThisAttr + newTokens;
     const limit = currentUsage.limit;
-    const maxAllowed = Math.floor(limit * 1.05); // 105% buffer
+    const maxAllowed = Math.floor(limit * 1.10); // 110% buffer
     
     return {
       isValid: projectedTotal <= maxAllowed,
@@ -863,7 +863,7 @@ async function validatePostTokenBudget(attributeId, updatedData, clientId) {
     
     const projectedTotal = currentUsage.totalTokens - currentTokensForThisAttr + newTokens;
     const limit = currentUsage.limit;
-    const maxAllowed = Math.floor(limit * 1.05); // 105% buffer
+    const maxAllowed = Math.floor(limit * 1.10); // 110% buffer
     
     return {
       isValid: projectedTotal <= maxAllowed,
@@ -1343,9 +1343,9 @@ router.post("/api/attributes/:id/save", async (req, res) => {
       });
     }
     
-    // Check token budget before saving (only if activating)
+    // Check token budget before saving (for all active attributes)
     if (updatedData.active === true || updatedData.active === 'true') {
-      console.log(`apiAndJobRoutes.js: Checking token budget for activating attribute ${attributeId}`);
+      console.log(`apiAndJobRoutes.js: Checking token budget for attribute ${attributeId} (active=true)`);
       
       try {
         const budgetValidation = await validateTokenBudget(attributeId, updatedData, clientId);
@@ -1356,11 +1356,12 @@ router.post("/api/attributes/:id/save", async (req, res) => {
             success: false,
             error: "Token budget exceeded",
             details: {
-              message: `Activating this attribute would exceed your token budget by ${budgetValidation.wouldExceedBy} tokens.`,
+              message: `Saving this attribute would exceed your token budget by ${budgetValidation.wouldExceedBy} tokens.`,
               currentUsage: budgetValidation.currentTotal,
               newTokens: budgetValidation.newTokens,
               projectedTotal: budgetValidation.projectedTotal,
               limit: budgetValidation.limit,
+              maxAllowed: budgetValidation.maxAllowed,
               suggestion: "Try reducing the text in Instructions, Examples, or Signals fields, or deactivate other attributes first."
             }
           });
