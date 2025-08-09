@@ -1,0 +1,16 @@
+{
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#ff6b35",
+        "titleBar.activeForeground": "#ffffff",
+        "titleBar.inactiveBackground": "#e55a2b",
+        "titleBar.inactiveForeground": "#ffffff",
+        "statusBar.background": "#ff6b35",
+        "statusBar.foreground": "#ffffff",
+        "statusBar.noFolderBackground": "#ff6b35"
+    },
+    "window.title": "í¿  HOTFIX - ${rootName} - ${dirty}${separator}${activeEditorShort}",
+    "workbench.startupEditor": "readme",
+    "editor.rulers": [80, 120],
+    "files.autoSave": "onFocusChange",
+    "workbench.colorTheme": "Default Dark+"
+}
