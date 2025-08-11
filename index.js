@@ -112,6 +112,7 @@ app.use(cors({
         'http://localhost:3000',
         'http://localhost:3001',
         'https://pb-webhook-server.vercel.app',
+        'https://pb-webhook-server-hotfix.vercel.app', // Add hotfix frontend domain
         'https://pb-webhook-server-*.vercel.app', // Allow preview deployments
         'https://*.vercel.app', // Allow all Vercel deployments for now
         'https://australiansidehustles.com.au', // Allow requests from ASH website
