@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "echo \"í¿  Starting HOTFIX Frontend on port 3007...\" && next dev -p 3007",
+    "dev": "echo \"ï¿½ï¿½ï¿½ Starting HOTFIX Frontend on port 3007...\" && next dev -p 3007",
     "build": "next build",
-    "start": "echo \"í¿  Starting HOTFIX Frontend on port 3007...\" && next start -p 3007",
+    "start": "echo \"ï¿½ï¿½ï¿½ Starting HOTFIX Frontend on port 3007...\" && next start -p 3007",
     "lint": "next lint"
   },
   "dependencies": {
@@ -14,7 +14,7 @@
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.439.0",
-    "next": "14.3.0-canary.87",
+    "next": "14.2.5",
     "react": "^18",
     "react-dom": "^18",
     "react-hook-form": "^7.53.1"
@@ -24,7 +24,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
-    "eslint-config-next": "14.3.0-canary.87",
+    "eslint-config-next": "14.2.5",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
