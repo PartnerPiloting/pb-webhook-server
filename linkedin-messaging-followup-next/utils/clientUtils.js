@@ -55,7 +55,7 @@ export async function getCurrentClientProfile() {
     }
 
     // Use absolute URL to backend for authentication
-    const fullUrl = `https://pb-webhook-server.onrender.com${apiUrl}`;
+    const fullUrl = `https://pb-webhook-server-hotfix.onrender.com${apiUrl}`;
     
     console.log(`ClientUtils: Fetching client profile from: ${fullUrl}`);
     

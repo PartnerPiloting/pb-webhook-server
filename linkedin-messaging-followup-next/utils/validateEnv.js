@@ -5,18 +5,35 @@
  * for missing or incorrectly configured variables.
  */
 
+// Determine environment-specific defaults
+const getEnvironmentDefaults = () => {
+  // Check if we're in hotfix environment (can be determined multiple ways)
+  const isHotfix = process.env.VERCEL_GIT_COMMIT_REF === 'hotfix' || 
+                   process.env.VERCEL_URL?.includes('hotfix') ||
+                   process.env.NODE_ENV === 'hotfix';
+  
+  const baseUrl = isHotfix 
+    ? 'https://pb-webhook-server-hotfix.onrender.com'
+    : 'https://pb-webhook-server.onrender.com';
+  
+  return {
+    apiBaseUrl: `${baseUrl}/api/linkedin`
+  };
+};
+
 export const validateEnvironment = () => {
   const errors = [];
   const warnings = [];
+  const envDefaults = getEnvironmentDefaults();
 
   // Required environment variables for production
   const requiredVars = {
     // API Configuration
     'NEXT_PUBLIC_API_BASE_URL': {
       description: 'Base URL for the backend API',
-      example: 'https://pb-webhook-server.onrender.com/api/linkedin',
+      example: envDefaults.apiBaseUrl,
       required: false, // We have a fallback, so not strictly required
-      fallback: 'https://pb-webhook-server.onrender.com/api/linkedin'
+      fallback: envDefaults.apiBaseUrl
     }
   };
 
