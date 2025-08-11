@@ -1,6 +1,8 @@
 {
-  "buildCommand": "cd linkedin-messaging-followup-next && npm run build",
-  "outputDirectory": "linkedin-messaging-followup-next/.next",
-  "installCommand": "cd linkedin-messaging-followup-next && npm install",
-  "devCommand": "cd linkedin-messaging-followup-next && npm run dev"
+  "builds": [
+    {
+      "src": "linkedin-messaging-followup-next/package.json",
+      "use": "@vercel/next"
+    }
+  ]
 }
