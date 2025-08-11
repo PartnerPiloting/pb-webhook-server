@@ -247,8 +247,8 @@ const Layout = ({ children }) => {
                   // Handle both normal and test mode client profile structures
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
                   return clientName 
-                    ? `${clientName}'s LinkedIn Follow-Up Portal` 
-                    : 'LinkedIn Follow-Up Portal';
+                    ? `Hotfix - ${clientName}'s LinkedIn Follow-Up Portal` 
+                    : 'Hotfix - LinkedIn Follow-Up Portal';
                 })()}
               </h1>
             </div>

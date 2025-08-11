@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "LinkedIn Follow-Up Portal",
+  title: "Hotfix - LinkedIn Follow-Up Portal",
   description: "Multi-Tenant Lead Management System",
 };
 
