@@ -1,1 +1,3 @@
-fix post token calculation - using correct field names from documentation - 2025-07-26 17:05
+Add Hotfix identifier to dashboard titles - 2025-08-11 (commit 0d74e22)
+- Added 'Hotfix - ' prefix to browser tab title and main header
+- This will make it clear when using the hotfix version vs production
