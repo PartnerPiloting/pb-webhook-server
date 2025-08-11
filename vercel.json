@@ -1,8 +1,0 @@
-{
-  "builds": [
-    {
-      "src": "linkedin-messaging-followup-next/package.json",
-      "use": "@vercel/next"
-    }
-  ]
-}
