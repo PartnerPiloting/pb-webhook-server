@@ -3,7 +3,7 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 
 // API configuration
 // In Next.js, environment variables must be prefixed with NEXT_PUBLIC_ to be available in the browser
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server-hotfix.onrender.com/api/linkedin';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
