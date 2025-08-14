@@ -106,23 +106,40 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 
 // Add CORS configuration to allow frontend requests
+// Note: The CORS package does not treat wildcard strings in the origin array as patterns.
+// We must use a function and/or regular expressions to match dynamic subdomains like *.vercel.app
 const cors = require('cors');
+
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://pb-webhook-server.vercel.app',
+    'https://pb-webhook-server-staging.vercel.app',
+    // Allow any Vercel deployment (preview/branch deployments)
+    /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
+    // Allow ASH website domains
+    'https://australiansidehustles.com.au',
+    'https://www.australiansidehustles.com.au'
+];
+
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'https://pb-webhook-server.vercel.app',
-        'https://pb-webhook-server-hotfix.vercel.app', // Add hotfix frontend domain
-        'https://pb-webhook-server-*.vercel.app', // Allow preview deployments
-        'https://*.vercel.app', // Allow all Vercel deployments for now
-        'https://australiansidehustles.com.au', // Allow requests from ASH website
-        'https://www.australiansidehustles.com.au' // Allow requests from ASH www subdomain
-    ],
+    origin: (origin, callback) => {
+        // Allow non-browser requests (e.g., curl, server-to-server) where origin may be undefined
+        if (!origin) return callback(null, true);
+
+        const isAllowed = allowedOrigins.some((rule) =>
+            rule instanceof RegExp ? rule.test(origin) : rule === origin
+        );
+
+        if (isAllowed) return callback(null, true);
+        return callback(new Error(`Not allowed by CORS: ${origin}`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id'],
+    optionsSuccessStatus: 204
 }));
-console.log("CORS enabled for Vercel frontend");
+console.log("CORS enabled for allowed origins including *.vercel.app and staging frontend");
 
 // ABSOLUTE BASIC TEST - Should work 100%
 app.get('/basic-test', (req, res) => {

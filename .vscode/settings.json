@@ -8,7 +8,7 @@
         "statusBar.foreground": "#ffffff",
         "statusBar.noFolderBackground": "#ff6b35"
     },
-    "window.title": "í¿  HOTFIX - ${rootName} - ${dirty}${separator}${activeEditorShort}",
+    "window.title": "HOTFIX - ${rootName} - ${dirty}${separator}${activeEditorShort}",
     "workbench.startupEditor": "readme",
     "editor.rulers": [80, 120],
     "files.autoSave": "onFocusChange",
