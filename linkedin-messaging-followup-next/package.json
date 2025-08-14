@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "echo \"í¿¡ Starting STAGING Frontend on port 3006...\" && next dev -p 3006",
+    "dev": "echo \"ï¿½ï¿½ï¿½ Starting STAGING Frontend on port 3006...\" && next dev -p 3006",
     "build": "next build",
-    "start": "echo \"í¿¡ Starting STAGING Frontend on port 3006...\" && next start -p 3006",
+    "start": "echo \"ï¿½ï¿½ï¿½ Starting STAGING Frontend on port 3006...\" && next start -p 3006",
     "lint": "next lint"
   },
   "dependencies": {
@@ -14,9 +14,9 @@
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.439.0",
-    "next": "14.3.0-canary.87",
-    "react": "^18",
-    "react-dom": "^18",
+  "next": "^14.0.0",
+  "react": "^18.2.0",
+  "react-dom": "^18.2.0",
     "react-hook-form": "^7.53.1"
   },
   "devDependencies": {
