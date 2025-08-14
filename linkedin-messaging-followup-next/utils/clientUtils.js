@@ -1,6 +1,17 @@
 // utils/clientUtils.js
 // Dynamic client management for frontend authentication
 
+// Derive API host from the same env var used by axios client
+// Falls back to production only if env is missing
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
+let AUTH_BASE_ORIGIN = 'https://pb-webhook-server.onrender.com';
+try {
+  const u = new URL(API_BASE_URL);
+  AUTH_BASE_ORIGIN = `${u.origin}`; // e.g. https://pb-webhook-server-hotfix.onrender.com
+} catch (_) {
+  // keep fallback
+}
+
 let currentClientId = null;
 let clientProfile = null;
 
@@ -84,8 +95,8 @@ export async function getCurrentClientProfile() {
       apiUrl += `?wpUserId=${encodeURIComponent(wpUserId)}`;
     }
 
-    // Use absolute URL to backend for authentication
-    const fullUrl = `https://pb-webhook-server.onrender.com${apiUrl}`;
+  // Use absolute URL to backend for authentication based on env-derived origin
+  const fullUrl = `${AUTH_BASE_ORIGIN}${apiUrl}`;
     
     console.log(`ClientUtils: Fetching client profile from: ${fullUrl}`);
     
