@@ -1,0 +1,16 @@
+{
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#f0ad4e",
+        "titleBar.activeForeground": "#ffffff",
+        "titleBar.inactiveBackground": "#d58512",
+        "titleBar.inactiveForeground": "#ffffff",
+        "statusBar.background": "#f0ad4e",
+        "statusBar.foreground": "#ffffff",
+        "statusBar.noFolderBackground": "#f0ad4e"
+    },
+    "window.title": "í¿¡ STAGING - ${rootName} - ${dirty}${separator}${activeEditorShort}",
+    "workbench.startupEditor": "readme",
+    "editor.rulers": [80, 120],
+    "files.autoSave": "onFocusChange",
+    "workbench.colorTheme": "Default Dark+"
+}

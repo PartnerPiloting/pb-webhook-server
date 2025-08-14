@@ -1,11 +1,11 @@
 {
-  "name": "linkedin-messaging-followup-next",
+  "name": "linkedin-messaging-followup-next-staging",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "echo \"í¿¡ Starting STAGING Frontend on port 3006...\" && next dev -p 3006",
     "build": "next build",
-    "start": "next start",
+    "start": "echo \"í¿¡ Starting STAGING Frontend on port 3006...\" && next start -p 3006",
     "lint": "next lint"
   },
   "dependencies": {
@@ -13,22 +13,20 @@
     "axios": "^1.10.0",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
-    "next": "^14.0.0",
-    "prop-types": "^15.8.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^7.6.3"
+    "lucide-react": "^0.439.0",
+    "next": "14.3.0-canary.87",
+    "react": "^18",
+    "react-dom": "^18",
+    "react-hook-form": "^7.53.1"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17",
+    "eslint": "^8",
+    "eslint-config-next": "14.3.0-canary.87",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
     "typescript": "^5"
-  },
-  "engines": {
-    "node": "22.x"
   }
 }
