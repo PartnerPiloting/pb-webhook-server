@@ -20,7 +20,7 @@ let clientProfile = null;
  * Prefers explicit NEXT_PUBLIC_ENV_LABEL / NEXT_PUBLIC_ENV values,
  * otherwise infers from hostname conventions used in this project.
  */
-function getEnvLabel() {
+export function getEnvLabel() {
   // Prefer explicit public env variables when available (compile-time for Next.js)
   if (process.env.NEXT_PUBLIC_ENV_LABEL) return process.env.NEXT_PUBLIC_ENV_LABEL;
   if (process.env.NEXT_PUBLIC_ENV) {
