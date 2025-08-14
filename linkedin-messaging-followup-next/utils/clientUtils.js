@@ -5,6 +5,36 @@ let currentClientId = null;
 let clientProfile = null;
 
 /**
+ * Determine a human-friendly environment label for UI badges/titles
+ * Prefers explicit NEXT_PUBLIC_ENV_LABEL / NEXT_PUBLIC_ENV values,
+ * otherwise infers from hostname conventions used in this project.
+ */
+function getEnvLabel() {
+  // Prefer explicit public env variables when available (compile-time for Next.js)
+  if (process.env.NEXT_PUBLIC_ENV_LABEL) return process.env.NEXT_PUBLIC_ENV_LABEL;
+  if (process.env.NEXT_PUBLIC_ENV) {
+    const v = String(process.env.NEXT_PUBLIC_ENV).toLowerCase();
+    if (v.startsWith('stag')) return 'Staging';
+    if (v.startsWith('hot')) return 'Hotfix';
+    if (v.startsWith('prod')) return 'Production';
+    return 'Development';
+  }
+
+  // Fallback: infer from hostname when running in the browser
+  try {
+    if (typeof window !== 'undefined') {
+      const host = window.location.host || '';
+      if (host.includes('staging')) return 'Staging';
+      if (host.includes('hotfix')) return 'Hotfix';
+      if (host.includes('dev')) return 'Development';
+      if (host.includes('vercel.app')) return 'Production'; // Vercel production build
+    }
+  } catch (_) {}
+
+  return 'Development';
+}
+
+/**
  * Simple function to fix malformed JSON with double commas
  * @param {string} jsonText - Raw JSON text that might have double commas
  * @returns {Object} - Parsed JSON object
@@ -106,12 +136,12 @@ export async function getCurrentClientProfile() {
     
     // Only allow fallback if testClient parameter is explicitly provided
     if (testClient) {
-      console.warn(`ClientUtils: Using development fallback for testClient: ${testClient}`);
+    console.warn(`ClientUtils: Using fallback profile for testClient: ${testClient}`);
       currentClientId = testClient;
       clientProfile = {
         client: {
           clientId: testClient,
-          clientName: `${testClient} (Development Mode)`,
+      clientName: `${testClient} (${getEnvLabel()} Mode)`,
           status: 'Active',
           serviceLevel: 2
         },
