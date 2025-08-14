@@ -1,5 +1,6 @@
 "use client";
 import React, { Suspense, useEffect, useState } from 'react';
+import { getEnvLabel } from '../utils/clientUtils.js';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
@@ -244,11 +245,8 @@ const Layout = ({ children }) => {
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
                 {(() => {
-                  // Import getEnvLabel from clientUtils
-                  const { getEnvLabel } = require('../utils/clientUtils.js');
                   const envLabel = getEnvLabel();
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
-                  // Detect if test/demo mode (clientName contains (EnvLabel Mode))
                   let displayName = clientName || '';
                   let isTestMode = false;
                   if (clientName && clientName.includes('(' + envLabel + ' Mode)')) {
