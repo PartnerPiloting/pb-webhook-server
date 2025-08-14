@@ -1,11 +1,11 @@
 {
-  "name": "linkedin-messaging-followup-next-hotfix",
+  "name": "linkedin-messaging-followup-next",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "echo \"��� Starting HOTFIX Frontend on port 3007...\" && next dev -p 3007",
+    "dev": "echo \"🟢 Starting DEV Frontend on port 3007...\" && next dev -p 3007",
     "build": "next build",
-    "start": "echo \"��� Starting HOTFIX Frontend on port 3007...\" && next start -p 3007",
+    "start": "echo \"🟢 Starting DEV Frontend on port 3007...\" && next start -p 3007",
     "lint": "next lint"
   },
   "dependencies": {
