@@ -3,15 +3,7 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 
 // API configuration
 // In Next.js, environment variables must be prefixed with NEXT_PUBLIC_ to be available in the browser
-console.log('[DEBUG] Environment variable NEXT_PUBLIC_API_BASE_URL:', process.env.NEXT_PUBLIC_API_BASE_URL);
-console.log('[DEBUG] Fallback URL would be:', 'https://pb-webhook-server-hotfix.onrender.com/api/linkedin');
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server-hotfix.onrender.com/api/linkedin';
-console.log('[DEBUG] Final API_BASE_URL being used:', API_BASE_URL);
-
-// Configurable timeout (default 30s). Override with NEXT_PUBLIC_API_TIMEOUT (milliseconds)
-const RAW_TIMEOUT = process.env.NEXT_PUBLIC_API_TIMEOUT;
-const API_TIMEOUT = RAW_TIMEOUT && !isNaN(Number(RAW_TIMEOUT)) ? Number(RAW_TIMEOUT) : 30000;
-console.log('[DEBUG] API timeout (ms):', API_TIMEOUT, RAW_TIMEOUT ? '(from NEXT_PUBLIC_API_TIMEOUT)' : '(default 30000)');
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
 
 const RAW_TIMEOUT = process.env.NEXT_PUBLIC_API_TIMEOUT;
 const API_TIMEOUT = RAW_TIMEOUT && !isNaN(Number(RAW_TIMEOUT)) ? Number(RAW_TIMEOUT) : 30000;

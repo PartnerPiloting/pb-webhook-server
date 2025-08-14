@@ -11,6 +11,7 @@ try {
 } catch (_) {
   // keep fallback
 }
+
 let currentClientId = null;
 let clientProfile = null;
 
@@ -73,17 +74,21 @@ export async function getCurrentClientProfile() {
     console.log('ClientUtils: Current URL:', window.location.href);
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
+    
     const testClient = urlParams.get('testClient');
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
+    
     console.log('ClientUtils: Extracted testClient:', testClient);
     console.log('ClientUtils: Extracted wpUserId:', wpUserId);
+    
     let apiUrl = '/api/auth/test';
+    
     // If test client specified, use test mode
     if (testClient) {
       console.log(`ClientUtils: Using test client from URL: ${testClient}`);
       apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
-    }
+    } 
     // If WordPress User ID provided, use that for authentication
     else if (wpUserId) {
       console.log(`ClientUtils: Using WordPress User ID from URL: ${wpUserId}`);
@@ -92,7 +97,9 @@ export async function getCurrentClientProfile() {
 
   // Use absolute URL to backend for authentication based on env-derived origin
   const fullUrl = `${AUTH_BASE_ORIGIN}${apiUrl}`;
+    
     console.log(`ClientUtils: Fetching client profile from: ${fullUrl}`);
+    
     const response = await fetch(fullUrl, {
       method: 'GET',
       headers: {
@@ -110,9 +117,11 @@ export async function getCurrentClientProfile() {
     // Parse JSON response with corruption fix
     const responseText = await response.text();
     console.log('ClientUtils: Raw response text:', responseText);
+    
     const data = parseJSONWithFix(responseText);
     console.log('ClientUtils: Successfully parsed JSON response with fix');
     console.log('ClientUtils: Received client profile:', data);
+    
     // Cache the client info
     currentClientId = data.client?.clientId;
     clientProfile = {
@@ -120,25 +129,30 @@ export async function getCurrentClientProfile() {
       authentication: data.authentication,
       features: data.features
     };
+    
     console.log('ClientUtils: Retrieved client profile:', {
       clientId: currentClientId,
       clientName: data.client?.clientName,
       serviceLevel: data.client?.serviceLevel
     });
+    
     return data;
+    
   } catch (error) {
     console.error('ClientUtils: Error fetching client profile:', error);
+    
     // Check for test client parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
     const testClient = urlParams.get('testClient');
+    
     // Only allow fallback if testClient parameter is explicitly provided
     if (testClient) {
-  console.warn(`ClientUtils: Using fallback profile for testClient: ${testClient}`);
+    console.warn(`ClientUtils: Using fallback profile for testClient: ${testClient}`);
       currentClientId = testClient;
       clientProfile = {
         client: {
           clientId: testClient,
-          clientName: `${testClient} (${getEnvLabel()} Mode)`,
+      clientName: `${testClient} (${getEnvLabel()} Mode)`,
           status: 'Active',
           serviceLevel: 2
         },
@@ -152,10 +166,12 @@ export async function getCurrentClientProfile() {
           topScoringPosts: true
         }
       };
+      
       return clientProfile;
     } else {
       // No testClient parameter - authentication failed, provide specific error messages
       console.error('ClientUtils: Authentication failed and no testClient parameter provided');
+      
       // Try to parse error response for better error messages
       if (error.message.includes('401')) {
         throw new Error('Please log in to Australian Side Hustles before accessing this portal.');
@@ -190,6 +206,7 @@ export function getClientProfile() {
  */
 export async function initializeClient() {
   console.log('ClientUtils: Initializing client profile...');
+  
   try {
     await getCurrentClientProfile();
     return true;
@@ -209,5 +226,10 @@ export function clearClientData() {
   console.log('ClientUtils: Client data cleared');
 }
 
-// ...existing code...
-// ...existing code...
+export default {
+  getCurrentClientProfile,
+  getCurrentClientId,
+  getClientProfile,
+  initializeClient,
+  clearClientData
+};

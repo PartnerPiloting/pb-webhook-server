@@ -249,7 +249,7 @@ const Layout = ({ children }) => {
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
                   let displayName = clientName || '';
                   let isTestMode = false;
-                  if (clientName && envLabel && clientName.includes('(' + envLabel + ' Mode)')) {
+                  if (clientName && clientName.includes('(' + envLabel + ' Mode)')) {
                     displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
                     isTestMode = true;
                   }
