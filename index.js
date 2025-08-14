@@ -623,3 +623,23 @@ function parseMarkdownTables(markdown) {
   return {}; // Return a sensible default
 }
 */
+
+// --- SAFETY GUARD: Prevent silent use of production base in non-production ---
+(function safetyGuardForAirtableBase() {
+    const PROD_BASE_ID = 'appXySOLo6V9PfMfa'; // Production fallback base (from your .env)
+    const env = process.env.NODE_ENV || 'development';
+    if (env !== 'production' && AIRTABLE_BASE_ID === PROD_BASE_ID) {
+        console.warn(`⚠️  SAFETY WARNING: Running in NODE_ENV=${env} while AIRTABLE_BASE_ID is set to the production base (${PROD_BASE_ID}).\n` +
+            'If this is intentional (legacy fallback), ensure you always supply ?testClient=... so client-specific bases are used.');
+    }
+})();
+
+// Middleware to warn per-request if no client specified and production base fallback is in use
+app.use((req, res, next) => {
+    const clientParam = req.query.testClient || req.query.clientId || req.headers['x-client-id'];
+    const PROD_BASE_ID = 'appXySOLo6V9PfMfa';
+    if (!clientParam && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
+        console.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?testClient=CLIENT_ID to target that client base.`);
+    }
+    next();
+});
