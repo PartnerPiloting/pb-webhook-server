@@ -5,9 +5,11 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 // In Next.js, environment variables must be prefixed with NEXT_PUBLIC_ to be available in the browser
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
 
+const RAW_TIMEOUT = process.env.NEXT_PUBLIC_API_TIMEOUT;
+const API_TIMEOUT = RAW_TIMEOUT && !isNaN(Number(RAW_TIMEOUT)) ? Number(RAW_TIMEOUT) : 30000;
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: API_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
