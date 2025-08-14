@@ -1,5 +1,6 @@
 "use client";
 import React, { Suspense, useEffect, useState } from 'react';
+import { getEnvLabel } from '../utils/clientUtils.js';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
@@ -244,11 +245,21 @@ const Layout = ({ children }) => {
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
                 {(() => {
-                  // Handle both normal and test mode client profile structures
+                  const envLabel = getEnvLabel();
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
-                  return clientName 
-                    ? `${clientName}'s LinkedIn Follow-Up Portal` 
-                    : 'LinkedIn Follow-Up Portal';
+                  let displayName = clientName || '';
+                  let isTestMode = false;
+                  if (clientName && clientName.includes('(' + envLabel + ' Mode)')) {
+                    displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
+                    isTestMode = true;
+                  }
+                  return envLabel && displayName
+                    ? `${envLabel} - ${displayName}${isTestMode ? ' (' + envLabel + ' Mode)' : ''}'s LinkedIn Follow-Up Portal`
+                    : envLabel
+                      ? `${envLabel} - LinkedIn Follow-Up Portal`
+                      : displayName
+                        ? `${displayName}'s LinkedIn Follow-Up Portal`
+                        : 'LinkedIn Follow-Up Portal';
                 })()}
               </h1>
             </div>
