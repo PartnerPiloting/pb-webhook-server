@@ -244,11 +244,24 @@ const Layout = ({ children }) => {
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
                 {(() => {
-                  // Handle both normal and test mode client profile structures
+                  // Import getEnvLabel from clientUtils
+                  const { getEnvLabel } = require('../utils/clientUtils.js');
+                  const envLabel = getEnvLabel();
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
-                  return clientName 
-                    ? `${clientName}'s LinkedIn Follow-Up Portal` 
-                    : 'LinkedIn Follow-Up Portal';
+                  // Detect if test/demo mode (clientName contains (EnvLabel Mode))
+                  let displayName = clientName || '';
+                  let isTestMode = false;
+                  if (clientName && clientName.includes('(' + envLabel + ' Mode)')) {
+                    displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
+                    isTestMode = true;
+                  }
+                  return envLabel && displayName
+                    ? `${envLabel} - ${displayName}${isTestMode ? ' (' + envLabel + ' Mode)' : ''}'s LinkedIn Follow-Up Portal`
+                    : envLabel
+                      ? `${envLabel} - LinkedIn Follow-Up Portal`
+                      : displayName
+                        ? `${displayName}'s LinkedIn Follow-Up Portal`
+                        : 'LinkedIn Follow-Up Portal';
                 })()}
               </h1>
             </div>
