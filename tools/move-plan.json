@@ -1,0 +1,538 @@
+{
+  "when": "2025-08-15T04:33:56.340Z",
+  "totals": {
+    "ambiguous": 30,
+    "task": 53,
+    "doc": 20
+  },
+  "items": [
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "AIRTABLE-FIELD-REFERENCE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "analysis.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "APIFY-INTEGRATION-GUIDE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "ASH-Dashboard-Integration.html"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "BACKEND-DEEP-DIVE.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "BACKEND-QUICK-REFERENCE.md",
+      "dest": "kb/BACKEND-QUICK-REFERENCE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "CLIENT-SECURITY-STATUS.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "CONTENT-MODULES-LIBRARY.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "DEPLOY-TRIGGER.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "DEV Bookmarks.html"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "DEVELOPMENT-ENVIRONMENT-COMPLETE-GUIDE.md",
+      "dest": "kb/DEVELOPMENT-ENVIRONMENT-COMPLETE-GUIDE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "docs/archive/TASK-LIST-backup.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "docs/archive/TASK-LIST-old.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "docs/archive/TASK-LIST.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "docs/temp/HOTFIX-BACKLOG.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "docs/temp/HOTFIX-TEMPLATE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "DOCS-INDEX.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "DOCUMENTATION-AUDIT-CONSOLIDATION-PLAN.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "DOCUMENTATION-STANDARDS.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "ENVIRONMENT-MANAGEMENT.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "GENERAL-INSTRUCTIONS.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "Hotfix-Test-Locally.html"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "Hotfix-Test-Online.html"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "IMPLEMENTATION-PLANS-COMPLETE-GUIDE.md",
+      "dest": "kb/IMPLEMENTATION-PLANS-COMPLETE-GUIDE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside kb",
+      "src": "kb/DOC-airtable-automations-2025-08-15.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside kb",
+      "src": "kb/DOC-documentation-operating-guide-2025-08-15.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside kb",
+      "src": "kb/DOC-sample-template-2025-08-15.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside kb",
+      "src": "kb/INDEX.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "kb_local_backup_20250815-133936/DOC-airtable-automations-2025-08-15.md",
+      "dest": "kb/kb_local_backup_20250815-133936/DOC-airtable-automations-2025-08-15.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "kb_local_backup_20250815-133936/DOC-documentation-operating-guide-2025-08-15.md",
+      "dest": "kb/kb_local_backup_20250815-133936/DOC-documentation-operating-guide-2025-08-15.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "kb_local_backup_20250815-133936/DOC-sample-template-2025-08-15.md",
+      "dest": "kb/kb_local_backup_20250815-133936/DOC-sample-template-2025-08-15.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "kb_local_backup_20250815-133936/INDEX.md",
+      "dest": "kb/kb_local_backup_20250815-133936/INDEX.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/backend-extensions/wordpress-integration.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/DEVELOPMENT-LESSONS.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/architecture.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/authentication.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/chrome-extension-spec.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/deployment-strategy.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/integration-analysis.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/interface-development-methodology.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/requirements.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/docs/web-portal-spec.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/QUICK-REFERENCE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "LinkedIn-Messaging-FollowUp/README.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "LinkedIn-Messaging-FollowUp/web-portal/BOOTSTRAP_FOR_NEW_DEVS.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "LinkedIn-Messaging-FollowUp/web-portal/build/index.html",
+      "dest": "kb/LinkedIn-Messaging-FollowUp/web-portal/build/index.html"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "LinkedIn-Messaging-FollowUp/web-portal/public/index.html",
+      "dest": "kb/LinkedIn-Messaging-FollowUp/web-portal/public/index.html"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "LinkedIn-Messaging-FollowUp/web-portal/README.md",
+      "dest": "kb/LinkedIn-Messaging-FollowUp/web-portal/README.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "linkedin-messaging-followup-next/components/SETTINGS_REBUILD_DOCS.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "linkedin-messaging-followup-next/README.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "LOG-ANALYSIS-API.md",
+      "dest": "kb/LOG-ANALYSIS-API.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "MODEL-STRATEGY.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "PB-Webhook-Server-Documentation.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "post-scoring-attributes-fields-2025-07-25.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "PRODUCTION-STRUCTURE-RECOMMENDATION.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "PROJECT-MANAGEMENT-COMPLETE-GUIDE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "QUICK-REFERENCE.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "README-LIVE-DEPLOYMENTS.md",
+      "dest": "kb/README-LIVE-DEPLOYMENTS.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "RENDER-API-INVESTIGATION.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "scoring-attributes-data.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "scoring-attributes-fields-2025-07-25.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "SECURITY-AUDIT-COMPLETE-GUIDE.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "SLIDE-SCRIPT-TEMPLATES.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "SYNTHESIA-CONTENT-MASTER.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "SYSTEM-OVERVIEW.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/archive/TASK-LIST-backup.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/archive/TASK-LIST-old.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/archive/TASK-LIST.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/SUBMODULE-README.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/TASK-audit-consolidate-task-docs-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/TASK-migrate-tasks-to-shared-repo-submodule-2025-08-14.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/TASK-move-tasks-directory-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/TASK-sample-template-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/TASK-standardize-select-fields-auto-sync-airtable-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks/TASK-test-client-duplicate-batch-processing-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/archive/TASK-LIST-backup.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/archive/TASK-LIST-old.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/archive/TASK-LIST.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/SUBMODULE-README.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/TASK-audit-consolidate-task-docs-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/TASK-migrate-tasks-to-shared-repo-submodule-2025-08-14.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/TASK-move-tasks-directory-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/TASK-sample-template-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/TASK-standardize-select-fields-auto-sync-airtable-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250814-225613/TASK-test-client-duplicate-batch-processing-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/archive/TASK-LIST-backup.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/archive/TASK-LIST-old.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/archive/TASK-LIST.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/SUBMODULE-README.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/TASK-audit-consolidate-task-docs-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/TASK-migrate-tasks-to-shared-repo-submodule-2025-08-14.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/TASK-move-tasks-directory-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/TASK-sample-template-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/TASK-standardize-select-fields-auto-sync-airtable-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "inside tasks",
+      "src": "tasks_local_backup_20250815-050337/TASK-test-client-duplicate-batch-processing-2025-08-13.md"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "temp_batch_section.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "temp_batch_section_fixed.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "temp_end.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "temp_start.txt"
+    },
+    {
+      "action": "keep",
+      "reason": "task",
+      "src": "TEXTBLAZE-WEBHOOK-EXPLAINED.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "tools/classify-report.md"
+    },
+    {
+      "action": "keep",
+      "reason": "ambiguous",
+      "src": "tools/move-plan.md"
+    },
+    {
+      "action": "move",
+      "reason": "classified as doc outside kb",
+      "src": "TROUBLESHOOTING-COMPLETE-GUIDE.md",
+      "dest": "kb/TROUBLESHOOTING-COMPLETE-GUIDE.md"
+    }
+  ]
+}

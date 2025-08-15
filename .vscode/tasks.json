@@ -9,6 +9,48 @@
 			"isBackground": true,
 			"problemMatcher": [],
 			"args": []
+		},
+		{
+			"label": "Bootstrap KB (one-click)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-NoProfile",
+				"-File",
+				"scripts/Bootstrap-KB.ps1",
+				"-RepoOwner",
+				"PartnerPiloting",
+				"-RepoName",
+				"shared-tech-docs",
+				"-Visibility",
+				"public",
+				"-Branch",
+				"main"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Bootstrap KB (one-click)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-NoProfile",
+				"-File",
+				"scripts/Bootstrap-KB.ps1",
+				"-RepoOwner",
+				"PartnerPiloting",
+				"-RepoName",
+				"shared-tech-docs",
+				"-Visibility",
+				"public",
+				"-Branch",
+				"main"
+			],
+			"problemMatcher": []
 		}
 	]
 }
