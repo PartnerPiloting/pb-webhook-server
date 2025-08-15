@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "test": "echo \"Error: no test specified\" && exit 1",
+  "classify:dry-run": "node tools/classifyDocsDryRun.js --limit 20",
+  "classify:all": "node tools/classifyDocsDryRun.js --all --plan",
+  "classify:apply": "node tools/applyMovePlan.js"
   },
   "keywords": [],
   "author": "",

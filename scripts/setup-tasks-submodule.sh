@@ -5,6 +5,24 @@ REMOTE_URL=""
 BRANCH="main"
 SEED="yes"
 
+copy_dir() {
+  SRC="$1"; DST="$2"
+  # Prefer rsync if available
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude ".git" "$SRC"/ "$DST"/
+    return $?
+  fi
+  # Fallback to tar pipe (works on Git Bash)
+  if command -v tar >/dev/null 2>&1; then
+    mkdir -p "$DST"
+    ( cd "$SRC" && tar -cf - . ) | ( cd "$DST" && tar -xf - )
+    return $?
+  fi
+  # Last resort: cp -R (may miss dotfiles on some shells)
+  mkdir -p "$DST"
+  cp -R "$SRC"/* "$DST"/ 2>/dev/null || true
+}
+
 usage() {
   echo "Usage: $0 <remote-url> [--branch <branch>] [--skip-seed]" >&2
   echo "  remote-url   Git URL of the shared tasks repo (e.g., git@github.com:PartnerPiloting/shared-tasks.git)" >&2
@@ -66,9 +84,8 @@ if [[ "$SEED" == "yes" ]]; then
   echo "==> Seeding remote with current tasks/ content..."
   rm -rf "$TEMP_DIR"
   mkdir -p "$TEMP_DIR"
-  # Copy tasks content into temp dir
-  # Exclude potential nested repos
-  rsync -a --exclude ".git" tasks/ "$TEMP_DIR"/
+  # Copy tasks content into temp dir using portable method
+  copy_dir "tasks" "$TEMP_DIR"
 
   pushd "$TEMP_DIR" >/dev/null
   git init -b "$BRANCH"
