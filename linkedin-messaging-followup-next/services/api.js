@@ -3,7 +3,19 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 
 // API configuration
 // In Next.js, environment variables must be prefixed with NEXT_PUBLIC_ to be available in the browser
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
+// Accept either a full base (…/api/linkedin) or just the API origin (http://localhost:3001) and normalize to include /api/linkedin
+const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
+const API_BASE_URL = (() => {
+  try {
+    const raw = String(RAW_API_BASE);
+    // If it already ends with /api/linkedin (with or without trailing slash), keep as is
+    if (/\/api\/linkedin\/?$/i.test(raw)) return raw.replace(/\/$/, '');
+    // Otherwise, append the path
+    return `${raw.replace(/\/$/, '')}/api/linkedin`;
+  } catch (_) {
+    return 'https://pb-webhook-server.onrender.com/api/linkedin';
+  }
+})();
 
 const RAW_TIMEOUT = process.env.NEXT_PUBLIC_API_TIMEOUT;
 const API_TIMEOUT = RAW_TIMEOUT && !isNaN(Number(RAW_TIMEOUT)) ? Number(RAW_TIMEOUT) : 30000;

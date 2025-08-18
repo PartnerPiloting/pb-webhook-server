@@ -44,7 +44,9 @@ const NavigationWithParams = ({ pathname, children }) => {
   const searchParams = useSearchParams();
   // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
   const serviceLevel = parseInt(searchParams.get('level') || '2');
+  // Always show Top Scoring Leads in the navigation
   
+  // Build navigation; include Top Scoring Leads (left of Posts)
   const navigation = [
     {
       name: 'Lead Search & Update',
@@ -67,6 +69,14 @@ const NavigationWithParams = ({ pathname, children }) => {
       description: 'Review and process new leads',
       minLevel: 1
     },
+    // Top Scoring Leads (placed before Posts)
+    {
+      name: 'Top Scoring Leads',
+      href: '/top-scoring-leads',
+      icon: TrophyIcon,
+      description: 'Pick the best candidates for the next LH batch',
+      minLevel: 2
+    },
     {
       name: 'Top Scoring Posts',
       href: '/top-scoring-posts',
@@ -87,7 +97,8 @@ const NavigationWithParams = ({ pathname, children }) => {
   const filteredNavigation = navigation.filter(item => item.minLevel <= serviceLevel);
 
   return (
-    <nav className="flex space-x-8 mb-8" aria-label="Tabs">
+    <nav className="mb-8 overflow-x-auto" aria-label="Tabs">
+      <div className="flex space-x-6 sm:space-x-8 min-w-max">
       {filteredNavigation && filteredNavigation.map((item) => {
         if (!item || !item.name || !item.href) return null;
         
@@ -117,6 +128,7 @@ const NavigationWithParams = ({ pathname, children }) => {
           </Link>
         );
       })}
+      </div>
     </nav>
   );
 };

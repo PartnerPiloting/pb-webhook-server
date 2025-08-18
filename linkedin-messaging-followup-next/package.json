@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "echo \"🟢 Starting DEV Frontend on port 3007...\" && next dev -p 3007",
+  "dev": "echo \"🟢 Starting DEV Frontend on 3000...\" && next dev -p 3000",
     "build": "next build",
-    "start": "echo \"🟢 Starting DEV Frontend on port 3007...\" && next start -p 3007",
+    "start": "next start -p 3000",
     "lint": "next lint"
   },
   "dependencies": {
