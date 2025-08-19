@@ -1,4 +1,7 @@
 "use client";
-// Delegate to the JS component implementation
-import TopScoringLeads from "./TopScoringLeads.js";
-export default TopScoringLeads;
+
+// This placeholder prevents a TypeScript circular alias error on Vercel.
+// The actual implementation lives in TopScoringLeads.js and is imported explicitly with the .js extension.
+export default function TopScoringLeadsPlaceholder() {
+  return null;
+}
