@@ -75,7 +75,7 @@ export async function getCurrentClientProfile() {
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-    const testClient = urlParams.get('testClient');
+  const testClient = urlParams.get('testClient');
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
     
@@ -87,7 +87,7 @@ export async function getCurrentClientProfile() {
     // If test client specified, use test mode
     if (testClient) {
       console.log(`ClientUtils: Using test client from URL: ${testClient}`);
-      apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
+  apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
     } 
     // If WordPress User ID provided, use that for authentication
     else if (wpUserId) {
@@ -103,8 +103,8 @@ export async function getCurrentClientProfile() {
     const response = await fetch(fullUrl, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': testClient,
+  'Content-Type': 'application/json',
+  'x-client-id': testClient,
       }
     });
 
@@ -143,10 +143,10 @@ export async function getCurrentClientProfile() {
     
     // Check for test client parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
-    const testClient = urlParams.get('testClient');
+  const testClient = urlParams.get('testClient');
     
     // Only allow fallback if testClient parameter is explicitly provided
-    if (testClient) {
+  if (testClient) {
     console.warn(`ClientUtils: Using fallback profile for testClient: ${testClient}`);
       currentClientId = testClient;
       clientProfile = {
