@@ -1,14 +1,14 @@
 {
     "workbench.colorCustomizations": {
-        "titleBar.activeBackground": "#f0ad4e",
+        "titleBar.activeBackground": "#2e7d32",
         "titleBar.activeForeground": "#ffffff",
-        "titleBar.inactiveBackground": "#d58512",
+        "titleBar.inactiveBackground": "#1b5e20",
         "titleBar.inactiveForeground": "#ffffff",
-        "statusBar.background": "#f0ad4e",
+        "statusBar.background": "#2e7d32",
         "statusBar.foreground": "#ffffff",
-        "statusBar.noFolderBackground": "#f0ad4e"
+        "statusBar.noFolderBackground": "#2e7d32"
     },
-    "window.title": "í¿¡ STAGING - ${rootName} - ${dirty}${separator}${activeEditorShort}",
+    "window.title": "ðŸŸ¢ DEV - ${rootName} - ${dirty}${separator}${activeEditorShort}",
     "workbench.startupEditor": "readme",
     "editor.rulers": [80, 120],
     "files.autoSave": "onFocusChange",
