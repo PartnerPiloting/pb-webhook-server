@@ -1,0 +1,74 @@
+{
+  "labels": {
+    "id": "ID",
+    "name": "Name",
+    "company": "Company",
+    "title": "Title",
+    "status": "Status",
+    "stage": "Stage",
+    "owner": "Owner",
+    "email": "Email",
+    "phone": "Phone",
+    "linkedin": "LinkedIn",
+    "addressCity": "City",
+    "searchTerms": "Search terms",
+    "tags": "Tags",
+    "createdAt": "Created",
+    "updatedAt": "Updated"
+  },
+  "excludeKeys": [
+    "internalNotes",
+    "secretToken",
+    "jsonBlob"
+  ],
+  "defaultList": [
+    "name",
+    "company",
+    "title",
+    "email",
+    "phone",
+    "linkedin",
+    "addressCity",
+    "status",
+    "stage",
+    "owner"
+  ],
+  "defaultSales": [
+    "name",
+    "company",
+    "title",
+    "email",
+    "phone",
+    "status",
+    "stage",
+    "owner"
+  ],
+  "defaultOps": [
+    "name",
+    "company",
+    "status",
+    "owner"
+  ],
+  "includeKeys": [
+    "name",
+    "company",
+    "title",
+    "status",
+    "stage",
+    "owner",
+    "searchTerms"
+  ],
+  "hints": {
+    "name": {
+      "include": true,
+      "weight": 10
+    },
+    "company": {
+      "include": true,
+      "weight": 9
+    },
+    "searchTerms": {
+      "weight": 6
+    }
+  }
+}
