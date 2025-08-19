@@ -1,56 +1,32 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "Start React Development Server",
-			"type": "shell",
-			"command": "npm start",
-			"group": "build",
-			"isBackground": true,
-			"problemMatcher": [],
-			"args": []
-		},
-		{
-			"label": "Bootstrap KB (one-click)",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-ExecutionPolicy",
-				"Bypass",
-				"-NoProfile",
-				"-File",
-				"scripts/Bootstrap-KB.ps1",
-				"-RepoOwner",
-				"PartnerPiloting",
-				"-RepoName",
-				"shared-tech-docs",
-				"-Visibility",
-				"public",
-				"-Branch",
-				"main"
-			],
-			"problemMatcher": []
-		},
-		{
-			"label": "Bootstrap KB (one-click)",
-			"type": "shell",
-			"command": "powershell",
-			"args": [
-				"-ExecutionPolicy",
-				"Bypass",
-				"-NoProfile",
-				"-File",
-				"scripts/Bootstrap-KB.ps1",
-				"-RepoOwner",
-				"PartnerPiloting",
-				"-RepoName",
-				"shared-tech-docs",
-				"-Visibility",
-				"public",
-				"-Branch",
-				"main"
-			],
-			"problemMatcher": []
-		}
-	]
+  // VS Code Tasks to start both API (3001) and Frontend (3000)
+  "$schema": "vscode://schemas/tasks",
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev (simple): API 3001 + Next 3000",
+      "type": "shell",
+      "command": "npm run dev:simple",
+      "isBackground": true,
+      "group": "build",
+      "problemMatcher": []
+    }
+    ,
+    {
+      "label": "API: Start (keep running)",
+      "type": "shell",
+      "command": "npm run dev:api",
+      "isBackground": true,
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend: Start (port 3000)",
+      "type": "shell",
+  "command": "npm run dev:front",
+      "isBackground": true,
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
 }

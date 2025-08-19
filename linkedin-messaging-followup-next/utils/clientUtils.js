@@ -1,8 +1,49 @@
 // utils/clientUtils.js
 // Dynamic client management for frontend authentication
 
+// Derive API host from the same env var used by axios client
+// Falls back to production only if env is missing
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
+let AUTH_BASE_ORIGIN = 'https://pb-webhook-server.onrender.com';
+try {
+  const u = new URL(API_BASE_URL);
+  AUTH_BASE_ORIGIN = `${u.origin}`; // e.g. https://pb-webhook-server-hotfix.onrender.com
+} catch (_) {
+  // keep fallback
+}
+
 let currentClientId = null;
 let clientProfile = null;
+
+/**
+ * Determine a human-friendly environment label for UI badges/titles
+ * Prefers explicit NEXT_PUBLIC_ENV_LABEL / NEXT_PUBLIC_ENV values,
+ * otherwise infers from hostname conventions used in this project.
+ */
+export function getEnvLabel() {
+  // Prefer explicit public env variables when available (compile-time for Next.js)
+  if (process.env.NEXT_PUBLIC_ENV_LABEL) return process.env.NEXT_PUBLIC_ENV_LABEL;
+  if (process.env.NEXT_PUBLIC_ENV) {
+    const v = String(process.env.NEXT_PUBLIC_ENV).toLowerCase();
+    if (v.startsWith('stag')) return 'Staging';
+    if (v.startsWith('hot')) return 'Hotfix';
+    if (v.startsWith('prod')) return 'Production';
+    return 'Development';
+  }
+
+  // Fallback: infer from hostname when running in the browser
+  try {
+    if (typeof window !== 'undefined') {
+      const host = window.location.host || '';
+      if (host.includes('staging')) return 'Staging';
+      if (host.includes('hotfix')) return 'Hotfix';
+      if (host.includes('dev')) return 'Development';
+      if (host.includes('vercel.app')) return 'Production'; // Vercel production build
+    }
+  } catch (_) {}
+
+  return 'Development';
+}
 
 /**
  * Simple function to fix malformed JSON with double commas
@@ -34,7 +75,7 @@ export async function getCurrentClientProfile() {
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-    const testClient = urlParams.get('testClient');
+  const testClient = urlParams.get('testClient');
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
     
@@ -46,7 +87,7 @@ export async function getCurrentClientProfile() {
     // If test client specified, use test mode
     if (testClient) {
       console.log(`ClientUtils: Using test client from URL: ${testClient}`);
-      apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
+  apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
     } 
     // If WordPress User ID provided, use that for authentication
     else if (wpUserId) {
@@ -54,16 +95,16 @@ export async function getCurrentClientProfile() {
       apiUrl += `?wpUserId=${encodeURIComponent(wpUserId)}`;
     }
 
-    // Use absolute URL to backend for authentication
-    const fullUrl = `https://pb-webhook-server-hotfix.onrender.com${apiUrl}`;
+  // Use absolute URL to backend for authentication based on env-derived origin
+  const fullUrl = `${AUTH_BASE_ORIGIN}${apiUrl}`;
     
     console.log(`ClientUtils: Fetching client profile from: ${fullUrl}`);
     
     const response = await fetch(fullUrl, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': testClient,
+  'Content-Type': 'application/json',
+  'x-client-id': testClient,
       }
     });
 
@@ -102,16 +143,16 @@ export async function getCurrentClientProfile() {
     
     // Check for test client parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
-    const testClient = urlParams.get('testClient');
+  const testClient = urlParams.get('testClient');
     
     // Only allow fallback if testClient parameter is explicitly provided
-    if (testClient) {
-      console.warn(`ClientUtils: Using development fallback for testClient: ${testClient}`);
+  if (testClient) {
+    console.warn(`ClientUtils: Using fallback profile for testClient: ${testClient}`);
       currentClientId = testClient;
       clientProfile = {
         client: {
           clientId: testClient,
-          clientName: `${testClient} (Development Mode)`,
+      clientName: `${testClient} (${getEnvLabel()} Mode)`,
           status: 'Active',
           serviceLevel: 2
         },

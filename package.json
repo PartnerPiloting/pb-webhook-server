@@ -3,17 +3,16 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-  "test": "echo \"Error: no test specified\" && exit 1",
-  "classify:dry-run": "node tools/classifyDocsDryRun.js --limit 20",
-  "classify:all": "node tools/classifyDocsDryRun.js --all --plan",
-  "classify:apply": "node tools/applyMovePlan.js"
+  "start": "node index.js",
+  "dev": "nodemon index.js",
+  "dev:api": "cross-env PORT=3001 ENABLE_TOP_SCORING_LEADS=true TOP_SCORING_LEADS_DRY_RUN=true nodemon index.js",
+  "dev:front": "cross-env NEXT_PUBLIC_API_BASE_URL=http://localhost:3001 npm --prefix linkedin-messaging-followup-next run dev",
+  "dev:simple": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:front\"",
+  "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@google-cloud/vertexai": "^1.10.0",
     "airtable": "^0.12.2",
@@ -28,6 +27,12 @@
     "openai": "^4.69.0"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
     "nodemon": "^3.1.10"
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "description": ""
 }
