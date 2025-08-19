@@ -200,6 +200,8 @@ export const getLeadById = async (leadId) => {
       'ASH Workshop Email': lead.ashWorkshopEmail,
       'AI Profile Assessment': lead.aiProfileAssessment,
       'AI Attribute Breakdown': lead.aiAttributeBreakdown,
+  'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
+  'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,
@@ -229,14 +231,16 @@ export const createLead = async (leadData) => {
       'priority': 'Priority',
       'linkedinConnectionStatus': 'LinkedIn Connection Status',
       'ashWorkshopEmail': 'ASH Workshop Email',
-      'postsActioned': 'Posts Actioned'
+  'postsActioned': 'Posts Actioned',
+  'searchTerms': 'Search Terms',
+  'searchTokensCanonical': 'Search Tokens (canonical)'
     };
     
     // List of dropdown fields that need empty string handling
     const dropdownFields = ['source', 'status', 'priority', 'linkedinConnectionStatus'];
     
     // List of date fields that need empty string handling
-    const dateFields = ['followUpDate'];
+  const dateFields = ['followUpDate'];
     
     Object.keys(leadData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
@@ -253,7 +257,7 @@ export const createLead = async (leadData) => {
           value = null;
         }
         
-        backendData[backendField] = value;
+  backendData[backendField] = value;
       }
     });
     
@@ -297,6 +301,8 @@ export const createLead = async (leadData) => {
       'Company Name': lead.companyName,
       'About': lead.about,
       'ASH Workshop Email': lead.ashWorkshopEmail,
+  'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
+  'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,
@@ -327,13 +333,15 @@ export const updateLead = async (leadId, updateData) => {
       'priority': 'Priority',
       'linkedinConnectionStatus': 'LinkedIn Connection Status',
       'ashWorkshopEmail': 'ASH Workshop Email',
-      'postsActioned': 'Posts Actioned'
+  'postsActioned': 'Posts Actioned',
+  'searchTerms': 'Search Terms',
+  'searchTokensCanonical': 'Search Tokens (canonical)'
     };
     
     // List of fields that need empty string converted to null
     const emptyStringToNullFields = ['source', 'status', 'priority', 'linkedinConnectionStatus', 'followUpDate'];
     
-    Object.keys(updateData).forEach(frontendField => {
+  Object.keys(updateData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
       if (backendField) {
         let value = updateData[frontendField];
@@ -343,7 +351,7 @@ export const updateLead = async (leadId, updateData) => {
           value = null;
         }
         
-        backendData[backendField] = value;
+  backendData[backendField] = value;
       }
     });
     
@@ -388,6 +396,8 @@ export const updateLead = async (leadId, updateData) => {
       'Company Name': lead.companyName,
       'About': lead.about,
       'ASH Workshop Email': lead.ashWorkshopEmail,
+  'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
+  'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,

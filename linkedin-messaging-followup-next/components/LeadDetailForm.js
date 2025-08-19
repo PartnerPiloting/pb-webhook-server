@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SearchTermsField from './SearchTermsField';
 import { deleteLead } from '../services/api';
 
 // Import icons using require to avoid Next.js issues
@@ -118,8 +119,10 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         followUpDate: convertToISODate(lead.followUpDate),
         source: lead.source || '',
         status: lead.status || '',
-        priority: lead.priority || '',
-        linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
+  priority: lead.priority || '',
+  linkedinConnectionStatus: lead.linkedinConnectionStatus || '',
+  searchTerms: lead.searchTerms || lead['Search Terms'] || '',
+  searchTokensCanonical: lead.searchTokensCanonical || lead['Search Tokens (canonical)'] || ''
       });
       setHasChanges(false);
     }
@@ -174,7 +177,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     editable: [
       'firstName', 'lastName', 'linkedinProfileUrl', 'viewInSalesNavigator', 
       'email', 'phone', 'ashWorkshopEmail', 'notes', 'source', 
-      'status', 'priority', 'linkedinConnectionStatus'
+  'status', 'priority', 'linkedinConnectionStatus', 'searchTerms'
     ],
     readonly: ['profileKey', 'aiScore', 'postsRelevancePercentage', 'lastMessageDate'],
     selectOptions: {
@@ -590,6 +593,26 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
+          </div>
+
+          {/* Search Terms (chips) */}
+          <div className="flex items-start">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Search Terms</label>
+            <div className="flex-1">
+              <SearchTermsField
+                initialTerms={formData.searchTerms || ''}
+                onTermsChange={(termsString, canonicalCsv) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    searchTerms: termsString,
+                    searchTokensCanonical: canonicalCsv
+                  }));
+                  setHasChanges(true);
+                }}
+                disabled={isUpdating}
+              />
+              <p className="text-xs text-gray-500 mt-1">Canonical tokens will be saved to the hidden helper field.</p>
+            </div>
           </div>
         </div>
       </div>

@@ -342,7 +342,9 @@ const LeadSearchUpdate = () => {
                 linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
                 followUpDate: safeRender(selectedLead.followUpDate),
                 notes: safeRender(selectedLead['Notes']),
-                lastMessageDate: safeRender(selectedLead['Last Message Date'])
+                lastMessageDate: safeRender(selectedLead['Last Message Date']),
+                searchTerms: safeRender(selectedLead['Search Terms']),
+                searchTokensCanonical: safeRender(selectedLead['Search Tokens (canonical)'])
               }}
               onUpdate={handleLeadUpdate}
               onDelete={handleLeadDelete}
