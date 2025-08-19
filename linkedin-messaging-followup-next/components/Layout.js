@@ -1,5 +1,6 @@
 "use client";
 import React, { Suspense, useEffect, useState } from 'react';
+import { getEnvLabel } from '../utils/clientUtils.js';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
@@ -43,7 +44,9 @@ const NavigationWithParams = ({ pathname, children }) => {
   const searchParams = useSearchParams();
   // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
   const serviceLevel = parseInt(searchParams.get('level') || '2');
+  // Always show Top Scoring Leads in the navigation
   
+  // Build navigation; include Top Scoring Leads (left of Posts)
   const navigation = [
     {
       name: 'Lead Search & Update',
@@ -66,6 +69,14 @@ const NavigationWithParams = ({ pathname, children }) => {
       description: 'Review and process new leads',
       minLevel: 1
     },
+    // Top Scoring Leads (placed before Posts)
+    {
+      name: 'Top Scoring Leads',
+      href: '/top-scoring-leads',
+      icon: TrophyIcon,
+      description: 'Pick the best candidates for the next LH batch',
+      minLevel: 2
+    },
     {
       name: 'Top Scoring Posts',
       href: '/top-scoring-posts',
@@ -86,7 +97,8 @@ const NavigationWithParams = ({ pathname, children }) => {
   const filteredNavigation = navigation.filter(item => item.minLevel <= serviceLevel);
 
   return (
-    <nav className="flex space-x-8 mb-8" aria-label="Tabs">
+    <nav className="mb-8 overflow-x-auto" aria-label="Tabs">
+      <div className="flex space-x-6 sm:space-x-8 min-w-max">
       {filteredNavigation && filteredNavigation.map((item) => {
         if (!item || !item.name || !item.href) return null;
         
@@ -116,6 +128,7 @@ const NavigationWithParams = ({ pathname, children }) => {
           </Link>
         );
       })}
+      </div>
     </nav>
   );
 };
@@ -244,11 +257,21 @@ const Layout = ({ children }) => {
             <div className="flex items-center">
               <h1 className="text-xl font-semibold text-gray-900">
                 {(() => {
-                  // Handle both normal and test mode client profile structures
+                  const envLabel = getEnvLabel();
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
-                  return clientName 
-                    ? `${clientName}'s LinkedIn Follow-Up Portal` 
-                    : 'LinkedIn Follow-Up Portal';
+                  let displayName = clientName || '';
+                  let isTestMode = false;
+                  if (clientName && clientName.includes('(' + envLabel + ' Mode)')) {
+                    displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
+                    isTestMode = true;
+                  }
+                  return envLabel && displayName
+                    ? `${envLabel} - ${displayName}${isTestMode ? ' (' + envLabel + ' Mode)' : ''}'s LinkedIn Follow-Up Portal`
+                    : envLabel
+                      ? `${envLabel} - LinkedIn Follow-Up Portal`
+                      : displayName
+                        ? `${displayName}'s LinkedIn Follow-Up Portal`
+                        : 'LinkedIn Follow-Up Portal';
                 })()}
               </h1>
             </div>

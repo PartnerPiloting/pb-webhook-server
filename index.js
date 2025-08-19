@@ -1,4 +1,5 @@
 // PB Webhook Server
+// touch: force reload for nodemon - 2025-08-16
 // Main server file for handling Airtable webhooks and API endpoints
 // Force redeploy for follow-ups endpoint - 2024-12-xx
 
@@ -106,28 +107,71 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 
 // Add CORS configuration to allow frontend requests
+// Note: The CORS package does not treat wildcard strings in the origin array as patterns.
+// We must use a function and/or regular expressions to match dynamic subdomains like *.vercel.app
 const cors = require('cors');
+
+const allowedOrigins = [
+    /^http:\/\/localhost(:\d+)?$/i,
+    'https://pb-webhook-server.vercel.app',
+    'https://pb-webhook-server-staging.vercel.app',
+    /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
+    'https://australiansidehustles.com.au',
+    'https://www.australiansidehustles.com.au'
+];
+
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'https://pb-webhook-server.vercel.app',
-        'https://pb-webhook-server-*.vercel.app', // Allow preview deployments
-        'https://*.vercel.app', // Allow all Vercel deployments for now
-        'https://australiansidehustles.com.au', // Allow requests from ASH website
-        'https://www.australiansidehustles.com.au' // Allow requests from ASH www subdomain
-    ],
+    origin: (origin, callback) => {
+        // Allow non-browser requests (e.g., curl, server-to-server) where origin may be undefined
+        if (!origin) return callback(null, true);
+
+        const isAllowed = allowedOrigins.some((rule) =>
+            rule instanceof RegExp ? rule.test(origin) : rule === origin
+        );
+
+        if (isAllowed) return callback(null, true);
+        return callback(new Error(`Not allowed by CORS: ${origin}`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id'],
+    optionsSuccessStatus: 204
 }));
-console.log("CORS enabled for Vercel frontend");
+console.log("CORS enabled for allowed origins including *.vercel.app and staging frontend");
 
 // ABSOLUTE BASIC TEST - Should work 100%
 app.get('/basic-test', (req, res) => {
     res.send('BASIC ROUTE WORKING - Express is alive!');
 });
 console.log("Basic test route added at /basic-test");
+
+// Friendly root route to reduce confusion when visiting http://localhost:3001
+app.get('/', (req, res) => {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        const apiBase = `http://localhost:${process.env.PORT || 3001}`;
+        const uiUrl = 'http://localhost:3000/top-scoring-leads?testClient=Guy-Wilson';
+        res.end(`
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8"/>
+        <title>PB Webhook Server</title>
+        <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",sans-serif;max-width:760px;margin:40px auto;padding:0 16px;line-height:1.5}code{background:#f3f4f6;padding:2px 6px;border-radius:4px}</style>
+    </head>
+    <body>
+        <h1>PB Webhook Server</h1>
+        <p>This is the API server. For the UI, open <a href="${uiUrl}">${uiUrl}</a>.</p>
+        <h2>Quick links</h2>
+        <ul>
+            <li><a href="${apiBase}/api/top-scoring-leads/status">Top Scoring Leads · Status</a></li>
+            <li><a href="${apiBase}/api/top-scoring-leads/_debug/routes">Top Scoring Leads · Routes</a></li>
+            <li><a href="${apiBase}/api/test/minimal-json">Minimal JSON Test</a></li>
+            <li><a href="${apiBase}/basic-test">Basic Test</a></li>
+        </ul>
+        <p style="color:#6b7280">Tip: Start both servers with <code>npm run dev:simple</code> (API:3001, Frontend:3000).</p>
+    </body>
+</html>`);
+});
 
 // JSON DIAGNOSTIC TEST - Tests if Express/Node/Render can produce clean JSON
 app.get('/api/test/minimal-json', (req, res) => {
@@ -284,6 +328,17 @@ try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/ap
 // Debug routes for JSON serialization issues
 try { const debugRoutes = require('./routes/debugRoutes.js'); app.use('/api/debug', debugRoutes); console.log("index.js: Debug routes mounted at /api/debug"); } catch(e) { console.error("index.js: Error mounting debug routes", e.message, e.stack); }
 
+// Top Scoring Leads scaffold (feature gated inside the router module)
+try {
+    const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
+    if (typeof mountTopScoringLeads === 'function') {
+        mountTopScoringLeads(app, base);
+        console.log('index.js: Top Scoring Leads routes mounted at /api/top-scoring-leads');
+    }
+} catch(e) {
+    console.error('index.js: Error mounting Top Scoring Leads routes', e.message, e.stack);
+}
+
 // EMERGENCY DEBUG ROUTE - Direct in index.js
 app.get('/api/linkedin/debug', (req, res) => {
     res.json({ 
@@ -349,6 +404,34 @@ app.get('/api/environment/status', (req, res) => {
             timestamp: new Date().toISOString()
         }
     });
+});
+
+// Global routes map for debugging (non-secret; shows only paths/methods)
+app.get('/api/_debug/routes', (req, res) => {
+    try {
+        const list = [];
+        const stack = app._router && app._router.stack ? app._router.stack : [];
+        for (const layer of stack) {
+            if (layer && layer.route && layer.route.path) {
+                const path = layer.route.path;
+                const methods = Object.keys(layer.route.methods || {}).filter(Boolean);
+                list.push({ path, methods, mount: 'app' });
+            } else if (layer && layer.name === 'router' && layer.handle && layer.handle.stack) {
+                // Mounted routers (e.g., app.use('/base', router))
+                const mountPath = layer.regexp && layer.regexp.fast_star ? '*' : (layer.regexp && layer.regexp.toString());
+                for (const r of layer.handle.stack) {
+                    if (r && r.route) {
+                        const path = r.route.path;
+                        const methods = Object.keys(r.route.methods || {}).filter(Boolean);
+                        list.push({ path, methods, mount: mountPath });
+                    }
+                }
+            }
+        }
+        res.json({ ok: true, count: list.length, routes: list });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
 });
 
 // Agent command endpoint - responds to plain English instructions
@@ -569,7 +652,7 @@ app.get('/debug-linkedin-files', (req, res) => {
 /* ------------------------------------------------------------------
     3) Start server
 ------------------------------------------------------------------*/
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 console.log(
     `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
@@ -605,3 +688,23 @@ function parseMarkdownTables(markdown) {
   return {}; // Return a sensible default
 }
 */
+
+// --- SAFETY GUARD: Prevent silent use of production base in non-production ---
+(function safetyGuardForAirtableBase() {
+    const PROD_BASE_ID = 'appXySOLo6V9PfMfa'; // Production fallback base (from your .env)
+    const env = process.env.NODE_ENV || 'development';
+    if (env !== 'production' && AIRTABLE_BASE_ID === PROD_BASE_ID) {
+        console.warn(`⚠️  SAFETY WARNING: Running in NODE_ENV=${env} while AIRTABLE_BASE_ID is set to the production base (${PROD_BASE_ID}).\n` +
+            'If this is intentional (legacy fallback), ensure you always supply ?testClient=... so client-specific bases are used.');
+    }
+})();
+
+// Middleware to warn per-request if no client specified and production base fallback is in use
+app.use((req, res, next) => {
+    const clientParam = req.query.testClient || req.query.clientId || req.headers['x-client-id'];
+    const PROD_BASE_ID = 'appXySOLo6V9PfMfa';
+    if (!clientParam && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
+        console.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?testClient=CLIENT_ID to target that client base.`);
+    }
+    next();
+});
