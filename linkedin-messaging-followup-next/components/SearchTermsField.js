@@ -1,25 +1,46 @@
 "use client";
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getSearchTokenSuggestions } from '../services/api';
 
-// Simple tokenizer to produce canonical tokens from a freeform terms string
+// Tokenizer with quoted phrase support
 // Rules:
-// - split on commas/semicolons and whitespace
-// - lowercase, trim, drop empty
-// - strip surrounding quotes and common punctuation
-// - dedupe, keep insertion order
+// - Split on commas/semicolons/newlines and whitespace, BUT keep text inside double quotes as one token
+// - Lowercase, trim, strip surrounding quotes/parens/brackets, drop empties
+// - Dedupe in insertion order, cap to 25, max token length 40
 function tokenizeToCanonical(input) {
   if (!input || typeof input !== 'string') return [];
-  const rawPieces = input
-    .split(/[,;\n]+/g) // first split on commas/semicolons/newlines
-    .flatMap(part => part.split(/\s+/g)); // then split on whitespace
+  
+  // Normalize separators to make scanning easier
+  const src = String(input).replace(/[;\n]/g, ',');
 
-  const cleaned = rawPieces
-    .map(s => (s || '').trim())
-    .map(s => s.replace(/^['"()\[\]{}]+|['"()\[\]{}]+$/g, '')) // strip wrapping quotes/parens/brackets
-    .map(s => s.replace(/^[-_.]+|[-_.]+$/g, '')) // strip leading/trailing punctuation
+  const tokens = [];
+  let buf = '';
+  let inQuotes = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue; // don't include the quote char itself
+    }
+    if (!inQuotes && (ch === ',' || /\s/.test(ch))) {
+      // boundary
+      const t = buf.trim();
+      if (t) tokens.push(t);
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  const last = buf.trim();
+  if (last) tokens.push(last);
+
+  const cleaned = tokens
+    .map(s => s.trim())
+    .map(s => s.replace(/^["'()\[\]{}]+|["'()\[\]{}]+$/g, '')) // strip wrapping quotes/parens/brackets
+    .map(s => s.replace(/^[\-_.]+|[\-_.]+$/g, '')) // strip leading/trailing punctuation
     .map(s => s.toLowerCase())
     .filter(Boolean)
-    .filter(s => s.length <= 40); // light cap to avoid junk tokens
+    .filter(s => s.length <= 40);
 
   const seen = new Set();
   const out = [];
@@ -29,7 +50,7 @@ function tokenizeToCanonical(input) {
       out.push(t);
     }
   }
-  return out.slice(0, 25); // cap at 25 canonical tokens
+  return out.slice(0, 25);
 }
 
 // Chip component (minimal styling relying on Tailwind present in app)
@@ -54,15 +75,38 @@ const Chip = ({ label, onRemove }) => (
 // - onTermsChange: (termsString, canonicalTokensCsv) => void
 // - placeholder?: string
 // - disabled?: boolean
-export default function SearchTermsField({ initialTerms, onTermsChange, placeholder = 'Type terms and press Enter or comma…', disabled = false }) {
+export default function SearchTermsField({ initialTerms, onTermsChange, placeholder = 'Type terms (use quotes for phrases, e.g. "Mindset Mastery") and press Enter or comma…', disabled = false }) {
+  const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production';
+  const debug = isDev && (typeof window !== 'undefined') && (window.localStorage?.DEBUG_SEARCH_TERMS === '1');
   const [inputValue, setInputValue] = useState('');
   const [selectedTokens, setSelectedTokens] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSug, setLoadingSug] = useState(false);
+  const [sugError, setSugError] = useState('');
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
 
   // Initialize from initialTerms
   useEffect(() => {
     if (typeof initialTerms === 'string') {
-      const tokens = tokenizeToCanonical(initialTerms);
-      setSelectedTokens(tokens);
+      // Check if initialTerms looks like already processed canonical data
+      // (lowercase tokens without quotes/special punctuation)
+      const isCanonical = /^[a-z0-9\s,_-]*$/.test(initialTerms.trim()) && 
+                         !initialTerms.includes('"') && 
+                         !initialTerms.includes("'") &&
+                         !initialTerms.includes('(') &&
+                         !initialTerms.includes(')');
+      
+      if (isCanonical) {
+        // Already canonical - split by commas or treat as single term
+        const tokens = initialTerms.includes(',') 
+          ? initialTerms.split(',').map(t => t.trim()).filter(Boolean)
+          : [initialTerms.trim()].filter(Boolean);
+        setSelectedTokens(tokens);
+      } else {
+        // Raw input - needs tokenization
+        const tokens = tokenizeToCanonical(initialTerms);
+        setSelectedTokens(tokens);
+      }
     } else {
       setSelectedTokens([]);
     }
@@ -79,8 +123,11 @@ export default function SearchTermsField({ initialTerms, onTermsChange, placehol
   useEffect(() => {
     if (onTermsChange) {
       onTermsChange(outputs.displayTerms, outputs.canonicalCsv);
+      if (debug) {
+        try { console.debug('[SearchTermsField] onTermsChange', { display: outputs.displayTerms, canonical: outputs.canonicalCsv }); } catch {}
+      }
     }
-  }, [outputs, onTermsChange]);
+  }, [outputs.displayTerms, outputs.canonicalCsv, onTermsChange]);
 
   const tryCommitInput = () => {
     if (!inputValue.trim()) return;
@@ -92,12 +139,49 @@ export default function SearchTermsField({ initialTerms, onTermsChange, placehol
     // merge with existing, dedupe, cap 25
     const mergedSet = new Set([...selectedTokens, ...newTokens]);
     const merged = Array.from(mergedSet).slice(0, 25);
+    if (debug) { try { console.debug('[SearchTermsField] commit input', { inputValue, newTokens, merged }); } catch {} }
     setSelectedTokens(merged);
     setInputValue('');
+  };  const removeToken = (t) => {
+    setSelectedTokens(prev => prev.filter(x => x !== t));
   };
 
-  const removeToken = (t) => {
-    setSelectedTokens(prev => prev.filter(x => x !== t));
+  // Load suggestions on mount and when showing all
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingSug(true);
+        setSugError('');
+        // Get more suggestions when showing all, fewer for initial load
+        const limit = showAllSuggestions ? 200 : 30;
+        const minCount = showAllSuggestions ? 1 : 1; // Show all terms when expanded
+        const list = await getSearchTokenSuggestions({ limit, minCount });
+        if (cancelled) return;
+        setSuggestions(list);
+      } catch (e) {
+        if (cancelled) return;
+        setSugError(''); // silent fail in UI; keep clean
+      } finally {
+        if (!cancelled) setLoadingSug(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showAllSuggestions]);
+
+  const addSuggested = (token) => {
+    if (disabled) return;
+    if (!token) return;
+    if (selectedTokens.includes(token)) return;
+    if (selectedTokens.length >= 25) return; // cap
+    
+    const newTokens = [...selectedTokens, token];
+    setSelectedTokens(newTokens);
+    
+    // Notify parent of the change
+    const displayTerms = newTokens.join(', ');
+    const canonicalCsv = newTokens.join(',');
+    onTermsChange(displayTerms, canonicalCsv);
   };
 
   return (
@@ -111,6 +195,12 @@ export default function SearchTermsField({ initialTerms, onTermsChange, placehol
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
+            onFocus={() => setShowAllSuggestions(true)}
+            onBlur={() => {
+              if (!disabled) tryCommitInput();
+              // Delay hiding suggestions to allow clicks
+              setTimeout(() => setShowAllSuggestions(false), 150);
+            }}
             onKeyDown={(e) => {
               if (disabled) return;
               if (e.key === 'Enter' || e.key === ',') {
@@ -126,11 +216,56 @@ export default function SearchTermsField({ initialTerms, onTermsChange, placehol
             disabled={disabled}
           />
         </div>
-        <div className="mt-2 text-xs text-gray-500 flex justify-between">
-          <span>{selectedTokens.length}/25 terms</span>
-          <span>Case-insensitive • Duplicates removed • Stored as canonical tokens</span>
-        </div>
       </div>
+      
+      {/* Compressed suggestions - minimal vertical space */}
+      {!loadingSug && suggestions && suggestions.length > 0 && (
+        <div className="mt-1">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">
+                {showAllSuggestions ? 'Available terms' : 'Popular'}
+              </span>
+              {selectedTokens.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-400">•</span>
+                  <span className="text-xs text-purple-600">
+                    {selectedTokens.length} selected: {selectedTokens.slice(0, 3).join(', ')}{selectedTokens.length > 3 ? '...' : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+            {!showAllSuggestions && suggestions.length > 20 && (
+              <button
+                type="button"
+                onClick={() => setShowAllSuggestions(true)}
+                className="text-xs text-blue-600 hover:text-blue-700"
+                disabled={disabled}
+              >
+                all ({suggestions.length})
+              </button>
+            )}
+          </div>
+          <div className={`flex flex-wrap gap-1 ${showAllSuggestions ? 'max-h-32 overflow-y-auto' : ''}`}>
+            {(showAllSuggestions ? suggestions : suggestions.slice(0, 20))
+              .filter(s => !selectedTokens.includes(s.term || s.token)) // Support both 'term' and 'token' fields
+              .map(s => (
+              <button
+                key={s.term || s.token}
+                type="button"
+                onClick={() => addSuggested(s.term || s.token)}
+                disabled={disabled || selectedTokens.length >= 25}
+                className="inline-flex items-center px-1.5 py-0.5 text-xs rounded border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 disabled:opacity-50"
+                title={typeof s.count === 'number' ? `Used in ${s.count} leads` : 'Click to add'}
+              >
+                {s.term || s.token}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Remove the manage modal */}
     </div>
   );
 }

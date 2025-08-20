@@ -1,6 +1,70 @@
-# Dev Runbook: Start API and Frontend Reliably (Generic)
+# Dev Runbook: Start API and Frontend Relia## 🔧 Clean Slate Recovery (when everything is broken)
+
+**When you see: "localhost refused to connect", servers won't start, or weird port conflicts:**
+
+1. **Kill everything:**
+   ```bash
+   taskkill /IM node.exe /F
+   taskkill /IM cmd.exe /F  # kills any lingering cmd windows
+   ```
+
+2. **Verify ports are free:**
+   ```bash
+   netstat -ano | findstr :3000    # should be empty
+   netstat -ano | findstr :3001    # should be empty
+   ```
+
+3. **Fresh start:**
+   ```bash
+   ./start-dev-windows.bat
+   ```
+
+4. **Wait and verify:**
+   ```bash
+   sleep 10
+   curl http://localhost:3001/basic-test    # should show "BASIC ROUTE WORKING"
+   ```
+
+**Still broken?** Check the two terminal windows that opened - look for error messages in red.
+
+---
+
+## ⚠️ Common AI Assistant Mistakes (and fixes)
+
+**DON'T DO THIS:**
+- ❌ Running `npm run dev` in the same terminal as curl commands
+- ❌ Trying to start servers with `run_in_terminal` tool in background mode
+- ❌ Running health checks in the server terminal
+- ❌ Starting multiple servers without the batch file
+
+**DO THIS INSTEAD:**
+- ✅ Always use `./start-dev-windows.bat` first
+- ✅ Run all health checks in separate terminals  
+- ✅ Let the batch file handle environment variables
+- ✅ Wait 10 seconds before testing connectivity
+
+---(Generic)
 
 This guide is a generic, repeatable playbook for this repo and similar Node/Next.js projects. It prevents the common multi-hour pitfalls: terminal reuse killing servers, port conflicts, missing env, and unclear health checks. Use it when starting fresh, and when something breaks mid-session.
+
+## 🚀 FASTEST START (Use This First!)
+
+**If you're getting "can't reach" or connection errors:**
+
+1. **One-click solution**: Run `./start-dev-windows.bat` from repo root
+2. **Wait 10 seconds** for both servers to fully boot
+3. **Test in separate terminal**: `curl http://localhost:3001/basic-test` (should show "BASIC ROUTE WORKING")
+4. **Open browser**: http://localhost:3000
+
+✅ **Success indicators:**
+- Two separate terminal windows opened (API + Frontend)
+- `netstat -ano | findstr :3000` shows LISTENING
+- `netstat -ano | findstr :3001` shows LISTENING
+- Browser shows the portal interface
+
+❌ **If still broken:** Skip to "Clean Slate Recovery" section below.
+
+---
 
 ## QuickStart (fresh machine or new chat)
 Prereqs
@@ -104,6 +168,33 @@ Use the VS Code command palette: “Tasks: Run Task”.
 
 ---
 
+## 🤖 For AI Assistant/Agent (automation-safe instructions)
+
+**CRITICAL: Follow this exact sequence to avoid the terminal reuse problem:**
+
+1. **NEVER try to start servers manually** - always use the batch file:
+   ```bash
+   ./start-dev-windows.bat
+   ```
+
+2. **Wait before testing** (servers need time to boot):
+   ```bash
+   sleep 10
+   ```
+
+3. **Test connectivity in a separate terminal**:
+   ```bash
+   curl http://localhost:3001/basic-test
+   netstat -ano | findstr LISTENING | findstr :3000
+   netstat -ano | findstr LISTENING | findstr :3001
+   ```
+
+4. **If servers aren't responding:** Use "Clean Slate Recovery" section above
+
+**Why this matters:** AI assistants often try to manage servers in the same execution context as other commands, causing exit code 130 (SIGINT) and server shutdowns. The batch file creates proper isolation.
+
+---
+
 ## For AI Assistant/Agent (automation-safe instructions)
 
 To avoid interrupting long-running servers when executing automated checks:
@@ -150,6 +241,34 @@ Feature-specific examples (adapt names accordingly):
 Pattern to reuse for any feature:
 - Provide a status endpoint under `/api/<feature>/status` returning 200 when mounted.
 - Expose a minimal JSON endpoint somewhere under `/api/test/` for serialization sanity.
+
+---
+
+## 📋 Troubleshooting cookbook (fast answers)
+
+**"localhost refused to connect" or "can't reach localhost:3000"**
+- 🚀 **FIRST TRY**: `./start-dev-windows.bat` then wait 10 seconds
+- If still broken: Use "Clean Slate Recovery" section above
+
+**"API worked, then died; exit code 130"**
+- Cause: Terminal was reused or interrupted (classic AI assistant mistake)
+- 🚀 **Fix**: `./start-dev-windows.bat` for proper isolation
+
+**"Port 3001/3000 is in use"**
+- 🚀 **Quick fix**: `taskkill /IM node.exe /F` then `./start-dev-windows.bat`
+- Manual approach: Find PID with `netstat -ano | findstr :3001` then `taskkill /PID <PID> /F`
+
+**"Frontend shows nothing or Next.js errors"**
+- Check the Frontend terminal window that opened - look for red error messages
+- Common cause: Component import/export errors (check React console)
+
+**"cross-env not found" or npm errors**
+- The batch file handles this - don't run npm commands manually
+- If persistent: `cd linkedin-messaging-followup-next && npm install`
+
+**"Everything was working, now it's broken"**
+- 🚀 **Nuclear option**: "Clean Slate Recovery" section above
+- Usually caused by: machine sleep, VS Code restart, or terminal conflicts
 
 ---
 
