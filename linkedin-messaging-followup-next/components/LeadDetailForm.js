@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import SearchTermsField from './SearchTermsField';
 import { deleteLead } from '../services/api';
 
@@ -98,6 +98,7 @@ const convertToISODate = (dateString) => {
 
 const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   const [formData, setFormData] = useState({});
+  const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production';
   const [hasChanges, setHasChanges] = useState(false);
   const [editingField, setEditingField] = useState(null); // Track which field is being edited
   const [isEditingNotes, setIsEditingNotes] = useState(false); // Track notes editing state
@@ -137,10 +138,22 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
     setHasChanges(true);
   };
 
+  // Memoize the search terms change handler to prevent infinite re-renders
+  const handleSearchTermsChange = useCallback((termsString, canonicalCsv) => {
+    if (isDev) { try { console.debug('[LeadDetailForm] onTermsChange', { termsString, canonicalCsv }); } catch {} }
+    setFormData(prev => ({
+      ...prev,
+      searchTerms: termsString,
+      searchTokensCanonical: canonicalCsv
+    }));
+    setHasChanges(true);
+  }, [isDev]);
+
   // Handle form submission
   const handleSubmit = (e) => {
     e.preventDefault();
     if (hasChanges) {
+  if (isDev) { try { console.debug('[LeadDetailForm] submitting update', formData); } catch {} }
       onUpdate(formData);
       setHasChanges(false);
     }
@@ -600,18 +613,11 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Search Terms</label>
             <div className="flex-1">
               <SearchTermsField
-                initialTerms={formData.searchTerms || ''}
-                onTermsChange={(termsString, canonicalCsv) => {
-                  setFormData(prev => ({
-                    ...prev,
-                    searchTerms: termsString,
-                    searchTokensCanonical: canonicalCsv
-                  }));
-                  setHasChanges(true);
-                }}
+                initialTerms={formData.searchTerms || formData.searchTokensCanonical || ''}
+                onTermsChange={handleSearchTermsChange}
                 disabled={isUpdating}
               />
-              <p className="text-xs text-gray-500 mt-1">Canonical tokens will be saved to the hidden helper field.</p>
+              {/* Helper note removed per UX feedback */}
             </div>
           </div>
         </div>

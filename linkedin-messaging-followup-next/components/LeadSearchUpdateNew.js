@@ -4,7 +4,6 @@ import { debounce } from '../utils/helpers';
 import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 import LeadSearchEnhanced from './LeadSearchEnhanced';
-import LeadDetailModal from './LeadDetailModal';
 
 // Import icons using require to avoid Next.js issues
 let MagnifyingGlassIcon, UserIcon, ExternalLinkIcon;
@@ -27,21 +26,17 @@ const LeadSearchUpdate = () => {
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('all');
   const [searchTerms, setSearchTerms] = useState('');
-  const [allLeads, setAllLeads] = useState([]); // Store all search results
-  const [leads, setLeads] = useState([]); // Display leads (paginated subset)
-  const [currentPage, setCurrentPage] = useState(1);
-  const [leadsPerPage] = useState(25); // Show 25 leads per page
+  const [leads, setLeads] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Use ref to track current search request and prevent race conditions
   const currentSearchRef = useRef(0);
 
-  // Single search function that handles both search and pagination
-  const performSearch = useCallback(async (query, currentPriority, currentSearchTerms, requestId, page = 1) => {
+  // Single search function that handles both search and initial load
+  const performSearch = useCallback(async (query, currentPriority, currentSearchTerms, requestId) => {
     // Check if this is still the current search request
     if (requestId !== currentSearchRef.current) {
       console.log(`🔍 Search cancelled: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" (ID: ${requestId})`);
@@ -49,14 +44,11 @@ const LeadSearchUpdate = () => {
     }
     
     setIsLoading(true);
-    console.log(`🔍 Starting search: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" page: ${page} (ID: ${requestId})`);
+    console.log(`🔍 Starting search: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" (ID: ${requestId})`);
     
     try {
-      // Calculate offset from page number
-      const offset = (page - 1) * leadsPerPage;
-      
-      // Use backend search with pagination
-      const results = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset);
+      // Use backend search with the query, priority, and search terms
+      const results = await searchLeads(query, currentPriority, currentSearchTerms);
       
       // Check again after async operation
       if (requestId !== currentSearchRef.current) {
@@ -64,8 +56,8 @@ const LeadSearchUpdate = () => {
         return;
       }
       
-      // Filter out Multi-Tenant related entries (redundant safety - backend should handle this)
-      const filteredResults = (results || [])
+      // Filter out Multi-Tenant related entries (backend now handles priority filtering)
+      const filteredAndSorted = (results || [])
         .filter(lead => {
           const firstName = (lead['First Name'] || '').toLowerCase();
           const lastName = (lead['Last Name'] || '').toLowerCase();
@@ -75,16 +67,11 @@ const LeadSearchUpdate = () => {
                  !lastName.includes('multi') &&
                  !firstName.includes('tenant') && 
                  !lastName.includes('tenant');
-        });
-
-      // With API pagination, we only get the current page
-      setLeads(filteredResults);
-      setCurrentPage(page);
+        })
+        .slice(0, 25); // Limit to 25 results
       
-      // For now, assume we have more data if we get a full page (we'll improve this later)
-      setAllLeads(filteredResults);
-      
-      console.log(`🔍 Search completed: "${query}" page ${page} (ID: ${requestId}) - ${filteredResults.length} results on this page`);
+      setLeads(filteredAndSorted);
+      console.log(`🔍 Search completed: "${query}" (ID: ${requestId}) - ${filteredAndSorted.length} results`);
     } catch (error) {
       console.error('Search error:', error);
       if (requestId === currentSearchRef.current) {
@@ -95,22 +82,22 @@ const LeadSearchUpdate = () => {
         setIsLoading(false);
       }
     }
-  }, [leadsPerPage]);
+  }, []);
 
   // Debounced version of search for user typing
   const debouncedSearch = useCallback(
-    debounce((query, currentPriority, currentSearchTerms, requestId, page = 1) => {
-      performSearch(query, currentPriority, currentSearchTerms, requestId, page);
+    debounce((query, currentPriority, currentSearchTerms, requestId) => {
+      performSearch(query, currentPriority, currentSearchTerms, requestId);
     }, 500),
     [performSearch]
   );
 
   // Load initial results on component mount
-  // Now safe with 25-record API pagination
+  // Now safe with 50-record backend limit
   useEffect(() => {
-    // Trigger initial search with empty query to show first page of leads
+    // Trigger initial search with empty query to show 50 default leads
     currentSearchRef.current += 1;
-    performSearch('', priority, searchTerms, currentSearchRef.current, 1);
+    performSearch('', priority, searchTerms, currentSearchRef.current);
   }, [performSearch, priority, searchTerms]);
 
   // Effect to trigger search when query, priority, or searchTerms changes
@@ -124,51 +111,32 @@ const LeadSearchUpdate = () => {
     // Use debounced search for user typing (or immediate for empty search)
     if (!search.trim()) {
       // For empty search, get default leads immediately (no debounce needed)
-      performSearch('', priority, searchTerms, requestId, 1);
+      performSearch('', priority, searchTerms, requestId);
     } else {
       // Use debounced search for user typing
-      debouncedSearch(search, priority, searchTerms, requestId, 1);
+      debouncedSearch(search, priority, searchTerms, requestId);
     }
   }, [search, priority, searchTerms, debouncedSearch, performSearch]);
 
-  // Handle lead selection - fetch full details and open modal
+  // Handle lead selection - fetch full details
   const handleLeadSelect = async (lead) => {
-    // Use the record ID instead of Profile Key for API calls
-    const leadId = lead.id || lead.recordId || lead['Profile Key'];
-    
-    if (!lead || !leadId) {
+    if (!lead || !lead['Profile Key']) {
       console.error('Invalid lead selected:', lead);
       return;
     }
 
     try {
-      // Fetch full lead details by record ID
-      const fullLead = await getLeadById(leadId);
+      // Fetch full lead details by ID
+      const fullLead = await getLeadById(lead['Profile Key']);
       setSelectedLead(fullLead);
-      setIsModalOpen(true);
       console.log('✅ Lead selected and details loaded:', fullLead);
     } catch (error) {
       console.error('Error fetching lead details:', error);
       // Fallback to the basic lead data from search
       setSelectedLead(lead);
-      setIsModalOpen(true);
       setMessage({ type: 'error', text: 'Could not load full lead details. Using basic information.' });
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     }
-  };
-
-  // Handle pagination with API calls
-  const handlePageChange = (newPage) => {
-    if (newPage < 1) return;
-    
-    // Trigger a new search for the requested page
-    currentSearchRef.current += 1;
-    const requestId = currentSearchRef.current;
-    
-    console.log(`📄 Loading page ${newPage} with search: "${search}" priority: "${priority}" terms: "${searchTerms}"`);
-    
-    // Use the current search parameters with the new page
-    performSearch(search, priority, searchTerms, requestId, newPage);
   };
 
   // Handle lead updates
@@ -222,9 +190,8 @@ const LeadSearchUpdate = () => {
       )
     );
     
-    // Clear the selected lead and close modal
+    // Clear the selected lead
     setSelectedLead(null);
-    setIsModalOpen(false);
     
     // Show success message
     setMessage({ 
@@ -238,19 +205,12 @@ const LeadSearchUpdate = () => {
     }, 5000);
   };
 
-  // Handle enhanced search from LeadSearchEnhanced component
-  const handleEnhancedSearch = ({ nameQuery, priority: newPriority, searchTerms: newSearchTerms }) => {
-    console.log('🔍 Enhanced search triggered:', { nameQuery, priority: newPriority, searchTerms: newSearchTerms });
-    
-    // Update all search states
+  // Handle enhanced search from the new search component
+  const handleEnhancedSearch = ({ nameQuery, priority, searchTerms }) => {
+    // Update state to trigger search
     setSearch(nameQuery || '');
-    setPriority(newPriority || 'all');
-    setSearchTerms(newSearchTerms || '');
-    
-    // Only clear selected lead if modal is not open (don't interfere with modal viewing)
-    if (!isModalOpen) {
-      setSelectedLead(null);
-    }
+    setPriority(priority || 'all');
+    setSearchTerms(searchTerms || '');
   };
 
   return (
@@ -264,70 +224,75 @@ const LeadSearchUpdate = () => {
         </div>
       )}
       
-      {/* Enhanced Search and Table View - Full Width */}
-      <LeadSearchEnhanced
-        leads={leads}
-        totalLeads={allLeads.length}
-        currentPage={currentPage}
-        leadsPerPage={leadsPerPage}
-        onLeadSelect={handleLeadSelect}
-        selectedLead={selectedLead}
-        isLoading={isLoading}
-        onSearch={handleEnhancedSearch}
-      />
-
-      {/* Pagination Controls */}
-      {/* Always show pagination controls with API pagination */}
-      <div className="flex items-center justify-between bg-white px-4 py-3 border rounded-lg">
-        <div className="flex items-center text-sm text-gray-700">
-          <span>
-            Page {currentPage} - Showing {leads.length} leads (up to {leadsPerPage} per page)
-          </span>
+      {/* Enhanced Search and Table View */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Search and Table */}
+        <div className="lg:col-span-2">
+          <LeadSearchEnhanced
+            leads={leads}
+            onLeadSelect={handleLeadSelect}
+            selectedLead={selectedLead}
+            isLoading={isLoading}
+            onSearch={handleEnhancedSearch}
+          />
         </div>
         
-        <div className="flex items-center space-x-2">
-          {/* Previous button */}
-          <button
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className={`px-3 py-1 rounded text-sm font-medium ${
-              currentPage === 1
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Previous
-          </button>
-          
-          {/* Current page indicator */}
-          <span className="px-3 py-1 rounded text-sm font-medium bg-blue-600 text-white">
-            {currentPage}
-          </span>
-          
-          {/* Next button - show unless we got less than full page (indicating no more data) */}
-          <button
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={leads.length < leadsPerPage}
-            className={`px-3 py-1 rounded text-sm font-medium ${
-              leads.length < leadsPerPage
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Next
-          </button>
+        {/* Right: Lead Details */}
+        <div>
+          {selectedLead ? (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="mb-6 pb-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {safeRender(selectedLead['First Name'])} {safeRender(selectedLead['Last Name'])}
+                  </h2>
+                  {selectedLead['LinkedIn Profile URL'] && ExternalLinkIcon && (
+                    <a
+                      href={selectedLead['LinkedIn Profile URL']}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 transition-colors"
+                    >
+                      <ExternalLinkIcon className="h-5 w-5" />
+                    </a>
+                  )}
+                </div>
+                <div className="text-sm text-gray-500 mt-2">
+                  Profile Key: {safeRender(selectedLead.id || selectedLead['Profile Key'])}
+                </div>
+              </div>
+              
+              <LeadDetailForm
+                lead={{
+                  id: selectedLead.id || selectedLead['Profile Key'],
+                  firstName: safeRender(selectedLead['First Name']),
+                  lastName: safeRender(selectedLead['Last Name']),
+                  linkedinProfileUrl: safeRender(selectedLead['LinkedIn Profile URL']),
+                  status: safeRender(selectedLead['Status']),
+                  priority: safeRender(selectedLead['Priority']),
+                  linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
+                  followUpDate: safeRender(selectedLead.followUpDate),
+                  notes: safeRender(selectedLead['Notes']),
+                  lastMessageDate: safeRender(selectedLead['Last Message Date']),
+                  searchTerms: safeRender(selectedLead['Search Terms']),
+                  searchTokensCanonical: safeRender(selectedLead['Search Tokens (canonical)'])
+                }}
+                onUpdate={handleLeadUpdate}
+                onDelete={handleLeadDelete}
+                isUpdating={isUpdating}
+              />
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+              <div className="text-center text-gray-400 py-16">
+                {UserIcon && <UserIcon className="h-20 w-20 mx-auto mb-6 text-gray-300" />}
+                <p className="text-xl text-gray-500">Select a lead to view details</p>
+                <p className="text-sm text-gray-400 mt-2">Choose a lead from the search results to view and edit their information</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Modal for Lead Details */}
-      <LeadDetailModal
-        lead={selectedLead}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onUpdate={handleLeadUpdate}
-        onDelete={handleLeadDelete}
-        isUpdating={isUpdating}
-      />
     </div>
   );
 };
