@@ -108,6 +108,12 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   // Initialize form data when lead changes
   useEffect(() => {
     if (lead) {
+      if (isDev) { try { console.debug('[LeadDetailForm] init lead source variants', { source: lead.source, Source: lead['Source'] }); } catch {} }
+      // Normalize source (trim & collapse whitespace)
+      const normalizedSource = (lead.source || lead['Source'] || '')
+        .toString()
+        .trim()
+        .replace(/\s+/g, ' ');
       setFormData({
         firstName: lead.firstName || '',
         lastName: lead.lastName || '',
@@ -118,7 +124,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         ashWorkshopEmail: Boolean(lead.ashWorkshopEmail),
         notes: lead.notes || '',
         followUpDate: convertToISODate(lead.followUpDate),
-        source: lead.source || '',
+        source: normalizedSource,
         status: lead.status || '',
   priority: lead.priority || '',
   linkedinConnectionStatus: lead.linkedinConnectionStatus || '',
@@ -236,6 +242,10 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
             type="button"
             onClick={() => {
               if (lead) {
+                const normalizedSource = (lead.source || lead['Source'] || '')
+                  .toString()
+                  .trim()
+                  .replace(/\s+/g, ' ');
                 setFormData({
                   firstName: lead.firstName || '',
                   lastName: lead.lastName || '',
@@ -246,7 +256,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                   ashWorkshopEmail: Boolean(lead.ashWorkshopEmail),
                   notes: lead.notes || '',
                   followUpDate: convertToISODate(lead.followUpDate),
-                  source: lead.source || '',
+                  source: normalizedSource,
                   status: lead.status || '',
                   priority: lead.priority || '',
                   linkedinConnectionStatus: lead.linkedinConnectionStatus || ''
@@ -554,16 +564,26 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         <div className="space-y-3">
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Source</label>
-            <select
-              value={formData.source || ''}
-              onChange={(e) => handleChange('source', e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            >
-              <option value="">Select source...</option>
-              {fieldConfig.selectOptions.source.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+            {(() => {
+              // Merge in current value if it's not part of predefined options
+              let sourceOptions = fieldConfig.selectOptions.source.slice();
+              const current = (formData.source || '').trim();
+              if (current && !sourceOptions.includes(current)) {
+                sourceOptions = [...sourceOptions, current];
+              }
+              return (
+                <select
+                  value={formData.source || ''}
+                  onChange={(e) => handleChange('source', e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                >
+                  <option value="">Select source...</option>
+                  {sourceOptions.map(option => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              );
+            })()}
           </div>
           
           <div className="flex">

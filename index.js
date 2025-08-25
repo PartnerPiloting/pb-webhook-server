@@ -133,7 +133,8 @@ app.use(cors({
         return callback(new Error(`Not allowed by CORS: ${origin}`));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    // Include PATCH for incremental updates (e.g., search terms)
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id'],
     optionsSuccessStatus: 204
 }));

@@ -1,5 +1,10 @@
 "use client";
 import React, { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+import InlineEditableText, { validators, formatters } from './InlineEditableText';
+
+// Lazy load inline editor so first paint stays light
+const InlineSearchTermsEditor = dynamic(() => import('./InlineSearchTermsEditor'), { ssr: false, loading: () => <span className="text-xs text-gray-400">…</span> });
 
 // Self-contained table with the same props shape used by LeadSearchEnhanced
 export default function LeadSearchTableDirect({
@@ -10,6 +15,8 @@ export default function LeadSearchTableDirect({
   onLeadSelect,
   selectedLead = null,
   isLoading = false,
+  onQuickFieldUpdate,
+  hideFooter = false // when true, suppress internal footer so parent can render a unified pagination bar
 }) {
   const [sortKey, setSortKey] = useState('AI Score');
   const [sortDir, setSortDir] = useState('desc');
@@ -22,8 +29,8 @@ export default function LeadSearchTableDirect({
     { key: 'Status', label: 'Status', sortable: true },
     { key: 'searchTerms', label: 'Search Terms', sortable: false },
     { key: 'linkedinProfileUrl', label: 'LinkedIn', sortable: false },
-    { key: 'email', label: 'Email', sortable: false },
-    { key: 'phone', label: 'Phone', sortable: false },
+  { key: 'email', label: 'Email', sortable: false },
+  { key: 'phone', label: 'Phone', sortable: false },
   ];
 
   const getCellValue = (lead, key) => {
@@ -65,30 +72,7 @@ export default function LeadSearchTableDirect({
     }
   };
 
-  const renderSearchTerms = (lead) => {
-    let terms = [];
-    const searchTermsField = lead['Search Terms'] || lead['searchTerms'] || '';
-    const canonicalField = lead['Search Tokens (canonical)'] || '';
-    const allTermsStr = [searchTermsField, canonicalField].join(', ');
-    if (allTermsStr) {
-      terms = allTermsStr
-        .split(',')
-        .map((term) => term.trim())
-        .filter((term) => term && term.length > 0);
-      terms = [...new Set(terms)];
-    }
-    if (terms.length === 0) return <span className="text-gray-400 text-sm">-</span>;
-    return (
-      <div className="flex flex-wrap gap-1">
-        {terms.slice(0, 3).map((term, idx) => (
-          <span key={idx} className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
-            {term}
-          </span>
-        ))}
-        {terms.length > 3 && <span className="text-xs text-gray-500">+{terms.length - 3}</span>}
-      </div>
-    );
-  };
+  const renderSearchTerms = (lead) => <InlineSearchTermsEditor lead={lead} />;
 
   const renderLinkedIn = (lead) => {
     const url = lead['LinkedIn Profile URL'] || lead['linkedinProfileUrl'] || '';
@@ -112,6 +96,35 @@ export default function LeadSearchTableDirect({
   const renderCell = (lead, column) => {
     const { key } = column;
     if (key === 'searchTerms') return renderSearchTerms(lead);
+    if (key === 'email') {
+      return (
+        <InlineEditableText
+          lead={lead}
+          field="email"
+          value={lead['Email'] || lead.email || ''}
+          type="email"
+          placeholder="Add email"
+          validate={validators.email}
+          maxLength={120}
+          onUpdated={(val)=> onQuickFieldUpdate && onQuickFieldUpdate(lead.id || lead.recordId || lead['Profile Key'], { email: val, Email: val })}
+        />
+      );
+    }
+    if (key === 'phone') {
+      return (
+        <InlineEditableText
+          lead={lead}
+          field="phone"
+          value={lead['Phone'] || lead.phone || ''}
+          type="tel"
+          placeholder="Add phone"
+          validate={validators.phone}
+          formatOnBlur={formatters.phone}
+          maxLength={24}
+          onUpdated={(val)=> onQuickFieldUpdate && onQuickFieldUpdate(lead.id || lead.recordId || lead['Profile Key'], { phone: val, Phone: val })}
+        />
+      );
+    }
     if (key === 'linkedinProfileUrl') return renderLinkedIn(lead);
     if (key === 'AI Score') {
       const score = lead[key];
@@ -219,7 +232,11 @@ export default function LeadSearchTableDirect({
                 className={`${onLeadSelect ? 'cursor-pointer hover:bg-gray-50' : ''} ${selectedLead?.id === lead.id ? 'bg-blue-50' : ''}`}
               >
                 {columns.map((column) => (
-                  <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td
+                    key={column.key}
+                    className="px-6 py-4 whitespace-nowrap text-sm align-top relative"
+                    style={{ overflow: 'visible' }}
+                  >
                     {renderCell(lead, column)}
                   </td>
                 ))}
@@ -229,14 +246,16 @@ export default function LeadSearchTableDirect({
         </table>
       </div>
 
-      <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-700">
-            Page {currentPage} - Showing {sortedLeads.length} leads (up to {leadsPerPage} per page)
+      {!hideFooter && (
+        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Page {currentPage} - Showing {sortedLeads.length} {sortedLeads.length === 1 ? 'lead' : 'leads'} (up to {leadsPerPage} per page)
+            </div>
+            <div className="text-xs text-gray-500">{startIndex}–{endIndex}</div>
           </div>
-          <div className="text-xs text-gray-500">{startIndex}–{endIndex} of {totalLeads}</div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

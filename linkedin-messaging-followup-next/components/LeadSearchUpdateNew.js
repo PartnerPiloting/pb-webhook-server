@@ -128,7 +128,16 @@ const LeadSearchUpdate = () => {
     try {
       // Fetch full lead details by ID
       const fullLead = await getLeadById(lead['Profile Key']);
+      // Normalize id field for consistency with table + legacy code
+      if (!fullLead.id) {
+        fullLead.id = fullLead.id || fullLead['Profile Key'];
+      }
+      // Ensure Profile Key retained (some responses might only have id)
+      if (!fullLead['Profile Key'] && fullLead.id) {
+        fullLead['Profile Key'] = fullLead.id;
+      }
       setSelectedLead(fullLead);
+      try { console.debug('[LeadSearchUpdateNew] loaded full lead', { id: fullLead.id, email: fullLead['Email'], phone: fullLead['Phone'] }); } catch {}
       console.log('✅ Lead selected and details loaded:', fullLead);
     } catch (error) {
       console.error('Error fetching lead details:', error);
@@ -234,6 +243,12 @@ const LeadSearchUpdate = () => {
             selectedLead={selectedLead}
             isLoading={isLoading}
             onSearch={handleEnhancedSearch}
+            onQuickFieldUpdate={(id, patch)=> {
+              // Update leads array
+              setLeads(prev => prev.map(l => (l.id === id || l['Profile Key'] === id) ? { ...l, ...patch } : l));
+              // Update selected lead if matches
+              setSelectedLead(prev => prev && (prev.id === id || prev['Profile Key'] === id) ? { ...prev, ...patch } : prev);
+            }}
           />
         </div>
         
@@ -264,18 +279,29 @@ const LeadSearchUpdate = () => {
               
               <LeadDetailForm
                 lead={{
-                  id: selectedLead.id || selectedLead['Profile Key'],
-                  firstName: safeRender(selectedLead['First Name']),
-                  lastName: safeRender(selectedLead['Last Name']),
-                  linkedinProfileUrl: safeRender(selectedLead['LinkedIn Profile URL']),
-                  status: safeRender(selectedLead['Status']),
-                  priority: safeRender(selectedLead['Priority']),
-                  linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
-                  followUpDate: safeRender(selectedLead.followUpDate),
-                  notes: safeRender(selectedLead['Notes']),
-                  lastMessageDate: safeRender(selectedLead['Last Message Date']),
-                  searchTerms: safeRender(selectedLead['Search Terms']),
-                  searchTokensCanonical: safeRender(selectedLead['Search Tokens (canonical)'])
+                  // Spread full object first to retain any additional Airtable fields
+                  ...selectedLead,
+                  // Normalize id/profileKey like legacy component did
+                  id: safeRender(selectedLead.id || selectedLead['Profile Key']),
+                  profileKey: safeRender(selectedLead['Profile Key'] || selectedLead.id),
+                  // Canonical camelCase fields consumed by form useEffect
+                  firstName: safeRender(selectedLead.firstName || selectedLead['First Name']),
+                  lastName: safeRender(selectedLead.lastName || selectedLead['Last Name']),
+                  linkedinProfileUrl: safeRender(selectedLead.linkedinProfileUrl || selectedLead['LinkedIn Profile URL']),
+                  viewInSalesNavigator: safeRender(selectedLead.viewInSalesNavigator || selectedLead['View In Sales Navigator']),
+                  email: safeRender(selectedLead.email || selectedLead['Email']),
+                  phone: safeRender(selectedLead.phone || selectedLead['Phone']),
+                  ashWorkshopEmail: Boolean(selectedLead.ashWorkshopEmail || selectedLead['ASH Workshop Email']),
+                  aiScore: selectedLead.aiScore || selectedLead['AI Score'],
+                  postsRelevancePercentage: selectedLead.postsRelevancePercentage || selectedLead['Posts Relevance Percentage'],
+                  source: safeRender(selectedLead.source || selectedLead['Source']),
+                  status: safeRender(selectedLead.status || selectedLead['Status']),
+                  priority: safeRender(selectedLead.priority || selectedLead['Priority']),
+                  linkedinConnectionStatus: safeRender(selectedLead.linkedinConnectionStatus || selectedLead['LinkedIn Connection Status']),
+                  notes: safeRender(selectedLead.notes || selectedLead['Notes']),
+                  lastMessageDate: safeRender(selectedLead.lastMessageDate || selectedLead['Last Message Date']),
+                  searchTerms: safeRender(selectedLead.searchTerms || selectedLead['Search Terms']),
+                  searchTokensCanonical: safeRender(selectedLead.searchTokensCanonical || selectedLead['Search Tokens (canonical)'])
                 }}
                 onUpdate={handleLeadUpdate}
                 onDelete={handleLeadDelete}

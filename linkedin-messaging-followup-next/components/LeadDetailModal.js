@@ -103,17 +103,25 @@ const LeadDetailModal = ({
             <LeadDetailForm
               lead={{
                 id: lead.id || lead['Profile Key'],
+                profileKey: lead['Profile Key'] || lead.id,
                 firstName: safeRender(lead.firstName || lead['First Name']),
                 lastName: safeRender(lead.lastName || lead['Last Name']),
                 linkedinProfileUrl: safeRender(lead.linkedinProfileUrl || lead['LinkedIn Profile URL']),
+                viewInSalesNavigator: safeRender(lead.viewInSalesNavigator || lead['View In Sales Navigator']),
                 status: safeRender(lead.status || lead['Status']),
                 priority: safeRender(lead.priority || lead['Priority']),
                 linkedinConnectionStatus: safeRender(lead.linkedinConnectionStatus || lead['LinkedIn Connection Status']),
-                followUpDate: safeRender(lead.followUpDate),
+                followUpDate: safeRender(lead.followUpDate || lead['Follow-Up Date']),
                 notes: safeRender(lead.notes || lead['Notes']),
                 lastMessageDate: safeRender(lead.lastMessageDate || lead['Last Message Date']),
+                postsRelevancePercentage: lead.postsRelevancePercentage || lead['Posts Relevance Percentage'],
                 searchTerms: safeRender(lead.searchTerms || lead['Search Terms']),
                 searchTokensCanonical: safeRender(lead.searchTokensCanonical || lead['Search Tokens (canonical)']),
+                source: safeRender(lead.source || lead['Source']),
+                // Contact fields (previously omitted -> caused blank email/phone in form when using modal)
+                email: safeRender(lead.email || lead['Email']),
+                phone: safeRender(lead.phone || lead['Phone']),
+                ashWorkshopEmail: Boolean(lead.ashWorkshopEmail || lead['ASH Workshop Email']),
                 // AI-related fields using actual API field names
                 aiScore: lead.aiScore || lead['AI Score'],
                 aiProfileAssessment: lead.aiProfileAssessment || lead['AI Profile Assessment'],
@@ -122,7 +130,7 @@ const LeadDetailModal = ({
                 headline: safeRender(lead.headline || lead.jobTitle),
                 companyName: safeRender(lead.companyName),
                 about: safeRender(lead.about),
-                source: safeRender(lead.source),
+                // NOTE: removed duplicate source override that could blank out fallback value
                 viewInSalesNavigator: safeRender(lead.viewInSalesNavigator)
               }}
               onUpdate={onUpdate}

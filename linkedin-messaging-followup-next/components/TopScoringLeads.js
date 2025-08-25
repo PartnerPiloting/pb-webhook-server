@@ -73,44 +73,28 @@ async function apiPost(path, body, clientId) {
 }
 
 export default function TopScoringLeads() {
+  // --- State ---
   const [threshold, setThreshold] = useState(null);
-  const [eligible, setEligible] = useState([]);
-  const [hasSelected, setHasSelected] = useState(false);
-  const [inProgress, setInProgress] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [savedThreshold, setSavedThreshold] = useState(null); // last persisted threshold
+  const [eligible, setEligible] = useState([]); // current page (preview) OR full locked batch
+  const [hasSelected, setHasSelected] = useState(false); // has preview selection
+  const [selectedCount, setSelectedCount] = useState(0); // count that WOULD be locked (capped 1000)
+  const [totalEligible, setTotalEligible] = useState(null); // raw total count (uncapped)
+  const [page, setPage] = useState(1); // preview page or client-side page for locked batch
+  const [hasMore, setHasMore] = useState(false); // server indicates more preview pages
+  const [inProgress, setInProgress] = useState(false); // locked batch exists (Temp flag in Airtable)
+  const [phase, setPhase] = useState('IDLE'); // IDLE | SELECTING | READY | EXPORTING | AWAITING_CONFIRM | FINALIZING | RESETTING | DONE
+  const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: null }); // show during lock/export
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
-  // Advanced panel removed for simplicity
-  const [savedThreshold, setSavedThreshold] = useState(null);
-  const [selectedCount, setSelectedCount] = useState(0);
-  const [totalEligible, setTotalEligible] = useState(null);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  // Local dismissal for the stale Last Export banner
-  const [hideStaleExportWarning, setHideStaleExportWarning] = useState(false);
-  const [batchSize, setBatchSize] = useState(() => {
-    try {
-      const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const raw = sp?.get('batchSize') ?? sp?.get('batchsize');
-      const n = raw ? Number(raw) : NaN;
-      if (!Number.isNaN(n) && n > 0) return Math.min(n, 200);
-    } catch (_) {}
-    return 50;
-  });
-  const batchCapActive = useMemo(() => {
-    try {
-      const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  return !!(sp?.get('batchSize') || sp?.get('batchsize'));
-    } catch (_) {
-      return false;
-    }
-  }, []);
-  const [showParamHelp, setShowParamHelp] = useState(false);
-
-  // Threshold save feedback
   const [justSaved, setJustSaved] = useState(false);
+  const [saving, setSaving] = useState(false); // threshold save in progress
+  const clientId = useMemo(() => buildClientId(), []);
+  const [lastExportAt, setLastExportAt] = useState(null);
+  const [exportAckTs, setExportAckTs] = useState(null); // reserved
+  const [emptyMessage, setEmptyMessage] = useState(null); // message when no eligible leads on preview
 
-  // Prefer in-memory threshold when querying; fall back to saved
+  // --- Helpers ---
   const getEffectiveThreshold = () => {
     const t = Number(threshold);
     if (Number.isFinite(t)) return t;
@@ -118,491 +102,464 @@ export default function TopScoringLeads() {
     return Number.isFinite(s) ? s : null;
   };
 
-  // Debounced auto-save on threshold change
-  useEffect(() => {
-    const t = Number(threshold);
-    if (inProgress) return; // don't auto-save while a batch is locked
-    if (!Number.isFinite(t)) return; // nothing to save
-    if (savedThreshold === t) return; // no change
-    const handle = setTimeout(() => {
-      saveThresholdIfChanged();
-    }, 600);
-    return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threshold, inProgress]);
-
-  // Advanced panel removed; keep code streamlined for operators
-
-  const clientId = useMemo(() => buildClientId(), []);
-
-  // Track last copy/download time (persisted locally per client)
-  const [lastExportAt, setLastExportAt] = useState(null);
-  const [exportAckTs, setExportAckTs] = useState(null);
-  useEffect(() => {
+  const setInProgressFlag = (val) => {
+    setInProgress(val);
     try {
-      const key = `tsl_last_export_${clientId || 'unknown'}`;
-      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
-      if (raw) setLastExportAt(Number(raw));
-      const ackKey = `tsl_export_ack_${clientId || 'unknown'}`;
-      const ackRaw = typeof window !== 'undefined' ? window.localStorage.getItem(ackKey) : null;
-      if (ackRaw) setExportAckTs(Number(ackRaw));
-  const ipKey = `tsl_in_progress_${clientId || 'unknown'}`;
-  const ipRaw = typeof window !== 'undefined' ? window.localStorage.getItem(ipKey) : null;
-  if (ipRaw === '1') setInProgress(true);
-    } catch (_) {}
-    // Best-effort: also load from server (Credentials)
-    (async () => {
-      try {
-        const res = await apiGet('/export/last', clientId);
-        if (res && typeof res.at === 'number' && !Number.isNaN(res.at)) {
-          setLastExportAt(res.at);
-          const key = `tsl_last_export_${clientId || 'unknown'}`;
-          if (typeof window !== 'undefined') window.localStorage.setItem(key, String(res.at));
-        }
-      } catch (_) {
-        // ignore if field not present
-      }
-      // New: check server for any locked batch to source truth from backend, not local storage
-      try {
-        const currentPeek = await apiGet('/batch/current?limit=1', clientId);
-        const anyLocked = Array.isArray(currentPeek?.items) && currentPeek.items.length > 0;
-        if (anyLocked) {
-          setInProgressFlag(true);
-          await loadLockedBatch();
-        } else {
-          setInProgressFlag(false);
-        }
-      } catch (_) {
-        // non-fatal; keep local state
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId]);
-  const markExportNow = () => {
-    try {
-      const ts = Date.now();
-      setLastExportAt(ts);
-      const key = `tsl_last_export_${clientId || 'unknown'}`;
-      if (typeof window !== 'undefined') window.localStorage.setItem(key, String(ts));
-      // New export invalidates any prior acknowledgment
-      const ackKey = `tsl_export_ack_${clientId || 'unknown'}`;
+      const k = `tsl_in_progress_${clientId || 'unknown'}`;
       if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(ackKey);
-      }
-      setExportAckTs(null);
-      // Persist to Airtable at export time for team visibility
-      apiPut('/export/last', { at: ts }, clientId).catch(() => {});
-    } catch (_) {}
-  };
-
-  const setInProgressFlag = (value) => {
-    setInProgress(value);
-    try {
-      const ipKey = `tsl_in_progress_${clientId || 'unknown'}`;
-      if (typeof window !== 'undefined') {
-        if (value) window.localStorage.setItem(ipKey, '1');
-        else window.localStorage.removeItem(ipKey);
+        if (val) window.localStorage.setItem(k, '1'); else window.localStorage.removeItem(k);
       }
     } catch (_) {}
   };
 
-  // Load the currently locked batch (read-only) if an export is in progress
-  const loadLockedBatch = async () => {
+  async function loadLockedBatch() {
     try {
-      setLoading(true);
       setError(null);
-      const current = await apiGet('/batch/current?all=1', clientId);
+      setPhase(p => (p === 'IDLE' ? 'READY' : p));
+      const current = await apiGet('/batch/current?all=1&limit=1000', clientId);
       const items = Array.isArray(current?.items) ? current.items : [];
       setEligible(items);
       setHasSelected(true);
       setSelectedCount(items.length);
-  setTotalEligible(items.length);
-      setHasMore(false);
+      setTotalEligible(items.length);
+      setHasMore(items.length > 50);
       setPage(1);
     } catch (e) {
       setError(e?.message || 'Failed to load locked batch');
-    } finally {
-      setLoading(false);
     }
-  };
-
-  async function lockCurrentPreview() {
-    // Replace exactly N: reset then select N when capped; select-all otherwise
-    if (inProgress) return; // don't re-lock while already in progress
-    const capped = (batchCapActive && Number.isFinite(Number(batchSize)) && Number(batchSize) > 0);
-    if (capped) {
-      const n = Math.min(500, Math.max(1, Math.floor(Number(batchSize))));
-      // Always force replace mode when locking a batch
-      await apiPost(`/batch/select?all=1&pageSize=${n}&replace=1`, null, clientId);
-    } else {
-      await apiPost('/batch/select?all=1', null, clientId);
-    }
-    setInProgressFlag(true);
-    // Refresh from server so Selected reflects actual locked count and grid shows locked rows
-    await loadLockedBatch();
   }
 
+  // Progressive loader (simulate incremental arrival so we can show a counter)
+  async function loadLockedBatchProgressive() {
+    try {
+      setError(null);
+      setPhase(p => (p === 'IDLE' ? 'READY' : p));
+      const current = await apiGet('/batch/current?all=1&limit=1000', clientId);
+      const items = Array.isArray(current?.items) ? current.items : [];
+      setSelectedCount(items.length);
+      setTotalEligible(items.length);
+      setHasSelected(true);
+      setHasMore(items.length > 50);
+      setPage(1);
+      setEligible([]);
+      setLoadProgress({ loaded: 0, total: items.length });
+      // Slice items into chunks to simulate incremental network paging
+      const chunkSize = 50;
+      for (let i = 0; i < items.length; i += chunkSize) {
+        const slice = items.slice(i, i + chunkSize);
+        // eslint-disable-next-line no-loop-func
+        await new Promise(r => setTimeout(r, 40)); // small delay for visual progress
+        setEligible(prev => [...prev, ...slice]);
+        setLoadProgress(lp => ({ loaded: Math.min(items.length, (lp.loaded + slice.length)), total: items.length }));
+      }
+    } catch (e) {
+      setError(e?.message || 'Failed to load locked batch');
+    }
+  }
+
+  async function lockCurrentBatch(effThreshold) {
+    if (inProgress) return; // already locked
+    const thr = Number.isFinite(effThreshold) ? `&threshold=${encodeURIComponent(effThreshold)}` : '';
+    // Real select (mutation) with cap 1000
+    await apiPost(`/batch/select?all=1&pageSize=1000&replace=1${thr}`, null, clientId);
+    setInProgressFlag(true);
+    // Load full locked batch
+  setPhase('EXPORTING');
+  await loadLockedBatchProgressive();
+  }
+
+  // --- Initial load: threshold + check for locked batch ---
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
+    (async () => {
       try {
-        setLoading(true);
-        setError(null);
-        const t = await apiGet('/threshold', clientId);
+        const res = await apiGet('/threshold', clientId);
         if (!mounted) return;
-        setThreshold(t.value ?? null);
-        setSavedThreshold(t.value ?? null);
-        // Do not fetch eligible until user clicks Select
-      } catch (e) {
+        setThreshold(res.value ?? null);
+        setSavedThreshold(res.value ?? null);
+      } catch (_) {}
+      try {
+        const currentPeek = await apiGet('/batch/current?limit=1', clientId);
         if (!mounted) return;
-        setError(e?.message || 'Failed to load');
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    load();
+        const anyLocked = Array.isArray(currentPeek?.items) && currentPeek.items.length > 0;
+        if (anyLocked) {
+          setInProgressFlag(true);
+          await loadLockedBatch();
+        }
+      } catch (_) {}
+      try {
+        const last = await apiGet('/export/last', clientId);
+        if (last && typeof last.at === 'number') setLastExportAt(last.at);
+      } catch (_) {}
+    })();
     return () => { mounted = false; };
-  }, [clientId, batchSize]);
+  }, [clientId]);
 
-  // When we detect an in-progress export (e.g., after reload), show the locked batch
-  useEffect(() => {
-    if (inProgress) {
-      loadLockedBatch();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inProgress, clientId]);
-
+  // --- Save threshold on blur (not while locked) ---
   const saveThresholdIfChanged = async () => {
-    if (inProgress) return;
+    if (inProgress) return; // locked: cannot change
     if (threshold === null || Number.isNaN(Number(threshold))) return;
     if (savedThreshold === threshold) return;
     try {
-      setLoading(true);
-      setError(null);
-  await apiPut('/threshold', { value: Number(threshold) }, clientId);
+      setSaving(true);
+      await apiPut('/threshold', { value: Number(threshold) }, clientId);
       setSavedThreshold(threshold);
-  setJustSaved(true);
-  setTimeout(() => setJustSaved(false), 1500);
-  // If a preview has been selected, recompute count and refresh first page (preview-only)
-      if (hasSelected) {
-        setPage(1);
-        try {
-          const eff = getEffectiveThreshold();
-          const thr = Number.isFinite(eff) ? `?threshold=${encodeURIComponent(eff)}` : '';
-          const cnt = await apiGet(`/eligible/count${thr}`, clientId);
-          const total = Number(cnt?.total ?? 0);
-          setTotalEligible(total);
-          const cappedTotal = batchCapActive ? Math.min(Number(batchSize), total) : total;
-          setSelectedCount(cappedTotal);
-        } catch (_) {}
-        await refreshEligible({ preserveSelectedCount: true, page: 1 });
-      }
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 1200);
     } catch (e) {
       setError(e?.message || 'Failed to save threshold');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const onCopyUrls = async () => {
+  // --- Preview selection (dry run) ---
+  const onSelectPreview = async () => {
+    // Allow re-preview while not locked (READY or IDLE). Block during async/exporting/finalizing/resetting.
+    if (inProgress) return; // locked state can't preview
+    if (!['IDLE', 'READY', 'DONE'].includes(phase)) return;
+    setPhase('SELECTING');
+    setError(null);
+  setEmptyMessage(null);
+    setHasSelected(false);
+    setEligible([]);
     try {
-      // Build from current preview immediately to preserve user gesture for clipboard write
-      const urls = (eligible || []).map((it) => it?.linkedinUrl).filter(Boolean).join('\n');
-      // Prefer execCommand path to avoid permission prompt; fall back to modern API
-      let copiedOk = false;
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = urls;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.top = '-9999px';
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        copiedOk = document.execCommand('copy');
-        document.body.removeChild(ta);
-      } catch (_) {
-        // ignore; try modern API below
-      }
-      if (!copiedOk && navigator?.clipboard?.writeText) {
+      // Auto-save threshold if edited but not saved (only when not locked)
+      if (!inProgress && threshold !== null && threshold !== savedThreshold) {
         try {
-          await navigator.clipboard.writeText(urls);
-          copiedOk = true;
-        } catch (_) {
-          // still not ok
+          setSaving(true);
+          await apiPut('/threshold', { value: Number(threshold) }, clientId);
+          setSavedThreshold(threshold);
+          setJustSaved(true);
+          setTimeout(() => setJustSaved(false), 1200);
+        } catch (e) {
+          // Non-fatal: continue with preview
+          console.warn('Auto-save threshold failed', e?.message || e);
+        } finally {
+          setSaving(false);
         }
       }
-      if (!copiedOk) throw new Error('clipboard');
-
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-
-      // Lock records and timestamp after copying (async; skip if already in progress)
-      if (!inProgress) {
-        lockCurrentPreview().then(() => { try { markExportNow(); } catch(_) {} }).catch(() => {});
+      const eff = getEffectiveThreshold();
+      const thrQ = Number.isFinite(eff) ? `&threshold=${encodeURIComponent(eff)}` : '';
+      // Count total eligible
+      let total = 0;
+      try { const cnt = await apiGet(`/eligible/count?${thrQ.slice(1)}`, clientId); total = Number(cnt?.total ?? 0); } catch (_) {}
+      // Dry run batch selection to know how many WOULD be set (capped at 1000)
+      let willSet = 0;
+      try { const dry = await apiPost(`/batch/select?all=1&pageSize=1000&dryRun=1${thrQ}`, null, clientId); willSet = Number(dry?.willSet ?? 0); } catch (_) {}
+      const capped = Math.min(1000, willSet || total);
+      setTotalEligible(total);
+      setSelectedCount(capped);
+      if (capped === 0) {
+  setPhase('IDLE');
+  setEmptyMessage('No eligible leads found – all potential candidates are already processed or below the threshold.');
+        return;
       }
+      // Fetch first preview page (pageSize 50)
+      const list = await apiGet(`/eligible?page=1&pageSize=50${thrQ}`, clientId);
+      const items = Array.isArray(list?.items) ? list.items : [];
+      setEligible(items);
+      setHasSelected(true);
+      setPage(1);
+      setHasMore(!!list?.hasMore);
+      setPhase('READY');
     } catch (e) {
-      setError('Failed to copy URLs');
+      setError(e?.message || 'Failed to build preview');
+      setPhase('IDLE');
     }
   };
 
-  const onDownloadTxt = () => {
+  // --- Export actions (lock on demand) ---
+  const performLockIfNeeded = async () => {
+    if (!inProgress) {
+      const eff = getEffectiveThreshold();
+      await lockCurrentBatch(eff);
+    }
+  };
+
+  const copyUrls = async () => {
+    if (!hasSelected || phase === 'SELECTING' || phase === 'IDLE') return;
     try {
-      // Build from current preview immediately for a snappy download
-      const urls = (eligible || []).map((it) => it?.linkedinUrl).filter(Boolean).join('\n');
+      setError(null);
+      setPhase('EXPORTING');
+      // If not locked yet, locking path already shows progressive loading inside lockCurrentBatchProgressive
+      if (!inProgress) {
+        await performLockIfNeeded();
+      } else {
+        // Simulate progressive re-export build
+        const total = eligible.length || selectedCount || 0;
+        setLoadProgress({ loaded: 0, total });
+        const chunkSize = 50;
+        for (let i = 0; i < total; i += chunkSize) {
+          await new Promise(r => setTimeout(r, 35));
+          setLoadProgress(lp => ({ ...lp, loaded: Math.min(total, i + chunkSize) }));
+        }
+      }
+      const allItems = eligible || [];
+      const urlList = allItems.map(r => r?.linkedinUrl).filter(u => !!u);
+      if (urlList.length === 0) {
+        setError(`No LinkedIn URLs found among ${allItems.length} selected leads.`);
+        setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
+        return;
+      }
+      const urls = urlList.join('\n');
+      let ok = false; let lastErr = null;
+      // Prefer modern async clipboard first (secure contexts / localhost)
+      if (navigator?.clipboard?.writeText) {
+        try { await navigator.clipboard.writeText(urls); ok = true; } catch (e) { lastErr = e; }
+      }
+      if (!ok) {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = urls; ta.readOnly = true; ta.style.position = 'fixed'; ta.style.top = '-9999px';
+          document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); document.body.removeChild(ta);
+        } catch (e2) { lastErr = lastErr || e2; }
+      }
+      if (!ok) {
+        console.warn('Copy URLs failed', lastErr);
+        throw new Error(lastErr?.message || 'Clipboard unavailable');
+      }
+      setCopied(true); setTimeout(() => setCopied(false), 1500);
+      setPhase('AWAITING_CONFIRM');
+    } catch (e) {
+      setError(`Failed to copy URLs${e?.message ? `: ${e.message}` : ''}`);
+      setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
+    }
+  };
+
+  const downloadTxt = async () => {
+    if (!hasSelected || phase === 'SELECTING' || phase === 'IDLE') return;
+    try {
+      setError(null);
+      setPhase('EXPORTING');
+      if (!inProgress) {
+        await performLockIfNeeded();
+      } else {
+        const total = eligible.length || selectedCount || 0;
+        setLoadProgress({ loaded: 0, total });
+        const chunkSize = 50;
+        for (let i = 0; i < total; i += chunkSize) {
+          await new Promise(r => setTimeout(r, 35));
+          setLoadProgress(lp => ({ ...lp, loaded: Math.min(total, i + chunkSize) }));
+        }
+      }
+      const urls = (eligible || []).map(r => r?.linkedinUrl).filter(Boolean).join('\n');
       const blob = new Blob([urls], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = 'eligible-linkedin-urls.txt';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } finally {
-      // Lock and timestamp after download is triggered (skip if already in progress)
-      if (!inProgress) {
-        lockCurrentPreview().then(() => markExportNow()).catch(() => {});
-      }
+      a.href = url; a.download = 'eligible-linkedin-urls.txt'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      setPhase('AWAITING_CONFIRM');
+    } catch (e) {
+      setError('Download failed');
+      setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
     }
   };
 
-  const refreshEligible = async (options = {}) => {
-    const { preserveSelectedCount = true, page: pageOverride } = options;
+  // --- Finalize / Reset ---
+  const finalizeBatch = async () => {
+    if (!inProgress || !(phase === 'AWAITING_CONFIRM' || phase === 'READY')) return;
+    setPhase('FINALIZING');
     try {
-  const p = pageOverride ?? page;
-  const eff = getEffectiveThreshold();
-  const thr = Number.isFinite(eff) ? `&threshold=${encodeURIComponent(eff)}` : '';
-  const list = await apiGet(`/eligible?page=${p}&pageSize=${batchSize}${thr}`, clientId);
-      const items = list.items || [];
-      setEligible(items);
-      setHasMore(!!list.hasMore);
-      if (!preserveSelectedCount) {
-        if (totalEligible !== null && totalEligible !== undefined) {
-          const cappedTotal = batchCapActive ? Math.min(Number(batchSize), Number(totalEligible)) : Number(totalEligible);
-          setSelectedCount(cappedTotal);
-        } else {
-          setSelectedCount(items.length);
+      const total = selectedCount || eligible.length || 0;
+      if (total) setLoadProgress({ loaded: 0, total });
+      let current = 0;
+      const increment = Math.max(1, Math.ceil((total || 20) / 25));
+      const intId = setInterval(() => {
+        if (!total) return;
+        current += increment;
+        if (current >= total * 0.85) current = Math.floor(total * 0.85);
+        setLoadProgress(lp => ({ ...lp, loaded: Math.min(current, total) }));
+      }, 60);
+      await apiPost('/batch/finalize', null, clientId);
+      if (total) setLoadProgress({ loaded: total, total });
+      clearInterval(intId);
+      setEligible([]);
+      setHasSelected(false);
+      setSelectedCount(0);
+      setInProgressFlag(false);
+      setPhase('DONE');
+      setTimeout(() => setPhase('IDLE'), 1200);
+    } catch (e) {
+      setError(e?.message || 'Failed to finalize');
+      setPhase('AWAITING_CONFIRM');
+    }
+  };
+
+  const resetBatch = async () => {
+    if (!(inProgress || phase === 'AWAITING_CONFIRM' || phase === 'READY' || phase === 'EXPORTING')) return;
+    try {
+      setPhase('RESETTING');
+      const total = selectedCount || eligible.length || 0;
+      if (total > 0) setLoadProgress({ loaded: 0, total }); else setLoadProgress({ loaded: 0, total: null });
+      // Simulated progressive counter while waiting for API since backend does not stream progress
+      let currentLoaded = 0;
+      const increment = Math.max(1, Math.ceil((total || 20) / 25));
+      const tick = () => {
+        currentLoaded += increment;
+        if (total) {
+          if (currentLoaded >= total * 0.85) currentLoaded = Math.floor(total * 0.85); // pause near end until API completes
+          setLoadProgress(lp => ({ ...lp, loaded: Math.min(currentLoaded, total) }));
         }
+      };
+      const intId = setInterval(tick, 60);
+      try {
+        await apiPost('/batch/reset', null, clientId);
+      } finally {
+        clearInterval(intId);
       }
-      return items;
+      if (total) setLoadProgress({ loaded: total, total });
+      setEligible([]);
+      setHasSelected(false);
+      setSelectedCount(0);
+      setInProgressFlag(false);
+      setPhase('IDLE');
     } catch (e) {
-  setError(e?.message || 'Failed to load eligible list');
-      return [];
+      setError(e?.message || 'Failed to reset');
+      setPhase(inProgress ? 'READY' : 'IDLE');
     }
   };
 
-  const onSelectCurrentBatch = async () => {
-    if (inProgress || loading) return; // ignore while export is in progress
-    try {
-      setLoading(true);
-      setError(null);
-  // Compute total eligible first so Selected reflects the full batch size
-  try {
-    const eff = getEffectiveThreshold();
-    const thr = Number.isFinite(eff) ? `?threshold=${encodeURIComponent(eff)}` : '';
-    const cnt = await apiGet(`/eligible/count${thr}`, clientId);
-    const total = Number(cnt?.total ?? 0);
-    setTotalEligible(total);
-    const cappedTotal = batchCapActive ? Math.min(Number(batchSize), total) : total;
-    setSelectedCount(cappedTotal);
-  } catch (_) {}
-  // Preview only: fetch page 1 but preserve the Selected total
-  setPage(1);
-  await refreshEligible({ preserveSelectedCount: true, page: 1 });
-      setHasSelected(true);
-    } catch (e) {
-      setError(e?.message || 'Failed to select batch');
-    } finally {
-      setLoading(false);
+  // --- Pagination (preview server-side, locked client-side) ---
+  const goPage = async (dir) => {
+    if (!hasSelected) return;
+    if (inProgress) {
+      const maxPage = Math.max(1, Math.ceil(eligible.length / 50));
+      let np = page + dir; if (np < 1) np = 1; if (np > maxPage) np = maxPage; setPage(np);
+    } else {
+      if (phase !== 'READY') return;
+      if (dir === -1 && page === 1) return;
+      if (dir === 1 && !hasMore) return;
+      const np = page + dir; if (np < 1) return; setPage(np);
+      try {
+        const eff = getEffectiveThreshold();
+        const thrQ = Number.isFinite(eff) ? `&threshold=${encodeURIComponent(eff)}` : '';
+        const list = await apiGet(`/eligible?page=${np}&pageSize=50${thrQ}`, clientId);
+        const items = Array.isArray(list?.items) ? list.items : [];
+        setEligible(items);
+        setHasMore(!!list?.hasMore);
+      } catch (_) {}
     }
   };
 
-  const onFinalizeBatch = async (doDryRun = true) => {
-    try {
-      setLoading(true);
-      setError(null);
-    const path = `/batch/finalize`;
-      // Use staged records on the server; payload optional
-      const res = await apiPost(path, null, clientId);
-      // After real finalize, clear preview and in-progress; Last Export remains the export time
-      if (!doDryRun) {
-        setEligible([]);
-        setHasSelected(false);
-  setSelectedCount(0);
-        setInProgressFlag(false);
-  // Hide the stale export warning once action is confirmed
-  setHideStaleExportWarning(true);
-        // Acknowledge the last export timestamp so the stale banner doesn't reappear after reload
-        try {
-          if (lastExportAt) {
-            const ackKey = `tsl_export_ack_${clientId || 'unknown'}`;
-            if (typeof window !== 'undefined') window.localStorage.setItem(ackKey, String(lastExportAt));
-            setExportAckTs(Number(lastExportAt));
-          }
-        } catch (_) {}
-      }
-    } catch (e) {
-      setError(e?.message || 'Failed to finalize batch');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onResetExport = async (doDryRun = false) => {
-    try {
-      setLoading(true);
-      setError(null);
-    const path = `/batch/reset`;
-      const res = await apiPost(path, null, clientId);
-      if (!doDryRun) {
-        setEligible([]);
-        setHasSelected(false);
-  setSelectedCount(0);
-        setInProgressFlag(false);
-  // Hide the stale export warning once action is confirmed
-  setHideStaleExportWarning(true);
-        // Acknowledge the last export timestamp so the stale banner doesn't reappear after reload
-        try {
-          if (lastExportAt) {
-            const ackKey = `tsl_export_ack_${clientId || 'unknown'}`;
-            if (typeof window !== 'undefined') window.localStorage.setItem(ackKey, String(lastExportAt));
-            setExportAckTs(Number(lastExportAt));
-          }
-        } catch (_) {}
-      }
-    } catch (e) {
-      setError(e?.message || 'Failed to reset export');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // --- Render ---
   return (
     <div className="space-y-6">
       <div className="bg-white border rounded p-4">
-  <h2 className="font-semibold mb-2" title="Send Connection Requests to">Top Scoring Leads</h2>
-  <p className="text-sm text-gray-600 mb-4">Leads not yet queued in the Linked Helper connection request and messaging campaign.</p>
-        <div className="text-xs text-gray-600 mb-2 flex items-center gap-3 flex-wrap">
-          {batchCapActive && (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 border border-sky-200" title="URL cap active; Copy/Confirm limited to this count">
-              Cap: {batchSize}
-            </span>
-          )}
-          <button className="underline" onClick={() => setShowParamHelp(v => !v)} aria-expanded={showParamHelp}>
-            URL params
-          </button>
-          {showParamHelp && (
-            <span className="text-gray-700">
-              batchSize=N caps preview and real writes to N. testClient=ID (or clientId=ID) scopes to a tenant.
-            </span>
-          )}
-        </div>
-        <div className="flex items-center space-x-2">
+        <h2 className="font-semibold mb-2">Top Scoring Leads</h2>
+        <p className="text-sm text-gray-600 mb-4">Leads not yet queued in the Linked Helper campaign.</p>
+        <div className="flex items-center gap-2 mb-2">
           <label className="text-sm text-gray-700">AI Score threshold</label>
           <input
             type="number"
             className="border rounded px-2 py-1 w-24"
             value={threshold ?? ''}
             onChange={(e) => setThreshold(e.target.value === '' ? null : Number(e.target.value))}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
             onBlur={saveThresholdIfChanged}
-            disabled={loading || inProgress}
-            aria-disabled={loading || inProgress}
-            title={inProgress ? 'Export in progress — threshold is locked until you Confirm or Cancel.' : undefined}
+            disabled={inProgress || phase === 'SELECTING'}
+            title={inProgress ? 'Locked batch present – reset to change threshold.' : 'Adjust and blur to save'}
           />
-          {justSaved && (
-            <span className="text-sm text-emerald-700" aria-live="polite">Saved ✓</span>
-          )}
+          {inProgress && <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">Locked</span>}
+          {!inProgress && savedThreshold !== threshold && threshold !== null && <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-300">Unsaved</span>}
+          {saving && <span className="text-sm text-gray-600" aria-live="polite">Saving…</span>}
+          {!saving && justSaved && <span className="text-sm text-emerald-700" aria-live="polite">Saved ✓</span>}
           {error && <span className="text-sm text-red-600 ml-2">{error}</span>}
         </div>
-    {/* Simplified: no server batch shown; we only hint based on last export time below */}
-        <div className="mt-3 flex items-center gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
-            className="px-3 py-2 bg-emerald-700 text-white rounded"
-  onClick={() => onSelectCurrentBatch()}
-  disabled={loading || inProgress}
-      title={`Fetch leads with an AI Score ≥ ${threshold ?? savedThreshold ?? 'current threshold'} that have not already been sent to Linked Helper. This is a preview only; Airtable isn't updated until you click Mark Copied.`}
-            aria-label="Select Top Scorers"
-          >
-            Select Top Scorers
-          </button>
-          {hasSelected && (
-            <span className="text-sm text-gray-600" title="Number of leads currently in the preview">
-              Selected: {selectedCount}
-            </span>
-          )}
+            className={`px-3 py-2 rounded text-white ${(!inProgress && ['IDLE','READY','DONE'].includes(phase)) ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-gray-300 cursor-not-allowed'}`}
+            disabled={inProgress || !['IDLE','READY','DONE'].includes(phase)}
+            onClick={onSelectPreview}
+            title={inProgress ? 'Batch locked – reset to preview again' : 'Dry-run preview (no Airtable writes). Can re-run to refresh.'}
+          >Select Top Scorers</button>
+          {hasSelected && <span className="text-sm text-gray-600">Selected: {selectedCount}</span>}
           {inProgress && (
             <>
-              <button
-                className="px-3 py-2 bg-amber-700 text-white rounded"
-                onClick={() => onFinalizeBatch(false)}
-                disabled={loading}
-                title="Confirm you pasted these into Linked Helper and clear the batch."
-                aria-label="Confirm Pasted to LH"
-              >
-                Confirm Pasted to LH
-              </button>
-              <button
-                className="px-3 py-2 bg-gray-200 text-gray-900 rounded border"
-                onClick={() => onResetExport(false)}
-                disabled={loading}
-                title="Cancel this batch and reselect a new one."
-                aria-label="Cancel — Reselect"
-              >
-                Cancel — Reselect
-              </button>
+              {(phase === 'READY' || phase === 'AWAITING_CONFIRM' || phase === 'FINALIZING') && (
+                <button
+                  className={`px-3 py-2 rounded text-white ${phase === 'FINALIZING' ? 'bg-amber-400 cursor-wait' : 'bg-amber-700 hover:bg-amber-600'}`}
+                  onClick={finalizeBatch}
+                  disabled={phase === 'FINALIZING'}
+                >{phase === 'FINALIZING' ? 'Finalizing…' : 'Confirm Pasted to LH'}</button>
+              )}
+              {(phase === 'AWAITING_CONFIRM') && (
+                <button
+                  className={`px-3 py-2 rounded border ${phase === 'FINALIZING' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-200 text-gray-900 hover:bg-gray-300'}`}
+                  onClick={resetBatch}
+                  disabled={phase === 'FINALIZING'}
+                >Cancel — Reselect</button>
+              )}
+              {(phase !== 'AWAITING_CONFIRM') && (
+                <button className="px-3 py-2 rounded border bg-gray-200 text-gray-900 hover:bg-gray-300" onClick={resetBatch} disabled={phase === 'FINALIZING' || phase === 'RESETTING'}>Reset Batch</button>
+              )}
             </>
           )}
         </div>
-    {inProgress && (
-          <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 max-w-prose">
-      Export in progress - Select is disabled until you "Confirm Pasted to LH" OR "Cancel - Reselect"
-          </div>
-        )}
-  {/* No pre-selection gating: if no live batch, keep Select available and only show informational Last Export in the header */}
-
-  {/* Red stale-export warning intentionally removed per UX: keep preview neutral; actions only during in-progress */}
-
-  {/* Advanced/Debug panel removed */}
+        {/* Status messages */}
+        {(() => {
+          if (error) return <div className="mt-2 text-xs text-red-600" role="alert">{error}</div>;
+          if (phase === 'SELECTING') return <div className="mt-2 text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded px-2 py-1">Preparing preview…</div>;
+          if (phase === 'READY' && !inProgress) return <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">Preview ready – up to {selectedCount} leads (cap 1000). Copy or Download to lock.</div>;
+          if (phase === 'READY' && inProgress) return <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">Locked batch detected ({selectedCount} leads). Copy / Download to re-export, Confirm if already pasted, or Reset to pick a new set.</div>;
+          if (phase === 'EXPORTING') return (
+            <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 flex items-center gap-3">
+              <span>Locking & building export… {loadProgress.total ? `${loadProgress.loaded}/${loadProgress.total}` : ''}</span>
+              {loadProgress.total && (
+                <span className="flex-1 h-2 bg-amber-100 rounded overflow-hidden">
+                  <span
+                    className="h-2 bg-amber-500 block transition-all"
+                    style={{ width: `${Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          );
+          if (phase === 'AWAITING_CONFIRM') return <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">{(selectedCount || eligible.length) ? `${selectedCount || eligible.length} exported – ` : ''}Copied/Downloaded. Paste into Linked Helper then Confirm or Cancel.</div>;
+          if (phase === 'FINALIZING') return (
+            <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 flex items-center gap-3">
+              <span>Finalizing batch… {loadProgress.total ? `${Math.min(loadProgress.loaded, loadProgress.total)}/${loadProgress.total}` : ''}</span>
+              {loadProgress.total && (
+                <span className="flex-1 h-2 bg-amber-100 rounded overflow-hidden">
+                  <span
+                    className="h-2 bg-amber-500 block transition-all"
+                    style={{ width: `${Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          );
+          if (phase === 'RESETTING') return (
+            <div className="mt-2 text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded px-2 py-1 flex items-center gap-3">
+              <span>Clearing batch… {loadProgress.total ? `${Math.min(loadProgress.loaded, loadProgress.total)}/${loadProgress.total}` : ''}</span>
+              {loadProgress.total && (
+                <span className="flex-1 h-2 bg-blue-100 rounded overflow-hidden">
+                  <span
+                    className="h-2 bg-blue-500 block transition-all"
+                    style={{ width: `${Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          );
+          if (phase === 'DONE') return <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">Batch finalized.</div>;
+          return null;
+        })()}
       </div>
 
       <div className="bg-white border rounded">
         <div className="p-4 border-b font-medium flex items-center gap-3 flex-wrap">
           <span>Eligible Leads</span>
-          <button className="px-3 py-1 border rounded" onClick={onCopyUrls} disabled={!hasSelected || !eligible?.length}>Copy URLs {copied ? '✓' : ''}</button>
-          <button className="px-3 py-1 border rounded" onClick={onDownloadTxt} disabled={!hasSelected || !eligible?.length}>Download .txt</button>
+          <button className="px-3 py-1 border rounded" onClick={copyUrls} disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}>Copy URLs {copied ? '✓' : ''}</button>
+          <button className="px-3 py-1 border rounded" onClick={downloadTxt} disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}>Download .txt</button>
           <span className="ml-2 text-xs text-gray-500">
-            {(() => {
-              if (!lastExportAt) return 'Last Export: —';
-              const ageMs = Date.now() - Number(lastExportAt);
-              const olderThanDay = ageMs > 24 * 60 * 60 * 1000;
-              const ts = new Date(Number(lastExportAt)).toLocaleString();
-              return (
-                <span>
-                  Last Export: {ts}
-                  {olderThanDay && (
-                    <span
-                      className="ml-1 inline-block px-1.5 py-0.5 rounded bg-red-100 text-red-700"
-                      title="Last Export is over a day old"
-                    >
-                      24h+
-                    </span>
-                  )}
-                </span>
-              );
-            })()}
+            {lastExportAt ? `Last Export: ${new Date(Number(lastExportAt)).toLocaleString()}` : 'Last Export: —'}
           </span>
         </div>
         <div className="p-4">
-          {loading && <div>Loading…</div>}
-          {!loading && !hasSelected && (
-            <div className="text-gray-500">Click “Select Top Scorers” to fetch a preview.</div>
-          )}
-          {!loading && hasSelected && eligible.length === 0 && (
-            <div className="text-gray-500">No eligible leads at the current threshold.</div>
-          )}
-          {!loading && hasSelected && eligible.length > 0 && (
+          {phase === 'IDLE' && <div className="text-gray-500">Click “Select Top Scorers” to start.</div>}
+          {phase === 'IDLE' && emptyMessage && <div className="text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2 text-sm mt-2">{emptyMessage}</div>}
+          {phase === 'SELECTING' && <div className="text-gray-500">Preparing preview…</div>}
+          {hasSelected && eligible.length === 0 && phase !== 'IDLE' && <div className="text-gray-500">No eligible leads at this threshold.</div>}
+          {hasSelected && eligible.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-left text-gray-600">
@@ -616,40 +573,30 @@ export default function TopScoringLeads() {
                   </tr>
                 </thead>
                 <tbody>
-                  {eligible.map((it) => (
+                  {(inProgress ? eligible.slice((page-1)*50, (page-1)*50 + 50) : eligible).map(it => (
                     <tr key={it.id} className="border-t">
                       <td className="py-2 pr-4">{it.score ?? ''}</td>
                       <td className="py-2 pr-4">{it.firstName ?? ''}</td>
                       <td className="py-2 pr-4">{it.lastName ?? ''}</td>
-                      <td className="py-2 pr-4">
-                        {it.linkedinUrl ? (
-                          <a className="text-blue-600 underline" href={it.linkedinUrl} target="_blank" rel="noreferrer">{it.linkedinUrl}</a>
-                        ) : ''}
-                      </td>
+                      <td className="py-2 pr-4">{it.linkedinUrl ? <a className="text-blue-600 underline" href={it.linkedinUrl} target="_blank" rel="noreferrer">{it.linkedinUrl}</a> : ''}</td>
                       <td className="py-2 pr-4">{it.scoringStatus ?? ''}</td>
                       <td className="py-2 pr-4">{it.connectionStatus ?? ''}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="flex items-center justify-between mt-3 text-sm">
-                <button
-                  className="px-2 py-1 border rounded"
-                  onClick={() => { if (page > 1) { const np = page - 1; setPage(np); refreshEligible({ page: np }); } }}
-                  disabled={page <= 1 || loading}
-                  title="Previous page"
-                >
-                  ‹ Prev
-                </button>
-                <span>Page {page}</span>
-                <button
-                  className="px-2 py-1 border rounded"
-                  onClick={() => { if (hasMore) { const np = page + 1; setPage(np); refreshEligible({ page: np }); } }}
-                  disabled={!hasMore || loading}
-                  title="Next page"
-                >
-                  Next ›
-                </button>
+              <div className="flex items-center justify-between mt-3 text-xs text-gray-600">
+                <div>
+                  {inProgress ? (
+                    <span>Locked batch: page {page} of {Math.max(1, Math.ceil(eligible.length / 50))} ({eligible.length} total)</span>
+                  ) : (
+                    <span>Preview page {page} {hasMore ? '(more available)' : ''}</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button className="px-2 py-1 border rounded disabled:opacity-50" disabled={page === 1 || phase === 'SELECTING'} onClick={() => goPage(-1)}>Prev</button>
+                  <button className="px-2 py-1 border rounded disabled:opacity-50" disabled={phase === 'SELECTING' || (inProgress ? page >= Math.ceil(eligible.length / 50) : !hasMore)} onClick={() => goPage(1)}>Next</button>
+                </div>
               </div>
             </div>
           )}
