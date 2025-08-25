@@ -1,6 +1,97 @@
-# Dev Runbook: Start API and Frontend Reliably (Generic)
+# Dev Runbook (Simplified Reliable Workflow)
+
+## ✅ Everyday Start / Restart (Use This First)
+This is the only process you normally need.
+
+1. Start API (VS Code Task): `API: Start (keep running)` → wait for “Server running on port 3001.”  
+2. Start Frontend (VS Code Task): `Frontend: Start (port 3000)` → wait for the Next.js local URL.  
+3. Open: http://localhost:3000/?testClient=Guy-Wilson
+
+### To Restart Both Servers (normal case)
+Say/Type: “Restart both servers” (agent will):
+1. Run `npm run dev:reset` (kills stray node processes).  
+2. Start API task, wait for healthy log line.  
+3. Start Frontend task.  
+4. Confirm ready.
+
+### If Frontend Port 3000 Is Busy
+Run `npm run dev:reset` and repeat the steps above. (Manual Task Manager kill of node.exe is the fallback.)
+
+### When To Escalate
+| Symptom | Action |
+|---------|--------|
+| API task won’t bind to 3001 after dev:reset | Kill node.exe in Task Manager, retry. |
+| Still blocked / unknown process on 3001 | Clean Slate Recovery (below). |
+| Repeated abnormal crashes | Investigate recent code changes, then Clean Slate. |
+| Ports free but requests hang | Browser cache / frontend rebuild → restart frontend only. |
+| Nothing works after multiple clean cycles | Reboot (rare). |
+
+### Golden Rules
+* Only the two VS Code tasks for daily work.  
+* Avoid accumulating terminals (>3 is a smell).  
+* Don’t use `dev:simple` unless explicitly testing concurrency behavior.  
+* Prefer restart via `npm run dev:reset` over manual netstat hunting.
+
+---
+
+## 🧪 Health Checks (Quick)
+API basic: `http://localhost:3001/basic-test`  
+API json: `http://localhost:3001/api/test/minimal-json`  
+Feature (example): `http://localhost:3001/api/top-scoring-leads/status`  
+UI: `http://localhost:3000/?testClient=Guy-Wilson`
+
+---
+
+## 🔧 Clean Slate Recovery (when everything is broken)
+
+Use only if normal restart failed twice.
+
+**Symptoms:** ports stuck, repeated nodemon loops, unexplained hangs.
+
+1. **Kill all node:**
+   ```bash
+   taskkill /IM node.exe /F
+   ```
+
+2. **Verify ports are free:**
+   ```bash
+   netstat -ano | findstr :3000    # should be empty
+   netstat -ano | findstr :3001    # should be empty
+   ```
+
+3. **Fresh start (preferred now):** Start API task → then Frontend task.  
+   (Legacy batch file acceptable: `start-dev-windows.bat`)
+
+4. **Wait and verify:**
+   ```bash
+   sleep 10
+   curl http://localhost:3001/basic-test    # should show "BASIC ROUTE WORKING"
+   ```
+
+**Still broken?** Check API task logs for the first error lines; copy those into an issue / ask the agent.
+
+---
+
+## ⚠️ Common Pitfalls (Avoid)
+
+**DON'T**
+* Start extra combined scripts while tasks already run.
+* Accumulate 10+ terminals and lose track.
+* Run curl checks inside the API task terminal.
+
+**DO**
+* Keep API + Frontend tasks isolated.
+* Use `npm run dev:reset` before a restart if there’s any doubt.
+* Keep everything else in a single throwaway terminal.
+
+---(Generic)
 
 This guide is a generic, repeatable playbook for this repo and similar Node/Next.js projects. It prevents the common multi-hour pitfalls: terminal reuse killing servers, port conflicts, missing env, and unclear health checks. Use it when starting fresh, and when something breaks mid-session.
+
+## (Legacy) Batch Start Shortcut
+`start-dev-windows.bat` still works (opens two windows). Prefer tasks for clarity.
+
+---
 
 ## QuickStart (fresh machine or new chat)
 Prereqs
@@ -22,10 +113,8 @@ Ports (dev policy)
 - Frontend: 3000 (or 3007 if 3000 is busy)
 - Frontend must point to API: `NEXT_PUBLIC_API_BASE_URL=http://localhost:3001`
 
-## TL;DR
-- Use one terminal for the API only. Don’t reuse or close it.
-- Use a second terminal for checks and the frontend.
- - If the API is already running: do not restart it. Just verify health, then start the frontend.
+## TL;DR (Updated)
+API task first → Frontend task next → Use `npm run dev:reset` before restarts → Health check → Continue.
 
 ## Start the API (dedicated terminal)
 Preferred (VS Code task, keeps its own terminal):
@@ -104,6 +193,19 @@ Use the VS Code command palette: “Tasks: Run Task”.
 
 ---
 
+## 🤖 Agent Automation (Updated Minimal Set)
+
+**CRITICAL: Follow this exact sequence to avoid the terminal reuse problem:**
+
+1. Run `npm run dev:reset` (optional if fresh).  
+2. Run API task.  
+3. After “Server running,” run Frontend task.  
+4. Health check (basic-test).  
+5. Report ready.  
+Avoid spawning servers in same terminal as ad‑hoc commands.
+
+---
+
 ## For AI Assistant/Agent (automation-safe instructions)
 
 To avoid interrupting long-running servers when executing automated checks:
@@ -130,10 +232,8 @@ Note: Automation should not attempt to spawn long-running servers in the same ex
 
 ---
 
-## One-click Windows launcher (no VS Code needed)
-Use the included batch file to guarantee separate windows:
-- Double-click `start-dev-windows.bat` in the repo folder.
-- It opens one window for the API (3001) and another for the Frontend (3000) with the correct API base URL.
+## One-click Windows launcher (legacy convenience)
+Still available: `start-dev-windows.bat` (opens API 3001 + Frontend 3000). Prefer tasks + `dev:reset` for controlled restarts.
 
 ---
 
@@ -150,6 +250,34 @@ Feature-specific examples (adapt names accordingly):
 Pattern to reuse for any feature:
 - Provide a status endpoint under `/api/<feature>/status` returning 200 when mounted.
 - Expose a minimal JSON endpoint somewhere under `/api/test/` for serialization sanity.
+
+---
+
+## 📋 Troubleshooting cookbook (fast answers)
+
+**"localhost refused to connect" or "can't reach localhost:3000"**
+- 🚀 **FIRST TRY**: `./start-dev-windows.bat` then wait 10 seconds
+- If still broken: Use "Clean Slate Recovery" section above
+
+**"API worked, then died; exit code 130"**
+- Cause: Terminal was reused or interrupted (classic AI assistant mistake)
+- 🚀 **Fix**: `./start-dev-windows.bat` for proper isolation
+
+**"Port 3001/3000 is in use"**
+- 🚀 **Quick fix**: `taskkill /IM node.exe /F` then `./start-dev-windows.bat`
+- Manual approach: Find PID with `netstat -ano | findstr :3001` then `taskkill /PID <PID> /F`
+
+**"Frontend shows nothing or Next.js errors"**
+- Check the Frontend terminal window that opened - look for red error messages
+- Common cause: Component import/export errors (check React console)
+
+**"cross-env not found" or npm errors**
+- The batch file handles this - don't run npm commands manually
+- If persistent: `cd linkedin-messaging-followup-next && npm install`
+
+**"Everything was working, now it's broken"**
+- 🚀 **Nuclear option**: "Clean Slate Recovery" section above
+- Usually caused by: machine sleep, VS Code restart, or terminal conflicts
 
 ---
 
