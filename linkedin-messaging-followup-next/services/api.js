@@ -188,7 +188,7 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
       // Include contact info for export functionality
       'Email': lead.email || '',
       'Phone': lead.phone || '',
-      'Company': lead.company || '',
+  'Company': lead.company || '',
       'Job Title': lead.jobTitle || '',
       // Include all raw data for compatibility
       ...lead
@@ -196,6 +196,35 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
   } catch (error) {
     console.error('Search error:', error);
     throw new Error('Failed to search leads');
+  }
+};
+
+// Incrementally update search terms for a lead
+export const updateLeadSearchTerms = async (leadId, { add = [], remove = [] }) => {
+  if (!leadId) throw new Error('leadId required');
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) throw new Error('Client ID not available');
+    const body = { add, remove };
+    const res = await api.patch(`/leads/${leadId}/search-terms`, body, { params: { testClient: clientId } });
+    return res.data; // { id, searchTerms, tokens }
+  } catch (e) {
+    console.error('updateLeadSearchTerms error', e.response?.data || e.message);
+    throw new Error('Failed to update search terms');
+  }
+};
+
+// Get popular search terms (server aggregated) with optional limit
+export const getPopularSearchTerms = async ({ limit = 30 } = {}) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) throw new Error('Client ID not available');
+    // reuse existing suggestions endpoint for now
+    const res = await api.get('/leads/search-token-suggestions', { params: { testClient: clientId, limit } });
+    return (res.data?.suggestions || []).map(s => s.term);
+  } catch (e) {
+    console.error('getPopularSearchTerms error', e.response?.data || e.message);
+    return [];
   }
 };
 
@@ -214,7 +243,7 @@ export const getLeadById = async (leadId) => {
     
     // Map backend response to frontend format
     const lead = response.data;
-    return {
+    const mapped = {
       id: lead.id,
       'Profile Key': lead.profileKey,
       'First Name': lead.firstName,
@@ -222,6 +251,8 @@ export const getLeadById = async (leadId) => {
       'LinkedIn Profile URL': lead.linkedinProfileUrl,
       'View In Sales Navigator': lead.viewInSalesNavigator,
       'Email': lead.email,
+  // Provide camelCase variant expected by components like LeadDetailForm
+  email: lead.email,
       'Phone': lead.phone,
       'AI Score': lead.aiScore,
       'Posts Relevance Score': lead.postsRelevanceScore,
@@ -248,8 +279,23 @@ export const getLeadById = async (leadId) => {
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,
-      followUpDate: lead.followUpDate
+  followUpDate: lead.followUpDate,
+  source: lead.source,
+  status: lead.status,
+  priority: lead.priority,
+  linkedinConnectionStatus: lead.linkedinConnectionStatus,
+  notes: lead.notes,
+  aiScore: lead.aiScore,
+  postsRelevancePercentage: lead.postsRelevancePercentage,
+  searchTerms: lead.searchTerms || lead['Search Terms'],
+  searchTokensCanonical: lead.searchTokensCanonical || lead['Search Tokens (canonical)'],
+  lastMessageDate: lead.lastMessageDate
     };
+    if (typeof window !== 'undefined') {
+      try { window.__lastLead = mapped; } catch {}
+      try { console.debug('[getLeadById] mapped lead source variants', { source: mapped.source, Source: mapped['Source'] }); } catch {}
+    }
+    return mapped;
   } catch (error) {
     throw new Error('Failed to load lead details');
   }
@@ -400,14 +446,25 @@ export const updateLead = async (leadId, updateData) => {
     });
     
     const clientId = getCurrentClientId();
-    if (!clientId) {
-      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    let effectiveClientId = clientId;
+    if (!effectiveClientId && typeof window !== 'undefined') {
+      // Fallback: extract testClient from URL if present
+      const u = new URL(window.location.href);
+      const tc = u.searchParams.get('testClient');
+      if (tc) {
+        effectiveClientId = tc;
+        console.debug('[api.updateLead] using fallback testClient from URL', tc);
+      }
+    }
+    if (!effectiveClientId) {
+      console.error('[api.updateLead] missing clientId – aborting request');
+      throw new Error('Client authentication missing (no clientId).');
     }
     
   try { console.debug('[api.updateLead] sending', { backendData }); } catch {}
   const response = await api.put(`/leads/${leadId}`, backendData, {
       params: {
-        testClient: clientId
+        testClient: effectiveClientId
       }
     });
     

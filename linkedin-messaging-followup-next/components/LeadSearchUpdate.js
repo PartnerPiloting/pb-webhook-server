@@ -5,6 +5,7 @@ import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 import LeadSearchEnhanced from './LeadSearchEnhanced';
 import LeadDetailModal from './LeadDetailModal';
+import PaginationSummary from './PaginationSummary';
 
 // Import icons using require to avoid Next.js issues
 let MagnifyingGlassIcon, UserIcon, ExternalLinkIcon;
@@ -276,48 +277,16 @@ const LeadSearchUpdate = () => {
         onSearch={handleEnhancedSearch}
       />
 
-      {/* Pagination Controls */}
-      {/* Always show pagination controls with API pagination */}
-      <div className="flex items-center justify-between bg-white px-4 py-3 border rounded-lg">
-        <div className="flex items-center text-sm text-gray-700">
-          <span>
-            Page {currentPage} - Showing {leads.length} leads (up to {leadsPerPage} per page)
-          </span>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {/* Previous button */}
-          <button
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className={`px-3 py-1 rounded text-sm font-medium ${
-              currentPage === 1
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Previous
-          </button>
-          
-          {/* Current page indicator */}
-          <span className="px-3 py-1 rounded text-sm font-medium bg-blue-600 text-white">
-            {currentPage}
-          </span>
-          
-          {/* Next button - show unless we got less than full page (indicating no more data) */}
-          <button
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={leads.length < leadsPerPage}
-            className={`px-3 py-1 rounded text-sm font-medium ${
-              leads.length < leadsPerPage
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <PaginationSummary
+        currentPage={currentPage}
+        pageItemCount={leads.length}
+        pageSize={leadsPerPage}
+        // We don't have a true total; pass null so component omits it
+        knownTotal={null}
+        onPageChange={handlePageChange}
+        isLoading={isLoading}
+        disableNext={leads.length < leadsPerPage}
+      />
 
       {/* Modal for Lead Details */}
       <LeadDetailModal
