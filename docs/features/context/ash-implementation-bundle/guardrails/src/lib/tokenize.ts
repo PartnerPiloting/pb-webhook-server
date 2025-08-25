@@ -1,0 +1,5 @@
+import { normaliseAndCanonise, splitTokens } from "./tags";
+export function buildTokensForStorage(rawSearchTerms: string): { tokens: string[]; invalid: string[] } { return normaliseAndCanonise(rawSearchTerms); }
+export function tokensToSearchTerms(tokens: string[]): string { return [...new Set(tokens)].sort((a,b)=> a.localeCompare(b)).join(", "); }
+export type FilterState = { includeAll: string[]; includeAny: string[]; exclude: string[] };
+export function parseQuery(q: string): FilterState { const parts = splitTokens(q); const includeAll: string[] = []; const includeAny: string[] = []; const exclude: string[] = []; for (const raw of parts) { if (raw.startsWith("-") && raw.length>1) exclude.push(raw.slice(1)); else if (raw.includes("|")) raw.split("|").forEach(t => { const v = t.trim(); if (v) includeAny.push(v); }); else includeAll.push(raw); } return { includeAll, includeAny, exclude }; }
