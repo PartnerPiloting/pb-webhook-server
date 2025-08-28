@@ -9,6 +9,8 @@
     "dev:front": "cross-env NEXT_PUBLIC_API_BASE_URL=http://localhost:3001 npm --prefix linkedin-messaging-followup-next run dev",
     "dev:simple": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:front\"",
   "dev:reset": "node scripts/killAllNode.js || exit 0",
+  "lh:crawl": "node scripts/crawlLhManual.js",
+  "taxonomy:build": "node scripts/buildManualTaxonomy.js",
     "ports:check": "node scripts/killPorts.js 3000 3001",
     "ports:free": "node scripts/killPorts.js --kill 3000 3001",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -27,7 +29,9 @@
     "form-data": "^4.0.0",
     "luxon": "^3.6.1",
     "node-fetch": "^3.3.2",
-    "openai": "^4.69.0"
+  "openai": "^4.69.0",
+  "cheerio": "1.0.0-rc.12",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

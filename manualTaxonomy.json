@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "generatedAt": "2025-08-28T00:00:00.000Z",
+  "description": "Expanded manual action taxonomy seed (working hours + core campaign actions). items[].id is slug, phrase is canonical action phrase. category optional.",
+  "items": [
+    { "id": "open-settings-working-hours", "phrase": "Open Settings > Working Hours", "category": "working-hours" },
+    { "id": "set-daily-active-window", "phrase": "Set daily active window", "category": "working-hours" },
+    { "id": "add-mid-day-break", "phrase": "Add mid-day break", "category": "working-hours" },
+    { "id": "save-and-restart-campaigns", "phrase": "Save and restart campaigns", "category": "working-hours" },
+
+    { "id": "create-new-campaign", "phrase": "Create new campaign", "category": "campaign" },
+    { "id": "start-campaign", "phrase": "Start campaign", "category": "campaign" },
+    { "id": "pause-campaign", "phrase": "Pause campaign", "category": "campaign" },
+    { "id": "resume-campaign", "phrase": "Resume campaign", "category": "campaign" },
+    { "id": "stop-campaign", "phrase": "Stop campaign", "category": "campaign" },
+    { "id": "delete-campaign", "phrase": "Delete campaign", "category": "campaign" },
+    { "id": "duplicate-campaign", "phrase": "Duplicate campaign", "category": "campaign" },
+    { "id": "edit-campaign-settings", "phrase": "Edit campaign settings", "category": "campaign" },
+    { "id": "add-campaign-step", "phrase": "Add campaign step", "category": "campaign" },
+    { "id": "remove-campaign-step", "phrase": "Remove campaign step", "category": "campaign" },
+    { "id": "reorder-campaign-steps", "phrase": "Reorder campaign steps", "category": "campaign" },
+    { "id": "set-daily-send-limit", "phrase": "Set daily send limit", "category": "campaign" },
+    { "id": "enable-ab-test", "phrase": "Enable A/B test", "category": "campaign" },
+    { "id": "disable-ab-test", "phrase": "Disable A/B test", "category": "campaign" },
+    { "id": "view-campaign-analytics", "phrase": "View campaign analytics", "category": "campaign" },
+    { "id": "export-campaign-stats", "phrase": "Export campaign stats", "category": "campaign" },
+    { "id": "filter-campaign-leads", "phrase": "Filter campaign leads", "category": "campaign" },
+    { "id": "add-leads-to-campaign", "phrase": "Add leads to campaign", "category": "campaign" },
+    { "id": "remove-lead-from-campaign", "phrase": "Remove lead from campaign", "category": "campaign" },
+    { "id": "schedule-campaign", "phrase": "Schedule campaign", "category": "campaign" }
+  ]
+}
