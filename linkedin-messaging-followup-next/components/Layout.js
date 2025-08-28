@@ -3,7 +3,7 @@ import React, { Suspense, useEffect, useState } from 'react';
 import { getEnvLabel } from '../utils/clientUtils.js';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 import { initializeClient, getClientProfile } from '../utils/clientUtils.js';
 
 // Client initialization hook
@@ -42,6 +42,7 @@ const useClientInitialization = () => {
 // Component that uses useSearchParams wrapped in Suspense
 const NavigationWithParams = ({ pathname, children }) => {
   const searchParams = useSearchParams();
+  // Removed horizontal scroll / hidden items – use wrapping layout instead
   // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
   const serviceLevel = parseInt(searchParams.get('level') || '2');
   // Always show Top Scoring Leads in the navigation
@@ -69,7 +70,6 @@ const NavigationWithParams = ({ pathname, children }) => {
       description: 'Review and process new leads',
       minLevel: 1
     },
-    // Top Scoring Leads (placed before Posts)
     {
       name: 'Top Scoring Leads',
       href: '/top-scoring-leads',
@@ -90,6 +90,20 @@ const NavigationWithParams = ({ pathname, children }) => {
       icon: CogIcon,
       description: 'Configure scoring attributes and system settings',
       minLevel: 1
+    },
+    {
+      name: 'Start Here',
+      href: '/start-here',
+      icon: BookOpenIcon,
+      description: 'Onboarding categories and topics',
+      minLevel: 1
+    },
+    {
+      name: 'Help',
+      href: '/help',
+      icon: QuestionMarkCircleIcon,
+      description: 'Help center (coming soon)',
+      minLevel: 1
     }
   ];
 
@@ -97,37 +111,29 @@ const NavigationWithParams = ({ pathname, children }) => {
   const filteredNavigation = navigation.filter(item => item.minLevel <= serviceLevel);
 
   return (
-    <nav className="mb-8 overflow-x-auto" aria-label="Tabs">
-      <div className="flex space-x-6 sm:space-x-8 min-w-max">
-      {filteredNavigation && filteredNavigation.map((item) => {
-        if (!item || !item.name || !item.href) return null;
-        
-        const Icon = item.icon;
-        // Check if current pathname matches this navigation item
-        const isActive = pathname === item.href;
-        
-        return (
-          <Link
-            key={item.name}
-            href={`${item.href}?${searchParams.toString()}`}
-            className={`${
-              isActive
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200`}
-          >
-            {Icon && <Icon className="h-5 w-5 mr-2" />}
-            <div>
-              <div>{item.name || ''}</div>
-              {item.description && (
-                <div className="text-xs text-gray-400 font-normal">
-                  {item.description}
-                </div>
-              )}
-            </div>
-          </Link>
-        );
-      })}
+    <nav className="mb-8" aria-label="Primary">
+      <div className="flex flex-wrap gap-x-8 gap-y-3 items-stretch">
+        {filteredNavigation.map(item => {
+          if (!item) return null;
+          const Icon = item.icon;
+          const isActive = pathname === item.href;
+          return (
+            <Link
+              key={item.name}
+              href={`${item.href}?${searchParams.toString()}`}
+              title={item.description || item.name}
+              className={`group inline-flex items-center border-b-2 px-1 py-1.5 text-sm font-medium transition-colors ${
+                isActive ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {Icon && <Icon className={`h-5 w-5 mr-2 ${isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-500'}`} />}
+              <span className="leading-tight">
+                {item.name}
+                <span className="block text-[11px] font-normal text-gray-400 leading-tight max-w-[11rem] truncate" aria-hidden="true">{item.description}</span>
+              </span>
+            </Link>
+          );
+        })}
       </div>
     </nav>
   );

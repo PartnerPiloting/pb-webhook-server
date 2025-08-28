@@ -1032,4 +1032,68 @@ export const getPostTokenUsage = async () => {
 // Alias for backwards compatibility
 export const saveAttribute = saveAttributeChanges;
 
+// START HERE HELP: fetch hierarchical onboarding categories (Phase 1)
+export const getStartHereHelp = async () => {
+  try {
+    // Use base without /api/linkedin just like other direct calls
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+  // Always include body content for now (can optimize later with lazy loading)
+  const resp = await fetch(`${baseUrl}/api/help/start-here?include=body`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    if (!resp.ok) throw new Error(`Failed to load Start Here help: ${resp.status}`);
+    return await resp.json();
+  } catch (e) {
+    console.error('getStartHereHelp error', e);
+    throw e;
+  }
+};
+
+// Fetch a single help topic with parsed blocks
+export const getHelpTopic = async (id, opts = {}) => {
+  const includeInstructions = opts.includeInstructions ? '1' : '0';
+  try {
+    // Prefer local API when running on localhost for faster dev & to match in-flight backend changes
+    let baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || '';
+    if (!baseUrl && typeof window !== 'undefined') {
+      baseUrl = window.location.origin.includes('localhost') ? 'http://localhost:3001' : window.location.origin;
+    }
+    if (!baseUrl) baseUrl = 'https://pb-webhook-server.onrender.com';
+
+    // Add a timeout wrapper so UI can surface an error instead of endless "Loading" if server unreachable
+    const controller = new AbortController();
+    const t = setTimeout(()=>controller.abort(), 12000); // 12s network timeout
+    let resp;
+    try {
+      resp = await fetch(`${baseUrl}/api/help/topic/${id}?include_instructions=${includeInstructions}`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
+    } finally {
+      clearTimeout(t);
+    }
+    if (!resp.ok) {
+      // Attempt fallback to remote server if we were on localhost and got 404 (record id mismatch between bases)
+      const isLocal = baseUrl.includes('localhost');
+      let bodyText = '';
+      try { bodyText = await resp.text(); } catch {}
+      const lowerBody = bodyText.toLowerCase();
+      const shouldRetryRemote = isLocal && (resp.status === 404 || lowerBody.includes('topic_not_found'));
+      if (shouldRetryRemote) {
+        try {
+          const remoteUrl = 'https://pb-webhook-server.onrender.com';
+          const remoteResp = await fetch(`${remoteUrl}/api/help/topic/${id}?include_instructions=${includeInstructions}`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+          if (remoteResp.ok) return await remoteResp.json();
+        } catch (re) {
+          console.warn('Remote fallback failed', re);
+        }
+      }
+      throw new Error(`Failed to load topic ${id}: ${resp.status}`);
+    }
+    return await resp.json();
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      console.error('getHelpTopic timeout', id);
+      throw new Error('Topic fetch timed out');
+    }
+    console.error('getHelpTopic error', e);
+    throw e;
+  }
+};
+
 export default api;
