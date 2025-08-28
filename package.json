@@ -7,9 +7,10 @@
     "dev": "nodemon index.js",
     "dev:api": "cross-env PORT=3001 ENABLE_TOP_SCORING_LEADS=true TOP_SCORING_LEADS_DRY_RUN=true nodemon index.js",
     "dev:front": "cross-env NEXT_PUBLIC_API_BASE_URL=http://localhost:3001 npm --prefix linkedin-messaging-followup-next run dev",
-    "dev:simple": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:front\"",
+  "dev:simple": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:front\"",
   "dev:reset": "node scripts/killAllNode.js || exit 0",
-    "ports:check": "node scripts/killPorts.js 3000 3001",
+  "dev:auto": "powershell -ExecutionPolicy Bypass -File scripts/Start-Dev.ps1",
+  "ports:check": "node scripts/killPorts.js 3000 3001",
     "ports:free": "node scripts/killPorts.js --kill 3000 3001",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
