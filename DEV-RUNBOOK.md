@@ -313,6 +313,30 @@ Pattern to reuse for any feature:
 3) Confirm ports 3000/3001 are free.
 4) Start API task; verify health; then start Frontend.
 
+### NEW: Frontend keeps starting then stops (exit code 130) repeatedly
+**Cause:** The same terminal session was reused for another command (health check, netstat, etc.) after launching the frontend (or API) process. VS Code / shell sends an interrupt (Ctrl+C) which gracefully stops the running Next.js dev server, producing exit code 130.
+
+**Fix (simplest, do every time it happens):**
+1. Do NOT try to restart inside that same terminal.
+2. Close that terminal tab.
+3. Run `npm run dev:reset` in a fresh terminal.
+4. Start API (dedicated terminal) — DO NOT type anything more in that tab.
+5. Start Frontend (second dedicated terminal) — again, leave it alone.
+6. Open / reload the browser page.
+7. Run health checks ONLY from a third throw‑away terminal.
+
+**Golden Rule Reinforced:** Once a terminal is running `nodemon` or `next dev`, treat it as READ‑ONLY. Any additional command typed (or automation reusing it) risks sending Ctrl+C.
+
+**Agent / Automation Safe Sequence (copy/paste logic):**
+```
+npm run dev:reset
+ (start API via task or: npm run dev:api)   # leave terminal alone after logs show "Server running on port 3001"
+ (start Frontend via task or: npm run dev:front)  # leave terminal alone after Next.js prints "Ready"
+curl http://localhost:3001/basic-test      # run in a DIFFERENT terminal
+```
+
+**Optional Hard Guard (future improvement):** Add a lightweight wrapper script that spawns detached child processes so the parent terminal can exit without killing servers (e.g. using `start` on Windows or `nohup` on Unix). For now, disciplined terminal separation is lighter and documented here.
+
 ---
 
 ## Reusable development pattern (for any new feature)
