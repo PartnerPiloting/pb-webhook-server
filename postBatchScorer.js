@@ -173,8 +173,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     systemLogger.summary(`Error reasons: ${JSON.stringify(results.errorReasonCounts)}`);
     systemLogger.summary(`Errors (lead-level): ${results.totalErrors}`);
     systemLogger.summary(`Duration: ${results.duration}s`);
-    
-    return results;
+
+    // Attach diagnostics BEFORE returning (previously unreachable after early return)
     if (options.verboseErrors && diagnosticsCollector) {
         results.diagnostics = {
             projectId: process.env.GCP_PROJECT_ID || null,
