@@ -486,13 +486,21 @@ router.post("/run-post-batch-score", async (req, res) => {
   try {
     // Parse query parameters
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
-    console.log(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}`);
+    const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true';
+    const tableOverride = req.query.table || req.query.leadsTableName || null;
+    const markSkips = req.query.markSkips === undefined ? true : req.query.markSkips === 'true';
+    console.log(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, tableOverride=${tableOverride || 'DEFAULT'}, markSkips=${markSkips}`);
     // Start the multi-tenant post scoring process for ALL clients
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
       null, // No specific client - process ALL
-      limit
+      limit,
+      {
+        dryRun,
+        leadsTableName: tableOverride || undefined,
+        markSkips
+      }
     );
     // Return results immediately
     res.status(200).json({
@@ -504,10 +512,14 @@ router.post("/run-post-batch-score", async (req, res) => {
         failedClients: results.failedClients,
         totalPostsProcessed: results.totalPostsProcessed,
         totalPostsScored: results.totalPostsScored,
+        totalLeadsSkipped: results.totalLeadsSkipped,
+        skipCounts: results.skipCounts,
         totalErrors: results.totalErrors,
         duration: results.duration
       },
-      clientResults: results.clientResults
+  clientResults: results.clientResults,
+      mode: dryRun ? 'dryRun' : 'live',
+      table: tableOverride || 'Leads'
     });
   } catch (error) {
     console.error("Multi-tenant post scoring error:", error.message, error.stack);

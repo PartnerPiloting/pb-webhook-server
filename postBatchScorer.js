@@ -40,12 +40,12 @@ const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS
  * @param {number} limit - Optional limit on posts to process per client
  * @returns {Object} - Summary of execution across all clients
  */
-async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId = null, limit = null) {
+async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId = null, limit = null, options = {}) {
     // Create system-level logger for multi-tenant operations
     const systemLogger = new StructuredLogger('SYSTEM');
     
     systemLogger.setup("=== STARTING MULTI-TENANT POST SCORING ===");
-    systemLogger.setup(`Parameters: clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}`);
+    systemLogger.setup(`Parameters: clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${!!options.dryRun}, tableOverride=${options.leadsTableName || 'DEFAULT'}, markSkips=${options.markSkips !== false}`);
     
     // Set global dependencies
     POST_BATCH_SCORER_VERTEX_AI_CLIENT = geminiClient;
@@ -58,6 +58,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
         failedClients: 0,
         totalPostsProcessed: 0,
         totalPostsScored: 0,
+        totalLeadsSkipped: 0,
+        skipCounts: {}, // aggregated skip reasons
         totalErrors: 0,
         duration: null,
         clientResults: []
@@ -77,13 +79,19 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
             clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
             
             try {
-                const clientResult = await processClientPostScoring(client, limit, clientLogger);
+                const clientResult = await processClientPostScoring(client, limit, clientLogger, options);
                 results.clientResults.push(clientResult);
                 
                 if (clientResult.status === 'success') {
                     results.successfulClients++;
                     results.totalPostsProcessed += clientResult.postsProcessed || 0;
                     results.totalPostsScored += clientResult.postsScored || 0;
+                    results.totalLeadsSkipped += clientResult.leadsSkipped || 0;
+                    if (clientResult.skipCounts) {
+                        for (const [reason, count] of Object.entries(clientResult.skipCounts)) {
+                            results.skipCounts[reason] = (results.skipCounts[reason] || 0) + count;
+                        }
+                    }
                     clientLogger.summary(`SUCCESS - Processed: ${clientResult.postsProcessed}, Scored: ${clientResult.postsScored}, Duration: ${clientResult.duration}s`);
                 } else {
                     results.failedClients++;
@@ -97,6 +105,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
                     status: clientResult.status,
                     postsProcessed: clientResult.postsProcessed || 0,
                     postsScored: clientResult.postsScored || 0,
+                    leadsSkipped: clientResult.leadsSkipped || 0,
                     errors: clientResult.errors || 0,
                     duration: clientResult.duration,
                     errorDetails: clientResult.errorDetails || []
@@ -148,6 +157,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     systemLogger.summary(`Clients: ${results.successfulClients}/${results.totalClients} successful`);
     systemLogger.summary(`Posts processed: ${results.totalPostsProcessed}`);
     systemLogger.summary(`Posts scored: ${results.totalPostsScored}`);
+    systemLogger.summary(`Leads skipped: ${results.totalLeadsSkipped}`);
+    systemLogger.summary(`Skip reasons: ${JSON.stringify(results.skipCounts)}`);
     systemLogger.summary(`Errors: ${results.totalErrors}`);
     systemLogger.summary(`Duration: ${results.duration}s`);
     
@@ -158,7 +169,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     Process Single Client Post Scoring
 =================================================================== */
 
-async function processClientPostScoring(client, limit, logger) {
+async function processClientPostScoring(client, limit, logger, options = {}) {
     const clientStartTime = new Date();
     const clientResult = {
         clientId: client.clientId,
@@ -166,6 +177,8 @@ async function processClientPostScoring(client, limit, logger) {
         status: 'processing',
         postsProcessed: 0,
         postsScored: 0,
+    leadsSkipped: 0,
+    skipCounts: {},
         errors: 0,
         errorDetails: [],
         duration: 0
@@ -182,6 +195,13 @@ async function processClientPostScoring(client, limit, logger) {
         
         // Load client-specific configuration
         const config = await loadClientPostScoringConfig(clientBase);
+        // Optional table override (e.g., "Leads copy")
+        if (options.leadsTableName) {
+            logger.setup(`Overriding leads table name: ${config.leadsTableName} -> ${options.leadsTableName}`);
+            config.leadsTableName = options.leadsTableName;
+        }
+        // Add skip reason field to config (tolerant if missing in Airtable)
+        config.fields.skipReason = 'Posts Skip Reason';
         
         // Get leads with posts to be scored
         const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit);
@@ -203,9 +223,15 @@ async function processClientPostScoring(client, limit, logger) {
             logger.process(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} leads) for client ${client.clientId}`);
             
             try {
-                const chunkResult = await processPostScoringChunk(chunk, clientBase, config, client.clientId, logger);
+                const chunkResult = await processPostScoringChunk(chunk, clientBase, config, client.clientId, logger, options);
                 clientResult.postsProcessed += chunkResult.processed;
                 clientResult.postsScored += chunkResult.scored;
+                clientResult.leadsSkipped += chunkResult.skipped || 0;
+                if (chunkResult.skipCounts) {
+                    for (const [reason, count] of Object.entries(chunkResult.skipCounts)) {
+                        clientResult.skipCounts[reason] = (clientResult.skipCounts[reason] || 0) + count;
+                    }
+                }
                 clientResult.errors += chunkResult.errors;
                 clientResult.errorDetails.push(...chunkResult.errorDetails);
                 
@@ -275,12 +301,14 @@ async function getLeadsForPostScoring(clientBase, config, limit) {
     return records;
 }
 
-async function processPostScoringChunk(records, clientBase, config, clientId, logger) {
+async function processPostScoringChunk(records, clientBase, config, clientId, logger, options = {}) {
     const chunkResult = {
         processed: 0,
         scored: 0,
+        skipped: 0,
         errors: 0,
-        errorDetails: []
+        errorDetails: [],
+        skipCounts: {}
     };
     
     logger.process(`Processing ${records.length} leads for post scoring in client ${clientId}`);
@@ -289,13 +317,16 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
         try {
             chunkResult.processed++;
             
-            const result = await analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger);
+            const result = await analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger, options);
             
             if (result.status === 'success' || result.status === 'scored') {
                 chunkResult.scored++;
-            } else if (result.status && result.status.startsWith('Skipped')) {
-                // Skipped records are not counted as errors - they'll be retried next time
-                logger.debug(`Lead ${leadRecord.id}: ${result.status}`);
+            } else if (result.status === 'skipped') {
+                chunkResult.skipped++;
+                if (result.skipReason) {
+                    chunkResult.skipCounts[result.skipReason] = (chunkResult.skipCounts[result.skipReason] || 0) + 1;
+                }
+                logger.debug(`Lead ${leadRecord.id}: skipped (${result.skipReason || 'UNKNOWN'})`);
             }
             
         } catch (leadError) {
@@ -311,14 +342,22 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
 /**
  * Analyze and score posts for a single lead - adapted from postAnalysisService.js
  */
-async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger) {
+async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger, options = {}) {
     logger.debug(`Analyzing posts for lead ${leadRecord.id} in client ${clientId}`);
     
     // Parse posts content
     const rawPostsContent = leadRecord.fields[config.fields.postsContent];
     if (!rawPostsContent) {
         logger.debug(`Lead ${leadRecord.id}: No posts content, skipping`);
-        return { status: "skipped", reason: "No posts content" };
+        if (!options.dryRun && options.markSkips !== false) {
+            try {
+                await clientBase(config.leadsTableName).update(leadRecord.id, {
+                    [config.fields.dateScored]: new Date().toISOString(),
+                    [config.fields.skipReason]: 'NO_CONTENT'
+                });
+            } catch (e) { /* field may not exist */ }
+        }
+        return { status: 'skipped', skipReason: 'NO_CONTENT' };
     }
     
     let parsedPostsArray;
@@ -333,11 +372,13 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             // Update Posts JSON Status field - simple pass/fail tracking
             const jsonStatus = repairResult.success ? 'Parsed' : 'Failed';
             
-            try {
-                await clientBase(config.leadsTableName).update(leadRecord.id, {
-                    'Posts JSON Status': jsonStatus
-                });
-            } catch (e) { /* Field might not exist yet */ }
+            if (!options.dryRun) {
+                try {
+                    await clientBase(config.leadsTableName).update(leadRecord.id, {
+                        'Posts JSON Status': jsonStatus
+                    });
+                } catch (e) { /* Field might not exist yet */ }
+            }
         } else {
             logger.error(`Lead ${leadRecord.id}: All JSON parsing methods failed: ${repairResult.error}`);
             
@@ -347,36 +388,50 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             logger.debug(`Lead ${leadRecord.id}: Last 200 chars: ${rawPostsContent.substring(rawPostsContent.length - 200)}`);
             
             // Mark as processed with detailed error info
-            await clientBase(config.leadsTableName).update(leadRecord.id, {
-                [config.fields.relevanceScore]: 0,
-                [config.fields.aiEvaluation]: `JSON_PARSE_ERROR: ${repairResult.error}\nJSON Length: ${rawPostsContent.length}\nFirst 200 chars: ${rawPostsContent.substring(0, 200)}`,
-                [config.fields.dateScored]: new Date().toISOString(),
-                'Posts JSON Status': 'Failed'
-            });
+            if (!options.dryRun) {
+                await clientBase(config.leadsTableName).update(leadRecord.id, {
+                    [config.fields.relevanceScore]: 0,
+                    [config.fields.aiEvaluation]: `JSON_PARSE_ERROR: ${repairResult.error}\nJSON Length: ${rawPostsContent.length}\nFirst 200 chars: ${rawPostsContent.substring(0, 200)}`,
+                    [config.fields.dateScored]: new Date().toISOString(),
+                    'Posts JSON Status': 'Failed'
+                });
+            }
             return { status: "error", reason: "Unparseable JSON", error: repairResult.error };
         }
     } else if (Array.isArray(rawPostsContent)) {
         parsedPostsArray = rawPostsContent;
         // Mark as parsed if it exists as array
-        try {
-            await clientBase(config.leadsTableName).update(leadRecord.id, {
-                'Posts JSON Status': 'Parsed'
-            });
-        } catch (e) { /* Field might not exist */ }
+        if (!options.dryRun) {
+            try {
+                await clientBase(config.leadsTableName).update(leadRecord.id, {
+                    'Posts JSON Status': 'Parsed'
+                });
+            } catch (e) { /* Field might not exist */ }
+        }
     } else {
         console.warn(`Lead ${leadRecord.id}: Posts Content field is not a string or array, skipping`);
-        await clientBase(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.relevanceScore]: 0,
-            [config.fields.aiEvaluation]: "ERROR: Invalid Posts Content field type",
-            [config.fields.dateScored]: new Date().toISOString(),
-            'Posts JSON Status': 'Failed'
-        });
+        if (!options.dryRun) {
+            await clientBase(config.leadsTableName).update(leadRecord.id, {
+                [config.fields.relevanceScore]: 0,
+                [config.fields.aiEvaluation]: "ERROR: Invalid Posts Content field type",
+                [config.fields.dateScored]: new Date().toISOString(),
+                'Posts JSON Status': 'Failed'
+            });
+        }
         return { status: "error", reason: "Invalid Posts Content field" };
     }
     
     if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) {
-        console.warn(`Lead ${leadRecord.id}: Parsed Posts Content is not an array, skipping`);
-        return { status: "Skipped - Parsed Posts Content not array", leadId: leadRecord.id };
+        console.warn(`Lead ${leadRecord.id}: Parsed Posts Content is not an array or empty, skipping`);
+        if (!options.dryRun && options.markSkips !== false) {
+            try {
+                await clientBase(config.leadsTableName).update(leadRecord.id, {
+                    [config.fields.dateScored]: new Date().toISOString(),
+                    [config.fields.skipReason]: 'NO_POSTS_PARSED'
+                });
+            } catch (e) { /* field may not exist */ }
+        }
+        return { status: 'skipped', skipReason: 'NO_POSTS_PARSED', leadId: leadRecord.id };
     }
     
     // Filter for original posts
@@ -385,7 +440,15 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     
     if (originalPosts.length === 0) {
         console.log(`Lead ${leadRecord.id}: No original posts found, skipping`);
-        return { status: "Skipped - No original posts", leadId: leadRecord.id };
+        if (!options.dryRun && options.markSkips !== false) {
+            try {
+                await clientBase(config.leadsTableName).update(leadRecord.id, {
+                    [config.fields.dateScored]: new Date().toISOString(),
+                    [config.fields.skipReason]: 'NO_ORIGINAL'
+                });
+            } catch (e) { /* field may not exist */ }
+        }
+        return { status: 'skipped', skipReason: 'NO_ORIGINAL', leadId: leadRecord.id };
     }
 
     try {
@@ -457,12 +520,15 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             `Rationale: ${highestScoringPost.scoring_rationale || 'N/A'}`;
 
         // Update record with scoring results (matching original format exactly)
-        await clientBase(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.relevanceScore]: highestScoringPost.post_score,
-            [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
-            [config.fields.topScoringPost]: topScoringPostText,
-            [config.fields.dateScored]: new Date().toISOString()
-        });
+        if (!options.dryRun) {
+            await clientBase(config.leadsTableName).update(leadRecord.id, {
+                [config.fields.relevanceScore]: highestScoringPost.post_score,
+                [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
+                [config.fields.topScoringPost]: topScoringPostText,
+                [config.fields.dateScored]: new Date().toISOString(),
+                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+            });
+        }
         
         logger.summary(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
         return { status: "success", relevanceScore: highestScoringPost.post_score };
@@ -477,10 +543,13 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             rawResponseSnippet: error.rawResponseSnippet || null,
             timestamp: new Date().toISOString(),
         };
-        await clientBase(config.leadsTableName).update(leadRecord.id, {
-            [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
-            [config.fields.dateScored]: new Date().toISOString()
-        });
+        if (!options.dryRun) {
+            await clientBase(config.leadsTableName).update(leadRecord.id, {
+                [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
+                [config.fields.dateScored]: new Date().toISOString(),
+                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+            });
+        }
         return { status: "error", error: error.message, leadId: leadRecord.id, errorDetails };
     }
 }
