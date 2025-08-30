@@ -485,8 +485,10 @@ router.post("/run-post-batch-score", async (req, res) => {
   }
   try {
     // Parse query parameters
-    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
-    const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true';
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
+  const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true';
+  const verboseErrors = req.query.verboseErrors === 'true';
+  const maxVerboseErrors = req.query.maxVerboseErrors ? parseInt(req.query.maxVerboseErrors, 10) : 10;
     const tableOverride = req.query.table || req.query.leadsTableName || null;
     const markSkips = req.query.markSkips === undefined ? true : req.query.markSkips === 'true';
     let singleClientId = req.query.clientId || req.query.client_id || null;
@@ -524,7 +526,9 @@ router.post("/run-post-batch-score", async (req, res) => {
       {
         dryRun,
         leadsTableName: tableOverride || undefined,
-        markSkips
+        markSkips,
+        verboseErrors,
+        maxVerboseErrors
       }
     );
     // Return results immediately
@@ -547,7 +551,8 @@ router.post("/run-post-batch-score", async (req, res) => {
       mode: dryRun ? 'dryRun' : 'live',
   table: tableOverride || 'Leads',
   clientFiltered: singleClientId || null,
-  clientNameQuery: clientNameQuery || null
+  clientNameQuery: clientNameQuery || null,
+  diagnostics: results.diagnostics || null
     });
   } catch (error) {
     console.error("Multi-tenant post scoring error:", error.message, error.stack);
@@ -583,13 +588,15 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
   }
   const dryRun = req.query.dryRun === 'true';
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+  const verboseErrors = req.query.verboseErrors === 'true';
+  const maxVerboseErrors = req.query.maxVerboseErrors ? parseInt(req.query.maxVerboseErrors, 10) : 10;
   try {
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
       clientId,
       limit,
-      { dryRun }
+  { dryRun, verboseErrors, maxVerboseErrors }
     );
     const first = results.clientResults[0] || {};
     res.json({
@@ -604,7 +611,8 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
       errors: results.totalErrors,
   errorReasonCounts: results.errorReasonCounts,
       duration: results.duration,
-      clientStatus: first.status || null
+  clientStatus: first.status || null,
+  diagnostics: results.diagnostics || null
     });
   } catch (e) {
     res.status(500).json({ status: 'error', message: e.message });
