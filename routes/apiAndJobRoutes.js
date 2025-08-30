@@ -469,6 +469,7 @@ router.get("/debug-gemini-info", (_req, res) => {
 // Import multi-tenant post scoring
 // ---------------------------------------------------------------
 const postBatchScorer = require("../postBatchScorer.js");
+const { commitHash } = require("../versionInfo.js");
 
 // ---------------------------------------------------------------
 // Multi-Tenant Post Batch Score (Admin/Batch Operation)
@@ -485,14 +486,51 @@ router.post("/run-post-batch-score", async (req, res) => {
   }
   try {
     // Parse query parameters
-    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
-    console.log(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}`);
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Optional: limit per client
+  const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true';
+  const verboseErrors = req.query.verboseErrors === 'true';
+  const maxVerboseErrors = req.query.maxVerboseErrors ? parseInt(req.query.maxVerboseErrors, 10) : 10;
+    const tableOverride = req.query.table || req.query.leadsTableName || null;
+    const markSkips = req.query.markSkips === undefined ? true : req.query.markSkips === 'true';
+    let singleClientId = req.query.clientId || req.query.client_id || null;
+    const clientNameQuery = req.query.clientName || req.query.client_name || null;
+
+    // If clientName provided but no clientId, attempt to resolve it
+    if (!singleClientId && clientNameQuery) {
+      try {
+        const clientService = require("../services/clientService");
+        const activeClients = await clientService.getActiveClients();
+        const match = activeClients.find(c => (c.clientName || '').toLowerCase() === clientNameQuery.toLowerCase());
+        if (match) {
+          singleClientId = match.clientId;
+          console.log(`Resolved clientName='${clientNameQuery}' to clientId='${singleClientId}'`);
+        } else {
+          return res.status(404).json({
+            status: 'error',
+            message: `No active client found with name '${clientNameQuery}'`
+          });
+        }
+      } catch (e) {
+        console.warn('Client name resolution failed:', e.message);
+      }
+    }
+    console.log(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, tableOverride=${tableOverride || 'DEFAULT'}, markSkips=${markSkips}`);
+    if (singleClientId) {
+      console.log(`Restricting run to single clientId=${singleClientId}`);
+    }
     // Start the multi-tenant post scoring process for ALL clients
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
-      null, // No specific client - process ALL
-      limit
+      singleClientId || null, // specific client if provided
+      limit,
+      {
+        dryRun,
+        leadsTableName: tableOverride || undefined,
+        markSkips,
+        verboseErrors,
+        maxVerboseErrors
+      }
     );
     // Return results immediately
     res.status(200).json({
@@ -504,10 +542,19 @@ router.post("/run-post-batch-score", async (req, res) => {
         failedClients: results.failedClients,
         totalPostsProcessed: results.totalPostsProcessed,
         totalPostsScored: results.totalPostsScored,
-        totalErrors: results.totalErrors,
+        totalLeadsSkipped: results.totalLeadsSkipped,
+        skipCounts: results.skipCounts,
+  totalErrors: results.totalErrors,
+  errorReasonCounts: results.errorReasonCounts,
         duration: results.duration
       },
-      clientResults: results.clientResults
+  clientResults: results.clientResults,
+      mode: dryRun ? 'dryRun' : 'live',
+  table: tableOverride || 'Leads',
+  clientFiltered: singleClientId || null,
+  clientNameQuery: clientNameQuery || null,
+  diagnostics: results.diagnostics || null
+  , commit: commitHash
     });
   } catch (error) {
     console.error("Multi-tenant post scoring error:", error.message, error.stack);
@@ -522,6 +569,55 @@ router.post("/run-post-batch-score", async (req, res) => {
         errorDetails: error.toString()
       });
     }
+  }
+});
+
+// ---------------------------------------------------------------
+// Simplified single-client post batch scoring (no table override, minimal params)
+// Usage:
+//   POST /run-post-batch-score-simple?clientId=Guy-Wilson&dryRun=true
+//   POST /run-post-batch-score-simple?clientId=Guy-Wilson  (live)
+// Optional: limit=50 (otherwise unlimited)
+// Returns trimmed summary.
+// ---------------------------------------------------------------
+router.post("/run-post-batch-score-simple", async (req, res) => {
+  if (!vertexAIClient || !geminiModelId) {
+    return res.status(503).json({ status: 'error', message: 'Post scoring unavailable' });
+  }
+  const clientId = req.query.clientId || req.query.client || null;
+  if (!clientId) {
+    return res.status(400).json({ status: 'error', message: 'clientId required' });
+  }
+  const dryRun = req.query.dryRun === 'true';
+  const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+  const verboseErrors = req.query.verboseErrors === 'true';
+  const maxVerboseErrors = req.query.maxVerboseErrors ? parseInt(req.query.maxVerboseErrors, 10) : 10;
+  try {
+    const results = await postBatchScorer.runMultiTenantPostScoring(
+      vertexAIClient,
+      geminiModelId,
+      clientId,
+      limit,
+  { dryRun, verboseErrors, maxVerboseErrors }
+    );
+    const first = results.clientResults[0] || {};
+    res.json({
+      status: 'completed',
+      mode: dryRun ? 'dryRun' : 'live',
+      clientId,
+      limit: limit || 'UNLIMITED',
+      processed: results.totalPostsProcessed,
+      scored: results.totalPostsScored,
+      skipped: results.totalLeadsSkipped,
+      skipCounts: results.skipCounts,
+      errors: results.totalErrors,
+  errorReasonCounts: results.errorReasonCounts,
+      duration: results.duration,
+  clientStatus: first.status || null,
+  diagnostics: results.diagnostics || null
+    });
+  } catch (e) {
+    res.status(500).json({ status: 'error', message: e.message });
   }
 });
 
