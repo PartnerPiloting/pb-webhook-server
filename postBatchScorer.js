@@ -52,7 +52,9 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     POST_BATCH_SCORER_GEMINI_MODEL_ID = geminiModelId;
     
     const startTime = new Date();
-    const results = {
+        // Collect diagnostics only if verboseErrors flag is on
+        const diagnosticsCollector = options.verboseErrors ? { errors: [] } : null;
+        const results = {
         totalClients: 0,
         successfulClients: 0,
         failedClients: 0,
@@ -63,7 +65,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
         totalErrors: 0, // total leads with status=error
         errorReasonCounts: {}, // aggregated error reasons across all clients
         duration: null,
-        clientResults: []
+            clientResults: [],
+            diagnostics: undefined
     };
 
     try {
@@ -80,7 +83,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
             clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
             
             try {
-                const clientResult = await processClientPostScoring(client, limit, clientLogger, options);
+                const clientResult = await processClientPostScoring(client, limit, clientLogger, { ...options, diagnosticsCollector });
                 results.clientResults.push(clientResult);
                 
                 // We now treat both success and completed_with_errors/failed similarly for aggregation,
@@ -171,6 +174,20 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     systemLogger.summary(`Errors (lead-level): ${results.totalErrors}`);
     systemLogger.summary(`Duration: ${results.duration}s`);
     
+    return results;
+    if (options.verboseErrors && diagnosticsCollector) {
+        results.diagnostics = {
+            projectId: process.env.GCP_PROJECT_ID || null,
+            location: process.env.GCP_LOCATION || null,
+            model: POST_BATCH_SCORER_GEMINI_MODEL_ID,
+            envDefined: {
+                GCP_PROJECT_ID: !!process.env.GCP_PROJECT_ID,
+                GCP_LOCATION: !!process.env.GCP_LOCATION,
+                GEMINI_MODEL_ID: !!POST_BATCH_SCORER_GEMINI_MODEL_ID
+            },
+            errorsSample: diagnosticsCollector.errors.slice(0, options.maxVerboseErrors || 10)
+        };
+    }
     return results;
 }
 
@@ -353,6 +370,27 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
                 } else {
                     chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${category}`);
                 }
+                    if (options.verboseErrors && options.diagnosticsCollector && result.errorDetails) {
+                        const signature = `${result.errorDetails.errorMessage || result.error}:${result.errorCategory || ''}:${baseReason}`;
+                        const existing = options.diagnosticsCollector.errors.find(e => e.signature === signature);
+                        if (!existing) {
+                            options.diagnosticsCollector.errors.push({
+                                signature,
+                                leadId: leadRecord.id,
+                                reason: baseReason,
+                                category: result.errorCategory || null,
+                                message: result.errorDetails.errorMessage || result.error,
+                                code: result.errorDetails.code || null,
+                                finishReason: result.errorDetails.finishReason || null,
+                                model: POST_BATCH_SCORER_GEMINI_MODEL_ID,
+                                projectId: process.env.GCP_PROJECT_ID || null,
+                                location: process.env.GCP_LOCATION || null,
+                                stackSnippet: result.errorDetails.stackSnippet || null,
+                                rawKeys: result.errorDetails.rawKeys || null,
+                                timestamp: result.errorDetails.timestamp || new Date().toISOString()
+                            });
+                        }
+                    }
             }
             
         } catch (leadError) {
@@ -568,6 +606,9 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             safetyRatings: error.safetyRatings || null,
             rawResponseSnippet: error.rawResponseSnippet || null,
             timestamp: new Date().toISOString(),
+            code: error.code || null,
+            stackSnippet: error.stack ? error.stack.split('\n').slice(0,5).join('\n') : null,
+            rawKeys: Object.keys(error || {}).slice(0,15)
         };
         // Classify error for aggregation
         function classifyAiError(err, details) {
