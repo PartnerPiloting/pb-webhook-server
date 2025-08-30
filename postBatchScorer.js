@@ -60,7 +60,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
         totalPostsScored: 0,
         totalLeadsSkipped: 0,
         skipCounts: {}, // aggregated skip reasons
-        totalErrors: 0,
+        totalErrors: 0, // total leads with status=error
+        errorReasonCounts: {}, // aggregated error reasons across all clients
         duration: null,
         clientResults: []
     };
@@ -82,20 +83,27 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
                 const clientResult = await processClientPostScoring(client, limit, clientLogger, options);
                 results.clientResults.push(clientResult);
                 
-                if (clientResult.status === 'success') {
-                    results.successfulClients++;
-                    results.totalPostsProcessed += clientResult.postsProcessed || 0;
-                    results.totalPostsScored += clientResult.postsScored || 0;
-                    results.totalLeadsSkipped += clientResult.leadsSkipped || 0;
-                    if (clientResult.skipCounts) {
-                        for (const [reason, count] of Object.entries(clientResult.skipCounts)) {
-                            results.skipCounts[reason] = (results.skipCounts[reason] || 0) + count;
-                        }
+                // We now treat both success and completed_with_errors/failed similarly for aggregation,
+                // but status 'success' means errors=0.
+                const isSuccess = clientResult.status === 'success';
+                if (isSuccess) results.successfulClients++; else results.failedClients++;
+                results.totalPostsProcessed += clientResult.postsProcessed || 0;
+                results.totalPostsScored += clientResult.postsScored || 0;
+                results.totalLeadsSkipped += clientResult.leadsSkipped || 0;
+                if (clientResult.skipCounts) {
+                    for (const [reason, count] of Object.entries(clientResult.skipCounts)) {
+                        results.skipCounts[reason] = (results.skipCounts[reason] || 0) + count;
                     }
+                }
+                if (clientResult.errorReasonCounts) {
+                    for (const [reason, count] of Object.entries(clientResult.errorReasonCounts)) {
+                        results.errorReasonCounts[reason] = (results.errorReasonCounts[reason] || 0) + count;
+                    }
+                }
+                results.totalErrors += clientResult.errors || 0; // will be 0 if success
+                if (isSuccess) {
                     clientLogger.summary(`SUCCESS - Processed: ${clientResult.postsProcessed}, Scored: ${clientResult.postsScored}, Duration: ${clientResult.duration}s`);
                 } else {
-                    results.failedClients++;
-                    results.totalErrors += clientResult.errors || 0;
                     clientLogger.error(`COMPLETED WITH ERRORS - Errors: ${clientResult.errors}, Details: ${clientResult.errorDetails?.join('; ')}`);
                 }
                 
@@ -159,7 +167,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
     systemLogger.summary(`Posts scored: ${results.totalPostsScored}`);
     systemLogger.summary(`Leads skipped: ${results.totalLeadsSkipped}`);
     systemLogger.summary(`Skip reasons: ${JSON.stringify(results.skipCounts)}`);
-    systemLogger.summary(`Errors: ${results.totalErrors}`);
+    systemLogger.summary(`Error reasons: ${JSON.stringify(results.errorReasonCounts)}`);
+    systemLogger.summary(`Errors (lead-level): ${results.totalErrors}`);
     systemLogger.summary(`Duration: ${results.duration}s`);
     
     return results;
@@ -177,9 +186,10 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         status: 'processing',
         postsProcessed: 0,
         postsScored: 0,
-    leadsSkipped: 0,
-    skipCounts: {},
-        errors: 0,
+        leadsSkipped: 0,
+        skipCounts: {},
+        errors: 0, // lead-level errors
+        errorReasonCounts: {},
         errorDetails: [],
         duration: 0
     };
@@ -234,6 +244,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 }
                 clientResult.errors += chunkResult.errors;
                 clientResult.errorDetails.push(...chunkResult.errorDetails);
+                if (chunkResult.errorReasonCounts) {
+                    for (const [reason, count] of Object.entries(chunkResult.errorReasonCounts)) {
+                        clientResult.errorReasonCounts[reason] = (clientResult.errorReasonCounts[reason] || 0) + count;
+                    }
+                }
                 
             } catch (chunkError) {
                 logger.error(`Error processing chunk ${i + 1} for client ${client.clientId}: ${chunkError.message}`);
@@ -308,7 +323,8 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
         skipped: 0,
         errors: 0,
         errorDetails: [],
-        skipCounts: {}
+        skipCounts: {},
+        errorReasonCounts: {}
     };
     
     logger.process(`Processing ${records.length} leads for post scoring in client ${clientId}`);
@@ -327,6 +343,15 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
                     chunkResult.skipCounts[result.skipReason] = (chunkResult.skipCounts[result.skipReason] || 0) + 1;
                 }
                 logger.debug(`Lead ${leadRecord.id}: skipped (${result.skipReason || 'UNKNOWN'})`);
+            } else if (result.status === 'error') {
+                chunkResult.errors++;
+                const reason = result.reason || 'UNKNOWN_ERROR';
+                chunkResult.errorReasonCounts[reason] = (chunkResult.errorReasonCounts[reason] || 0) + 1;
+                if (result.error) {
+                    chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${reason}: ${result.error}`);
+                } else {
+                    chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${reason}`);
+                }
             }
             
         } catch (leadError) {
