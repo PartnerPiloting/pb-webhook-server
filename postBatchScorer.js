@@ -345,12 +345,13 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
                 logger.debug(`Lead ${leadRecord.id}: skipped (${result.skipReason || 'UNKNOWN'})`);
             } else if (result.status === 'error') {
                 chunkResult.errors++;
-                const reason = result.reason || 'UNKNOWN_ERROR';
-                chunkResult.errorReasonCounts[reason] = (chunkResult.errorReasonCounts[reason] || 0) + 1;
+                const baseReason = result.reason || 'UNKNOWN_ERROR';
+                const category = result.errorCategory ? `${baseReason}:${result.errorCategory}` : baseReason;
+                chunkResult.errorReasonCounts[category] = (chunkResult.errorReasonCounts[category] || 0) + 1;
                 if (result.error) {
-                    chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${reason}: ${result.error}`);
+                    chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${category}: ${result.error}`);
                 } else {
-                    chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${reason}`);
+                    chunkResult.errorDetails.push(`Lead ${leadRecord.id}: ${category}`);
                 }
             }
             
@@ -568,6 +569,19 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             rawResponseSnippet: error.rawResponseSnippet || null,
             timestamp: new Date().toISOString(),
         };
+        // Classify error for aggregation
+        function classifyAiError(err, details) {
+            const msg = (err?.message || '').toLowerCase();
+            const finish = (details?.finishReason || '').toLowerCase();
+            if (finish.includes('safety') || msg.includes('safety')) return 'SAFETY_BLOCK';
+            if (msg.includes('quota') || msg.includes('rate limit')) return 'QUOTA';
+            if (msg.includes('timeout') || msg.includes('timed out') || msg.includes('etimedout')) return 'TIMEOUT';
+            if (msg.includes('auth') || msg.includes('unauthorized') || msg.includes('permission') || msg.includes('forbidden') || msg.includes('401') || msg.includes('403')) return 'AUTH';
+            if (msg.includes('json') || msg.includes('unexpected token') || msg.includes('parse')) return 'AI_RESPONSE_FORMAT';
+            if (msg.includes('not found') || msg.includes('model') && msg.includes('invalid')) return 'MODEL_CONFIG';
+            return 'UNKNOWN';
+        }
+        const aiErrorCategory = classifyAiError(error, errorDetails);
         if (!options.dryRun) {
             await clientBase(config.leadsTableName).update(leadRecord.id, {
                 [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
@@ -575,7 +589,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
                 ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
             });
         }
-        return { status: "error", error: error.message, leadId: leadRecord.id, errorDetails };
+        return { status: "error", reason: 'AI_SCORING_ERROR', errorCategory: aiErrorCategory, error: error.message, leadId: leadRecord.id, errorDetails };
     }
 }
 
