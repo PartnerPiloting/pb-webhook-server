@@ -233,6 +233,16 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         // Get leads with posts to be scored
         const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit);
         logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
+
+        // Build the post scoring prompt ONCE per client batch (cache for this run)
+        // This avoids rebuilding the same ~15K char prompt for every lead.
+        let prebuiltPrompt = null;
+        try {
+            prebuiltPrompt = await buildPostScoringPrompt(clientBase, config);
+            logger.setup(`Built post scoring prompt once for client ${client.clientId} (length=${prebuiltPrompt.length})`);
+        } catch (e) {
+            logger.error(`Failed to build prebuilt prompt (will fallback per-lead): ${e.message}`);
+        }
         
         if (leadsToProcess.length === 0) {
             clientResult.status = 'success';
@@ -250,7 +260,14 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             logger.process(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} leads) for client ${client.clientId}`);
             
             try {
-                const chunkResult = await processPostScoringChunk(chunk, clientBase, config, client.clientId, logger, options);
+                const chunkResult = await processPostScoringChunk(
+                    chunk,
+                    clientBase,
+                    config,
+                    client.clientId,
+                    logger,
+                    { ...options, prebuiltPrompt }
+                );
                 clientResult.postsProcessed += chunkResult.processed;
                 clientResult.postsScored += chunkResult.scored;
                 clientResult.leadsSkipped += chunkResult.skipped || 0;
@@ -290,6 +307,28 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
 /* =================================================================
     Helper Functions
 =================================================================== */
+
+// Safely update a lead record; if Airtable rejects an unknown skip reason field,
+// retry without that field so we still persist scoring results and date.
+async function safeLeadUpdate(clientBase, tableName, recordId, fields, skipReasonFieldName) {
+    try {
+        return await clientBase(tableName).update(recordId, fields);
+    } catch (err) {
+        const msg = (err && err.message) || '';
+        if (skipReasonFieldName && msg.includes(skipReasonFieldName)) {
+            // Remove the skip reason field and retry once
+            const cloned = { ...fields };
+            delete cloned[skipReasonFieldName];
+            try {
+                return await clientBase(tableName).update(recordId, cloned);
+            } catch (e2) {
+                // Re-throw original context with note
+                throw new Error(`${msg} (and retry without '${skipReasonFieldName}' also failed: ${e2.message})`);
+            }
+        }
+        throw err;
+    }
+}
 
 async function loadClientPostScoringConfig(clientBase) {
     // Standard configuration for post scoring - matches postAnalysisService.js structure
@@ -516,14 +555,14 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     }
 
     try {
-        // Load scoring configuration (no global filtering - let attributes handle relevance)
-        const config_data = await loadPostScoringAirtableConfig(clientBase, config, logger);
-        
-        // Score all original posts using client's specific attributes
-        logger.process(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria`);
-        
-        // Score posts with Gemini
-        const systemPrompt = await buildPostScoringPrompt(clientBase, config);
+    // Load scoring configuration (no global filtering - let attributes handle relevance)
+    const config_data = await loadPostScoringAirtableConfig(clientBase, config, logger);
+
+    // Score all original posts using client's specific attributes
+    logger.process(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria`);
+
+    // Use prebuilt prompt if provided (per-client batch cache), else build on demand
+    const systemPrompt = options.prebuiltPrompt || await buildPostScoringPrompt(clientBase, config);
         
         // Configure the Gemini Model instance with the system prompt
         const configuredGeminiModel = POST_BATCH_SCORER_VERTEX_AI_CLIENT.getGenerativeModel({
@@ -585,13 +624,19 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
 
         // Update record with scoring results (matching original format exactly)
         if (!options.dryRun) {
-            await clientBase(config.leadsTableName).update(leadRecord.id, {
-                [config.fields.relevanceScore]: highestScoringPost.post_score,
-                [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
-                [config.fields.topScoringPost]: topScoringPostText,
-                [config.fields.dateScored]: new Date().toISOString(),
-                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
-            });
+            await safeLeadUpdate(
+                clientBase,
+                config.leadsTableName,
+                leadRecord.id,
+                {
+                    [config.fields.relevanceScore]: highestScoringPost.post_score,
+                    [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
+                    [config.fields.topScoringPost]: topScoringPostText,
+                    [config.fields.dateScored]: new Date().toISOString(),
+                    ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+                },
+                options.markSkips !== false ? config.fields.skipReason : null
+            );
         }
         
         logger.summary(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
@@ -624,11 +669,17 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         }
         const aiErrorCategory = classifyAiError(error, errorDetails);
         if (!options.dryRun) {
-            await clientBase(config.leadsTableName).update(leadRecord.id, {
-                [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
-                [config.fields.dateScored]: new Date().toISOString(),
-                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
-            });
+            await safeLeadUpdate(
+                clientBase,
+                config.leadsTableName,
+                leadRecord.id,
+                {
+                    [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
+                    [config.fields.dateScored]: new Date().toISOString(),
+                    ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+                },
+                options.markSkips !== false ? config.fields.skipReason : null
+            );
         }
         return { status: "error", reason: 'AI_SCORING_ERROR', errorCategory: aiErrorCategory, error: error.message, leadId: leadRecord.id, errorDetails };
     }
