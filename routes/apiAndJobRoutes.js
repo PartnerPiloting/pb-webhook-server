@@ -469,6 +469,7 @@ router.get("/debug-gemini-info", (_req, res) => {
 // Import multi-tenant post scoring
 // ---------------------------------------------------------------
 const postBatchScorer = require("../postBatchScorer.js");
+const { commitHash } = require("../versionInfo.js");
 
 // ---------------------------------------------------------------
 // Multi-Tenant Post Batch Score (Admin/Batch Operation)
@@ -553,6 +554,7 @@ router.post("/run-post-batch-score", async (req, res) => {
   clientFiltered: singleClientId || null,
   clientNameQuery: clientNameQuery || null,
   diagnostics: results.diagnostics || null
+  , commit: commitHash
     });
   } catch (error) {
     console.error("Multi-tenant post scoring error:", error.message, error.stack);
