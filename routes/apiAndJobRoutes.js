@@ -539,7 +539,8 @@ router.post("/run-post-batch-score", async (req, res) => {
         totalPostsScored: results.totalPostsScored,
         totalLeadsSkipped: results.totalLeadsSkipped,
         skipCounts: results.skipCounts,
-        totalErrors: results.totalErrors,
+  totalErrors: results.totalErrors,
+  errorReasonCounts: results.errorReasonCounts,
         duration: results.duration
       },
   clientResults: results.clientResults,
@@ -601,6 +602,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
       skipped: results.totalLeadsSkipped,
       skipCounts: results.skipCounts,
       errors: results.totalErrors,
+  errorReasonCounts: results.errorReasonCounts,
       duration: results.duration,
       clientStatus: first.status || null
     });
