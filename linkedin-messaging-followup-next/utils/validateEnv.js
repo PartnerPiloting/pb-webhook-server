@@ -1,15 +1,14 @@
 /**
  * Environment Variable Validation Utility
  *
- * Combines:
- * - Main branch dynamic environment defaults (hotfix support)
- * - Staging branch quiet localhost auto-fallback (no warning noise)
+ * Combined version: dynamic environment defaults + quiet localhost fallback.
+ * (All ASCII to avoid encoding issues.)
  */
 
 const getEnvironmentDefaults = () => {
   const isHotfix =
     process.env.VERCEL_GIT_COMMIT_REF === 'hotfix' ||
-    process.env.VERCEL_URL?.includes('hotfix') ||
+    (process.env.VERCEL_URL || '').includes('hotfix') ||
     process.env.NODE_ENV === 'hotfix';
 
   const baseUrl = isHotfix
@@ -17,7 +16,7 @@ const getEnvironmentDefaults = () => {
     : 'https://pb-webhook-server.onrender.com';
 
   return {
-    apiBaseUrl: `${baseUrl}/api/linkedin`
+    apiBaseUrl: baseUrl + '/api/linkedin'
   };
 };
 
@@ -31,7 +30,7 @@ export const validateEnvironment = () => {
       if (typeof window !== 'undefined') {
         return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
       }
-    } catch {}
+    } catch (e) {}
     return false;
   };
 
@@ -67,15 +66,13 @@ export const validateEnvironment = () => {
         });
       } else if (config.fallback) {
         if (varName === 'NEXT_PUBLIC_API_BASE_URL' && isLocalhost()) {
-          try {
-            console.info('â„¹ï¸  NEXT_PUBLIC_API_BASE_URL not set; using http://localhost:3001/api/linkedin for local development');
-          } catch {}
+          try { console.info('INFO: NEXT_PUBLIC_API_BASE_URL not set; using http://localhost:3001/api/linkedin for local development'); } catch (e) {}
         } else {
           warnings.push({
             variable: varName,
-            warning: `Using fallback value: ${config.fallback}`,
+            warning: 'Using fallback value: ' + config.fallback,
             description: config.description,
-            recommendation: `Set ${varName}=${config.example}`
+            recommendation: 'Set ' + varName + '=' + config.example
           });
         }
       }
@@ -93,9 +90,7 @@ export const validateEnvironment = () => {
   Object.entries(optionalVars).forEach(([varName, config]) => {
     const value = process.env[varName];
     if (!value || value.trim() === '') {
-      try {
-        console.info(`â„¹ï¸  Optional: ${varName} not set (${config.description})`);
-      } catch {}
+      try { console.info('INFO: Optional ' + varName + ' not set (' + config.description + ')'); } catch (e) {}
     }
   });
 
@@ -113,23 +108,23 @@ export const validateEnvironment = () => {
 
 export const displayValidationResults = (results) => {
   if (results.isValid) {
-    console.log('âœ… Environment validation passed');
+    console.log('Environment validation passed');
     if (results.warnings.length > 0) {
-      console.log('\nâš ï¸  Configuration Warnings:');
+      console.log('\nConfiguration Warnings:');
       results.warnings.forEach(w => {
-        console.log(`   ${w.variable}: ${w.warning}`);
-        console.log(`   í²¡ ${w.recommendation}`);
+        console.log('  ' + w.variable + ': ' + w.warning);
+        console.log('    Recommendation: ' + w.recommendation);
       });
     }
     return true;
   } else {
-    console.error('âŒ Environment validation failed');
-    console.error('\níº¨ Required Configuration Missing:');
+    console.error('Environment validation failed');
+    console.error('\nRequired Configuration Missing:');
     results.errors.forEach(e => {
-      console.error(`   ${e.variable}: ${e.error}`);
-      console.error(`   í³ ${e.description}`);
-      console.error(`   í²¡ Example: ${e.example}`);
-      if (e.currentValue) console.error(`   âŒ Current: ${e.currentValue}`);
+      console.error('  ' + e.variable + ': ' + e.error);
+      console.error('    Description: ' + e.description);
+      console.error('    Example: ' + e.example);
+      if (e.currentValue) console.error('    Current: ' + e.currentValue);
       console.error('');
     });
     console.error('Please configure the missing environment variables and restart the application.');
@@ -149,7 +144,7 @@ export const validateOrExit = () => {
 
 export const validators = {
   isUrl: (value) => {
-    try { new URL(value); return true; } catch { return false; }
+    try { new URL(value); return true; } catch (e) { return false; }
   },
-  isEmail: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+  isEmail: (value) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/).test(value)
 };
