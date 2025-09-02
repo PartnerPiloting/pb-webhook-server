@@ -1,15 +1,31 @@
 /**
  * Environment Variable Validation Utility
- * 
- * Validates required environment variables and provides helpful error messages
- * for missing or incorrectly configured variables.
+ *
+ * Combines:
+ * - Main branch dynamic environment defaults (hotfix support)
+ * - Staging branch quiet localhost auto-fallback (no warning noise)
  */
+
+const getEnvironmentDefaults = () => {
+  const isHotfix =
+    process.env.VERCEL_GIT_COMMIT_REF === 'hotfix' ||
+    process.env.VERCEL_URL?.includes('hotfix') ||
+    process.env.NODE_ENV === 'hotfix';
+
+  const baseUrl = isHotfix
+    ? 'https://pb-webhook-server-hotfix.onrender.com'
+    : 'https://pb-webhook-server.onrender.com';
+
+  return {
+    apiBaseUrl: `${baseUrl}/api/linkedin`
+  };
+};
 
 export const validateEnvironment = () => {
   const errors = [];
   const warnings = [];
+  const envDefaults = getEnvironmentDefaults();
 
-  // Helper: detect localhost in browser (Next.js client components)
   const isLocalhost = () => {
     try {
       if (typeof window !== 'undefined') {
@@ -19,36 +35,28 @@ export const validateEnvironment = () => {
     return false;
   };
 
-  // Required environment variables for production
   const requiredVars = {
-    // API Configuration
-    'NEXT_PUBLIC_API_BASE_URL': {
+    NEXT_PUBLIC_API_BASE_URL: {
       description: 'Base URL for the backend API',
-  example: 'http://localhost:3001' /* or full path: https://pb-webhook-server.onrender.com/api/linkedin */,
-      required: false, // We have a fallback, so not strictly required
-  fallback: 'https://pb-webhook-server.onrender.com/api/linkedin'
+      example: envDefaults.apiBaseUrl,
+      required: false,
+      fallback: envDefaults.apiBaseUrl
     }
   };
 
-  // Optional environment variables that enhance functionality
   const optionalVars = {
-    // WordPress Authentication (for future use)
-    'NEXT_PUBLIC_WP_BASE_URL': {
+    NEXT_PUBLIC_WP_BASE_URL: {
       description: 'WordPress base URL for authentication',
       example: 'https://yoursite.com/wp-json/wp/v2'
     },
-    
-    // Development/Debug Settings
-    'NODE_ENV': {
+    NODE_ENV: {
       description: 'Environment mode (development/production)',
       example: 'production'
     }
   };
 
-  // Check required variables
   Object.entries(requiredVars).forEach(([varName, config]) => {
     const value = process.env[varName];
-    
     if (!value || value.trim() === '') {
       if (config.required) {
         errors.push({
@@ -58,13 +66,10 @@ export const validateEnvironment = () => {
           example: config.example
         });
       } else if (config.fallback) {
-        // In dev on localhost, our API client auto-resolves to http://localhost:3001/api/linkedin.
-        // Avoid noisy warnings and just inform.
         if (varName === 'NEXT_PUBLIC_API_BASE_URL' && isLocalhost()) {
           try {
-            console.info(`â„¹ï¸  ${varName} not set; auto-resolving to http://localhost:3001/api/linkedin for local development`);
+            console.info('â„¹ï¸  NEXT_PUBLIC_API_BASE_URL not set; using http://localhost:3001/api/linkedin for local development');
           } catch {}
-          // Do not add a warning in this case
         } else {
           warnings.push({
             variable: varName,
@@ -74,27 +79,23 @@ export const validateEnvironment = () => {
           });
         }
       }
-    } else {
-      // Validate format if specified
-      if (config.validate && !config.validate(value)) {
-        errors.push({
-          variable: varName,
-          error: 'Invalid format',
-          description: config.description,
-          example: config.example,
-          currentValue: value
-        });
-      }
+    } else if (config.validate && !config.validate(value)) {
+      errors.push({
+        variable: varName,
+        error: 'Invalid format',
+        description: config.description,
+        example: config.example,
+        currentValue: value
+      });
     }
   });
 
-  // Check optional variables and provide info
   Object.entries(optionalVars).forEach(([varName, config]) => {
     const value = process.env[varName];
-    
     if (!value || value.trim() === '') {
-      // Just informational for optional vars
-      console.info(`â„¹ï¸  Optional: ${varName} not set (${config.description})`);
+      try {
+        console.info(`â„¹ï¸  Optional: ${varName} not set (${config.description})`);
+      } catch {}
     }
   });
 
@@ -110,70 +111,45 @@ export const validateEnvironment = () => {
   };
 };
 
-/**
- * Display validation results in a user-friendly format
- */
 export const displayValidationResults = (results) => {
   if (results.isValid) {
     console.log('âœ… Environment validation passed');
-    
     if (results.warnings.length > 0) {
       console.log('\nâš ï¸  Configuration Warnings:');
-      results.warnings.forEach(warning => {
-        console.log(`   ${warning.variable}: ${warning.warning}`);
-        console.log(`   ðŸ’¡ ${warning.recommendation}`);
+      results.warnings.forEach(w => {
+        console.log(`   ${w.variable}: ${w.warning}`);
+        console.log(`   í²¡ ${w.recommendation}`);
       });
     }
-    
     return true;
   } else {
     console.error('âŒ Environment validation failed');
-    console.error('\nðŸš¨ Required Configuration Missing:');
-    
-    results.errors.forEach(error => {
-      console.error(`   ${error.variable}: ${error.error}`);
-      console.error(`   ðŸ“ ${error.description}`);
-      console.error(`   ðŸ’¡ Example: ${error.example}`);
-      if (error.currentValue) {
-        console.error(`   âŒ Current: ${error.currentValue}`);
-      }
+    console.error('\níº¨ Required Configuration Missing:');
+    results.errors.forEach(e => {
+      console.error(`   ${e.variable}: ${e.error}`);
+      console.error(`   í³ ${e.description}`);
+      console.error(`   í²¡ Example: ${e.example}`);
+      if (e.currentValue) console.error(`   âŒ Current: ${e.currentValue}`);
       console.error('');
     });
-    
     console.error('Please configure the missing environment variables and restart the application.');
     return false;
   }
 };
 
-/**
- * Validate environment and exit if critical errors found
- * Call this at application startup
- */
 export const validateOrExit = () => {
   const results = validateEnvironment();
-  const isValid = displayValidationResults(results);
-  
-  if (!isValid) {
+  const ok = displayValidationResults(results);
+  if (!ok) {
     console.error('Exiting due to configuration errors...');
     process.exit(1);
   }
-  
   return results;
 };
 
-// Export individual validation functions for testing
 export const validators = {
   isUrl: (value) => {
-    try {
-      new URL(value);
-      return true;
-    } catch {
-      return false;
-    }
+    try { new URL(value); return true; } catch { return false; }
   },
-  
-  isEmail: (value) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(value);
-  }
+  isEmail: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 };
