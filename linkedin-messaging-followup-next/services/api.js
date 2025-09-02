@@ -2,20 +2,46 @@ import axios from 'axios';
 import { getCurrentClientId } from '../utils/clientUtils.js';
 
 // API configuration
-// In Next.js, environment variables must be prefixed with NEXT_PUBLIC_ to be available in the browser
-// Accept either a full base (…/api/linkedin) or just the API origin (http://localhost:3001) and normalize to include /api/linkedin
-const RAW_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
-const API_BASE_URL = (() => {
+// In Next.js, env vars must be prefixed with NEXT_PUBLIC_ to be exposed to the browser.
+// We normalize to a full absolute URL ending with /api/linkedin and prefer localhost in dev.
+function resolveApiBase() {
   try {
-    const raw = String(RAW_API_BASE);
-    // If it already ends with /api/linkedin (with or without trailing slash), keep as is
-    if (/\/api\/linkedin\/?$/i.test(raw)) return raw.replace(/\/$/, '');
-    // Otherwise, append the path
+    let raw = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+    // Prefer localhost automatically when developing on localhost
+    if (!raw && typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
+      raw = 'http://localhost:3001';
+    }
+
+    // Final fallback to production Render URL
+    if (!raw) raw = 'https://pb-webhook-server.onrender.com/api/linkedin';
+
+    // Ensure it's a string
+    raw = String(raw).trim();
+
+    // If no protocol provided, assume http for localhost
+    if (/^localhost(:\d+)?(\/|$)/i.test(raw)) {
+      raw = `http://${raw}`;
+    }
+
+    // If it already ends with /api/linkedin (with or without trailing slash), keep as is (no trailing slash)
+    if (/\/api\/linkedin\/?$/i.test(raw)) {
+      return raw.replace(/\/$/, '');
+    }
+
+    // Otherwise, append the path (no trailing slash)
     return `${raw.replace(/\/$/, '')}/api/linkedin`;
-  } catch (_) {
+  } catch (e) {
     return 'https://pb-webhook-server.onrender.com/api/linkedin';
   }
-})();
+}
+
+const API_BASE_URL = resolveApiBase();
+
+// Optional: log resolved base in dev for diagnostics
+if (typeof window !== 'undefined') {
+  try { console.debug('[API] Resolved base URL:', API_BASE_URL); } catch {}
+}
 
 const RAW_TIMEOUT = process.env.NEXT_PUBLIC_API_TIMEOUT;
 const API_TIMEOUT = RAW_TIMEOUT && !isNaN(Number(RAW_TIMEOUT)) ? Number(RAW_TIMEOUT) : 30000;
@@ -111,7 +137,7 @@ api.interceptors.response.use(
 );
 
 // Lead search and management functions
-export const searchLeads = async (query, priority = 'all') => {
+export const searchLeads = async (query, priority = 'all', searchTerms = '', limit = 25, offset = 0) => {
   try {
     const clientId = getCurrentClientId();
     if (!clientId) {
@@ -120,12 +146,19 @@ export const searchLeads = async (query, priority = 'all') => {
     
     const params = { 
       q: query,
-      testClient: clientId
+      testClient: clientId,
+      limit: limit,
+      offset: offset
     };
     
     // Only add priority parameter if it's not 'all'
     if (priority && priority !== 'all') {
       params.priority = priority;
+    }
+
+    // Add search terms parameter if provided
+    if (searchTerms && searchTerms.trim() !== '') {
+      params.searchTerms = searchTerms.trim();
     }
     
     const response = await api.get('/leads/search', { params });
@@ -148,11 +181,50 @@ export const searchLeads = async (query, priority = 'all') => {
       'AI Score': lead.aiScore,
       'Status': lead.status || '',
       'Priority': lead.priority || '',
-      'Last Message Date': lead.lastMessageDate || ''
+      'Last Message Date': lead.lastMessageDate || '',
+      // Include search terms for display
+      'Search Terms': lead.searchTerms || '',
+      'Search Tokens (canonical)': lead.searchTokensCanonical || '',
+      // Include contact info for export functionality
+      'Email': lead.email || '',
+      'Phone': lead.phone || '',
+  'Company': lead.company || '',
+      'Job Title': lead.jobTitle || '',
+      // Include all raw data for compatibility
+      ...lead
     }));
   } catch (error) {
     console.error('Search error:', error);
     throw new Error('Failed to search leads');
+  }
+};
+
+// Incrementally update search terms for a lead
+export const updateLeadSearchTerms = async (leadId, { add = [], remove = [] }) => {
+  if (!leadId) throw new Error('leadId required');
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) throw new Error('Client ID not available');
+    const body = { add, remove };
+    const res = await api.patch(`/leads/${leadId}/search-terms`, body, { params: { testClient: clientId } });
+    return res.data; // { id, searchTerms, tokens }
+  } catch (e) {
+    console.error('updateLeadSearchTerms error', e.response?.data || e.message);
+    throw new Error('Failed to update search terms');
+  }
+};
+
+// Get popular search terms (server aggregated) with optional limit
+export const getPopularSearchTerms = async ({ limit = 30 } = {}) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) throw new Error('Client ID not available');
+    // reuse existing suggestions endpoint for now
+    const res = await api.get('/leads/search-token-suggestions', { params: { testClient: clientId, limit } });
+    return (res.data?.suggestions || []).map(s => s.term);
+  } catch (e) {
+    console.error('getPopularSearchTerms error', e.response?.data || e.message);
+    return [];
   }
 };
 
@@ -171,7 +243,7 @@ export const getLeadById = async (leadId) => {
     
     // Map backend response to frontend format
     const lead = response.data;
-    return {
+    const mapped = {
       id: lead.id,
       'Profile Key': lead.profileKey,
       'First Name': lead.firstName,
@@ -179,6 +251,8 @@ export const getLeadById = async (leadId) => {
       'LinkedIn Profile URL': lead.linkedinProfileUrl,
       'View In Sales Navigator': lead.viewInSalesNavigator,
       'Email': lead.email,
+  // Provide camelCase variant expected by components like LeadDetailForm
+  email: lead.email,
       'Phone': lead.phone,
       'AI Score': lead.aiScore,
       'Posts Relevance Score': lead.postsRelevanceScore,
@@ -200,11 +274,28 @@ export const getLeadById = async (leadId) => {
       'ASH Workshop Email': lead.ashWorkshopEmail,
       'AI Profile Assessment': lead.aiProfileAssessment,
       'AI Attribute Breakdown': lead.aiAttributeBreakdown,
+  'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
+  'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,
-      followUpDate: lead.followUpDate
+  followUpDate: lead.followUpDate,
+  source: lead.source,
+  status: lead.status,
+  priority: lead.priority,
+  linkedinConnectionStatus: lead.linkedinConnectionStatus,
+  notes: lead.notes,
+  aiScore: lead.aiScore,
+  postsRelevancePercentage: lead.postsRelevancePercentage,
+  searchTerms: lead.searchTerms || lead['Search Terms'],
+  searchTokensCanonical: lead.searchTokensCanonical || lead['Search Tokens (canonical)'],
+  lastMessageDate: lead.lastMessageDate
     };
+    if (typeof window !== 'undefined') {
+      try { window.__lastLead = mapped; } catch {}
+      try { console.debug('[getLeadById] mapped lead source variants', { source: mapped.source, Source: mapped['Source'] }); } catch {}
+    }
+    return mapped;
   } catch (error) {
     throw new Error('Failed to load lead details');
   }
@@ -229,14 +320,16 @@ export const createLead = async (leadData) => {
       'priority': 'Priority',
       'linkedinConnectionStatus': 'LinkedIn Connection Status',
       'ashWorkshopEmail': 'ASH Workshop Email',
-      'postsActioned': 'Posts Actioned'
+  'postsActioned': 'Posts Actioned',
+  'searchTerms': 'Search Terms',
+  'searchTokensCanonical': 'Search Tokens (canonical)'
     };
     
     // List of dropdown fields that need empty string handling
     const dropdownFields = ['source', 'status', 'priority', 'linkedinConnectionStatus'];
     
     // List of date fields that need empty string handling
-    const dateFields = ['followUpDate'];
+  const dateFields = ['followUpDate'];
     
     Object.keys(leadData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
@@ -253,7 +346,7 @@ export const createLead = async (leadData) => {
           value = null;
         }
         
-        backendData[backendField] = value;
+  backendData[backendField] = value;
       }
     });
     
@@ -297,6 +390,8 @@ export const createLead = async (leadData) => {
       'Company Name': lead.companyName,
       'About': lead.about,
       'ASH Workshop Email': lead.ashWorkshopEmail,
+  'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
+  'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,
@@ -310,6 +405,7 @@ export const createLead = async (leadData) => {
 
 export const updateLead = async (leadId, updateData) => {
   try {
+  try { console.debug('[api.updateLead] called', { leadId, updateData }); } catch {}
     // Map frontend field names to Airtable field names
     const backendData = {};
     const fieldMapping = {
@@ -327,13 +423,15 @@ export const updateLead = async (leadId, updateData) => {
       'priority': 'Priority',
       'linkedinConnectionStatus': 'LinkedIn Connection Status',
       'ashWorkshopEmail': 'ASH Workshop Email',
-      'postsActioned': 'Posts Actioned'
+  'postsActioned': 'Posts Actioned',
+  'searchTerms': 'Search Terms',
+  'searchTokensCanonical': 'Search Tokens (canonical)'
     };
     
     // List of fields that need empty string converted to null
     const emptyStringToNullFields = ['source', 'status', 'priority', 'linkedinConnectionStatus', 'followUpDate'];
     
-    Object.keys(updateData).forEach(frontendField => {
+  Object.keys(updateData).forEach(frontendField => {
       const backendField = fieldMapping[frontendField];
       if (backendField) {
         let value = updateData[frontendField];
@@ -343,23 +441,36 @@ export const updateLead = async (leadId, updateData) => {
           value = null;
         }
         
-        backendData[backendField] = value;
+  backendData[backendField] = value;
       }
     });
     
     const clientId = getCurrentClientId();
-    if (!clientId) {
-      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    let effectiveClientId = clientId;
+    if (!effectiveClientId && typeof window !== 'undefined') {
+      // Fallback: extract testClient from URL if present
+      const u = new URL(window.location.href);
+      const tc = u.searchParams.get('testClient');
+      if (tc) {
+        effectiveClientId = tc;
+        console.debug('[api.updateLead] using fallback testClient from URL', tc);
+      }
+    }
+    if (!effectiveClientId) {
+      console.error('[api.updateLead] missing clientId – aborting request');
+      throw new Error('Client authentication missing (no clientId).');
     }
     
-    const response = await api.put(`/leads/${leadId}`, backendData, {
+  try { console.debug('[api.updateLead] sending', { backendData }); } catch {}
+  const response = await api.put(`/leads/${leadId}`, backendData, {
       params: {
-        testClient: clientId
+        testClient: effectiveClientId
       }
     });
     
     // Map backend response to frontend format (same as getLeadById)
     const lead = response.data;
+  try { console.debug('[api.updateLead] response', { lead }); } catch {}
     
     return {
       id: lead.id,
@@ -388,6 +499,8 @@ export const updateLead = async (leadId, updateData) => {
       'Company Name': lead.companyName,
       'About': lead.about,
       'ASH Workshop Email': lead.ashWorkshopEmail,
+  'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
+  'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
       ashWorkshopEmail: lead.ashWorkshopEmail,
       phone: lead.phone,
@@ -502,6 +615,25 @@ export const getTopScoringPosts = async () => {
     console.error('Get top scoring posts error:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to load top scoring posts');
   }
+};
+
+// Search Terms: fetch client-scoped token suggestions
+export const getSearchTokenSuggestions = async (opts = {}) => {
+  const clientId = getCurrentClientId();
+  if (!clientId) throw new Error('Client ID not available. Please ensure user is authenticated.');
+
+  const params = {
+    testClient: clientId,
+    limit: opts.limit ?? 30,
+    minCount: opts.minCount ?? 1
+  };
+
+  const response = await api.get('/leads/search-token-suggestions', { params });
+  const data = response.data;
+  // Support either { ok, suggestions } or direct array fallback
+  const list = Array.isArray(data) ? data : data?.suggestions;
+  if (!Array.isArray(list)) return [];
+  return list;
 };
 
 export const getLeadByLinkedInUrl = async (linkedinUrl) => {

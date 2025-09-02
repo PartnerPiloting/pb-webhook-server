@@ -1,0 +1,21 @@
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client { provider = "prisma-client-js" }
+model Lead {
+  id             String   @id @default(cuid())
+  name           String
+  company        String?
+  title          String?
+  status         String?
+  stage          String?
+  owner          String?
+  searchTerms    String?
+  tokens         String[]
+  email          String?
+  phone          String?
+  linkedinUrl    String?
+  addressCity    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  @@index([name]); @@index([company]); @@index([status]); @@index([stage]); @@index([owner]); @@index([addressCity]); @@index([createdAt]); @@index([updatedAt]); @@index([email]); @@index([phone]); @@index([linkedinUrl])
+  @@index(tokens, type: Gin)
+}

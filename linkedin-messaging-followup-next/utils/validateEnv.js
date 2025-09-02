@@ -9,14 +9,24 @@ export const validateEnvironment = () => {
   const errors = [];
   const warnings = [];
 
+  // Helper: detect localhost in browser (Next.js client components)
+  const isLocalhost = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+      }
+    } catch {}
+    return false;
+  };
+
   // Required environment variables for production
   const requiredVars = {
     // API Configuration
     'NEXT_PUBLIC_API_BASE_URL': {
       description: 'Base URL for the backend API',
-      example: 'https://pb-webhook-server.onrender.com/api/linkedin',
+  example: 'http://localhost:3001' /* or full path: https://pb-webhook-server.onrender.com/api/linkedin */,
       required: false, // We have a fallback, so not strictly required
-      fallback: 'https://pb-webhook-server.onrender.com/api/linkedin'
+  fallback: 'https://pb-webhook-server.onrender.com/api/linkedin'
     }
   };
 
@@ -48,12 +58,21 @@ export const validateEnvironment = () => {
           example: config.example
         });
       } else if (config.fallback) {
-        warnings.push({
-          variable: varName,
-          warning: `Using fallback value: ${config.fallback}`,
-          description: config.description,
-          recommendation: `Set ${varName}=${config.example}`
-        });
+        // In dev on localhost, our API client auto-resolves to http://localhost:3001/api/linkedin.
+        // Avoid noisy warnings and just inform.
+        if (varName === 'NEXT_PUBLIC_API_BASE_URL' && isLocalhost()) {
+          try {
+            console.info(`ℹ️  ${varName} not set; auto-resolving to http://localhost:3001/api/linkedin for local development`);
+          } catch {}
+          // Do not add a warning in this case
+        } else {
+          warnings.push({
+            variable: varName,
+            warning: `Using fallback value: ${config.fallback}`,
+            description: config.description,
+            recommendation: `Set ${varName}=${config.example}`
+          });
+        }
       }
     } else {
       // Validate format if specified

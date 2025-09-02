@@ -3,6 +3,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { debounce } from '../utils/helpers';
 import { searchLeads, getLeadById, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
+import LeadSearchEnhanced from './LeadSearchEnhanced';
+import LeadDetailModal from './LeadDetailModal';
+import PaginationSummary from './PaginationSummary';
 
 // Import icons using require to avoid Next.js issues
 let MagnifyingGlassIcon, UserIcon, ExternalLinkIcon;
@@ -24,29 +27,37 @@ const safeRender = (value, fallback = '') => {
 const LeadSearchUpdate = () => {
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('all');
-  const [leads, setLeads] = useState([]);
+  const [searchTerms, setSearchTerms] = useState('');
+  const [allLeads, setAllLeads] = useState([]); // Store all search results
+  const [leads, setLeads] = useState([]); // Display leads (paginated subset)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [leadsPerPage] = useState(25); // Show 25 leads per page
   const [selectedLead, setSelectedLead] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Use ref to track current search request and prevent race conditions
   const currentSearchRef = useRef(0);
 
-  // Single search function that handles both search and initial load
-  const performSearch = useCallback(async (query, currentPriority, requestId) => {
+  // Single search function that handles both search and pagination
+  const performSearch = useCallback(async (query, currentPriority, currentSearchTerms, requestId, page = 1) => {
     // Check if this is still the current search request
     if (requestId !== currentSearchRef.current) {
-      console.log(`🔍 Search cancelled: "${query}" priority: "${currentPriority}" (ID: ${requestId})`);
+      console.log(`🔍 Search cancelled: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" (ID: ${requestId})`);
       return;
     }
     
     setIsLoading(true);
-    console.log(`🔍 Starting search: "${query}" priority: "${currentPriority}" (ID: ${requestId})`);
+    console.log(`🔍 Starting search: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" page: ${page} (ID: ${requestId})`);
     
     try {
-      // Use backend search with the query and priority - backend handles filtering properly
-      const results = await searchLeads(query, currentPriority);
+      // Calculate offset from page number
+      const offset = (page - 1) * leadsPerPage;
+      
+      // Use backend search with pagination
+      const results = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset);
       
       // Check again after async operation
       if (requestId !== currentSearchRef.current) {
@@ -54,8 +65,8 @@ const LeadSearchUpdate = () => {
         return;
       }
       
-      // Filter out Multi-Tenant related entries (backend now handles priority filtering)
-      const filteredAndSorted = (results || [])
+      // Filter out Multi-Tenant related entries (redundant safety - backend should handle this)
+      const filteredResults = (results || [])
         .filter(lead => {
           const firstName = (lead['First Name'] || '').toLowerCase();
           const lastName = (lead['Last Name'] || '').toLowerCase();
@@ -65,11 +76,16 @@ const LeadSearchUpdate = () => {
                  !lastName.includes('multi') &&
                  !firstName.includes('tenant') && 
                  !lastName.includes('tenant');
-        })
-        .slice(0, 25); // Limit to 25 results
+        });
+
+      // With API pagination, we only get the current page
+      setLeads(filteredResults);
+      setCurrentPage(page);
       
-      setLeads(filteredAndSorted);
-      console.log(`🔍 Search completed: "${query}" (ID: ${requestId}) - ${filteredAndSorted.length} results`);
+      // For now, assume we have more data if we get a full page (we'll improve this later)
+      setAllLeads(filteredResults);
+      
+      console.log(`🔍 Search completed: "${query}" page ${page} (ID: ${requestId}) - ${filteredResults.length} results on this page`);
     } catch (error) {
       console.error('Search error:', error);
       if (requestId === currentSearchRef.current) {
@@ -80,102 +96,109 @@ const LeadSearchUpdate = () => {
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [leadsPerPage]);
 
   // Debounced version of search for user typing
   const debouncedSearch = useCallback(
-    debounce((query, currentPriority, requestId) => {
-      performSearch(query, currentPriority, requestId);
+    debounce((query, currentPriority, currentSearchTerms, requestId, page = 1) => {
+      performSearch(query, currentPriority, currentSearchTerms, requestId, page);
     }, 500),
     [performSearch]
   );
 
   // Load initial results on component mount
-  // Now safe with 50-record backend limit
+  // Now safe with 25-record API pagination
   useEffect(() => {
-    // Trigger initial search with empty query to show 50 default leads
+    // Trigger initial search with empty query to show first page of leads
     currentSearchRef.current += 1;
-    performSearch('', priority, currentSearchRef.current);
-  }, [performSearch, priority]);
+    performSearch('', priority, searchTerms, currentSearchRef.current, 1);
+  }, [performSearch, priority, searchTerms]);
 
-  // Effect to trigger search when query or priority changes
+  // Effect to trigger search when query, priority, or searchTerms changes
   useEffect(() => {
     // Increment request ID to cancel any pending searches
     currentSearchRef.current += 1;
     const requestId = currentSearchRef.current;
     
-    console.log(`🔍 Search triggered: "${search}" priority: "${priority}" (ID: ${requestId})`);
+    console.log(`🔍 Search triggered: "${search}" priority: "${priority}" terms: "${searchTerms}" (ID: ${requestId})`);
     
     // Use debounced search for user typing (or immediate for empty search)
     if (!search.trim()) {
       // For empty search, get default leads immediately (no debounce needed)
-      performSearch('', priority, requestId);
+      performSearch('', priority, searchTerms, requestId, 1);
     } else {
       // Use debounced search for user typing
-      debouncedSearch(search, priority, requestId);
+      debouncedSearch(search, priority, searchTerms, requestId, 1);
     }
-  }, [search, priority, debouncedSearch, performSearch]);
+  }, [search, priority, searchTerms, debouncedSearch, performSearch]);
 
-  // Handle lead selection - fetch full details
+  // Handle lead selection - fetch full details and open modal
   const handleLeadSelect = async (lead) => {
-    if (!lead || !lead['Profile Key']) {
+    // Use the record ID instead of Profile Key for API calls
+    const leadId = lead.id || lead.recordId || lead['Profile Key'];
+    
+    if (!lead || !leadId) {
       console.error('Invalid lead selected:', lead);
       return;
     }
-    
-    setIsLoading(true);
+
     try {
-      const fullLead = await getLeadById(lead['Profile Key']);
+      // Fetch full lead details by record ID
+      const fullLead = await getLeadById(leadId);
       setSelectedLead(fullLead);
+      setIsModalOpen(true);
+      console.log('✅ Lead selected and details loaded:', fullLead);
     } catch (error) {
-      console.error('Failed to load lead details:', error);
-      setMessage({ type: 'error', text: 'Failed to load lead details. Please try again.' });
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching lead details:', error);
+      // Fallback to the basic lead data from search
+      setSelectedLead(lead);
+      setIsModalOpen(true);
+      setMessage({ type: 'error', text: 'Could not load full lead details. Using basic information.' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     }
   };
 
-  // Handle lead update
+  // Handle pagination with API calls
+  const handlePageChange = (newPage) => {
+    if (newPage < 1) return;
+    
+    // Trigger a new search for the requested page
+    currentSearchRef.current += 1;
+    const requestId = currentSearchRef.current;
+    
+    console.log(`📄 Loading page ${newPage} with search: "${search}" priority: "${priority}" terms: "${searchTerms}"`);
+    
+    // Use the current search parameters with the new page
+    performSearch(search, priority, searchTerms, requestId, newPage);
+  };
+
+  // Handle lead updates
   const handleLeadUpdate = async (updatedData) => {
     if (!selectedLead) return;
 
     setIsUpdating(true);
+    
     try {
-      const updated = await updateLead(selectedLead.id || selectedLead['Profile Key'], updatedData);
+      // Update the lead
+      await updateLead(selectedLead.id || selectedLead['Profile Key'], updatedData);
       
-      setSelectedLead(updated);
+      // Update the selected lead with new data
+      setSelectedLead(prevLead => ({
+        ...prevLead,
+        ...updatedData
+      }));
       
-      // Check if lead was removed due to priority change
-      const leadStillInList = priority === 'all' || updated['Priority'] === priority;
-      if (!leadStillInList) {
-        setSelectedLead(null); // Clear selection since lead was removed
-        setMessage({ type: 'success', text: `Lead updated successfully! Moved to Priority: ${updated['Priority'] || 'None'}` });
-      } else {
-        setMessage({ type: 'success', text: 'Lead updated successfully!' });
-      }
+      // Update the lead in the search results
+      setLeads(prevLeads => 
+        prevLeads.map(lead => {
+          if ((lead.id || lead['Profile Key']) === (selectedLead.id || selectedLead['Profile Key'])) {
+            return { ...lead, ...updatedData };
+          }
+          return lead;
+        })
+      );
       
-      // Update the lead in the search results, but remove it if priority changed
-      setLeads(prevLeads => {
-        const updatedLeads = prevLeads.map(lead => 
-          lead['Profile Key'] === (updated.id || updated['Profile Key']) ? {
-            ...lead,
-            'First Name': updated['First Name'] || '',
-            'Last Name': updated['Last Name'] || '',
-            'Status': updated['Status'] || '',
-            'Priority': updated['Priority'] || ''
-          } : lead
-        );
-        
-        // If priority filter is active and updated lead doesn't match, remove it
-        if (priority !== 'all') {
-          return updatedLeads.filter(lead => 
-            lead['Profile Key'] !== (updated.id || updated['Profile Key']) || 
-            lead['Priority'] === priority
-          );
-        }
-        
-        return updatedLeads;
-      });
+      setMessage({ type: 'success', text: 'Lead updated successfully!' });
       
       // Clear success message after 3 seconds
       setTimeout(() => {
@@ -200,8 +223,9 @@ const LeadSearchUpdate = () => {
       )
     );
     
-    // Clear the selected lead
+    // Clear the selected lead and close modal
     setSelectedLead(null);
+    setIsModalOpen(false);
     
     // Show success message
     setMessage({ 
@@ -215,150 +239,64 @@ const LeadSearchUpdate = () => {
     }, 5000);
   };
 
+  // Handle enhanced search from LeadSearchEnhanced component
+  const handleEnhancedSearch = ({ nameQuery, priority: newPriority, searchTerms: newSearchTerms }) => {
+    console.log('🔍 Enhanced search triggered:', { nameQuery, priority: newPriority, searchTerms: newSearchTerms });
+    
+    // Update all search states
+    setSearch(nameQuery || '');
+    setPriority(newPriority || 'all');
+    setSearchTerms(newSearchTerms || '');
+    
+    // Only clear selected lead if modal is not open (don't interfere with modal viewing)
+    if (!isModalOpen) {
+      setSelectedLead(null);
+    }
+  };
+
   return (
-    <div className="w-full flex flex-col lg:flex-row gap-6">
+    <div className="w-full space-y-6">
       {/* Message display */}
       {message && message.text && (
-        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
+        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
           message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
         }`}>
           {safeRender(message.text)}
         </div>
       )}
       
-      <div className="lg:w-1/4 w-full">
-        <div className="relative mb-4">
-          {MagnifyingGlassIcon && (
-            <MagnifyingGlassIcon className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-          )}
-          <input
-            type="text"
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm"
-            placeholder="Search by first or last name..."
-            value={search || ''}
-            onChange={e => setSearch(e.target.value || '')}
-          />
-        </div>
-        
-        {/* Priority Filter */}
-        <div className="mb-4">
-          <select
-            value={priority}
-            onChange={e => setPriority(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm bg-white"
-          >
-            <option value="all">All Priorities</option>
-            <option value="One">Priority One</option>
-            <option value="Two">Priority Two</option>
-            <option value="Three">Priority Three</option>
-          </select>
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 max-h-[600px] overflow-y-auto">
-          {isLoading && (!leads || leads.length === 0) ? (
-            <div className="text-center py-6">
-              <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-              <p className="text-gray-500 mt-3">Loading leads...</p>
-            </div>
-          ) : (
-            <>
-              {leads && Array.isArray(leads) && leads.map(lead => {
-                if (!lead || !lead['Profile Key']) return null;
-                
-                return (
-                  <div
-                    key={lead['Profile Key']}
-                    className={`p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${
-                      selectedLead && (selectedLead.id || selectedLead['Profile Key']) === lead['Profile Key'] 
-                        ? 'bg-blue-50 border-blue-200' 
-                        : ''
-                    }`}
-                    onClick={() => handleLeadSelect(lead)}
-                  >
-                    <div className="flex items-center">
-                      {UserIcon && <UserIcon className="h-5 w-5 mr-3 text-gray-400 flex-shrink-0" />}
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium text-gray-900 truncate">
-                          {safeRender(lead['First Name'])} {safeRender(lead['Last Name'])}
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {safeRender(lead['Status'], 'No status')} • Score: {safeRender(lead['AI Score'], 'N/A')} • Priority: {safeRender(lead['Priority'], 'None')}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {(!leads || leads.length === 0) && !isLoading && (
-                <div className="p-6 text-center text-gray-500 italic">No leads found.</div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-      
-      <div className="lg:w-3/4 w-full">
-        {selectedLead ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-            <div className="mb-6 pb-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-semibold text-gray-900">
-                  {safeRender(selectedLead['First Name'])} {safeRender(selectedLead['Last Name'])}
-                </h2>
-                {selectedLead['LinkedIn Profile URL'] && ExternalLinkIcon && (
-                  <a
-                    href={selectedLead['LinkedIn Profile URL']}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 transition-colors"
-                  >
-                    <ExternalLinkIcon className="h-6 w-6" />
-                  </a>
-                )}
-              </div>
-              <div className="text-sm text-gray-500 mt-2">
-                Profile Key: {safeRender(selectedLead.id || selectedLead['Profile Key'])}
-              </div>
-            </div>
-            
-            <LeadDetailForm
-              lead={{
-                ...selectedLead,
-                // Map the fields to the expected format with safety
-                id: safeRender(selectedLead.id || selectedLead['Profile Key']),
-                profileKey: safeRender(selectedLead['Profile Key']),
-                firstName: safeRender(selectedLead['First Name']),
-                lastName: safeRender(selectedLead['Last Name']),
-                linkedinProfileUrl: safeRender(selectedLead['LinkedIn Profile URL']),
-                viewInSalesNavigator: safeRender(selectedLead['View In Sales Navigator']),
-                email: safeRender(selectedLead['Email']),
-                phone: safeRender(selectedLead['Phone']),
-                ashWorkshopEmail: Boolean(selectedLead['ASH Workshop Email']),
-                aiScore: selectedLead['AI Score'],
-                postsRelevancePercentage: selectedLead['Posts Relevance Percentage'],
-                source: safeRender(selectedLead['Source']),
-                status: safeRender(selectedLead['Status']),
-                priority: safeRender(selectedLead['Priority']),
-                linkedinConnectionStatus: safeRender(selectedLead['LinkedIn Connection Status']),
-                followUpDate: safeRender(selectedLead.followUpDate),
-                notes: safeRender(selectedLead['Notes']),
-                lastMessageDate: safeRender(selectedLead['Last Message Date'])
-              }}
-              onUpdate={handleLeadUpdate}
-              onDelete={handleLeadDelete}
-              isUpdating={isUpdating}
-            />
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-            <div className="text-center text-gray-400 py-16">
-              {UserIcon && <UserIcon className="h-20 w-20 mx-auto mb-6 text-gray-300" />}
-              <p className="text-xl text-gray-500">Select a lead to view details</p>
-              <p className="text-sm text-gray-400 mt-2">Choose a lead from the search results to view and edit their information</p>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Enhanced Search and Table View - Full Width */}
+      <LeadSearchEnhanced
+        leads={leads}
+        totalLeads={allLeads.length}
+        currentPage={currentPage}
+        leadsPerPage={leadsPerPage}
+        onLeadSelect={handleLeadSelect}
+        selectedLead={selectedLead}
+        isLoading={isLoading}
+        onSearch={handleEnhancedSearch}
+      />
+
+      <PaginationSummary
+        currentPage={currentPage}
+        pageItemCount={leads.length}
+        pageSize={leadsPerPage}
+        // We don't have a true total; pass null so component omits it
+        knownTotal={null}
+        onPageChange={handlePageChange}
+        isLoading={isLoading}
+        disableNext={leads.length < leadsPerPage}
+      />
+
+      {/* Modal for Lead Details */}
+      <LeadDetailModal
+        lead={selectedLead}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onUpdate={handleLeadUpdate}
+        onDelete={handleLeadDelete}
+        isUpdating={isUpdating}
+      />
     </div>
   );
 };
