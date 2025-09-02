@@ -1,0 +1,937 @@
+{
+  "when": "2025-08-15T04:33:56.336Z",
+  "summary": {
+    "ambiguous": 30,
+    "task": 53,
+    "doc": 20
+  },
+  "results": [
+    {
+      "file": "AIRTABLE-FIELD-REFERENCE.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "analysis.txt",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "APIFY-INTEGRATION-GUIDE.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "ASH-Dashboard-Integration.html",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "BACKEND-DEEP-DIVE.md",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "BACKEND-QUICK-REFERENCE.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "CLIENT-SECURITY-STATUS.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "CONTENT-MODULES-LIBRARY.md",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "DEPLOY-TRIGGER.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "DEV Bookmarks.html",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "DEVELOPMENT-ENVIRONMENT-COMPLETE-GUIDE.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "docs/archive/TASK-LIST-backup.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "docs/archive/TASK-LIST-old.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "docs/archive/TASK-LIST.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "docs/temp/HOTFIX-BACKLOG.md",
+      "label": "task",
+      "confidence": 0.5,
+      "signals": {
+        "task": 3,
+        "doc": 0
+      }
+    },
+    {
+      "file": "docs/temp/HOTFIX-TEMPLATE.md",
+      "label": "task",
+      "confidence": 0.5,
+      "signals": {
+        "task": 3,
+        "doc": 0
+      }
+    },
+    {
+      "file": "DOCS-INDEX.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "DOCUMENTATION-AUDIT-CONSOLIDATION-PLAN.md",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "DOCUMENTATION-STANDARDS.md",
+      "label": "task",
+      "confidence": 0.16666666666666666,
+      "signals": {
+        "task": 3,
+        "doc": 2
+      }
+    },
+    {
+      "file": "ENVIRONMENT-MANAGEMENT.md",
+      "label": "task",
+      "confidence": 0.16666666666666666,
+      "signals": {
+        "task": 1,
+        "doc": 0
+      }
+    },
+    {
+      "file": "GENERAL-INSTRUCTIONS.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "Hotfix-Test-Locally.html",
+      "label": "task",
+      "confidence": 0.6666666666666666,
+      "signals": {
+        "task": 4,
+        "doc": 0
+      }
+    },
+    {
+      "file": "Hotfix-Test-Online.html",
+      "label": "task",
+      "confidence": 0.6666666666666666,
+      "signals": {
+        "task": 4,
+        "doc": 0
+      }
+    },
+    {
+      "file": "IMPLEMENTATION-PLANS-COMPLETE-GUIDE.md",
+      "label": "doc",
+      "confidence": 0.16666666666666666,
+      "signals": {
+        "task": 2,
+        "doc": 3
+      }
+    },
+    {
+      "file": "kb/DOC-airtable-automations-2025-08-15.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 3,
+        "doc": 5
+      }
+    },
+    {
+      "file": "kb/DOC-documentation-operating-guide-2025-08-15.md",
+      "label": "doc",
+      "confidence": 1,
+      "signals": {
+        "task": 1,
+        "doc": 8
+      }
+    },
+    {
+      "file": "kb/DOC-sample-template-2025-08-15.md",
+      "label": "doc",
+      "confidence": 0.6666666666666666,
+      "signals": {
+        "task": 3,
+        "doc": 7
+      }
+    },
+    {
+      "file": "kb/INDEX.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "kb_local_backup_20250815-133936/DOC-airtable-automations-2025-08-15.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 3,
+        "doc": 5
+      }
+    },
+    {
+      "file": "kb_local_backup_20250815-133936/DOC-documentation-operating-guide-2025-08-15.md",
+      "label": "doc",
+      "confidence": 1,
+      "signals": {
+        "task": 1,
+        "doc": 8
+      }
+    },
+    {
+      "file": "kb_local_backup_20250815-133936/DOC-sample-template-2025-08-15.md",
+      "label": "doc",
+      "confidence": 0.6666666666666666,
+      "signals": {
+        "task": 3,
+        "doc": 7
+      }
+    },
+    {
+      "file": "kb_local_backup_20250815-133936/INDEX.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/backend-extensions/wordpress-integration.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/DEVELOPMENT-LESSONS.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/architecture.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/authentication.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/chrome-extension-spec.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/deployment-strategy.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/integration-analysis.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/interface-development-methodology.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/requirements.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/docs/web-portal-spec.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/QUICK-REFERENCE.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/README.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/web-portal/BOOTSTRAP_FOR_NEW_DEVS.md",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/web-portal/build/index.html",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/web-portal/public/index.html",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "LinkedIn-Messaging-FollowUp/web-portal/README.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "linkedin-messaging-followup-next/components/SETTINGS_REBUILD_DOCS.md",
+      "label": "task",
+      "confidence": 0.5,
+      "signals": {
+        "task": 3,
+        "doc": 0
+      }
+    },
+    {
+      "file": "linkedin-messaging-followup-next/README.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "LOG-ANALYSIS-API.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "MODEL-STRATEGY.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "PB-Webhook-Server-Documentation.md",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "post-scoring-attributes-fields-2025-07-25.txt",
+      "label": "task",
+      "confidence": 0.5,
+      "signals": {
+        "task": 3,
+        "doc": 0
+      }
+    },
+    {
+      "file": "PRODUCTION-STRUCTURE-RECOMMENDATION.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "PROJECT-MANAGEMENT-COMPLETE-GUIDE.md",
+      "label": "task",
+      "confidence": 0.16666666666666666,
+      "signals": {
+        "task": 3,
+        "doc": 2
+      }
+    },
+    {
+      "file": "QUICK-REFERENCE.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "README-LIVE-DEPLOYMENTS.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "RENDER-API-INVESTIGATION.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "scoring-attributes-data.txt",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "scoring-attributes-fields-2025-07-25.txt",
+      "label": "task",
+      "confidence": 0.5,
+      "signals": {
+        "task": 3,
+        "doc": 0
+      }
+    },
+    {
+      "file": "SECURITY-AUDIT-COMPLETE-GUIDE.md",
+      "label": "task",
+      "confidence": 0.16666666666666666,
+      "signals": {
+        "task": 3,
+        "doc": 2
+      }
+    },
+    {
+      "file": "SLIDE-SCRIPT-TEMPLATES.md",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "SYNTHESIA-CONTENT-MASTER.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "SYSTEM-OVERVIEW.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 2,
+        "doc": 2
+      }
+    },
+    {
+      "file": "tasks/archive/TASK-LIST-backup.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks/archive/TASK-LIST-old.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks/archive/TASK-LIST.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks/SUBMODULE-README.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "tasks/TASK-audit-consolidate-task-docs-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks/TASK-migrate-tasks-to-shared-repo-submodule-2025-08-14.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks/TASK-move-tasks-directory-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 1
+      }
+    },
+    {
+      "file": "tasks/TASK-sample-template-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 1
+      }
+    },
+    {
+      "file": "tasks/TASK-standardize-select-fields-auto-sync-airtable-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 10,
+        "doc": 3
+      }
+    },
+    {
+      "file": "tasks/TASK-test-client-duplicate-batch-processing-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/archive/TASK-LIST-backup.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/archive/TASK-LIST-old.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/archive/TASK-LIST.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/SUBMODULE-README.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/TASK-audit-consolidate-task-docs-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/TASK-migrate-tasks-to-shared-repo-submodule-2025-08-14.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/TASK-move-tasks-directory-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 1
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/TASK-sample-template-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 1
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/TASK-standardize-select-fields-auto-sync-airtable-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 10,
+        "doc": 3
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250814-225613/TASK-test-client-duplicate-batch-processing-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/archive/TASK-LIST-backup.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/archive/TASK-LIST-old.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 6,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/archive/TASK-LIST.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/SUBMODULE-README.md",
+      "label": "doc",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 0,
+        "doc": 2
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/TASK-audit-consolidate-task-docs-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/TASK-migrate-tasks-to-shared-repo-submodule-2025-08-14.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/TASK-move-tasks-directory-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 1
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/TASK-sample-template-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 1
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/TASK-standardize-select-fields-auto-sync-airtable-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 10,
+        "doc": 3
+      }
+    },
+    {
+      "file": "tasks_local_backup_20250815-050337/TASK-test-client-duplicate-batch-processing-2025-08-13.md",
+      "label": "task",
+      "confidence": 1,
+      "signals": {
+        "task": 8,
+        "doc": 0
+      }
+    },
+    {
+      "file": "temp_batch_section.txt",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "temp_batch_section_fixed.txt",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "temp_end.txt",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "temp_start.txt",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "TEXTBLAZE-WEBHOOK-EXPLAINED.md",
+      "label": "task",
+      "confidence": 0.3333333333333333,
+      "signals": {
+        "task": 2,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tools/classify-report.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "tools/move-plan.md",
+      "label": "ambiguous",
+      "confidence": 0,
+      "signals": {
+        "task": 0,
+        "doc": 0
+      }
+    },
+    {
+      "file": "TROUBLESHOOTING-COMPLETE-GUIDE.md",
+      "label": "doc",
+      "confidence": 0.16666666666666666,
+      "signals": {
+        "task": 1,
+        "doc": 2
+      }
+    }
+  ]
+}
