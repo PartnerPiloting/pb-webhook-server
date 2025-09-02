@@ -1,11 +1,12 @@
-const SEARCH_TERMS_ENABLED = (process.env.NEXT_PUBLIC_SEARCH_TERMS_ENABLED === "1" || process.env.NEXT_PUBLIC_SEARCH_TERMS_ENABLED === "true");
+// Search terms feature always enabled (flag removed)
+const SEARCH_TERMS_ENABLED = true; // always on
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
 
-if(!SEARCH_TERMS_ENABLED){return null;}
+// (Former flag gate removed)
 const LeadSearchEnhanced = ({ 
   leads = [], 
   totalLeads = 0,
