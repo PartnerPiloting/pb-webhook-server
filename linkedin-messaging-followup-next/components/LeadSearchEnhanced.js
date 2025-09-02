@@ -1,5 +1,3 @@
-// Search terms feature always enabled (flag removed)
-const SEARCH_TERMS_ENABLED = true; // always on
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import SearchTermsField from './SearchTermsField';
