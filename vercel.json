@@ -1,4 +1,3 @@
 {
-  "rootDirectory": "linkedin-messaging-followup-next",
   "ignoreCommand": "echo force build; exit 1"
 }
