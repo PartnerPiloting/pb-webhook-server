@@ -1,6 +1,4 @@
 {
-	"$schema": "https://openapi.vercel.sh/vercel.json",
-	"version": 2,
-	"name": "pb-webhook-server",
-	"ignoreCommand": "echo Skipping Vercel build for backend repo && exit 0"
+  "rootDirectory": "linkedin-messaging-followup-next",
+  "ignoreCommand": "echo force build; exit 1"
 }
