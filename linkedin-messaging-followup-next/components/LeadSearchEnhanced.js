@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
+import HelpButton from './HelpButton';
 import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
@@ -472,7 +473,10 @@ const LeadSearchEnhanced = ({
       })()}
       {/* Search Controls */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Search & Filter</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-medium text-gray-900">Search & Filter</h2>
+          <HelpButton area="lead_search_and_update_search" title="Help for Search & Filter" />
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           {/* Name Search - narrower, 1 column */}
