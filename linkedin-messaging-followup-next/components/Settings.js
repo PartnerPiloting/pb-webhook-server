@@ -388,8 +388,7 @@ const SettingsWithParams = () => {
                       Edit with AI
                     </button>
 
-                    {/* Help Button for this attribute */}
-                    <HelpButton area={`profile_attribute_${attributeId}`} label="Help" />
+                    {/* Help button removed per request */}
                   </div>
                 </div>
               </div>
@@ -490,8 +489,7 @@ const SettingsWithParams = () => {
                       Edit with AI
                     </button>
 
-                    {/* Help Button for this post criterion */}
-                    <HelpButton area={`post_criterion_${attributeId}`} label="Help" />
+                    {/* Help button removed per request */}
                   </div>
                 </div>
               </div>
