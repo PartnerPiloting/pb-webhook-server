@@ -15,6 +15,17 @@ export function getBackendBase() {
       return 'http://localhost:3001';
     }
 
+    // Heuristic: dedicated staging app domain (e.g., pb-webhook-server-staging.vercel.app)
+    try {
+      const vercelUrl = (process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL || '').toLowerCase();
+      const host = (typeof window !== 'undefined' ? window.location.hostname : '').toLowerCase();
+      if (!raw) {
+        if (vercelUrl.includes('staging') || host.includes('staging')) {
+          return 'https://pb-webhook-server-staging.onrender.com';
+        }
+      }
+    } catch {}
+
     // Auto-detect Vercel environment for sensible defaults when NEXT_PUBLIC_API_BASE_URL is not set
     const vercelEnv = process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV; // 'development' | 'preview' | 'production'
     if (!raw) {
@@ -1070,19 +1081,49 @@ export const getStartHereHelp = async () => {
   }
 };
 
+// Context Help (temporary shim): fetches contextual help data.
+// Until a dedicated /api/help/context endpoint exists, this proxies to
+// /api/help/start-here and returns the same structure. The UI uses the
+// caller-provided `area` for the panel title; content remains the same.
+export const getContextHelp = async (area = 'global', opts = {}) => {
+  const includeBody = !!opts.includeBody;
+  const refresh = !!opts.refresh;
+  const table = (opts.table || '').toString().toLowerCase();
+  try {
+    const baseUrl = getBackendBase();
+    const params = new URLSearchParams();
+    if (includeBody) params.set('include', 'body');
+    if (refresh) params.set('refresh', '1');
+    if (table === 'copy' || table === 'help') params.set('table', table);
+    const url = `${baseUrl}/api/help/start-here${params.toString() ? `?${params.toString()}` : ''}`;
+    const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    if (!resp.ok) throw new Error(`Failed to load context help: ${resp.status}`);
+    const json = await resp.json();
+    // Tag the response with requested area for clarity (UI title uses prop)
+    return { ...json, area: area || json.area || 'global' };
+  } catch (e) {
+    console.error('getContextHelp error', e);
+    throw e;
+  }
+};
+
 // Fetch a single help topic with parsed blocks
 export const getHelpTopic = async (id, opts = {}) => {
   const includeInstructions = opts.includeInstructions ? '1' : '0';
+  const table = opts.table ? String(opts.table).toLowerCase() : '';
   try {
   // Prefer local API in dev; otherwise use environment-aware backend base
   const baseUrl = getBackendBase();
-
+    const qs = new URLSearchParams({ include_instructions: includeInstructions });
+    if (table === 'copy' || table === 'help') qs.set('table', table);
+    const url = `${baseUrl}/api/help/topic/${id}?${qs.toString()}`;
     // Add a timeout wrapper so UI can surface an error instead of endless "Loading" if server unreachable
     const controller = new AbortController();
     const t = setTimeout(()=>controller.abort(), 12000); // 12s network timeout
     let resp;
     try {
-      resp = await fetch(`${baseUrl}/api/help/topic/${id}?include_instructions=${includeInstructions}`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
+      if (typeof window !== 'undefined') { try { console.debug('[getHelpTopic] GET', url); } catch {} }
+      resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
     } finally {
       clearTimeout(t);
     }
