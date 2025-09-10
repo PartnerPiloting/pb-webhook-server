@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import HelpButton from './HelpButton';
 import LeadDetailForm from './LeadDetailForm';
 
 const LeadDetailModal = ({ 
@@ -69,6 +70,8 @@ const LeadDetailModal = ({
               </div>
               
               <div className="flex items-center gap-3">
+                {/* Contextual Help for Lead Detail */}
+                <HelpButton area="lead_search_and_update_detail" title="Help for Lead Detail" />
                 {/* LinkedIn Profile Link */}
                 {lead['LinkedIn Profile URL'] && (
                   <a
