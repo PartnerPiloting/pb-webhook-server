@@ -1099,8 +1099,49 @@ export const getContextHelp = async (area = 'global', opts = {}) => {
     const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
     if (!resp.ok) throw new Error(`Failed to load context help: ${resp.status}`);
     const json = await resp.json();
-    // Tag the response with requested area for clarity (UI title uses prop)
-    return { ...json, area: area || json.area || 'global' };
+
+    // If area is global, return as-is
+    const a = String(area || 'global').toLowerCase();
+    if (a === 'global') return { ...json, area: a };
+
+    // Alias map to match Airtable context_type values
+    const aliases = {
+      'lead_search_and_update': ['lead_search_and_update', 'lead_search_and_update_detail', 'lead_search_and_update_search'],
+      'lead_follow_up': ['lead_follow_up'],
+      'new_lead': ['new_lead'],
+      'top_scoring_leads': ['top_scoring_leads'],
+      'top_scoring_posts': ['top_scoring_posts', 'post_scoring'],
+      'post_scoring': ['post_scoring', 'top_scoring_posts'],
+      'profile_attributes': ['profile_attributes']
+    };
+    const matchSet = new Set(aliases[a] || [a]);
+
+    // Filter categories/subcategories/topics to only matching contextType (plus global/empty)
+    const filteredCats = (json.categories || []).map(cat => {
+      const subFiltered = (cat.subCategories || []).map(sub => {
+        const topics = (sub.topics || []).filter(t => {
+          const ct = (t.contextType || '').toString().toLowerCase().trim();
+          if (!ct || ct === 'global') return true; // general topics still helpful
+          return matchSet.has(ct);
+        });
+        return { ...sub, topics };
+      }).filter(sub => (sub.topics && sub.topics.length > 0));
+      return { ...cat, subCategories: subFiltered };
+    }).filter(cat => (cat.subCategories && cat.subCategories.length > 0));
+
+    if (!filteredCats.length) {
+      // Fallback: if nothing matched, return original list rather than empty panel
+      return { ...json, area: a, meta: { ...json.meta, filtered: false } };
+    }
+
+    const totalTopics = filteredCats.reduce((s, c) => s + c.subCategories.reduce((ss, sc) => ss + sc.topics.length, 0), 0);
+    const payload = {
+      ...json,
+      area: a,
+      categories: filteredCats,
+      meta: { ...json.meta, filtered: true, filteredArea: a, totalTopics }
+    };
+    return payload;
   } catch (e) {
     console.error('getContextHelp error', e);
     throw e;
