@@ -532,7 +532,6 @@ const SettingsWithParams = () => {
                     <h3 className="text-lg font-semibold text-gray-900">
                       LinkedIn Profile Scoring Attributes
                     </h3>
-        <div className="mt-1"><HelpButton area="profile_attributes" label="Help for this" /></div>
                   </div>
                 </div>
                 <p className="text-sm text-gray-500 mb-4">
@@ -556,7 +555,6 @@ const SettingsWithParams = () => {
                     <h3 className="text-lg font-semibold text-gray-900">
                       LinkedIn Post Scoring Criteria
                     </h3>
-        <div className="mt-1"><HelpButton area="post_scoring" label="Help for this" /></div>
                   </div>
                 </div>
                 <p className="text-sm text-gray-500 mb-4">
