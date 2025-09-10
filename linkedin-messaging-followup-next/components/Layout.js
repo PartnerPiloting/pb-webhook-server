@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 import { initializeClient, getClientProfile } from '../utils/clientUtils.js';
+import dynamic from 'next/dynamic';
+
+// Lazy-load the help panel to keep initial bundle lean
+const ContextHelpPanel = dynamic(() => import('./ContextHelpPanel'), { ssr: false });
 
 // Client initialization hook
 const useClientInitialization = () => {
@@ -135,10 +139,24 @@ const NavigationWithParams = ({ pathname, children }) => {
 const Layout = ({ children }) => {
   const pathname = usePathname();
   const [clientProfile, setClientProfile] = useState(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   
   // Initialize client authentication
   const { isInitialized, error } = useClientInitialization();
 
+  // Compute contextual help area from current pathname
+  const helpArea = React.useMemo(() => {
+    if (!pathname) return 'global';
+    if (pathname === '/' || pathname.startsWith('/lead') || pathname.startsWith('/new-lead')) return 'lead_search_and_update';
+    if (pathname.startsWith('/follow-up')) return 'lead_follow_up';
+    if (pathname.startsWith('/new-leads')) return 'new_lead';
+    if (pathname.startsWith('/top-scoring-leads')) return 'top_scoring_leads';
+    if (pathname.startsWith('/top-scoring-posts')) return 'top_scoring_posts';
+    if (pathname.startsWith('/settings')) return 'profile_attributes';
+    if (pathname.startsWith('/start-here')) return 'global';
+    return 'global';
+  }, [pathname]);
+  
   // Update client profile when initialization completes
   useEffect(() => {
     if (isInitialized && !error) {
@@ -168,26 +186,62 @@ const Layout = ({ children }) => {
       // Developer mode - log error but continue (might be backend issue)
       console.warn('Layout: Authentication failed in developer mode, but continuing:', error);
       // Continue to render the app for developers
-    } else {
-      // Parse error message and provide specific UI based on error type
-      const errorMessage = error.message || 'Access restricted';
-      let title = 'Access Restricted';
-      let message = errorMessage;
-      let details = null;
-      let showLoginButton = false;
-      
-      // Handle specific error scenarios
-      if (errorMessage.includes('log into australiansidehustles.com.au')) {
-        title = 'Login Required';
-        message = 'Please log into australiansidehustles.com.au to proceed.';
-        showLoginButton = true;
-      } else if (errorMessage.includes('Check with your coach to gain access')) {
-        title = 'Access Not Yet Activated';
-        message = 'Check with your coach to gain access.';
-        details = 'Your Australian Side Hustles account was found, but you don\'t have access to the LinkedIn Portal yet. Please contact Australian Side Hustles Support for assistance.';
-      } else if (errorMessage.includes('membership may have expired')) {
-        title = 'Membership Issue';
-        message = 'Looks like your membership may have expired - check with your coach.';
+    const helpArea = (() => {
+      // Map pathname to backend help area keys
+      if (!pathname) return 'global';
+      if (pathname === '/' || pathname.startsWith('/lead') || pathname.startsWith('/new-lead')) return 'lead_search_and_update';
+      if (pathname.startsWith('/follow-up')) return 'lead_follow_up';
+      if (pathname.startsWith('/new-leads')) return 'new_lead';
+      if (pathname.startsWith('/top-scoring-leads')) return 'top_scoring_leads';
+      if (pathname.startsWith('/top-scoring-posts')) return 'top_scoring_posts';
+      if (pathname.startsWith('/settings')) return 'profile_attributes';
+      return 'global';
+    })();
+
+    return (
+      <>
+        <div className="min-h-screen bg-gray-50 p-6">
+          <header className="mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900">{getEnvLabel()}</h1>
+                <p className="text-sm text-gray-500">{clientProfile ? `${clientProfile.clientName}'s LinkedIn Follow-Up Portal` : 'LinkedIn Follow-Up Portal'}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                  title="Open contextual help"
+                >
+                  {/* Using outline icon set already imported */}
+                  <QuestionMarkCircleIcon className="h-5 w-5" />
+                  Help
+                </button>
+              </div>
+            </div>
+          </header>
+          <Suspense fallback={<div />}> 
+            <NavigationWithParams pathname={pathname} />
+          </Suspense>
+          <main>
+            {children}
+          </main>
+        </div>
+
+        {/* Context Help Panel */}
+        {helpOpen && (
+          <ContextHelpPanel area={helpArea} isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
+        )}
+      </>
+    );
+  } else {
+      const errorMessage = String(error?.message || '');
+      let title = 'Access Required';
+      let message = 'This portal is available to authorized users only.';
+      let details = '';
+      let showLoginButton = true;
+      if (errorMessage.includes('access has been suspended')) {
         details = 'Your LinkedIn Portal access is currently inactive. Please contact Australian Side Hustles Support to reactivate your access.';
       } else if (errorMessage.includes('System temporarily unavailable')) {
         title = 'System Temporarily Unavailable';
@@ -275,7 +329,15 @@ const Layout = ({ children }) => {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              {/* Future: Add user menu or additional controls */}
+              <button
+                type="button"
+                onClick={() => setHelpOpen(true)}
+                className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                title="Open contextual help"
+              >
+                <QuestionMarkCircleIcon className="h-5 w-5" />
+                Help
+              </button>
             </div>
           </div>
         </div>
@@ -294,6 +356,11 @@ const Layout = ({ children }) => {
           {children}
         </main>
       </div>
+
+      {/* Context Help Panel */}
+      {helpOpen && (
+        <ContextHelpPanel area={helpArea} isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
+      )}
     </div>
   );
 };
