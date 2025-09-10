@@ -127,7 +127,9 @@ const StartHereContent: React.FC = () => {
     setQaInput(s => ({ ...s, [topicId]: '' }));
     setQaLoading(s => ({ ...s, [topicId]: true }));
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || (typeof window !== 'undefined' ? (window.location.origin.includes('localhost') ? 'http://localhost:3001' : window.location.origin) : '');
+  // Always talk to backend base (env-aware; defaults: localhost in dev, staging in preview, prod in production)
+  const { getBackendBase } = await import('../../services/api');
+  const baseUrl = getBackendBase();
       const resp = await fetch(`${baseUrl}/api/help/qa`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topicId, question, includeInstructions: true }) });
         if (resp.ok) {
         const json = await resp.json();
