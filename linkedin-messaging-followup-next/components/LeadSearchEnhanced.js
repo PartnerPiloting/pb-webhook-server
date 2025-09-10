@@ -4,6 +4,7 @@ import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
 
+// (Former flag gate removed)
 const LeadSearchEnhanced = ({ 
   leads = [], 
   totalLeads = 0,
