@@ -6,4 +6,5 @@ node_modules/
 
 # Logs
 *.log
-\NUL
+# Ignore Windows reserved device name that can appear accidentally
+NUL
