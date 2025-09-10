@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { getFollowUps, getLeadById, updateLead } from '../services/api';
+import HelpButton from './HelpButton';
 import LeadDetailForm from './LeadDetailForm';
 
 // Import icons using require to avoid Next.js issues
@@ -203,6 +204,7 @@ const FollowUpManager = () => {
         <div className="mb-4 flex items-center space-x-2">
           {CalendarDaysIcon && <CalendarDaysIcon className="h-6 w-6 text-blue-600" />}
           <h3 className="text-lg font-semibold text-gray-900">Follow-ups Due</h3>
+          <HelpButton area="lead_follow_up" className="ml-2" title="Help: Follow-Up Manager" />
           <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
             {followUps.length}
           </span>
