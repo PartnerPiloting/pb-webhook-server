@@ -97,13 +97,6 @@ const NavigationWithParams = ({ pathname, children }) => {
       icon: BookOpenIcon,
       description: 'Onboarding categories and topics',
       minLevel: 1
-    },
-    {
-      name: 'Help',
-      href: '/help',
-      icon: QuestionMarkCircleIcon,
-      description: 'Help center (coming soon)',
-      minLevel: 1
     }
   ];
 

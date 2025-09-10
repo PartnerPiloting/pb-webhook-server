@@ -4,17 +4,30 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 // API configuration
 // In Next.js, env vars must be prefixed with NEXT_PUBLIC_ to be exposed to the browser.
 // We normalize to a full absolute URL ending with /api/linkedin and prefer localhost in dev.
-function resolveApiBase() {
+// Resolve environment-aware backend base (without /api/linkedin)
+export function getBackendBase() {
   try {
+    // Highest priority: explicit env from Next (browser-safe)
     let raw = process.env.NEXT_PUBLIC_API_BASE_URL;
 
     // Prefer localhost automatically when developing on localhost
     if (!raw && typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
-      raw = 'http://localhost:3001';
+      return 'http://localhost:3001';
+    }
+
+    // Auto-detect Vercel environment for sensible defaults when NEXT_PUBLIC_API_BASE_URL is not set
+    const vercelEnv = process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV; // 'development' | 'preview' | 'production'
+    if (!raw) {
+      if (vercelEnv === 'preview') {
+        return 'https://pb-webhook-server-staging.onrender.com';
+      }
+      if (vercelEnv === 'production') {
+        return 'https://pb-webhook-server.onrender.com';
+      }
     }
 
     // Final fallback to production Render URL
-    if (!raw) raw = 'https://pb-webhook-server.onrender.com/api/linkedin';
+    if (!raw) return 'https://pb-webhook-server.onrender.com';
 
     // Ensure it's a string
     raw = String(raw).trim();
@@ -24,13 +37,23 @@ function resolveApiBase() {
       raw = `http://${raw}`;
     }
 
-    // If it already ends with /api/linkedin (with or without trailing slash), keep as is (no trailing slash)
-    if (/\/api\/linkedin\/?$/i.test(raw)) {
-      return raw.replace(/\/$/, '');
-    }
+    // Strip trailing /api/linkedin if provided
+    return raw.replace(/\/?api\/linkedin\/?$/i, '').replace(/\/$/, '');
+  } catch (e) {
+    return 'https://pb-webhook-server.onrender.com';
+  }
+}
 
-    // Otherwise, append the path (no trailing slash)
-    return `${raw.replace(/\/$/, '')}/api/linkedin`;
+// Resolve the full LinkedIn API base including /api/linkedin
+export function getLinkedinApiBase() {
+  const base = getBackendBase();
+  return `${base.replace(/\/$/, '')}/api/linkedin`;
+}
+
+function resolveApiBase() {
+  try {
+    // Reuse shared resolver
+    return getLinkedinApiBase();
   } catch (e) {
     return 'https://pb-webhook-server.onrender.com/api/linkedin';
   }
@@ -1035,8 +1058,8 @@ export const saveAttribute = saveAttributeChanges;
 // START HERE HELP: fetch hierarchical onboarding categories (Phase 1)
 export const getStartHereHelp = async () => {
   try {
-    // Use base without /api/linkedin just like other direct calls
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+  // Use shared backend base resolver (no /api/linkedin suffix)
+  const baseUrl = getBackendBase();
   // Always include body content for now (can optimize later with lazy loading)
   const resp = await fetch(`${baseUrl}/api/help/start-here?include=body`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
     if (!resp.ok) throw new Error(`Failed to load Start Here help: ${resp.status}`);
@@ -1051,12 +1074,8 @@ export const getStartHereHelp = async () => {
 export const getHelpTopic = async (id, opts = {}) => {
   const includeInstructions = opts.includeInstructions ? '1' : '0';
   try {
-    // Prefer local API when running on localhost for faster dev & to match in-flight backend changes
-    let baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || '';
-    if (!baseUrl && typeof window !== 'undefined') {
-      baseUrl = window.location.origin.includes('localhost') ? 'http://localhost:3001' : window.location.origin;
-    }
-    if (!baseUrl) baseUrl = 'https://pb-webhook-server.onrender.com';
+  // Prefer local API in dev; otherwise use environment-aware backend base
+  const baseUrl = getBackendBase();
 
     // Add a timeout wrapper so UI can surface an error instead of endless "Loading" if server unreachable
     const controller = new AbortController();
