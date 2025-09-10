@@ -305,6 +305,12 @@ const StartHereContent: React.FC = () => {
 
 // Basic markdown + media renderer (inside same file for now)
 function renderMarkdown(md: string, keyPrefix: string) {
+  // If backend already sent HTML, render it as HTML (with a minimal sanitizer)
+  const isLikelyHtml = /<\s*(h[1-6]|p|ul|ol|li|em|strong|blockquote|hr|br|a|figure|img|div|span|table|thead|tbody|tr|td)\b/i.test(md);
+  if (isLikelyHtml) {
+    const sanitized = basicSanitizeHtml(md);
+    return <div key={keyPrefix} className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitized }} />;
+  }
   // 1. Normalize newlines and unescape common escaped markdown chars introduced by Airtable / JSON
   let text = md.replace(/\r\n?/g,'\n');
   // Unescape sequences like \* \- \# \" \` etc
@@ -334,7 +340,7 @@ function renderMarkdown(md: string, keyPrefix: string) {
     if (words.length < 2 || words.length > 10) continue;
     let capCount = 0;
     for (const w of words) {
-      if (/^[A-Z][A-Za-z0-9'()/-]*$/.test(w)) capCount++;
+      if (/^[A-Z][A-Za-z0-9'()\/-]*$/.test(w)) capCount++;
     }
     if (capCount / words.length >= 0.6) {
       const prev = i>0 ? rawLines[i-1].trim() : '';
@@ -416,6 +422,23 @@ function renderMarkdown(md: string, keyPrefix: string) {
   // 8. Add extra blank line after major headings for readability (handled via Tailwind margins visually)
 
   return <div key={keyPrefix} className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{__html: safe}} />;
+}
+
+// Minimal HTML sanitizer for curated Help content.
+// - Strips <script>/<style>
+// - Removes inline event handlers (on*) and javascript: URLs
+// Note: For untrusted input consider a full sanitizer like DOMPurify.
+function basicSanitizeHtml(input: string): string {
+  if (!input) return '';
+  let html = String(input);
+  // Remove script and style blocks completely (use RegExp constructor to avoid TSX parsing pitfalls)
+  html = html.replace(new RegExp('<script[^>]*>[\\s\\S]*?<\\/script>', 'gi'), '');
+  html = html.replace(new RegExp('<style[^>]*>[\\s\\S]*?<\\/style>', 'gi'), '');
+  // Neutralize javascript: URLs in href/src while preserving the quote style
+  html = html.replace(/\s(href|src)\s*=\s*(['"])\s*javascript:[^'"']*\2/gi, ' $1="#"');
+  // Remove inline event handlers like onclick, onerror
+  html = html.replace(/\son[a-z]+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, '');
+  return html;
 }
 
 function renderTopicContent(topicId: string) {
