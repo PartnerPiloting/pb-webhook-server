@@ -411,7 +411,7 @@ Examples:
     try {
       console.log('AIEditModal: Making real API call...');
       // Strip /api/linkedin suffix like other API calls do
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server-hotfix.onrender.com';
       const apiUrl = `${baseUrl}/api/attributes/${attribute.id}/ai-field-help`;
       console.log('API URL:', apiUrl);
       

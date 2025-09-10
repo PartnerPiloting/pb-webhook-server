@@ -1,0 +1,8 @@
+[submodule "tasks"]
+	path = tasks
+	url = https://github.com/PartnerPiloting/shared-tasks.git
+	branch = main
+[submodule "kb"]
+	path = kb
+	url = https://github.com/PartnerPiloting/shared-tech-docs.git
+	branch = main
