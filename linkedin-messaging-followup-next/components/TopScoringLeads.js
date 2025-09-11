@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from 'react';
+import HelpButton from './HelpButton';
 import { getCurrentClientId } from "../utils/clientUtils";
 
 // Derive backend origin from NEXT_PUBLIC_API_BASE_URL which may include a path like /api/linkedin
@@ -445,7 +446,10 @@ export default function TopScoringLeads() {
   return (
     <div className="space-y-6">
       <div className="bg-white border rounded p-4">
-        <h2 className="font-semibold mb-2">Top Scoring Leads</h2>
+        <div className="flex items-center gap-2 mb-2">
+          <h2 className="font-semibold">Top Scoring Leads</h2>
+          <HelpButton area="top_scoring_leads" className="ml-1" title="Help: Top Scoring Leads" />
+        </div>
         <p className="text-sm text-gray-600 mb-4">Leads not yet queued in the Linked Helper campaign.</p>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-sm text-gray-700">AI Score threshold</label>

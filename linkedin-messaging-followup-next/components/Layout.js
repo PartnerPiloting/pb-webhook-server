@@ -1,133 +1,84 @@
 "use client";
-import React, { Suspense, useEffect, useState } from 'react';
-import { getEnvLabel } from '../utils/clientUtils.js';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon } from '@heroicons/react/24/outline';
-import { initializeClient, getClientProfile } from '../utils/clientUtils.js';
+import dynamic from 'next/dynamic';
+import { getEnvLabel, initializeClient, getClientProfile } from '../utils/clientUtils.js';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 
-// Client initialization hook
+// Lazy-load the help panel to keep initial bundle lean
+const ContextHelpPanel = dynamic(() => import('./ContextHelpPanel'), { ssr: false });
+
+// Client initialization hook (encapsulated)
 const useClientInitialization = () => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState(null);
   const searchParams = useSearchParams();
-  
+
   useEffect(() => {
-    const initClient = async () => {
+    let active = true;
+    const init = async () => {
       try {
-        console.log('Layout: Starting client initialization...');
-        
-        // Check for test client parameter in URL
-        const testClient = searchParams.get('testClient');
-        if (testClient) {
-          console.log(`Layout: Found test client parameter: ${testClient}`);
-        }
-        
         await initializeClient();
-        setIsInitialized(true);
-        console.log('Layout: Client initialization successful');
-      } catch (error) {
-        console.error('Layout: Client initialization failed:', error);
-        setError(error);
-        setIsInitialized(true); // Set to true to show error message instead of loading
+        if (active) setIsInitialized(true);
+      } catch (e) {
+        console.error('Layout: Client initialization failed:', e);
+        if (active) {
+          setError(e);
+          setIsInitialized(true);
+        }
       }
     };
-    
-    initClient();
+    init();
+    return () => { active = false; };
   }, [searchParams]);
-  
+
   return { isInitialized, error };
 };
 
-// Component that uses useSearchParams wrapped in Suspense
-const NavigationWithParams = ({ pathname, children }) => {
+// Primary navigation tabs (URL params preserved)
+const NavigationWithParams = ({ pathname }) => {
   const searchParams = useSearchParams();
-  // Get service level from URL parameters (level=1 basic, level=2 includes post scoring)
-  const serviceLevel = parseInt(searchParams.get('level') || '2');
-  // Always show Top Scoring Leads in the navigation
-  
-  // Build navigation; include Top Scoring Leads (left of Posts)
-  const navigation = [
-    {
-      name: 'Lead Search & Update',
-      href: '/',
-      icon: MagnifyingGlassIcon,
-      description: 'Find and update existing leads',
-      minLevel: 1
-    },
-    {
-      name: 'Follow-Up Manager',
-      href: '/follow-up',
-      icon: CalendarDaysIcon,
-      description: 'Manage scheduled follow-ups',
-      minLevel: 1
-    },
-    {
-      name: 'New Leads',
-      href: '/new-leads',
-      icon: UserPlusIcon,
-      description: 'Review and process new leads',
-      minLevel: 1
-    },
-    // Top Scoring Leads (placed before Posts)
-    {
-      name: 'Top Scoring Leads',
-      href: '/top-scoring-leads',
-      icon: TrophyIcon,
-      description: 'Pick the best candidates for the next LH batch',
-      minLevel: 2
-    },
-    {
-      name: 'Top Scoring Posts',
-      href: '/top-scoring-posts',
-      icon: TrophyIcon,
-      description: 'Leads with high-relevance posts ready for action',
-      minLevel: 2
-    },
-    {
-      name: 'Settings',
-      href: '/settings',
-      icon: CogIcon,
-      description: 'Configure scoring attributes and system settings',
-      minLevel: 1
-    }
+  const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
+  const nav = [
+    { name: 'Lead Search & Update', href: '/', icon: MagnifyingGlassIcon, description: 'Find and update existing leads', minLevel: 1 },
+    { name: 'Follow-Up Manager', href: '/follow-up', icon: CalendarDaysIcon, description: 'Manage scheduled follow-ups', minLevel: 1 },
+    { name: 'New Leads', href: '/new-leads', icon: UserPlusIcon, description: 'Review and process new leads', minLevel: 1 },
+    { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 2 },
+    { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
+    { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and system settings', minLevel: 1 },
+    { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
   ];
-
-  // Filter navigation based on service level
-  const filteredNavigation = navigation.filter(item => item.minLevel <= serviceLevel);
-
+  const items = nav.filter(n => n.minLevel <= serviceLevel);
   return (
-    <nav className="mb-8 overflow-x-auto" aria-label="Tabs">
-      <div className="flex space-x-6 sm:space-x-8 min-w-max">
-      {filteredNavigation && filteredNavigation.map((item) => {
-        if (!item || !item.name || !item.href) return null;
-        
-        const Icon = item.icon;
-        // Check if current pathname matches this navigation item
-        const isActive = pathname === item.href;
-        
-        return (
-          <Link
-            key={item.name}
-            href={`${item.href}?${searchParams.toString()}`}
-            className={`${
-              isActive
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors duration-200`}
-          >
-            {Icon && <Icon className="h-5 w-5 mr-2" />}
-            <div>
-              <div>{item.name || ''}</div>
-              {item.description && (
-                <div className="text-xs text-gray-400 font-normal">
-                  {item.description}
-                </div>
-              )}
-            </div>
-          </Link>
-        );
-      })}
+    <nav className="mb-8" aria-label="Primary">
+      <div className="flex flex-wrap gap-x-8 gap-y-3 items-stretch">
+        {items.map(item => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href;
+          const href = `${item.href}?${searchParams.toString()}`;
+          const handleClick = (e) => {
+            try {
+              // If we're already in /settings, clicking Settings should behave like "Back to Settings"
+              if (item.href === '/settings' && pathname.startsWith('/settings')) {
+                e.preventDefault();
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('settings-nav', { detail: { action: 'backToMenu' } }));
+                }
+              }
+            } catch (_) {}
+          };
+          return (
+            <Link key={item.name} href={href} title={item.description || item.name} onClick={handleClick}
+              className={`group inline-flex items-center border-b-2 px-1 py-1.5 text-sm font-medium transition-colors ${isActive ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+              {Icon && <Icon className={`h-5 w-5 mr-2 ${isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-500'}`} />}
+              <span className="leading-tight">
+                {item.name}
+                <span className="block text-[11px] font-normal text-gray-400 leading-tight max-w-[11rem] truncate" aria-hidden="true">{item.description}</span>
+              </span>
+            </Link>
+          );
+        })}
       </div>
     </nav>
   );
@@ -136,19 +87,47 @@ const NavigationWithParams = ({ pathname, children }) => {
 const Layout = ({ children }) => {
   const pathname = usePathname();
   const [clientProfile, setClientProfile] = useState(null);
-  
-  // Initialize client authentication
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpAreaOverride, setHelpAreaOverride] = useState(null);
   const { isInitialized, error } = useClientInitialization();
+  
+  // Allow child pages to open the Help panel via a simple custom event
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const openHandler = (e) => {
+      try {
+        const area = e?.detail?.area;
+        setHelpAreaOverride(area || null);
+      } catch (_) {
+        setHelpAreaOverride(null);
+      }
+      setHelpOpen(true);
+    };
+    window.addEventListener('open-help', openHandler);
+    return () => { window.removeEventListener('open-help', openHandler); };
+  }, []);
 
-  // Update client profile when initialization completes
+  // Compute contextual help area from current pathname
+  const helpArea = useMemo(() => {
+    if (!pathname) return 'global';
+    if (pathname === '/' || pathname.startsWith('/lead') || pathname.startsWith('/new-lead')) return 'lead_search_and_update';
+    if (pathname.startsWith('/follow-up')) return 'lead_follow_up';
+    if (pathname.startsWith('/new-leads')) return 'new_lead';
+    if (pathname.startsWith('/top-scoring-leads')) return 'top_scoring_leads';
+    if (pathname.startsWith('/top-scoring-posts')) return 'top_scoring_posts';
+    if (pathname.startsWith('/settings')) return 'profile_attributes';
+    if (pathname.startsWith('/start-here')) return 'global';
+    return 'global';
+  }, [pathname]);
+
+  // Load client profile after init success
   useEffect(() => {
     if (isInitialized && !error) {
-      const profile = getClientProfile();
-      setClientProfile(profile);
+      setClientProfile(getClientProfile());
     }
   }, [isInitialized, error]);
 
-  // Show loading state while initializing
+  // Init state
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -159,47 +138,22 @@ const Layout = ({ children }) => {
     );
   }
 
-  // Show error state if initialization failed
+  // Error state (allow dev mode via testClient query)
   if (error) {
-    // Check if testClient parameter is present - if so, this might be a different issue
-    const urlParams = new URLSearchParams(window.location.search);
-    const testClient = urlParams.get('testClient');
-    
-    if (testClient) {
-      // Developer mode - log error but continue (might be backend issue)
-      console.warn('Layout: Authentication failed in developer mode, but continuing:', error);
-      // Continue to render the app for developers
-    } else {
-      // Parse error message and provide specific UI based on error type
-      const errorMessage = error.message || 'Access restricted';
-      let title = 'Access Restricted';
-      let message = errorMessage;
-      let details = null;
-      let showLoginButton = false;
-      
-      // Handle specific error scenarios
-      if (errorMessage.includes('log into australiansidehustles.com.au')) {
-        title = 'Login Required';
-        message = 'Please log into australiansidehustles.com.au to proceed.';
-        showLoginButton = true;
-      } else if (errorMessage.includes('Check with your coach to gain access')) {
-        title = 'Access Not Yet Activated';
-        message = 'Check with your coach to gain access.';
-        details = 'Your Australian Side Hustles account was found, but you don\'t have access to the LinkedIn Portal yet. Please contact Australian Side Hustles Support for assistance.';
-      } else if (errorMessage.includes('membership may have expired')) {
-        title = 'Membership Issue';
-        message = 'Looks like your membership may have expired - check with your coach.';
+    let testClient = '';
+    try { const u = new URL(window.location.href); testClient = u.searchParams.get('testClient') || ''; } catch {}
+    if (!testClient) {
+      const msg = String(error?.message || '');
+      let title = 'Access Required';
+      let message = 'This portal is available to authorized users only.';
+      let details = 'Please ensure you are logged into your Australian Side Hustles account, then access this portal through the member dashboard.';
+      if (msg.includes('access has been suspended')) {
         details = 'Your LinkedIn Portal access is currently inactive. Please contact Australian Side Hustles Support to reactivate your access.';
-      } else if (errorMessage.includes('System temporarily unavailable')) {
+      } else if (msg.includes('System temporarily unavailable')) {
         title = 'System Temporarily Unavailable';
         message = 'System temporarily unavailable. Please try again in a moment.';
         details = 'If this persists, contact Australian Side Hustles Support.';
-      } else {
-        // Generic fallback
-        message = 'This portal is available to authorized users only.';
-        details = 'Please ensure you are logged into your Australian Side Hustles account, then access this portal through the member dashboard.';
       }
-      
       return (
         <div className="min-h-screen bg-gray-50 p-8">
           <div className="text-center">
@@ -211,33 +165,23 @@ const Layout = ({ children }) => {
               </div>
               <h2 className="text-xl font-semibold text-gray-900 mb-2">{title}</h2>
               <p className="text-gray-600 mb-4">{message}</p>
-              
-              {details && (
-                <div className="text-sm text-gray-500 mb-4">
-                  <p>{details}</p>
-                </div>
-              )}
-              
-              {showLoginButton && (
-                <div className="mt-6">
-                  <a 
-                    href="https://australiansidehustles.com.au/wp-login.php"
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Login to Australian Side Hustles
-                  </a>
-                </div>
-              )}
+              <div className="text-sm text-gray-500 mb-4"><p>{details}</p></div>
+              <div className="mt-6">
+                <a href="https://australiansidehustles.com.au/wp-login.php" target="_blank" rel="noopener noreferrer"
+                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                  Login to Australian Side Hustles
+                </a>
+              </div>
             </div>
           </div>
         </div>
       );
     }
+    // Dev mode: log and continue rendering the app UI
+    console.warn('Layout: auth failed but continuing in dev mode (testClient present):', error);
   }
 
-  // Ensure children is defined
+  // Children fallback
   if (!children) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -261,7 +205,7 @@ const Layout = ({ children }) => {
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
                   let displayName = clientName || '';
                   let isTestMode = false;
-                  if (clientName && clientName.includes('(' + envLabel + ' Mode)')) {
+                  if (clientName && envLabel && clientName.includes('(' + envLabel + ' Mode)')) {
                     displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
                     isTestMode = true;
                   }
@@ -276,7 +220,7 @@ const Layout = ({ children }) => {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              {/* Future: Add user menu or additional controls */}
+              {/* Per-page Help buttons are rendered within individual components via HelpButton */}
             </div>
           </div>
         </div>
@@ -285,9 +229,7 @@ const Layout = ({ children }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation Tabs */}
         <Suspense fallback={<div>Loading navigation...</div>}>
-          <NavigationWithParams pathname={pathname}>
-            {children}
-          </NavigationWithParams>
+          <NavigationWithParams pathname={pathname} />
         </Suspense>
 
         {/* Main Content */}
@@ -295,6 +237,11 @@ const Layout = ({ children }) => {
           {children}
         </main>
       </div>
+
+      {/* Context Help Panel */}
+      {helpOpen && (
+        <ContextHelpPanel area={helpAreaOverride || helpArea} isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
+      )}
     </div>
   );
 };
