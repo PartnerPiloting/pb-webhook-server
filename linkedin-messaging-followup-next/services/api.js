@@ -1063,8 +1063,8 @@ export const saveAttribute = saveAttributeChanges;
 // START HERE HELP: fetch hierarchical onboarding categories (Phase 1)
 export const getStartHereHelp = async (opts = {}) => {
   try {
-    // Use base without /api/linkedin just like other direct calls
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+  // Always resolve via helper to pick correct backend per env (dev, preview, prod)
+  const baseUrl = getBackendBase();
   const params = new URLSearchParams();
   params.set('include', 'body');
   if (opts.refresh) params.set('refresh', '1');
@@ -1081,7 +1081,7 @@ export const getStartHereHelp = async (opts = {}) => {
   export const getContextHelp = async (area, opts = {}) => {
     if (!area) throw new Error('area is required');
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+  const baseUrl = getBackendBase();
       const params = new URLSearchParams();
       params.set('area', String(area));
       params.set('include', opts.includeBody ? 'body' : '');
@@ -1112,12 +1112,8 @@ export const getStartHereHelp = async (opts = {}) => {
 export const getHelpTopic = async (id, opts = {}) => {
   const includeInstructions = opts.includeInstructions ? '1' : '0';
   try {
-    // Prefer local API when running on localhost for faster dev & to match in-flight backend changes
-    let baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || '';
-    if (!baseUrl && typeof window !== 'undefined') {
-      baseUrl = window.location.origin.includes('localhost') ? 'http://localhost:3001' : window.location.origin;
-    }
-    if (!baseUrl) baseUrl = 'https://pb-webhook-server.onrender.com';
+  // Always resolve via helper for consistent behavior across environments
+  const baseUrl = getBackendBase();
 
     // Add a timeout wrapper so UI can surface an error instead of endless "Loading" if server unreachable
     const controller = new AbortController();
@@ -1141,23 +1137,10 @@ export const getHelpTopic = async (id, opts = {}) => {
       clearTimeout(t);
     }
     if (!resp.ok) {
-      // Attempt fallback to remote server if we were on localhost and got 404 (record id mismatch between bases)
-      const isLocal = baseUrl.includes('localhost');
+      // Read body for diagnostics, then throw
       let bodyText = '';
       try { bodyText = await resp.text(); } catch {}
-      const lowerBody = bodyText.toLowerCase();
-      const shouldRetryRemote = isLocal && (resp.status === 404 || lowerBody.includes('topic_not_found'));
-      if (shouldRetryRemote) {
-        try {
-          const remoteUrl = 'https://pb-webhook-server.onrender.com';
-          const remoteParams = new URLSearchParams();
-          remoteParams.set('include_instructions', includeInstructions);
-          const remoteResp = await fetch(`${remoteUrl}/api/help/topic/${id}?${remoteParams.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
-          if (remoteResp.ok) return await remoteResp.json();
-        } catch (re) {
-          console.warn('Remote fallback failed', re);
-        }
-      }
+      console.error('getHelpTopic non-OK', { status: resp.status, bodyText: (bodyText||'').slice(0,200) });
       throw new Error(`Failed to load topic ${id}: ${resp.status}`);
     }
     return await resp.json();
