@@ -36,30 +36,41 @@ const StartHereContent: React.FC = () => {
   // Safety timers to flip stuck loading -> error after a grace period
   const topicLoadingTimers = useRef<Record<string, any>>({});
 
-  // Expose renderer to helper function outside component scope
-  useEffect(()=>{
-    (window as any).__renderTopic = (id: string) => {
-      const blocks = topicBlocks[id];
-      if (!blocks) {
-        const st = topicLoadState[id];
-  if (st==='loading') return <div className="text-xs text-gray-400">Loading topic content…</div>;
-  if (st==='error') return <div className="text-xs text-red-500">Failed to load topic content.</div>;
-  return <div className="text-xs text-gray-400">Preparing topic content…</div>;
-      }
-      return blocks.map((b,i) => {
-        if (b.type==='text') return renderMarkdown(b.markdown, id+'::'+i);
-        if (b.type==='media') {
-          const m = b.media;
-          if (m.type==='image' && m.url) return <figure key={id+'::m::'+i} className="space-y-1"><img src={m.url} alt={m.caption||'media'} className="rounded border" /><figcaption className="text-[11px] text-gray-500">{m.caption || `Image ${m.media_id}`}</figcaption></figure>;
-          if (m.type==='link' && m.url) return <p key={id+'::m::'+i} className="text-blue-600 underline"><a href={m.url} target="_blank" rel="noreferrer">{m.caption || m.url}</a></p>;
-          if (m.url) return <p key={id+'::m::'+i}><a className="text-blue-600 underline" href={m.url} target="_blank" rel="noreferrer">{m.caption||`Asset ${m.media_id}`}</a></p>;
-          return <p key={id+'::m::'+i} className="text-xs text-gray-400">(media missing url)</p>;
+  // Local renderer to display topic blocks/HTML directly from state (no global window helper)
+  const renderBlocksInline = (id: string, blocks?: TopicBlock[]) => {
+    if (!Array.isArray(blocks) || blocks.length === 0) return null;
+    return blocks.map((b, i) => {
+      if (b.type === 'text') return renderMarkdown(b.markdown, id + '::' + i);
+      if (b.type === 'media') {
+        const m = b.media;
+        if ((m.type || '').toLowerCase().includes('image') && m.url) {
+          return (
+            <figure key={id + '::m::' + i} className="space-y-1">
+              <img src={m.url} alt={m.caption || 'media'} className="rounded border" />
+              <figcaption className="text-[11px] text-gray-500">{m.caption || `Image ${m.media_id}`}</figcaption>
+            </figure>
+          );
         }
-        if (b.type==='media-missing') return <p key={id+'::mm::'+i} className="text-xs text-amber-600">Missing media {b.media_id}</p>;
-        return null;
-      });
-    };
-  }, [topicBlocks, topicLoadState]);
+        if ((m.type || '').toLowerCase().includes('link') && m.url) {
+          return (
+            <p key={id + '::m::' + i} className="text-blue-600 underline">
+              <a href={m.url} target="_blank" rel="noreferrer">{m.caption || m.url}</a>
+            </p>
+          );
+        }
+        if (m.url) {
+          return (
+            <p key={id + '::m::' + i}>
+              <a className="text-blue-600 underline" href={m.url} target="_blank" rel="noreferrer">{m.caption || `Asset ${m.media_id}`}</a>
+            </p>
+          );
+        }
+        return <p key={id + '::m::' + i} className="text-xs text-gray-400">(media missing url)</p>;
+      }
+      if (b.type === 'media-missing') return <p key={id + '::mm::' + i} className="text-xs text-amber-600">Missing media {b.media_id}</p>;
+      return null;
+    });
+  };
 
   // (Removed activeTopic useEffect; fetch handled inside toggleTopic when opened)
 
@@ -267,7 +278,17 @@ const StartHereContent: React.FC = () => {
                                           </div>
                                         )}
                                         <div className="text-[13px] leading-relaxed text-gray-700 space-y-4">
-                                          {renderTopicContent(t.id)}
+                                          {(() => {
+                                            const st = topicLoadState[t.id];
+                                            if (st === 'loading') return <div className="text-xs text-gray-400">Loading topic content…</div>;
+                                            if (st === 'error') return null; // banner above handles error + retry
+                                            const blocks = topicBlocks[t.id];
+                                            if (blocks && blocks.length) return renderBlocksInline(t.id, blocks);
+                                            // Fallback to any body provided by list payload while blocks not present
+                                            const fallback = (t as any).body || '';
+                                            if (fallback) return renderMarkdown(String(fallback), t.id + '::fallback');
+                                            return <div className="text-xs text-gray-400">Preparing topic content…</div>;
+                                          })()}
                                         </div>
                                         <div className="bg-white/60 border border-gray-200 rounded-md p-2 flex flex-col gap-2 max-h-96 overflow-hidden">
                                           <div className="flex-1 overflow-auto pr-1 space-y-3 order-1">
