@@ -1078,10 +1078,9 @@ export const getStartHereHelp = async (opts = {}) => {
   if (opts.table) params.set('table', opts.table); // e.g. 'copy' to inspect legacy table
     // Add a cache-buster to avoid CDN/browser caching stale responses in preview envs
     params.set('_', String(Date.now()));
-    const resp = await fetch(`${baseUrl}/api/help/start-here?${params.toString()}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
+  const startHereUrl = `${baseUrl}/api/help/start-here?${params.toString()}`;
+  try { if (typeof window !== 'undefined') console.debug('[help] GET', startHereUrl); } catch {}
+  const resp = await fetch(startHereUrl, { method: 'GET' });
     if (!resp.ok) throw new Error(`Failed to load Start Here help: ${resp.status}`);
     return await resp.json();
   } catch (e) {
@@ -1111,7 +1110,8 @@ export const getStartHereHelp = async (opts = {}) => {
       if (opts.table) params.set('table', opts.table);
   params.set('_', String(Date.now()));
   const url = `${baseUrl}/api/help/context?${params.toString()}`;
-  const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+  try { if (typeof window !== 'undefined') console.debug('[help] GET', url); } catch {}
+  const resp = await fetch(url, { method: 'GET' });
       if (!resp.ok) throw new Error(`Failed to load help for ${area}: ${resp.status}`);
       return await resp.json();
     } catch (e) {
@@ -1146,7 +1146,9 @@ export const getHelpTopic = async (id, opts = {}) => {
         }
       } catch {}
   params.set('_', String(Date.now()));
-  resp = await fetch(`${baseUrl}/api/help/topic/${id}?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
+  const topicUrl = `${baseUrl}/api/help/topic/${id}?${params.toString()}`;
+  try { if (typeof window !== 'undefined') console.debug('[help] GET', topicUrl); } catch {}
+  resp = await fetch(topicUrl, { method: 'GET', signal: controller.signal });
     } finally {
       clearTimeout(t);
     }
@@ -1157,7 +1159,18 @@ export const getHelpTopic = async (id, opts = {}) => {
       console.error('getHelpTopic non-OK', { status: resp.status, bodyText: (bodyText||'').slice(0,200) });
       throw new Error(`Failed to load topic ${id}: ${resp.status}`);
     }
-    return await resp.json();
+    const payload = await resp.json();
+    // Normalize to always return blocks for the UI renderer
+    let blocks = Array.isArray(payload.blocks) ? payload.blocks : [];
+    if (blocks.length === 0) {
+      const html = payload.bodyHtml || payload.body_html || '';
+      const md = payload.markdown || payload.body || '';
+      const content = html || md;
+      if (content) {
+        blocks = [{ type: 'text', markdown: String(content) }];
+      }
+    }
+    return { ...payload, blocks };
   } catch (e) {
     if (e.name === 'AbortError') {
       console.error('getHelpTopic timeout', id);
