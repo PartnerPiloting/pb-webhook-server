@@ -12,13 +12,21 @@ const fetchDynamic = getFetch();
 // Multi-tenant base resolver
 const { getClientBase } = require('../config/airtableClient');
 
-// Helper: normalize LinkedIn profile URL from author object
+// Helper: normalize LinkedIn profile URL from author input (string or object)
 function toProfileUrl(author) {
   try {
-    if (!author || typeof author !== 'object') return null;
-    if (author.linkedinUrl && typeof author.linkedinUrl === 'string') return author.linkedinUrl.replace(/\/$/, '');
-    if (author.publicIdentifier && typeof author.publicIdentifier === 'string') {
-      return `https://www.linkedin.com/in/${author.publicIdentifier.replace(/\/$/, '')}`;
+    if (!author) return null;
+    if (typeof author === 'string') {
+      if (author.startsWith('http')) return author.replace(/\/$/, '');
+      // Sometimes just the publicIdentifier is provided
+      return `https://www.linkedin.com/in/${author.replace(/\/$/, '')}`;
+    }
+    if (typeof author === 'object') {
+      if (author.url && typeof author.url === 'string') return author.url.replace(/\/$/, '');
+      if (author.linkedinUrl && typeof author.linkedinUrl === 'string') return author.linkedinUrl.replace(/\/$/, '');
+      if (author.publicIdentifier && typeof author.publicIdentifier === 'string') {
+        return `https://www.linkedin.com/in/${author.publicIdentifier.replace(/\/$/, '')}`;
+      }
     }
   } catch {}
   return null;
@@ -51,33 +59,36 @@ function mapApifyItemsToPBPosts(items = []) {
   const out = [];
   for (const it of Array.isArray(items) ? items : []) {
     try {
-      const profileUrl = toProfileUrl(it.author) || it.authorUrl || null;
-      const postUrl = it.linkedinUrl || it.url || null;
-      const postContent = it.content || it.text || it.title || '';
-      // postedAt may be object or ISO string
-      let postTimestamp = null;
-      if (it.postedAt && typeof it.postedAt === 'object') {
-        postTimestamp = it.postedAt.timestamp || it.postedAt.date || null;
-      } else if (typeof it.postedAt === 'string') {
-        postTimestamp = it.postedAt;
+      const profileUrl = toProfileUrl(it.author || it.profileUrl || it.profile) || it.authorUrl || null;
+      const postUrl = it.url || it.postUrl || it.shareUrl || it.link || it.linkedinUrl || null;
+      const postContent = it.text || it.content || it.caption || it.title || it.body || '';
+      // postedAt may be in various fields or object
+      let postTimestamp = it.publishedAt || it.time || it.date || it.createdAt || null;
+      if (!postTimestamp && it.postedAt) {
+        if (typeof it.postedAt === 'object') {
+          postTimestamp = it.postedAt.timestamp || it.postedAt.date || null;
+        } else if (typeof it.postedAt === 'string') {
+          postTimestamp = it.postedAt;
+        }
       }
-      // Basic engagement mapping (if present)
+      // Engagement mapping (if present)
       const engagement = it.engagement || {};
       const likeCount = engagement.likes ?? engagement.reactions ?? it.likes ?? null;
       const commentCount = engagement.comments ?? it.comments ?? null;
       const repostCount = engagement.shares ?? it.shares ?? null;
-      const imgUrl = Array.isArray(it.postImages) && it.postImages.length ? (it.postImages[0].url || it.postImages[0]) : null;
+      const imgUrl = Array.isArray(it.postImages) && it.postImages.length ? (it.postImages[0].url || it.postImages[0]) : (Array.isArray(it.images) && it.images.length ? it.images[0] : null);
+
       if (!profileUrl || !postUrl) continue; // minimal contract
+
       out.push({
         profileUrl,
         postUrl,
         postContent,
         postTimestamp,
-        // Keep PB-compatible extras in pbMeta where possible
         timestamp: new Date().toISOString(),
         type: it.postType || it.type || 'post',
         imgUrl,
-        author: it.author?.name || null,
+        author: (typeof it.author === 'object' ? it.author?.name : null) || null,
         authorUrl: profileUrl,
         likeCount,
         commentCount,
