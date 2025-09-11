@@ -102,34 +102,38 @@ const StartHereContent: React.FC = () => {
     setOpenTopics({});
   };
   const toggleTopic = (id:string) => {
+    // Helper to (re)load a topic's content without changing open state
+    const loadTopic = (topicId: string) => {
+      setTopicLoadState(s=>({...s,[topicId]:'loading'}));
+      // Start safety timeout (15s) to avoid indefinite loading state in edge cases
+      try {
+        if (topicLoadingTimers.current[topicId]) { clearTimeout(topicLoadingTimers.current[topicId]); }
+        topicLoadingTimers.current[topicId] = setTimeout(() => {
+          setTopicLoadState(s => (s[topicId] === 'loading' ? { ...s, [topicId]: 'error' } : s));
+        }, 15000);
+      } catch {}
+      getHelpTopic(topicId, { includeInstructions: false })
+        .then(data => {
+          setTopicBlocks(s=>({...s,[topicId]: data.blocks || [] }));
+          setTopicLoadState(s=>({...s,[topicId]:'ready'}));
+        })
+        .catch(err => {
+          console.error('topic load error', topicId, err);
+          setTopicLoadState(s=>({...s,[topicId]:'error'}));
+        })
+        .finally(() => {
+          try { clearTimeout(topicLoadingTimers.current[topicId]); delete topicLoadingTimers.current[topicId]; } catch {}
+        });
+    };
+
     setOpenTopics(prev => {
       const willOpen = !prev[id];
       const next: Record<string, boolean> = { [id]: willOpen }; // exclusive topic
-      if (willOpen && !topicLoadState[id]) {
-        setTopicLoadState(s=>({...s,[id]:'loading'}));
-        // Start safety timeout (15s) to avoid indefinite loading state in edge cases
-        try {
-          if (topicLoadingTimers.current[id]) { clearTimeout(topicLoadingTimers.current[id]); }
-          topicLoadingTimers.current[id] = setTimeout(() => {
-            setTopicLoadState(s => (s[id] === 'loading' ? { ...s, [id]: 'error' } : s));
-          }, 15000);
-        } catch {}
-        getHelpTopic(id, { includeInstructions: false })
-          .then(data => {
-            setTopicBlocks(s=>({...s,[id]: data.blocks || [] }));
-            setTopicLoadState(s=>({...s,[id]:'ready'}));
-          })
-          .catch(err => {
-            console.error('topic load error', id, err);
-            setTopicLoadState(s=>({...s,[id]:'error'}));
-          });
-        // Ensure we clear the safety timer regardless of outcome
-        Promise.resolve().then(() => {
-          const clear = () => { try { clearTimeout(topicLoadingTimers.current[id]); delete topicLoadingTimers.current[id]; } catch {} };
-          // Clear on microtask after promise settles via then/catch finally-like
-          // Also schedule a follow-up clear in case of rapid state transitions
-          setTimeout(clear, 0);
-        });
+      if (willOpen) {
+        const state = topicLoadState[id];
+        if (state === undefined || state === 'idle' || state === 'error') {
+          loadTopic(id);
+        }
       }
       return next;
     });
