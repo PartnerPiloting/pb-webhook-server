@@ -376,6 +376,237 @@ function slugify(str) {
     .replace(/^-+|-+$/g, '');
 }
 
+// --- HELP BODY SANITIZATION UTILITIES ---
+// Strip a leading 'Monologue' heading line produced by ChatGPT (various punctuation / markdown variants)
+function stripMonologueHeading(body) {
+    if (!body) return body;
+    let text = body.toString().replace(/\r\n/g, '\n').replace(/^\uFEFF/, '');
+    // Remove first non-empty line if it starts with Monologue (case-insensitive) with optional hashes and punctuation, keep rest.
+    const lines = text.split(/\n/);
+    for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].trim()) continue; // skip leading blanks
+        // Accept optional markdown hashes then the word Monologue then optional punctuation (dash, en dash, em dash, colon)
+        if (/^(?:#{1,6}\s*)?Monologue\b[ \t]*([:\-]|–|—)?[ \t]*.*$/i.test(lines[i])) {
+            lines.splice(i, 1);
+            // Remove following blank lines
+            while (i < lines.length && !lines[i].trim()) lines.splice(i, 1);
+        }
+        break; // only inspect first non-empty line
+    }
+    return lines.join('\n');
+}
+
+function sanitizeHelpPayloadMonologues(payload) {
+    if (!payload || !Array.isArray(payload.categories)) return 0;
+    let removed = 0;
+    for (const cat of payload.categories) {
+        if (!cat || !Array.isArray(cat.subCategories)) continue;
+        for (const sub of cat.subCategories) {
+            if (!sub || !Array.isArray(sub.topics)) continue;
+            for (const t of sub.topics) {
+                if (t && typeof t.body === 'string' && /Monologue\b/i.test((t.body.split(/\n/)[0]||''))) {
+                    const newBody = stripMonologueHeading(t.body);
+                    if (newBody !== t.body) {
+                        t.body = newBody;
+                        removed++;
+                    }
+                }
+            }
+        }
+    }
+    if (!payload.meta) payload.meta = {};
+    payload.meta.monologueHeadingsStripped = (payload.meta.monologueHeadingsStripped || 0) + removed;
+    return removed;
+}
+
+// --- Auto-formatting of raw help topic bodies (lightweight, heuristic, idempotent) ---
+function formattingScore(raw) {
+    if (!raw || typeof raw !== 'string') return 0;
+    let score = 0;
+    if (/#\s/.test(raw)) score++;
+    if (/\n-\s/.test(raw)) score++;
+    if (/\*\*[A-Za-z].+?\*\*/.test(raw)) score++;
+    if (/```/.test(raw)) score++;
+    if (/^>\s/m.test(raw)) score++;
+    // Dense line breaks & short lines typical of already formatted markdown
+    const lines = raw.split(/\n/);
+    const shortLines = lines.filter(l => l.trim() && l.length < 68).length;
+    if (shortLines / Math.max(1, lines.length) > 0.6) score++;
+    return score;
+}
+
+function autoFormatHelpBody(raw) {
+    try {
+        if (!raw || typeof raw !== 'string') return raw;
+        const original = raw;
+        // Skip if already looks formatted
+        if (formattingScore(raw) >= 2) return raw;
+        let text = raw.trim().replace(/\r\n/g, '\n');
+        // Normalise double blank lines to a single
+        text = text.replace(/\n{3,}/g, '\n\n');
+        const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+        const transformed = [];
+        // Detect sequences of candidate bullet sentences at end of doc
+        const isBulletCandidate = l => /^(They|You|We|It|This|These|Your)\b/.test(l) && /\.("|'|”)?$/.test(l.trim());
+        for (let i = 0; i < paragraphs.length; i++) {
+            let p = paragraphs[i];
+            // Heading detection: short line without period, or Title Case phrase
+            if (/^[A-Za-z][A-Za-z\s]{1,60}$/.test(p) && !/[.!?]$/.test(p) && p.split(/\s+/).length <= 10) {
+                transformed.push('### ' + p);
+                continue;
+            }
+            // Label lead-ins inside paragraph sentences: Long game: Foo bar.
+            p = p.replace(/(^|\n)([A-Z][A-Za-z ]{1,25})(?:—|–|-|:)\s+(?=\S)/g, (m, pre, label) => `${pre}**${label.trim()}:** `);
+            // If paragraph contains 3+ consecutive bullet candidate sentences, split
+            const sentences = p.split(/\n/).flatMap(line => line.split(/(?<=[.!?])\s+/));
+            const bulletGroup = [];
+            const otherBits = [];
+            sentences.forEach(s => {
+                if (isBulletCandidate(s.trim())) bulletGroup.push(s.trim()); else otherBits.push(s.trim());
+            });
+            if (bulletGroup.length >= 3 && bulletGroup.length >= otherBits.length) {
+                // Keep any prefatory text (first sentence if not bullet)
+                if (otherBits.length && !isBulletCandidate(otherBits[0])) {
+                    transformed.push(otherBits[0]);
+                }
+                bulletGroup.forEach(b => transformed.push('- ' + b.replace(/\.$/, '')));
+            } else {
+                transformed.push(p);
+            }
+        }
+        let out = transformed.join('\n\n');
+    // Image lines: convert bare image URLs to markdown image syntax, preserving an optional trailing alt text phrase
+    out = out.replace(/^(https?:\/\/[^\s]+\.(?:png|jpe?g|gif|webp))(?:\s+-\s+([^\n]{0,80}))?$/gim, (m, url, alt) => `![$${alt ? alt.trim() : ''}](${url})`);
+    // Wrap naked (non-image) URLs that stand alone on a line (not already in markdown link) with angle brackets to ensure autolink
+    out = out.replace(/^(https?:\/\/[^\s]+)$/gim, (m) => `<${m}>`);
+        // Secondary pass: run through remark (GFM + smartypants) to normalize punctuation & tables (best effort, lazy loaded)
+        try {
+            const { unified } = require('unified');
+            const remarkParse = require('remark-parse');
+            const remarkGfm = require('remark-gfm');
+            const remarkSmartypants = require('remark-smartypants');
+            const processor = unified().use(remarkParse).use(remarkGfm).use(remarkSmartypants);
+            // We only need to round-trip parse -> stringify minimal; use toString on root (no custom stringify plugin for now)
+            const tree = processor.parse(out);
+            // (Potential future transforms on tree here)
+            out = processor.stringify(tree);
+        } catch (mdErr) {
+            // Non-fatal if remark not available
+        }
+        // Collapse accidental multiple blank lines again
+        out = out.replace(/\n{3,}/g, '\n\n').trim();
+        // Idempotence guard: if we made it longer by >60% (likely bad), revert.
+        if (out.length > original.length * 1.6) return original;
+        return out;
+    } catch (err) {
+        console.warn('[autoFormatHelpBody] failed', err.message);
+        return raw;
+    }
+}
+
+// ---- LLM Layout Formatting (optional) ----
+const crypto = require('crypto');
+const __layoutCache = new Map(); // key: sha256(bodyRaw)+modelVersion -> { layout, meta }
+const LAYOUT_MODEL = process.env.HELP_LAYOUT_MODEL || 'gpt-4o-mini';
+
+function hashRaw(raw) {
+    return crypto.createHash('sha256').update(raw || '').digest('hex');
+}
+
+function extractAssets(raw) {
+    const images = [];
+    const links = [];
+    const imageRegex = /^https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp)(?:\s+-\s+([^\n]{0,80}))?$/gim;
+    let m;
+    while ((m = imageRegex.exec(raw)) !== null) {
+        images.push({ id: 'IMG_' + (images.length + 1), src: m[0].split(/\s+-\s+/)[0].trim(), alt: m[1]?.trim() || null });
+    }
+    const markdownImg = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+    while ((m = markdownImg.exec(raw)) !== null) {
+        images.push({ id: 'IMG_' + (images.length + 1), src: m[2], alt: m[1] || null });
+    }
+    const urlRegex = /(^|\s)(https?:\/\/[^\s)]+)(?=$|[)\]\s])/g;
+    while ((m = urlRegex.exec(raw)) !== null) {
+        const url = m[2];
+        if (!images.some(im => im.src === url)) {
+            links.push({ id: 'LINK_' + (links.length + 1), url });
+        }
+    }
+    return { images, links };
+}
+
+async function generateLayout(raw, openaiClient) {
+    if (!raw || !openaiClient) return null;
+    const sourceHash = hashRaw(raw);
+    const cacheKey = sourceHash + ':' + LAYOUT_MODEL + ':v1';
+    if (__layoutCache.has(cacheKey)) return { ...( __layoutCache.get(cacheKey) ), cached: true };
+    const { images, links } = extractAssets(raw);
+    // Create placeholder substituted text so model must reference placeholders
+    let substitutedText = raw;
+    images.forEach(im => { substitutedText = substitutedText.replace(im.src, `[${im.id}]`); });
+    links.forEach(l => { substitutedText = substitutedText.replace(new RegExp(l.url.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'), `[${l.id}]`); });
+    const system = 'You are a precise formatting engine. Convert raw help text into strict JSON layout. NEVER add new facts, numbers, names, links, or images.';
+    const user = [
+        'Raw help text (placeholders like [IMG_1], [LINK_2] preserved) between triple backticks.',
+        'Return ONLY JSON.',
+        'Schema (TypeScript literal):',
+        '{',
+        "  title?: string;",
+        "  sections: Array<{ type: 'paragraph'|'bullets'|'quote'|'callout'|'image'; heading?: string; content?: string; items?: string[]; imageId?: string; tone?: 'tip'|'note'|'warning'; }>;",
+        "  images: Array<{ id: string; src: string; alt?: string|null; caption?: string|null }>;",
+        "  links: Array<{ id: string; url: string; text?: string }>;",
+        '}',
+        'Rules:',
+        '- Use existing placeholders exactly once if referenced.',
+        '- Preserve meaning; you may tighten wording slightly.',
+        '- Keep bullet items short (<= 140 chars).',
+        "- Use 'callout' only for a single highlighted takeaway.",
+        "- If a guiding quote exists, put it in a 'quote' section.",
+        '```',
+        substitutedText,
+        '```'
+    ].join('\n');
+    let jsonTxt = null; let modelLatencyMs = 0; let error = null; let usage = null;
+    const t0 = Date.now();
+    try {
+        const chat = await openaiClient.chat.completions.create({
+            model: LAYOUT_MODEL,
+            temperature: 0.2,
+            max_tokens: 900,
+            messages: [ { role: 'system', content: system }, { role: 'user', content: user } ]
+        });
+        modelLatencyMs = Date.now() - t0;
+        const content = (chat.choices?.[0]?.message?.content || '').trim();
+        usage = chat.usage || null;
+        // Extract JSON
+        const firstBrace = content.indexOf('{');
+        const lastBrace = content.lastIndexOf('}');
+        if (firstBrace >=0 && lastBrace > firstBrace) {
+            jsonTxt = content.slice(firstBrace, lastBrace+1);
+        } else {
+            throw new Error('No JSON braces found in model output');
+        }
+        const parsed = JSON.parse(jsonTxt);
+        // Basic schema validation
+        if (!Array.isArray(parsed.sections)) throw new Error('sections missing');
+        // Asset rehydration & guard: ensure all placeholders used are from known sets
+        const referencedImageIds = new Set(parsed.sections.filter(s=>s.imageId).map(s=>s.imageId));
+        referencedImageIds.forEach(id => { if (!images.find(im=>im.id===id)) throw new Error('Unknown imageId '+id); });
+        // Reassign original src (ignore any model tampering)
+        parsed.images = images.map(im => ({ id: im.id, src: im.src, alt: im.alt || null, caption: null }));
+        parsed.links = links; // preserve original
+        // Diff guard: ensure no new link domains introduced
+        const outputText = JSON.stringify(parsed);
+        for (const l of links) { /* ensure preserved */ if (!outputText.includes(l.id)) { /* allow omission but warn */ } }
+        const record = { layout: parsed, meta: { sourceHash, model: LAYOUT_MODEL, modelLatencyMs, usage } };
+        __layoutCache.set(cacheKey, record);
+        return { ...record, cached: false };
+    } catch (e) {
+        error = e.message;
+        return { layout: null, meta: { sourceHash, model: LAYOUT_MODEL, error, modelLatencyMs } };
+    }
+}
+
 // Flexible order extraction: tries multiple field names & numeric strings; falls back to 9999
 function extractOrder(fields, possibleKeys) {
     for (const k of possibleKeys) {
@@ -438,12 +669,43 @@ function parsePrefixedName(name) {
     return { order: 9999, name };
 }
 
+// --- Very small HTML sanitizer (allow-list). Not exhaustive, just for help content. ---
+function sanitizeHelpHtml(html) {
+    try {
+        if (!html || typeof html !== 'string') return html;
+        let out = html;
+        // Drop script/style tags entirely
+        out = out.replace(/<\/(?:script|style)>/gi, '')
+                 .replace(/<(?:script|style)[^>]*>[\s\S]*?<\/(?:script|style)>/gi,'');
+        // Remove on* inline event handlers
+        out = out.replace(/ on[a-z]+="[^"]*"/gi,'');
+        // Allow list tags; escape others by replacing <tag with &lt;tag
+    // Added 'u' to allow underline tags authored in help content
+    const allowed = /^(p|h[1-6]|ul|ol|li|strong|b|em|i|a|img|blockquote|hr|code|pre|br|span|div|u)$/i;
+        out = out.replace(/<\/?([a-z0-9-]+)([^>]*)>/gi, (m,tag,attrs) => {
+            if (!allowed.test(tag)) return m.replace('<','&lt;').replace('>','&gt;');
+            // Restrict attributes
+            let safeAttrs = '';
+            attrs.replace(/([a-zA-Z0-9:-]+)=("[^"]*"|'[^']*')/g,(m2,name,val)=>{
+                const ln = name.toLowerCase();
+                if (['href','src','alt','title','class','data-media-id','data-media-type'].includes(ln)) safeAttrs += ' '+ln+'='+val;
+                return m2;
+            });
+            return '<'+ (m[1]=='/'?'/' : '') + tag + safeAttrs + '>';
+        });
+        return out;
+    } catch { return html; }
+}
+
 app.get('/api/help/start-here', async (req, res) => {
     try {
         const refresh = req.query.refresh === '1';
         const now = Date.now();
         if (!refresh && __helpStartHereCache.data && (now - __helpStartHereCache.fetchedAt) < HELP_CACHE_TTL_MS) {
-            return res.json({ ...__helpStartHereCache.data, meta: { ...__helpStartHereCache.data.meta, cached: true } });
+            const cachedCopy = JSON.parse(JSON.stringify(__helpStartHereCache.data));
+            sanitizeHelpPayloadMonologues(cachedCopy);
+            cachedCopy.meta = { ...cachedCopy.meta, cached: true };
+            return res.json(cachedCopy);
         }
 
     const targetBaseId = process.env.AIRTABLE_HELP_BASE_ID || process.env.MASTER_CLIENTS_BASE_ID || process.env.AIRTABLE_BASE_ID;
@@ -491,7 +753,8 @@ app.get('/api/help/start-here', async (req, res) => {
         const rows = [];
         // Airtable pagination
         // NEW: Direct 3-table join (Categories, Sub-Categories, Help topics)
-        const includeBody = req.query.include === 'body';
+    const includeBody = req.query.include === 'body';
+    const enableAutoFormat = includeBody; // always on now
         const rowsTopics = [];
         const rowsCategories = [];
         const rowsSubCategories = [];
@@ -512,7 +775,16 @@ app.get('/api/help/start-here', async (req, res) => {
 
         await collectAll('Categories', rowsCategories);
         await collectAll('Sub-Categories', rowsSubCategories);
-        await collectFiltered('Help', rowsTopics, "{help_area} = 'start_here'");
+    // Help table selection logic:
+    //   Default now points to original 'Help' table (HTML authoring stabilized).
+    //   ?table=copy  -> forces legacy 'Help copy' table.
+    //   ?table=help  -> forces original 'Help' table explicitly.
+    //   HELP_TABLE_DEFAULT env var can override default (e.g., set to 'Help copy').
+    let helpTableName;
+    if (req.query.table === 'copy') helpTableName = 'Help copy';
+    else if (req.query.table === 'help') helpTableName = 'Help';
+    else helpTableName = process.env.HELP_TABLE_DEFAULT || 'Help';
+    await collectFiltered(helpTableName, rowsTopics, "{help_area} = 'start_here'");
 
         // Maps
         const catMap = new Map();
@@ -576,11 +848,22 @@ app.get('/api/help/start-here', async (req, res) => {
             if (!sub) { missingSubCategoryLinks++; return; }
             const cat = catMap.get(sub.categoryAirtableId);
             if (!cat) { missingCategoryLinks++; return; }
+            let bodyVal = includeBody ? stripMonologueHeading((f.monologue_context || '').toString()) : undefined;
+            let bodyHtml = undefined; let bodyFormat = 'markdown';
+            if (bodyVal && ( /<\s*(?:p|h[1-6]|ul|ol|li|img|blockquote|hr|div|section|strong|em)/i.test(bodyVal) || /<img[^>]+\{\{media:[^}]+\}\}/i.test(bodyVal) || /\{\{media:[^}]+\}\}/i.test(bodyVal) )) {
+                // Treat as HTML content (author provided)
+                bodyHtml = sanitizeHelpHtml(bodyVal);
+                bodyFormat = 'html';
+            } else if (enableAutoFormat && bodyVal) {
+                bodyVal = autoFormatHelpBody(bodyVal);
+            }
             sub.topics.push({
                 id: r.id,
                 title,
                 order,
-                body: includeBody ? (f.monologue_context || '').toString() : undefined,
+                body: bodyFormat === 'markdown' ? bodyVal : undefined,
+                bodyHtml: bodyHtml,
+                bodyFormat,
                 contextType: f.context_type || null
             });
         });
@@ -613,14 +896,136 @@ app.get('/api/help/start-here', async (req, res) => {
                             id: t.id,
                             title: t.title,
                             order: t.order,
-                            ...(includeBody ? { body: t.body } : {}),
+                            ...(includeBody ? { body: t.body, bodyHtml: t.bodyHtml, bodyFormat: t.bodyFormat } : {}),
                             contextType: t.contextType
                         }))
                     }))
             }));
 
+    // --- HTML Media Placeholder & Link Resolution (numeric IDs => Media table) ---
+        // Supports patterns:
+        //   <img src="{{media:12}}" alt="Optional" />
+        //   {{media:12}} (standalone token)
+        // Media table expected fields: media_id (number), attachment (array) OR url, caption, description
+        let mediaPlaceholderTotal = 0, mediaResolved = 0, mediaMissing = 0;
+        if (includeBody) {
+            // 1. Collect all numeric media ids referenced in topics with HTML bodies (regardless of bodyFormat)
+            //    Accept variants like "{{media:12}}", "{{ media:12 }}" (case-insensitive, flexible whitespace)
+            const mediaIdSet = new Set();
+            for (const cat of categories) {
+                for (const sub of cat.subCategories) {
+                    for (const topic of sub.topics) {
+                        if (typeof topic.bodyHtml === 'string' && /\{\{\s*media\s*:\s*\d+\s*}}/i.test(topic.bodyHtml)) {
+                            const html = topic.bodyHtml;
+                            const re = /\{\{\s*media\s*:\s*(\d+)\s*}}/gi;
+                            let m; while((m = re.exec(html))!==null) { mediaIdSet.add(m[1]); }
+                        }
+                    }
+                }
+            }
+            if (mediaIdSet.size) {
+                try {
+                    // 2. Fetch referenced media records
+                    const helpBaseForMedia = getHelpBase && typeof getHelpBase === 'function' ? getHelpBase() : helpBase; // reuse helper if present
+                    const mediaMap = new Map();
+                    const idsArr = Array.from(mediaIdSet.values());
+                    // Airtable OR filter formula (chunk if needed for safety)
+                    const chunkSize = 80; // Airtable usually fine up to ~100 operands
+                    for (let i=0;i<idsArr.length;i+=chunkSize) {
+                        const chunk = idsArr.slice(i, i+chunkSize);
+                        const formula = 'OR(' + chunk.map(id => `{media_id}=${id}`).join(',') + ')';
+                        await helpBaseForMedia('Media').select({ filterByFormula: formula, pageSize: chunk.length }).eachPage((records,next)=>{
+                            records.forEach(r => { const mf = r.fields || {}; if (mf.media_id!=null) mediaMap.set(String(mf.media_id), r); });
+                            next();
+                        });
+                    }
+                    // 3. Replace placeholders in each HTML topic
+                    // Accept optional whitespace inside the token: {{ media:12 }}
+                    const IMG_TAG_RE = /<img\b[^>]*src=["']\{\{\s*media\s*:\s*(\d+)\s*}}["'][^>]*>/gi;
+                    const A_TAG_RE = /<a\b[^>]*href=["']\{\{\s*media\s*:\s*(\d+)\s*}}["'][^>]*>([\s\S]*?)<\/a>/gi;
+                    const TOKEN_RE = /\{\{\s*media\s*:\s*(\d+)\s*}}/gi; // standalone
+                    for (const cat of categories) {
+                        for (const sub of cat.subCategories) {
+                            for (const topic of sub.topics) {
+                                if (typeof topic.bodyHtml !== 'string') continue;
+                                let html = topic.bodyHtml;
+                                // Replace <img src="{{media:ID}}">
+                                html = html.replace(IMG_TAG_RE, (match, id) => {
+                                    mediaPlaceholderTotal++;
+                                    const rec = mediaMap.get(String(id));
+                                    if (!rec) { mediaMissing++; return match.replace(/\{\{\s*media\s*:\s*\d+\s*}}/i, '').replace(/src=["'][^"']+["']/, 'src="" data-media-missing="1" data-media-id="'+id+'"'); }
+                                    const f = rec.fields || {};
+                                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                                    const url = f.url || (attachment && attachment.url) || '';
+                                    const caption = f.caption || f.description || '';
+                                    mediaResolved++;
+                                    // Preserve existing alt if present; otherwise derive
+                                    let altMatch = match.match(/alt=["']([^"']*)["']/i);
+                                    const altText = altMatch ? altMatch[1] : (caption || ('Media '+id));
+                                    return `<img src="${url}" alt="${altText.replace(/"/g,'&quot;')}" data-media-id="${id}" class="help-media-image" />` + (caption ? `<div class="help-media-caption" data-media-id="${id}">${caption}</div>` : '');
+                                });
+                                // Replace <a href="{{media:ID}}">...</a>
+                                html = html.replace(A_TAG_RE, (match, id, inner) => {
+                                    mediaPlaceholderTotal++;
+                                    const rec = mediaMap.get(String(id));
+                                    if (!rec) { mediaMissing++; return match.replace(/\{\{\s*media\s*:\s*\d+\s*}}/i, '#').replace('<a','<a data-media-missing="1" data-media-id="'+id+'"'); }
+                                    const f = rec.fields || {};
+                                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                                    const urlRaw = f.url || (attachment && attachment.url) || '';
+                                    const url = /^https?:\/\//i.test(urlRaw) ? urlRaw : (urlRaw ? 'https://'+urlRaw : '#');
+                                    mediaResolved++;
+                                    return `<a href="${url}" data-media-id="${id}" target="_blank" rel="noopener noreferrer">${inner || url}</a>`;
+                                });
+                                // Replace standalone {{media:ID}} tokens
+                                html = html.replace(TOKEN_RE, (match, id) => {
+                                    mediaPlaceholderTotal++;
+                                    const rec = mediaMap.get(String(id));
+                                    if (!rec) { mediaMissing++; return `<span class="media-missing" data-media-id="${id}">[media ${id} missing]</span>`; }
+                                    const f = rec.fields || {};
+                                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                                    const url = f.url || (attachment && attachment.url) || '';
+                                    const caption = f.caption || f.description || '';
+                                    mediaResolved++;
+                                    return `<figure class="help-media" data-media-id="${id}"><img src="${url}" alt="${(caption||('Media '+id)).replace(/"/g,'&quot;')}" />${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`;
+                                });
+                                // Optional: auto-link bare domains inside this topic's HTML (simple heuristic)
+                                html = html.replace(/(?<![\w@])(https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(\/[\w\-._~:/?#[\]@!$&'()*+,;=%]*)?(?=\s|<|$)/gi, (m, proto, domain, path) => {
+                                    // Skip if already part of an existing anchor tag
+                                    if (/href=/.test(m)) return m;
+                                    const url = (proto? proto : 'https://') + domain + (path||'');
+                                    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${domain}${path||''}</a>`;
+                                });
+                                topic.bodyHtml = html;
+                            }
+                        }
+                    }
+                } catch (mediaErr) {
+                    console.warn('[HelpStartHere] Media placeholder resolution failed', mediaErr.message);
+                }
+            }
+        }
+
         const debug = req.query.debug === '1';
-        const payload = {
+    // Adjusted: revert to opt-in layout generation (must pass ?layout=1) since manual Markdown authoring is now the default.
+    const wantLayout = includeBody && !!openaiClient && req.query.layout === '1';
+        // Detect manual formatting quality (simple heuristic) so UI/admin can see which topics might still be "raw".
+        let formattedTopics = 0;
+        let rawTopics = 0;
+        if (includeBody) {
+            for (const c of categories) {
+                for (const s of c.subCategories) {
+                    for (const t of s.topics) {
+                        if (typeof t.body === 'string') {
+                            const sc = formattingScore(t.body);
+                            t.formatQuality = sc >= 2 ? 'formatted' : 'raw';
+                            if (sc >= 2) formattedTopics++; else rawTopics++;
+                        }
+                    }
+                }
+            }
+        }
+
+    const payload = {
             area: 'start_here',
             fetchedAt: new Date().toISOString(),
             categories,
@@ -635,17 +1040,59 @@ app.get('/api/help/start-here', async (req, res) => {
                 missingSubCategoryLinks,
                 missingCategoryLinks,
                 includeBody,
-                debugIncluded: !!debug
+                autoFormatApplied: !!enableAutoFormat,
+                layoutRequested: !!wantLayout,
+                debugIncluded: !!debug,
+                formattedTopics,
+                rawTopics,
+                helpTable: helpTableName
             }
         };
+        if (includeBody) {
+            payload.meta.mediaPlaceholders = mediaPlaceholderTotal;
+            payload.meta.mediaResolved = mediaResolved;
+            payload.meta.mediaMissing = mediaMissing;
+        }
         if (debug) {
             payload.debug = {
                 sampleCategoryIds: categories.slice(0,3).map(c=>c.id),
                 rawCounts: { rowsCategories: rowsCategories.length, rowsSubCategories: rowsSubCategories.length, rowsTopics: rowsTopics.length }
             };
         }
-        __helpStartHereCache = { data: payload, fetchedAt: Date.now() };
-        res.json(payload);
+    sanitizeHelpPayloadMonologues(payload);
+    if (wantLayout) {
+        const layoutStart = Date.now();
+        let formattedCount = 0;
+        let skipped = 0;
+        const layoutErrors = [];
+        // Sequential simple pass (keeps logic easy to reason about). If this proves slow, we can add concurrency later.
+        for (const cat of payload.categories) {
+            for (const sub of cat.subCategories) {
+                for (const topic of sub.topics) {
+                    if (!topic.body) { skipped++; continue; }
+                    try {
+                        const layoutResp = await generateLayout(topic.body, openaiClient);
+                        if (layoutResp && layoutResp.layout) {
+                            topic.layout = layoutResp.layout;
+                            topic.layoutMeta = layoutResp.meta;
+                            formattedCount++;
+                        } else if (layoutResp && layoutResp.meta && layoutResp.meta.error) {
+                            layoutErrors.push({ topicId: topic.id, error: layoutResp.meta.error });
+                        }
+                    } catch (le) {
+                        layoutErrors.push({ topicId: topic.id, error: le.message || 'layout failure' });
+                    }
+                }
+            }
+        }
+        payload.meta.layoutGenerationMs = Date.now() - layoutStart;
+        payload.meta.layoutTopicsFormatted = formattedCount;
+        payload.meta.layoutTopicsSkipped = skipped;
+        if (layoutErrors.length) payload.meta.layoutErrors = layoutErrors.slice(0,10); // cap for response
+        payload.meta.layoutMode = 'all';
+    }
+    __helpStartHereCache = { data: payload, fetchedAt: Date.now() };
+    res.json(payload);
     } catch (e) {
         try { console.error('Help Start Here endpoint error raw =>', e); } catch {}
         try { if (e && e.stack) console.error('Stack:', e.stack); } catch {}
@@ -701,6 +1148,340 @@ app.get('/api/help/start-here', async (req, res) => {
     }
 });
 console.log('index.js: Help Start Here endpoint mounted at /api/help/start-here');
+
+// Export selected utilities for internal scripts/tests (non-breaking)
+try {
+    module.exports = { autoFormatHelpBody, stripMonologueHeading };
+} catch {}
+
+// Area Help cache (per help_area)
+let __helpAreaCache = new Map(); // key: area (lowercase) -> { data, fetchedAt }
+
+// Context-sensitive Help by area (categories/sub-categories/topics)
+app.get('/api/help/context', async (req, res) => {
+    try {
+        const areaRaw = (req.query.area || '').toString().trim();
+        const area = areaRaw.toLowerCase();
+        if (!area) return res.status(400).json({ ok: false, error: "Missing 'area' query param" });
+        const refresh = req.query.refresh === '1';
+        const now = Date.now();
+        const cached = __helpAreaCache.get(area);
+        if (!refresh && cached && (now - cached.fetchedAt) < HELP_CACHE_TTL_MS) {
+            const copy = JSON.parse(JSON.stringify(cached.data));
+            sanitizeHelpPayloadMonologues(copy);
+            copy.meta = { ...copy.meta, cached: true };
+            return res.json(copy);
+        }
+
+        const targetBaseId = process.env.AIRTABLE_HELP_BASE_ID || process.env.MASTER_CLIENTS_BASE_ID || process.env.AIRTABLE_BASE_ID;
+        if (!targetBaseId) return res.status(500).json({ ok: false, error: 'Missing Airtable base id for help content' });
+        if (!base) return res.status(500).json({ ok: false, error: 'Airtable base instance not initialized' });
+
+        // Choose correct base (same logic as start-here)
+        let helpBase = base;
+        const defaultBaseId = process.env.AIRTABLE_BASE_ID;
+        const masterClientsBaseId = process.env.MASTER_CLIENTS_BASE_ID;
+        try {
+            if (targetBaseId && defaultBaseId && targetBaseId !== defaultBaseId) {
+                if (typeof base.createBaseInstance === 'function') {
+                    helpBase = base.createBaseInstance(targetBaseId);
+                    console.log(`[HelpContext:${area}] Using non-default help base ${targetBaseId}`);
+                } else {
+                    console.warn(`[HelpContext:${area}] createBaseInstance not available; using default base`);
+                }
+            } else {
+                if (targetBaseId === masterClientsBaseId && targetBaseId !== defaultBaseId) {
+                    console.log(`[HelpContext:${area}] Using MASTER_CLIENTS_BASE_ID for help content`);
+                } else {
+                    console.log(`[HelpContext:${area}] Using default base for help content`);
+                }
+            }
+        } catch (bErr) {
+            console.error(`[HelpContext:${area}] Failed to initialize help base`, bErr.message);
+            return res.status(500).json({ ok: false, error: 'Failed to initialize help base instance' });
+        }
+
+        const start = Date.now();
+        const rowsTopics = [];
+        const rowsCategories = [];
+        const rowsSubCategories = [];
+
+        const includeBody = req.query.include === 'body';
+        const enableAutoFormat = includeBody;
+
+        const collectAll = async (tableName, sink) => {
+            await helpBase(tableName).select({ pageSize: 100 }).eachPage((records, next) => {
+                records.forEach(r => sink.push(r));
+                next();
+            });
+        };
+        const collectFiltered = async (tableName, sink, filterByFormula) => {
+            await helpBase(tableName).select({ pageSize: 100, filterByFormula }).eachPage((records, next) => {
+                records.forEach(r => sink.push(r));
+                next();
+            });
+        };
+
+        await collectAll('Categories', rowsCategories);
+        await collectAll('Sub-Categories', rowsSubCategories);
+        // Help table selection logic mirrors start-here
+        let helpTableName;
+        if (req.query.table === 'copy') helpTableName = 'Help copy';
+        else if (req.query.table === 'help') helpTableName = 'Help';
+        else helpTableName = process.env.HELP_TABLE_DEFAULT || 'Help';
+        // Filter topics by help_area (case-insensitive) with alias support
+        const areaAliases = new Map([
+            ['lead_search_and_update_search', ['lead_search_and_update_search', 'lead_search_and_update']],
+            ['lead_search_and_update_detail', ['lead_search_and_update_detail', 'lead_search_and_update']],
+        ]);
+        const areaList = (areaAliases.get(area) || [area]).map(a => a.replace(/'/g, "''"));
+        const areaFilter = areaList.length === 1
+            ? `LOWER({help_area}) = '${areaList[0]}'`
+            : 'OR(' + areaList.map(a => `LOWER({help_area}) = '${a}'`).join(',') + ')';
+        await collectFiltered(helpTableName, rowsTopics, areaFilter);
+
+        // Build maps & normalize (reuse helpers from this file)
+        const catMap = new Map();
+        const subMap = new Map();
+        const normOrder = (val, nameForPrefix) => {
+            if (typeof val === 'number' && !Number.isNaN(val)) return val;
+            if (typeof val === 'string' && val.trim()) {
+                const parsed = parseInt(val.trim(), 10);
+                if (!Number.isNaN(parsed)) return parsed;
+            }
+            if (nameForPrefix) {
+                const pref = parsePrefixedName(nameForPrefix);
+                if (pref.order !== 9999) return pref.order;
+            }
+            return 9999;
+        };
+
+        rowsCategories.forEach(r => {
+            const f = r.fields || {};
+            const name = (f.category_name || '').toString().trim() || 'Unnamed Category';
+            const order = normOrder(f.category_order, name);
+            catMap.set(r.id, {
+                id: 'cat::' + slugify(name),
+                airtableId: r.id,
+                name,
+                description: (f.description || '').toString().trim() || null,
+                order,
+                subCategories: [],
+                _rawOrder: f.category_order
+            });
+        });
+        rowsSubCategories.forEach(r => {
+            const f = r.fields || {};
+            const name = (f.sub_category_name || '').toString().trim() || 'Unnamed Sub-Category';
+            const order = normOrder(f.sub_category_order, name);
+            const catLink = Array.isArray(f.Categories) && f.Categories.length ? f.Categories[0] : null;
+            subMap.set(r.id, {
+                id: 'sub::' + slugify(name + '::' + (catLink || 'orphan')),
+                airtableId: r.id,
+                name,
+                description: (f.description || '').toString().trim() || null,
+                order,
+                categoryAirtableId: catLink,
+                topics: [],
+                _rawOrder: f.sub_category_order
+            });
+        });
+
+        let missingSubCategoryLinks = 0;
+        let missingCategoryLinks = 0;
+
+        rowsTopics.forEach(r => {
+            const f = r.fields || {};
+            const title = (f.title || '').toString().trim() || '(Untitled Topic)';
+            const order = normOrder(f.topic_order, title);
+            const subLink = Array.isArray(f.sub_category) && f.sub_category.length ? f.sub_category[0] : null;
+            if (!subLink) { missingSubCategoryLinks++; return; }
+            const sub = subMap.get(subLink);
+            if (!sub) { missingSubCategoryLinks++; return; }
+            const cat = catMap.get(sub.categoryAirtableId);
+            if (!cat) { missingCategoryLinks++; return; }
+            let bodyVal = includeBody ? stripMonologueHeading((f.monologue_context || '').toString()) : undefined;
+            let bodyHtml = undefined; let bodyFormat = 'markdown';
+            if (bodyVal && ( /<\s*(?:p|h[1-6]|ul|ol|li|img|blockquote|hr|div|section|strong|em)/i.test(bodyVal) || /<img[^>]+\{\{media:[^}]+\}\>/i.test(bodyVal) || /\{\{media:[^}]+\}\}/i.test(bodyVal) )) {
+                bodyHtml = sanitizeHelpHtml(bodyVal);
+                bodyFormat = 'html';
+            } else if (enableAutoFormat && bodyVal) {
+                bodyVal = autoFormatHelpBody(bodyVal);
+            }
+            sub.topics.push({
+                id: r.id,
+                title,
+                order,
+                body: bodyFormat === 'markdown' ? bodyVal : undefined,
+                bodyHtml: bodyHtml,
+                bodyFormat,
+                contextType: f.context_type || null
+            });
+        });
+
+        subMap.forEach(sub => {
+            const cat = catMap.get(sub.categoryAirtableId);
+            if (!cat) { missingCategoryLinks++; return; }
+            cat.subCategories.push(sub);
+        });
+
+        const categories = Array.from(catMap.values())
+            .filter(c => c.subCategories.some(sc => sc.topics.length))
+            .sort((a,b)=> a.order - b.order || a.name.localeCompare(b.name))
+            .map(c => ({
+                id: c.id,
+                name: c.name,
+                order: c.order,
+                description: c.description,
+                subCategories: c.subCategories
+                    .filter(sc => sc.topics.length)
+                    .sort((a,b)=> a.order - b.order || a.name.localeCompare(b.name))
+                    .map(sc => ({
+                        id: sc.id,
+                        name: sc.name,
+                        order: sc.order,
+                        description: sc.description,
+                        topics: sc.topics.sort((a,b)=> a.order - b.order || a.title.localeCompare(b.title)).map(t => ({
+                            id: t.id,
+                            title: t.title,
+                            order: t.order,
+                            ...(includeBody ? { body: t.body, bodyHtml: t.bodyHtml, bodyFormat: t.bodyFormat } : {}),
+                            contextType: t.contextType
+                        }))
+                    }))
+            }));
+
+        // Media placeholder resolution for HTML topics (reuse logic simplified)
+        let mediaPlaceholderTotal = 0, mediaResolved = 0, mediaMissing = 0;
+        if (includeBody) {
+            // Accept optional whitespace inside tokens: {{ media:12 }}
+            const mediaIdSet = new Set();
+            for (const cat of categories) {
+                for (const sub of cat.subCategories) {
+                    for (const topic of sub.topics) {
+                        if (typeof topic.bodyHtml === 'string') {
+                            const html = topic.bodyHtml;
+                            const re = /\{\{\s*media\s*:\s*(\d+)\s*}}/gi;
+                            let m; while((m = re.exec(html))!==null) { mediaIdSet.add(m[1]); }
+                        }
+                    }
+                }
+            }
+            if (mediaIdSet.size) {
+                try {
+                    const helpBaseForMedia = getHelpBase && typeof getHelpBase === 'function' ? getHelpBase() : helpBase;
+                    const mediaMap = new Map();
+                    const idsArr = Array.from(mediaIdSet.values());
+                    const chunkSize = 80;
+                    for (let i=0;i<idsArr.length;i+=chunkSize) {
+                        const chunk = idsArr.slice(i, i+chunkSize);
+                        const formula = 'OR(' + chunk.map(id => `{media_id}=${id}`).join(',') + ')';
+                        await helpBaseForMedia('Media').select({ filterByFormula: formula, pageSize: chunk.length }).eachPage((records,next)=>{
+                            records.forEach(r => { const mf = r.fields || {}; if (mf.media_id!=null) mediaMap.set(String(mf.media_id), r); });
+                            next();
+                        });
+                    }
+                    const IMG_TAG_RE = /<img\b[^>]*src=["']\{\{\s*media\s*:\s*(\d+)\s*}}["'][^>]*>/gi;
+                    const A_TAG_RE = /<a\b[^>]*href=["']\{\{\s*media\s*:\s*(\d+)\s*}}["'][^>]*>([\s\S]*?)<\/a>/gi;
+                    const TOKEN_RE = /\{\{\s*media\s*:\s*(\d+)\s*}}/gi;
+                    for (const cat of categories) {
+                        for (const sub of cat.subCategories) {
+                            for (const topic of sub.topics) {
+                                if (typeof topic.bodyHtml !== 'string') continue;
+                                let html = topic.bodyHtml;
+                                html = html.replace(IMG_TAG_RE, (match, id) => {
+                                    mediaPlaceholderTotal++;
+                                    const rec = mediaMap.get(String(id));
+                                    if (!rec) { mediaMissing++; return match.replace(/\{\{\s*media\s*:\s*\d+\s*}}/i, '').replace(/src=["'][^"]+["']/, 'src="" data-media-missing="1" data-media-id="'+id+'"'); }
+                                    const f = rec.fields || {};
+                                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                                    const url = f.url || (attachment && attachment.url) || '';
+                                    const caption = f.caption || f.description || '';
+                                    mediaResolved++;
+                                    let altMatch = match.match(/alt=["']([^"']*)["']/i);
+                                    const altText = altMatch ? altMatch[1] : (caption || ('Media '+id));
+                                    return `<img src="${url}" alt="${altText.replace(/"/g,'&quot;')}" data-media-id="${id}" class="help-media-image" />` + (caption ? `<div class="help-media-caption" data-media-id="${id}">${caption}</div>` : '');
+                                });
+                                html = html.replace(A_TAG_RE, (match, id, inner) => {
+                                    mediaPlaceholderTotal++;
+                                    const rec = mediaMap.get(String(id));
+                                    if (!rec) { mediaMissing++; return match.replace(/\{\{\s*media\s*:\s*\d+\s*}}/i, '#').replace('<a','<a data-media-missing="1" data-media-id="'+id+'"'); }
+                                    const f = rec.fields || {};
+                                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                                    const urlRaw = f.url || (attachment && attachment.url) || '';
+                                    const url = /^https?:\/\//i.test(urlRaw) ? urlRaw : (urlRaw ? 'https://'+urlRaw : '#');
+                                    mediaResolved++;
+                                    return `<a href="${url}" data-media-id="${id}" target="_blank" rel="noopener noreferrer">${inner || url}</a>`;
+                                });
+                                html = html.replace(TOKEN_RE, (match, id) => {
+                                    mediaPlaceholderTotal++;
+                                    const rec = mediaMap.get(String(id));
+                                    if (!rec) { mediaMissing++; return `<span class="media-missing" data-media-id="${id}">[media ${id} missing]</span>`; }
+                                    const f = rec.fields || {};
+                                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                                    const url = f.url || (attachment && attachment.url) || '';
+                                    const caption = f.caption || f.description || '';
+                                    mediaResolved++;
+                                    return `<figure class="help-media" data-media-id="${id}"><img src="${url}" alt="${(caption||('Media '+id)).replace(/"/g,'&quot;')}" />${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`;
+                                });
+                                // Bare domain autolink
+                                html = html.replace(/(?<![\w@])(https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(\/[\w\-._~:\/?#[\]@!$&'()*+,;=%]*)?(?=\s|<|$)/gi, (m, proto, domain, path) => {
+                                    if (/href=/.test(m)) return m;
+                                    const url = (proto? proto : 'https://') + domain + (path||'');
+                                    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${domain}${path||''}</a>`;
+                                });
+                                topic.bodyHtml = html;
+                            }
+                        }
+                    }
+                } catch (mediaErr) {
+                    console.warn(`[HelpContext:${area}] Media placeholder resolution failed`, mediaErr.message);
+                }
+            }
+        }
+
+        // Format quality markers (optional)
+        let formattedTopics = 0;
+        let rawTopics = 0;
+        if (includeBody) {
+            for (const c of categories) for (const s of c.subCategories) for (const t of s.topics) {
+                if (typeof t.body === 'string') {
+                    const sc = formattingScore(t.body);
+                    t.formatQuality = sc >= 2 ? 'formatted' : 'raw';
+                    if (sc >= 2) formattedTopics++; else rawTopics++;
+                }
+            }
+        }
+
+        const payload = {
+            area,
+            fetchedAt: new Date().toISOString(),
+            categories,
+            meta: {
+                totalTopics: rowsTopics.length,
+                totalCategories: categories.length,
+                totalSubCategories: categories.reduce((s,c)=> s + c.subCategories.length, 0),
+                generationMs: Date.now() - start,
+                cached: false,
+                baseId: targetBaseId,
+                orderingStrategy: 'explicit+prefixFallback',
+                missingSubCategoryLinks,
+                missingCategoryLinks,
+                includeBody,
+                autoFormatApplied: !!enableAutoFormat,
+                helpTable: helpTableName,
+                formattedTopics,
+                rawTopics
+            }
+        };
+        sanitizeHelpPayloadMonologues(payload);
+        __helpAreaCache.set(area, { data: payload, fetchedAt: Date.now() });
+        res.json(payload);
+    } catch (e) {
+        console.error('Help Context endpoint error =>', e?.message || e);
+        res.status(500).json({ ok: false, error: e?.message || 'Failed to load help context' });
+    }
+});
 
 // --- ENVIRONMENT MANAGEMENT ENDPOINTS ---
 // Environment status - tells you exactly where you are and what to do
@@ -1094,7 +1875,27 @@ app.get('/api/help/topic/:id', async (req, res) => {
             return res.status(404).json({ error: 'TOPIC_NOT_FOUND', id: topicId });
         }
         const f = record.fields || {};
-        const rawBody = (f.monologue_context || f.body || f.content || '').toString();
+    let rawBody = (f.monologue_context || f.body || f.content || '').toString();
+    rawBody = rawBody.replace(/^(?:#+\s*)?Monologue\b[^\n]*\n?/i, '');
+    // HTML normalisation for downstream parsing (retain original tokens like [media:ID])
+    function htmlToTextInline(html) {
+        if (!html) return '';
+        let out = html.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'');
+        out = out.replace(/<(?:p|div|section|h[1-6]|li|ul|ol|blockquote|pre|br)[^>]*>/gi, m => { if (/^<li/i.test(m)) return '\n- '; if(/^<br/i.test(m)) return '\n'; return '\n'; });
+        out = out.replace(/<\/(?:p|div|section|h[1-6]|li|ul|ol|blockquote|pre)>/gi,'\n');
+        out = out.replace(/<img[^>]*>/gi, tag => { const alt = (tag.match(/alt=["']([^"']*)["']/i)||[])[1]; return alt ? ` ${alt} ` : ' [image] '; });
+        out = out.replace(/<[^>]+>/g,'');
+        out = out.replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+        out = out.split('\n').map(l=>l.trim()).filter(Boolean).join('\n');
+        return out.trim();
+    }
+    // If the topic body is authored in HTML, preserve an HTML version while also
+    // producing a plain-text version for block parsing.
+    const isHtmlAuthored = /<[a-z][\s\S]*>/i.test(rawBody) && rawBody.includes('</');
+    let preservedBodyHtml = isHtmlAuthored ? sanitizeHelpHtml(rawBody) : undefined;
+    if (isHtmlAuthored) {
+        rawBody = htmlToTextInline(rawBody);
+    }
         const title = (f.title || f.Name || '').toString();
 
         // 2. Extract media/link token ids: [media:12], [link:5]
@@ -1103,6 +1904,11 @@ app.get('/api/help/topic/:id', async (req, res) => {
         let m;
         while ((m = TOKEN_RE.exec(rawBody)) !== null) {
             mediaIds.add(m[2]);
+        }
+        // Also extract any HTML placeholder tokens: {{media:12}} (allow whitespace)
+        if (preservedBodyHtml) {
+            const HTML_TOKEN_RE = /\{\{\s*media\s*:\s*(\d+)\s*}}/gi;
+            let hm; while ((hm = HTML_TOKEN_RE.exec(preservedBodyHtml)) !== null) { mediaIds.add(hm[1]); }
         }
 
         // 3. Fetch referenced media records (by media_id numeric). Build OR formula.
@@ -1117,6 +1923,54 @@ app.get('/api/help/topic/:id', async (req, res) => {
             });
         }
 
+        // 3b. If we preserved an HTML body, also resolve any {{media:ID}} placeholders within that HTML (img/src, a/href, standalone)
+        if (preservedBodyHtml) {
+            try {
+                const IMG_TAG_RE = /<img\b[^>]*src=["']\{\{\s*media\s*:\s*(\d+)\s*}}["'][^>]*>/gi;
+                const A_TAG_RE = /<a\b[^>]*href=["']\{\{\s*media\s*:\s*(\d+)\s*}}["'][^>]*>([\s\S]*?)<\/a>/gi;
+                const TOKEN_RE = /\{\{\s*media\s*:\s*(\d+)\s*}}/gi;
+                let html = preservedBodyHtml;
+                html = html.replace(IMG_TAG_RE, (match, id) => {
+                    const rec = mediaMap.get(String(id));
+                    if (!rec) return match.replace(/\{\{\s*media\s*:\s*\d+\s*}}/i, '').replace(/src=["'][^"']+["']/, 'src="" data-media-missing="1" data-media-id="'+id+'"');
+                    const f = rec.fields || {};
+                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                    const url = f.url || (attachment && attachment.url) || '';
+                    const caption = f.caption || f.description || '';
+                    let altMatch = match.match(/alt=["']([^"']*)["']/i);
+                    const altText = altMatch ? altMatch[1] : (caption || ('Media '+id));
+                    return `<img src="${url}" alt="${altText.replace(/"/g,'&quot;')}" data-media-id="${id}" class="help-media-image" />` + (caption ? `<div class="help-media-caption" data-media-id="${id}">${caption}</div>` : '');
+                });
+                html = html.replace(A_TAG_RE, (match, id, inner) => {
+                    const rec = mediaMap.get(String(id));
+                    if (!rec) return match.replace(/\{\{\s*media\s*:\s*\d+\s*}}/i, '#').replace('<a','<a data-media-missing="1" data-media-id="'+id+'"');
+                    const f = rec.fields || {};
+                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                    const urlRaw = f.url || (attachment && attachment.url) || '';
+                    const url = /^https?:\/\//i.test(urlRaw) ? urlRaw : (urlRaw ? 'https://'+urlRaw : '#');
+                    return `<a href="${url}" data-media-id="${id}" target="_blank" rel="noopener noreferrer">${inner || url}</a>`;
+                });
+                html = html.replace(TOKEN_RE, (match, id) => {
+                    const rec = mediaMap.get(String(id));
+                    if (!rec) return `<span class="media-missing" data-media-id="${id}">[media ${id} missing]</span>`;
+                    const f = rec.fields || {};
+                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                    const url = f.url || (attachment && attachment.url) || '';
+                    const caption = f.caption || f.description || '';
+                    return `<figure class="help-media" data-media-id="${id}"><img src="${url}" alt="${(caption||('Media '+id)).replace(/"/g,'&quot;')}" />${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`;
+                });
+                // Bare domain autolink
+                html = html.replace(/(?<![\w@])(https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(\/[\w\-._~:\/?#[\]@!$&'()*+,;=%]*)?(?=\s|<|$)/gi, (m, proto, domain, path) => {
+                    if (/href=/.test(m)) return m;
+                    const url = (proto? proto : 'https://') + domain + (path||'');
+                    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${domain}${path||''}</a>`;
+                });
+                preservedBodyHtml = html;
+            } catch (e) {
+                console.warn('[HelpTopic] Failed to resolve media placeholders in HTML', e.message);
+            }
+        }
+
         // 4. Parse body into blocks: split on tokens preserving order
         const blocks = [];
         let lastIndex = 0;
@@ -1129,10 +1983,13 @@ app.get('/api/help/topic/:id', async (req, res) => {
             if (mediaRec) {
                 const mf = mediaRec.fields || {};
                 const attachment = Array.isArray(mf.attachment) && mf.attachment.length ? mf.attachment[0] : null;
+                // Normalize URL like context endpoint: ensure protocol for links and attachments
+                const urlRaw = mf.url || (attachment && attachment.url) || '';
+                const normalizedUrl = urlRaw ? (/^https?:\/\//i.test(urlRaw) ? urlRaw : `https://${urlRaw}`) : null;
                 const resolved = {
                     media_id: mf.media_id,
                     type: (mf.type || (kind === 'link' ? 'link' : (attachment ? 'image' : 'unknown'))),
-                    url: mf.url || (attachment && attachment.url) || null,
+                    url: normalizedUrl,
                     attachment,
                     caption: mf.caption || null,
                     description: mf.description || null,
@@ -1155,6 +2012,8 @@ app.get('/api/help/topic/:id', async (req, res) => {
             id: topicId,
             title,
             blocks,
+            // Provide both plain text (via blocks) and HTML when available so the UI can choose.
+            ...(preservedBodyHtml ? { bodyHtml: preservedBodyHtml, bodyFormat: 'html' } : {}),
             meta: {
                 generationMs: Date.now() - start,
                 mediaTokenCount: mediaIds.size,
@@ -1199,7 +2058,20 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
         let record;
         try { record = await helpBase('Help').find(topicId); } catch { return res.status(404).json({ error: 'TOPIC_NOT_FOUND' }); }
         const f = record.fields || {};
-        const rawBody = (f.monologue_context || f.body || f.content || '').toString();
+    let rawBody = (f.monologue_context || f.body || f.content || '').toString();
+    rawBody = rawBody.replace(/^(?:#+\s*)?Monologue\b[^\n]*\n?/i, '');
+    function htmlToTextQA(html) {
+        if (!html) return '';
+        let out = html.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'');
+        out = out.replace(/<(?:p|div|section|h[1-6]|li|ul|ol|blockquote|pre|br)[^>]*>/gi, m => { if (/^<li/i.test(m)) return '\n- '; if(/^<br/i.test(m)) return '\n'; return '\n'; });
+        out = out.replace(/<\/(?:p|div|section|h[1-6]|li|ul|ol|blockquote|pre)>/gi,'\n');
+        out = out.replace(/<img[^>]*>/gi, tag => { const alt = (tag.match(/alt=["']([^"']*)["']/i)||[])[1]; return alt ? ` ${alt} ` : ' [image] '; });
+        out = out.replace(/<[^>]+>/g,'');
+        out = out.replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+        out = out.split('\n').map(l=>l.trim()).filter(Boolean).join('\n');
+        return out.trim();
+    }
+    if (/<[a-z][\s\S]*>/i.test(rawBody) && rawBody.includes('</')) rawBody = htmlToTextQA(rawBody);
 
         // 2. Optionally fetch related topics (same sub_category)
         const related = [];
@@ -1614,4 +2486,181 @@ app.post('/admin/help/llm/ungrounded', (req, res) => {
     }
     HELP_QA_UNGROUNDED_OVERRIDE = enable;
     res.json({ ok:true, override: enable });
+});
+
+// --- Option B: Embedding-based QA (no citations, simplified UX) ---
+app.post('/api/help/qa-embed', express.json(), async (req, res) => {
+    const started = Date.now();
+    try {
+        const { question, topicId } = req.body || {};
+        if (!question) return res.status(400).json({ error: 'MISSING_QUESTION' });
+        const helpBase = getHelpBase();
+        if (!helpBase) return res.status(500).json({ error: 'HELP_BASE_UNRESOLVED' });
+        if (!openaiClient) return res.status(500).json({ error: 'OPENAI_CLIENT_MISSING' });
+
+        // 1. Ensure embedding index
+        const { ensureIndex, search } = require('./helpEmbeddingIndex');
+        await ensureIndex(helpBase, { openaiClient });
+
+        // 2. Embed question
+        const embedModel = process.env.HELP_EMBED_MODEL || 'text-embedding-3-small';
+        const qEmbedResp = await openaiClient.embeddings.create({ model: embedModel, input: question });
+        const qEmbedding = qEmbedResp.data[0].embedding;
+
+        // 3. Search
+    const results = search(qEmbedding, { topK: 7, topicId });
+        const contextBlocks = results.map((r, i) => `Block ${i+1} (score ${(r.score).toFixed(3)}):\n${r.c.text}`).join('\n\n');
+
+        // 4. Detect Linked Helper intent
+        const lowerQ = question.toLowerCase();
+        const lhIntent = /linked\s*helper|lh\b|campaign/.test(lowerQ);
+        const enumerative = /list|all\b|every\b|what are the (possible|available) options|actions|steps|types/.test(lowerQ);
+
+        // 5. Build prompt (no citations, instruct clarity)
+    let system = 'You are a helpful assistant. Provide a clear, direct answer. If the context contains the answer, use it. If something is missing but you know it from general Linked Helper knowledge and the user is asking about Linked Helper, you may add it. If you are unsure, briefly state what is missing.';
+        if (!lhIntent) {
+            system = 'You are a helpful assistant. Use ONLY the context below. If the answer is not clearly there, say you do not have enough information.';
+        }
+        let baselineSection = '';
+        if (lhIntent && enumerative) {
+            try {
+                const baseline = require('./helpEnumerationsBaseline.json');
+                const lh = baseline.linkedHelper || {};
+                if (lh.campaignTemplates && lh.workflowActions) {
+                    const templateList = lh.campaignTemplates.map(t => `- ${t}`).join('\n');
+                    const actionList = lh.workflowActions.map(a => `- ${a.name}: ${a.desc}`).join('\n');
+                    const supportList = (lh.supportActions||[]).map(a => `- ${a.name}: ${a.desc}`).join('\n');
+                    const categorySummary = (lh.categories||[]).map(c => `- ${c.name}: ${c.includes.join(', ')}`).join('\n');
+                    baselineSection = `\nBaseline Templates:\n${templateList}\n\nBaseline Actions:\n${actionList}\n\nSupport Actions:\n${supportList}\n\nCategories:\n${categorySummary}`;
+                }
+            } catch (e) {
+                console.warn('[qa-embed] baseline load failed', e.message);
+            }
+        }
+
+    const userPrompt = `User Question:\n${question}\n\nContext Blocks (retrieved):\n${contextBlocks || '(none)'}\n\nBaseline (for completeness – you may reorganize naturally):${baselineSection || '\n(none)'}\n\nInstructions (light):\n- Give a friendly one-line intro.\n- Group logically (e.g. Templates, Core Actions, Support / Utility, Categories). Order is flexible.\n- It's OK if an item appears in more than one conceptual group when it helps clarity, but prefer minimal redundancy.\n- Bullet format: **Name** – short purpose (<= 14 words).\n- If categories are present, you may include a compact category summary line or table.\n- End with: Ask if you want setup steps for any item.\n- No citations / IDs.`;
+
+        // 6. LLM call
+        const chat = await openaiClient.chat.completions.create({
+            model: process.env.HELP_QA_LLM_MODEL || 'gpt-4o-mini',
+            temperature: 0.55,
+            max_tokens: 700,
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: userPrompt }
+            ]
+        });
+        let refinedAnswer = chat.choices?.[0]?.message?.content?.trim() || '';
+
+        // Per-section (not cross-section) dedup only
+        function perSectionDedup(ans) {
+            const lines = ans.split(/\r?\n/);
+            let current = null;
+            const seenPer = {}; // section -> Set
+            const out = [];
+            for (const line of lines) {
+                const sec = line.match(/^####\s+(.+)/);
+                if (sec) {
+                    current = sec[1].trim();
+                    if (!seenPer[current]) seenPer[current] = new Set();
+                    out.push(line);
+                    continue;
+                }
+                const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+                if (bullet && current) {
+                    const raw = bullet[1].trim();
+                    const key = raw.split(/\s[–—-]|:/)[0].toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+                    if (key && seenPer[current].has(key)) {
+                        continue; // skip duplicate within this section
+                    }
+                    if (key) seenPer[current].add(key);
+                    out.push(line);
+                } else {
+                    out.push(line);
+                }
+            }
+            return out.join('\n');
+        }
+        refinedAnswer = perSectionDedup(refinedAnswer);
+
+        // --- Option 3: Guaranteed summary block ---
+        function extractSections(ans) {
+            const sectionRegex = /^####\s+(.+)/;
+            const lines = ans.split(/\r?\n/);
+            const sections = {};
+            let current = null;
+            for (const l of lines) {
+                const m = l.match(sectionRegex);
+                if (m) { current = m[1].trim(); sections[current] = sections[current] || { bullets: [] }; continue; }
+                if (current && /^\s*[-*]\s+/.test(l)) {
+                    const item = l.replace(/^\s*[-*]\s+/, '').trim();
+                    sections[current].bullets.push(item);
+                }
+            }
+            return sections;
+        }
+    // Removed 'At a Glance' summary block (user feedback: low value)
+    const sections = extractSections(refinedAnswer);
+    // Remove empty section headings (those with no bullets)
+    function pruneEmptySections(ans, sections) {
+        const empty = Object.entries(sections).filter(([k,v]) => !v.bullets.length).map(([k])=>k);
+        if (!empty.length) return ans;
+        let text = ans;
+        for (const name of empty) {
+            const pattern = new RegExp(`^####\\s+${name.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&')}\\s*$(?:\\r?\\n)?`, 'm');
+            text = text.replace(pattern, '');
+        }
+        return text.replace(/\n{3,}/g,'\n\n').trim();
+    }
+    let finalAnswer = pruneEmptySections(refinedAnswer, sections);
+        // Ensure trailing invitation line present exactly once.
+        if (!/Ask if you want setup steps for any item\.?$/i.test(finalAnswer.trim())) {
+            finalAnswer = finalAnswer.replace(/Ask if you want setup steps for any item\.?/gi, '').trim() + '\n\nAsk if you want setup steps for any item.';
+        }
+
+        res.json({
+            answer: finalAnswer,
+            answerDraft: refinedAnswer, // single-pass now
+            answerRefined: refinedAnswer,
+            method: 'embedding-qa',
+            meta: {
+                generationMs: Date.now() - started,
+                secondPassUsed: false,
+                duplicatesRemoved: null,
+                blocksUsed: results.length,
+                lhIntent,
+                enumerative,
+                model: process.env.HELP_QA_LLM_MODEL || 'gpt-4o-mini',
+                summaryAdded: false
+            }
+        });
+    } catch (e) {
+        console.error('[qa-embed] error', e);
+        res.status(500).json({ error: 'EMBED_QA_ERROR', message: e.message });
+    }
+});
+
+// --- Admin: Reindex ALL help search structures (global + embedding) ---
+app.post('/admin/help/reindex-all', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok:false, error:'Unauthorized' });
+    }
+    try {
+        const helpBaseInst = getHelpBase();
+        if (!helpBaseInst) return res.status(500).json({ ok:false, error:'HELP_BASE_UNRESOLVED' });
+        const globalIdx = require('./helpGlobalIndex');
+        const embedIdx = require('./helpEmbeddingIndex');
+        globalIdx.reset();
+        embedIdx.reset();
+        // Trigger rebuilds (embedding requires openaiClient)
+        const globalEnsure = await globalIdx.ensureIndex(helpBaseInst, { force:true });
+        let embedEnsure = null;
+        if (openaiClient) {
+            embedEnsure = await embedIdx.ensureIndex(helpBaseInst, { openaiClient });
+        }
+        res.json({ ok:true, global: globalIdx.status(), embedding: embedIdx.status(), ensure: { globalEnsure, embedReady: !!embedEnsure } });
+    } catch (e) {
+        res.status(500).json({ ok:false, error:e.message });
+    }
 });

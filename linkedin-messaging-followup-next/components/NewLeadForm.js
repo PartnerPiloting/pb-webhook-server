@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { createLead, searchLeads } from '../services/api';
+import HelpButton from './HelpButton';
 
 // Import icons using require to avoid Next.js issues
 let UserPlusIcon, CheckIcon, ExclamationTriangleIcon;
@@ -259,7 +260,8 @@ const NewLeadForm = ({ onLeadCreated }) => {
       <div className="mb-6 pb-6 border-b border-gray-200">
         <h2 className="text-2xl font-semibold text-gray-900 flex items-center">
           {UserPlusIcon && <UserPlusIcon className="h-6 w-6 mr-2" />}
-          New Lead
+          <span>New Lead</span>
+          <HelpButton area="new_lead" className="ml-3" title="Help: New Lead" />
         </h2>
         <p className="text-sm text-gray-600 mt-2">
           Create a new lead record. Required fields are marked with *
