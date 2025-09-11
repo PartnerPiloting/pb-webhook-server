@@ -1074,6 +1074,16 @@ export const getStartHereHelp = async (opts = {}) => {
   const baseUrl = getBackendBase();
   const params = new URLSearchParams();
   params.set('include', 'body');
+  // Ensure Start Here list uses the same client/base as topic/context calls
+  try {
+    const cid = getCurrentClientId?.();
+    if (cid) params.set('testClient', cid);
+    else if (typeof window !== 'undefined') {
+      const u = new URL(window.location.href);
+      const tc = u.searchParams.get('testClient');
+      if (tc) params.set('testClient', tc);
+    }
+  } catch {}
   if (opts.refresh) params.set('refresh', '1');
   if (opts.table) params.set('table', opts.table); // e.g. 'copy' to inspect legacy table
     // Add a cache-buster to avoid CDN/browser caching stale responses in preview envs
