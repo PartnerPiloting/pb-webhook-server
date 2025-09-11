@@ -8,6 +8,9 @@ const AIRTABLE_LEADS_TABLE_NAME = "Leads";
 const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
 const AIRTABLE_POSTS_FIELD = "Posts Content";
 const AIRTABLE_DATE_ADDED_FIELD = "Time Posts Added";
+// New optional timestamp fields (added manually per base)
+const AIRTABLE_LAST_POST_CHECK_AT_FIELD = "Last Post Check At";
+const AIRTABLE_LAST_POST_PROCESSED_AT_FIELD = "Last Post Processed At";
 
 // Normalize LinkedIn URLs so any version matches (removes protocol, www, trailing slash, lowercases)
 function normalizeLinkedInUrl(url) {
@@ -24,12 +27,27 @@ function normalizeLinkedInUrl(url) {
 // MULTI-TENANT: Now accepts clientBase parameter
 async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
     const normUrl = normalizeLinkedInUrl(profileUrl);
-    // Use client-specific base instead of global base
-    const records = await clientBase(AIRTABLE_LEADS_TABLE_NAME).select().all();
-    return records.find(record => {
-        const atUrl = record.get(AIRTABLE_LINKEDIN_URL_FIELD);
-        return atUrl && normalizeLinkedInUrl(atUrl) === normUrl;
-    }) || null;
+    // Use client-specific base; filter on normalized URL to avoid full scans
+    const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
+    const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
+    try {
+        const records = await clientBase(AIRTABLE_LEADS_TABLE_NAME)
+            .select({ filterByFormula: formula, maxRecords: 1 })
+            .firstPage();
+        if (records && records.length > 0) return records[0];
+    } catch (e) {
+        console.warn(`Airtable filtered lookup failed, falling back to in-memory match: ${e.message}`);
+    }
+    // Fallback: last resort full fetch (should rarely be needed)
+    try {
+        const all = await clientBase(AIRTABLE_LEADS_TABLE_NAME).select().all();
+        return all.find(record => {
+            const atUrl = record.get(AIRTABLE_LINKEDIN_URL_FIELD);
+            return atUrl && normalizeLinkedInUrl(atUrl) === normUrl;
+        }) || null;
+    } catch {
+        return null;
+    }
 }
 
 function isPostAlreadyStored(existingPostsArr, postObj) {
@@ -183,20 +201,55 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
         });
 
         if (newPostsAdded > 0) {
-            await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
-                {
-                    id: record.id,
-                    fields: {
-                        [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
-                        [AIRTABLE_DATE_ADDED_FIELD]: new Date().toISOString()
+            const nowIso = new Date().toISOString();
+            const fieldsToUpdate = {
+                [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
+                [AIRTABLE_DATE_ADDED_FIELD]: nowIso,
+            };
+            // Best-effort: write-if-exists for optional fields
+            fieldsToUpdate[AIRTABLE_LAST_POST_CHECK_AT_FIELD] = nowIso;
+            fieldsToUpdate[AIRTABLE_LAST_POST_PROCESSED_AT_FIELD] = nowIso;
+
+            try {
+                await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
+                    {
+                        id: record.id,
+                        fields: fieldsToUpdate
                     }
-                }
-            ]);
+                ]);
+            } catch (e) {
+                // If optional fields are missing in this base, retry without them
+                console.warn(`Update with optional fields failed for ${normProfileUrl}: ${e.message}. Retrying without optional fields.`);
+                await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
+                    {
+                        id: record.id,
+                        fields: {
+                            [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
+                            [AIRTABLE_DATE_ADDED_FIELD]: nowIso
+                        }
+                    }
+                ]);
+            }
             updatedCount++;
             console.log(`Updated lead ${normProfileUrl} with ${newPostsAdded} new posts.`);
         } else {
             skippedCount++;
             console.log(`No new posts for ${normProfileUrl} (already up to date).`);
+            // Record that we checked even if nothing new was added
+            const nowIso = new Date().toISOString();
+            try {
+                await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
+                    {
+                        id: record.id,
+                        fields: {
+                            [AIRTABLE_LAST_POST_CHECK_AT_FIELD]: nowIso
+                        }
+                    }
+                ]);
+            } catch (e) {
+                // Ignore if optional field not present
+                console.warn(`Optional check timestamp update failed for ${normProfileUrl}: ${e.message}`);
+            }
         }
     }
 
