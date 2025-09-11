@@ -6,9 +6,8 @@ const express = require('express');
 const router = express.Router();
 const dirtyJSON = require('dirty-json');
 const syncPBPostsToAirtable = require('../utils/pbPostsSync');
-
-// Lazy dynamic import for node-fetch (consistent with existing pattern)
-const fetchDynamic = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+const { getFetch } = require('../utils/safeFetch');
+const fetchDynamic = getFetch();
 
 // Multi-tenant base resolver
 const { getClientBase } = require('../config/airtableClient');

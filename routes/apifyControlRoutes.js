@@ -4,7 +4,8 @@
 // - mode=inline: wait for run to finish, fetch dataset, and upsert to Airtable immediately
 
 const express = require('express');
-const fetch = require('node-fetch');
+const { getFetch } = require('../utils/safeFetch');
+const fetch = getFetch();
 const router = express.Router();
 
 // Helpers reused from webhook route without re-import cycles
