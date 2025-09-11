@@ -72,7 +72,11 @@ router.post('/api/apify/run', async (req, res) => {
     }
     const opts = req.body?.options || {};
     const input = {
+      // Provide multiple aliases so the actor recognizes targets regardless of its schema
       targetUrls,
+      startUrls: targetUrls.map((url) => ({ url })),
+      profileUrls: targetUrls,
+      profiles: targetUrls,
       postedLimit: opts.postedLimit || 'month',
       maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
       includeReactions: Boolean(opts.reactions) || false,
