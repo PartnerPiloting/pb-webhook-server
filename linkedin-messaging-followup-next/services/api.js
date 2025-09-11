@@ -4,41 +4,17 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 // API configuration
 // In Next.js, env vars must be prefixed with NEXT_PUBLIC_ to be exposed to the browser.
 // We normalize to a full absolute URL ending with /api/linkedin and prefer localhost in dev.
-// Resolve environment-aware backend base (without /api/linkedin)
-export function getBackendBase() {
+function resolveApiBase() {
   try {
-    // Highest priority: explicit env from Next (browser-safe)
     let raw = process.env.NEXT_PUBLIC_API_BASE_URL;
 
     // Prefer localhost automatically when developing on localhost
     if (!raw && typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
-      return 'http://localhost:3001';
-    }
-
-    // Heuristic: dedicated staging app domain (e.g., pb-webhook-server-staging.vercel.app)
-    try {
-      const vercelUrl = (process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL || '').toLowerCase();
-      const host = (typeof window !== 'undefined' ? window.location.hostname : '').toLowerCase();
-      if (!raw) {
-        if (vercelUrl.includes('staging') || host.includes('staging')) {
-          return 'https://pb-webhook-server-staging.onrender.com';
-        }
-      }
-    } catch {}
-
-    // Auto-detect Vercel environment for sensible defaults when NEXT_PUBLIC_API_BASE_URL is not set
-    const vercelEnv = process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV; // 'development' | 'preview' | 'production'
-    if (!raw) {
-      if (vercelEnv === 'preview') {
-        return 'https://pb-webhook-server-staging.onrender.com';
-      }
-      if (vercelEnv === 'production') {
-        return 'https://pb-webhook-server.onrender.com';
-      }
+      raw = 'http://localhost:3001';
     }
 
     // Final fallback to production Render URL
-    if (!raw) return 'https://pb-webhook-server.onrender.com';
+    if (!raw) raw = 'https://pb-webhook-server.onrender.com/api/linkedin';
 
     // Ensure it's a string
     raw = String(raw).trim();
@@ -48,23 +24,13 @@ export function getBackendBase() {
       raw = `http://${raw}`;
     }
 
-    // Strip trailing /api/linkedin if provided
-    return raw.replace(/\/?api\/linkedin\/?$/i, '').replace(/\/$/, '');
-  } catch (e) {
-    return 'https://pb-webhook-server.onrender.com';
-  }
-}
+    // If it already ends with /api/linkedin (with or without trailing slash), keep as is (no trailing slash)
+    if (/\/api\/linkedin\/?$/i.test(raw)) {
+      return raw.replace(/\/$/, '');
+    }
 
-// Resolve the full LinkedIn API base including /api/linkedin
-export function getLinkedinApiBase() {
-  const base = getBackendBase();
-  return `${base.replace(/\/$/, '')}/api/linkedin`;
-}
-
-function resolveApiBase() {
-  try {
-    // Reuse shared resolver
-    return getLinkedinApiBase();
+    // Otherwise, append the path (no trailing slash)
+    return `${raw.replace(/\/$/, '')}/api/linkedin`;
   } catch (e) {
     return 'https://pb-webhook-server.onrender.com/api/linkedin';
   }
@@ -1067,12 +1033,15 @@ export const getPostTokenUsage = async () => {
 export const saveAttribute = saveAttributeChanges;
 
 // START HERE HELP: fetch hierarchical onboarding categories (Phase 1)
-export const getStartHereHelp = async () => {
+export const getStartHereHelp = async (opts = {}) => {
   try {
-  // Use shared backend base resolver (no /api/linkedin suffix)
-  const baseUrl = getBackendBase();
-  // Always include body content for now (can optimize later with lazy loading)
-  const resp = await fetch(`${baseUrl}/api/help/start-here?include=body`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    // Use base without /api/linkedin just like other direct calls
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+  const params = new URLSearchParams();
+  params.set('include', 'body');
+  if (opts.refresh) params.set('refresh', '1');
+  if (opts.table) params.set('table', opts.table); // e.g. 'copy' to inspect legacy table
+  const resp = await fetch(`${baseUrl}/api/help/start-here?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
     if (!resp.ok) throw new Error(`Failed to load Start Here help: ${resp.status}`);
     return await resp.json();
   } catch (e) {
@@ -1080,91 +1049,66 @@ export const getStartHereHelp = async () => {
     throw e;
   }
 };
-
-// Context Help (temporary shim): fetches contextual help data.
-// Until a dedicated /api/help/context endpoint exists, this proxies to
-// /api/help/start-here and returns the same structure. The UI uses the
-// caller-provided `area` for the panel title; content remains the same.
-export const getContextHelp = async (area = 'global', opts = {}) => {
-  const includeBody = !!opts.includeBody;
-  const refresh = !!opts.refresh;
-  const table = (opts.table || '').toString().toLowerCase();
-  try {
-    const baseUrl = getBackendBase();
-    const params = new URLSearchParams();
-    if (includeBody) params.set('include', 'body');
-    if (refresh) params.set('refresh', '1');
-    if (table === 'copy' || table === 'help') params.set('table', table);
-    const url = `${baseUrl}/api/help/start-here${params.toString() ? `?${params.toString()}` : ''}`;
-    const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
-    if (!resp.ok) throw new Error(`Failed to load context help: ${resp.status}`);
-    const json = await resp.json();
-
-    // If area is global, return as-is
-    const a = String(area || 'global').toLowerCase();
-    if (a === 'global') return { ...json, area: a };
-
-    // Alias map to match Airtable context_type values
-    const aliases = {
-      'lead_search_and_update': ['lead_search_and_update', 'lead_search_and_update_detail', 'lead_search_and_update_search'],
-      'lead_follow_up': ['lead_follow_up'],
-      'new_lead': ['new_lead'],
-      'top_scoring_leads': ['top_scoring_leads'],
-      'top_scoring_posts': ['top_scoring_posts', 'post_scoring'],
-      'post_scoring': ['post_scoring', 'top_scoring_posts'],
-      'profile_attributes': ['profile_attributes']
-    };
-    const matchSet = new Set(aliases[a] || [a]);
-
-    // Filter categories/subcategories/topics to only matching contextType (plus global/empty)
-    const filteredCats = (json.categories || []).map(cat => {
-      const subFiltered = (cat.subCategories || []).map(sub => {
-        const topics = (sub.topics || []).filter(t => {
-          const ct = (t.contextType || '').toString().toLowerCase().trim();
-          if (!ct || ct === 'global') return true; // general topics still helpful
-          return matchSet.has(ct);
-        });
-        return { ...sub, topics };
-      }).filter(sub => (sub.topics && sub.topics.length > 0));
-      return { ...cat, subCategories: subFiltered };
-    }).filter(cat => (cat.subCategories && cat.subCategories.length > 0));
-
-    if (!filteredCats.length) {
-      // Fallback: if nothing matched, return original list rather than empty panel
-      return { ...json, area: a, meta: { ...json.meta, filtered: false } };
+  // HELP by context area (e.g., 'linkedin_messaging', 'lead_scoring', etc.)
+  export const getContextHelp = async (area, opts = {}) => {
+    if (!area) throw new Error('area is required');
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+      const params = new URLSearchParams();
+      params.set('area', String(area));
+      params.set('include', opts.includeBody ? 'body' : '');
+      // Prefer explicit client base when available to avoid default production base
+      try {
+        const cid = getCurrentClientId?.();
+        if (cid) params.set('testClient', cid);
+        else if (typeof window !== 'undefined') {
+          const u = new URL(window.location.href);
+          const tc = u.searchParams.get('testClient');
+          if (tc) params.set('testClient', tc);
+        }
+      } catch {}
+      if (opts.refresh) params.set('refresh', '1');
+      if (opts.table) params.set('table', opts.table);
+      const url = `${baseUrl}/api/help/context?${params.toString()}`;
+      const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+      if (!resp.ok) throw new Error(`Failed to load help for ${area}: ${resp.status}`);
+      return await resp.json();
+    } catch (e) {
+      console.error('getContextHelp error', e);
+      throw e;
     }
+  };
 
-    const totalTopics = filteredCats.reduce((s, c) => s + c.subCategories.reduce((ss, sc) => ss + sc.topics.length, 0), 0);
-    const payload = {
-      ...json,
-      area: a,
-      categories: filteredCats,
-      meta: { ...json.meta, filtered: true, filteredArea: a, totalTopics }
-    };
-    return payload;
-  } catch (e) {
-    console.error('getContextHelp error', e);
-    throw e;
-  }
-};
 
 // Fetch a single help topic with parsed blocks
 export const getHelpTopic = async (id, opts = {}) => {
   const includeInstructions = opts.includeInstructions ? '1' : '0';
-  const table = opts.table ? String(opts.table).toLowerCase() : '';
   try {
-  // Prefer local API in dev; otherwise use environment-aware backend base
-  const baseUrl = getBackendBase();
-    const qs = new URLSearchParams({ include_instructions: includeInstructions });
-    if (table === 'copy' || table === 'help') qs.set('table', table);
-    const url = `${baseUrl}/api/help/topic/${id}?${qs.toString()}`;
+    // Prefer local API when running on localhost for faster dev & to match in-flight backend changes
+    let baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || '';
+    if (!baseUrl && typeof window !== 'undefined') {
+      baseUrl = window.location.origin.includes('localhost') ? 'http://localhost:3001' : window.location.origin;
+    }
+    if (!baseUrl) baseUrl = 'https://pb-webhook-server.onrender.com';
+
     // Add a timeout wrapper so UI can surface an error instead of endless "Loading" if server unreachable
     const controller = new AbortController();
     const t = setTimeout(()=>controller.abort(), 12000); // 12s network timeout
     let resp;
     try {
-      if (typeof window !== 'undefined') { try { console.debug('[getHelpTopic] GET', url); } catch {} }
-      resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
+      // Build topic URL with include_instructions and testClient when available
+      const params = new URLSearchParams();
+      params.set('include_instructions', includeInstructions);
+      try {
+        const cid = getCurrentClientId?.();
+        if (cid) params.set('testClient', cid);
+        else if (typeof window !== 'undefined') {
+          const u = new URL(window.location.href);
+          const tc = u.searchParams.get('testClient');
+          if (tc) params.set('testClient', tc);
+        }
+      } catch {}
+      resp = await fetch(`${baseUrl}/api/help/topic/${id}?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
     } finally {
       clearTimeout(t);
     }
@@ -1178,7 +1122,9 @@ export const getHelpTopic = async (id, opts = {}) => {
       if (shouldRetryRemote) {
         try {
           const remoteUrl = 'https://pb-webhook-server.onrender.com';
-          const remoteResp = await fetch(`${remoteUrl}/api/help/topic/${id}?include_instructions=${includeInstructions}`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+          const remoteParams = new URLSearchParams();
+          remoteParams.set('include_instructions', includeInstructions);
+          const remoteResp = await fetch(`${remoteUrl}/api/help/topic/${id}?${remoteParams.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
           if (remoteResp.ok) return await remoteResp.json();
         } catch (re) {
           console.warn('Remote fallback failed', re);

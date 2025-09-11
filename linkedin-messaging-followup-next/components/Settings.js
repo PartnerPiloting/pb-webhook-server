@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
 import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import AIEditModal from './AIEditModal';
+import HelpButton from './HelpButton';
 
 // Component that uses useSearchParams wrapped in Suspense
 const SettingsWithParams = () => {
@@ -76,6 +77,19 @@ const SettingsWithParams = () => {
     setCurrentView('posts');
     loadTokenUsage('posts'); // Load post token usage
   };
+
+  // Listen for nav-triggered "back to menu" when Settings tab is clicked while on a subview
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (e) => {
+      const action = e?.detail?.action;
+      if (action === 'backToMenu') {
+        setCurrentView('menu');
+      }
+    };
+    window.addEventListener('settings-nav', handler);
+    return () => window.removeEventListener('settings-nav', handler);
+  }, []);
 
   // Load token usage based on current view
   const loadTokenUsage = async (view = currentView) => {
@@ -247,7 +261,9 @@ const SettingsWithParams = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+          </div>
           <p className="mt-1 text-sm text-gray-500">Loading configuration...</p>
         </div>
         <div className="flex justify-center items-center h-64">
@@ -262,7 +278,9 @@ const SettingsWithParams = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+          </div>
           <p className="mt-1 text-sm text-gray-500">Error loading configuration</p>
         </div>
         <div className="bg-red-50 border border-red-200 rounded-lg p-6">
@@ -354,7 +372,7 @@ const SettingsWithParams = () => {
                     </div>
                   </div>
                   
-                  {/* Right Column: Toggle Active + Edit Button */}
+                  {/* Right Column: Toggle Active + Edit Button + Help */}
                   <div className="flex-shrink-0 flex items-center space-x-2">
                     {/* Active/Inactive Toggle */}
                     <button 
@@ -380,6 +398,8 @@ const SettingsWithParams = () => {
                       <CogIcon className="h-3 w-3 mr-1" />
                       Edit with AI
                     </button>
+
+                    {/* Help button removed per request */}
                   </div>
                 </div>
               </div>
@@ -453,7 +473,7 @@ const SettingsWithParams = () => {
                     </div>
                   </div>
                   
-                  {/* Right Column: Toggle Active + Edit Button */}
+                  {/* Right Column: Toggle Active + Edit Button + Help */}
                   <div className="flex-shrink-0 flex flex-col items-end space-y-2">
                     {/* Active/Inactive Toggle */}
                     <button 
@@ -479,6 +499,8 @@ const SettingsWithParams = () => {
                       <CogIcon className="h-3 w-3 mr-1" />
                       Edit with AI
                     </button>
+
+                    {/* Help button removed per request */}
                   </div>
                 </div>
               </div>
@@ -495,7 +517,9 @@ const SettingsWithParams = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+          </div>
           <p className="mt-1 text-sm text-gray-500">
             Configure your lead scoring system
           </p>
@@ -506,7 +530,7 @@ const SettingsWithParams = () => {
           <div className="w-full max-w-2xl">
             <div className="grid gap-6 md:grid-cols-2">
               {/* LinkedIn Profile Scoring Attributes */}
-              <div 
+      <div 
                 className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
                 onClick={handleViewProfileAttributes}
               >
@@ -529,7 +553,7 @@ const SettingsWithParams = () => {
               </div>
 
               {/* LinkedIn Post Scoring Criteria */}
-              <div 
+      <div 
                 className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
                 onClick={handleViewPostAttributes}
               >
@@ -581,7 +605,10 @@ const SettingsWithParams = () => {
             </button>
           )}
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">{viewTitle}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-gray-900">{viewTitle}</h2>
+              <HelpButton area={isProfileView ? 'profile_attributes' : 'post_scoring'} className="ml-2" />
+            </div>
             <p className="mt-1 text-sm text-gray-500">
               {viewDescription}
             </p>

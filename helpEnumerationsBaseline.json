@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "linkedHelper": {
+    "generatedAt": "2025-08-28T00:00:00Z",
+    "campaignTemplates": [
+      "Empty campaign (build your own)",
+      "Invite & Follow Up",
+      "Messaging Sequence",
+      "Export Profile Information",
+      "InMail Sequence",
+      "Message Sequence via Event",
+      "Message Sequence via Group",
+      "Warm-up, Invite, and Follow-up",
+      "Invite 1st to Follow Organization",
+      "Invite Person to Event",
+      "Invite 1st Connections to Group",
+      "Endorse 1st Connections",
+      "Like & Comment Posts and Articles",
+      "Follow Profiles",
+      "Invite & Reach Out via LinkedIn and Email",
+      "Message Chain to Warmed-up 1st Connections",
+      "Send Person to Snov.io Campaign",
+      "Visit & Extract Profiles",
+      "Find Profile Emails",
+      "Remove 1st Connections"
+    ],
+    "workflowActions": [
+      { "name": "Invite & Follow Up", "desc": "Send connect request, filter acceptances, send thank-you or follow-ups." },
+      { "name": "Messaging Sequence", "desc": "Multi-step messaging with reply checks." },
+      { "name": "Export Profile Information", "desc": "Scrape data + export (CSV / webhook)." },
+      { "name": "InMail Sequence", "desc": "Send InMails to 2nd/3rd degree connections." },
+      { "name": "Message Sequence via Event", "desc": "Message event page members." },
+      { "name": "Message Sequence via Group", "desc": "Message group-connected profiles." },
+      { "name": "Warm-up, Invite, and Follow-up", "desc": "Warm and then invite leads, follow up after acceptance." },
+      { "name": "Invite 1st to Follow Organization", "desc": "Invite 1st-degree connections to follow a company page." },
+      { "name": "Invite Person to Event", "desc": "Invite 1st-degree connections to an event and follow up." },
+      { "name": "Invite 1st Connections to Group", "desc": "Invite 1st-degree connections into a LinkedIn group." },
+      { "name": "Endorse 1st Connections", "desc": "Endorse selected skills of 1st-degree connections." },
+      { "name": "Like & Comment Posts and Articles", "desc": "Engage with target content for visibility." },
+      { "name": "Follow Profiles", "desc": "Follow 2nd/3rd degree to boost visibility / warm up." },
+      { "name": "Invite & Reach Out via LinkedIn and Email", "desc": "Combine LinkedIn invites with email drip if unresponsive." },
+      { "name": "Message Chain to Warmed-up 1st Connections", "desc": "Further nurture post warm-up / acceptance." },
+      { "name": "Send Person to Snov.io Campaign", "desc": "Export to Snov.io for email outreach." },
+      { "name": "Visit & Extract Profiles", "desc": "Visit and scrape profile data." },
+      { "name": "Find Profile Emails", "desc": "Discover emails via integrations (LH finder / Snov.io)." },
+      { "name": "Remove 1st Connections", "desc": "Disconnect low-value 1st-degree connections." }
+    ],
+    "supportActions": [
+      { "name": "Delay Between Actions", "desc": "Insert natural timing gaps." },
+      { "name": "Filter Contacts Out of My Network", "desc": "Limit to 1st-degree or exclude certain degrees." },
+      { "name": "Check for Replies", "desc": "Stop or branch messaging when a reply arrives." }
+    ],
+    "categories": [
+      { "name": "Connection Actions", "includes": ["Invite & Follow Up", "Remove 1st Connections", "Invite 1st to Follow Organization", "Invite 1st Connections to Group", "Invite Person to Event"] },
+      { "name": "Messaging Actions", "includes": ["Messaging Sequence", "InMail Sequence", "Message Sequence via Event", "Message Sequence via Group", "Message Chain to Warmed-up 1st Connections"] },
+      { "name": "Engagement Actions", "includes": ["Like & Comment Posts and Articles", "Follow Profiles", "Endorse 1st Connections"] },
+      { "name": "Data & Outreach Actions", "includes": ["Export Profile Information", "Visit & Extract Profiles", "Find Profile Emails", "Send Person to Snov.io Campaign", "Invite & Reach Out via LinkedIn and Email"] },
+      { "name": "Supportive Actions", "includes": ["Delay Between Actions", "Check for Replies", "Filter Contacts Out of My Network"] }
+    ]
+  }
+}
