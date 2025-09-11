@@ -263,7 +263,6 @@ const SettingsWithParams = () => {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-            <HelpButton area="settings_overview" className="ml-2" />
           </div>
           <p className="mt-1 text-sm text-gray-500">Loading configuration...</p>
         </div>
@@ -281,7 +280,6 @@ const SettingsWithParams = () => {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-            <HelpButton area="settings_overview" className="ml-2" />
           </div>
           <p className="mt-1 text-sm text-gray-500">Error loading configuration</p>
         </div>
@@ -521,7 +519,6 @@ const SettingsWithParams = () => {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-            <HelpButton area="settings_overview" className="ml-2" />
           </div>
           <p className="mt-1 text-sm text-gray-500">
             Configure your lead scoring system
