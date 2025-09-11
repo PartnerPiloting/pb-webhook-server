@@ -1,0 +1,13 @@
+{
+  "tables": {
+    "Leads": {
+      "fields": [
+        { "name": "LinkedIn Profile URL", "type": "singleLineText" },
+        { "name": "Posts Content", "type": "longText" },
+        { "name": "Time Posts Added", "type": "dateTime" },
+        { "name": "Last Post Check At", "type": "dateTime" },
+        { "name": "Last Post Processed At", "type": "dateTime" }
+      ]
+    }
+  }
+}

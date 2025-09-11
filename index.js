@@ -219,6 +219,25 @@ app.post('/admin/repair-posts-content', async (req, res) => {
 });
 
 /**
+ * Admin endpoint: generate Airtable Scripting code to add missing fields for a table
+ * POST /admin/airtable-field-script { table: "Leads" }
+ */
+app.post('/admin/airtable-field-script', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    try {
+        const table = (req.body?.table || 'Leads').toString();
+        const { buildScriptFor } = require('./utils/airtableFieldScriptGen');
+        const script = buildScriptFor(table);
+        res.json({ ok: true, table, script });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
  * Admin endpoint to trigger the scanBadJsonRecords utility.
  * POST /admin/scan-bad-json
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
@@ -306,6 +325,11 @@ if (mountQueue && typeof mountQueue === 'function') {
 }
 
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
+
+// Mount Apify webhook routes (for LinkedIn posts ingestion)
+try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); console.log("index.js: Apify webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
+// Mount Apify control routes (start runs programmatically)
+try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); console.log("index.js: Apify control routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
 
 // Use authenticated LinkedIn routes instead of old non-authenticated ones
 try { 
