@@ -175,4 +175,19 @@ router.post('/api/apify-webhook', async (req, res) => {
   }
 });
 
+// Development-only debug endpoint to verify webhook env is loaded
+if (process.env.NODE_ENV === 'development') {
+  router.get('/api/_debug/apify-webhook-config', (req, res) => {
+    const hasToken = Boolean(process.env.APIFY_WEBHOOK_TOKEN);
+    const hasApiToken = Boolean(process.env.APIFY_API_TOKEN);
+    return res.json({
+      ok: true,
+      env: {
+        APIFY_WEBHOOK_TOKEN: hasToken ? 'present' : 'missing',
+        APIFY_API_TOKEN: hasApiToken ? 'present' : 'missing'
+      }
+    });
+  });
+}
+
 module.exports = router;
