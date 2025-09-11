@@ -53,6 +53,34 @@ const api = axios.create({
   },
 });
 
+// Return the backend base URL without the "/api/linkedin" suffix
+// Heuristics:
+// - If NEXT_PUBLIC_API_BASE_URL is set, strip the suffix
+// - Else derive from resolved API_BASE_URL
+// - Else: localhost in dev, staging in Vercel preview, production otherwise
+export function getBackendBase() {
+  try {
+    let raw = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (raw) {
+      raw = String(raw).trim().replace(/\/$/, '');
+      return raw.replace(/\/api\/linkedin\/?$/i, '');
+    }
+    if (API_BASE_URL) {
+      const derived = String(API_BASE_URL).replace(/\/$/, '').replace(/\/api\/linkedin\/?$/i, '');
+      if (derived) return derived;
+    }
+    if (typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
+      return 'http://localhost:3001';
+    }
+    const vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV;
+    if (vercelEnv === 'preview') return 'https://pb-webhook-server-staging.onrender.com';
+    if (vercelEnv === 'production') return 'https://pb-webhook-server.onrender.com';
+    return 'https://pb-webhook-server.onrender.com';
+  } catch (e) {
+    return 'https://pb-webhook-server.onrender.com';
+  }
+}
+
 // Helper function to get authenticated headers for API calls
 const getAuthenticatedHeaders = () => {
   const clientId = getCurrentClientId();
