@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import Layout from '../../components/Layout';
 import ErrorBoundary from '../../components/ErrorBoundary';
@@ -33,6 +33,8 @@ const StartHereContent: React.FC = () => {
   const [qaInput, setQaInput] = useState<Record<string, string>>({});
   const [topicBlocks, setTopicBlocks] = useState<Record<string, TopicBlock[]>>({});
   const [topicLoadState, setTopicLoadState] = useState<Record<string, 'idle'|'loading'|'error'|'ready'>>({});
+  // Safety timers to flip stuck loading -> error after a grace period
+  const topicLoadingTimers = useRef<Record<string, any>>({});
 
   // Expose renderer to helper function outside component scope
   useEffect(()=>{
@@ -105,6 +107,13 @@ const StartHereContent: React.FC = () => {
       const next: Record<string, boolean> = { [id]: willOpen }; // exclusive topic
       if (willOpen && !topicLoadState[id]) {
         setTopicLoadState(s=>({...s,[id]:'loading'}));
+        // Start safety timeout (15s) to avoid indefinite loading state in edge cases
+        try {
+          if (topicLoadingTimers.current[id]) { clearTimeout(topicLoadingTimers.current[id]); }
+          topicLoadingTimers.current[id] = setTimeout(() => {
+            setTopicLoadState(s => (s[id] === 'loading' ? { ...s, [id]: 'error' } : s));
+          }, 15000);
+        } catch {}
         getHelpTopic(id, { includeInstructions: false })
           .then(data => {
             setTopicBlocks(s=>({...s,[id]: data.blocks || [] }));
@@ -114,6 +123,13 @@ const StartHereContent: React.FC = () => {
             console.error('topic load error', id, err);
             setTopicLoadState(s=>({...s,[id]:'error'}));
           });
+        // Ensure we clear the safety timer regardless of outcome
+        Promise.resolve().then(() => {
+          const clear = () => { try { clearTimeout(topicLoadingTimers.current[id]); delete topicLoadingTimers.current[id]; } catch {} };
+          // Clear on microtask after promise settles via then/catch finally-like
+          // Also schedule a follow-up clear in case of rapid state transitions
+          setTimeout(clear, 0);
+        });
       }
       return next;
     });
