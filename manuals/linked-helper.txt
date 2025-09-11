@@ -1,0 +1,35 @@
+Working Hours (Daily Operation Window)
+
+Working hours in Linked Helper define the daily time window during which the Instance is allowed to execute queued actions (visits, connection requests, messaging, etc.). Outside the defined window the Instance simply waits; no actions are dispatched. This helps mimic human activity patterns and avoid 24/7 automation.
+
+Key Elements:
+- Start / End: Local time range you configure (e.g., 08:00–18:00).
+- Randomization: Best practice is to occasionally vary start offset (5–15 min) to reduce patterns.
+- Pauses / Breaks: Mid‑day breaks further reduce uniform cadence.
+- Timezone Awareness: Ensure the machine running the Instance has the correct timezone; working hours are interpreted locally.
+
+Why It Matters:
+Consistent activity outside normal business hours (e.g., 02:00 bursts) increases platform risk. A realistic envelope keeps send volume steady and safer.
+
+Typical Setup Steps:
+1. Open Settings > Working Hours in the Instance.
+2. Choose daily active window that matches your prospect region.
+3. Add optional mid‑session break (e.g., 90 min at lunch).
+4. Save and restart campaigns to apply.
+
+Pitfalls:
+- Too narrow window + high daily limits => backlog and spikes near end.
+- Wrong timezone on host OS => actions fire at unintended hours.
+- Forgetting a lunch break leads to perfectly uniform cadence (less human).
+
+Troubleshooting:
+If no actions fire during the day: check current local time is within configured window; verify OS clock & timezone.
+
+Daily Limits vs Working Hours:
+Daily limits cap total actions per day. Working hours spread them. If you shorten hours without lowering limits, the system compresses activity rate.
+
+Launcher Pad vs Instance Reminder:
+Launcher Pad manages updates/licensing; the Instance enforces working hours. Closing the Instance pauses activity regardless of window.
+
+Best Practice Summary:
+Set a realistic 8–10 hour window in the target audience timezone, include a mid‑day break, keep early limits conservative, and occasionally adjust the start time.

@@ -53,6 +53,41 @@ const api = axios.create({
   },
 });
 
+// Return the backend base URL without the "/api/linkedin" suffix
+// Heuristics:
+// - If NEXT_PUBLIC_API_BASE_URL is set, strip the suffix
+// - Else derive from resolved API_BASE_URL
+// - Else: localhost in dev, staging in Vercel preview, production otherwise
+export function getBackendBase() {
+  try {
+    let raw = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (raw) {
+      raw = String(raw).trim().replace(/\/$/, '');
+      return raw.replace(/\/api\/linkedin\/?$/i, '');
+    }
+    if (API_BASE_URL) {
+      const derived = String(API_BASE_URL).replace(/\/$/, '').replace(/\/api\/linkedin\/?$/i, '');
+      if (derived) return derived;
+    }
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname || '';
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        return 'http://localhost:3001';
+      }
+      // Detect staging by hostname pattern (e.g., pb-webhook-server-staging.vercel.app)
+      if (/vercel\.app$/i.test(host) && /staging/i.test(host)) {
+        return 'https://pb-webhook-server-staging.onrender.com';
+      }
+    }
+    const vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV;
+    if (vercelEnv === 'preview') return 'https://pb-webhook-server-staging.onrender.com';
+    if (vercelEnv === 'production') return 'https://pb-webhook-server.onrender.com';
+    return 'https://pb-webhook-server.onrender.com';
+  } catch (e) {
+    return 'https://pb-webhook-server.onrender.com';
+  }
+}
+
 // Helper function to get authenticated headers for API calls
 const getAuthenticatedHeaders = () => {
   const clientId = getCurrentClientId();
@@ -1031,5 +1066,129 @@ export const getPostTokenUsage = async () => {
 
 // Alias for backwards compatibility
 export const saveAttribute = saveAttributeChanges;
+
+// START HERE HELP: fetch hierarchical onboarding categories (Phase 1)
+export const getStartHereHelp = async (opts = {}) => {
+  try {
+  // Always resolve via helper to pick correct backend per env (dev, preview, prod)
+  const baseUrl = getBackendBase();
+  const params = new URLSearchParams();
+  params.set('include', 'body');
+  // Ensure Start Here list uses the same client/base as topic/context calls
+  try {
+    const cid = getCurrentClientId?.();
+    if (cid) params.set('testClient', cid);
+    else if (typeof window !== 'undefined') {
+      const u = new URL(window.location.href);
+      const tc = u.searchParams.get('testClient');
+      if (tc) params.set('testClient', tc);
+    }
+  } catch {}
+  if (opts.refresh) params.set('refresh', '1');
+  if (opts.table) params.set('table', opts.table); // e.g. 'copy' to inspect legacy table
+    // Add a cache-buster to avoid CDN/browser caching stale responses in preview envs
+    params.set('_', String(Date.now()));
+  const startHereUrl = `${baseUrl}/api/help/start-here?${params.toString()}`;
+  try { if (typeof window !== 'undefined') console.debug('[help] GET', startHereUrl); } catch {}
+  const resp = await fetch(startHereUrl, { method: 'GET' });
+    if (!resp.ok) throw new Error(`Failed to load Start Here help: ${resp.status}`);
+    return await resp.json();
+  } catch (e) {
+    console.error('getStartHereHelp error', e);
+    throw e;
+  }
+};
+  // HELP by context area (e.g., 'linkedin_messaging', 'lead_scoring', etc.)
+  export const getContextHelp = async (area, opts = {}) => {
+    if (!area) throw new Error('area is required');
+    try {
+  const baseUrl = getBackendBase();
+      const params = new URLSearchParams();
+      params.set('area', String(area));
+      params.set('include', opts.includeBody ? 'body' : '');
+      // Prefer explicit client base when available to avoid default production base
+      try {
+        const cid = getCurrentClientId?.();
+        if (cid) params.set('testClient', cid);
+        else if (typeof window !== 'undefined') {
+          const u = new URL(window.location.href);
+          const tc = u.searchParams.get('testClient');
+          if (tc) params.set('testClient', tc);
+        }
+      } catch {}
+      if (opts.refresh) params.set('refresh', '1');
+      if (opts.table) params.set('table', opts.table);
+  params.set('_', String(Date.now()));
+  const url = `${baseUrl}/api/help/context?${params.toString()}`;
+  try { if (typeof window !== 'undefined') console.debug('[help] GET', url); } catch {}
+  const resp = await fetch(url, { method: 'GET' });
+      if (!resp.ok) throw new Error(`Failed to load help for ${area}: ${resp.status}`);
+      return await resp.json();
+    } catch (e) {
+      console.error('getContextHelp error', e);
+      throw e;
+    }
+  };
+
+
+// Fetch a single help topic with parsed blocks
+export const getHelpTopic = async (id, opts = {}) => {
+  const includeInstructions = opts.includeInstructions ? '1' : '0';
+  try {
+  // Always resolve via helper for consistent behavior across environments
+  const baseUrl = getBackendBase();
+
+    // Add a timeout wrapper so UI can surface an error instead of endless "Loading" if server unreachable
+    const controller = new AbortController();
+    const t = setTimeout(()=>controller.abort(), 12000); // 12s network timeout
+    let resp;
+    try {
+      // Build topic URL with include_instructions and testClient when available
+      const params = new URLSearchParams();
+      params.set('include_instructions', includeInstructions);
+      try {
+        const cid = getCurrentClientId?.();
+        if (cid) params.set('testClient', cid);
+        else if (typeof window !== 'undefined') {
+          const u = new URL(window.location.href);
+          const tc = u.searchParams.get('testClient');
+          if (tc) params.set('testClient', tc);
+        }
+      } catch {}
+  params.set('_', String(Date.now()));
+  const topicUrl = `${baseUrl}/api/help/topic/${id}?${params.toString()}`;
+  try { if (typeof window !== 'undefined') console.debug('[help] GET', topicUrl); } catch {}
+  resp = await fetch(topicUrl, { method: 'GET', signal: controller.signal });
+    } finally {
+      clearTimeout(t);
+    }
+    if (!resp.ok) {
+      // Read body for diagnostics, then throw
+      let bodyText = '';
+      try { bodyText = await resp.text(); } catch {}
+      console.error('getHelpTopic non-OK', { status: resp.status, bodyText: (bodyText||'').slice(0,200) });
+      throw new Error(`Failed to load topic ${id}: ${resp.status}`);
+    }
+    const payload = await resp.json();
+    // Normalize to always return blocks for the UI renderer
+    let blocks = Array.isArray(payload.blocks) ? payload.blocks : [];
+    if (blocks.length === 0) {
+      const html = payload.bodyHtml || payload.body_html || '';
+      const md = payload.markdown || payload.body || '';
+      const content = html || md;
+      if (content) {
+        blocks = [{ type: 'text', markdown: String(content) }];
+      }
+    }
+    return { ...payload, blocks };
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      console.error('getHelpTopic timeout', id);
+      throw new Error('Topic fetch timed out');
+    }
+    console.error('getHelpTopic error', e);
+    throw e;
+  }
+};
 
 export default api;
