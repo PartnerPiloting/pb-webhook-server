@@ -307,6 +307,9 @@ if (mountQueue && typeof mountQueue === 'function') {
 
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
 
+// Mount Apify webhook routes (for LinkedIn posts ingestion)
+try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); console.log("index.js: Apify webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
+
 // Use authenticated LinkedIn routes instead of old non-authenticated ones
 try { 
     const linkedinRoutesWithAuth = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutesWithAuth.js'); 
