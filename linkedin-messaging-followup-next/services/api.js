@@ -69,8 +69,15 @@ export function getBackendBase() {
       const derived = String(API_BASE_URL).replace(/\/$/, '').replace(/\/api\/linkedin\/?$/i, '');
       if (derived) return derived;
     }
-    if (typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
-      return 'http://localhost:3001';
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname || '';
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        return 'http://localhost:3001';
+      }
+      // Detect staging by hostname pattern (e.g., pb-webhook-server-staging.vercel.app)
+      if (/vercel\.app$/i.test(host) && /staging/i.test(host)) {
+        return 'https://pb-webhook-server-staging.onrender.com';
+      }
     }
     const vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV;
     if (vercelEnv === 'preview') return 'https://pb-webhook-server-staging.onrender.com';
@@ -1069,7 +1076,12 @@ export const getStartHereHelp = async (opts = {}) => {
   params.set('include', 'body');
   if (opts.refresh) params.set('refresh', '1');
   if (opts.table) params.set('table', opts.table); // e.g. 'copy' to inspect legacy table
-  const resp = await fetch(`${baseUrl}/api/help/start-here?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    // Add a cache-buster to avoid CDN/browser caching stale responses in preview envs
+    params.set('_', String(Date.now()));
+    const resp = await fetch(`${baseUrl}/api/help/start-here?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    });
     if (!resp.ok) throw new Error(`Failed to load Start Here help: ${resp.status}`);
     return await resp.json();
   } catch (e) {
@@ -1097,8 +1109,9 @@ export const getStartHereHelp = async (opts = {}) => {
       } catch {}
       if (opts.refresh) params.set('refresh', '1');
       if (opts.table) params.set('table', opts.table);
-      const url = `${baseUrl}/api/help/context?${params.toString()}`;
-      const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+  params.set('_', String(Date.now()));
+  const url = `${baseUrl}/api/help/context?${params.toString()}`;
+  const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' } });
       if (!resp.ok) throw new Error(`Failed to load help for ${area}: ${resp.status}`);
       return await resp.json();
     } catch (e) {
@@ -1132,7 +1145,8 @@ export const getHelpTopic = async (id, opts = {}) => {
           if (tc) params.set('testClient', tc);
         }
       } catch {}
-      resp = await fetch(`${baseUrl}/api/help/topic/${id}?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
+  params.set('_', String(Date.now()));
+  resp = await fetch(`${baseUrl}/api/help/topic/${id}?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, signal: controller.signal });
     } finally {
       clearTimeout(t);
     }
