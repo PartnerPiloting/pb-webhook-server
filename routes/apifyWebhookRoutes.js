@@ -59,11 +59,14 @@ function mapApifyItemsToPBPosts(items = []) {
   const out = [];
   for (const it of Array.isArray(items) ? items : []) {
     try {
-      const profileUrl = toProfileUrl(it.author || it.profileUrl || it.profile) || it.authorUrl || null;
-      const postUrl = it.url || it.postUrl || it.shareUrl || it.link || it.linkedinUrl || null;
-      const postContent = it.text || it.content || it.caption || it.title || it.body || '';
+      // Support nested shapes (it.post.*) and multiple aliases
+      const p = it.post || {};
+      const profileUrl = toProfileUrl(it.author || it.profileUrl || it.profile || it.authorUrl || it.authorProfileUrl || p.author)
+        || (p.profileUrl || null);
+      const postUrl = it.url || it.postUrl || it.shareUrl || it.link || it.linkedinUrl || p.url || p.postUrl || null;
+      const postContent = it.text || it.content || it.caption || it.title || it.body || p.text || p.content || '';
       // postedAt may be in various fields or object
-      let postTimestamp = it.publishedAt || it.time || it.date || it.createdAt || null;
+      let postTimestamp = it.publishedAt || it.time || it.date || it.createdAt || p.publishedAt || p.time || p.date || p.createdAt || null;
       if (!postTimestamp && it.postedAt) {
         if (typeof it.postedAt === 'object') {
           postTimestamp = it.postedAt.timestamp || it.postedAt.date || null;
@@ -72,11 +75,13 @@ function mapApifyItemsToPBPosts(items = []) {
         }
       }
       // Engagement mapping (if present)
-      const engagement = it.engagement || {};
+      const engagement = it.engagement || p.engagement || {};
       const likeCount = engagement.likes ?? engagement.reactions ?? it.likes ?? null;
       const commentCount = engagement.comments ?? it.comments ?? null;
       const repostCount = engagement.shares ?? it.shares ?? null;
-      const imgUrl = Array.isArray(it.postImages) && it.postImages.length ? (it.postImages[0].url || it.postImages[0]) : (Array.isArray(it.images) && it.images.length ? it.images[0] : null);
+      const imgUrl = (Array.isArray(it.postImages) && it.postImages.length ? (it.postImages[0].url || it.postImages[0]) : null)
+        || (Array.isArray(it.images) && it.images.length ? it.images[0] : null)
+        || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
 
       if (!profileUrl || !postUrl) continue; // minimal contract
 
@@ -167,7 +172,12 @@ router.post('/api/apify-webhook', async (req, res) => {
           console.error('[ApifyWebhook] Failed to fetch dataset items', datasetId, resp.status);
           return;
         }
-        const items = await resp.json();
+        const raw = await resp.json();
+        const items = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : (Array.isArray(raw.data) ? raw.data : []));
+        if (process.env.NODE_ENV !== 'production') {
+          const sample = items && items[0] ? Object.keys(items[0]).slice(0, 20) : [];
+          console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. items=${items.length}. sampleKeys=${JSON.stringify(sample)}`);
+        }
         const posts = mapApifyItemsToPBPosts(items);
         if (!posts.length) {
           console.log(`[ApifyWebhook] No valid posts mapped from dataset ${datasetId}`);
