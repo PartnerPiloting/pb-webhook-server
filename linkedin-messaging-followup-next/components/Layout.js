@@ -57,8 +57,19 @@ const NavigationWithParams = ({ pathname }) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
           const href = `${item.href}?${searchParams.toString()}`;
+          const handleClick = (e) => {
+            try {
+              // If we're already in /settings, clicking Settings should behave like "Back to Settings"
+              if (item.href === '/settings' && pathname.startsWith('/settings')) {
+                e.preventDefault();
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('settings-nav', { detail: { action: 'backToMenu' } }));
+                }
+              }
+            } catch (_) {}
+          };
           return (
-            <Link key={item.name} href={href} title={item.description || item.name}
+            <Link key={item.name} href={href} title={item.description || item.name} onClick={handleClick}
               className={`group inline-flex items-center border-b-2 px-1 py-1.5 text-sm font-medium transition-colors ${isActive ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
               {Icon && <Icon className={`h-5 w-5 mr-2 ${isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-500'}`} />}
               <span className="leading-tight">

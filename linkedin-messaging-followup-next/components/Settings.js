@@ -78,6 +78,19 @@ const SettingsWithParams = () => {
     loadTokenUsage('posts'); // Load post token usage
   };
 
+  // Listen for nav-triggered "back to menu" when Settings tab is clicked while on a subview
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (e) => {
+      const action = e?.detail?.action;
+      if (action === 'backToMenu') {
+        setCurrentView('menu');
+      }
+    };
+    window.addEventListener('settings-nav', handler);
+    return () => window.removeEventListener('settings-nav', handler);
+  }, []);
+
   // Load token usage based on current view
   const loadTokenUsage = async (view = currentView) => {
     try {
