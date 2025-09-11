@@ -1080,7 +1080,7 @@ export const getStartHereHelp = async (opts = {}) => {
     params.set('_', String(Date.now()));
     const resp = await fetch(`${baseUrl}/api/help/start-here?${params.toString()}`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+      headers: { 'Content-Type': 'application/json' },
     });
     if (!resp.ok) throw new Error(`Failed to load Start Here help: ${resp.status}`);
     return await resp.json();
@@ -1111,7 +1111,7 @@ export const getStartHereHelp = async (opts = {}) => {
       if (opts.table) params.set('table', opts.table);
   params.set('_', String(Date.now()));
   const url = `${baseUrl}/api/help/context?${params.toString()}`;
-  const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' } });
+  const resp = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
       if (!resp.ok) throw new Error(`Failed to load help for ${area}: ${resp.status}`);
       return await resp.json();
     } catch (e) {
@@ -1146,7 +1146,7 @@ export const getHelpTopic = async (id, opts = {}) => {
         }
       } catch {}
   params.set('_', String(Date.now()));
-  resp = await fetch(`${baseUrl}/api/help/topic/${id}?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, signal: controller.signal });
+  resp = await fetch(`${baseUrl}/api/help/topic/${id}?${params.toString()}`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal: controller.signal });
     } finally {
       clearTimeout(t);
     }
