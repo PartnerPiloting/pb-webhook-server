@@ -56,10 +56,7 @@ function extractDatasetId(body) {
 
 // Transform Apify dataset items into the PB posts input shape used by syncPBPostsToAirtable
 function mapApifyItemsToPBPosts(items = []) {
-  console.log(`[ApifyWebhook] Starting to map ${items?.length || 0} items`);
-  
   if (!Array.isArray(items)) {
-    console.warn('[ApifyWebhook] Items is not an array, returning empty posts');
     return [];
   }
 
@@ -109,14 +106,11 @@ function mapApifyItemsToPBPosts(items = []) {
         repostCount,
         action: 'apify_ingest'
       });
-      
-      console.log(`[ApifyWebhook] Mapped item ${i + 1}: ${postUrl}`);
     } catch (error) {
       console.warn(`[ApifyWebhook] Error processing item ${i}: ${error.message}`);
     }
   }
   
-  console.log(`[ApifyWebhook] Mapped ${out.length} posts from ${items.length} items`);
   return out;
 }
 
@@ -127,19 +121,10 @@ function mapApifyItemsToPBPosts(items = []) {
 
 // GET handler for webhook endpoint testing (Apify uses GET requests to test webhook availability)
 router.get('/api/apify-webhook', (req, res) => {
-  // Log the test request for debugging
-  console.log('Apify webhook test - GET request received:', {
-    headers: req.headers,
-    query: req.query,
-    timestamp: new Date().toISOString()
-  });
-  
-  // Set CORS headers in case Apify needs them
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
-  // Return simple success response that Apify expects
   res.status(200).json({ 
     success: true,
     message: 'Apify webhook endpoint is accessible',
@@ -162,7 +147,9 @@ router.post('/api/apify-webhook', async (req, res) => {
     }
 
     // Tenant resolution - TEMPORARY: Hard-coded for testing
-    const clientId = "Guy-Wilson"; // TODO: Make this dynamic with run mapping
+    // Currently hard-coded for Guy-Wilson client testing
+    // TODO: Replace with dynamic client identification from run mapping
+    const clientId = "Guy-Wilson";
     let clientBase;
     try {
       clientBase = await getClientBase(clientId);
@@ -197,11 +184,9 @@ router.post('/api/apify-webhook', async (req, res) => {
     // Quick ack before fetch to keep webhook latency low
     res.status(200).json({ ok: true, mode: 'dataset', datasetId });
 
-    // Background processing with better error handling and logging
+    // Background processing with error handling
     (async () => {
       try {
-        console.log(`[ApifyWebhook] Starting background fetch for dataset: ${datasetId}`);
-        
         const url = `https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true`;
         const resp = await fetchDynamic(url, {
           method: 'GET',
@@ -213,36 +198,24 @@ router.post('/api/apify-webhook', async (req, res) => {
           return;
         }
         
-        console.log(`[ApifyWebhook] Dataset response received, parsing JSON with dirty-json...`);
-        
-        // Use dirty-json for safer parsing (same approach as webhook body parsing)
+        // Use dirty-json for safer parsing
         let raw;
         try {
           const text = await resp.text();
-          console.log(`[ApifyWebhook] Response text length: ${text.length} characters`);
-          
           try {
             raw = JSON.parse(text);
-            console.log(`[ApifyWebhook] Standard JSON.parse succeeded`);
           } catch (jsonError) {
-            console.warn(`[ApifyWebhook] Standard JSON.parse failed: ${jsonError.message}, trying dirty-json...`);
             raw = dirtyJSON.parse(text);
-            console.log(`[ApifyWebhook] dirty-json parse succeeded`);
           }
-        } catch (dirtyError) {
-          console.error('[ApifyWebhook] Both JSON.parse and dirty-json failed:', dirtyError.message);
+        } catch (parseError) {
+          console.error('[ApifyWebhook] JSON parsing failed:', parseError.message);
           return;
         }
         
         const items = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : (Array.isArray(raw.data) ? raw.data : []));
         
-        console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. items=${items.length}`);
-        if (items.length > 0) {
-          const sample = Object.keys(items[0]).slice(0, 10);
-          console.log(`[ApifyWebhook] Sample keys: ${JSON.stringify(sample)}`);
-        }
+        console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. ${items.length} items found`);
         
-        console.log(`[ApifyWebhook] Starting mapApifyItemsToPBPosts...`);
         const posts = mapApifyItemsToPBPosts(items);
         
         if (!posts.length) {
@@ -250,9 +223,13 @@ router.post('/api/apify-webhook', async (req, res) => {
           return;
         }
         
-        console.log(`[ApifyWebhook] Starting syncPBPostsToAirtable with ${posts.length} posts...`);
         const result = await syncPBPostsToAirtable(posts, clientBase);
-        console.log(`[ApifyWebhook] Successfully synced posts from dataset ${datasetId}:`, result);
+        console.log(`[ApifyWebhook] Successfully synced ${posts.length} posts from dataset ${datasetId}`);
+        
+      } catch (e) {
+        console.error('[ApifyWebhook] Background processing error:', e.message);
+      }
+    })();
         
       } catch (e) {
         console.error('[ApifyWebhook] Background processing error:', e.message);
