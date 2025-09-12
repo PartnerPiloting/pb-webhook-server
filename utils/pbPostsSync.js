@@ -24,29 +24,38 @@ function normalizeLinkedInUrl(url) {
         .trim();
 }
 
-// Fetch ALL leads and match by normalized LinkedIn Profile URL
+// Fetch leads by normalized LinkedIn Profile URL (MEMORY-SAFE VERSION)
 // MULTI-TENANT: Now accepts clientBase parameter
 async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
     const normUrl = normalizeLinkedInUrl(profileUrl);
+    console.log(`[getAirtableRecord] Looking up: ${normUrl}`);
+    
     // Use client-specific base; filter on normalized URL to avoid full scans
     const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
     const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
+    
     try {
+        console.log(`[getAirtableRecord] Executing filtered query with maxRecords=1`);
         const records = await clientBase(AIRTABLE_LEADS_TABLE_NAME)
-            .select({ filterByFormula: formula, maxRecords: 1 })
+            .select({ 
+                filterByFormula: formula, 
+                maxRecords: 1,
+                // Only fetch the fields we need to minimize memory usage
+                fields: [AIRTABLE_LINKEDIN_URL_FIELD, AIRTABLE_POSTS_FIELD]
+            })
             .firstPage();
-        if (records && records.length > 0) return records[0];
+            
+        if (records && records.length > 0) {
+            console.log(`[getAirtableRecord] Found record: ${records[0].id}`);
+            return records[0];
+        } else {
+            console.log(`[getAirtableRecord] No record found for: ${normUrl}`);
+            return null;
+        }
     } catch (e) {
-        console.warn(`Airtable filtered lookup failed, falling back to in-memory match: ${e.message}`);
-    }
-    // Fallback: last resort full fetch (should rarely be needed)
-    try {
-        const all = await clientBase(AIRTABLE_LEADS_TABLE_NAME).select().all();
-        return all.find(record => {
-            const atUrl = record.get(AIRTABLE_LINKEDIN_URL_FIELD);
-            return atUrl && normalizeLinkedInUrl(atUrl) === normUrl;
-        }) || null;
-    } catch {
+        console.error(`[getAirtableRecord] Filtered lookup failed: ${e.message}`);
+        // DO NOT fallback to .all() - this was causing memory crashes
+        // Return null instead of risking memory overflow
         return null;
     }
 }
