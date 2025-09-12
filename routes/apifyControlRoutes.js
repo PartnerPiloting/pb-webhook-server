@@ -211,7 +211,7 @@ router.post('/api/apify/run', async (req, res) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiToken}`,
         },
-        body: JSON.stringify({ input }),
+        body: JSON.stringify(input),
       });
       const startData = await startResp.json();
       if (!startResp.ok) {
@@ -247,7 +247,7 @@ router.post('/api/apify/run', async (req, res) => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiToken}`,
       },
-      body: JSON.stringify({ input }),
+      body: JSON.stringify(input),
     });
     const startData = await startResp.json();
     if (!startResp.ok) {
