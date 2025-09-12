@@ -56,16 +56,25 @@ function extractDatasetId(body) {
 
 // Transform Apify dataset items into the PB posts input shape used by syncPBPostsToAirtable
 function mapApifyItemsToPBPosts(items = []) {
+  console.log(`[ApifyWebhook] Starting to map ${items?.length || 0} items`);
+  
+  if (!Array.isArray(items)) {
+    console.warn('[ApifyWebhook] Items is not an array, returning empty posts');
+    return [];
+  }
+
   const out = [];
-  for (const it of Array.isArray(items) ? items : []) {
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it || typeof it !== 'object') continue;
+    
     try {
-      // Support nested shapes (it.post.*) and multiple aliases
       const p = it.post || {};
       const profileUrl = toProfileUrl(it.author || it.profileUrl || it.profile || it.authorUrl || it.authorProfileUrl || p.author)
         || (p.profileUrl || null);
       const postUrl = it.url || it.postUrl || it.shareUrl || it.link || it.linkedinUrl || p.url || p.postUrl || null;
       const postContent = it.text || it.content || it.caption || it.title || it.body || p.text || p.content || '';
-      // postedAt may be in various fields or object
+      
       let postTimestamp = it.publishedAt || it.time || it.date || it.createdAt || p.publishedAt || p.time || p.date || p.createdAt || null;
       if (!postTimestamp && it.postedAt) {
         if (typeof it.postedAt === 'object') {
@@ -74,7 +83,7 @@ function mapApifyItemsToPBPosts(items = []) {
           postTimestamp = it.postedAt;
         }
       }
-      // Engagement mapping (if present)
+      
       const engagement = it.engagement || p.engagement || {};
       const likeCount = engagement.likes ?? engagement.reactions ?? it.likes ?? null;
       const commentCount = engagement.comments ?? it.comments ?? null;
@@ -83,7 +92,7 @@ function mapApifyItemsToPBPosts(items = []) {
         || (Array.isArray(it.images) && it.images.length ? it.images[0] : null)
         || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
 
-      if (!profileUrl || !postUrl) continue; // minimal contract
+      if (!profileUrl || !postUrl) continue;
 
       out.push({
         profileUrl,
@@ -100,8 +109,14 @@ function mapApifyItemsToPBPosts(items = []) {
         repostCount,
         action: 'apify_ingest'
       });
-    } catch { /* skip malformed item */ }
+      
+      console.log(`[ApifyWebhook] Mapped item ${i + 1}: ${postUrl}`);
+    } catch (error) {
+      console.warn(`[ApifyWebhook] Error processing item ${i}: ${error.message}`);
+    }
   }
+  
+  console.log(`[ApifyWebhook] Mapped ${out.length} posts from ${items.length} items`);
   return out;
 }
 
@@ -182,33 +197,48 @@ router.post('/api/apify-webhook', async (req, res) => {
     // Quick ack before fetch to keep webhook latency low
     res.status(200).json({ ok: true, mode: 'dataset', datasetId });
 
-    // Background processing
+    // Background processing with better error handling and logging
     (async () => {
       try {
+        console.log(`[ApifyWebhook] Starting background fetch for dataset: ${datasetId}`);
+        
         const url = `https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true`;
         const resp = await fetchDynamic(url, {
           method: 'GET',
           headers: { 'Authorization': `Bearer ${apiToken}` }
         });
+        
         if (!resp.ok) {
           console.error('[ApifyWebhook] Failed to fetch dataset items', datasetId, resp.status);
           return;
         }
+        
+        console.log(`[ApifyWebhook] Dataset response received, parsing JSON...`);
         const raw = await resp.json();
+        
         const items = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : (Array.isArray(raw.data) ? raw.data : []));
-        if (process.env.NODE_ENV !== 'production') {
-          const sample = items && items[0] ? Object.keys(items[0]).slice(0, 20) : [];
-          console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. items=${items.length}. sampleKeys=${JSON.stringify(sample)}`);
+        
+        console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. items=${items.length}`);
+        if (items.length > 0) {
+          const sample = Object.keys(items[0]).slice(0, 10);
+          console.log(`[ApifyWebhook] Sample keys: ${JSON.stringify(sample)}`);
         }
+        
+        console.log(`[ApifyWebhook] Starting mapApifyItemsToPBPosts...`);
         const posts = mapApifyItemsToPBPosts(items);
+        
         if (!posts.length) {
           console.log(`[ApifyWebhook] No valid posts mapped from dataset ${datasetId}`);
           return;
         }
+        
+        console.log(`[ApifyWebhook] Starting syncPBPostsToAirtable with ${posts.length} posts...`);
         const result = await syncPBPostsToAirtable(posts, clientBase);
-        console.log(`[ApifyWebhook] Synced posts from dataset ${datasetId}`, result);
+        console.log(`[ApifyWebhook] Successfully synced posts from dataset ${datasetId}:`, result);
+        
       } catch (e) {
         console.error('[ApifyWebhook] Background processing error:', e.message);
+        console.error('[ApifyWebhook] Full error:', e);
       }
     })();
   } catch (e) {
