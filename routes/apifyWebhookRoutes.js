@@ -213,8 +213,26 @@ router.post('/api/apify-webhook', async (req, res) => {
           return;
         }
         
-        console.log(`[ApifyWebhook] Dataset response received, parsing JSON...`);
-        const raw = await resp.json();
+        console.log(`[ApifyWebhook] Dataset response received, parsing JSON with dirty-json...`);
+        
+        // Use dirty-json for safer parsing (same approach as webhook body parsing)
+        let raw;
+        try {
+          const text = await resp.text();
+          console.log(`[ApifyWebhook] Response text length: ${text.length} characters`);
+          
+          try {
+            raw = JSON.parse(text);
+            console.log(`[ApifyWebhook] Standard JSON.parse succeeded`);
+          } catch (jsonError) {
+            console.warn(`[ApifyWebhook] Standard JSON.parse failed: ${jsonError.message}, trying dirty-json...`);
+            raw = dirtyJSON.parse(text);
+            console.log(`[ApifyWebhook] dirty-json parse succeeded`);
+          }
+        } catch (dirtyError) {
+          console.error('[ApifyWebhook] Both JSON.parse and dirty-json failed:', dirtyError.message);
+          return;
+        }
         
         const items = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : (Array.isArray(raw.data) ? raw.data : []));
         
