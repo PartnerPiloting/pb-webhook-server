@@ -160,9 +160,9 @@ router.post('/api/apify/run', async (req, res) => {
       input = {
         targetUrls,
         maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : 5,
-        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 5,
+        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 10,
         maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : 5,
-        postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : 'month',
+        postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : 'year',
         scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
         scrapeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
         // Pass-through proxy configuration if provided
@@ -181,8 +181,8 @@ router.post('/api/apify/run', async (req, res) => {
         startUrls: normalized.map((url) => ({ url })),
         profileUrls: normalized,
         profiles,
-  postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : 'month',
-  maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
+  postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : 'year',
+  maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 10,
         // Support both naming styles
   includeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
   includeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
