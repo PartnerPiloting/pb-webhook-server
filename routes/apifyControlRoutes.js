@@ -88,8 +88,7 @@ router.post('/api/apify/run', async (req, res) => {
     if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
     if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
-    const clientId = req.headers['x-client-id'] || req.query.client || req.body.clientId;
-    if (!clientId) return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
+    const clientId = "Guy-Wilson"; // TEMPORARY: Hard-coded for testing
 
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) return res.status(500).json({ ok: false, error: 'Server missing APIFY_API_TOKEN' });
@@ -253,8 +252,7 @@ router.post('/api/apify/run', async (req, res) => {
         }),
         headersTemplate: JSON.stringify({
           'Authorization': `Bearer ${process.env.APIFY_WEBHOOK_TOKEN}`,
-          'Content-Type': 'application/json',
-          'x-client-id': clientId
+          'Content-Type': 'application/json'
         })
       }]
     };
