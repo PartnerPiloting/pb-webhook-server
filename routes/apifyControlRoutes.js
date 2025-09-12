@@ -88,7 +88,9 @@ router.post('/api/apify/run', async (req, res) => {
     if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
     if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
-    const clientId = "Guy-Wilson"; // TEMPORARY: Hard-coded for testing
+        // Currently hard-coded for Guy-Wilson client testing
+    // TODO: Replace with dynamic client identification for multi-tenant support
+    const clientId = 'Guy-Wilson';
 
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) return res.status(500).json({ ok: false, error: 'Server missing APIFY_API_TOKEN' });
@@ -96,7 +98,6 @@ router.post('/api/apify/run', async (req, res) => {
   // Always use Actor directly - no Saved Task support to avoid confusion
   const taskId = null;
   const actorId = process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
-  console.log(`[ApifyControl] Actor-only mode: using actorId=${actorId}`);
 
     // Input assembly
     // Support both our API shape and Apify-like shape where input is nested under body.input
@@ -150,7 +151,6 @@ router.post('/api/apify/run', async (req, res) => {
     const expectsCookiesEnv = ['1', 'true', 'yes', 'on'].includes(String(process.env.APIFY_EXPECTS_COOKIES || '').toLowerCase());
     const heuristicCookies = /cookie/i.test(actorId || '') && !/no-?cookie/i.test(actorId || '');
     const expectsCookies = typeof expectsCookiesOverride === 'boolean' ? expectsCookiesOverride : (expectsCookiesEnv || heuristicCookies);
-    console.log(`[ApifyControl] expectsCookies=${expectsCookies} (override: ${expectsCookiesOverride}, env: ${expectsCookiesEnv}, heuristic: ${heuristicCookies})`);
 
     // Build input according to cookie mode. For no-cookies, keep it minimal and public-safe
   let input;
@@ -169,7 +169,6 @@ router.post('/api/apify/run', async (req, res) => {
       };
       // Remove undefined keys to avoid confusing some actors
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
-      console.log('[ApifyControl] NO-COOKIES mode: Final input structure:', JSON.stringify(input, null, 2));
     } else {
       // Cookie-enabled actors: normalize to recent-activity and add profiles aliases
       const normalized = targetUrls.map((url) => normalizeLinkedInUrl(url));
@@ -193,7 +192,6 @@ router.post('/api/apify/run', async (req, res) => {
   proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
       };
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
-      console.log('[ApifyControl] COOKIES mode: Final input structure:', JSON.stringify(input, null, 2));
     }
 
     const mode = (req.body?.mode || 'webhook').toLowerCase();
@@ -260,11 +258,7 @@ router.post('/api/apify/run', async (req, res) => {
     // Always merge input with webhook config for Actor runs
     const requestBody = { ...input, ...webhookConfig };
 
-    // Debug: Log the webhook configuration being sent
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[ApifyControl] Webhook config being sent:', JSON.stringify(webhookConfig, null, 2));
-      console.log('[ApifyControl] Full request body keys:', Object.keys(requestBody));
-    }
+
 
   const startResp = await fetch(startUrl, {
       method: 'POST',
@@ -280,10 +274,7 @@ router.post('/api/apify/run', async (req, res) => {
     }
 
     const run = startData.data || startData;
-    const debugEcho = (process.env.NODE_ENV !== 'production' && String(req.query.debug || '') === '1')
-      ? { expectsCookies, sentInput: input }
-      : undefined;
-    return res.json({ ok: true, mode: 'webhook', runId: run.id, status: run.status, url: run.url || run.buildUrl || null, ...(debugEcho ? { debug: debugEcho } : {}) });
+    return res.json({ ok: true, mode: 'webhook', runId: run.id, status: run.status, url: run.url || run.buildUrl || null });
   } catch (e) {
     console.error('[ApifyControl] run error:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
