@@ -262,6 +262,12 @@ router.post('/api/apify/run', async (req, res) => {
     // Always merge input with webhook config for Actor runs
     const requestBody = { ...input, ...webhookConfig };
 
+    // Debug: Log the webhook configuration being sent
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ApifyControl] Webhook config being sent:', JSON.stringify(webhookConfig, null, 2));
+      console.log('[ApifyControl] Full request body keys:', Object.keys(requestBody));
+    }
+
   const startResp = await fetch(startUrl, {
       method: 'POST',
       headers: {
