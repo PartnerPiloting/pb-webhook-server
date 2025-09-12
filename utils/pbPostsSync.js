@@ -1,12 +1,5 @@
-// utils/pbPostsSync.js - MULTI    coasync function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
+// utils/pbPostsSync.js - MULTasync function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
     const normUrl = normalizeLinkedInUrl(profileUrl);
-    console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
-    console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
-    
-    // Use client-specific base; filter on normalized URL to avoid full scans
-    const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
-    const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
-    console.log(`[getAirtableRecord] Airtable formula: ${formula}`);mUrl = normalizeLinkedInUrl(profileUrl);
     console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
     console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
     
