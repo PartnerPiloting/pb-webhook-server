@@ -1,5 +1,5 @@
 // routes/apifyControlRoutes.js
-// Start Apify Task/Actor runs from our API. Two modes:
+// Start Apify Actor runs from our API. Two modes:
 // - mode=webhook (default): fire-and-forget; Apify will call our /api/apify-webhook on success
 // - mode=inline: wait for run to finish, fetch dataset, and upsert to Airtable immediately
 
@@ -94,10 +94,10 @@ router.post('/api/apify/run', async (req, res) => {
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) return res.status(500).json({ ok: false, error: 'Server missing APIFY_API_TOKEN' });
 
-  // Force use of Actor ID only, ignore Task ID to avoid input copying issues
-  const taskId = null; // Disabled - always use Actor directly
+  // Always use Actor directly - no Saved Task support to avoid confusion
+  const taskId = null;
   const actorId = process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
-  console.log(`[ApifyControl] Forced Actor mode: using actorId=${actorId}, taskId=${taskId}`);
+  console.log(`[ApifyControl] Actor-only mode: using actorId=${actorId}`);
 
     // Input assembly
     // Support both our API shape and Apify-like shape where input is nested under body.input
@@ -146,10 +146,10 @@ router.post('/api/apify/run', async (req, res) => {
     };
 
     // Decide whether we should assume a cookie-enabled actor (can access /recent-activity/) or not.
-    // Priority: request override -> env var -> heuristic based on actor/task id text
+    // Priority: request override -> env var -> heuristic based on actor id text
   const expectsCookiesOverride = (typeof opts.expectsCookies !== 'undefined') ? Boolean(opts.expectsCookies) : undefined;
     const expectsCookiesEnv = ['1', 'true', 'yes', 'on'].includes(String(process.env.APIFY_EXPECTS_COOKIES || '').toLowerCase());
-    const heuristicCookies = /cookie/i.test(`${taskId || ''} ${actorId || ''}`) && !/no-?cookie/i.test(`${taskId || ''} ${actorId || ''}`);
+    const heuristicCookies = /cookie/i.test(actorId || '') && !/no-?cookie/i.test(actorId || '');
     const expectsCookies = typeof expectsCookiesOverride === 'boolean' ? expectsCookiesOverride : (expectsCookiesEnv || heuristicCookies);
     console.log(`[ApifyControl] expectsCookies=${expectsCookies} (override: ${expectsCookiesOverride}, env: ${expectsCookiesEnv}, heuristic: ${heuristicCookies})`);
 
@@ -201,10 +201,8 @@ router.post('/api/apify/run', async (req, res) => {
     const baseUrl = 'https://api.apify.com/v2';
 
     if (mode === 'inline') {
-      // Start run and wait until it finishes, then fetch dataset and ingest
-      const startUrl = taskId
-        ? `${baseUrl}/actor-tasks/${encodeURIComponent(taskId)}/runs?waitForFinish=120`
-        : `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs?waitForFinish=120`;
+      // Start Actor run and wait until it finishes, then fetch dataset and ingest
+      const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs?waitForFinish=120`;
       const startResp = await fetch(startUrl, {
         method: 'POST',
         headers: {
@@ -236,13 +234,11 @@ router.post('/api/apify/run', async (req, res) => {
       return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, datasetId, counts: { items: (items||[]).length, posts: posts.length }, result });
     }
 
-    // Default: webhook mode (fast return). Configure webhook for Actor runs.
-    const startUrl = taskId
-      ? `${baseUrl}/actor-tasks/${encodeURIComponent(taskId)}/runs`
-      : `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs`;
+    // Default: webhook mode (fast return). Actor runs with webhook configuration.
+    const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs`;
 
-    // Prepare webhook configuration for Actor runs (Tasks have webhooks pre-configured)
-    const webhookConfig = !taskId ? {
+    // Add webhook configuration for Actor runs
+    const webhookConfig = {
       webhooks: [{
         eventTypes: ['ACTOR.RUN.SUCCEEDED'],
         requestUrl: 'https://pb-webhook-server-staging.onrender.com/api/apify-webhook',
@@ -261,10 +257,10 @@ router.post('/api/apify/run', async (req, res) => {
           'x-client-id': clientId
         })
       }]
-    } : {};
+    };
 
-    // Merge input with webhook config for Actor runs
-    const requestBody = taskId ? input : { ...input, ...webhookConfig };
+    // Always merge input with webhook config for Actor runs
+    const requestBody = { ...input, ...webhookConfig };
 
   const startResp = await fetch(startUrl, {
       method: 'POST',
