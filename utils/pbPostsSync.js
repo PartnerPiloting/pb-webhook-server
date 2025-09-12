@@ -273,9 +273,9 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     };
 }
 
-module.exports = {
-    syncPBPostsToAirtable,
-    getAirtableRecordByProfileUrl,
-    normalizeLinkedInUrl,
-    identifyClientForPosts
-};
+// Export the main function as default, with helper functions as properties
+module.exports = syncPBPostsToAirtable;
+module.exports.syncPBPostsToAirtable = syncPBPostsToAirtable;
+module.exports.getAirtableRecordByProfileUrl = getAirtableRecordByProfileUrl;
+module.exports.normalizeLinkedInUrl = normalizeLinkedInUrl;
+module.exports.identifyClientForPosts = identifyClientForPosts;
