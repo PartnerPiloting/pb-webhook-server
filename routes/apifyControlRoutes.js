@@ -236,10 +236,35 @@ router.post('/api/apify/run', async (req, res) => {
       return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, datasetId, counts: { items: (items||[]).length, posts: posts.length }, result });
     }
 
-    // Default: webhook mode (fast return). Ensure a webhook is configured on the Saved Task.
+    // Default: webhook mode (fast return). Configure webhook for Actor runs.
     const startUrl = taskId
       ? `${baseUrl}/actor-tasks/${encodeURIComponent(taskId)}/runs`
       : `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs`;
+
+    // Prepare webhook configuration for Actor runs (Tasks have webhooks pre-configured)
+    const webhookConfig = !taskId ? {
+      webhooks: [{
+        eventTypes: ['ACTOR.RUN.SUCCEEDED'],
+        requestUrl: 'https://pb-webhook-server-staging.onrender.com/api/apify-webhook',
+        payloadTemplate: JSON.stringify({
+          resource: {
+            defaultDatasetId: '{{resource.defaultDatasetId}}',
+            id: '{{resource.id}}',
+            status: '{{resource.status}}'
+          },
+          eventType: '{{eventType}}',
+          createdAt: '{{createdAt}}'
+        }),
+        headersTemplate: JSON.stringify({
+          'Authorization': `Bearer ${process.env.APIFY_WEBHOOK_TOKEN}`,
+          'Content-Type': 'application/json',
+          'x-client-id': clientId
+        })
+      }]
+    } : {};
+
+    // Merge input with webhook config for Actor runs
+    const requestBody = taskId ? input : { ...input, ...webhookConfig };
 
   const startResp = await fetch(startUrl, {
       method: 'POST',
@@ -247,7 +272,7 @@ router.post('/api/apify/run', async (req, res) => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiToken}`,
       },
-      body: JSON.stringify(input),
+      body: JSON.stringify(requestBody),
     });
     const startData = await startResp.json();
     if (!startResp.ok) {
