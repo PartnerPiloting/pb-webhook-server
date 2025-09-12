@@ -196,13 +196,22 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
         let existingPosts = [];
         try {
             const postsFieldValue = record.get(AIRTABLE_POSTS_FIELD) || "[]";
-            // Use dirty-json for safer parsing of existing posts (same as webhook parsing)
-            try {
-                existingPosts = JSON.parse(postsFieldValue);
-            } catch (jsonError) {
-                console.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
-                existingPosts = dirtyJSON.parse(postsFieldValue);
-                console.log(`dirty-json successfully parsed existing posts for ${normProfileUrl}`);
+            console.log(`[PBPostsSync] Existing posts field length: ${postsFieldValue.length} characters for ${normProfileUrl}`);
+            
+            // Check if the field is extremely large (could cause memory issues)
+            if (postsFieldValue.length > 1000000) { // 1MB limit
+                console.warn(`[PBPostsSync] Existing posts field too large (${postsFieldValue.length} chars), truncating to avoid memory crash`);
+                existingPosts = []; // Start fresh to avoid memory crash
+            } else {
+                // Use dirty-json for safer parsing of existing posts (same as webhook parsing)
+                try {
+                    existingPosts = JSON.parse(postsFieldValue);
+                    console.log(`[PBPostsSync] Successfully parsed ${existingPosts.length} existing posts`);
+                } catch (jsonError) {
+                    console.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
+                    existingPosts = dirtyJSON.parse(postsFieldValue);
+                    console.log(`dirty-json successfully parsed existing posts for ${normProfileUrl}`);
+                }
             }
         } catch (parseError) {
             console.error(`Both JSON.parse and dirty-json failed for existing posts: ${parseError.message}`);
