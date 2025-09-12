@@ -160,11 +160,20 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
         throw new Error('No Airtable base available for PB posts sync');
     }
 
+    console.log(`[PBPostsSync] Starting sync with ${pbPostsArr.length} posts`);
+
     // Index posts by normalized profile URL
     const postsByProfile = {};
-    pbPostsArr.forEach(post => {
-        if (!post.profileUrl || !post.postUrl) return;
+    console.log(`[PBPostsSync] Starting to index posts by profile URL...`);
+    
+    pbPostsArr.forEach((post, index) => {
+        console.log(`[PBPostsSync] Processing post ${index + 1}/${pbPostsArr.length}: ${post.postUrl || 'no URL'}`);
+        if (!post.profileUrl || !post.postUrl) {
+            console.log(`[PBPostsSync] Skipping post ${index + 1} - missing profile or post URL`);
+            return;
+        }
         const normProfile = normalizeLinkedInUrl(post.profileUrl);
+        console.log(`[PBPostsSync] Normalized profile URL: ${normProfile}`);
         if (!postsByProfile[normProfile]) postsByProfile[normProfile] = [];
         postsByProfile[normProfile].push({
             postUrl: post.postUrl,
@@ -183,15 +192,24 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
             }
         });
     });
+    
+    console.log(`[PBPostsSync] Finished indexing. Found ${Object.keys(postsByProfile).length} unique profiles`);
+    console.log(`[PBPostsSync] Profile URLs: ${Object.keys(postsByProfile).join(', ')}`);
 
     let processedCount = 0, updatedCount = 0, skippedCount = 0;
+    console.log(`[PBPostsSync] Starting to process profiles...`);
+    
     for (const [normProfileUrl, postsList] of Object.entries(postsByProfile)) {
         processedCount++;
+        console.log(`[PBPostsSync] Processing profile ${processedCount}: ${normProfileUrl} with ${postsList.length} posts`);
+        
+        console.log(`[PBPostsSync] Looking up Airtable record for: ${normProfileUrl}`);
         const record = await getAirtableRecordByProfileUrl(normProfileUrl, airtableBase);
         if (!record) {
             console.warn(`No Airtable lead found for: ${normProfileUrl}`);
             continue;
         }
+        console.log(`[PBPostsSync] Found Airtable record: ${record.id}`);
 
         let existingPosts = [];
         try {
