@@ -1,4 +1,19 @@
-// utils/pbPostsSync.js - MULTI-TENANT SUPPORT: Updated to use client-specific Airtable bases
+// utils/pbPostsSync.js - MULTI    coasync function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
+    const normUrl = normalizeLinkedInUrl(profileUrl);
+    console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
+    console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
+    
+    // Use client-specific base; filter on normalized URL to avoid full scans
+    const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
+    const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
+    console.log(`[getAirtableRecord] Airtable formula: ${formula}`);mUrl = normalizeLinkedInUrl(profileUrl);
+    console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
+    console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
+    
+    // Use client-specific base; filter on normalized URL to avoid full scans
+    const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
+    const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
+    console.log(`[getAirtableRecord] Airtable formula: ${formula}`);T SUPPORT: Updated to use client-specific Airtable bases
 
 require("dotenv").config();
 const { getClientBase } = require('../config/airtableClient');
@@ -13,7 +28,7 @@ const AIRTABLE_DATE_ADDED_FIELD = "Time Posts Added";
 const AIRTABLE_LAST_POST_CHECK_AT_FIELD = "Last Post Check At";
 const AIRTABLE_LAST_POST_PROCESSED_AT_FIELD = "Last Post Processed At";
 
-// Normalize LinkedIn URLs so any version matches (removes protocol, www, trailing slash, lowercases)
+// Normalize LinkedIn URLs so any version matches (removes protocol, www, trailing slash, parameters, lowercases)
 function normalizeLinkedInUrl(url) {
     if (!url) return '';
     return url
@@ -21,6 +36,8 @@ function normalizeLinkedInUrl(url) {
         .replace(/^https?:\/\//, '')
         .replace(/^www\./, '')
         .replace(/\/$/, '')
+        .split('?')[0]  // Remove query parameters like ?miniprofileurn=...
+        .split('#')[0]  // Remove hash fragments
         .trim();
 }
 
