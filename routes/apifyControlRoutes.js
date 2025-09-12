@@ -94,8 +94,10 @@ router.post('/api/apify/run', async (req, res) => {
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) return res.status(500).json({ ok: false, error: 'Server missing APIFY_API_TOKEN' });
 
-  const taskId = process.env.APIFY_TASK_ID; // preferred if set (has webhook + defaults)
+  // Force use of Actor ID only, ignore Task ID to avoid input copying issues
+  const taskId = null; // Disabled - always use Actor directly
   const actorId = process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
+  console.log(`[ApifyControl] Forced Actor mode: using actorId=${actorId}, taskId=${taskId}`);
 
     // Input assembly
     // Support both our API shape and Apify-like shape where input is nested under body.input
