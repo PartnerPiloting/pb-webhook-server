@@ -3,6 +3,7 @@
 require("dotenv").config();
 const { getClientBase } = require('../config/airtableClient');
 const base = require('../config/airtableClient'); // Fallback for backward compatibility
+const dirtyJSON = require('dirty-json'); // Add dirty-json for safe parsing
 
 const AIRTABLE_LEADS_TABLE_NAME = "Leads";
 const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
@@ -187,9 +188,18 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
 
         let existingPosts = [];
         try {
-            existingPosts = JSON.parse(record.get(AIRTABLE_POSTS_FIELD) || "[]");
-        } catch {
-            existingPosts = [];
+            const postsFieldValue = record.get(AIRTABLE_POSTS_FIELD) || "[]";
+            // Use dirty-json for safer parsing of existing posts (same as webhook parsing)
+            try {
+                existingPosts = JSON.parse(postsFieldValue);
+            } catch (jsonError) {
+                console.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
+                existingPosts = dirtyJSON.parse(postsFieldValue);
+                console.log(`dirty-json successfully parsed existing posts for ${normProfileUrl}`);
+            }
+        } catch (parseError) {
+            console.error(`Both JSON.parse and dirty-json failed for existing posts: ${parseError.message}`);
+            existingPosts = []; // Fallback to empty array
         }
 
         let newPostsAdded = 0;
