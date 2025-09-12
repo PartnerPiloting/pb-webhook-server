@@ -98,33 +98,68 @@ router.post('/api/apify/run', async (req, res) => {
   const actorId = process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
 
     // Input assembly
-    const targetUrls = Array.isArray(req.body?.targetUrls) ? req.body.targetUrls : [];
+    // Support both our API shape and Apify-like shape where input is nested under body.input
+    const body = req.body || {};
+    const bodyInput = (body && typeof body.input === 'object') ? body.input : {};
+    const targetUrls = Array.isArray(body?.targetUrls)
+      ? body.targetUrls
+      : (Array.isArray(bodyInput?.targetUrls) ? bodyInput.targetUrls : []);
     if (!targetUrls.length) {
-      return res.status(400).json({ ok: false, error: 'Provide targetUrls: string[] in body' });
+      return res.status(400).json({ ok: false, error: 'Provide targetUrls: string[] (either at root or under input)' });
     }
-    const opts = req.body?.options || {};
+    // Merge options from preferred locations: options -> input -> root
+    const rawOpts = {
+      ...(body?.options || {}),
+      ...(bodyInput || {}),
+      ...(body || {}),
+    };
+    // Normalize flags and types
+    const coerceBool = (v) => {
+      if (typeof v === 'boolean') return v;
+      if (typeof v === 'string') return ['1','true','yes','on'].includes(v.toLowerCase());
+      if (typeof v === 'number') return v !== 0;
+      return undefined;
+    };
+    const coerceNum = (v) => {
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string' && v.trim() !== '') {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : undefined;
+      }
+      return undefined;
+    };
+    const opts = {
+      postedLimit: typeof rawOpts.postedLimit === 'string' ? rawOpts.postedLimit : undefined,
+      maxPosts: coerceNum(rawOpts.maxPosts),
+      maxReactions: coerceNum(rawOpts.maxReactions),
+      maxComments: coerceNum(rawOpts.maxComments),
+      // accept both reactions/scrapeReactions and comments/scrapeComments
+      reactions: (typeof rawOpts.reactions !== 'undefined') ? coerceBool(rawOpts.reactions) : (typeof rawOpts.scrapeReactions !== 'undefined' ? coerceBool(rawOpts.scrapeReactions) : undefined),
+      comments: (typeof rawOpts.comments !== 'undefined') ? coerceBool(rawOpts.comments) : (typeof rawOpts.scrapeComments !== 'undefined' ? coerceBool(rawOpts.scrapeComments) : undefined),
+      expectsCookies: (typeof rawOpts.expectsCookies !== 'undefined') ? coerceBool(rawOpts.expectsCookies) : undefined,
+    };
 
     // Decide whether we should assume a cookie-enabled actor (can access /recent-activity/) or not.
     // Priority: request override -> env var -> heuristic based on actor/task id text
-    const expectsCookiesOverride = typeof opts.expectsCookies !== 'undefined' ? Boolean(opts.expectsCookies) : undefined;
+  const expectsCookiesOverride = (typeof opts.expectsCookies !== 'undefined') ? Boolean(opts.expectsCookies) : undefined;
     const expectsCookiesEnv = ['1', 'true', 'yes', 'on'].includes(String(process.env.APIFY_EXPECTS_COOKIES || '').toLowerCase());
     const heuristicCookies = /cookie/i.test(`${taskId || ''} ${actorId || ''}`) && !/no-?cookie/i.test(`${taskId || ''} ${actorId || ''}`);
     const expectsCookies = typeof expectsCookiesOverride === 'boolean' ? expectsCookiesOverride : (expectsCookiesEnv || heuristicCookies);
 
     // Build input according to cookie mode. For no-cookies, keep it minimal and public-safe
-    let input;
+  let input;
     if (!expectsCookies) {
       // No-cookies actors: do NOT send recent-activity URLs; send exactly the user-provided targets.
       input = {
         targetUrls,
         // Common controls aligned with many community actors (HarvestAPI et al.)
-        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 5,
+    maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 5,
         // Support both naming styles to maximize compatibility
-        scrapeReactions: Boolean(opts.reactions) || false,
-        scrapeComments: Boolean(opts.comments) || false,
-        maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
-        maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
-        postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : undefined,
+    scrapeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
+    scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
+    maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
+    maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
+    postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : undefined,
       };
       // Remove undefined keys to avoid confusing some actors
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
@@ -138,15 +173,15 @@ router.post('/api/apify/run', async (req, res) => {
         startUrls: normalized.map((url) => ({ url })),
         profileUrls: normalized,
         profiles,
-        postedLimit: opts.postedLimit || 'month',
-        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
+  postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : 'month',
+  maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
         // Support both naming styles
-        includeReactions: Boolean(opts.reactions) || false,
-        includeComments: Boolean(opts.comments) || false,
-        scrapeReactions: Boolean(opts.reactions) || false,
-        scrapeComments: Boolean(opts.comments) || false,
-        maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
-        maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
+  includeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
+  includeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
+  scrapeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
+  scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
+  maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
+  maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
       };
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
     }
@@ -195,7 +230,7 @@ router.post('/api/apify/run', async (req, res) => {
       ? `${baseUrl}/actor-tasks/${encodeURIComponent(taskId)}/runs`
       : `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs`;
 
-    const startResp = await fetch(startUrl, {
+  const startResp = await fetch(startUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -209,7 +244,10 @@ router.post('/api/apify/run', async (req, res) => {
     }
 
     const run = startData.data || startData;
-    return res.json({ ok: true, mode: 'webhook', runId: run.id, status: run.status, url: run.url || run.buildUrl || null });
+    const debugEcho = (process.env.NODE_ENV !== 'production' && String(req.query.debug || '') === '1')
+      ? { expectsCookies, sentInput: input }
+      : undefined;
+    return res.json({ ok: true, mode: 'webhook', runId: run.id, status: run.status, url: run.url || run.buildUrl || null, ...(debugEcho ? { debug: debugEcho } : {}) });
   } catch (e) {
     console.error('[ApifyControl] run error:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
