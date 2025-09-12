@@ -109,6 +109,17 @@ function mapApifyItemsToPBPosts(items = []) {
 // Header requirements:
 //   Authorization: Bearer <APIFY_WEBHOOK_TOKEN>
 //   x-client-id: <ClientId>
+
+// GET handler for webhook endpoint testing (Apify uses GET requests to test webhook availability)
+router.get('/api/apify-webhook', (req, res) => {
+  res.status(200).json({ 
+    message: 'Apify webhook endpoint is accessible',
+    method: 'GET',
+    timestamp: new Date().toISOString(),
+    status: 'ready'
+  });
+});
+
 router.post('/api/apify-webhook', async (req, res) => {
   try {
     // Auth check
