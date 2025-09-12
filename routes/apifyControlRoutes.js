@@ -108,7 +108,7 @@ router.post('/api/apify/run', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Provide targetUrls: string[] (either at root or under input)' });
     }
     // Merge options from preferred locations: options -> input -> root
-    const rawOpts = {
+  const rawOpts = {
       ...(body?.options || {}),
       ...(bodyInput || {}),
       ...(body || {}),
@@ -130,6 +130,7 @@ router.post('/api/apify/run', async (req, res) => {
     };
     const opts = {
       postedLimit: typeof rawOpts.postedLimit === 'string' ? rawOpts.postedLimit : undefined,
+      commentsPostedLimit: typeof rawOpts.commentsPostedLimit === 'string' ? rawOpts.commentsPostedLimit : undefined,
       maxPosts: coerceNum(rawOpts.maxPosts),
       maxReactions: coerceNum(rawOpts.maxReactions),
       maxComments: coerceNum(rawOpts.maxComments),
@@ -137,6 +138,9 @@ router.post('/api/apify/run', async (req, res) => {
       reactions: (typeof rawOpts.reactions !== 'undefined') ? coerceBool(rawOpts.reactions) : (typeof rawOpts.scrapeReactions !== 'undefined' ? coerceBool(rawOpts.scrapeReactions) : undefined),
       comments: (typeof rawOpts.comments !== 'undefined') ? coerceBool(rawOpts.comments) : (typeof rawOpts.scrapeComments !== 'undefined' ? coerceBool(rawOpts.scrapeComments) : undefined),
       expectsCookies: (typeof rawOpts.expectsCookies !== 'undefined') ? coerceBool(rawOpts.expectsCookies) : undefined,
+      proxyConfiguration: (rawOpts && typeof rawOpts.proxyConfiguration === 'object' && rawOpts.proxyConfiguration)
+        ? rawOpts.proxyConfiguration
+        : undefined,
     };
 
     // Decide whether we should assume a cookie-enabled actor (can access /recent-activity/) or not.
@@ -160,6 +164,9 @@ router.post('/api/apify/run', async (req, res) => {
     maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
     maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
     postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : undefined,
+  commentsPostedLimit: typeof opts.commentsPostedLimit === 'string' ? opts.commentsPostedLimit : undefined,
+  // Pass-through proxy configuration if provided (e.g., useApifyProxy, proxy groups)
+  proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
       };
       // Remove undefined keys to avoid confusing some actors
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
@@ -182,6 +189,8 @@ router.post('/api/apify/run', async (req, res) => {
   scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
   maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
   maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
+  commentsPostedLimit: typeof opts.commentsPostedLimit === 'string' ? opts.commentsPostedLimit : undefined,
+  proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
       };
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
     }
