@@ -126,7 +126,14 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
     if (Array.isArray(postsInput)) {
         pbPostsArr = postsInput;
     } else if (typeof postsInput === 'string') {
-        pbPostsArr = JSON.parse(postsInput);
+        // Use dirty-json for safer parsing of input string
+        try {
+            pbPostsArr = JSON.parse(postsInput);
+        } catch (jsonError) {
+            console.warn(`Standard JSON.parse failed for posts input, trying dirty-json: ${jsonError.message}`);
+            pbPostsArr = dirtyJSON.parse(postsInput);
+            console.log(`dirty-json successfully parsed posts input`);
+        }
     } else {
         throw new Error('PB Posts input must be an array of posts!');
     }
