@@ -112,7 +112,21 @@ function mapApifyItemsToPBPosts(items = []) {
 
 // GET handler for webhook endpoint testing (Apify uses GET requests to test webhook availability)
 router.get('/api/apify-webhook', (req, res) => {
+  // Log the test request for debugging
+  console.log('Apify webhook test - GET request received:', {
+    headers: req.headers,
+    query: req.query,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Set CORS headers in case Apify needs them
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  // Return simple success response that Apify expects
   res.status(200).json({ 
+    success: true,
     message: 'Apify webhook endpoint is accessible',
     method: 'GET',
     timestamp: new Date().toISOString(),
