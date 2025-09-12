@@ -146,11 +146,8 @@ router.post('/api/apify-webhook', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Tenant resolution
-    const clientId = req.headers['x-client-id'];
-    if (!clientId) {
-      return res.status(400).json({ error: 'Missing x-client-id header' });
-    }
+    // Tenant resolution - TEMPORARY: Hard-coded for testing
+    const clientId = "Guy-Wilson"; // TODO: Make this dynamic with run mapping
     let clientBase;
     try {
       clientBase = await getClientBase(clientId);
