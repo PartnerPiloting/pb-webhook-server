@@ -94,8 +94,8 @@ router.post('/api/apify/run', async (req, res) => {
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) return res.status(500).json({ ok: false, error: 'Server missing APIFY_API_TOKEN' });
 
-    const taskId = process.env.APIFY_TASK_ID; // preferred if set (has webhook + defaults)
-    const actorId = process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
+  const taskId = process.env.APIFY_TASK_ID; // preferred if set (has webhook + defaults)
+  const actorId = process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
 
     // Input assembly
     const targetUrls = Array.isArray(req.body?.targetUrls) ? req.body.targetUrls : [];
@@ -103,20 +103,53 @@ router.post('/api/apify/run', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Provide targetUrls: string[] in body' });
     }
     const opts = req.body?.options || {};
-    const normalized = targetUrls.map((url) => normalizeLinkedInUrl(url));
-    const profiles = normalized.map((url) => extractLinkedInPublicId(url)).filter(Boolean);
 
-    const input = {
-      // Provide multiple aliases so the actor recognizes targets regardless of its schema
-      targetUrls,
-      startUrls: normalized.map((url) => ({ url })),
-      profileUrls: normalized,
-      profiles,
-      postedLimit: opts.postedLimit || 'month',
-      maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
-      includeReactions: Boolean(opts.reactions) || false,
-      includeComments: Boolean(opts.comments) || false,
-    };
+    // Decide whether we should assume a cookie-enabled actor (can access /recent-activity/) or not.
+    // Priority: request override -> env var -> heuristic based on actor/task id text
+    const expectsCookiesOverride = typeof opts.expectsCookies !== 'undefined' ? Boolean(opts.expectsCookies) : undefined;
+    const expectsCookiesEnv = ['1', 'true', 'yes', 'on'].includes(String(process.env.APIFY_EXPECTS_COOKIES || '').toLowerCase());
+    const heuristicCookies = /cookie/i.test(`${taskId || ''} ${actorId || ''}`) && !/no-?cookie/i.test(`${taskId || ''} ${actorId || ''}`);
+    const expectsCookies = typeof expectsCookiesOverride === 'boolean' ? expectsCookiesOverride : (expectsCookiesEnv || heuristicCookies);
+
+    // Build input according to cookie mode. For no-cookies, keep it minimal and public-safe
+    let input;
+    if (!expectsCookies) {
+      // No-cookies actors: do NOT send recent-activity URLs; send exactly the user-provided targets.
+      input = {
+        targetUrls,
+        // Common controls aligned with many community actors (HarvestAPI et al.)
+        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 5,
+        // Support both naming styles to maximize compatibility
+        scrapeReactions: Boolean(opts.reactions) || false,
+        scrapeComments: Boolean(opts.comments) || false,
+        maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
+        maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
+        postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : undefined,
+      };
+      // Remove undefined keys to avoid confusing some actors
+      Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
+    } else {
+      // Cookie-enabled actors: normalize to recent-activity and add profiles aliases
+      const normalized = targetUrls.map((url) => normalizeLinkedInUrl(url));
+      const profiles = normalized.map((url) => extractLinkedInPublicId(url)).filter(Boolean);
+      input = {
+        // Provide multiple aliases so the actor recognizes targets regardless of its schema
+        targetUrls,
+        startUrls: normalized.map((url) => ({ url })),
+        profileUrls: normalized,
+        profiles,
+        postedLimit: opts.postedLimit || 'month',
+        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
+        // Support both naming styles
+        includeReactions: Boolean(opts.reactions) || false,
+        includeComments: Boolean(opts.comments) || false,
+        scrapeReactions: Boolean(opts.reactions) || false,
+        scrapeComments: Boolean(opts.comments) || false,
+        maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
+        maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
+      };
+      Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
+    }
 
     const mode = (req.body?.mode || 'webhook').toLowerCase();
     const baseUrl = 'https://api.apify.com/v2';
