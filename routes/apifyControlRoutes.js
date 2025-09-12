@@ -153,20 +153,27 @@ router.post('/api/apify/run', async (req, res) => {
     // Build input according to cookie mode. For no-cookies, keep it minimal and public-safe
   let input;
     if (!expectsCookies) {
-      // No-cookies actors: do NOT send recent-activity URLs; send exactly the user-provided targets.
-      input = {
+      // No-cookies actors: Send EXACTLY the same nested structure as Console
+      const innerInput = {
         targetUrls,
-        // Common controls aligned with many community actors (HarvestAPI et al.)
-    maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 5,
-        // Support both naming styles to maximize compatibility
-    scrapeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
-    scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
-    maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : undefined,
-    maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : undefined,
-    postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : undefined,
-  commentsPostedLimit: typeof opts.commentsPostedLimit === 'string' ? opts.commentsPostedLimit : undefined,
-  // Pass-through proxy configuration if provided (e.g., useApifyProxy, proxy groups)
-  proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
+        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
+        scrapeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
+        scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
+        postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : 'month',
+      };
+      
+      input = {
+        // Top-level fields (as seen in Console)
+        maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : 5,
+        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
+        maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : 5,
+        postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : 'month',
+        scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
+        scrapeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
+        // Nested input object (exactly like Console)
+        input: innerInput,
+        // Pass-through proxy configuration if provided
+        proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
       };
       // Remove undefined keys to avoid confusing some actors
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
