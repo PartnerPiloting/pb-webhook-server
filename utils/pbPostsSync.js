@@ -1,12 +1,4 @@
-// utils/pbPostsSync.js - MULTasync function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
-    const normUrl = normalizeLinkedInUrl(profileUrl);
-    console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
-    console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
-    
-    // Use client-specific base; filter on normalized URL to avoid full scans
-    const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
-    const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
-    console.log(`[getAirtableRecord] Airtable formula: ${formula}`);T SUPPORT: Updated to use client-specific Airtable bases
+// utils/pbPostsSync.js - MULTI-TENANT SUPPORT: Updated to use client-specific Airtable bases
 
 require("dotenv").config();
 const { getClientBase } = require('../config/airtableClient');
@@ -38,11 +30,13 @@ function normalizeLinkedInUrl(url) {
 // MULTI-TENANT: Now accepts clientBase parameter
 async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
     const normUrl = normalizeLinkedInUrl(profileUrl);
-    console.log(`[getAirtableRecord] Looking up: ${normUrl}`);
+    console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
+    console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
     
     // Use client-specific base; filter on normalized URL to avoid full scans
     const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
     const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
+    console.log(`[getAirtableRecord] Formula: ${formula}`);
     
     try {
         console.log(`[getAirtableRecord] Executing filtered query with maxRecords=1`);
@@ -70,32 +64,31 @@ async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
     }
 }
 
-function isPostAlreadyStored(existingPostsArr, postObj) {
-    if (!Array.isArray(existingPostsArr)) return false;
-    return existingPostsArr.some(p => p.postUrl && postObj.postUrl && p.postUrl === postObj.postUrl);
-}
-
-// Multi-tenant helper: Identify which client base contains the LinkedIn profiles
-async function identifyClientForPosts(postsArray) {
-    const { getAllActiveClients } = require('../services/clientService');
-    const { getClientBase } = require('../config/airtableClient');
-    
-    // Extract unique profile URLs from posts
-    const profileUrls = [...new Set(
-        postsArray
-            .filter(post => post.profileUrl)
-            .map(post => normalizeLinkedInUrl(post.profileUrl))
-    )];
-    
-    if (profileUrls.length === 0) {
-        console.warn('No profile URLs found in posts for client identification');
+// Multi-tenant client identification for PB posts
+// Identifies which client base contains the LinkedIn profiles from the posts
+async function identifyClientForPosts(pbPostsArr) {
+    if (!pbPostsArr || pbPostsArr.length === 0) {
+        console.warn('PB Posts: No posts provided for client identification');
         return null;
     }
-    
+
     try {
-        const activeClients = await getAllActiveClients();
+        // Extract unique profile URLs from posts
+        const profileUrls = [...new Set(pbPostsArr
+            .filter(post => post.profileUrl)
+            .map(post => normalizeLinkedInUrl(post.profileUrl))
+        )];
+
+        if (profileUrls.length === 0) {
+            console.warn('PB Posts: No valid profile URLs found in posts');
+            return null;
+        }
+
+        console.log(`PB Posts: Checking ${profileUrls.length} unique profile URLs across client bases`);
+
+        // Get all active clients
+        const activeClients = await getClientBase('master').getAllClients();
         
-        // Check each client base to see which contains these profile URLs
         for (const client of activeClients) {
             const clientBase = getClientBase(client.id);
             if (!clientBase) continue;
@@ -138,23 +131,12 @@ async function identifyClientForPosts(postsArray) {
     }
 }
 
-// Main sync function. Accepts EITHER an array of posts (webhook) or a JSON string (legacy/manual mode)
-// MULTI-TENANT: Now accepts optional clientBase parameter for client-specific operations
-async function syncPBPostsToAirtable(postsInput, clientBase = null) {
-    let pbPostsArr;
-    if (Array.isArray(postsInput)) {
-        pbPostsArr = postsInput;
-    } else if (typeof postsInput === 'string') {
-        // Use dirty-json for safer parsing of input string
-        try {
-            pbPostsArr = JSON.parse(postsInput);
-        } catch (jsonError) {
-            console.warn(`Standard JSON.parse failed for posts input, trying dirty-json: ${jsonError.message}`);
-            pbPostsArr = dirtyJSON.parse(postsInput);
-            console.log(`dirty-json successfully parsed posts input`);
-        }
-    } else {
-        throw new Error('PB Posts input must be an array of posts!');
+// Main sync function - Updated to support multi-tenant operation
+// If clientBase is not provided, will attempt to auto-detect the correct client base
+async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
+    if (!pbPostsArr || pbPostsArr.length === 0) {
+        console.log('PB Posts: No posts to sync');
+        return { success: true, message: 'No posts to sync' };
     }
 
     let airtableBase = clientBase;
@@ -197,25 +179,17 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
         postsByProfile[normProfile].push({
             postUrl: post.postUrl,
             postContent: post.postContent,
-            postDate: post.postTimestamp || post.postDate || "",
-            pbMeta: {
-                timestamp: post.timestamp,
-                type: post.type,
-                imgUrl: post.imgUrl,
-                author: post.author,
-                authorUrl: post.authorUrl,
-                likeCount: post.likeCount,
-                commentCount: post.commentCount,
-                repostCount: post.repostCount,
-                action: post.action
-            }
+            postedAt: post.postedAt,
+            postImages: post.postImages,
+            article: post.article,
+            socialContent: post.socialContent
         });
     });
-    
+
     console.log(`[PBPostsSync] Finished indexing. Found ${Object.keys(postsByProfile).length} unique profiles`);
     console.log(`[PBPostsSync] Profile URLs: ${Object.keys(postsByProfile).join(', ')}`);
 
-    let processedCount = 0, updatedCount = 0, skippedCount = 0;
+    let processedCount = 0;
     console.log(`[PBPostsSync] Starting to process profiles...`);
     
     for (const [normProfileUrl, postsList] of Object.entries(postsByProfile)) {
@@ -257,66 +231,51 @@ async function syncPBPostsToAirtable(postsInput, clientBase = null) {
 
         let newPostsAdded = 0;
         postsList.forEach(p => {
-            if (!isPostAlreadyStored(existingPosts, p)) {
+            if (!existingPosts.some(ep => ep.postUrl === p.postUrl)) {
                 existingPosts.push(p);
                 newPostsAdded++;
             }
         });
 
         if (newPostsAdded > 0) {
-            const nowIso = new Date().toISOString();
-            const fieldsToUpdate = {
-                [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
-                [AIRTABLE_DATE_ADDED_FIELD]: nowIso,
-            };
-            // Best-effort: write-if-exists for optional fields
-            fieldsToUpdate[AIRTABLE_LAST_POST_CHECK_AT_FIELD] = nowIso;
-            fieldsToUpdate[AIRTABLE_LAST_POST_PROCESSED_AT_FIELD] = nowIso;
+            try {
+                const updateData = {
+                    [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
+                    [AIRTABLE_DATE_ADDED_FIELD]: new Date().toISOString()
+                };
 
-            try {
-                await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
-                    {
-                        id: record.id,
-                        fields: fieldsToUpdate
-                    }
-                ]);
-            } catch (e) {
-                // If optional fields are missing in this base, retry without them
-                console.warn(`Update with optional fields failed for ${normProfileUrl}: ${e.message}. Retrying without optional fields.`);
-                await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
-                    {
-                        id: record.id,
-                        fields: {
-                            [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
-                            [AIRTABLE_DATE_ADDED_FIELD]: nowIso
-                        }
-                    }
-                ]);
+                // Add optional timestamp fields if they exist in the base
+                try {
+                    updateData[AIRTABLE_LAST_POST_CHECK_AT_FIELD] = new Date().toISOString();
+                    updateData[AIRTABLE_LAST_POST_PROCESSED_AT_FIELD] = new Date().toISOString();
+                } catch (fieldError) {
+                    // These fields might not exist in all bases - that's OK
+                }
+
+                await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update(record.id, updateData);
+                console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded} new posts (total: ${existingPosts.length})`);
+            } catch (updateError) {
+                console.error(`Failed to update ${normProfileUrl}:`, updateError.message);
             }
-            updatedCount++;
-            console.log(`Updated lead ${normProfileUrl} with ${newPostsAdded} new posts.`);
         } else {
-            skippedCount++;
-            console.log(`No new posts for ${normProfileUrl} (already up to date).`);
-            // Record that we checked even if nothing new was added
-            const nowIso = new Date().toISOString();
-            try {
-                await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update([
-                    {
-                        id: record.id,
-                        fields: {
-                            [AIRTABLE_LAST_POST_CHECK_AT_FIELD]: nowIso
-                        }
-                    }
-                ]);
-            } catch (e) {
-                // Ignore if optional field not present
-                console.warn(`Optional check timestamp update failed for ${normProfileUrl}: ${e.message}`);
-            }
+            console.log(`No new posts for ${normProfileUrl} (already has ${existingPosts.length} posts)`);
         }
     }
 
-    return { processed: processedCount, updated: updatedCount, skipped: skippedCount };
+    const totalProfiles = Object.keys(postsByProfile).length;
+    console.log(`PB Posts sync completed: ${processedCount}/${totalProfiles} profiles processed`);
+    
+    return {
+        success: true,
+        processed: processedCount,
+        total: totalProfiles,
+        clientId: clientId || 'default'
+    };
 }
 
-module.exports = syncPBPostsToAirtable;
+module.exports = {
+    syncPBPostsToAirtable,
+    getAirtableRecordByProfileUrl,
+    normalizeLinkedInUrl,
+    identifyClientForPosts
+};
