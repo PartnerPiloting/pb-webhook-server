@@ -149,6 +149,7 @@ router.post('/api/apify/run', async (req, res) => {
     const expectsCookiesEnv = ['1', 'true', 'yes', 'on'].includes(String(process.env.APIFY_EXPECTS_COOKIES || '').toLowerCase());
     const heuristicCookies = /cookie/i.test(`${taskId || ''} ${actorId || ''}`) && !/no-?cookie/i.test(`${taskId || ''} ${actorId || ''}`);
     const expectsCookies = typeof expectsCookiesOverride === 'boolean' ? expectsCookiesOverride : (expectsCookiesEnv || heuristicCookies);
+    console.log(`[ApifyControl] expectsCookies=${expectsCookies} (override: ${expectsCookiesOverride}, env: ${expectsCookiesEnv}, heuristic: ${heuristicCookies})`);
 
     // Build input according to cookie mode. For no-cookies, keep it minimal and public-safe
   let input;
@@ -167,6 +168,7 @@ router.post('/api/apify/run', async (req, res) => {
       };
       // Remove undefined keys to avoid confusing some actors
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
+      console.log('[ApifyControl] NO-COOKIES mode: Final input structure:', JSON.stringify(input, null, 2));
     } else {
       // Cookie-enabled actors: normalize to recent-activity and add profiles aliases
       const normalized = targetUrls.map((url) => normalizeLinkedInUrl(url));
@@ -190,6 +192,7 @@ router.post('/api/apify/run', async (req, res) => {
   proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
       };
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
+      console.log('[ApifyControl] COOKIES mode: Final input structure:', JSON.stringify(input, null, 2));
     }
 
     const mode = (req.body?.mode || 'webhook').toLowerCase();
