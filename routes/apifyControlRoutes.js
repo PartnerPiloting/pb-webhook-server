@@ -20,6 +20,38 @@ function toProfileUrl(author) {
   return null;
 }
 
+// Ensure LinkedIn profile URLs point to recent activity and extract public identifiers
+function normalizeLinkedInUrl(url) {
+  try {
+    if (typeof url !== 'string') return url;
+    if (!url.includes('linkedin.com')) return url;
+    // Trim params/fragments
+    const u = new URL(url);
+    // Only handle /in/<handle> or /in/<handle>/...
+    const parts = u.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('in');
+    if (idx !== -1 && parts[idx + 1]) {
+      const handle = parts[idx + 1];
+      // If already a recent-activity URL, keep
+      if (parts.includes('recent-activity')) return `https://www.linkedin.com/in/${handle}/recent-activity/all/`;
+      return `https://www.linkedin.com/in/${handle}/recent-activity/all/`;
+    }
+    return url;
+  } catch (_) {
+    return url;
+  }
+}
+
+function extractLinkedInPublicId(url) {
+  try {
+    if (typeof url !== 'string') return null;
+    const match = url.match(/linkedin\.com\/in\/([^\/?#]+)/i);
+    return match ? match[1] : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function mapApifyItemsToPBPosts(items = []) {
   return items
     .map((it) => {
@@ -71,12 +103,15 @@ router.post('/api/apify/run', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Provide targetUrls: string[] in body' });
     }
     const opts = req.body?.options || {};
+    const normalized = targetUrls.map((url) => normalizeLinkedInUrl(url));
+    const profiles = normalized.map((url) => extractLinkedInPublicId(url)).filter(Boolean);
+
     const input = {
       // Provide multiple aliases so the actor recognizes targets regardless of its schema
       targetUrls,
-      startUrls: targetUrls.map((url) => ({ url })),
-      profileUrls: targetUrls,
-      profiles: targetUrls,
+      startUrls: normalized.map((url) => ({ url })),
+      profileUrls: normalized,
+      profiles,
       postedLimit: opts.postedLimit || 'month',
       maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : 2,
       includeReactions: Boolean(opts.reactions) || false,
