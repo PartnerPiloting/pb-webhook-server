@@ -17,6 +17,8 @@ const fetch = getFetch();
   const maxPosts = Number(process.env.APIFY_MAX_POSTS || 2);
   const postedLimit = process.env.APIFY_POSTED_LIMIT || 'year';
   const expectsCookies = /^(1|true|yes|on)$/i.test(String(process.env.APIFY_EXPECTS_COOKIES || ''));
+  const ACTOR_ID = process.env.ACTOR_ID || process.env.APIFY_ACTOR_ID || '';
+  const BUILD = process.env.APIFY_BUILD || process.env.BUILD || '';
 
   if (!SECRET) {
     console.error('Missing PB_WEBHOOK_SECRET');
@@ -35,6 +37,8 @@ const fetch = getFetch();
   console.log('Base URL:', BASE_URL);
   console.log('Client ID:', CLIENT_ID);
   console.log('Target URLs:', TARGET_URLS);
+  if (ACTOR_ID) console.log('Actor override:', ACTOR_ID);
+  if (BUILD) console.log('Build override:', BUILD);
 
   try {
     const resp = await fetch(`${BASE_URL}/api/apify/run`, {
@@ -47,7 +51,8 @@ const fetch = getFetch();
       body: JSON.stringify({
         targetUrls: TARGET_URLS,
         mode: 'inline',
-        options: { maxPosts, postedLimit, expectsCookies }
+  actorId: ACTOR_ID || undefined,
+  options: { maxPosts, postedLimit, expectsCookies, build: BUILD || undefined }
       })
     });
 

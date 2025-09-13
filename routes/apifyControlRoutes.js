@@ -14,10 +14,20 @@ const syncPBPostsToAirtable = require('../utils/pbPostsSync');
 const { createApifyRun } = require('../services/apifyRunsService');
 
 function toProfileUrl(author) {
-  if (!author) return null;
-  if (typeof author === 'string' && author.startsWith('http')) return author;
-  if (author?.url) return author.url;
-  if (author?.publicIdentifier) return `https://www.linkedin.com/in/${author.publicIdentifier}`;
+  try {
+    if (!author) return null;
+    if (typeof author === 'string') {
+      if (author.startsWith('http')) return author.replace(/\/$/, '');
+      return `https://www.linkedin.com/in/${author.replace(/\/$/, '')}`;
+    }
+    if (typeof author === 'object') {
+      if (author.url && typeof author.url === 'string') return author.url.replace(/\/$/, '');
+      if (author.linkedinUrl && typeof author.linkedinUrl === 'string') return author.linkedinUrl.replace(/\/$/, '');
+      if (author.publicIdentifier && typeof author.publicIdentifier === 'string') {
+        return `https://www.linkedin.com/in/${author.publicIdentifier.replace(/\/$/, '')}`;
+      }
+    }
+  } catch {}
   return null;
 }
 
@@ -54,25 +64,58 @@ function extractLinkedInPublicId(url) {
 }
 
 function mapApifyItemsToPBPosts(items = []) {
-  return items
-    .map((it) => {
-      const profileUrl = toProfileUrl(it.author || it.profileUrl || it.profile);
-      const postUrl = it.url || it.postUrl || it.shareUrl || it.link || null;
-      const content = it.text || it.content || it.caption || it.body || '';
-      const publishedAt = it.publishedAt || it.time || it.date || it.createdAt || null;
-      return {
+  if (!Array.isArray(items)) return [];
+  const out = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it || typeof it !== 'object') continue;
+    try {
+      const p = it.post || {};
+      const profileUrl = toProfileUrl(it.author || it.profileUrl || it.profile || it.authorUrl || it.authorProfileUrl || p.author) || p.profileUrl || null;
+      const postUrl = it.url || it.postUrl || it.shareUrl || it.link || it.linkedinUrl || p.url || p.postUrl || null;
+      const postContent = it.text || it.content || it.caption || it.title || it.body || p.text || p.content || '';
+
+      let postTimestamp = it.publishedAt || it.time || it.date || it.createdAt || p.publishedAt || p.time || p.date || p.createdAt || null;
+      if (!postTimestamp && it.postedAt) {
+        if (typeof it.postedAt === 'object') {
+          postTimestamp = it.postedAt.timestamp || it.postedAt.date || null;
+        } else if (typeof it.postedAt === 'string') {
+          postTimestamp = it.postedAt;
+        }
+      }
+
+      const engagement = it.engagement || p.engagement || {};
+      const likeCount = engagement.likes ?? engagement.reactions ?? it.likes ?? null;
+      const commentCount = engagement.comments ?? it.comments ?? null;
+      const repostCount = engagement.shares ?? it.shares ?? null;
+      const imgUrl = (Array.isArray(it.postImages) && it.postImages.length ? (it.postImages[0].url || it.postImages[0]) : null)
+        || (Array.isArray(it.images) && it.images.length ? it.images[0] : null)
+        || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
+
+      if (!profileUrl || !postUrl) continue;
+
+      out.push({
         profileUrl,
         postUrl,
-        content,
-        publishedAt,
-        // Extras we may store later
-        meta: {
-          source: 'apify',
-          apifyItemId: it.id || it.uniqueId || null,
-        },
-      };
-    })
-    .filter((p) => p.profileUrl && p.postUrl && p.content);
+        postContent,
+        postTimestamp,
+        // alias used by some of our downstream utils
+        postedAt: postTimestamp || null,
+        timestamp: new Date().toISOString(),
+        type: it.postType || it.type || 'post',
+        imgUrl,
+        author: (typeof it.author === 'object' ? it.author?.name : null) || null,
+        authorUrl: profileUrl,
+        likeCount,
+        commentCount,
+        repostCount,
+        action: 'apify_ingest'
+      });
+    } catch (err) {
+      console.warn(`[ApifyControl] Error processing item ${i}: ${err.message}`);
+    }
+  }
+  return out;
 }
 
 // POST /api/apify/run
@@ -100,7 +143,9 @@ router.post('/api/apify/run', async (req, res) => {
 
   // Always use Actor directly - no Saved Task support to avoid confusion
   const taskId = null;
-  const actorId = process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
+  // Allow per-request override of actor/build (useful to replicate successful console runs)
+  const actorIdOverride = (req.body && (req.body.actorId || (req.body.input && req.body.input.actorId))) || undefined;
+  const actorId = actorIdOverride || process.env.APIFY_ACTOR_ID || 'harvestapi~linkedin-profile-posts';
 
     // Input assembly
     // Support both our API shape and Apify-like shape where input is nested under body.input
@@ -133,7 +178,7 @@ router.post('/api/apify/run', async (req, res) => {
       }
       return undefined;
     };
-    const opts = {
+  const opts = {
       postedLimit: typeof rawOpts.postedLimit === 'string' ? rawOpts.postedLimit : undefined,
       commentsPostedLimit: typeof rawOpts.commentsPostedLimit === 'string' ? rawOpts.commentsPostedLimit : undefined,
       maxPosts: coerceNum(rawOpts.maxPosts),
@@ -146,33 +191,18 @@ router.post('/api/apify/run', async (req, res) => {
       proxyConfiguration: (rawOpts && typeof rawOpts.proxyConfiguration === 'object' && rawOpts.proxyConfiguration)
         ? rawOpts.proxyConfiguration
         : undefined,
+      // Build override (e.g., 'latest', 'beta', or a specific build ID)
+      build: typeof rawOpts.build === 'string' ? rawOpts.build : (typeof rawOpts.buildId === 'string' ? rawOpts.buildId : undefined),
     };
 
-    // Decide whether we should assume a cookie-enabled actor (can access /recent-activity/) or not.
-    // Priority: request override -> env var -> heuristic based on actor id text
-  const expectsCookiesOverride = (typeof opts.expectsCookies !== 'undefined') ? Boolean(opts.expectsCookies) : undefined;
-    const expectsCookiesEnv = ['1', 'true', 'yes', 'on'].includes(String(process.env.APIFY_EXPECTS_COOKIES || '').toLowerCase());
-    const heuristicCookies = /cookie/i.test(actorId || '') && !/no-?cookie/i.test(actorId || '');
-    const expectsCookies = typeof expectsCookiesOverride === 'boolean' ? expectsCookiesOverride : (expectsCookiesEnv || heuristicCookies);
+  // Always assume cookie-enabled behavior to maximize yields from /recent-activity/.
+  // We intentionally ignore request/env toggles here to avoid worse public-only results.
+  // If an emergency override is ever needed, we can reintroduce an env switch.
+  const expectsCookies = true;
 
     // Build input according to cookie mode. For no-cookies, keep it minimal and public-safe
   let input;
-    if (!expectsCookies) {
-      // No-cookies actors: Send EXACTLY the same flat structure as Console
-      input = {
-        targetUrls,
-        maxComments: typeof opts.maxComments === 'number' ? opts.maxComments : 5,
-        maxPosts: typeof opts.maxPosts === 'number' ? opts.maxPosts : (parseInt(process.env.APIFY_MAX_POSTS) || 2),
-        maxReactions: typeof opts.maxReactions === 'number' ? opts.maxReactions : 5,
-        postedLimit: typeof opts.postedLimit === 'string' ? opts.postedLimit : (process.env.APIFY_POSTED_LIMIT || 'year'),
-        scrapeComments: typeof opts.comments === 'boolean' ? opts.comments : false,
-        scrapeReactions: typeof opts.reactions === 'boolean' ? opts.reactions : false,
-        // Pass-through proxy configuration if provided
-        proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
-      };
-      // Remove undefined keys to avoid confusing some actors
-      Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
-    } else {
+    if (expectsCookies) {
       // Cookie-enabled actors: normalize to recent-activity and add profiles aliases
       const normalized = targetUrls.map((url) => normalizeLinkedInUrl(url));
       const profiles = normalized.map((url) => extractLinkedInPublicId(url)).filter(Boolean);
@@ -195,6 +225,10 @@ router.post('/api/apify/run', async (req, res) => {
   proxyConfiguration: (opts.proxyConfiguration && typeof opts.proxyConfiguration === 'object') ? opts.proxyConfiguration : undefined,
       };
       Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
+    } else {
+      // Fallback branch retained for clarity but not reachable with current hard-coded expectsCookies=true
+      input = { targetUrls };
+      Object.keys(input).forEach((k) => input[k] === undefined && delete input[k]);
     }
 
     const mode = (req.body?.mode || 'webhook').toLowerCase();
@@ -202,7 +236,9 @@ router.post('/api/apify/run', async (req, res) => {
 
     if (mode === 'inline') {
       // Start Actor run and wait until it finishes, then fetch dataset and ingest
-      const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs?waitForFinish=120`;
+      const inlineParams = new URLSearchParams({ waitForFinish: '120' });
+      if (opts.build) inlineParams.set('build', opts.build);
+      const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs?${inlineParams.toString()}`;
       const startResp = await fetch(startUrl, {
         method: 'POST',
         headers: {
@@ -223,6 +259,7 @@ router.post('/api/apify/run', async (req, res) => {
       try {
         await createApifyRun(run.id, clientId, {
           actorId,
+          build: opts.build,
           targetUrls,
           mode: 'inline'
         });
@@ -248,7 +285,9 @@ router.post('/api/apify/run', async (req, res) => {
     }
 
     // Default: webhook mode (fast return). Actor runs with webhook configuration.
-    const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs`;
+  const webhookParams = new URLSearchParams();
+  if (opts.build) webhookParams.set('build', opts.build);
+  const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs${webhookParams.toString() ? `?${webhookParams.toString()}` : ''}`;
 
     // Add webhook configuration for Actor runs
     const webhookConfig = {
@@ -295,6 +334,7 @@ router.post('/api/apify/run', async (req, res) => {
     try {
       await createApifyRun(run.id, clientId, {
         actorId,
+        build: opts.build,
         targetUrls,
         mode: 'webhook'
       });
