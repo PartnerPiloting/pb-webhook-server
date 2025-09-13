@@ -24,7 +24,6 @@ async function pickLeadBatch(base, batchSize) {
   const formula = `AND({${LINKEDIN_URL_FIELD}} != '', OR({${STATUS_FIELD}} = 'Pending', AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')))`;
   const records = await base(LEADS_TABLE).select({
     filterByFormula: formula,
-    sort: [{ field: 'Created time', direction: 'desc' }],
     maxRecords: batchSize,
     fields: [LINKEDIN_URL_FIELD, STATUS_FIELD]
   }).firstPage();
