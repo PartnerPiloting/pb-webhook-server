@@ -21,7 +21,7 @@ const nowISO = () => new Date().toISOString();
 // Pick a batch of leads: Pending, or Processing older than 30 minutes
 async function pickLeadBatch(base, batchSize) {
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const formula = `AND({${LINKEDIN_URL_FIELD}} != '', OR({${STATUS_FIELD}} = 'Pending', IS_BLANK({${STATUS_FIELD}}), AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')))`;
+  const formula = `AND({${LINKEDIN_URL_FIELD}} != '', OR({${STATUS_FIELD}} = 'Pending', {${STATUS_FIELD}} = '', LEN({${STATUS_FIELD}}) = 0, AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')))`;
   const records = await base(LEADS_TABLE).select({
     filterByFormula: formula,
     maxRecords: batchSize,
