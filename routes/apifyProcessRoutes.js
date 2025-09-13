@@ -18,10 +18,21 @@ const RUN_ID_FIELD = 'Posts Harvest Run ID';
 // Helper to format ISO now
 const nowISO = () => new Date().toISOString();
 
-// Pick a batch of leads: Pending, or Processing older than 30 minutes
+// Pick a batch of leads:
+// - Pending (or blank)
+// - Processing older than 30 minutes
+// Permanently skip any with status 'No Posts'
 async function pickLeadBatch(base, batchSize) {
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const formula = `AND({${LINKEDIN_URL_FIELD}} != '', OR({${STATUS_FIELD}} = 'Pending', {${STATUS_FIELD}} = '', LEN({${STATUS_FIELD}}) = 0, AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')))`;
+  const formula = `AND({${LINKEDIN_URL_FIELD}} != '',
+    OR(
+      {${STATUS_FIELD}} = 'Pending',
+      {${STATUS_FIELD}} = '',
+      LEN({${STATUS_FIELD}}) = 0,
+      AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')
+    ),
+    {${STATUS_FIELD}} != 'No Posts'
+  )`;
   const records = await base(LEADS_TABLE).select({
     filterByFormula: formula,
     maxRecords: batchSize,
@@ -115,10 +126,13 @@ router.post('/api/apify/process-client', async (req, res) => {
         body: JSON.stringify({
           targetUrls,
           mode: 'inline',
+          // Allow overriding actor/build to match a proven-good console run
+          actorId: process.env.ACTOR_ID || process.env.APIFY_ACTOR_ID || undefined,
           options: {
             maxPosts: Number(process.env.APIFY_MAX_POSTS) || 2,
             postedLimit: process.env.APIFY_POSTED_LIMIT || 'any',
-            expectsCookies: true
+            expectsCookies: true,
+            build: process.env.APIFY_BUILD || process.env.BUILD || undefined
           }
         })
       });
@@ -128,11 +142,29 @@ router.post('/api/apify/process-client', async (req, res) => {
   const gained = Number((startData && startData.counts && startData.counts.posts) || 0);
   postsToday += gained;
 
-      // mark batch Done with counts
-      await base(LEADS_TABLE).update(pick.map(r => ({
-        id: r.id,
-        fields: { [STATUS_FIELD]: 'Done', [FOUND_LAST_RUN_FIELD]: gained ? Math.round(gained / pick.length) : 0, [LAST_CHECK_AT_FIELD]: nowISO(), [RUN_ID_FIELD]: startData.runId || placeholderRunId }
-      })));
+      // Update statuses based on gain
+      if (gained > 0) {
+        // mark batch Done with counts distributed
+        await base(LEADS_TABLE).update(pick.map(r => ({
+          id: r.id,
+          fields: {
+            [STATUS_FIELD]: 'Done',
+            [FOUND_LAST_RUN_FIELD]: Math.round(gained / pick.length),
+            [LAST_CHECK_AT_FIELD]: nowISO(),
+            [RUN_ID_FIELD]: startData.runId || placeholderRunId
+          }
+        })));
+      } else {
+        // low-churn permanent: mark as 'No Posts' and never re-pick automatically
+        await base(LEADS_TABLE).update(pick.map(r => ({
+          id: r.id,
+          fields: {
+            [STATUS_FIELD]: 'No Posts',
+            [LAST_CHECK_AT_FIELD]: nowISO(),
+            [RUN_ID_FIELD]: startData.runId || placeholderRunId
+          }
+        })));
+      }
 
       runs.push({ runId: startData.runId || placeholderRunId, gained, after: postsToday });
       batches++;
@@ -144,6 +176,54 @@ router.post('/api/apify/process-client', async (req, res) => {
 
   } catch (e) {
     console.error('[apify/process-client] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Lightweight canary to test 1 post per 3 sample leads before a full batch
+// POST /api/apify/canary
+router.post('/api/apify/canary', async (req, res) => {
+  try {
+    const auth = req.headers['authorization'];
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+    if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
+
+    const base = await getClientBase(clientId);
+    // Pick a small sample
+    const sample = await pickLeadBatch(base, 3);
+    if (!sample.length) return res.json({ ok: true, sample: 0, note: 'No eligible leads' });
+    const targetUrls = sample.map(r => r.get(LINKEDIN_URL_FIELD)).filter(Boolean);
+
+    const baseUrl = process.env.API_PUBLIC_BASE_URL
+      || process.env.NEXT_PUBLIC_API_BASE_URL
+      || `http://localhost:${process.env.PORT || 3001}`;
+    const resp = await fetch(`${baseUrl}/api/apify/run`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${secret}`,
+        'x-client-id': clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetUrls,
+        mode: 'inline',
+        actorId: process.env.ACTOR_ID || process.env.APIFY_ACTOR_ID || undefined,
+        options: {
+          maxPosts: 1,
+          postedLimit: 'any',
+          expectsCookies: true,
+          build: process.env.APIFY_BUILD || process.env.BUILD || undefined
+        }
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    return res.json({ ok: true, clientId, urls: targetUrls, counts: data.counts || null, runId: data.runId || null });
+  } catch (e) {
+    console.error('[apify/canary] error:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });

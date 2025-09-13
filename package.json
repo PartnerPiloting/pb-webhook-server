@@ -15,6 +15,11 @@
     "smoke:help": "cross-env BASE_URL=http://localhost:3001 node scripts/smokeHelp.js",
     "smoke:help:prod": "cross-env BASE_URL=https://pb-webhook-server.onrender.com node scripts/smokeHelp.js",
     "smoke:help:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/smokeHelp.js",
+  "smoke:apify:inline": "node scripts/smokeApifyInline.js",
+  "smoke:apify:inline:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/smokeApifyInline.js",
+  "smoke:apify:process": "node scripts/smokeApifyProcessClient.js",
+  "smoke:apify:process:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/smokeApifyProcessClient.js",
+  "apify:runs:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/showRuns.js",
     "ports:check": "node scripts/killPorts.js 3000 3001",
     "ports:free": "node scripts/killPorts.js --kill 3000 3001",
     "test": "echo \"Error: no test specified\" && exit 1"
