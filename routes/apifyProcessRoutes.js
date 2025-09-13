@@ -97,7 +97,10 @@ router.post('/api/apify/process-client', async (req, res) => {
       const targetUrls = pick.map(r => r.get(LINKEDIN_URL_FIELD)).filter(Boolean);
 
       // call our own /api/apify/run in inline mode so we wait and sync immediately
-      const startResp = await fetch(`${process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000'}/api/apify/run`, {
+      const baseUrl = process.env.API_PUBLIC_BASE_URL
+        || process.env.NEXT_PUBLIC_API_BASE_URL
+        || `http://localhost:${process.env.PORT || 3001}`;
+      const startResp = await fetch(`${baseUrl}/api/apify/run`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${secret}`,
