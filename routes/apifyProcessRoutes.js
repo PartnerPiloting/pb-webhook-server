@@ -112,7 +112,15 @@ router.post('/api/apify/process-client', async (req, res) => {
           'x-client-id': clientId,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ targetUrls, mode: 'inline', options: { maxPosts: Number(process.env.APIFY_MAX_POSTS) || 2, postedLimit: process.env.APIFY_POSTED_LIMIT || 'any' } })
+        body: JSON.stringify({
+          targetUrls,
+          mode: 'inline',
+          options: {
+            maxPosts: Number(process.env.APIFY_MAX_POSTS) || 2,
+            postedLimit: process.env.APIFY_POSTED_LIMIT || 'any',
+            expectsCookies: true
+          }
+        })
       });
       const startData = await startResp.json().catch(() => ({}));
 
