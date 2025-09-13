@@ -81,7 +81,10 @@ router.post('/api/apify/process-client', async (req, res) => {
     let batches = 0;
     const runs = [];
 
-    while (postsToday < postsTarget && batches < maxBatches) {
+  const debugMode = req.query?.debug === '1' || req.body?.debug === true;
+  const debugBatches = [];
+
+  while (postsToday < postsTarget && batches < maxBatches) {
       const pick = await pickLeadBatch(base, batchSize);
       if (!pick.length) break;
 
@@ -94,6 +97,9 @@ router.post('/api/apify/process-client', async (req, res) => {
 
       // prepare targetUrls
       const targetUrls = pick.map(r => r.get(LINKEDIN_URL_FIELD)).filter(Boolean);
+      if (debugMode) {
+        debugBatches.push({ pickedCount: pick.length, targetUrls });
+      }
 
       // call our own /api/apify/run in inline mode so we wait and sync immediately
       const baseUrl = process.env.API_PUBLIC_BASE_URL
@@ -124,7 +130,9 @@ router.post('/api/apify/process-client', async (req, res) => {
       batches++;
     }
 
-    return res.json({ ok: true, clientId, postsToday, postsTarget, batches, runs });
+  const payload = { ok: true, clientId, postsToday, postsTarget, batches, runs };
+  if (debugMode) payload.debug = { batches: debugBatches };
+  return res.json(payload);
 
   } catch (e) {
     console.error('[apify/process-client] error:', e.message);
