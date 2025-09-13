@@ -110,10 +110,9 @@ router.post('/api/apify/process-client', async (req, res) => {
       });
       const startData = await startResp.json().catch(() => ({}));
 
-      // after inline run, recompute today's posts
-      const before = postsToday;
-      postsToday = await computeTodaysPosts(base);
-      const gained = Math.max(0, postsToday - before);
+  // after inline run, use returned counts to compute gained
+  const gained = Number((startData && startData.counts && startData.counts.posts) || 0);
+  postsToday += gained;
 
       // mark batch Done with counts
       await base(LEADS_TABLE).update(pick.map(r => ({
