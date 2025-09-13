@@ -11,6 +11,7 @@ const router = express.Router();
 // Helpers reused from webhook route without re-import cycles
 const { DateTime } = require('luxon');
 const syncPBPostsToAirtable = require('../utils/pbPostsSync');
+const { getClientBase } = require('../config/airtableClient');
 const { createApifyRun } = require('../services/apifyRunsService');
 
 function toProfileUrl(author) {
@@ -279,7 +280,14 @@ router.post('/api/apify/run', async (req, res) => {
       const posts = mapApifyItemsToPBPosts(items || []);
       let result = { processed: 0, updated: 0, skipped: 0 };
       if (posts.length) {
-        result = await syncPBPostsToAirtable(posts, { clientId, source: 'apify_inline' });
+        // Pass the actual client base so sync writes to the correct tenant
+        let clientBase;
+        try {
+          clientBase = await getClientBase(clientId);
+        } catch (e) {
+          console.warn(`[ApifyControl] Failed to resolve client base for ${clientId}: ${e.message}`);
+        }
+        result = await syncPBPostsToAirtable(posts, clientBase || null);
       }
       return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, datasetId, counts: { items: (items||[]).length, posts: posts.length }, result });
     }
