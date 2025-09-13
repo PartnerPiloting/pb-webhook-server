@@ -64,6 +64,13 @@ function extractLinkedInPublicId(url) {
   }
 }
 
+// Build a canonical profile URL from a LinkedIn public identifier
+function buildCanonicalProfileUrl(publicId) {
+  if (!publicId || typeof publicId !== 'string') return null;
+  const clean = publicId.replace(/\/$/, '');
+  return `https://www.linkedin.com/in/${clean}`;
+}
+
 function mapApifyItemsToPBPosts(items = []) {
   if (!Array.isArray(items)) return [];
   const out = [];
@@ -278,6 +285,27 @@ router.post('/api/apify/run', async (req, res) => {
       const itemsResp = await fetch(itemsUrl, { headers: { Authorization: `Bearer ${apiToken}` } });
       const items = await itemsResp.json();
       const posts = mapApifyItemsToPBPosts(items || []);
+      // Reconcile profileUrl to the exact target(s) we ran for, to avoid slug mismatches
+      try {
+        const targetIds = (Array.isArray(targetUrls) ? targetUrls : []).map(u => extractLinkedInPublicId(u)).filter(Boolean);
+        const key = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const targetMap = new Map();
+        for (const id of targetIds) {
+          targetMap.set(key(id), buildCanonicalProfileUrl(id));
+        }
+        if (targetIds.length === 1) {
+          const only = buildCanonicalProfileUrl(targetIds[0]);
+          posts.forEach(p => { p.profileUrl = only; });
+        } else if (targetMap.size) {
+          posts.forEach(p => {
+            const pid = extractLinkedInPublicId(p.profileUrl);
+            const m = pid ? targetMap.get(key(pid)) : null;
+            if (m) p.profileUrl = m;
+          });
+        }
+      } catch (reconcileErr) {
+        console.warn('[ApifyControl] profileUrl reconcile skipped:', reconcileErr.message);
+      }
       let result = { processed: 0, updated: 0, skipped: 0 };
       if (posts.length) {
         // Pass the actual client base so sync writes to the correct tenant
