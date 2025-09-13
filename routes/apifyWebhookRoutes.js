@@ -12,6 +12,9 @@ const fetchDynamic = getFetch();
 // Multi-tenant base resolver
 const { getClientBase } = require('../config/airtableClient');
 
+// Apify runs service for multi-tenant webhook handling
+const { getClientIdForRun, extractRunIdFromPayload, updateApifyRun } = require('../services/apifyRunsService');
+
 // Helper: normalize LinkedIn profile URL from author input (string or object)
 function toProfileUrl(author) {
   try {
@@ -146,10 +149,21 @@ router.post('/api/apify-webhook', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Tenant resolution - TEMPORARY: Hard-coded for testing
-    // Currently hard-coded for Guy-Wilson client testing
-    // TODO: Replace with dynamic client identification from run mapping
-    const clientId = "Guy-Wilson";
+    // Extract run ID from webhook payload for multi-tenant lookup
+    const runId = extractRunIdFromPayload(req.body);
+    if (!runId) {
+      return res.status(400).json({ error: 'Missing run ID in webhook payload' });
+    }
+
+    // Get client ID for this run
+    const clientId = await getClientIdForRun(runId);
+    if (!clientId) {
+      return res.status(404).json({ error: `No client mapping found for run: ${runId}` });
+    }
+
+    console.log(`[ApifyWebhook] Processing webhook for run ${runId} -> client ${clientId}`);
+
+    // Get client base using the mapped client ID
     let clientBase;
     try {
       clientBase = await getClientBase(clientId);
@@ -172,7 +186,25 @@ router.post('/api/apify-webhook', async (req, res) => {
       const posts = mapApifyItemsToPBPosts(items);
       if (!posts.length) return res.json({ ok: true, message: 'No valid posts', items: items.length });
       const result = await syncPBPostsToAirtable(posts, clientBase);
+      
+      // Update run status
+      try {
+        await updateApifyRun(runId, { status: 'SUCCEEDED' });
+      } catch (updateError) {
+        console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
+      }
+      
       return res.json({ ok: true, mode: 'inline', result });
+    }
+
+    // Update run status with dataset ID
+    try {
+      await updateApifyRun(runId, { 
+        status: 'SUCCEEDED', 
+        datasetId: datasetId 
+      });
+    } catch (updateError) {
+      console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
     }
 
     // Fetch items from Apify dataset
@@ -182,7 +214,7 @@ router.post('/api/apify-webhook', async (req, res) => {
     }
 
     // Quick ack before fetch to keep webhook latency low
-    res.status(200).json({ ok: true, mode: 'dataset', datasetId });
+    res.status(200).json({ ok: true, mode: 'dataset', runId, clientId, datasetId });
 
     // Background processing with error handling
     (async () => {
@@ -195,6 +227,15 @@ router.post('/api/apify-webhook', async (req, res) => {
         
         if (!resp.ok) {
           console.error('[ApifyWebhook] Failed to fetch dataset items', datasetId, resp.status);
+          // Update run status to failed
+          try {
+            await updateApifyRun(runId, { 
+              status: 'FAILED', 
+              error: `Failed to fetch dataset: ${resp.status}` 
+            });
+          } catch (updateError) {
+            console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
+          }
           return;
         }
         
@@ -209,31 +250,43 @@ router.post('/api/apify-webhook', async (req, res) => {
           }
         } catch (parseError) {
           console.error('[ApifyWebhook] JSON parsing failed:', parseError.message);
+          // Update run status to failed
+          try {
+            await updateApifyRun(runId, { 
+              status: 'FAILED', 
+              error: `JSON parsing failed: ${parseError.message}` 
+            });
+          } catch (updateError) {
+            console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
+          }
           return;
         }
         
         const items = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : (Array.isArray(raw.data) ? raw.data : []));
         
-        console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. ${items.length} items found`);
+        console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. ${items.length} items found for client ${clientId}`);
         
         const posts = mapApifyItemsToPBPosts(items);
         
         if (!posts.length) {
-          console.log(`[ApifyWebhook] No valid posts mapped from dataset ${datasetId}`);
+          console.log(`[ApifyWebhook] No valid posts mapped from dataset ${datasetId} for client ${clientId}`);
           return;
         }
         
         const result = await syncPBPostsToAirtable(posts, clientBase);
-        console.log(`[ApifyWebhook] Successfully synced ${posts.length} posts from dataset ${datasetId}`);
+        console.log(`[ApifyWebhook] Successfully synced ${posts.length} posts from dataset ${datasetId} for client ${clientId}`);
         
       } catch (e) {
         console.error('[ApifyWebhook] Background processing error:', e.message);
-      }
-    })();
-        
-      } catch (e) {
-        console.error('[ApifyWebhook] Background processing error:', e.message);
-        console.error('[ApifyWebhook] Full error:', e);
+        // Update run status to failed
+        try {
+          await updateApifyRun(runId, { 
+            status: 'FAILED', 
+            error: `Processing failed: ${e.message}` 
+          });
+        } catch (updateError) {
+          console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
+        }
       }
     })();
   } catch (e) {

@@ -330,6 +330,10 @@ try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webh
 try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); console.log("index.js: Apify webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
 // Mount Apify control routes (start runs programmatically)
 try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); console.log("index.js: Apify control routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
+// Mount Apify runs management routes (multi-tenant run tracking)
+try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); console.log("index.js: Apify runs management routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
+// Mount Apify process routes (batch client processing)
+try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); console.log("index.js: Apify process routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
 
 // Use authenticated LinkedIn routes instead of old non-authenticated ones
 try { 

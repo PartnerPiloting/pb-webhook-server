@@ -11,6 +11,7 @@ const router = express.Router();
 // Helpers reused from webhook route without re-import cycles
 const { DateTime } = require('luxon');
 const syncPBPostsToAirtable = require('../utils/pbPostsSync');
+const { createApifyRun } = require('../services/apifyRunsService');
 
 function toProfileUrl(author) {
   if (!author) return null;
@@ -88,9 +89,11 @@ router.post('/api/apify/run', async (req, res) => {
     if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
     if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
-        // Currently hard-coded for Guy-Wilson client testing
-    // TODO: Replace with dynamic client identification for multi-tenant support
-    const clientId = 'Guy-Wilson';
+    // Multi-tenant client identification
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
+    }
 
     const apiToken = process.env.APIFY_API_TOKEN;
     if (!apiToken) return res.status(500).json({ ok: false, error: 'Server missing APIFY_API_TOKEN' });
@@ -215,6 +218,19 @@ router.post('/api/apify/run', async (req, res) => {
 
       const run = startData.data || startData;
       const datasetId = run.defaultDatasetId || run.datasetId || run.data?.defaultDatasetId;
+      
+      // Store run mapping for multi-tenant tracking
+      try {
+        await createApifyRun(run.id, clientId, {
+          actorId,
+          targetUrls,
+          mode: 'inline'
+        });
+      } catch (runTrackingError) {
+        console.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
+        // Continue execution - run tracking failure shouldn't break the flow
+      }
+      
       if (!datasetId) {
         return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, note: 'No datasetId returned yet' });
       }
@@ -274,6 +290,20 @@ router.post('/api/apify/run', async (req, res) => {
     }
 
     const run = startData.data || startData;
+    
+    // Store run mapping for multi-tenant webhook handling
+    try {
+      await createApifyRun(run.id, clientId, {
+        actorId,
+        targetUrls,
+        mode: 'webhook'
+      });
+      console.log(`[ApifyControl] Created run tracking for ${run.id} -> ${clientId}`);
+    } catch (runTrackingError) {
+      console.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
+      // Continue execution - run tracking failure shouldn't break the flow
+    }
+    
     return res.json({ ok: true, mode: 'webhook', runId: run.id, status: run.status, url: run.url || run.buildUrl || null });
   } catch (e) {
     console.error('[ApifyControl] run error:', e.message);

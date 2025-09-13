@@ -1,0 +1,334 @@
+// services/apifyRunsService.js
+// Service for managing Apify run tracking to enable multi-tenant webhook handling
+// Stores mapping between Apify run IDs and client IDs in Master Clients base
+
+require('dotenv').config();
+const Airtable = require('airtable');
+
+// Cache for performance (short-lived since runs are typically short)
+let runsCache = new Map();
+const CACHE_DURATION_MS = 2 * 60 * 1000; // 2 minutes
+
+// Master Clients base connection for Apify Runs table
+let masterClientsBase = null;
+
+/**
+ * Initialize connection to the Master Clients base
+ */
+function initializeMasterClientsBase() {
+    if (masterClientsBase) return masterClientsBase;
+
+    if (!process.env.MASTER_CLIENTS_BASE_ID) {
+        throw new Error("MASTER_CLIENTS_BASE_ID environment variable is not set");
+    }
+    if (!process.env.AIRTABLE_API_KEY) {
+        throw new Error("AIRTABLE_API_KEY environment variable is not set");
+    }
+
+    // Configure Airtable if not already done
+    Airtable.configure({
+        apiKey: process.env.AIRTABLE_API_KEY
+    });
+
+    masterClientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    console.log("Master Clients base initialized for Apify Runs service");
+    return masterClientsBase;
+}
+
+/**
+ * Create a new Apify run record
+ * @param {string} runId - Apify run ID
+ * @param {string} clientId - Client ID that initiated the run
+ * @param {Object} options - Additional options
+ * @param {string} options.actorId - Apify Actor ID
+ * @param {Array<string>} options.targetUrls - Target URLs being scraped
+ * @param {string} options.mode - Run mode ('webhook' or 'inline')
+ * @returns {Promise<Object>} Created record
+ */
+async function createApifyRun(runId, clientId, options = {}) {
+    try {
+        const base = initializeMasterClientsBase();
+        
+        const recordData = {
+            'Run ID': runId,
+            'Client ID': clientId,
+            'Status': 'RUNNING',
+            'Created At': new Date().toISOString(),
+            'Actor ID': options.actorId || '',
+            'Target URLs': Array.isArray(options.targetUrls) ? options.targetUrls.join('\n') : '',
+            'Mode': options.mode || 'webhook',
+            'Last Updated': new Date().toISOString()
+        };
+
+        console.log(`[ApifyRuns] Creating run record: ${runId} for client: ${clientId}`);
+        
+        const createdRecords = await base('Apify Runs').create([{
+            fields: recordData
+        }]);
+
+        const record = createdRecords[0];
+        const runData = {
+            id: record.id,
+            runId: record.get('Run ID'),
+            clientId: record.get('Client ID'),
+            status: record.get('Status'),
+            createdAt: record.get('Created At'),
+            actorId: record.get('Actor ID'),
+            targetUrls: record.get('Target URLs'),
+            mode: record.get('Mode'),
+            lastUpdated: record.get('Last Updated'),
+            datasetId: record.get('Dataset ID'),
+            completedAt: record.get('Completed At'),
+            error: record.get('Error')
+        };
+
+        // Cache the record
+        runsCache.set(runId, { data: runData, timestamp: Date.now() });
+        
+        console.log(`[ApifyRuns] Successfully created run record: ${runId}`);
+        return runData;
+
+    } catch (error) {
+        console.error(`[ApifyRuns] Error creating run record for ${runId}:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Get Apify run by run ID
+ * @param {string} runId - Apify run ID
+ * @returns {Promise<Object|null>} Run data or null if not found
+ */
+async function getApifyRun(runId) {
+    try {
+        // Check cache first
+        const cached = runsCache.get(runId);
+        if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION_MS) {
+            console.log(`[ApifyRuns] Returning cached run data for: ${runId}`);
+            return cached.data;
+        }
+
+        const base = initializeMasterClientsBase();
+        
+        console.log(`[ApifyRuns] Fetching run data for: ${runId}`);
+        
+        const records = await base('Apify Runs').select({
+            filterByFormula: `{Run ID} = '${runId}'`,
+            maxRecords: 1
+        }).firstPage();
+
+        if (records.length === 0) {
+            console.log(`[ApifyRuns] No run found for: ${runId}`);
+            return null;
+        }
+
+        const record = records[0];
+        const runData = {
+            id: record.id,
+            runId: record.get('Run ID'),
+            clientId: record.get('Client ID'),
+            status: record.get('Status'),
+            createdAt: record.get('Created At'),
+            actorId: record.get('Actor ID'),
+            targetUrls: record.get('Target URLs'),
+            mode: record.get('Mode'),
+            lastUpdated: record.get('Last Updated'),
+            datasetId: record.get('Dataset ID'),
+            completedAt: record.get('Completed At'),
+            error: record.get('Error')
+        };
+
+        // Cache the result
+        runsCache.set(runId, { data: runData, timestamp: Date.now() });
+        
+        console.log(`[ApifyRuns] Found run for client: ${runData.clientId}`);
+        return runData;
+
+    } catch (error) {
+        console.error(`[ApifyRuns] Error fetching run ${runId}:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Update Apify run status and related data
+ * @param {string} runId - Apify run ID
+ * @param {Object} updateData - Data to update
+ * @param {string} updateData.status - New status
+ * @param {string} updateData.datasetId - Dataset ID (when completed)
+ * @param {string} updateData.error - Error message (if failed)
+ * @returns {Promise<Object>} Updated record
+ */
+async function updateApifyRun(runId, updateData) {
+    try {
+        const base = initializeMasterClientsBase();
+        
+        // First get the record to update
+        const existingRun = await getApifyRun(runId);
+        if (!existingRun) {
+            throw new Error(`Run not found: ${runId}`);
+        }
+
+        const updateFields = {
+            'Last Updated': new Date().toISOString()
+        };
+
+        if (updateData.status) {
+            updateFields['Status'] = updateData.status;
+            if (updateData.status === 'SUCCEEDED' || updateData.status === 'FAILED') {
+                updateFields['Completed At'] = new Date().toISOString();
+            }
+        }
+
+        if (updateData.datasetId) {
+            updateFields['Dataset ID'] = updateData.datasetId;
+        }
+
+        if (updateData.error) {
+            updateFields['Error'] = updateData.error;
+        }
+
+        console.log(`[ApifyRuns] Updating run ${runId} with status: ${updateData.status}`);
+        
+        const updatedRecords = await base('Apify Runs').update([{
+            id: existingRun.id,
+            fields: updateFields
+        }]);
+
+        const record = updatedRecords[0];
+        const runData = {
+            id: record.id,
+            runId: record.get('Run ID'),
+            clientId: record.get('Client ID'),
+            status: record.get('Status'),
+            createdAt: record.get('Created At'),
+            actorId: record.get('Actor ID'),
+            targetUrls: record.get('Target URLs'),
+            mode: record.get('Mode'),
+            lastUpdated: record.get('Last Updated'),
+            datasetId: record.get('Dataset ID'),
+            completedAt: record.get('Completed At'),
+            error: record.get('Error')
+        };
+
+        // Update cache
+        runsCache.set(runId, { data: runData, timestamp: Date.now() });
+        
+        console.log(`[ApifyRuns] Successfully updated run: ${runId}`);
+        return runData;
+
+    } catch (error) {
+        console.error(`[ApifyRuns] Error updating run ${runId}:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Get client ID for a specific run ID (main use case for webhooks)
+ * @param {string} runId - Apify run ID
+ * @returns {Promise<string|null>} Client ID or null if not found
+ */
+async function getClientIdForRun(runId) {
+    try {
+        const runData = await getApifyRun(runId);
+        return runData ? runData.clientId : null;
+    } catch (error) {
+        console.error(`[ApifyRuns] Error getting client ID for run ${runId}:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Get recent runs for a client (debugging/monitoring)
+ * @param {string} clientId - Client ID
+ * @param {number} limit - Maximum number of runs to return (default: 10)
+ * @returns {Promise<Array>} Array of run records
+ */
+async function getClientRuns(clientId, limit = 10) {
+    try {
+        const base = initializeMasterClientsBase();
+        
+        console.log(`[ApifyRuns] Fetching recent runs for client: ${clientId}`);
+        
+        const records = await base('Apify Runs').select({
+            filterByFormula: `{Client ID} = '${clientId}'`,
+            sort: [{ field: 'Created At', direction: 'desc' }],
+            maxRecords: limit
+        }).firstPage();
+
+        const runs = records.map(record => ({
+            id: record.id,
+            runId: record.get('Run ID'),
+            clientId: record.get('Client ID'),
+            status: record.get('Status'),
+            createdAt: record.get('Created At'),
+            actorId: record.get('Actor ID'),
+            targetUrls: record.get('Target URLs'),
+            mode: record.get('Mode'),
+            lastUpdated: record.get('Last Updated'),
+            datasetId: record.get('Dataset ID'),
+            completedAt: record.get('Completed At'),
+            error: record.get('Error')
+        }));
+
+        console.log(`[ApifyRuns] Found ${runs.length} runs for client: ${clientId}`);
+        return runs;
+
+    } catch (error) {
+        console.error(`[ApifyRuns] Error fetching runs for client ${clientId}:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Extract run ID from webhook payload
+ * @param {Object} body - Webhook payload body
+ * @returns {string|null} Run ID or null if not found
+ */
+function extractRunIdFromPayload(body) {
+    try {
+        if (!body) return null;
+        
+        // Common Apify webhook payload shapes:
+        // - { resource: { id: 'runId' }, ... }
+        // - { runId: 'runId' }
+        // - { id: 'runId' }
+        
+        if (typeof body === 'string') {
+            try { 
+                body = JSON.parse(body); 
+            } catch { 
+                return null; 
+            }
+        }
+        
+        if (body && typeof body === 'object') {
+            if (body.resource && body.resource.id) return body.resource.id;
+            if (body.runId) return body.runId;
+            if (body.id) return body.id;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('[ApifyRuns] Error extracting run ID from payload:', error.message);
+        return null;
+    }
+}
+
+/**
+ * Clear the runs cache (useful for testing)
+ */
+function clearRunsCache() {
+    runsCache.clear();
+    console.log("[ApifyRuns] Cache cleared");
+}
+
+module.exports = {
+    createApifyRun,
+    getApifyRun,
+    updateApifyRun,
+    getClientIdForRun,
+    getClientRuns,
+    extractRunIdFromPayload,
+    clearRunsCache
+};
