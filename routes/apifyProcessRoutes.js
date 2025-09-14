@@ -14,6 +14,7 @@ const STATUS_FIELD = 'Posts Harvest Status';
 const LAST_CHECK_AT_FIELD = 'Last Post Check At';
 const FOUND_LAST_RUN_FIELD = 'Posts Found (Last Run)';
 const RUN_ID_FIELD = 'Posts Harvest Run ID';
+const POSTS_ACTIONED_FIELD = 'Posts Actioned';
 
 // Helper to format ISO now
 const nowISO = () => new Date().toISOString();
@@ -31,7 +32,8 @@ async function pickLeadBatch(base, batchSize) {
       LEN({${STATUS_FIELD}}) = 0,
       AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')
     ),
-    {${STATUS_FIELD}} != 'No Posts'
+    {${STATUS_FIELD}} != 'No Posts',
+    OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK())
   )`;
   const records = await base(LEADS_TABLE).select({
     filterByFormula: formula,

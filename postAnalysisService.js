@@ -218,10 +218,10 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         }
         // Build enriched output. If repost, include Original Author public profile.
         const isRepostWinner = Boolean(highestScoringPost.isRepost);
-        const originalAuthorUrl = highestScoringPost.authorUrl || '';
-        const originalAuthorName = highestScoringPost.authorName || '';
-        const originalAuthorLine = isRepostWinner && originalAuthorUrl
-            ? `Original Author: ${originalAuthorName || '(unknown)'} (${originalAuthorUrl})\n`
+        const originalAuthorUrl = (highestScoringPost.authorUrl || '').trim();
+        // Make reposts stand out clearly; prefer URL, fall back to (unknown)
+        const originalAuthorLine = isRepostWinner
+            ? `REPOST - ORIGINAL AUTHOR: ${originalAuthorUrl || '(unknown)'}\n`
             : '';
         const topScoringPostText =
             `Date: ${safeFormatDate(highestScoringPost.postDate || highestScoringPost.post_date)}\n` +
@@ -237,6 +237,15 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             [config.fields.topScoringPost]: topScoringPostText,
             [config.fields.dateScored]: new Date().toISOString()
         });
+
+        // Best-effort: clear legacy skip reason so "NO_ORIGINAL" doesn't linger (field may not exist on all bases)
+        try {
+            await base(config.leadsTableName).update(leadRecord.id, {
+                'Posts Skip Reason': ''
+            });
+        } catch (e) {
+            // Ignore if field missing
+        }
 
         log.summary(`Successfully scored. Final Score: ${highestScoringPost.post_score}`);
         return { status: "Successfully scored", leadId: leadRecord.id, final_score: highestScoringPost.post_score, full_analysis: aiResponseArray };
