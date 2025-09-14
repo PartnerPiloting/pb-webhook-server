@@ -161,6 +161,14 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
         }
         const normProfile = normalizeLinkedInUrl(post.profileUrl);
         if (!postsByProfile[normProfile]) postsByProfile[normProfile] = [];
+        // Carry through pbMeta so downstream (and Airtable) can show ORIGINAL/REPOST labels
+        const meta = {
+            ...(post.pbMeta || {}),
+            authorUrl: post.authorUrl || (post.pbMeta && post.pbMeta.authorUrl) || '',
+            authorName: post.author || (post.pbMeta && post.pbMeta.authorName) || ''
+            // originLabel should come from the Apify mappers; we don't recompute here because
+            // it requires knowing the Lead profile URL which isn't available in this function
+        };
         postsByProfile[normProfile].push({
             postUrl: post.postUrl,
             postContent: post.postContent,
@@ -169,8 +177,11 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
             article: post.article,
             socialContent: post.socialContent,
             // New: persist author metadata for repost/original detection
-            authorUrl: post.authorUrl || (post.pbMeta && post.pbMeta.authorUrl) || '',
-            author: post.author || (post.pbMeta && post.pbMeta.authorName) || ''
+            authorUrl: meta.authorUrl,
+            author: meta.authorName,
+            // Preserve original action for backward-compat and store inside pbMeta as well
+            action: post.action || (post.pbMeta && post.pbMeta.action) || '',
+            pbMeta: meta
         });
     });
 
@@ -218,7 +229,16 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 newPostsAdded++;
             } else {
                 // Upsert: merge new fields (e.g., authorUrl) into existing entry
-                const merged = { ...existingPosts[idx], ...p };
+                const current = existingPosts[idx] || {};
+                // Deep-merge pbMeta to avoid losing existing flags
+                const merged = {
+                    ...current,
+                    ...p,
+                    pbMeta: {
+                        ...(current.pbMeta || {}),
+                        ...(p.pbMeta || {})
+                    }
+                };
                 const before = JSON.stringify(existingPosts[idx]);
                 const after = JSON.stringify(merged);
                 if (before !== after) {
