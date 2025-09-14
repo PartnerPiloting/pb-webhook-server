@@ -79,7 +79,7 @@ function mapApifyItemsToPBPosts(items = []) {
     if (!it || typeof it !== 'object') continue;
     try {
       const p = it.post || {};
-      const profileUrl = toProfileUrl(it.author || it.profileUrl || it.profile || it.authorUrl || it.authorProfileUrl || p.author) || p.profileUrl || null;
+  const originalAuthorUrl = toProfileUrl(it.author || it.profileUrl || it.profile || it.authorUrl || it.authorProfileUrl || p.author) || p.profileUrl || null;
       const postUrl = it.url || it.postUrl || it.shareUrl || it.link || it.linkedinUrl || p.url || p.postUrl || null;
       const postContent = it.text || it.content || it.caption || it.title || it.body || p.text || p.content || '';
 
@@ -100,10 +100,11 @@ function mapApifyItemsToPBPosts(items = []) {
         || (Array.isArray(it.images) && it.images.length ? it.images[0] : null)
         || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
 
-      if (!profileUrl || !postUrl) continue;
+      if (!originalAuthorUrl || !postUrl) continue;
 
       out.push({
-        profileUrl,
+        // Attach to lead via profileUrl later (reconcile may overwrite this), but keep original author in pbMeta
+        profileUrl: originalAuthorUrl,
         postUrl,
         postContent,
         postTimestamp,
@@ -113,11 +114,16 @@ function mapApifyItemsToPBPosts(items = []) {
         type: it.postType || it.type || 'post',
         imgUrl,
         author: (typeof it.author === 'object' ? it.author?.name : null) || null,
-        authorUrl: profileUrl,
+        authorUrl: originalAuthorUrl,
         likeCount,
         commentCount,
         repostCount,
-        action: 'apify_ingest'
+        action: 'apify_ingest',
+        pbMeta: {
+          authorUrl: originalAuthorUrl,
+          authorName: (typeof it.author === 'object' ? it.author?.name : null) || null,
+          action: (it.postType || it.type || 'post')
+        }
       });
     } catch (err) {
       console.warn(`[ApifyControl] Error processing item ${i}: ${err.message}`);

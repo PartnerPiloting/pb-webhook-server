@@ -51,26 +51,10 @@ function diagnosePostsContent(rawField, recordId = '', logger = null) {
     }
 }
 
-/**
- * Filter out reposts and keep only original posts authored by the lead.
- * @param {Array} postsArray - All posts for the lead
- * @param {string} leadProfileUrl - LinkedIn profile URL of the lead
- * @returns {Array}
- */
-function filterOriginalPosts(postsArray, leadProfileUrl) {
-    function normalizeUrl(url) {
-        if (!url) return '';
-        return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
-    }
-    const normalizedLeadProfileUrl = normalizeUrl(leadProfileUrl);
-    return postsArray.filter(post => {
-        // Prefer pbMeta.authorUrl, fallback to post.authorUrl
-        const authorUrl = post?.pbMeta?.authorUrl || post.authorUrl;
-        const normalizedAuthorUrl = normalizeUrl(authorUrl);
-        const action = post?.pbMeta?.action?.toLowerCase() || '';
-        const isOriginal = !action.includes('repost') && normalizedAuthorUrl && normalizedAuthorUrl === normalizedLeadProfileUrl;
-        return isOriginal;
-    });
+// Normalize a LinkedIn URL for comparison
+function normalizeUrl(url) {
+    if (!url) return '';
+    return String(url).trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
 }
 
 /**
@@ -138,32 +122,25 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
     }
     log.debug('Parsed posts array:', JSON.stringify(parsedPostsArray, null, 2));
 
-    // Define originalPosts before logging it
-    function normalizeUrl(url) {
-        if (!url) return '';
-        return url.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
-    }
+    // Use all posts (including reposts). We'll still capture author metadata for downstream formatting.
     const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    // console.log(`DEBUG: leadProfileUrl for lead ${leadRecord.id}:`, leadProfileUrl);
-    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
-    // Log the original posts after filtering
-    // console.log(`DEBUG: Original posts before filtering for lead ${leadRecord.id}:`, JSON.stringify(originalPosts, null, 2));
+    const allPosts = Array.isArray(parsedPostsArray) ? parsedPostsArray : [];
 
     try {
         // Load scoring configuration (no global filtering - let attributes handle relevance)
         log.setup(`Loading config from Airtable...`);
         const config_data = await loadPostScoringAirtableConfig(base, config, log);
         
-        // Score all original posts using client's specific attributes
-        log.process(`Scoring all ${originalPosts.length} original posts using client's attribute criteria`);
+        // Score all posts (originals + reposts). Let attributes handle relevance.
+        log.process(`Scoring all ${allPosts.length} posts (including reposts) using client's attribute criteria`);
         
-        if (originalPosts.length === 0) {
-            log.summary(`No original posts found, skipping scoring`);
-            return { status: "No original posts found", leadId: leadRecord.id };
+        if (allPosts.length === 0) {
+            log.summary(`No posts found, skipping scoring`);
+            return { status: "No posts found", leadId: leadRecord.id };
         }
 
-        // Proceed with full AI scoring on all original posts
-        log.process(`Found ${originalPosts.length} original posts. Proceeding with Gemini scoring`);
+        // Proceed with full AI scoring on all posts
+        log.process(`Found ${allPosts.length} posts. Proceeding with Gemini scoring`);
 
         // Step 3: Build the full system prompt
         log.process(`Building system prompt...`);
@@ -187,13 +164,13 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         // Step 5: Call the Gemini scorer with all original posts
         log.process(`Calling Gemini scorer...`);
         // --- FIX: Wrap posts in object with lead_id for Gemini ---
-        const geminiInput = { lead_id: leadRecord.id, posts: originalPosts };
+    const geminiInput = { lead_id: leadRecord.id, posts: allPosts };
         const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
 
         // --- NEW: Merge original post data into AI response ---
         // Map post_url to original post for quick lookup
         const postUrlToOriginal = {};
-        for (const post of originalPosts) {
+        for (const post of allPosts) {
             const url = post.postUrl || post.post_url;
             if (url) postUrlToOriginal[url] = post;
         }
@@ -202,6 +179,16 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             const orig = postUrlToOriginal[resp.post_url] || {};
             resp.post_content = orig.postContent || orig.post_content || '';
             resp.postDate = orig.postDate || orig.post_date || '';
+            // Propagate author metadata for UI/reporting (original author vs lead)
+            resp.authorUrl = (orig.pbMeta && orig.pbMeta.authorUrl) || orig.authorUrl || '';
+            resp.authorName = (orig.pbMeta && orig.pbMeta.authorName) || orig.author || '';
+            resp.isRepost = (() => {
+                const action = (orig.pbMeta && orig.pbMeta.action) || orig.action || '';
+                const a = String(action).toLowerCase();
+                // If author's profile differs from the lead's profile, treat as repost
+                const sameAuthor = normalizeUrl(resp.authorUrl) && normalizeUrl(resp.authorUrl) === normalizeUrl(leadProfileUrl);
+                return a.includes('repost') || !sameAuthor;
+            })();
         });
         // --- END MERGE ---
 
@@ -229,10 +216,18 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             const d = new Date(dateStr);
             return isNaN(d.getTime()) ? dateStr : d.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
         }
+        // Build enriched output. If repost, include Original Author public profile.
+        const isRepostWinner = Boolean(highestScoringPost.isRepost);
+        const originalAuthorUrl = highestScoringPost.authorUrl || '';
+        const originalAuthorName = highestScoringPost.authorName || '';
+        const originalAuthorLine = isRepostWinner && originalAuthorUrl
+            ? `Original Author: ${originalAuthorName || '(unknown)'} (${originalAuthorUrl})\n`
+            : '';
         const topScoringPostText =
             `Date: ${safeFormatDate(highestScoringPost.postDate || highestScoringPost.post_date)}\n` +
             `URL: ${highestScoringPost.postUrl || highestScoringPost.post_url || ''}\n` +
             `Score: ${highestScoringPost.post_score}\n` +
+            (originalAuthorLine) +
             `Content: ${highestScoringPost.postContent || highestScoringPost.post_content || ''}\n` +
             `Rationale: ${highestScoringPost.scoring_rationale || 'N/A'}`;
 
@@ -254,7 +249,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             finishReason: error.finishReason || null,
             safetyRatings: error.safetyRatings || null,
             rawResponseSnippet: error.rawResponseSnippet || null,
-            aiInputPosts: originalPosts,
+            aiInputPosts: allPosts,
             aiPrompt: systemPrompt || null,
             timestamp: new Date().toISOString(),
         };
