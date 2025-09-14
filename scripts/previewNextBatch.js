@@ -9,6 +9,7 @@ const LEADS_TABLE = 'Leads';
 const LINKEDIN_URL_FIELD = 'LinkedIn Profile URL';
 const STATUS_FIELD = 'Posts Harvest Status';
 const LAST_CHECK_AT_FIELD = 'Last Post Check At';
+const POSTS_ACTIONED_FIELD = 'Posts Actioned';
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -35,7 +36,17 @@ function parseArgs() {
     }
 
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const formula = `AND({${LINKEDIN_URL_FIELD}} != '', OR({${STATUS_FIELD}} = 'Pending', {${STATUS_FIELD}} = '', LEN({${STATUS_FIELD}}) = 0, AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')), {${STATUS_FIELD}} != 'No Posts')`;
+    const formula = `AND(
+      {${LINKEDIN_URL_FIELD}} != '',
+      OR(
+        {${STATUS_FIELD}} = 'Pending',
+        {${STATUS_FIELD}} = '',
+        LEN({${STATUS_FIELD}}) = 0,
+        AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')
+      ),
+      {${STATUS_FIELD}} != 'No Posts',
+      OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK())
+    )`;
 
     const records = await base(LEADS_TABLE).select({
       filterByFormula: formula,

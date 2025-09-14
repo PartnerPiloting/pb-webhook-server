@@ -816,6 +816,10 @@ router.patch('/leads/:id', async (req, res) => {
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       return res.status(400).json({ error: 'Body must be an object of fields to update' });
     }
+    // Defensive log: track any attempt to toggle Posts Actioned via API
+    if (Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
+      console.warn(`[LinkedIn Routes] PATCH: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
+    }
     console.log('LinkedIn Routes: Generic PATCH applying fields:', updates);
     const updatedRecords = await airtableBase('Leads').update([{ id: leadId, fields: updates }]);
     if (!updatedRecords || !updatedRecords.length) return res.status(404).json({ error: 'Lead not found' });
@@ -840,6 +844,11 @@ router.put('/leads/:id', async (req, res) => {
     const updates = req.body;
     
     console.log('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
+
+    // Defensive log: track any attempt to toggle Posts Actioned via API
+    if (updates && Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
+      console.warn(`[LinkedIn Routes] PUT: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
+    }
 
     // Update the lead in Airtable
     const updatedRecords = await airtableBase('Leads').update([

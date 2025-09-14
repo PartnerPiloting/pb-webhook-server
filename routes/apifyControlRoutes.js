@@ -102,7 +102,10 @@ function mapApifyItemsToPBPosts(items = []) {
 
       if (!originalAuthorUrl || !postUrl) continue;
 
-      out.push({
+    const isRepost = (String(it.postType || it.type || '').toLowerCase().includes('repost'));
+    const originLabel = isRepost ? `REPOST - ORIGINAL AUTHOR: ${originalAuthorUrl || '(unknown)'}` : 'ORIGINAL';
+
+    out.push({
         // Attach to lead via profileUrl later (reconcile may overwrite this), but keep original author in pbMeta
         profileUrl: originalAuthorUrl,
         postUrl,
@@ -122,7 +125,8 @@ function mapApifyItemsToPBPosts(items = []) {
         pbMeta: {
           authorUrl: originalAuthorUrl,
           authorName: (typeof it.author === 'object' ? it.author?.name : null) || null,
-          action: (it.postType || it.type || 'post')
+      action: (it.postType || it.type || 'post'),
+      originLabel
         }
       });
     } catch (err) {

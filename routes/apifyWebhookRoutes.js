@@ -94,6 +94,12 @@ function mapApifyItemsToPBPosts(items = []) {
 
       if (!originalAuthorUrl || !postUrl) continue;
 
+      // Determine origin label for UI/processing clarity
+      const isRepost = (String(it.postType || it.type || '').toLowerCase().includes('repost'));
+      const originLabel = isRepost
+        ? `REPOST - ORIGINAL AUTHOR: ${originalAuthorUrl || '(unknown) '}`.trim()
+        : 'ORIGINAL';
+
       out.push({
         profileUrl: originalAuthorUrl,
         postUrl,
@@ -111,7 +117,8 @@ function mapApifyItemsToPBPosts(items = []) {
         pbMeta: {
           authorUrl: originalAuthorUrl,
           authorName: (typeof it.author === 'object' ? it.author?.name : null) || null,
-          action: (it.postType || it.type || 'post')
+          action: (it.postType || it.type || 'post'),
+          originLabel
         }
       });
     } catch (error) {
