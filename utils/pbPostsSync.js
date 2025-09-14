@@ -167,7 +167,10 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
             postedAt: post.postedAt,
             postImages: post.postImages,
             article: post.article,
-            socialContent: post.socialContent
+            socialContent: post.socialContent,
+            // New: persist author metadata for repost/original detection
+            authorUrl: post.authorUrl || (post.pbMeta && post.pbMeta.authorUrl) || '',
+            author: post.author || (post.pbMeta && post.pbMeta.authorName) || ''
         });
     });
 
@@ -207,14 +210,25 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
         }
 
         let newPostsAdded = 0;
+        let postsUpdated = 0;
         postsList.forEach(p => {
-            if (!existingPosts.some(ep => ep.postUrl === p.postUrl)) {
+            const idx = existingPosts.findIndex(ep => ep.postUrl === p.postUrl);
+            if (idx === -1) {
                 existingPosts.push(p);
                 newPostsAdded++;
+            } else {
+                // Upsert: merge new fields (e.g., authorUrl) into existing entry
+                const merged = { ...existingPosts[idx], ...p };
+                const before = JSON.stringify(existingPosts[idx]);
+                const after = JSON.stringify(merged);
+                if (before !== after) {
+                    existingPosts[idx] = merged;
+                    postsUpdated++;
+                }
             }
         });
 
-        if (newPostsAdded > 0) {
+    if (newPostsAdded > 0 || postsUpdated > 0) {
             try {
                 const updateData = {
                     [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
@@ -230,7 +244,7 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 }
 
                 await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update(record.id, updateData);
-                console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded} new posts (total: ${existingPosts.length})`);
+                console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded}, Updated ${postsUpdated} posts (total: ${existingPosts.length})`);
             } catch (updateError) {
                 console.error(`Failed to update ${normProfileUrl}:`, updateError.message);
             }
