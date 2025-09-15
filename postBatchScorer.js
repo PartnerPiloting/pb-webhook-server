@@ -655,16 +655,31 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             s = s.split('?')[0].split('#')[0];
             // Remove trailing slash
             s = s.replace(/\/$/, '');
+            // Remove trailing underscores sometimes appended to LinkedIn share URLs
+            s = s.replace(/_+$/, '');
             return s;
         }
         const postUrlToOriginal = {};
+        const activityIdToOriginal = {};
+        function extractLinkedInActivityId(u) {
+            if (!u) return null;
+            const s = String(u).toLowerCase();
+            // Common patterns: activity-<digits>, urn:li:activity:<digits>, or -<digits>- in posts slug
+            let m = s.match(/activity[-/:](\d{8,})/);
+            if (m) return m[1];
+            m = s.match(/-(\d{8,})-/);
+            if (m) return m[1];
+            return null;
+        }
         for (const post of allPosts) {
             const url = post.postUrl || post.post_url;
             const key = normalizePostUrl(url);
             if (key) postUrlToOriginal[key] = post;
+            const actId = extractLinkedInActivityId(url);
+            if (actId) activityIdToOriginal[actId] = post;
         }
         // Extract best-effort post timestamp from various shapes
-        function extractBestPostDate(primary, secondary) {
+    function extractBestPostDate(primary, secondary) {
             const candidates = [];
             function pushFrom(obj) {
                 if (!obj || typeof obj !== 'object') return;
@@ -677,6 +692,8 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
                 candidates.push(
                     obj.postDate,
                     obj.post_date,
+            obj.postTimestamp,
+            obj.post_time,
                     obj.publishedAt,
                     obj.time,
                     obj.date,
@@ -713,7 +730,11 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         aiResponseArray.forEach(resp => {
             const respUrl = resp.post_url || resp.postUrl || '';
             const key = normalizePostUrl(respUrl);
-            const orig = key ? (postUrlToOriginal[key] || {}) : {};
+            let orig = key ? (postUrlToOriginal[key] || {}) : {};
+            if (!orig || Object.keys(orig).length === 0) {
+                const rid = extractLinkedInActivityId(respUrl);
+                if (rid && activityIdToOriginal[rid]) orig = activityIdToOriginal[rid];
+            }
             // Prefer source content; if not found, keep AI-provided content to avoid blanks
             const mergedContent = (orig.postContent || orig.post_content || resp.post_content || resp.postContent || '');
             resp.post_content = mergedContent;
