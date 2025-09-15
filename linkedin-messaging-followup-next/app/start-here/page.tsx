@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
 import { getStartHereHelp, getHelpTopic } from '../../services/api';
+import { renderHelpHtml } from '../../components/HelpHtmlRenderer';
 
 export const dynamic = 'force-dynamic';
 
@@ -462,7 +463,7 @@ function renderMarkdown(md: string, keyPrefix: string) {
 
   // 8. Add extra blank line after major headings for readability (handled via Tailwind margins visually)
 
-  return <div key={keyPrefix} className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{__html: safe}} />;
+  return renderHelpHtml(safe, keyPrefix);
 }
 
 // Minimal HTML sanitizer for curated Help content.
