@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Date: Mon, 15 Sep 2025 06:46:38 GMT
+Content-Type: application/json; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+access-control-allow-credentials: true
+etag: W/"18e-GpCUsunmddRNq/LpQSfD7HGja1o"
+rndr-id: 02a6f0a4-9eb7-4a53
+vary: Origin
+vary: Accept-Encoding
+x-powered-by: Express
+x-render-origin-server: Render
+cf-cache-status: DYNAMIC
+Server: cloudflare
+CF-RAY: 97f62afd9ff6d720-BNE
+alt-svc: h3=":443"; ma=86400
+
+{"status":"completed","mode":"live","clientId":"Guy-Wilson","limit":100,"processed":0,"scored":0,"skipped":0,"skipCounts":{},"errors":0,"errorReasonCounts":{},"duration":2,"clientStatus":"success","diagnostics":{"projectId":"leads-scoring-459307","location":"us-central1","model":"gemini-2.5-flash","envDefined":{"GCP_PROJECT_ID":true,"GCP_LOCATION":true,"GEMINI_MODEL_ID":true},"errorsSample":[]}}

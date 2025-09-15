@@ -1,0 +1,18 @@
+HTTP/1.1 500 Internal Server Error
+Date: Mon, 15 Sep 2025 06:38:29 GMT
+Content-Type: application/json; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+access-control-allow-credentials: true
+etag: W/"47-id/7u9yWSEcB0K8/ohmDnXtzLcs"
+rndr-id: 9f7eb2a4-7f96-4f07
+vary: Origin
+vary: Accept-Encoding
+x-powered-by: Express
+x-render-origin-server: Render
+cf-cache-status: DYNAMIC
+Server: cloudflare
+CF-RAY: 97f61f135dd6d70c-BNE
+alt-svc: h3=":443"; ma=86400
+
+{"ok":false,"error":"You are not authorized to perform this operation"}

@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Date: Mon, 15 Sep 2025 06:12:47 GMT
+Content-Type: application/json; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+access-control-allow-credentials: true
+etag: W/"1ae-xVw2HSmNvUYPoyZdRcJgJ2vyIkg"
+rndr-id: c9417714-bfa1-467b
+vary: Origin
+vary: Accept-Encoding
+x-powered-by: Express
+x-render-origin-server: Render
+cf-cache-status: DYNAMIC
+Server: cloudflare
+CF-RAY: 97f5f8fc8dd55e92-BNE
+alt-svc: h3=":443"; ma=86400
+
+{"ok":true,"clientId":"Guy-Wilson","postsToday":20,"postsTarget":5,"batches":1,"runs":[{"runId":"OLolLzMbndGF9EQvY","gained":20,"after":20}],"debug":{"batches":[{"pickedCount":5,"targetUrls":["https://www.linkedin.com/in/chris-smith-1808668","https://www.linkedin.com/in/jarrodpepper","https://www.linkedin.com/in/ravi-thakkar-29274715","https://www.linkedin.com/in/astridsapphire","https://www.linkedin.com/in/josue-fajardo"]}]}}
