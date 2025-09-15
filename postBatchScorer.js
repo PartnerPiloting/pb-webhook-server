@@ -537,29 +537,16 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         return { status: 'skipped', skipReason: 'NO_POSTS_PARSED', leadId: leadRecord.id };
     }
     
-    // Filter for original posts
+    // Use ALL posts (including reposts) for scoring to match single-lead behavior
     const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
-    
-    if (originalPosts.length === 0) {
-        console.log(`Lead ${leadRecord.id}: No original posts found, skipping`);
-        if (!options.dryRun && options.markSkips !== false) {
-            try {
-                await clientBase(config.leadsTableName).update(leadRecord.id, {
-                    [config.fields.dateScored]: new Date().toISOString(),
-                    [config.fields.skipReason]: 'NO_ORIGINAL'
-                });
-            } catch (e) { /* field may not exist */ }
-        }
-        return { status: 'skipped', skipReason: 'NO_ORIGINAL', leadId: leadRecord.id };
-    }
+    const allPosts = parsedPostsArray;
 
     try {
     // Load scoring configuration (no global filtering - let attributes handle relevance)
     const config_data = await loadPostScoringAirtableConfig(clientBase, config, logger);
 
-    // Score all original posts using client's specific attributes
-    logger.process(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria`);
+    // Score all posts (originals + reposts) using client's specific attributes
+    logger.process(`Lead ${leadRecord.id}: Scoring all ${allPosts.length} posts (including reposts) using client's attribute criteria`);
 
     // Use prebuilt prompt if provided (per-client batch cache), else build on demand
     const systemPrompt = options.prebuiltPrompt || await buildPostScoringPrompt(clientBase, config);
@@ -578,20 +565,33 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         });
         
         // Prepare input for Gemini
-        const geminiInput = { lead_id: leadRecord.id, posts: originalPosts };
+        const geminiInput = { lead_id: leadRecord.id, posts: allPosts };
         const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
         
-        // Merge original post data into AI response (matching original)
+        // Merge original post data into AI response (now including reposts)
         const postUrlToOriginal = {};
-        for (const post of originalPosts) {
+        for (const post of allPosts) {
             const url = post.postUrl || post.post_url;
             if (url) postUrlToOriginal[url] = post;
         }
-        // Attach content and date to each AI response object
+        // Helper to normalize URLs for repost detection
+        function normalizeUrl(url) {
+            if (!url) return '';
+            return String(url).trim().replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase();
+        }
+        // Attach content/date and author metadata to each AI response object
         aiResponseArray.forEach(resp => {
             const orig = postUrlToOriginal[resp.post_url] || {};
             resp.post_content = orig.postContent || orig.post_content || '';
             resp.postDate = orig.postDate || orig.post_date || '';
+            // Propagate author metadata for UI/reporting (original author vs lead)
+            resp.authorUrl = (orig.pbMeta && orig.pbMeta.authorUrl) || orig.authorUrl || '';
+            resp.authorName = (orig.pbMeta && orig.pbMeta.authorName) || orig.author || '';
+            // Determine if the item is a repost
+            const action = (orig.pbMeta && orig.pbMeta.action) || orig.action || '';
+            const a = String(action).toLowerCase();
+            const sameAuthor = normalizeUrl(resp.authorUrl) && normalizeUrl(resp.authorUrl) === normalizeUrl(leadProfileUrl);
+            resp.isRepost = a.includes('repost') || !sameAuthor;
         });
         
         // Find the highest scoring post (matching original logic)
@@ -615,10 +615,17 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             const d = new Date(dateStr);
             return isNaN(d.getTime()) ? dateStr : d.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
         }
+        // If repost wins, include Original Author banner like single-lead path
+        const isRepostWinner = Boolean(highestScoringPost.isRepost);
+        const originalAuthorUrl = (highestScoringPost.authorUrl || '').trim();
+        const originalAuthorLine = isRepostWinner
+            ? `REPOST - ORIGINAL AUTHOR: ${originalAuthorUrl || '(unknown)'}\n`
+            : '';
         const topScoringPostText =
             `Date: ${safeFormatDate(highestScoringPost.postDate || highestScoringPost.post_date)}\n` +
             `URL: ${highestScoringPost.postUrl || highestScoringPost.post_url || ''}\n` +
             `Score: ${highestScoringPost.post_score}\n` +
+            (originalAuthorLine) +
             `Content: ${highestScoringPost.postContent || highestScoringPost.post_content || ''}\n` +
             `Rationale: ${highestScoringPost.scoring_rationale || 'N/A'}`;
 
