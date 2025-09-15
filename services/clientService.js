@@ -77,6 +77,10 @@ async function getAllClients() {
                 const comment = record.get('Comment') || '';
                 const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 5000;
                 const postScoringTokenLimit = record.get('Post Scoring Token Limit') || 3000;
+                // Post harvesting scheduler fields (optional)
+                const postsDailyTarget = record.get('Posts Daily Target') || 0;
+                const leadsBatchSizeForPostCollection = record.get('Leads Batch Size for Post Collection') || 20;
+                const maxPostBatchesPerDayGuardrail = record.get('Max Post Batches Per Day Guardrail') || 10;
                 
                 // Floor configuration fields
                 const primaryFloor = record.get('Primary Floor') || 70;
@@ -97,6 +101,10 @@ async function getAllClients() {
                     comment: comment,
                     profileScoringTokenLimit: profileScoringTokenLimit,
                     postScoringTokenLimit: postScoringTokenLimit,
+                    // Post harvesting settings
+                    postsDailyTarget,
+                    leadsBatchSizeForPostCollection,
+                    maxPostBatchesPerDayGuardrail,
                     // Floor configuration
                     primaryFloor: primaryFloor,
                     secondaryFloor: secondaryFloor,

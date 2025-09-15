@@ -30,12 +30,16 @@ function normalizeLinkedInUrl(url) {
 // MULTI-TENANT: Now accepts clientBase parameter
 async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
     const normUrl = normalizeLinkedInUrl(profileUrl);
+    console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
+    console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
     
     // Use client-specific base; filter on normalized URL to avoid full scans
     const normalizedFormula = `LOWER(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({${AIRTABLE_LINKEDIN_URL_FIELD}}, "https://", ""), "http://", ""), "www.", ""))`;
     const formula = `OR(${normalizedFormula} = "${normUrl}", ${normalizedFormula} = "${normUrl}/")`;
+    console.log(`[getAirtableRecord] Formula: ${formula}`);
     
     try {
+        console.log(`[getAirtableRecord] Executing filtered query with maxRecords=1`);
         const records = await clientBase(AIRTABLE_LEADS_TABLE_NAME)
             .select({ 
                 filterByFormula: formula, 
@@ -46,8 +50,10 @@ async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
             .firstPage();
             
         if (records && records.length > 0) {
+            console.log(`[getAirtableRecord] Found record: ${records[0].id}`);
             return records[0];
         } else {
+            console.log(`[getAirtableRecord] No record found for: ${normUrl}`);
             return null;
         }
     } catch (e) {
@@ -78,6 +84,8 @@ async function identifyClientForPosts(pbPostsArr) {
             return null;
         }
 
+        console.log(`PB Posts: Checking ${profileUrls.length} unique profile URLs across client bases`);
+
         // Get all active clients
         const activeClients = await getClientBase('master').getAllClients();
         
@@ -105,7 +113,7 @@ async function identifyClientForPosts(pbPostsArr) {
                 
                 // If we found matches for most sample URLs, this is likely the correct client
                 if (foundCount > 0) {
-                    console.log(`PB Posts: Identified client ${client.id} based on ${foundCount}/${sampleUrls.length} profile URL matches`);
+                    console.log(`PB Posts: Identified client ${client.id} (${client.name || 'Unnamed'}) based on ${foundCount}/${sampleUrls.length} profile URL matches`);
                     return { clientId: client.id, clientBase };
                 }
             } catch (clientError) {
@@ -114,6 +122,7 @@ async function identifyClientForPosts(pbPostsArr) {
             }
         }
         
+        console.warn('No client base found containing the profile URLs from PB posts');
         return null;
         
     } catch (error) {
@@ -126,6 +135,7 @@ async function identifyClientForPosts(pbPostsArr) {
 // If clientBase is not provided, will attempt to auto-detect the correct client base
 async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     if (!pbPostsArr || pbPostsArr.length === 0) {
+        console.log('PB Posts: No posts to sync');
         return { success: true, message: 'No posts to sync' };
     }
 
@@ -134,6 +144,7 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     
     // If no client base provided, try to auto-detect the correct client
     if (!airtableBase) {
+        console.log('PB Posts: No client base provided, attempting auto-detection...');
         const clientInfo = await identifyClientForPosts(pbPostsArr);
         
         if (clientInfo) {
@@ -154,53 +165,49 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
 
     // Index posts by normalized profile URL
     const postsByProfile = {};
+    console.log(`[PBPostsSync] Starting to index posts by profile URL...`);
     
     pbPostsArr.forEach((post, index) => {
+        console.log(`[PBPostsSync] Processing post ${index + 1}/${pbPostsArr.length}: ${post.postUrl || 'no URL'}`);
         if (!post.profileUrl || !post.postUrl) {
+            console.log(`[PBPostsSync] Skipping post ${index + 1} - missing profile or post URL`);
             return;
         }
         const normProfile = normalizeLinkedInUrl(post.profileUrl);
+        console.log(`[PBPostsSync] Normalized profile URL: ${normProfile}`);
         if (!postsByProfile[normProfile]) postsByProfile[normProfile] = [];
-        // Carry through pbMeta so downstream (and Airtable) can show ORIGINAL/REPOST labels
-        const meta = {
-            ...(post.pbMeta || {}),
-            authorUrl: post.authorUrl || (post.pbMeta && post.pbMeta.authorUrl) || '',
-            authorName: post.author || (post.pbMeta && post.pbMeta.authorName) || ''
-            // originLabel should come from the Apify mappers; we don't recompute here because
-            // it requires knowing the Lead profile URL which isn't available in this function
-        };
         postsByProfile[normProfile].push({
             postUrl: post.postUrl,
             postContent: post.postContent,
             postedAt: post.postedAt,
             postImages: post.postImages,
             article: post.article,
-            socialContent: post.socialContent,
-            // New: persist author metadata for repost/original detection
-            authorUrl: meta.authorUrl,
-            author: meta.authorName,
-            // Preserve original action for backward-compat and store inside pbMeta as well
-            action: post.action || (post.pbMeta && post.pbMeta.action) || '',
-            pbMeta: meta
+            socialContent: post.socialContent
         });
     });
 
-    console.log(`[PBPostsSync] Processing ${Object.keys(postsByProfile).length} unique profiles`);
+    console.log(`[PBPostsSync] Finished indexing. Found ${Object.keys(postsByProfile).length} unique profiles`);
+    console.log(`[PBPostsSync] Profile URLs: ${Object.keys(postsByProfile).join(', ')}`);
 
     let processedCount = 0;
+    console.log(`[PBPostsSync] Starting to process profiles...`);
     
     for (const [normProfileUrl, postsList] of Object.entries(postsByProfile)) {
         processedCount++;
+        console.log(`[PBPostsSync] Processing profile ${processedCount}: ${normProfileUrl} with ${postsList.length} posts`);
         
+        console.log(`[PBPostsSync] Looking up Airtable record for: ${normProfileUrl}`);
         const record = await getAirtableRecordByProfileUrl(normProfileUrl, airtableBase);
         if (!record) {
             console.warn(`No Airtable lead found for: ${normProfileUrl}`);
             continue;
         }
+        console.log(`[PBPostsSync] Found Airtable record: ${record.id}`);
 
         let existingPosts = [];
         try {
             const postsFieldValue = record.get(AIRTABLE_POSTS_FIELD) || "[]";
+            console.log(`[PBPostsSync] Existing posts field length: ${postsFieldValue.length} characters for ${normProfileUrl}`);
             
             // Check if the field is extremely large (could cause memory issues)
             if (postsFieldValue.length > 1000000) { // 1MB limit
@@ -210,9 +217,11 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 // Use dirty-json for safer parsing of existing posts (same as webhook parsing)
                 try {
                     existingPosts = JSON.parse(postsFieldValue);
+                    console.log(`[PBPostsSync] Successfully parsed ${existingPosts.length} existing posts`);
                 } catch (jsonError) {
                     console.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
                     existingPosts = dirtyJSON.parse(postsFieldValue);
+                    console.log(`dirty-json successfully parsed existing posts for ${normProfileUrl}`);
                 }
             }
         } catch (parseError) {
@@ -221,34 +230,14 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
         }
 
         let newPostsAdded = 0;
-        let postsUpdated = 0;
         postsList.forEach(p => {
-            const idx = existingPosts.findIndex(ep => ep.postUrl === p.postUrl);
-            if (idx === -1) {
+            if (!existingPosts.some(ep => ep.postUrl === p.postUrl)) {
                 existingPosts.push(p);
                 newPostsAdded++;
-            } else {
-                // Upsert: merge new fields (e.g., authorUrl) into existing entry
-                const current = existingPosts[idx] || {};
-                // Deep-merge pbMeta to avoid losing existing flags
-                const merged = {
-                    ...current,
-                    ...p,
-                    pbMeta: {
-                        ...(current.pbMeta || {}),
-                        ...(p.pbMeta || {})
-                    }
-                };
-                const before = JSON.stringify(existingPosts[idx]);
-                const after = JSON.stringify(merged);
-                if (before !== after) {
-                    existingPosts[idx] = merged;
-                    postsUpdated++;
-                }
             }
         });
 
-    if (newPostsAdded > 0 || postsUpdated > 0) {
+        if (newPostsAdded > 0) {
             try {
                 const updateData = {
                     [AIRTABLE_POSTS_FIELD]: JSON.stringify(existingPosts, null, 2),
@@ -264,10 +253,12 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 }
 
                 await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update(record.id, updateData);
-                console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded}, Updated ${postsUpdated} posts (total: ${existingPosts.length})`);
+                console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded} new posts (total: ${existingPosts.length})`);
             } catch (updateError) {
                 console.error(`Failed to update ${normProfileUrl}:`, updateError.message);
             }
+        } else {
+            console.log(`No new posts for ${normProfileUrl} (already has ${existingPosts.length} posts)`);
         }
     }
 
@@ -282,9 +273,9 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     };
 }
 
-// Export the main function as default, with helper functions as properties
-module.exports = syncPBPostsToAirtable;
-module.exports.syncPBPostsToAirtable = syncPBPostsToAirtable;
-module.exports.getAirtableRecordByProfileUrl = getAirtableRecordByProfileUrl;
-module.exports.normalizeLinkedInUrl = normalizeLinkedInUrl;
-module.exports.identifyClientForPosts = identifyClientForPosts;
+module.exports = {
+    syncPBPostsToAirtable,
+    getAirtableRecordByProfileUrl,
+    normalizeLinkedInUrl,
+    identifyClientForPosts
+};

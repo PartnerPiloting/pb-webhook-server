@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { getContextHelp, getHelpTopic } from '../services/api';
+import { renderHelpHtml } from './HelpHtmlRenderer';
 
 export default function ContextHelpPanel({ area, isOpen, onClose }) {
   const [loading, setLoading] = useState(false);
@@ -80,74 +81,8 @@ export default function ContextHelpPanel({ area, isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  // Normalize HTML exactly like Start Here page does
-  const renderNormalizedHtml = (html, keyPrefix) => {
-    if (!html) return null;
-    let safe = String(html).replace(/<script[\s\S]*?<\/script>/gi, '');
-    // Inject heading classes if missing
-    safe = safe
-      .replace(/<h1(?![^>]*class=)([^>]*)>/gi, '<h1 class="mt-6 mb-4 text-base font-bold text-gray-900"$1>')
-      .replace(/<h2(?![^>]*class=)([^>]*)>/gi, '<h2 class="mt-6 mb-3 text-[15px] font-semibold text-gray-900"$1>')
-      .replace(/<h3(?![^>]*class=)([^>]*)>/gi, '<h3 class="mt-5 mb-2 text-[14px] font-semibold text-gray-900"$1>')
-      .replace(/<h4(?![^>]*class=)([^>]*)>/gi, '<h4 class="mt-5 mb-2 text-[13px] font-semibold text-gray-800"$1>');
-  // Style anchors
-    safe = safe
-      .replace(/<a (?![^>]*class=)([^>]*?)>/gi, '<a class="text-blue-600 underline font-medium hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500" $1>')
-      .replace(/<a([^>]*class=["'])([^"']*)(["'][^>]*?)>/gi, (m, pre, classes, post) => {
-        if (/text-blue-600|underline/.test(classes)) return m;
-        return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
-      });
-    // List styling and cleanup of <p> inside <li>
-    safe = safe
-      .replace(/<ul(?![^>]*class=)([^>]*)>/gi, '<ul class="list-disc pl-5"$1>')
-      .replace(/<ol(?![^>]*class=)([^>]*)>/gi, '<ol class="list-decimal pl-5"$1>')
-      .replace(/<li(?![^>]*class=)([^>]*)>/gi, '<li class="leading-relaxed"$1>');
-    safe = safe.replace(/<li([^>]*)>\s*<p[^>]*>([\s\S]*?)<\/p>\s*<\/li>/gi, (m, attrs, inner) => {
-      const trimmed = inner.trim();
-      if (!trimmed) return '';
-      return `<li${attrs}>${trimmed}</li>`;
-    });
-    safe = safe.replace(/(<li[^>]*>)\s*<p[^>]*>/gi, '$1');
-    safe = safe.replace(/<\/p>\s*(<\/li>)/gi, '$1');
-    safe = safe.replace(/<p[^>]*>\s*(?:&nbsp;)?\s*<\/p>/gi, '');
-    // Tighten list container spacing with inline styles (as in Start Here)
-    safe = safe
-      .replace(/<ul(?![^>]*style=)([^>]*)>/gi, '<ul$1 style="margin:0;padding-left:1.25rem;list-style:disc;">')
-      .replace(/<ol(?![^>]*style=)([^>]*)>/gi, '<ol$1 style="margin:0;padding-left:1.25rem;list-style:decimal;">');
-    safe = safe.replace(/<\/li>\s+<li/gi, '</li><li');
-  // Unescape and style <kbd> tags which may arrive HTML-escaped from the backend
-  // Convert &lt;kbd&gt;...&lt;\/kbd&gt; back to real tags
-  safe = safe.replace(/&lt;kbd&gt;([\s\S]*?)&lt;\/kbd&gt;/gi, '<kbd>$1<\/kbd>');
-  // Apply a pleasant default style to kbd when no class is present
-  safe = safe.replace(/<kbd(?![^>]*class=)([^>]*)>/gi, '<kbd class="mx-0.5 rounded border border-gray-300 bg-gray-100 px-1 py-0.5 text-[0.75rem] font-medium text-gray-800 align-baseline"$1>');
-    // Strip internal reference tokens and render basic bold/italic inside provided HTML
-    safe = safe
-      .replace(/:contentReference\[[^\]]+\]\{[^}]*\}/g, '')
-      .replace(/:oaicite\[[^\]]+\]\{[^}]*\}/g, '')
-      .replace(/\\\*/g, '*')
-      .replace(/\*\*([^*<>][^*<>]*?)\*\*/g, '<strong>$1<\/strong>')
-      .replace(/(^|[\s>(])\*([^*<>][^*<>]*?)\*(?=[\s<).,!?:;]|$)/g, '$1<em>$2<\/em>')
-      .replace(/  +/g, ' ');
-    // Preserve current query params (e.g., ?testClient=abc) on internal /start-here links
-    try {
-      if (typeof window !== 'undefined') {
-        const q = window.location.search || '';
-        if (q) {
-          safe = safe.replace(/href=(['"])(\/start-here[^'"\s>]*)\1/gi, (m, quote, path) => {
-            if (path.includes('?')) return `href=${quote}${path}&${q.replace(/^\?/, '')}${quote}`;
-            return `href=${quote}${path}${q}${quote}`;
-          });
-        }
-  // Also force /start-here links to open in a new tab
-  // Add target+rel when missing
-  safe = safe.replace(/<a(?![^>]*target=)([^>]*href=(["'])(\/start-here[^"']*)\2[^>]*)>/gi, '<a$1 target="_blank" rel="noopener noreferrer">');
-  // Ensure rel exists when target already present
-  safe = safe.replace(/<a([^>]*href=(["'])(\/start-here[^"']*)\2[^>]*target=["'][^"']*["'])(?![^>]*rel=)([^>]*)>/gi, '<a$1 rel="noopener noreferrer"$3>');
-      }
-    } catch(_) {}
-
-  return <div key={keyPrefix || 'help-html'} className="prose prose-sm max-w-none text-xs leading-[1.5]" dangerouslySetInnerHTML={{ __html: safe }} />;
-  };
+  // Normalize HTML using the shared renderer
+  const renderNormalizedHtml = (html, keyPrefix) => renderHelpHtml(html, keyPrefix);
 
   // Ensure links have a protocol to avoid relative navigation
   const withHttp = (url) => {
