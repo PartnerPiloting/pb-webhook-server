@@ -15,6 +15,8 @@ const LAST_CHECK_AT_FIELD = 'Last Post Check At';
 const FOUND_LAST_RUN_FIELD = 'Posts Found (Last Run)';
 const RUN_ID_FIELD = 'Posts Harvest Run ID';
 const POSTS_ACTIONED_FIELD = 'Posts Actioned';
+const DATE_POSTS_SCORED_FIELD = 'Date Posts Scored';
+const CREATED_TIME_FIELD = 'Created Time';
 
 // Helper to format ISO now
 const nowISO = () => new Date().toISOString();
@@ -25,6 +27,7 @@ const nowISO = () => new Date().toISOString();
 // Permanently skip any with status 'No Posts'
 async function pickLeadBatch(base, batchSize) {
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  // Align with selection criteria: has URL, not actioned, not already post-scored, and eligible harvest status
   const formula = `AND({${LINKEDIN_URL_FIELD}} != '',
     OR(
       {${STATUS_FIELD}} = 'Pending',
@@ -33,14 +36,30 @@ async function pickLeadBatch(base, batchSize) {
       AND({${STATUS_FIELD}} = 'Processing', {${LAST_CHECK_AT_FIELD}} < '${thirtyMinAgo}')
     ),
     {${STATUS_FIELD}} != 'No Posts',
-    OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK())
+    OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK()),
+    {${DATE_POSTS_SCORED_FIELD}} = BLANK()
   )`;
-  const records = await base(LEADS_TABLE).select({
+  // Prefer sorting by most recently created leads first. If the Created Time field
+  // does not exist on a tenant base, gracefully fall back to no explicit sort.
+  const selectOptions = {
     filterByFormula: formula,
     maxRecords: batchSize,
-    fields: [LINKEDIN_URL_FIELD, STATUS_FIELD]
-  }).firstPage();
-  return records;
+    fields: [LINKEDIN_URL_FIELD, STATUS_FIELD, CREATED_TIME_FIELD],
+    sort: [{ field: CREATED_TIME_FIELD, direction: 'desc' }]
+  };
+  try {
+    const records = await base(LEADS_TABLE).select(selectOptions).firstPage();
+    return records;
+  } catch (e) {
+    // Fallback without sort (e.g., if Created Time field is missing)
+    const fallbackOptions = {
+      filterByFormula: formula,
+      maxRecords: batchSize,
+      fields: [LINKEDIN_URL_FIELD, STATUS_FIELD]
+    };
+    const records = await base(LEADS_TABLE).select(fallbackOptions).firstPage();
+    return records;
+  }
 }
 
 // Compute today's posts from leads table
@@ -132,7 +151,8 @@ router.post('/api/apify/process-client', async (req, res) => {
           actorId: process.env.ACTOR_ID || process.env.APIFY_ACTOR_ID || undefined,
           options: {
             maxPosts: Number(process.env.APIFY_MAX_POSTS) || 2,
-            postedLimit: process.env.APIFY_POSTED_LIMIT || 'any',
+            // Default to 'year' window to align with testing and reduce stale content
+            postedLimit: process.env.APIFY_POSTED_LIMIT || 'year',
             expectsCookies: true,
             build: process.env.APIFY_BUILD || process.env.BUILD || undefined
           }
@@ -216,7 +236,7 @@ router.post('/api/apify/canary', async (req, res) => {
         actorId: process.env.ACTOR_ID || process.env.APIFY_ACTOR_ID || undefined,
         options: {
           maxPosts: 1,
-          postedLimit: 'any',
+          postedLimit: 'year',
           expectsCookies: true,
           build: process.env.APIFY_BUILD || process.env.BUILD || undefined
         }
