@@ -679,15 +679,20 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             if (actId) activityIdToOriginal[actId] = post;
         }
         // Extract best-effort post timestamp from various shapes
-    function extractBestPostDate(primary, secondary) {
+        function extractBestPostDate(primary, secondary) {
             const candidates = [];
             function pushFrom(obj) {
                 if (!obj || typeof obj !== 'object') return;
                 const pa = obj.postedAt;
-                if (pa && typeof pa === 'object') {
-                    candidates.push(pa.timestamp, pa.date);
-                } else if (typeof pa === 'string') {
-                    candidates.push(pa);
+                if (pa !== undefined && pa !== null) {
+                    if (typeof pa === 'object') {
+                        candidates.push(pa.timestamp, pa.date, pa.ms, pa.value);
+                    } else if (typeof pa === 'number') {
+                        candidates.push(pa);
+                    } else if (typeof pa === 'string') {
+                        const num = Number(pa);
+                        candidates.push(!Number.isNaN(num) ? num : pa);
+                    }
                 }
                 candidates.push(
                     obj.postDate,
@@ -697,7 +702,8 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
                     obj.publishedAt,
                     obj.time,
                     obj.date,
-                    obj.createdAt
+                    obj.createdAt,
+                    obj.timestamp
                 );
             }
             pushFrom(primary || {});
@@ -791,8 +797,16 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         
         // Format top scoring post text (matching original)
         function safeFormatDate(dateStr) {
-            if (!dateStr) return "";
-            const d = new Date(dateStr);
+            if (dateStr === undefined || dateStr === null || dateStr === '') return "";
+            // Allow epoch ms (number) or numeric-like string
+            let d;
+            if (typeof dateStr === 'number') {
+                d = new Date(dateStr);
+            } else if (typeof dateStr === 'string' && /^\d{10,}$/.test(dateStr.trim())) {
+                d = new Date(Number(dateStr.trim()));
+            } else {
+                d = new Date(dateStr);
+            }
             return isNaN(d.getTime()) ? dateStr : d.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
         }
         // If repost wins, include Original Author banner like single-lead path
