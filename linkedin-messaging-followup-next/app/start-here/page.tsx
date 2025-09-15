@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
 import { getStartHereHelp, getHelpTopic } from '../../services/api';
+import { renderHelpHtml } from '../../components/HelpHtmlRenderer';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,8 @@ const StartHereContent: React.FC = () => {
   const [qaHistory, setQaHistory] = useState<Record<string, { role: 'user'|'assistant'; text: string; method?: string }[]>>({});
   const [qaInput, setQaInput] = useState<Record<string, string>>({});
   const [topicBlocks, setTopicBlocks] = useState<Record<string, TopicBlock[]>>({});
+  // Store full topic details (including bodyHtml) so we can render server-resolved HTML with media
+  const [topicDetails, setTopicDetails] = useState<Record<string, any>>({});
   const [topicLoadState, setTopicLoadState] = useState<Record<string, 'idle'|'loading'|'error'|'ready'>>({});
   // Safety timers to flip stuck loading -> error after a grace period
   const topicLoadingTimers = useRef<Record<string, any>>({});
@@ -126,6 +129,7 @@ const StartHereContent: React.FC = () => {
       getHelpTopic(topicId, { includeInstructions: false })
         .then(data => {
           setTopicBlocks(s=>({...s,[topicId]: data.blocks || [] }));
+          setTopicDetails(s=>({...s,[topicId]: data }));
           setTopicLoadState(s=>({...s,[topicId]:'ready'}));
         })
         .catch(err => {
@@ -282,7 +286,12 @@ const StartHereContent: React.FC = () => {
                                             const st = topicLoadState[t.id];
                                             if (st === 'loading') return <div className="text-xs text-gray-400">Loading topic content…</div>;
                                             if (st === 'error') return null; // banner above handles error + retry
+                                            const full = topicDetails[t.id];
                                             const blocks = topicBlocks[t.id];
+                                            // Prefer server-resolved HTML (includes media resolution for {{media:n}}) when available
+                                            if (full && typeof full.bodyHtml === 'string' && full.bodyHtml.trim()) {
+                                              return renderHelpHtml(full.bodyHtml, t.id + '::html');
+                                            }
                                             if (blocks && blocks.length) return renderBlocksInline(t.id, blocks);
                                             // Fallback to any body provided by list payload while blocks not present
                                             const fallback = (t as any).body || '';
@@ -462,7 +471,7 @@ function renderMarkdown(md: string, keyPrefix: string) {
 
   // 8. Add extra blank line after major headings for readability (handled via Tailwind margins visually)
 
-  return <div key={keyPrefix} className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{__html: safe}} />;
+  return renderHelpHtml(safe, keyPrefix);
 }
 
 // Minimal HTML sanitizer for curated Help content.

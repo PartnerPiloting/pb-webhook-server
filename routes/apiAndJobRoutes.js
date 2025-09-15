@@ -27,10 +27,10 @@ const {
   isMissingCritical,
 } = require("../utils/appHelpers.js");
 
-const ENQUEUE_URL = `${
-  process.env.RENDER_EXTERNAL_URL ||
-  "http://localhost:" + (process.env.PORT || 3000)
-}/enqueue`;
+const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
+  || process.env.NEXT_PUBLIC_API_BASE_URL
+  || `http://localhost:${process.env.PORT || 3001}`;
+const ENQUEUE_URL = `${__PUBLIC_BASE__}/enqueue`;
 
 // ---------------------------------------------------------------
 // Health Check
@@ -494,6 +494,10 @@ router.post("/run-post-batch-score", async (req, res) => {
     const markSkips = req.query.markSkips === undefined ? true : req.query.markSkips === 'true';
     let singleClientId = req.query.clientId || req.query.client_id || null;
     const clientNameQuery = req.query.clientName || req.query.client_name || null;
+  // Accept explicit record IDs via query (?ids=recA,recB,...) or request body (ids: string[])
+  const idsFromQuery = typeof req.query.ids === 'string' ? req.query.ids.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const idsFromBody = Array.isArray(req.body?.ids) ? req.body.ids.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim()) : [];
+  const targetIds = (idsFromQuery.length ? idsFromQuery : idsFromBody);
 
     // If clientName provided but no clientId, attempt to resolve it
     if (!singleClientId && clientNameQuery) {
@@ -519,7 +523,7 @@ router.post("/run-post-batch-score", async (req, res) => {
       console.log(`Restricting run to single clientId=${singleClientId}`);
     }
     // Start the multi-tenant post scoring process for ALL clients
-    const results = await postBatchScorer.runMultiTenantPostScoring(
+  const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
       singleClientId || null, // specific client if provided
@@ -529,7 +533,8 @@ router.post("/run-post-batch-score", async (req, res) => {
         leadsTableName: tableOverride || undefined,
         markSkips,
         verboseErrors,
-        maxVerboseErrors
+    maxVerboseErrors,
+    targetIds: targetIds && targetIds.length ? targetIds : undefined
       }
     );
     // Return results immediately
@@ -546,14 +551,14 @@ router.post("/run-post-batch-score", async (req, res) => {
         skipCounts: results.skipCounts,
   totalErrors: results.totalErrors,
   errorReasonCounts: results.errorReasonCounts,
-        duration: results.duration
+      duration: results.duration
       },
   clientResults: results.clientResults,
       mode: dryRun ? 'dryRun' : 'live',
   table: tableOverride || 'Leads',
   clientFiltered: singleClientId || null,
   clientNameQuery: clientNameQuery || null,
-  diagnostics: results.diagnostics || null
+    diagnostics: results.diagnostics || null
   , commit: commitHash
     });
   } catch (error) {
@@ -592,13 +597,16 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
   const verboseErrors = req.query.verboseErrors === 'true';
   const maxVerboseErrors = req.query.maxVerboseErrors ? parseInt(req.query.maxVerboseErrors, 10) : 10;
+  const idsFromQuery = typeof req.query.ids === 'string' ? req.query.ids.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const idsFromBody = Array.isArray(req.body?.ids) ? req.body.ids.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim()) : [];
+  const targetIds = (idsFromQuery.length ? idsFromQuery : idsFromBody);
   try {
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
       clientId,
       limit,
-  { dryRun, verboseErrors, maxVerboseErrors }
+  { dryRun, verboseErrors, maxVerboseErrors, targetIds: targetIds && targetIds.length ? targetIds : undefined }
     );
     const first = results.clientResults[0] || {};
     res.json({
@@ -2828,7 +2836,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
       if (testLeads.length > 0) {
         const testLeadId = testLeads[0].id;
-        const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+  const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
         
         // Make actual API call to scoring endpoint
         const response = await fetch(`${baseUrl}/score-lead?recordId=${testLeadId}`, {
@@ -2871,7 +2879,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
     // Test 2.4b: Attributes API Endpoint Test
     try {
-      const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+  const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
       
       const response = await fetch(`${baseUrl}/api/attributes`, {
         method: 'GET',
@@ -2905,7 +2913,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
     // Test 2.4c: Token Usage API Endpoint Test
     try {
-      const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+  const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
       
       const response = await fetch(`${baseUrl}/api/token-usage`, {
         method: 'GET',
@@ -3156,7 +3164,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
     console.log("🔍 Running comprehensive audit to detect issues...");
     
     // First, run comprehensive audit to detect issues
-    const baseUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+  const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
     const auditResponse = await fetch(`${baseUrl}/api/audit/comprehensive`, {
       method: 'GET',
       headers: {

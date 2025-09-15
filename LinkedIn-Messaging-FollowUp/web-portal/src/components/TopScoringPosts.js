@@ -6,6 +6,7 @@ const TopScoringPosts = () => {
   const [selectedLead, setSelectedLead] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [minPerc, setMinPerc] = useState('');
 
   // Field names from master field list - single source of truth
   const FIELD_NAMES = {
@@ -13,7 +14,7 @@ const TopScoringPosts = () => {
     LAST_NAME: 'Last Name',
     LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL',
     AI_SCORE: 'AI Score',
-    POSTS_RELEVANCE_PERCENTAGE: 'Posts Relevance Percentage',
+  POSTS_RELEVANCE_PERCENTAGE: 'Posts Relevance Percentage', // legacy; prefer computed
     TOP_SCORING_POST: 'Top Scoring Post',
     POSTS_ACTIONED: 'Posts Actioned',
     POSTS_RELEVANCE_SCORE: 'Posts Relevance Score',
@@ -36,19 +37,29 @@ const TopScoringPosts = () => {
       
       // API call to get leads with Posts Actioned empty and Posts Relevance Status = "Relevant"
       // Sorted by First Name, Last Name
-      const response = await fetch(`https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts?client=${client}`);
+      const eff = Number.isFinite(Number(minPerc)) && minPerc !== '' ? Number(minPerc) : undefined;
+      const url = new URL('https://pb-webhook-server.onrender.com/api/linkedin/leads/top-scoring-posts');
+      url.searchParams.set('client', client);
+      if (eff !== undefined) url.searchParams.set('minPerc', String(eff));
+      const response = await fetch(url.toString());
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
-      
+      const effPerc = eff;
       // Filter client-side as backup for API filtering
-      const filteredLeads = (data || []).filter(lead => 
-        !lead[FIELD_NAMES.POSTS_ACTIONED] && 
-        lead[FIELD_NAMES.POSTS_RELEVANCE_STATUS] === 'Relevant'
-      );
+      const filteredLeads = (data || []).filter(lead => {
+        // Rely on server filter, but still ensure actioned is empty
+        const okActioned = !lead[FIELD_NAMES.POSTS_ACTIONED];
+        if (!okActioned) return false;
+        if (effPerc === undefined) return true;
+        const perc = Number(
+          lead.computedPostsRelevancePercentage ?? lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] ?? 0
+        );
+        return Number.isFinite(perc) ? perc >= effPerc : true;
+      });
       
       // Sort by First Name, Last Name as per spec
       filteredLeads.sort((a, b) => {
@@ -160,6 +171,24 @@ const TopScoringPosts = () => {
           <p className="text-sm text-gray-600 mt-1">
             Leads with relevant posts ready for action
           </p>
+          <div className="mt-2 flex items-center space-x-2">
+            <label className="text-sm text-gray-700">Min %</label>
+            <input
+              type="number"
+              value={minPerc}
+              onChange={(e) => setMinPerc(e.target.value)}
+              onBlur={() => loadTopScoringPosts()}
+              placeholder="e.g. 70"
+              className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+              min={0}
+              max={100}
+              step={1}
+            />
+            <button
+              onClick={loadTopScoringPosts}
+              className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+            >Apply</button>
+          </div>
         </div>
         
         <div className="overflow-y-auto" style={{ height: 'calc(100vh - 200px)' }}>
@@ -181,7 +210,7 @@ const TopScoringPosts = () => {
                 </div>
                 <div className="text-sm text-gray-600 mt-1">
                   AI Score: {lead[FIELD_NAMES.AI_SCORE]}% • 
-                  Posts Relevance: {Math.round(lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0)}%
+                  Posts Relevance: {Math.round((lead.computedPostsRelevancePercentage ?? lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE]) || 0)}%
                 </div>
                 {lead[FIELD_NAMES.TOP_SCORING_POST] && (
                   <div className="text-xs text-gray-500 mt-1 truncate">

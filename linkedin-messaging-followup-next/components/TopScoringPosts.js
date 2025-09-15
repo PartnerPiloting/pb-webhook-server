@@ -9,6 +9,7 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 // Component that uses useSearchParams wrapped in Suspense
 const TopScoringPostsWithParams = () => {
   const [leads, setLeads] = useState([]);
+  const [minPerc, setMinPerc] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -42,13 +43,19 @@ const TopScoringPostsWithParams = () => {
     
     try {
       console.log('🎯 Loading top scoring posts');
-      const results = await getTopScoringPosts();
+      const eff = Number.isFinite(Number(minPerc)) && minPerc !== '' ? Number(minPerc) : undefined;
+      const results = await getTopScoringPosts(eff !== undefined ? { minPerc: eff } : {});
       
       // Filter client-side as backup for API filtering
-      const filteredLeads = (results || []).filter(lead => 
-        !lead[FIELD_NAMES.POSTS_ACTIONED] && 
-        lead[FIELD_NAMES.POSTS_RELEVANCE_STATUS] === 'Relevant'
-      );
+      const filteredLeads = (results || []).filter(lead => {
+        const okActioned = !lead[FIELD_NAMES.POSTS_ACTIONED];
+        if (!okActioned) return false;
+        if (eff === undefined) return true;
+        const perc = Number(
+          lead.computedPostsRelevancePercentage ?? lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] ?? lead.postsRelevancePercentage ?? 0
+        );
+        return Number.isFinite(perc) ? perc >= eff : true;
+      });
       
       // Sort by First Name, Last Name as per spec
       filteredLeads.sort((a, b) => {
@@ -146,6 +153,7 @@ const TopScoringPostsWithParams = () => {
   // Load data on component mount
   useEffect(() => {
     loadTopScoringPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
   if (loading) {
@@ -188,7 +196,27 @@ const TopScoringPostsWithParams = () => {
                 <div className="text-sm text-blue-600 font-medium">{leads.length}</div>
               </div>
             </div>
-            <HelpButton area="top_scoring_posts" title="Help: Top Scoring Posts" />
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-700">Min %</label>
+                <input
+                  type="number"
+                  value={minPerc}
+                  onChange={(e) => setMinPerc(e.target.value)}
+                  onBlur={() => loadTopScoringPosts()}
+                  placeholder="e.g. 70"
+                  className="w-20 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+              </div>
+              <button
+                onClick={loadTopScoringPosts}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              >Apply</button>
+              <HelpButton area="top_scoring_posts" title="Help: Top Scoring Posts" />
+            </div>
           </div>
         </div>
 
@@ -220,7 +248,7 @@ const TopScoringPostsWithParams = () => {
                       In Process • Score: {lead[FIELD_NAMES.AI_SCORE] || 0}
                     </div>
                     <div className="text-sm text-green-600 mt-1">
-                      Posts Relevance: {Math.round(lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0)}%
+                      Posts Relevance: {Math.round((lead.computedPostsRelevancePercentage ?? lead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] ?? 0))}%
                     </div>
                   </div>
                 </div>

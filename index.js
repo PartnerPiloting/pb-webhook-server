@@ -219,6 +219,25 @@ app.post('/admin/repair-posts-content', async (req, res) => {
 });
 
 /**
+ * Admin endpoint: generate Airtable Scripting code to add missing fields for a table
+ * POST /admin/airtable-field-script { table: "Leads" }
+ */
+app.post('/admin/airtable-field-script', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    try {
+        const table = (req.body?.table || 'Leads').toString();
+        const { buildScriptFor } = require('./utils/airtableFieldScriptGen');
+        const script = buildScriptFor(table);
+        res.json({ ok: true, table, script });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+/**
  * Admin endpoint to trigger the scanBadJsonRecords utility.
  * POST /admin/scan-bad-json
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
@@ -306,6 +325,15 @@ if (mountQueue && typeof mountQueue === 'function') {
 }
 
 try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
+
+// Mount Apify webhook routes (for LinkedIn posts ingestion)
+try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); console.log("index.js: Apify webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
+// Mount Apify control routes (start runs programmatically)
+try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); console.log("index.js: Apify control routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
+// Mount Apify runs management routes (multi-tenant run tracking)
+try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); console.log("index.js: Apify runs management routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
+// Mount Apify process routes (batch client processing)
+try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); console.log("index.js: Apify process routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
 
 // Use authenticated LinkedIn routes instead of old non-authenticated ones
 try { 
@@ -693,6 +721,8 @@ function sanitizeHelpHtml(html) {
             });
             return '<'+ (m[1]=='/'?'/' : '') + tag + safeAttrs + '>';
         });
+        // Collapse excessive blank lines to avoid large vertical gaps in rendered help
+        out = out.replace(/\n{3,}/g, '\n\n');
         return out;
     } catch { return html; }
 }
@@ -703,9 +733,17 @@ app.get('/api/help/start-here', async (req, res) => {
         const now = Date.now();
         if (!refresh && __helpStartHereCache.data && (now - __helpStartHereCache.fetchedAt) < HELP_CACHE_TTL_MS) {
             const cachedCopy = JSON.parse(JSON.stringify(__helpStartHereCache.data));
-            sanitizeHelpPayloadMonologues(cachedCopy);
-            cachedCopy.meta = { ...cachedCopy.meta, cached: true };
-            return res.json(cachedCopy);
+            // If the cached payload still has unresolved {{media:ID}} tokens (from an earlier version
+            // before placeholder resolution executed), bypass the cache and rebuild so users do not
+            // see raw tokens in the UI.
+            const hasUnresolvedMedia = JSON.stringify(cachedCopy).includes('{{media:');
+            if (!hasUnresolvedMedia) {
+                sanitizeHelpPayloadMonologues(cachedCopy);
+                cachedCopy.meta = { ...cachedCopy.meta, cached: true };
+                return res.json(cachedCopy);
+            } else {
+                console.warn('[HelpStartHere] Bypassing stale cached help (unresolved media tokens detected)');
+            }
         }
 
     const targetBaseId = process.env.AIRTABLE_HELP_BASE_ID || process.env.MASTER_CLIENTS_BASE_ID || process.env.AIRTABLE_BASE_ID;
@@ -999,6 +1037,28 @@ app.get('/api/help/start-here', async (req, res) => {
                             }
                         }
                     }
+                    // 4. Safety pass: if any residual {{media:ID}} tokens remain (e.g., inside unexpected attribute context
+                    // or nested in author markup we did not pattern-match), attempt a generic replacement now.
+                    const GENERIC_TOKEN = /\{\{\s*media\s*:\s*(\d+)\s*}}/gi;
+                    for (const cat of categories) {
+                        for (const sub of cat.subCategories) {
+                            for (const topic of sub.topics) {
+                                if (typeof topic.bodyHtml !== 'string') continue;
+                                if (!/\{\{\s*media\s*:\s*\d+\s*}}/i.test(topic.bodyHtml)) continue;
+                                topic.bodyHtml = topic.bodyHtml.replace(GENERIC_TOKEN, (match, id) => {
+                                    mediaPlaceholderTotal++;
+                                    const rec = mediaMap.get(String(id));
+                                    if (!rec) { mediaMissing++; return `<span class="media-missing" data-media-id="${id}">[media ${id} missing]</span>`; }
+                                    const f = rec.fields || {};
+                                    const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
+                                    const url = f.url || (attachment && attachment.url) || '';
+                                    const caption = f.caption || f.description || '';
+                                    mediaResolved++;
+                                    return `<figure class="help-media" data-media-id="${id}"><img src="${url}" alt="${(caption||('Media '+id)).replace(/"/g,'&quot;')}" />${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`;
+                                });
+                            }
+                        }
+                    }
                 } catch (mediaErr) {
                     console.warn('[HelpStartHere] Media placeholder resolution failed', mediaErr.message);
                 }
@@ -1048,6 +1108,15 @@ app.get('/api/help/start-here', async (req, res) => {
                 helpTable: helpTableName
             }
         };
+        // Flag presence of any unresolved tokens (should be zero unless a new pattern introduced)
+        if (includeBody) {
+            try {
+                const unresolved = JSON.stringify(payload.categories).match(/\{\{\s*media\s*:\s*\d+\s*}}/g);
+                if (unresolved && unresolved.length) {
+                    payload.meta.unresolvedMediaTokens = unresolved.length;
+                }
+            } catch {}
+        }
         if (includeBody) {
             payload.meta.mediaPlaceholders = mediaPlaceholderTotal;
             payload.meta.mediaResolved = mediaResolved;

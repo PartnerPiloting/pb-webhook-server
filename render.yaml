@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: pb-webhook-server-staging
+    env: node
+    plan: starter
+    region: oregon
+    autoDeploy: true
+    branch: feature/apify-posts-ingestion
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /basic-test
+    # If this repo is connected in Render UI, repo/owner are inferred. You can also set explicitly:
+    # repo: https://github.com/PartnerPiloting/pb-webhook-server
+    # rootDir: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENVIRONMENT
+        value: staging
+      - key: APIFY_WEBHOOK_TOKEN
+        sync: false # set in Render dashboard
+      - key: APIFY_API_TOKEN
+        sync: false # set in Render dashboard
+      - key: AIRTABLE_API_KEY
+        sync: false # set in Render dashboard
+      - key: MASTER_CLIENTS_BASE_ID
+        sync: false # set in Render dashboard
+      - key: AIRTABLE_BASE_ID
+        sync: false # optional; used for legacy paths
+      - key: PB_WEBHOOK_SECRET
+        sync: false # for admin/repair endpoints if needed
+      - key: GPT_CHAT_URL
+        value: "https://chat.openai.com/g/g-680f15b60d148191920730b28b5509ae-li-messaging-from-at?workspace=personal"
+      # Gemini/OpenAI keys are optional for webhook ingestion; if you also run scoring on staging, add them too:
+      # - key: OPENAI_API_KEY
+      #   sync: false
+      # - key: GCP_PROJECT_ID
+      #   sync: false
+      # - key: GCP_LOCATION
+      #   sync: false
+      # - key: GEMINI_MODEL_ID
+      #   value: gemini-2.5-flash
+      # - key: GEMINI_EDITING_MODEL_ID
+      #   value: gemini-2.5-pro
+      # - key: GOOGLE_APPLICATION_CREDENTIALS
+      #   sync: false # if using a mounted file/secret

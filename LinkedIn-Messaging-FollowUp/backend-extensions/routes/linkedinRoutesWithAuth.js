@@ -6,6 +6,8 @@ const { authenticateUserWithTestMode } = require('../../../middleware/authMiddle
 
 // Import Airtable base function that can switch between client bases
 const { getClientBase } = require('../../../services/clientService');
+// Load scoring attributes to compute dynamic max score
+const { loadPostScoringAirtableConfig } = require('../../../postAttributeLoader');
 
 /**
  * Apply authentication to all routes
@@ -49,14 +51,56 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       STATUS: 'Status'
     };
 
-    // Build filter to find leads with empty Posts Actioned and Posts Relevance Status = "Relevant"
-    const filterFormula = `AND(
-      {${FIELD_NAMES.POSTS_RELEVANCE_STATUS}} = "Relevant",
-      OR(
-        {${FIELD_NAMES.POSTS_ACTIONED}} = "",
-        {${FIELD_NAMES.POSTS_ACTIONED}} = BLANK()
-      )
-    )`;
+    // Optional threshold filters
+    const { minPerc, minScore, threshold } = req.query || {};
+    let minPercNum = Number.parseFloat(minPerc ?? threshold);
+    let minScoreNum = Number.parseFloat(minScore);
+
+    // Compute dynamic maxPossibleScore from active Post Scoring Attributes
+    // and derive minScore from percentage when provided or defaulted from Credentials
+    let maxPossibleScore = 0;
+    try {
+      const config = { attributesTableName: 'Post Scoring Attributes', promptComponentsTableName: 'Post Scoring Instructions' };
+      const loaded = await loadPostScoringAirtableConfig(airtableBase, config);
+      const attrs = loaded?.attributesById || {};
+      for (const a of Object.values(attrs)) {
+        const active = a?.active !== false; // default to true if undefined
+        const val = Number(a?.maxScorePointValue);
+        if (active && Number.isFinite(val)) maxPossibleScore += val;
+      }
+    } catch (e) {
+      console.warn('LinkedIn Routes: Failed to load Post Scoring Attributes for max score:', e?.message || e);
+    }
+    if (!Number.isFinite(maxPossibleScore) || maxPossibleScore <= 0) {
+      // Fallback to a safe default to avoid hiding all results
+      maxPossibleScore = 100;
+    }
+
+    // If no explicit minScore provided, compute it from minPerc or Credentials default
+    if (!Number.isFinite(minScoreNum)) {
+      // Determine effective percent
+      if (!Number.isFinite(minPercNum)) {
+        try {
+          const creds = await airtableBase('Credentials').select({ maxRecords: 1 }).firstPage();
+          const row = creds && creds[0];
+          const raw = row ? row.get('Posts Threshold Percentage') : undefined;
+          minPercNum = Number.parseFloat(raw);
+        } catch (e) {
+          console.warn('LinkedIn Routes: Could not read Posts Threshold Percentage from Credentials:', e?.message || e);
+        }
+      }
+      if (!Number.isFinite(minPercNum)) minPercNum = 0;
+      minScoreNum = Math.ceil((minPercNum / 100) * maxPossibleScore);
+    }
+
+    // Build filter to find leads with empty Posts Actioned and enforce minimum Posts Relevance Score
+    const filterParts = [
+      `OR({${FIELD_NAMES.POSTS_ACTIONED}} = "", {${FIELD_NAMES.POSTS_ACTIONED}} = BLANK())`,
+      `{Posts Relevance Score} >= ${Number.isFinite(minScoreNum) ? minScoreNum : 0}`
+    ];
+    // Optionally ensure a Top Scoring Post exists
+    filterParts.push(`NOT({Top Scoring Post} = BLANK())`);
+    const filterFormula = `AND(${filterParts.join(', ')})`;
 
     console.log('LinkedIn Routes: Using filter:', filterFormula);
 
@@ -71,7 +115,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
 
     console.log(`LinkedIn Routes: Found ${records.length} top scoring posts leads`);
 
-    // Transform records to expected format
+    // Transform records to expected format and include computed helpers
     const transformedLeads = records.map(record => ({
       id: record.id,
       recordId: record.id,
@@ -83,8 +127,16 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       status: record.fields[FIELD_NAMES.STATUS],
       priority: record.fields[FIELD_NAMES.PRIORITY],
       topScoringPost: record.fields['Top Scoring Post'],
+      postsRelevanceScore: record.fields['Posts Relevance Score'],
+      // Back-compat: retain fields if they exist in Airtable
       postsRelevanceStatus: record.fields[FIELD_NAMES.POSTS_RELEVANCE_STATUS],
       postsActioned: record.fields[FIELD_NAMES.POSTS_ACTIONED],
+      // New helper fields
+      postsMaxPossibleScore: maxPossibleScore,
+      computedPostsRelevancePercentage: (() => {
+        const s = Number(record.fields['Posts Relevance Score']);
+        return Number.isFinite(s) && maxPossibleScore > 0 ? Math.round((s / maxPossibleScore) * 100) : null;
+      })(),
       // Include all original fields for compatibility
       ...record.fields
     }));
@@ -816,6 +868,10 @@ router.patch('/leads/:id', async (req, res) => {
     if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
       return res.status(400).json({ error: 'Body must be an object of fields to update' });
     }
+    // Defensive log: track any attempt to toggle Posts Actioned via API
+    if (Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
+      console.warn(`[LinkedIn Routes] PATCH: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
+    }
     console.log('LinkedIn Routes: Generic PATCH applying fields:', updates);
     const updatedRecords = await airtableBase('Leads').update([{ id: leadId, fields: updates }]);
     if (!updatedRecords || !updatedRecords.length) return res.status(404).json({ error: 'Lead not found' });
@@ -840,6 +896,11 @@ router.put('/leads/:id', async (req, res) => {
     const updates = req.body;
     
     console.log('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
+
+    // Defensive log: track any attempt to toggle Posts Actioned via API
+    if (updates && Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
+      console.warn(`[LinkedIn Routes] PUT: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
+    }
 
     // Update the lead in Airtable
     const updatedRecords = await airtableBase('Leads').update([

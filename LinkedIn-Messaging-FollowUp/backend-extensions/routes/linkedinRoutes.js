@@ -3,6 +3,8 @@ const router = express.Router();
 
 // Import Airtable base directly instead of validateClient
 const airtableBase = require('../../../config/airtableClient');
+// Load scoring attributes to compute dynamic max score
+const { loadPostScoringAirtableConfig } = require('../../../postAttributeLoader');
 
 /**
  * GET /api/linkedin/leads/top-scoring-posts?client=clientId
@@ -13,7 +15,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
   console.log('LinkedIn Routes: GET /leads/top-scoring-posts called');
   
   try {
-    const clientId = req.query.client;
+  const clientId = req.query.client;
     console.log('LinkedIn Routes: Client ID:', clientId);
     
     if (!clientId) {
@@ -35,14 +37,58 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       POSTS_RELEVANCE_STATUS: 'Posts Relevance Status'
     };
 
+    // Optional threshold filters
+    const { minPerc, minScore, threshold } = req.query || {};
+    let minPercNum = Number.parseFloat(minPerc ?? threshold);
+    let minScoreNum = Number.parseFloat(minScore);
+
+    // Compute dynamic maxPossibleScore
+    let maxPossibleScore = 0;
+    try {
+      const config = { attributesTableName: 'Post Scoring Attributes', promptComponentsTableName: 'Post Scoring Instructions' };
+      const loaded = await loadPostScoringAirtableConfig(airtableBase, config);
+      const attrs = loaded?.attributesById || {};
+      for (const a of Object.values(attrs)) {
+        const active = a?.active !== false;
+        const val = Number(a?.maxScorePointValue);
+        if (active && Number.isFinite(val)) maxPossibleScore += val;
+      }
+    } catch (e) {
+      console.warn('LinkedIn Routes: Failed to load Post Scoring Attributes for max score:', e?.message || e);
+    }
+    if (!Number.isFinite(maxPossibleScore) || maxPossibleScore <= 0) {
+      maxPossibleScore = 100;
+    }
+
+    // If no explicit minScore provided, compute from percent or Credentials
+    if (!Number.isFinite(minScoreNum)) {
+      if (!Number.isFinite(minPercNum)) {
+        try {
+          const creds = await airtableBase('Credentials').select({ maxRecords: 1 }).firstPage();
+          const row = creds && creds[0];
+          const raw = row ? row.get('Posts Threshold Percentage') : undefined;
+          minPercNum = Number.parseFloat(raw);
+        } catch (e) {
+          console.warn('LinkedIn Routes: Could not read Posts Threshold Percentage from Credentials:', e?.message || e);
+        }
+      }
+      if (!Number.isFinite(minPercNum)) minPercNum = 0;
+      minScoreNum = Math.ceil((minPercNum / 100) * maxPossibleScore);
+    }
+
     // Query Airtable for leads with:
     // - Posts Actioned is empty/null 
-    // - Posts Relevance Status = "Relevant"
+    // - Posts Relevance Score >= cutoff
+    // - Top Scoring Post exists
+    const filterParts = [
+      `OR({Posts Actioned} = '', {Posts Actioned} = BLANK())`,
+      `{Posts Relevance Score} >= ${Number.isFinite(minScoreNum) ? minScoreNum : 0}`,
+      `NOT({Top Scoring Post} = BLANK())`
+    ];
+    const filterByFormula = `AND(${filterParts.join(', ')})`;
+
     const leads = await airtableBase('Leads').select({
-      filterByFormula: `AND(
-        OR({Posts Actioned} = '', {Posts Actioned} = BLANK()),
-        {Posts Relevance Status} = 'Relevant'
-      )`,
+      filterByFormula,
       sort: [
         { field: 'First Name', direction: 'asc' },
         { field: 'Last Name', direction: 'asc' }
@@ -62,10 +108,14 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       viewInSalesNavigator: record.fields['View In Sales Navigator'],
       aiScore: record.fields['AI Score'],
       postsRelevanceScore: record.fields['Posts Relevance Score'],
-      postsRelevancePercentage: record.fields['Posts Relevance Percentage'],
+      postsMaxPossibleScore: maxPossibleScore,
+      computedPostsRelevancePercentage: (() => {
+        const s = Number(record.fields['Posts Relevance Score']);
+        return Number.isFinite(s) && maxPossibleScore > 0 ? Math.round((s / maxPossibleScore) * 100) : null;
+      })(),
       topScoringPost: record.fields['Top Scoring Post'],
       postsActioned: record.fields['Posts Actioned'],
-      postsRelevanceStatus: record.fields['Posts Relevance Status'],
+      postsRelevanceStatus: record.fields['Posts Relevance Status'], // back-compat
       // Include all original fields for compatibility
       ...record.fields
     }));

@@ -231,7 +231,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         config.fields.skipReason = 'Posts Skip Reason';
         
         // Get leads with posts to be scored
-        const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit);
+    const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, options);
         logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
 
         // Build the post scoring prompt ONCE per client batch (cache for this run)
@@ -348,8 +348,35 @@ async function loadClientPostScoringConfig(clientBase) {
     };
 }
 
-async function getLeadsForPostScoring(clientBase, config, limit) {
-    const selectOptions = {
+async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
+    // If explicit targetIds provided, use them directly (bypass view path)
+    if (Array.isArray(options.targetIds) && options.targetIds.length > 0) {
+        const ids = options.targetIds.slice(0, Math.max(1, limit || options.targetIds.length));
+        const found = [];
+        for (const id of ids) {
+            try {
+                const recs = await clientBase(config.leadsTableName).select({
+                    filterByFormula: `RECORD_ID() = '${id}'`,
+                    fields: [
+                        config.fields.postsContent,
+                        config.fields.linkedinUrl,
+                        config.fields.dateScored,
+                        config.fields.relevanceScore,
+                        config.fields.aiEvaluation,
+                        config.fields.topScoringPost
+                    ],
+                    maxRecords: 1
+                }).firstPage();
+                if (recs && recs[0]) found.push(recs[0]);
+            } catch (e) {
+                console.warn(`[postBatchScorer] Failed to fetch record by id ${id}: ${e.message}`);
+            }
+        }
+        return found;
+    }
+
+    // Primary: try using the named view (many bases have it), plus a safety filter to ensure unscored
+    const primarySelect = {
         fields: [
             config.fields.postsContent,
             config.fields.linkedinUrl,
@@ -359,16 +386,68 @@ async function getLeadsForPostScoring(clientBase, config, limit) {
             config.fields.topScoringPost
         ],
         view: 'Leads with Posts not yet scored',
-        filterByFormula: `AND({${config.fields.dateScored}} = BLANK())`
+    filterByFormula: options.forceRescore ? undefined : `AND({${config.fields.dateScored}} = BLANK())`
     };
-    
-    let records = await clientBase(config.leadsTableName).select(selectOptions).all();
-    
-    if (typeof limit === 'number' && limit > 0) {
-        records = records.slice(0, limit);
-        console.log(`Limited to first ${limit} leads`);
+
+    let records = [];
+    let usedFallback = false;
+    try {
+        records = await clientBase(config.leadsTableName).select(primarySelect).all();
+    } catch (e) {
+        // If the view doesn't exist on this tenant, fall back to a formula-only query below
+        console.warn(`[postBatchScorer] Primary select using view failed: ${e.message}. Falling back to formula-only selection.`);
     }
-    
+
+    // Fallback: if no records found (or view missing), query by formula only:
+    // - Must have Posts Content not blank
+    // - Date Posts Scored blank
+    // - Posts Actioned blank/false when field exists
+    if (!Array.isArray(records) || records.length === 0) {
+        usedFallback = true;
+        const postsActionedField = 'Posts Actioned';
+        // Attempt 1: include Posts Actioned guard
+        const actionedGuard = `OR({${postsActionedField}} = 0, {${postsActionedField}} = '', {${postsActionedField}} = BLANK())`;
+        const baseFields = [
+            config.fields.postsContent,
+            config.fields.linkedinUrl,
+            config.fields.dateScored,
+            config.fields.relevanceScore,
+            config.fields.aiEvaluation,
+            config.fields.topScoringPost
+        ];
+        const makeFilter = (withActioned) => {
+            const dateClause = options.forceRescore ? 'TRUE()' : `{${config.fields.dateScored}} = BLANK()`;
+            return withActioned
+                ? `AND({${config.fields.postsContent}} != '', ${dateClause}, ${actionedGuard})`
+                : `AND({${config.fields.postsContent}} != '', ${dateClause})`;
+        };
+
+        try {
+            records = await clientBase(config.leadsTableName).select({
+                fields: baseFields,
+                filterByFormula: makeFilter(true)
+            }).all();
+        } catch (e2) {
+            // If "Posts Actioned" is missing on this base, retry without referencing it
+            const msg = e2?.message || String(e2);
+            console.warn(`[postBatchScorer] Fallback select with actioned guard failed: ${msg}. Retrying without Posts Actioned condition.`);
+            try {
+                records = await clientBase(config.leadsTableName).select({
+                    fields: baseFields,
+                    filterByFormula: makeFilter(false)
+                }).all();
+            } catch (e3) {
+                console.error(`[postBatchScorer] Fallback select without actioned guard also failed: ${e3.message}`);
+                records = [];
+            }
+        }
+    }
+
+    if (typeof limit === 'number' && limit > 0 && Array.isArray(records)) {
+        records = records.slice(0, limit);
+        console.log(`[postBatchScorer] Limiting batch to first ${limit} leads (${usedFallback ? 'fallback' : 'view'} mode)`);
+    }
+
     return records;
 }
 
@@ -537,29 +616,16 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         return { status: 'skipped', skipReason: 'NO_POSTS_PARSED', leadId: leadRecord.id };
     }
     
-    // Filter for original posts
+    // Use ALL posts (including reposts) for scoring to match single-lead behavior
     const leadProfileUrl = leadRecord.fields[config.fields.linkedinUrl];
-    const originalPosts = filterOriginalPosts(parsedPostsArray, leadProfileUrl);
-    
-    if (originalPosts.length === 0) {
-        console.log(`Lead ${leadRecord.id}: No original posts found, skipping`);
-        if (!options.dryRun && options.markSkips !== false) {
-            try {
-                await clientBase(config.leadsTableName).update(leadRecord.id, {
-                    [config.fields.dateScored]: new Date().toISOString(),
-                    [config.fields.skipReason]: 'NO_ORIGINAL'
-                });
-            } catch (e) { /* field may not exist */ }
-        }
-        return { status: 'skipped', skipReason: 'NO_ORIGINAL', leadId: leadRecord.id };
-    }
+    const allPosts = parsedPostsArray;
 
     try {
     // Load scoring configuration (no global filtering - let attributes handle relevance)
     const config_data = await loadPostScoringAirtableConfig(clientBase, config, logger);
 
-    // Score all original posts using client's specific attributes
-    logger.process(`Lead ${leadRecord.id}: Scoring all ${originalPosts.length} original posts using client's attribute criteria`);
+    // Score all posts (originals + reposts) using client's specific attributes
+    logger.process(`Lead ${leadRecord.id}: Scoring all ${allPosts.length} posts (including reposts) using client's attribute criteria`);
 
     // Use prebuilt prompt if provided (per-client batch cache), else build on demand
     const systemPrompt = options.prebuiltPrompt || await buildPostScoringPrompt(clientBase, config);
@@ -578,20 +644,140 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         });
         
         // Prepare input for Gemini
-        const geminiInput = { lead_id: leadRecord.id, posts: originalPosts };
+        const geminiInput = { lead_id: leadRecord.id, posts: allPosts };
         const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
         
-        // Merge original post data into AI response (matching original)
-        const postUrlToOriginal = {};
-        for (const post of originalPosts) {
-            const url = post.postUrl || post.post_url;
-            if (url) postUrlToOriginal[url] = post;
+        // Merge original post data into AI response (now including reposts)
+        function normalizePostUrl(u) {
+            if (!u) return '';
+            let s = String(u).trim().toLowerCase();
+            s = s.replace(/^https?:\/\//, '').replace(/^www\./, '');
+            s = s.split('?')[0].split('#')[0];
+            // Remove trailing slash
+            s = s.replace(/\/$/, '');
+            // Remove trailing underscores sometimes appended to LinkedIn share URLs
+            s = s.replace(/_+$/, '');
+            return s;
         }
-        // Attach content and date to each AI response object
+        const postUrlToOriginal = {};
+        const activityIdToOriginal = {};
+        function extractLinkedInActivityId(u) {
+            if (!u) return null;
+            const s = String(u).toLowerCase();
+            // Common patterns: activity-<digits>, urn:li:activity:<digits>, or -<digits>- in posts slug
+            let m = s.match(/activity[-/:](\d{8,})/);
+            if (m) return m[1];
+            m = s.match(/-(\d{8,})-/);
+            if (m) return m[1];
+            return null;
+        }
+        for (const post of allPosts) {
+            const url = post.postUrl || post.post_url;
+            const key = normalizePostUrl(url);
+            if (key) postUrlToOriginal[key] = post;
+            const actId = extractLinkedInActivityId(url);
+            if (actId) activityIdToOriginal[actId] = post;
+        }
+        // Extract best-effort post timestamp from various shapes
+        function extractBestPostDate(primary, secondary) {
+            const candidates = [];
+            function pushFrom(obj) {
+                if (!obj || typeof obj !== 'object') return;
+                const pa = obj.postedAt;
+                if (pa !== undefined && pa !== null) {
+                    if (typeof pa === 'object') {
+                        candidates.push(pa.timestamp, pa.date, pa.ms, pa.value);
+                    } else if (typeof pa === 'number') {
+                        candidates.push(pa);
+                    } else if (typeof pa === 'string') {
+                        const num = Number(pa);
+                        candidates.push(!Number.isNaN(num) ? num : pa);
+                    }
+                }
+                candidates.push(
+                    obj.postDate,
+                    obj.post_date,
+            obj.postTimestamp,
+            obj.post_time,
+                    obj.publishedAt,
+                    obj.time,
+                    obj.date,
+                    obj.createdAt,
+                    obj.timestamp
+                );
+            }
+            pushFrom(primary || {});
+            pushFrom(secondary || {});
+            const found = candidates.find(v => v && String(v).trim());
+            return found || '';
+        }
+        // Helpers for robust author vs. lead matching
+        function extractLinkedInPublicId(url) {
+            try {
+                const m = String(url || '').match(/linkedin\.com\/in\/([^\/?#]+)/i);
+                return m ? m[1].toLowerCase() : null;
+            } catch (_) {
+                return null;
+            }
+        }
+        function deepNormalizeLinkedInUrl(url) {
+            if (!url) return '';
+            let s = String(url).trim().toLowerCase();
+            s = s.replace(/^https?:\/\//, '').replace(/^www\./, '');
+            // Drop query/hash
+            s = s.split('?')[0].split('#')[0];
+            // Remove recent-activity suffixes
+            s = s.replace(/\/recent-activity\/.*/,'');
+            // Remove trailing slash
+            s = s.replace(/\/$/, '');
+            return s;
+        }
+        // Attach content/date and author metadata to each AI response object
         aiResponseArray.forEach(resp => {
-            const orig = postUrlToOriginal[resp.post_url] || {};
-            resp.post_content = orig.postContent || orig.post_content || '';
-            resp.postDate = orig.postDate || orig.post_date || '';
+            const respUrl = resp.post_url || resp.postUrl || '';
+            const key = normalizePostUrl(respUrl);
+            let orig = key ? (postUrlToOriginal[key] || {}) : {};
+            if (!orig || Object.keys(orig).length === 0) {
+                const rid = extractLinkedInActivityId(respUrl);
+                if (rid && activityIdToOriginal[rid]) orig = activityIdToOriginal[rid];
+            }
+            // Prefer source content; if not found, keep AI-provided content to avoid blanks
+            const mergedContent = (orig.postContent || orig.post_content || resp.post_content || resp.postContent || '');
+            resp.post_content = mergedContent;
+            resp.postDate = extractBestPostDate(orig, resp);
+            // Propagate author metadata for UI/reporting (original author vs lead)
+            resp.authorUrl = (orig.pbMeta && orig.pbMeta.authorUrl) || orig.authorUrl || resp.authorUrl || '';
+            resp.authorName = (orig.pbMeta && orig.pbMeta.authorName) || orig.author || resp.authorName || '';
+            // Determine if the item is a repost (reduce false positives)
+            const action = (orig.pbMeta && orig.pbMeta.action) || orig.action || '';
+            const a = String(action || '').toLowerCase();
+            // Extract canonical identifiers and normalized roots once
+            const leadId = extractLinkedInPublicId(leadProfileUrl);
+            const authorId = extractLinkedInPublicId(resp.authorUrl);
+            const normLead = deepNormalizeLinkedInUrl(leadProfileUrl);
+            const normAuth = deepNormalizeLinkedInUrl(resp.authorUrl);
+            const isSameAuthor = (leadId && authorId) ? (leadId === authorId) : ((normLead && normAuth) ? (normLead === normAuth) : false);
+
+            // Primary signal from source (explicit action), but override if the author is the lead
+            let isRepost = a.includes('repost');
+            if (isSameAuthor) {
+                // Override any explicit repost flag when it's clearly the same person
+                isRepost = false;
+            } else if (!a.includes('repost')) {
+                // Heuristic: when not explicitly a repost, treat as repost only if author differs from lead
+                if (leadId && authorId) {
+                    isRepost = leadId !== authorId;
+                } else if (normLead && normAuth) {
+                    isRepost = normLead !== normAuth;
+                } else {
+                    isRepost = false;
+                }
+            }
+            resp.isRepost = isRepost;
+            // If not a repost and authorUrl missing, default to the lead's profile (avoid '(unknown)')
+            if (!resp.isRepost && (!resp.authorUrl || !resp.authorUrl.trim())) {
+                resp.authorUrl = leadProfileUrl || '';
+            }
         });
         
         // Find the highest scoring post (matching original logic)
@@ -611,14 +797,29 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         
         // Format top scoring post text (matching original)
         function safeFormatDate(dateStr) {
-            if (!dateStr) return "";
-            const d = new Date(dateStr);
+            if (dateStr === undefined || dateStr === null || dateStr === '') return "";
+            // Allow epoch ms (number) or numeric-like string
+            let d;
+            if (typeof dateStr === 'number') {
+                d = new Date(dateStr);
+            } else if (typeof dateStr === 'string' && /^\d{10,}$/.test(dateStr.trim())) {
+                d = new Date(Number(dateStr.trim()));
+            } else {
+                d = new Date(dateStr);
+            }
             return isNaN(d.getTime()) ? dateStr : d.toISOString().replace('T', ' ').substring(0, 16) + ' AEST';
         }
+        // If repost wins, include Original Author banner like single-lead path
+        const isRepostWinner = Boolean(highestScoringPost.isRepost);
+        const originalAuthorUrl = (highestScoringPost.authorUrl || '').trim();
+        const originalAuthorLine = isRepostWinner
+            ? `REPOST - ORIGINAL AUTHOR: ${originalAuthorUrl || '(unknown)'}\n`
+            : '';
         const topScoringPostText =
             `Date: ${safeFormatDate(highestScoringPost.postDate || highestScoringPost.post_date)}\n` +
             `URL: ${highestScoringPost.postUrl || highestScoringPost.post_url || ''}\n` +
             `Score: ${highestScoringPost.post_score}\n` +
+            (originalAuthorLine) +
             `Content: ${highestScoringPost.postContent || highestScoringPost.post_content || ''}\n` +
             `Rationale: ${highestScoringPost.scoring_rationale || 'N/A'}`;
 
