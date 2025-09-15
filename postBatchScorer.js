@@ -699,18 +699,26 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             // Determine if the item is a repost (reduce false positives)
             const action = (orig.pbMeta && orig.pbMeta.action) || orig.action || '';
             const a = String(action || '').toLowerCase();
-            // Primary signal from source
+            // Extract canonical identifiers and normalized roots once
+            const leadId = extractLinkedInPublicId(leadProfileUrl);
+            const authorId = extractLinkedInPublicId(resp.authorUrl);
+            const normLead = deepNormalizeLinkedInUrl(leadProfileUrl);
+            const normAuth = deepNormalizeLinkedInUrl(resp.authorUrl);
+            const isSameAuthor = (leadId && authorId) ? (leadId === authorId) : ((normLead && normAuth) ? (normLead === normAuth) : false);
+
+            // Primary signal from source (explicit action), but override if the author is the lead
             let isRepost = a.includes('repost');
-            if (!isRepost) {
-                const leadId = extractLinkedInPublicId(leadProfileUrl);
-                const authorId = extractLinkedInPublicId(resp.authorUrl);
+            if (isSameAuthor) {
+                // Override any explicit repost flag when it's clearly the same person
+                isRepost = false;
+            } else if (!a.includes('repost')) {
+                // Heuristic: when not explicitly a repost, treat as repost only if author differs from lead
                 if (leadId && authorId) {
-                    isRepost = leadId !== authorId; // compare canonical public identifiers
+                    isRepost = leadId !== authorId;
+                } else if (normLead && normAuth) {
+                    isRepost = normLead !== normAuth;
                 } else {
-                    // Fallback: compare normalized profile roots (ignore recent-activity, queries, www, trailing slash)
-                    const normLead = deepNormalizeLinkedInUrl(leadProfileUrl);
-                    const normAuth = deepNormalizeLinkedInUrl(resp.authorUrl);
-                    isRepost = (normLead && normAuth) ? (normLead !== normAuth) : false;
+                    isRepost = false;
                 }
             }
             resp.isRepost = isRepost;
