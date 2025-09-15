@@ -611,17 +611,18 @@ export const getFollowUps = async () => {
   }
 };
 
-export const getTopScoringPosts = async () => {
+export const getTopScoringPosts = async (opts = {}) => {
   try {
     const clientId = getCurrentClientId();
     if (!clientId) {
       throw new Error('Client ID not available. Please ensure user is authenticated.');
     }
-    
+    const params = { testClient: clientId };
+    if (opts && Number.isFinite(Number(opts.minPerc))) params.minPerc = Number(opts.minPerc);
+    if (opts && Number.isFinite(Number(opts.minScore))) params.minScore = Number(opts.minScore);
+
     const response = await api.get('/leads/top-scoring-posts', {
-      params: {
-        testClient: clientId
-      },
+      params,
       timeout: 30000 // 30 seconds to handle larger datasets
     });
     
@@ -636,13 +637,16 @@ export const getTopScoringPosts = async () => {
       'Notes': lead.notes || '',
       'AI Profile Assessment': lead.aiProfileAssessment || '',
       'AI Score': lead.aiScore,
-      'Posts Relevance Percentage': lead.postsRelevancePercentage,
+  // Prefer computed percentage from server; fallback to legacy field if present
+  'Posts Relevance Percentage': lead.computedPostsRelevancePercentage ?? lead.postsRelevancePercentage,
       'Top Scoring Post': lead.topScoringPost || '',
       'Posts Actioned': lead.postsActioned,
       'Posts Relevance Score': lead.postsRelevanceScore,
       'Posts Relevance Status': lead.postsRelevanceStatus || '',
       // Additional fields for compatibility
       id: lead.id,
+  postsMaxPossibleScore: lead.postsMaxPossibleScore,
+  computedPostsRelevancePercentage: lead.computedPostsRelevancePercentage,
       // Include raw backend data for compatibility
       ...lead
     }));
