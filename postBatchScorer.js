@@ -663,6 +663,31 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             const key = normalizePostUrl(url);
             if (key) postUrlToOriginal[key] = post;
         }
+        // Extract best-effort post timestamp from various shapes
+        function extractBestPostDate(primary, secondary) {
+            const candidates = [];
+            function pushFrom(obj) {
+                if (!obj || typeof obj !== 'object') return;
+                const pa = obj.postedAt;
+                if (pa && typeof pa === 'object') {
+                    candidates.push(pa.timestamp, pa.date);
+                } else if (typeof pa === 'string') {
+                    candidates.push(pa);
+                }
+                candidates.push(
+                    obj.postDate,
+                    obj.post_date,
+                    obj.publishedAt,
+                    obj.time,
+                    obj.date,
+                    obj.createdAt
+                );
+            }
+            pushFrom(primary || {});
+            pushFrom(secondary || {});
+            const found = candidates.find(v => v && String(v).trim());
+            return found || '';
+        }
         // Helpers for robust author vs. lead matching
         function extractLinkedInPublicId(url) {
             try {
@@ -692,7 +717,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             // Prefer source content; if not found, keep AI-provided content to avoid blanks
             const mergedContent = (orig.postContent || orig.post_content || resp.post_content || resp.postContent || '');
             resp.post_content = mergedContent;
-            resp.postDate = orig.postDate || orig.post_date || resp.postDate || resp.post_date || '';
+            resp.postDate = extractBestPostDate(orig, resp);
             // Propagate author metadata for UI/reporting (original author vs lead)
             resp.authorUrl = (orig.pbMeta && orig.pbMeta.authorUrl) || orig.authorUrl || resp.authorUrl || '';
             resp.authorName = (orig.pbMeta && orig.pbMeta.authorName) || orig.author || resp.authorName || '';
