@@ -251,3 +251,78 @@ router.post('/api/apify/canary', async (req, res) => {
 });
 
 module.exports = router;
+
+// Orchestrator: pick N leads, harvest via Apify (inline), then score just those leads.
+// POST /api/apify/pick-run-score?limit=10
+// Headers: Authorization: Bearer <PB_WEBHOOK_SECRET>, x-client-id: <clientId>
+// Body: { postedLimit?: 'year'|'any', maxPosts?: number }
+// Returns: { ok, picked, harvest: { items, posts, runId }, scoring: { processed, scored, skipped, errors }, ids }
+router.post('/api/apify/pick-run-score', async (req, res) => {
+  try {
+    const auth = req.headers['authorization'];
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+    if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
+
+    const limit = Math.max(1, parseInt(req.query.limit || req.body?.limit || '10', 10));
+    const base = await getClientBase(clientId);
+
+    // Pick leads (reuse pickLeadBatch but cap to limit)
+    const batch = await pickLeadBatch(base, limit);
+    if (!batch.length) return res.json({ ok: true, picked: 0, note: 'No eligible leads to harvest' });
+
+    // Prepare target URLs
+    const targetUrls = batch.map(r => r.get(LINKEDIN_URL_FIELD)).filter(Boolean);
+    // Run Apify inline to harvest immediately
+    const baseUrl = process.env.API_PUBLIC_BASE_URL
+      || process.env.NEXT_PUBLIC_API_BASE_URL
+      || `http://localhost:${process.env.PORT || 3001}`;
+    const apifyResp = await fetch(`${baseUrl}/api/apify/run`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${secret}`,
+        'x-client-id': clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        targetUrls,
+        mode: 'inline',
+        options: {
+          maxPosts: Number(req.body?.maxPosts) || Number(process.env.APIFY_MAX_POSTS) || 2,
+          postedLimit: typeof req.body?.postedLimit === 'string' ? req.body.postedLimit : (process.env.APIFY_POSTED_LIMIT || 'year'),
+          expectsCookies: true
+        }
+      })
+    });
+    const apifyData = await apifyResp.json().catch(() => ({}));
+
+    // Score exactly these picked records (by record IDs)
+    const ids = batch.map(r => r.id);
+    const scoreResp = await fetch(`${baseUrl}/run-post-batch-score-simple?clientId=${encodeURIComponent(clientId)}&limit=${ids.length}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, verboseErrors: true, maxVerboseErrors: 25 })
+    });
+    const scoreData = await scoreResp.json().catch(() => ({}));
+
+    return res.json({
+      ok: true,
+      picked: batch.length,
+      ids,
+      harvest: apifyData?.counts ? { items: apifyData.counts.items || 0, posts: apifyData.counts.posts || 0, runId: apifyData.runId || null } : null,
+      scoring: scoreData?.status ? {
+        processed: scoreData.processed || 0,
+        scored: scoreData.scored || 0,
+        skipped: scoreData.skipped || 0,
+        errors: scoreData.errors || 0,
+        skipCounts: scoreData.skipCounts || {}
+      } : null
+    });
+  } catch (e) {
+    console.error('[apify/pick-run-score] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
