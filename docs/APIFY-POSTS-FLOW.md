@@ -18,6 +18,16 @@ Goal: fetch recent LinkedIn posts for specified profile URLs (per client or all 
     - `mode=webhook` (default): quick return; Apify calls our webhook when done.
     - `mode=inline`: waits for finish; fetches dataset and writes immediately.
 
+- `POST /api/apify/process-client`
+  - Plain English: “Pick eligible leads for this client and fetch their recent posts until today’s target is met.”
+  - Use when: You want the system to decide which leads to harvest based on Airtable fields (status, last checked, etc.).
+  - Inputs: Client only; it reads the profiles from the client’s base. Optional `?debug=1` and `maxBatchesOverride` in the body.
+
+- `POST /api/apify/process`
+  - Orchestrate across all active clients sequentially (delegates to `/api/apify/process-client`).
+  - Optional single-client mode: `?client=<ClientId>` to process just one using the same batching rules.
+  - Options: `?debug=1` and body `{ maxBatchesOverride: <n> }` forwarded to the per-client route.
+
 - `POST /api/apify-webhook`
   - Called by Apify on run success. Auth: `Authorization: Bearer ${APIFY_WEBHOOK_TOKEN}`.
   - Extracts `runId` from payload → looks up client → fetches dataset → maps → upserts to Airtable.
@@ -67,6 +77,21 @@ Quick local/staging test using query fallback for visibility:
 
 - The run will register in the Apify Runs table with `clientId = Guy-Wilson`.
 - On success, Apify calls back to `/api/apify-webhook` (production by default). The webhook fetches the dataset and writes posts to the client’s Airtable.
+
+### Orchestrator (All Clients)
+- Purpose: Run daily across all active clients, delegating to the per-client orchestrator.
+- All clients:
+```
+curl -X POST "$BASE_URL/api/apify/process" \
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"maxBatchesOverride": 6}'
+```
+- One client via same path:
+```
+curl -X POST "$BASE_URL/api/apify/process?client=Guy-Wilson" \
+  -H "Authorization: Bearer $PB_WEBHOOK_SECRET"
+```
 
 ## Cron Plan (Future)
 - Create a daily cron or per-tenant schedule that:
