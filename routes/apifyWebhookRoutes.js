@@ -168,7 +168,15 @@ router.post('/api/apify-webhook', async (req, res) => {
     }
 
     // Get client ID for this run
-    const clientId = await getClientIdForRun(runId);
+    let clientId = await getClientIdForRun(runId);
+    // Optional test override via query param (non-production only)
+    if (!clientId) {
+      const override = req.query.client || req.query.clientId;
+      if (override && process.env.NODE_ENV !== 'production') {
+        clientId = override;
+        console.warn(`[ApifyWebhook] Using non-production client override from query: ${clientId}`);
+      }
+    }
     if (!clientId) {
       return res.status(404).json({ error: `No client mapping found for run: ${runId}` });
     }

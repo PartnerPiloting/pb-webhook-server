@@ -252,6 +252,70 @@ router.post('/api/apify/canary', async (req, res) => {
 
 module.exports = router;
 
+// Orchestrator: process all active clients (or one via ?client=)
+// POST /api/apify/process?client=OptionalClientId&debug=1
+// Headers: Authorization: Bearer PB_WEBHOOK_SECRET
+// Body: { maxBatchesOverride?: number }
+router.post('/api/apify/process', async (req, res) => {
+  try {
+    const auth = req.headers['authorization'];
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+    if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    const singleClientId = (req.query?.client || req.body?.clientId || '').toString().trim();
+    const debug = req.query?.debug === '1' || req.body?.debug === true;
+    const maxBatchesOverride = req.body?.maxBatchesOverride;
+
+    const baseUrl = process.env.API_PUBLIC_BASE_URL
+      || process.env.NEXT_PUBLIC_API_BASE_URL
+      || `http://localhost:${process.env.PORT || 3001}`;
+
+    // Helper to call process-client
+    const callProcessClient = async (clientId) => {
+      const url = `${baseUrl}/api/apify/process-client${debug ? '?debug=1' : ''}`;
+      const body = {};
+      if (typeof maxBatchesOverride !== 'undefined') body.maxBatchesOverride = maxBatchesOverride;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${secret}`,
+          'x-client-id': clientId,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json().catch(() => ({}));
+      return { status: resp.status, data };
+    };
+
+    if (singleClientId) {
+      const result = await callProcessClient(singleClientId);
+      return res.status(result.status).json({ ok: true, mode: 'single', clientId: singleClientId, result: result.data });
+    }
+
+    // No client specified: iterate active clients sequentially
+    const { getAllActiveClients } = require('../services/clientService');
+    const activeClients = await getAllActiveClients();
+    const summaries = [];
+
+    for (const c of activeClients) {
+      try {
+        const r = await callProcessClient(c.clientId);
+        summaries.push({ clientId: c.clientId, status: r.status, result: r.data });
+      } catch (err) {
+        summaries.push({ clientId: c.clientId, status: 500, result: { ok: false, error: err.message } });
+      }
+    }
+
+    const processed = summaries.length;
+    return res.json({ ok: true, mode: 'all', processed, summaries });
+  } catch (e) {
+    console.error('[apify/process] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Orchestrator: pick N leads, harvest via Apify (inline), then score just those leads.
 // POST /api/apify/pick-run-score?limit=10
 // Headers: Authorization: Bearer <PB_WEBHOOK_SECRET>, x-client-id: <clientId>
