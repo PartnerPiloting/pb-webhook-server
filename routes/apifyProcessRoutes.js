@@ -98,8 +98,8 @@ router.post('/api/apify/process-client', async (req, res) => {
 
     const client = await getClientById(clientId);
     if (!client) return res.status(404).json({ ok: false, error: 'Client not found' });
-    if (client.status !== 'Active') return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
-    if (Number(client.serviceLevel) !== 2) return res.status(200).json({ ok: true, skipped: true, reason: 'Service level != 2' });
+  if (client.status !== 'Active') return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
+  if (Number(client.serviceLevel) < 2) return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
 
     const postsTarget = Number(client.postsDailyTarget || 0);
     const batchSize = Number(client.leadsBatchSizeForPostCollection || 20);
@@ -387,6 +387,55 @@ router.post('/api/apify/pick-run-score', async (req, res) => {
     });
   } catch (e) {
     console.error('[apify/pick-run-score] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Orchestrator: process only active clients with service level >= 2
+// POST /api/apify/process-level2
+// Headers: Authorization: Bearer PB_WEBHOOK_SECRET
+router.post('/api/apify/process-level2', async (req, res) => {
+  try {
+    const auth = req.headers['authorization'];
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+    if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    const baseUrl = process.env.API_PUBLIC_BASE_URL
+      || process.env.NEXT_PUBLIC_API_BASE_URL
+      || `http://localhost:${process.env.PORT || 3001}`;
+
+    const { getAllActiveClients } = require('../services/clientService');
+    const activeClients = await getAllActiveClients();
+    const candidates = activeClients.filter(c => Number(c.serviceLevel) >= 2);
+
+    const summaries = [];
+    const callProcessClient = async (clientId) => {
+      const url = `${baseUrl}/api/apify/process-client`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${secret}`,
+          'x-client-id': clientId,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await resp.json().catch(() => ({}));
+      return { status: resp.status, data };
+    };
+
+    for (const c of candidates) {
+      try {
+        const r = await callProcessClient(c.clientId);
+        summaries.push({ clientId: c.clientId, status: r.status, result: r.data });
+      } catch (err) {
+        summaries.push({ clientId: c.clientId, status: 500, result: { ok: false, error: err.message } });
+      }
+    }
+
+    return res.json({ ok: true, processed: summaries.length, summaries });
+  } catch (e) {
+    console.error('[apify/process-level2] error:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
