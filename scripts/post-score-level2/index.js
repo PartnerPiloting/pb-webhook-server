@@ -19,6 +19,12 @@
 
 require('dotenv').config();
 
+function getArg(name) {
+  const prefix = `--${name}=`;
+  const found = process.argv.find(a => a.startsWith(prefix));
+  return found ? found.slice(prefix.length) : undefined;
+}
+
 function buildQuery(params) {
   const qp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -29,8 +35,9 @@ function buildQuery(params) {
 }
 
 async function main() {
-  const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!baseUrl) throw new Error('API_PUBLIC_BASE_URL is required');
+  const argUrl = getArg('url');
+  const baseUrl = argUrl || process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (!baseUrl) throw new Error('API_PUBLIC_BASE_URL or --url is required');
 
   const limit = process.env.LIMIT ? parseInt(process.env.LIMIT, 10) : undefined;
   const minServiceLevel = process.env.MIN_SERVICE_LEVEL ? parseInt(process.env.MIN_SERVICE_LEVEL, 10) : 2;
