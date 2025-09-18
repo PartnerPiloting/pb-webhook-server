@@ -44,3 +44,19 @@ services:
       #   value: gemini-2.5-pro
       # - key: GOOGLE_APPLICATION_CREDENTIALS
       #   sync: false # if using a mounted file/secret
+  - type: cron
+    name: airtable-warm-pinger
+    runtime: node
+    plan: starter
+    schedule: "* * * * *" # every minute; code gates by PING_INTERVAL_MINUTES
+    envVars:
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: MASTER_CLIENTS_BASE_ID
+        sync: false
+      - key: AIRTABLE_TABLE_NAME
+        sync: false
+      - key: PING_INTERVAL_MINUTES
+        sync: false
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/airtable-warm/index.js"
