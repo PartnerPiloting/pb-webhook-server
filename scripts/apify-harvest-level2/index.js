@@ -11,12 +11,20 @@
 
 require('dotenv').config();
 
-async function main() {
-  const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
-  const secret = process.env.PB_WEBHOOK_SECRET;
+function getArg(name) {
+  const prefix = `--${name}=`;
+  const found = process.argv.find(a => a.startsWith(prefix));
+  return found ? found.slice(prefix.length) : undefined;
+}
 
-  if (!baseUrl) throw new Error('API_PUBLIC_BASE_URL is required');
-  if (!secret) throw new Error('PB_WEBHOOK_SECRET is required');
+async function main() {
+  const argUrl = getArg('url');
+  const argSecret = getArg('secret');
+  const baseUrl = argUrl || process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
+  const secret = argSecret || process.env.PB_WEBHOOK_SECRET;
+
+  if (!baseUrl) throw new Error('API_PUBLIC_BASE_URL or --url is required');
+  if (!secret) throw new Error('PB_WEBHOOK_SECRET or --secret is required');
 
   const url = `${baseUrl.replace(/\/$/, '')}/api/apify/process-level2`;
   const startedAt = Date.now();
