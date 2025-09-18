@@ -10,7 +10,7 @@ require('dotenv').config();
 const Airtable = require('airtable');
 const { getAllActiveClients } = require('../../services/clientService');
 
-const REQUIRED_ENV = ['AIRTABLE_API_KEY', 'MASTER_CLIENTS_BASE_ID', 'AIRTABLE_TABLE_NAME', 'PING_INTERVAL_MINUTES'];
+const REQUIRED_ENV = ['AIRTABLE_API_KEY', 'MASTER_CLIENTS_BASE_ID', 'AIRTABLE_TABLE_NAME'];
 
 function assertEnv() {
   const missing = REQUIRED_ENV.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
@@ -19,12 +19,7 @@ function assertEnv() {
   }
 }
 
-function shouldRunNow() {
-  const n = parseInt(process.env.PING_INTERVAL_MINUTES, 10);
-  if (!Number.isFinite(n) || n <= 0) return true; // fallback: always run
-  const minute = new Date().getUTCMinutes();
-  return minute % n === 0;
-}
+// No internal interval gating — rely on cron schedule entirely
 
 async function pingBase(baseId, tableName) {
   const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
@@ -45,10 +40,7 @@ async function pingBase(baseId, tableName) {
 async function main() {
   assertEnv();
 
-  if (!shouldRunNow()) {
-    console.log(`[warm] Skipping this minute; honoring PING_INTERVAL_MINUTES=${process.env.PING_INTERVAL_MINUTES}`);
-    return;
-  }
+  // Runs every time cron triggers it
 
   console.log('[warm] Starting Airtable warm ping via Client Master');
   const tableName = process.env.AIRTABLE_TABLE_NAME;
