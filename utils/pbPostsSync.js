@@ -151,6 +151,8 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     }
 
     console.log(`[PBPostsSync] Starting sync with ${pbPostsArr.length} posts`);
+    console.log(`[DEBUG] PBPostsSync: Using client base:`, airtableBase ? 'CLIENT-SPECIFIC' : 'FALLBACK');
+    console.log(`[DEBUG] PBPostsSync: Client ID:`, clientId || 'AUTO-DETECTED');
 
     // Index posts by normalized profile URL
     const postsByProfile = {};
@@ -192,15 +194,21 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     for (const [normProfileUrl, postsList] of Object.entries(postsByProfile)) {
         processedCount++;
         
+        console.log(`[DEBUG] PBPostsSync: Processing profile ${processedCount}/${Object.keys(postsByProfile).length}: ${normProfileUrl}`);
+        
         const record = await getAirtableRecordByProfileUrl(normProfileUrl, airtableBase);
         if (!record) {
             console.warn(`No Airtable lead found for: ${normProfileUrl}`);
             continue;
         }
 
+        console.log(`[DEBUG] PBPostsSync: Found Airtable record ${record.id} for ${normProfileUrl}`);
+        console.log(`[DEBUG] PBPostsSync: Will add ${postsList.length} posts to this record`);
+
         let existingPosts = [];
         try {
             const postsFieldValue = record.get(AIRTABLE_POSTS_FIELD) || "[]";
+            console.log(`[DEBUG] PBPostsSync: Existing posts field length: ${postsFieldValue.length} chars`);
             
             // Check if the field is extremely large (could cause memory issues)
             if (postsFieldValue.length > 1000000) { // 1MB limit
@@ -210,9 +218,11 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 // Use dirty-json for safer parsing of existing posts (same as webhook parsing)
                 try {
                     existingPosts = JSON.parse(postsFieldValue);
+                    console.log(`[DEBUG] PBPostsSync: Parsed ${existingPosts.length} existing posts successfully`);
                 } catch (jsonError) {
                     console.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
                     existingPosts = dirtyJSON.parse(postsFieldValue);
+                    console.log(`[DEBUG] PBPostsSync: Dirty-JSON parsed ${existingPosts.length} existing posts`);
                 }
             }
         } catch (parseError) {
@@ -255,6 +265,9 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                     [AIRTABLE_DATE_ADDED_FIELD]: new Date().toISOString()
                 };
 
+                console.log(`[DEBUG] PBPostsSync: Updating record ${record.id} with ${newPostsAdded} new, ${postsUpdated} updated posts`);
+                console.log(`[DEBUG] PBPostsSync: Final posts array length: ${existingPosts.length}, JSON size: ${updateData[AIRTABLE_POSTS_FIELD].length} chars`);
+
                 // Add optional timestamp fields if they exist in the base
                 try {
                     updateData[AIRTABLE_LAST_POST_CHECK_AT_FIELD] = new Date().toISOString();
@@ -264,10 +277,14 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 }
 
                 await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update(record.id, updateData);
+                console.log(`[DEBUG] PBPostsSync: Successfully updated Airtable record ${record.id}`);
                 console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded}, Updated ${postsUpdated} posts (total: ${existingPosts.length})`);
             } catch (updateError) {
+                console.error(`[DEBUG] PBPostsSync: Failed to update ${normProfileUrl}:`, updateError.message);
                 console.error(`Failed to update ${normProfileUrl}:`, updateError.message);
             }
+        } else {
+            console.log(`[DEBUG] PBPostsSync: No updates needed for ${normProfileUrl} (no new or updated posts)`);
         }
     }
 
