@@ -151,9 +151,11 @@ router.post('/api/apify/run', async (req, res) => {
     if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
     // Multi-tenant client identification
-    const clientId = req.headers['x-client-id'];
+    let clientId = req.headers['x-client-id'];
+    // Fallback to query param for visibility/simplicity in testing
+    if (!clientId) clientId = req.query.client || req.query.clientId;
     if (!clientId) {
-      return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
+      return res.status(400).json({ ok: false, error: 'Missing x-client-id header (or ?client=CLIENT_ID)' });
     }
 
     const apiToken = process.env.APIFY_API_TOKEN;
@@ -336,10 +338,12 @@ router.post('/api/apify/run', async (req, res) => {
   const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs${webhookParams.toString() ? `?${webhookParams.toString()}` : ''}`;
 
     // Add webhook configuration for Actor runs
+    const defaultWebhookUrl = 'https://pb-webhook-server.onrender.com/api/apify-webhook';
+    const webhookUrl = process.env.APIFY_WEBHOOK_URL || defaultWebhookUrl;
     const webhookConfig = {
       webhooks: [{
         eventTypes: ['ACTOR.RUN.SUCCEEDED'],
-        requestUrl: 'https://pb-webhook-server-staging.onrender.com/api/apify-webhook',
+        requestUrl: webhookUrl,
         payloadTemplate: JSON.stringify({
           resource: {
             defaultDatasetId: '{{resource.defaultDatasetId}}',
