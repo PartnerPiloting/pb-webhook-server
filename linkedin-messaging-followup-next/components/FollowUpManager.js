@@ -297,7 +297,7 @@ const FollowUpManager = () => {
                 viewInSalesNavigator: safeRender(selectedLead['View In Sales Navigator']),
                 email: safeRender(selectedLead['Email']),
                 phone: safeRender(selectedLead['Phone']),
-                ashWorkshopEmail: Boolean(selectedLead['ASH Workshop Email']),
+                
                 aiScore: selectedLead['AI Score'],
                 postsRelevancePercentage: selectedLead['Posts Relevance Percentage'],
                 aiAttributeBreakdown: safeRender(selectedLead['AI Attribute Breakdown']),

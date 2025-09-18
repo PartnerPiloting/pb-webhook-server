@@ -22,7 +22,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
     viewInSalesNavigator: '',
     email: '',
     phone: '',
-    ashWorkshopEmail: false,
+    
     notes: '',
     followUpDate: '',
     source: 'Follow-Up Personally', // Default value
@@ -180,7 +180,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
         viewInSalesNavigator: '',
         email: '',
         phone: '',
-        ashWorkshopEmail: false,
+        
         notes: '',
         followUpDate: '',
         source: 'Follow-Up Personally', // Keep default
@@ -224,7 +224,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
       viewInSalesNavigator: '',
       email: '',
       phone: '',
-      ashWorkshopEmail: false,
+      
       notes: '',
       followUpDate: '',
       source: 'Follow-Up Personally',
@@ -444,22 +444,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
               />
             </div>
 
-            <div className="flex">
-              <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
-                ASH Workshop Email
-              </label>
-              <div className="flex-1 flex items-center py-2">
-                <input
-                  type="checkbox"
-                  checked={formData.ashWorkshopEmail}
-                  onChange={(e) => handleChange('ashWorkshopEmail', e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="ml-2 text-sm text-gray-600">
-                  Add to workshop invite list
-                </span>
-              </div>
-            </div>
+            
           </div>
         </div>
 

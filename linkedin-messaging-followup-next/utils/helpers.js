@@ -174,7 +174,6 @@ export const getUserPreferences = () => {
 // Field visibility helper (for multi-tenant configuration)
 export const getFieldVisibility = (fieldName, userRole = 'client') => {
   const ownerOnlyFields = [
-    'addToWorkshopInviteList',
     'linkedinMessages',
     'extensionLastSync'
   ];

@@ -124,7 +124,7 @@ const LeadDetailModal = ({
                 // Contact fields (previously omitted -> caused blank email/phone in form when using modal)
                 email: safeRender(lead.email || lead['Email']),
                 phone: safeRender(lead.phone || lead['Phone']),
-                ashWorkshopEmail: Boolean(lead.ashWorkshopEmail || lead['ASH Workshop Email']),
+                
                 // AI-related fields using actual API field names
                 aiScore: lead.aiScore || lead['AI Score'],
                 aiProfileAssessment: lead.aiProfileAssessment || lead['AI Profile Assessment'],
