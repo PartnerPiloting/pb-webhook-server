@@ -19,6 +19,8 @@
   "smoke:apify:inline:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/smokeApifyInline.js",
   "smoke:apify:process": "node scripts/smokeApifyProcessClient.js",
   "smoke:apify:process:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/smokeApifyProcessClient.js",
+  "cron:harvest:level2": "node scripts/apify-harvest-level2/index.js",
+  "cron:post-score:level2": "node scripts/post-score-level2/index.js",
   "apify:runs:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/showRuns.js",
     "ports:check": "node scripts/killPorts.js 3000 3001",
     "ports:free": "node scripts/killPorts.js --kill 3000 3001",
