@@ -630,6 +630,120 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Multi-Tenant Post Batch Score (Service Level >= N)
+// Mirrors /run-post-batch-score but filters candidates by service level
+// Usage examples:
+//   POST /run-post-batch-score-level2               (default minServiceLevel=2)
+//   POST /run-post-batch-score-level2?limit=50
+//   POST /run-post-batch-score-level2?minServiceLevel=3
+// Optional: dryRun=true, verboseErrors=true, maxVerboseErrors=25, table=Leads, markSkips=true|false
+// ---------------------------------------------------------------
+router.post("/run-post-batch-score-level2", async (req, res) => {
+  // Require Gemini to be configured server-side
+  if (!vertexAIClient || !geminiModelId) {
+    return res.status(503).json({ status: 'error', message: 'Post scoring unavailable (Gemini config missing).' });
+  }
+
+  try {
+    // Parse query parameters (align with /run-post-batch-score)
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+    const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true';
+    const verboseErrors = req.query.verboseErrors === 'true';
+    const maxVerboseErrors = req.query.maxVerboseErrors ? parseInt(req.query.maxVerboseErrors, 10) : 10;
+    const tableOverride = req.query.table || req.query.leadsTableName || null;
+    const markSkips = req.query.markSkips === undefined ? true : req.query.markSkips === 'true';
+    const minServiceLevel = req.query.minServiceLevel ? parseInt(req.query.minServiceLevel, 10) : 2;
+
+    // Discover eligible clients (Active + service level >= min)
+    const clientService = require("../services/clientService");
+    const activeClients = await clientService.getAllActiveClients();
+    const candidates = activeClients.filter(c => Number(c.serviceLevel) >= Number(minServiceLevel || 2));
+
+    const summaries = [];
+    const aggregate = {
+      totalClients: candidates.length,
+      successfulClients: 0,
+      failedClients: 0,
+      totalPostsProcessed: 0,
+      totalPostsScored: 0,
+      totalLeadsSkipped: 0,
+      skipCounts: {},
+      totalErrors: 0,
+      errorReasonCounts: {},
+      duration: 0
+    };
+
+    const startedAt = Date.now();
+
+    for (const c of candidates) {
+      try {
+        const results = await postBatchScorer.runMultiTenantPostScoring(
+          vertexAIClient,
+          geminiModelId,
+          c.clientId,
+          limit,
+          {
+            dryRun,
+            leadsTableName: tableOverride || undefined,
+            markSkips,
+            verboseErrors,
+            maxVerboseErrors
+          }
+        );
+
+        // Each invocation with a single client returns a results object with one clientResults entry
+        const first = results.clientResults && results.clientResults[0] ? results.clientResults[0] : null;
+        if (first) {
+          summaries.push({ clientId: c.clientId, status: first.status, postsProcessed: first.postsProcessed || 0, postsScored: first.postsScored || 0, errors: first.errors || 0 });
+          // Aggregate totals
+          aggregate.totalPostsProcessed += first.postsProcessed || 0;
+          aggregate.totalPostsScored += first.postsScored || 0;
+          aggregate.totalLeadsSkipped += first.leadsSkipped || 0;
+          aggregate.totalErrors += first.errors || 0;
+          // Success vs failed (treat completed_with_errors as failed for counts)
+          if (first.status === 'success') aggregate.successfulClients++; else aggregate.failedClients++;
+          // Merge skip counts
+          if (first.skipCounts) {
+            for (const [reason, count] of Object.entries(first.skipCounts)) {
+              aggregate.skipCounts[reason] = (aggregate.skipCounts[reason] || 0) + count;
+            }
+          }
+          // Merge error reason counts
+          if (first.errorReasonCounts) {
+            for (const [reason, count] of Object.entries(first.errorReasonCounts)) {
+              aggregate.errorReasonCounts[reason] = (aggregate.errorReasonCounts[reason] || 0) + count;
+            }
+          }
+        } else {
+          summaries.push({ clientId: c.clientId, status: 'no-results' });
+          aggregate.failedClients++;
+        }
+      } catch (e) {
+        summaries.push({ clientId: c.clientId, status: 'failed', error: e.message });
+        aggregate.failedClients++;
+        aggregate.totalErrors++;
+      }
+    }
+
+    aggregate.duration = Math.round((Date.now() - startedAt) / 1000);
+
+    return res.status(200).json({
+      status: 'completed',
+      message: `Post scoring completed for service level >= ${minServiceLevel}`,
+      summary: aggregate,
+      clientResults: summaries,
+      mode: dryRun ? 'dryRun' : 'live',
+      table: tableOverride || 'Leads',
+      minServiceLevel,
+      commit: commitHash
+    });
+  } catch (error) {
+    console.error("/run-post-batch-score-level2 error:", error.message);
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// ---------------------------------------------------------------
 // Debug endpoint for troubleshooting client discovery (Admin Only)
 // ---------------------------------------------------------------
 router.get("/debug-clients", async (req, res) => {

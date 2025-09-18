@@ -58,3 +58,42 @@ services:
         sync: false
     buildCommand: "echo 'No build'"
     startCommand: "node scripts/airtable-warm/index.js"
+
+  - type: cron
+    name: apify-harvest-level2
+    runtime: node
+    plan: starter
+    schedule: "0 * * * *" # hourly on the hour (adjust as needed)
+    envVars:
+      - key: API_PUBLIC_BASE_URL
+        sync: false
+      - key: PB_WEBHOOK_SECRET
+        sync: false
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/apify-harvest-level2/index.js"
+
+  - type: cron
+    name: post-score-level2
+    runtime: node
+    plan: starter
+    schedule: "15 * * * *" # 15 minutes past the hour, after harvest
+    envVars:
+      - key: API_PUBLIC_BASE_URL
+        sync: false
+      # Optional tuning variables
+      # - key: LIMIT
+      #   value: "50"
+      # - key: MIN_SERVICE_LEVEL
+      #   value: "2"
+      # - key: DRY_RUN
+      #   value: "false"
+      # - key: VERBOSE_ERRORS
+      #   value: "true"
+      # - key: MAX_VERBOSE_ERRORS
+      #   value: "25"
+      # - key: MARK_SKIPS
+      #   value: "true"
+      # - key: TABLE
+      #   value: "Leads"
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/post-score-level2/index.js"
