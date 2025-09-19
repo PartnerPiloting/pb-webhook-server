@@ -233,6 +233,10 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         // Get leads with posts to be scored
     const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, options);
         logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
+        console.log(`[DEBUG] Client ${client.clientId}: Found ${leadsToProcess.length} leads for scoring`);
+        if (leadsToProcess.length > 0) {
+            console.log(`[DEBUG] Client ${client.clientId}: Sample lead fields:`, Object.keys(leadsToProcess[0].fields || {}));
+        }
 
         // Build the post scoring prompt ONCE per client batch (cache for this run)
         // This avoids rebuilding the same ~15K char prompt for every lead.
@@ -392,8 +396,11 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     let records = [];
     let usedFallback = false;
     try {
+        console.log(`[DEBUG] getLeadsForPostScoring: Trying primary select with view "Leads with Posts not yet scored"`);
         records = await clientBase(config.leadsTableName).select(primarySelect).all();
+        console.log(`[DEBUG] getLeadsForPostScoring: Primary select found ${records.length} records`);
     } catch (e) {
+        console.log(`[DEBUG] getLeadsForPostScoring: Primary select failed: ${e.message}`);
         // If the view doesn't exist on this tenant, fall back to a formula-only query below
         console.warn(`[postBatchScorer] Primary select using view failed: ${e.message}. Falling back to formula-only selection.`);
     }
@@ -403,6 +410,7 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     // - Date Posts Scored blank
     // - Posts Actioned blank/false when field exists
     if (!Array.isArray(records) || records.length === 0) {
+        console.log(`[DEBUG] getLeadsForPostScoring: Using fallback formula-based query`);
         usedFallback = true;
         const postsActionedField = 'Posts Actioned';
         // Attempt 1: include Posts Actioned guard
@@ -423,20 +431,26 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         };
 
         try {
+            console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback with Posts Actioned guard`);
             records = await clientBase(config.leadsTableName).select({
                 fields: baseFields,
                 filterByFormula: makeFilter(true)
             }).all();
+            console.log(`[DEBUG] getLeadsForPostScoring: Fallback with guard found ${records.length} records`);
         } catch (e2) {
+            console.log(`[DEBUG] getLeadsForPostScoring: Fallback with guard failed: ${e2.message}`);
             // If "Posts Actioned" is missing on this base, retry without referencing it
             const msg = e2?.message || String(e2);
             console.warn(`[postBatchScorer] Fallback select with actioned guard failed: ${msg}. Retrying without Posts Actioned condition.`);
             try {
+                console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback without Posts Actioned guard`);
                 records = await clientBase(config.leadsTableName).select({
                     fields: baseFields,
                     filterByFormula: makeFilter(false)
                 }).all();
+                console.log(`[DEBUG] getLeadsForPostScoring: Fallback without guard found ${records.length} records`);
             } catch (e3) {
+                console.log(`[DEBUG] getLeadsForPostScoring: All fallback attempts failed: ${e3.message}`);
                 console.error(`[postBatchScorer] Fallback select without actioned guard also failed: ${e3.message}`);
                 records = [];
             }
@@ -444,10 +458,12 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     }
 
     if (typeof limit === 'number' && limit > 0 && Array.isArray(records)) {
+        console.log(`[DEBUG] getLeadsForPostScoring: Applying limit ${limit} to ${records.length} records`);
         records = records.slice(0, limit);
         console.log(`[postBatchScorer] Limiting batch to first ${limit} leads (${usedFallback ? 'fallback' : 'view'} mode)`);
     }
 
+    console.log(`[DEBUG] getLeadsForPostScoring: Final result: ${records.length} records`);
     return records;
 }
 

@@ -44,3 +44,77 @@ services:
       #   value: gemini-2.5-pro
       # - key: GOOGLE_APPLICATION_CREDENTIALS
       #   sync: false # if using a mounted file/secret
+  - type: cron
+    name: airtable-warm-pinger
+    runtime: node
+    plan: starter
+    schedule: "* * * * *" # adjust cron frequency as desired (e.g., every 5 minutes)
+    envVars:
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: MASTER_CLIENTS_BASE_ID
+        sync: false
+      - key: AIRTABLE_TABLE_NAME
+        sync: false
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/airtable-warm/index.js"
+
+  - type: cron
+    name: apify-harvest-level2
+    runtime: node
+    plan: starter
+    schedule: "0 * * * *" # hourly on the hour (adjust as needed)
+    envVars:
+      - key: API_PUBLIC_BASE_URL
+        sync: false
+      - key: PB_WEBHOOK_SECRET
+        sync: false
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/apify-harvest-level2/index.js"
+
+  - type: cron
+    name: post-score-level2
+    runtime: node
+    plan: starter
+    schedule: "15 * * * *" # 15 minutes past the hour, after harvest
+    envVars:
+      - key: API_PUBLIC_BASE_URL
+        sync: false
+      # Optional tuning variables
+      # - key: LIMIT
+      #   value: "50"
+      # - key: MIN_SERVICE_LEVEL
+      #   value: "2"
+      # - key: DRY_RUN
+      #   value: "false"
+      # - key: VERBOSE_ERRORS
+      #   value: "true"
+      # - key: MAX_VERBOSE_ERRORS
+      #   value: "25"
+      # - key: MARK_SKIPS
+      #   value: "true"
+      # - key: TABLE
+      #   value: "Leads"
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/post-score-level2/index.js"
+
+  - type: cron
+    name: daily-client-alerts
+    runtime: node
+    plan: starter
+    schedule: "0 8 * * *" # 6:00 PM AEST / 7:00 PM AEDT (end of day)
+    envVars:
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: MASTER_CLIENTS_BASE_ID
+        sync: false
+      - key: MAILGUN_API_KEY
+        sync: false
+      - key: MAILGUN_DOMAIN
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: ALERT_EMAIL
+        sync: false
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/daily-client-alerts/index.js"

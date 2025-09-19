@@ -97,19 +97,38 @@ router.post('/api/apify/process-client', async (req, res) => {
     if (!clientId) return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
 
     const client = await getClientById(clientId);
-    if (!client) return res.status(404).json({ ok: false, error: 'Client not found' });
-    if (client.status !== 'Active') return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
-    if (Number(client.serviceLevel) !== 2) return res.status(200).json({ ok: true, skipped: true, reason: 'Service level != 2' });
+    console.log(`[apify/process-client] Processing client: ${clientId}`);
+    if (!client) {
+      console.log(`[apify/process-client] Client not found: ${clientId}`);
+      return res.status(404).json({ ok: false, error: 'Client not found' });
+    }
+    console.log(`[apify/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
+    
+    if (client.status !== 'Active') {
+      console.log(`[apify/process-client] Client ${clientId} not Active, skipping`);
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
+    }
+    if (Number(client.serviceLevel) < 2) {
+      console.log(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
+    }
 
     const postsTarget = Number(client.postsDailyTarget || 0);
     const batchSize = Number(client.leadsBatchSizeForPostCollection || 20);
     const maxBatches = Number(req.body?.maxBatchesOverride ?? client.maxPostBatchesPerDayGuardrail ?? 10);
-    if (!postsTarget || !batchSize) return res.status(200).json({ ok: true, skipped: true, reason: 'Missing targets' });
+    console.log(`[apify/process-client] Client ${clientId} targets: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
+    
+    if (!postsTarget || !batchSize) {
+      console.log(`[apify/process-client] Client ${clientId} missing targets, skipping`);
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Missing targets' });
+    }
 
     const base = await getClientBase(clientId);
 
     // running tally
     let postsToday = await computeTodaysPosts(base);
+    console.log(`[apify/process-client] Client ${clientId} postsToday: ${postsToday}, target: ${postsTarget}`);
+    
     let batches = 0;
     const runs = [];
 
@@ -117,8 +136,13 @@ router.post('/api/apify/process-client', async (req, res) => {
   const debugBatches = [];
 
   while (postsToday < postsTarget && batches < maxBatches) {
+      console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: picking ${batchSize} leads`);
       const pick = await pickLeadBatch(base, batchSize);
-      if (!pick.length) break;
+      console.log(`[apify/process-client] Client ${clientId} picked ${pick.length} leads`);
+      if (!pick.length) {
+        console.log(`[apify/process-client] Client ${clientId} no more eligible leads, breaking`);
+        break;
+      }
 
       // mark Processing + set run id placeholder
       const placeholderRunId = `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
@@ -129,6 +153,8 @@ router.post('/api/apify/process-client', async (req, res) => {
 
       // prepare targetUrls
       const targetUrls = pick.map(r => r.get(LINKEDIN_URL_FIELD)).filter(Boolean);
+      console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: ${targetUrls.length} LinkedIn URLs to process`);
+      
       if (debugMode) {
         debugBatches.push({ pickedCount: pick.length, targetUrls });
       }
@@ -137,6 +163,8 @@ router.post('/api/apify/process-client', async (req, res) => {
       const baseUrl = process.env.API_PUBLIC_BASE_URL
         || process.env.NEXT_PUBLIC_API_BASE_URL
         || `http://localhost:${process.env.PORT || 3001}`;
+      console.log(`[apify/process-client] Client ${clientId} calling Apify run at ${baseUrl}/api/apify/run`);
+      
       const startResp = await fetch(`${baseUrl}/api/apify/run`, {
         method: 'POST',
         headers: {
@@ -159,9 +187,11 @@ router.post('/api/apify/process-client', async (req, res) => {
         })
       });
       const startData = await startResp.json().catch(() => ({}));
+      console.log(`[apify/process-client] Client ${clientId} Apify response status: ${startResp.status}, data:`, startData);
 
   // after inline run, use returned counts to compute gained
   const gained = Number((startData && startData.counts && startData.counts.posts) || 0);
+  console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: gained ${gained} posts`);
   postsToday += gained;
 
       // Update statuses based on gain
@@ -192,6 +222,7 @@ router.post('/api/apify/process-client', async (req, res) => {
       batches++;
     }
 
+  console.log(`[apify/process-client] Client ${clientId} completed: ${batches} batches, postsToday: ${postsToday}, target: ${postsTarget}`);
   const payload = { ok: true, clientId, postsToday, postsTarget, batches, runs };
   if (debugMode) payload.debug = { batches: debugBatches };
   return res.json(payload);
@@ -387,6 +418,55 @@ router.post('/api/apify/pick-run-score', async (req, res) => {
     });
   } catch (e) {
     console.error('[apify/pick-run-score] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Orchestrator: process only active clients with service level >= 2
+// POST /api/apify/process-level2
+// Headers: Authorization: Bearer PB_WEBHOOK_SECRET
+router.post('/api/apify/process-level2', async (req, res) => {
+  try {
+    const auth = req.headers['authorization'];
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+    if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    const baseUrl = process.env.API_PUBLIC_BASE_URL
+      || process.env.NEXT_PUBLIC_API_BASE_URL
+      || `http://localhost:${process.env.PORT || 3001}`;
+
+    const { getAllActiveClients } = require('../services/clientService');
+    const activeClients = await getAllActiveClients();
+    const candidates = activeClients.filter(c => Number(c.serviceLevel) >= 2);
+
+    const summaries = [];
+    const callProcessClient = async (clientId) => {
+      const url = `${baseUrl}/api/apify/process-client`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${secret}`,
+          'x-client-id': clientId,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await resp.json().catch(() => ({}));
+      return { status: resp.status, data };
+    };
+
+    for (const c of candidates) {
+      try {
+        const r = await callProcessClient(c.clientId);
+        summaries.push({ clientId: c.clientId, status: r.status, result: r.data });
+      } catch (err) {
+        summaries.push({ clientId: c.clientId, status: 500, result: { ok: false, error: err.message } });
+      }
+    }
+
+    return res.json({ ok: true, processed: summaries.length, summaries });
+  } catch (e) {
+    console.error('[apify/process-level2] error:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
