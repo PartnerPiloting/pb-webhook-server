@@ -762,15 +762,11 @@ module.exports = function mountTopScoringLeads(app, base) {
       const b = await getBaseForRequest(req);
       if (!b) return res.status(500).json({ ok: false, error: 'Airtable base not configured' });
       
-      // Get threshold from query or use default
-      const threshold = req.query.threshold ? parseFloat(req.query.threshold) : 65;
+      // Get threshold using the existing helper
+      const threshold = await getThresholdForRequest(req, b);
       
-      // Build filter formula for eligible leads
-      const filterFormula = `AND(
-        {AI Score} >= ${threshold},
-        {Lead Status} = 'New', 
-        {Scoring Status} = 'Scored'
-      )`;
+      // Use the existing buildEligibleFormula function
+      const filterFormula = buildEligibleFormula(threshold);
       
       // Use eachPage to get ALL matching records without pagination limits
       let allLeads = [];
