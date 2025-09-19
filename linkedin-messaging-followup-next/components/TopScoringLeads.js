@@ -283,45 +283,139 @@ export default function TopScoringLeads() {
     try {
       setError(null);
       setPhase('EXPORTING');
-      // If not locked yet, locking path already shows progressive loading inside lockCurrentBatchProgressive
-      if (!inProgress) {
-        await performLockIfNeeded();
-      } else {
-        // Simulate progressive re-export build
-        const total = eligible.length || selectedCount || 0;
-        setLoadProgress({ loaded: 0, total });
-        const chunkSize = 50;
-        for (let i = 0; i < total; i += chunkSize) {
-          await new Promise(r => setTimeout(r, 35));
-          setLoadProgress(lp => ({ ...lp, loaded: Math.min(total, i + chunkSize) }));
-        }
-      }
-      const allItems = eligible || [];
-      const urlList = allItems.map(r => r?.linkedinUrl).filter(u => !!u);
+      
+      // Get the current threshold
+      const eff = getEffectiveThreshold();
+      
+      // Directly fetch ALL eligible leads from the new endpoint
+      console.log(`DEBUG: Fetching all eligible leads with threshold ${eff}`);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}`, clientId);
+      
+      // Extract URLs from the leads
+      const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
+      console.log(`DEBUG: About to copy ${urlList.length} URLs from ${allLeads.length} items from API`);
+      
       if (urlList.length === 0) {
-        setError(`No LinkedIn URLs found among ${allItems.length} selected leads.`);
+        setError(`No LinkedIn URLs found among ${allLeads.length} selected leads.`);
         setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
         return;
       }
       const urls = urlList.join('\n');
-      let ok = false; let lastErr = null;
-      // Prefer modern async clipboard first (secure contexts / localhost)
-      if (navigator?.clipboard?.writeText) {
-        try { await navigator.clipboard.writeText(urls); ok = true; } catch (e) { lastErr = e; }
-      }
-      if (!ok) {
+      
+      // Robust clipboard copy with multiple fallback strategies
+      const copyToClipboard = async (text) => {
+        // Strategy 1: Request user interaction first to ensure focus
+        const ensureFocus = async () => {
+          // Force multiple focus attempts
+          window.focus();
+          document.documentElement.focus();
+          if (document.body) document.body.focus();
+          
+          // Create a temporary interactive element to ensure user interaction context
+          const tempInput = document.createElement('input');
+          tempInput.style.position = 'fixed';
+          tempInput.style.top = '-9999px';
+          tempInput.style.left = '-9999px';
+          tempInput.style.opacity = '0';
+          document.body.appendChild(tempInput);
+          
+          tempInput.focus();
+          tempInput.click();
+          
+          // Small delay to ensure focus
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          document.body.removeChild(tempInput);
+        };
+        
+        // Ensure we have proper focus context
+        await ensureFocus();
+        
+        // Strategy 2: Modern clipboard API with user interaction
+        if (navigator?.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(text);
+            return { success: true, method: 'modern' };
+          } catch (e) {
+            console.warn('Modern clipboard failed:', e);
+            // Continue to fallback
+          }
+        }
+        
+        // Strategy 3: Enhanced textarea fallback with better positioning and focus
         try {
-          const ta = document.createElement('textarea');
-          ta.value = urls; ta.readOnly = true; ta.style.position = 'fixed'; ta.style.top = '-9999px';
-          document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); document.body.removeChild(ta);
-        } catch (e2) { lastErr = lastErr || e2; }
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          
+          // Better styling for cross-browser compatibility
+          Object.assign(textarea.style, {
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            width: '1px',
+            height: '1px',
+            padding: '0',
+            border: 'none',
+            outline: 'none',
+            boxShadow: 'none',
+            background: 'transparent',
+            fontSize: '16px', // Prevents zoom on iOS
+            zIndex: '9999'
+          });
+          
+          document.body.appendChild(textarea);
+          
+          // Multiple focus and selection attempts
+          textarea.focus();
+          textarea.select();
+          
+          // iOS/mobile compatibility
+          if (textarea.setSelectionRange) {
+            textarea.setSelectionRange(0, textarea.value.length);
+          }
+          
+          // Additional attempt for better mobile support
+          if (window.getSelection) {
+            const range = document.createRange();
+            range.selectNodeContents(textarea);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          
+          if (successful) {
+            return { success: true, method: 'legacy' };
+          }
+          throw new Error('Copy command returned false');
+          
+        } catch (e) {
+          console.error('Enhanced textarea fallback failed:', e);
+          throw new Error(`Clipboard access failed: ${e.message}. Please ensure the page has focus and try again, or use Download instead.`);
+        }
+      };
+      
+      try {
+        const result = await copyToClipboard(urls);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+        console.log(`SUCCESS: Copied ${urlList.length} URLs using ${result.method} method`);
+        
+        // After successful copy, lock the batch if not already locked
+        if (!inProgress) {
+          console.log('Locking batch after successful copy...');
+          const eff = getEffectiveThreshold();
+          await lockCurrentBatch(eff);
+        }
+        
+        setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
+      } catch (e) {
+        console.error('All clipboard methods failed:', e);
+        setError(e.message || 'Copy failed. Try "Download .txt" instead.');
+        setPhase('READY');
       }
-      if (!ok) {
-        console.warn('Copy URLs failed', lastErr);
-        throw new Error(lastErr?.message || 'Clipboard unavailable');
-      }
-      setCopied(true); setTimeout(() => setCopied(false), 1500);
-      setPhase('AWAITING_CONFIRM');
     } catch (e) {
       setError(`Failed to copy URLs${e?.message ? `: ${e.message}` : ''}`);
       setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
@@ -333,26 +427,39 @@ export default function TopScoringLeads() {
     try {
       setError(null);
       setPhase('EXPORTING');
-      if (!inProgress) {
-        await performLockIfNeeded();
-      } else {
-        const total = eligible.length || selectedCount || 0;
-        setLoadProgress({ loaded: 0, total });
-        const chunkSize = 50;
-        for (let i = 0; i < total; i += chunkSize) {
-          await new Promise(r => setTimeout(r, 35));
-          setLoadProgress(lp => ({ ...lp, loaded: Math.min(total, i + chunkSize) }));
-        }
-      }
-      const urls = (eligible || []).map(r => r?.linkedinUrl).filter(Boolean).join('\n');
+      
+      // Get the current threshold
+      const eff = getEffectiveThreshold();
+      
+      // Directly fetch ALL eligible leads from the new endpoint
+      console.log(`DEBUG: Fetching all eligible leads with threshold ${eff} for download`);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}`, clientId);
+      
+      // Extract URLs from the leads
+      const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
+      console.log(`DEBUG: About to download ${urlList.length} URLs from ${allLeads.length} items from API`);
+      
+      const urls = urlList.join('\n');
       const blob = new Blob([urls], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'eligible-linkedin-urls.txt'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      setPhase('AWAITING_CONFIRM');
+      a.href = url; 
+      // Add date to filename
+      const dateStr = new Date().toISOString().split('T')[0];
+      a.download = `linkedin-urls-${dateStr}.txt`; 
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      
+      // After successful download, lock the batch if not already locked
+      if (!inProgress) {
+        console.log('Locking batch after successful download...');
+        const eff = getEffectiveThreshold();
+        await lockCurrentBatch(eff);
+      }
+      
+      setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
     } catch (e) {
       setError('Download failed');
-      setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
+      setPhase('READY');
     }
   };
 
