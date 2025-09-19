@@ -120,8 +120,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         linkedinProfileUrl: lead.linkedinProfileUrl || '',
         viewInSalesNavigator: lead.viewInSalesNavigator || '',
         email: lead.email || '',
-        phone: lead.phone || '',
-        ashWorkshopEmail: Boolean(lead.ashWorkshopEmail),
+  phone: lead.phone || '',
         notes: lead.notes || '',
         followUpDate: convertToISODate(lead.followUpDate),
         source: normalizedSource,
@@ -195,7 +194,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   const fieldConfig = {
     editable: [
       'firstName', 'lastName', 'linkedinProfileUrl', 'viewInSalesNavigator', 
-      'email', 'phone', 'ashWorkshopEmail', 'notes', 'source', 
+  'email', 'phone', 'notes', 'source', 
   'status', 'priority', 'linkedinConnectionStatus', 'searchTerms'
     ],
     readonly: ['profileKey', 'aiScore', 'postsRelevancePercentage', 'lastMessageDate'],
@@ -253,7 +252,6 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                   viewInSalesNavigator: lead.viewInSalesNavigator || '',
                   email: lead.email || '',
                   phone: lead.phone || '',
-                  ashWorkshopEmail: Boolean(lead.ashWorkshopEmail),
                   notes: lead.notes || '',
                   followUpDate: convertToISODate(lead.followUpDate),
                   source: normalizedSource,
@@ -540,20 +538,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
             />
           </div>
 
-          <div className="flex">
-            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">ASH Workshop Email</label>
-            <div className="flex-1 flex items-center py-2">
-              <input
-                type="checkbox"
-                checked={Boolean(formData.ashWorkshopEmail)}
-                onChange={(e) => handleChange('ashWorkshopEmail', e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <span className="ml-2 text-sm text-gray-600">
-                Add to workshop invite list
-              </span>
-            </div>
-          </div>
+          
         </div>
       </div>
 

@@ -305,14 +305,13 @@ export const getLeadById = async (leadId) => {
       'Headline': lead.headline,
       'Job Title': lead.jobTitle,
       'Company Name': lead.companyName,
-      'About': lead.about,
-      'ASH Workshop Email': lead.ashWorkshopEmail,
+  'About': lead.about,
       'AI Profile Assessment': lead.aiProfileAssessment,
       'AI Attribute Breakdown': lead.aiAttributeBreakdown,
   'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
   'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
-      ashWorkshopEmail: lead.ashWorkshopEmail,
+      
       phone: lead.phone,
   followUpDate: lead.followUpDate,
   source: lead.source,
@@ -353,8 +352,7 @@ export const createLead = async (leadData) => {
       'source': 'Source',
       'status': 'Status',
       'priority': 'Priority',
-      'linkedinConnectionStatus': 'LinkedIn Connection Status',
-      'ashWorkshopEmail': 'ASH Workshop Email',
+  'linkedinConnectionStatus': 'LinkedIn Connection Status',
   'postsActioned': 'Posts Actioned',
   'searchTerms': 'Search Terms',
   'searchTokensCanonical': 'Search Tokens (canonical)'
@@ -423,12 +421,11 @@ export const createLead = async (leadData) => {
       'Headline': lead.headline,
       'Job Title': lead.jobTitle,
       'Company Name': lead.companyName,
-      'About': lead.about,
-      'ASH Workshop Email': lead.ashWorkshopEmail,
+  'About': lead.about,
   'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
   'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
-      ashWorkshopEmail: lead.ashWorkshopEmail,
+      
       phone: lead.phone,
       followUpDate: lead.followUpDate
     };
@@ -456,8 +453,7 @@ export const updateLead = async (leadId, updateData) => {
       'source': 'Source',
       'status': 'Status',
       'priority': 'Priority',
-      'linkedinConnectionStatus': 'LinkedIn Connection Status',
-      'ashWorkshopEmail': 'ASH Workshop Email',
+  'linkedinConnectionStatus': 'LinkedIn Connection Status',
   'postsActioned': 'Posts Actioned',
   'searchTerms': 'Search Terms',
   'searchTokensCanonical': 'Search Tokens (canonical)'
@@ -532,12 +528,11 @@ export const updateLead = async (leadId, updateData) => {
       'Headline': lead.headline,
       'Job Title': lead.jobTitle,
       'Company Name': lead.companyName,
-      'About': lead.about,
-      'ASH Workshop Email': lead.ashWorkshopEmail,
+  'About': lead.about,
   'Search Terms': lead['Search Terms'] || lead.searchTerms || '',
   'Search Tokens (canonical)': lead['Search Tokens (canonical)'] || lead.searchTokensCanonical || '',
       // Also include camelCase for compatibility
-      ashWorkshopEmail: lead.ashWorkshopEmail,
+      
       phone: lead.phone,
       followUpDate: lead.followUpDate
     };

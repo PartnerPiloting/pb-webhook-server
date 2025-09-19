@@ -75,6 +75,9 @@ async function getAllClients() {
                 const serviceLevelRaw = record.get('Service Level') || 1;
                 const serviceLevel = parseServiceLevel(serviceLevelRaw); // Parse "2-Lead Scoring + Post Scoring" → 2
                 const comment = record.get('Comment') || '';
+                // Email notification fields
+                const clientFirstName = record.get('Client First Name') || '';
+                const clientEmailAddress = record.get('Client Email Address') || '';
                 const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 5000;
                 const postScoringTokenLimit = record.get('Post Scoring Token Limit') || 3000;
                 // Post harvesting scheduler fields (optional)
@@ -99,6 +102,9 @@ async function getAllClients() {
                     wpUserId: wpUserId,
                     serviceLevel: serviceLevel,
                     comment: comment,
+                    // Email notification fields
+                    clientFirstName: clientFirstName,
+                    clientEmailAddress: clientEmailAddress,
                     profileScoringTokenLimit: profileScoringTokenLimit,
                     postScoringTokenLimit: postScoringTokenLimit,
                     // Post harvesting settings

@@ -659,8 +659,22 @@ export default function TopScoringLeads() {
       <div className="bg-white border rounded">
         <div className="p-4 border-b font-medium flex items-center gap-3 flex-wrap">
           <span>Eligible Leads</span>
-          <button className="px-3 py-1 border rounded" onClick={copyUrls} disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}>Copy URLs {copied ? '✓' : ''}</button>
-          <button className="px-3 py-1 border rounded" onClick={downloadTxt} disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}>Download .txt</button>
+          <button 
+            className="px-3 py-1 border rounded" 
+            onClick={copyUrls} 
+            disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}
+            title="Copy all LinkedIn URLs to clipboard. If this fails, use Download instead."
+          >
+            Copy URLs {copied ? '✓' : ''}
+          </button>
+          <button 
+            className="px-3 py-1 border rounded" 
+            onClick={downloadTxt} 
+            disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}
+            title="Download all LinkedIn URLs as a text file. More reliable than clipboard."
+          >
+            Download .txt
+          </button>
           <span className="ml-2 text-xs text-gray-500">
             {lastExportAt ? `Last Export: ${new Date(Number(lastExportAt)).toLocaleString()}` : 'Last Export: —'}
           </span>

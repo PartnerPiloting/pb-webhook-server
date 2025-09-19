@@ -255,6 +255,9 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                     [AIRTABLE_DATE_ADDED_FIELD]: new Date().toISOString()
                 };
 
+                console.log(`[DEBUG] PBPostsSync: Updating record ${record.id} with ${newPostsAdded} new, ${postsUpdated} updated posts`);
+                console.log(`[DEBUG] PBPostsSync: Final posts array length: ${existingPosts.length}, JSON size: ${updateData[AIRTABLE_POSTS_FIELD].length} chars`);
+
                 // Add optional timestamp fields if they exist in the base
                 try {
                     updateData[AIRTABLE_LAST_POST_CHECK_AT_FIELD] = new Date().toISOString();
@@ -264,10 +267,14 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 }
 
                 await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update(record.id, updateData);
+                console.log(`[DEBUG] PBPostsSync: Successfully updated Airtable record ${record.id}`);
                 console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded}, Updated ${postsUpdated} posts (total: ${existingPosts.length})`);
             } catch (updateError) {
+                console.error(`[DEBUG] PBPostsSync: Failed to update ${normProfileUrl}:`, updateError.message);
                 console.error(`Failed to update ${normProfileUrl}:`, updateError.message);
             }
+        } else {
+            console.log(`[DEBUG] PBPostsSync: No updates needed for ${normProfileUrl} (no new or updated posts)`);
         }
     }
 
