@@ -756,6 +756,58 @@ module.exports = function mountTopScoringLeads(app, base) {
     }
   });
 
+  // GET /eligible/all - return ALL eligible leads without pagination
+  router.get('/eligible/all', async (req, res) => {
+    try {
+      const b = await getBaseForRequest(req);
+      if (!b) return res.status(500).json({ ok: false, error: 'Airtable base not configured' });
+      
+      // Get threshold from query or use default
+      const threshold = req.query.threshold ? parseFloat(req.query.threshold) : 65;
+      
+      // Build filter formula for eligible leads
+      const filterFormula = `AND(
+        {AI Score} >= ${threshold},
+        {Lead Status} = 'New', 
+        {Scoring Status} = 'Scored'
+      )`;
+      
+      // Use eachPage to get ALL matching records without pagination limits
+      let allLeads = [];
+      await new Promise((resolve, reject) => {
+        b('Leads')
+          .select({
+            filterByFormula: filterFormula,
+            sort: [{ field: 'AI Score', direction: 'desc' }]
+          })
+          .eachPage(
+            (records, fetchNextPage) => {
+              const items = records.map(r => ({
+                id: r.id,
+                score: r.get('AI Score') ?? null,
+                firstName: r.get('First Name') || null,
+                lastName: r.get('Last Name') || null,
+                linkedinUrl: r.get('LinkedIn Profile URL') || null,
+                scoringStatus: r.get('Scoring Status') || null,
+                connectionStatus: r.get('LinkedIn Connection Status') || null
+              }));
+              allLeads = [...allLeads, ...items];
+              fetchNextPage();
+            },
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+      });
+      
+      return res.json(allLeads);
+    } catch (e) {
+      console.error('Error in /eligible/all:', e);
+      res.status(500).json({ error: e?.message || String(e) });
+    }
+  });
+
   // Utilities for batch updates
   function chunk(arr, size) {
     const out = [];
