@@ -401,9 +401,16 @@ export default function TopScoringLeads() {
         const result = await copyToClipboard(urls);
         setCopied(true);
         setTimeout(() => setCopied(false), 3000);
-        // After successful copy, go back to READY state, not AWAITING_CONFIRM
-        setPhase('READY');
         console.log(`SUCCESS: Copied ${urlList.length} URLs using ${result.method} method`);
+        
+        // After successful copy, lock the batch if not already locked
+        if (!inProgress) {
+          console.log('Locking batch after successful copy...');
+          const eff = getEffectiveThreshold();
+          await lockCurrentBatch(eff);
+        }
+        
+        setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
       } catch (e) {
         console.error('All clipboard methods failed:', e);
         setError(e.message || 'Copy failed. Try "Download .txt" instead.');
@@ -441,8 +448,15 @@ export default function TopScoringLeads() {
       const dateStr = new Date().toISOString().split('T')[0];
       a.download = `linkedin-urls-${dateStr}.txt`; 
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      // After successful download, go back to READY state, not AWAITING_CONFIRM
-      setPhase('READY');
+      
+      // After successful download, lock the batch if not already locked
+      if (!inProgress) {
+        console.log('Locking batch after successful download...');
+        const eff = getEffectiveThreshold();
+        await lockCurrentBatch(eff);
+      }
+      
+      setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
     } catch (e) {
       setError('Download failed');
       setPhase('READY');
