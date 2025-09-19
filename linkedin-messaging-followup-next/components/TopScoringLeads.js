@@ -287,14 +287,8 @@ export default function TopScoringLeads() {
       if (!inProgress) {
         await performLockIfNeeded();
       } else {
-        // Simulate progressive re-export build
-        const total = eligible.length || selectedCount || 0;
-        setLoadProgress({ loaded: 0, total });
-        const chunkSize = 50;
-        for (let i = 0; i < total; i += chunkSize) {
-          await new Promise(r => setTimeout(r, 35));
-          setLoadProgress(lp => ({ ...lp, loaded: Math.min(total, i + chunkSize) }));
-        }
+        // Reload all locked items for re-export instead of simulation
+        await loadLockedBatchProgressive();
       }
       const allItems = eligible || [];
       const urlList = allItems.map(r => r?.linkedinUrl).filter(u => !!u);
@@ -336,13 +330,8 @@ export default function TopScoringLeads() {
       if (!inProgress) {
         await performLockIfNeeded();
       } else {
-        const total = eligible.length || selectedCount || 0;
-        setLoadProgress({ loaded: 0, total });
-        const chunkSize = 50;
-        for (let i = 0; i < total; i += chunkSize) {
-          await new Promise(r => setTimeout(r, 35));
-          setLoadProgress(lp => ({ ...lp, loaded: Math.min(total, i + chunkSize) }));
-        }
+        // Reload all locked items for re-export instead of simulation
+        await loadLockedBatchProgressive();
       }
       const urls = (eligible || []).map(r => r?.linkedinUrl).filter(Boolean).join('\n');
       const blob = new Blob([urls], { type: 'text/plain' });
