@@ -283,18 +283,20 @@ export default function TopScoringLeads() {
     try {
       setError(null);
       setPhase('EXPORTING');
-      // If not locked yet, locking path already shows progressive loading inside lockCurrentBatchProgressive
-      if (!inProgress) {
-        await performLockIfNeeded();
-      } else {
-        // Reload all locked items for re-export instead of simulation
-        await loadLockedBatchProgressive();
-      }
-      const allItems = eligible || [];
-      const urlList = allItems.map(r => r?.linkedinUrl).filter(u => !!u);
-      console.log(`DEBUG: About to copy ${urlList.length} URLs from ${allItems.length} items`);
+      
+      // Get the current threshold
+      const eff = getEffectiveThreshold();
+      
+      // Directly fetch ALL eligible leads from the new endpoint
+      console.log(`DEBUG: Fetching all eligible leads with threshold ${eff}`);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}`, clientId);
+      
+      // Extract URLs from the leads
+      const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
+      console.log(`DEBUG: About to copy ${urlList.length} URLs from ${allLeads.length} items from API`);
+      
       if (urlList.length === 0) {
-        setError(`No LinkedIn URLs found among ${allItems.length} selected leads.`);
+        setError(`No LinkedIn URLs found among ${allLeads.length} selected leads.`);
         setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
         return;
       }
@@ -336,17 +338,27 @@ export default function TopScoringLeads() {
     try {
       setError(null);
       setPhase('EXPORTING');
-      if (!inProgress) {
-        await performLockIfNeeded();
-      } else {
-        // Reload all locked items for re-export instead of simulation
-        await loadLockedBatchProgressive();
-      }
-      const urls = (eligible || []).map(r => r?.linkedinUrl).filter(Boolean).join('\n');
+      
+      // Get the current threshold
+      const eff = getEffectiveThreshold();
+      
+      // Directly fetch ALL eligible leads from the new endpoint
+      console.log(`DEBUG: Fetching all eligible leads with threshold ${eff} for download`);
+      const allLeads = await apiGet(`/eligible/all?threshold=${eff}`, clientId);
+      
+      // Extract URLs from the leads
+      const urlList = allLeads.map(r => r?.linkedinUrl).filter(u => !!u);
+      console.log(`DEBUG: About to download ${urlList.length} URLs from ${allLeads.length} items from API`);
+      
+      const urls = urlList.join('\n');
       const blob = new Blob([urls], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'eligible-linkedin-urls.txt'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      a.href = url; 
+      // Add date to filename
+      const dateStr = new Date().toISOString().split('T')[0];
+      a.download = `linkedin-urls-${dateStr}.txt`; 
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
       setPhase('AWAITING_CONFIRM');
     } catch (e) {
       setError('Download failed');
