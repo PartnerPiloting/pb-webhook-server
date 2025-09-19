@@ -97,3 +97,24 @@ services:
       #   value: "Leads"
     buildCommand: "echo 'No build'"
     startCommand: "node scripts/post-score-level2/index.js"
+
+  - type: cron
+    name: daily-client-alerts
+    runtime: node
+    plan: starter
+    schedule: "0 9 * * *" # 9:00 AM daily (AEST/AEDT)
+    envVars:
+      - key: AIRTABLE_API_KEY
+        sync: false
+      - key: MASTER_CLIENTS_BASE_ID
+        sync: false
+      - key: MAILGUN_API_KEY
+        sync: false
+      - key: MAILGUN_DOMAIN
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: ALERT_EMAIL
+        sync: false
+    buildCommand: "echo 'No build'"
+    startCommand: "node scripts/daily-client-alerts/index.js"
