@@ -811,9 +811,7 @@ export const getPostAttributeForEditing = async (attributeId) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/edit`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: getAuthenticatedHeaders()
     });
     
     if (!response.ok) {
@@ -865,9 +863,7 @@ export const getPostAISuggestions = async (attributeId, userRequest, currentAttr
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/ai-edit`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthenticatedHeaders(),
       body: JSON.stringify({
         userRequest
       })
@@ -929,9 +925,7 @@ export const savePostAttributeChanges = async (attributeId, updatedData) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/save`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthenticatedHeaders(),
       body: JSON.stringify(updatedData)
     });
     
@@ -957,9 +951,7 @@ export const toggleAttributeActive = async (attributeId, isActive) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/save`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthenticatedHeaders(),
       body: JSON.stringify({
         active: isActive
       })
@@ -981,9 +973,7 @@ export const togglePostAttributeActive = async (attributeId, isActive) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/post-attributes/${attributeId}/save`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthenticatedHeaders(),
       body: JSON.stringify({
         active: isActive
       })
