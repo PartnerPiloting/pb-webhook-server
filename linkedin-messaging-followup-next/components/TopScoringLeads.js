@@ -301,32 +301,114 @@ export default function TopScoringLeads() {
         return;
       }
       const urls = urlList.join('\n');
-      let ok = false; let lastErr = null;
       
-      // Ensure document is focused for clipboard access
-      window.focus();
-      
-      // Prefer modern async clipboard first (secure contexts / localhost)
-      if (navigator?.clipboard?.writeText) {
-        try { await navigator.clipboard.writeText(urls); ok = true; } catch (e) { lastErr = e; }
-      }
-      if (!ok) {
+      // Robust clipboard copy with multiple fallback strategies
+      const copyToClipboard = async (text) => {
+        // Strategy 1: Request user interaction first to ensure focus
+        const ensureFocus = async () => {
+          // Force multiple focus attempts
+          window.focus();
+          document.documentElement.focus();
+          if (document.body) document.body.focus();
+          
+          // Create a temporary interactive element to ensure user interaction context
+          const tempInput = document.createElement('input');
+          tempInput.style.position = 'fixed';
+          tempInput.style.top = '-9999px';
+          tempInput.style.left = '-9999px';
+          tempInput.style.opacity = '0';
+          document.body.appendChild(tempInput);
+          
+          tempInput.focus();
+          tempInput.click();
+          
+          // Small delay to ensure focus
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
+          document.body.removeChild(tempInput);
+        };
+        
+        // Ensure we have proper focus context
+        await ensureFocus();
+        
+        // Strategy 2: Modern clipboard API with user interaction
+        if (navigator?.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(text);
+            return { success: true, method: 'modern' };
+          } catch (e) {
+            console.warn('Modern clipboard failed:', e);
+            // Continue to fallback
+          }
+        }
+        
+        // Strategy 3: Enhanced textarea fallback with better positioning and focus
         try {
-          const ta = document.createElement('textarea');
-          ta.value = urls; ta.readOnly = true; ta.style.position = 'fixed'; ta.style.top = '-9999px';
-          document.body.appendChild(ta); 
-          ta.focus(); // Ensure textarea is focused
-          ta.select(); 
-          ok = document.execCommand('copy'); 
-          document.body.removeChild(ta);
-        } catch (e2) { lastErr = lastErr || e2; }
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          
+          // Better styling for cross-browser compatibility
+          Object.assign(textarea.style, {
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            width: '1px',
+            height: '1px',
+            padding: '0',
+            border: 'none',
+            outline: 'none',
+            boxShadow: 'none',
+            background: 'transparent',
+            fontSize: '16px', // Prevents zoom on iOS
+            zIndex: '9999'
+          });
+          
+          document.body.appendChild(textarea);
+          
+          // Multiple focus and selection attempts
+          textarea.focus();
+          textarea.select();
+          
+          // iOS/mobile compatibility
+          if (textarea.setSelectionRange) {
+            textarea.setSelectionRange(0, textarea.value.length);
+          }
+          
+          // Additional attempt for better mobile support
+          if (window.getSelection) {
+            const range = document.createRange();
+            range.selectNodeContents(textarea);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          
+          if (successful) {
+            return { success: true, method: 'legacy' };
+          }
+          throw new Error('Copy command returned false');
+          
+        } catch (e) {
+          console.error('Enhanced textarea fallback failed:', e);
+          throw new Error(`Clipboard access failed: ${e.message}. Please ensure the page has focus and try again, or use Download instead.`);
+        }
+      };
+      
+      try {
+        const result = await copyToClipboard(urls);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+        // After successful copy, go back to READY state, not AWAITING_CONFIRM
+        setPhase('READY');
+        console.log(`SUCCESS: Copied ${urlList.length} URLs using ${result.method} method`);
+      } catch (e) {
+        console.error('All clipboard methods failed:', e);
+        setError(e.message || 'Copy failed. Try "Download .txt" instead.');
+        setPhase('READY');
       }
-      if (!ok) {
-        console.warn('Copy URLs failed', lastErr);
-        throw new Error(lastErr?.message || 'Clipboard unavailable');
-      }
-      setCopied(true); setTimeout(() => setCopied(false), 1500);
-      setPhase('AWAITING_CONFIRM');
     } catch (e) {
       setError(`Failed to copy URLs${e?.message ? `: ${e.message}` : ''}`);
       setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
@@ -359,10 +441,11 @@ export default function TopScoringLeads() {
       const dateStr = new Date().toISOString().split('T')[0];
       a.download = `linkedin-urls-${dateStr}.txt`; 
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      setPhase('AWAITING_CONFIRM');
+      // After successful download, go back to READY state, not AWAITING_CONFIRM
+      setPhase('READY');
     } catch (e) {
       setError('Download failed');
-      setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
+      setPhase('READY');
     }
   };
 
@@ -562,8 +645,22 @@ export default function TopScoringLeads() {
       <div className="bg-white border rounded">
         <div className="p-4 border-b font-medium flex items-center gap-3 flex-wrap">
           <span>Eligible Leads</span>
-          <button className="px-3 py-1 border rounded" onClick={copyUrls} disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}>Copy URLs {copied ? '✓' : ''}</button>
-          <button className="px-3 py-1 border rounded" onClick={downloadTxt} disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}>Download .txt</button>
+          <button 
+            className="px-3 py-1 border rounded" 
+            onClick={copyUrls} 
+            disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}
+            title="Copy all LinkedIn URLs to clipboard. If this fails, use Download instead."
+          >
+            Copy URLs {copied ? '✓' : ''}
+          </button>
+          <button 
+            className="px-3 py-1 border rounded" 
+            onClick={downloadTxt} 
+            disabled={!hasSelected || phase === 'SELECTING' || phase === 'IDLE'}
+            title="Download all LinkedIn URLs as a text file. More reliable than clipboard."
+          >
+            Download .txt
+          </button>
           <span className="ml-2 text-xs text-gray-500">
             {lastExportAt ? `Last Export: ${new Date(Number(lastExportAt)).toLocaleString()}` : 'Last Export: —'}
           </span>
