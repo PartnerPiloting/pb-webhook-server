@@ -151,8 +151,6 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     }
 
     console.log(`[PBPostsSync] Starting sync with ${pbPostsArr.length} posts`);
-    console.log(`[DEBUG] PBPostsSync: Using client base:`, airtableBase ? 'CLIENT-SPECIFIC' : 'FALLBACK');
-    console.log(`[DEBUG] PBPostsSync: Client ID:`, clientId || 'AUTO-DETECTED');
 
     // Index posts by normalized profile URL
     const postsByProfile = {};
@@ -194,21 +192,15 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
     for (const [normProfileUrl, postsList] of Object.entries(postsByProfile)) {
         processedCount++;
         
-        console.log(`[DEBUG] PBPostsSync: Processing profile ${processedCount}/${Object.keys(postsByProfile).length}: ${normProfileUrl}`);
-        
         const record = await getAirtableRecordByProfileUrl(normProfileUrl, airtableBase);
         if (!record) {
             console.warn(`No Airtable lead found for: ${normProfileUrl}`);
             continue;
         }
 
-        console.log(`[DEBUG] PBPostsSync: Found Airtable record ${record.id} for ${normProfileUrl}`);
-        console.log(`[DEBUG] PBPostsSync: Will add ${postsList.length} posts to this record`);
-
         let existingPosts = [];
         try {
             const postsFieldValue = record.get(AIRTABLE_POSTS_FIELD) || "[]";
-            console.log(`[DEBUG] PBPostsSync: Existing posts field length: ${postsFieldValue.length} chars`);
             
             // Check if the field is extremely large (could cause memory issues)
             if (postsFieldValue.length > 1000000) { // 1MB limit
@@ -218,11 +210,9 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 // Use dirty-json for safer parsing of existing posts (same as webhook parsing)
                 try {
                     existingPosts = JSON.parse(postsFieldValue);
-                    console.log(`[DEBUG] PBPostsSync: Parsed ${existingPosts.length} existing posts successfully`);
                 } catch (jsonError) {
                     console.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
                     existingPosts = dirtyJSON.parse(postsFieldValue);
-                    console.log(`[DEBUG] PBPostsSync: Dirty-JSON parsed ${existingPosts.length} existing posts`);
                 }
             }
         } catch (parseError) {

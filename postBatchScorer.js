@@ -353,13 +353,6 @@ async function loadClientPostScoringConfig(clientBase) {
 }
 
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
-    console.log(`[DEBUG] getLeadsForPostScoring: Looking for leads in table "${config.leadsTableName}"`);
-    console.log(`[DEBUG] getLeadsForPostScoring: Using fields:`, {
-        postsContent: config.fields.postsContent,
-        dateScored: config.fields.dateScored,
-        linkedinUrl: config.fields.linkedinUrl
-    });
-    
     // If explicit targetIds provided, use them directly (bypass view path)
     if (Array.isArray(options.targetIds) && options.targetIds.length > 0) {
         const ids = options.targetIds.slice(0, Math.max(1, limit || options.targetIds.length));

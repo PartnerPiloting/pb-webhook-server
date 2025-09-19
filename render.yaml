@@ -102,7 +102,7 @@ services:
     name: daily-client-alerts
     runtime: node
     plan: starter
-    schedule: "0 9 * * *" # 9:00 AM daily (AEST/AEDT)
+    schedule: "0 8 * * *" # 6:00 PM AEST / 7:00 PM AEDT (end of day)
     envVars:
       - key: AIRTABLE_API_KEY
         sync: false
