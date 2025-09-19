@@ -292,6 +292,7 @@ export default function TopScoringLeads() {
       }
       const allItems = eligible || [];
       const urlList = allItems.map(r => r?.linkedinUrl).filter(u => !!u);
+      console.log(`DEBUG: About to copy ${urlList.length} URLs from ${allItems.length} items`);
       if (urlList.length === 0) {
         setError(`No LinkedIn URLs found among ${allItems.length} selected leads.`);
         setPhase(inProgress ? 'AWAITING_CONFIRM' : 'READY');
@@ -299,6 +300,10 @@ export default function TopScoringLeads() {
       }
       const urls = urlList.join('\n');
       let ok = false; let lastErr = null;
+      
+      // Ensure document is focused for clipboard access
+      window.focus();
+      
       // Prefer modern async clipboard first (secure contexts / localhost)
       if (navigator?.clipboard?.writeText) {
         try { await navigator.clipboard.writeText(urls); ok = true; } catch (e) { lastErr = e; }
@@ -307,7 +312,11 @@ export default function TopScoringLeads() {
         try {
           const ta = document.createElement('textarea');
           ta.value = urls; ta.readOnly = true; ta.style.position = 'fixed'; ta.style.top = '-9999px';
-          document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); document.body.removeChild(ta);
+          document.body.appendChild(ta); 
+          ta.focus(); // Ensure textarea is focused
+          ta.select(); 
+          ok = document.execCommand('copy'); 
+          document.body.removeChild(ta);
         } catch (e2) { lastErr = lastErr || e2; }
       }
       if (!ok) {
