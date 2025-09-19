@@ -4,12 +4,11 @@
 
 require('dotenv').config();
 const emailTemplateService = require('./emailTemplateService');
-
-// We need fetch for Mailgun API calls
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
+const https = require('https');
+const querystring = require('querystring');
 
 /**
- * Send email via Mailgun REST API (same approach as alertAdmin)
+ * Send email via Mailgun REST API using native Node.js https
  * @param {Object} emailData - Email data object
  * @returns {Promise<Object>} Response from Mailgun
  */
@@ -18,23 +17,50 @@ async function sendMailgunEmail(emailData) {
         throw new Error("Mailgun not configured - missing API key or domain");
     }
 
-    const mgUrl = `https://api.mailgun.net/v3/${process.env.MAILGUN_DOMAIN}/messages`;
-    
-    const response = await fetch(mgUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Basic ${Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64')}`,
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams(emailData)
+    return new Promise((resolve, reject) => {
+        const data = querystring.stringify(emailData);
+        const auth = Buffer.from(`api:${process.env.MAILGUN_API_KEY}`).toString('base64');
+        
+        const options = {
+            hostname: 'api.mailgun.net',
+            port: 443,
+            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': data.length
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let responseData = '';
+            
+            res.on('data', (chunk) => {
+                responseData += chunk;
+            });
+            
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try {
+                        const parsedData = JSON.parse(responseData);
+                        resolve(parsedData);
+                    } catch (error) {
+                        resolve({ id: 'unknown', message: responseData });
+                    }
+                } else {
+                    reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
+                }
+            });
+        });
+
+        req.on('error', (error) => {
+            reject(error);
+        });
+
+        req.write(data);
+        req.end();
     });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Mailgun API error: ${response.status} - ${errorText}`);
-    }
-
-    return await response.json();
 }
 
 /**
