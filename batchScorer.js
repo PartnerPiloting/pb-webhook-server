@@ -384,7 +384,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
 
         if (!geminiOutputItem) { 
             log.warn(`No corresponding output from Gemini for lead ${leadItem.id} (index ${i}) in batch due to count mismatch. Marking failed.`);
-            airtableResultUpdates.push({ id: leadItem.rec.id, fields: { "Scoring Status": "Failed – Missing in AI Batch Response", "Date Scored": new Date().toISOString() } });
+            airtableResultUpdates.push({ id: leadItem.rec.id, fields: { "Scoring Status": "Failed – API Error", "Date Scored": new Date().toISOString() } });
             failedUpdates++;
             continue; 
         }
