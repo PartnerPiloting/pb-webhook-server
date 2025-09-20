@@ -482,23 +482,26 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
     if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
     const stream = parseInt(req.query.stream) || 1;
-    const { generateJobId, setJobStatus, setProcessingStream } = require('../services/clientService');
+    const singleClientId = req.query.clientId; // Optional: process single client
+    const { generateJobId, setJobStatus, setProcessingStream, getActiveClientsByStream } = require('../services/clientService');
     
     // Generate job ID and set initial status
     const jobId = generateJobId('post_harvesting', stream);
-    console.log(`[apify/process-level2-v2] Starting fire-and-forget post harvesting, jobId: ${jobId}, stream: ${stream}`);
+    const clientDesc = singleClientId ? ` for client ${singleClientId}` : '';
+    console.log(`[apify/process-level2-v2] Starting fire-and-forget post harvesting${clientDesc}, jobId: ${jobId}, stream: ${stream}`);
 
     // Return 202 Accepted immediately
     res.status(202).json({
       ok: true,
-      message: 'Post harvesting started in background',
+      message: `Post harvesting started in background${clientDesc}`,
       jobId,
       stream,
+      clientId: singleClientId,
       timestamp: new Date().toISOString()
     });
 
     // Start background processing
-    processPostHarvestingInBackground(jobId, stream, secret);
+    processPostHarvestingInBackground(jobId, stream, secret, singleClientId);
 
   } catch (e) {
     console.error('[apify/process-level2-v2] error:', e.message);
@@ -507,12 +510,13 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
 });
 
 // Background processing function for post harvesting
-async function processPostHarvestingInBackground(jobId, stream, secret) {
+async function processPostHarvestingInBackground(jobId, stream, secret, singleClientId) {
   const {
     getAllActiveClients,
     setJobStatus,
     setProcessingStream,
-    formatDuration
+    formatDuration,
+    getActiveClientsByStream
   } = require('../services/clientService');
 
   const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
@@ -529,19 +533,18 @@ async function processPostHarvestingInBackground(jobId, stream, secret) {
   try {
     console.log(`[post-harvesting-background] Starting job ${jobId} on stream ${stream}`);
 
-    // Set initial job status
-    await setProcessingStream('post_harvesting', stream);
+    // Set initial job status (don't set processing stream for operation)
     await setJobStatus(null, 'post_harvesting', 'STARTED', jobId, {
       lastRunDate: new Date().toISOString(),
       lastRunTime: '0 seconds',
       lastRunCount: 0
     });
 
-    // Get active clients with service level >= 2
-    const activeClients = await getAllActiveClients();
-    const candidates = activeClients.filter(c => Number(c.serviceLevel) >= 2);
+    // Get active clients filtered by processing stream and service level >= 2
+    const streamClients = await getActiveClientsByStream(stream, singleClientId);
+    const candidates = streamClients.filter(c => Number(c.serviceLevel) >= 2);
     
-    console.log(`[post-harvesting-background] Found ${candidates.length} level 2+ clients to process`);
+    console.log(`[post-harvesting-background] Found ${candidates.length} level 2+ clients on stream ${stream} to process`);
 
     const baseUrl = process.env.API_PUBLIC_BASE_URL
       || process.env.NEXT_PUBLIC_API_BASE_URL
