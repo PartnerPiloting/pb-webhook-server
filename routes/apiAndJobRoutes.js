@@ -578,6 +578,182 @@ router.post("/run-post-batch-score", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// FIRE-AND-FORGET Post Batch Score (NEW PATTERN) 
+// ---------------------------------------------------------------
+router.post("/run-post-batch-score-v2", async (req, res) => {
+  console.log("🚀 apiAndJobRoutes.js: /run-post-batch-score-v2 endpoint hit (FIRE-AND-FORGET)");
+  
+  // Check if fire-and-forget is enabled
+  const fireAndForgetEnabled = process.env.FIRE_AND_FORGET === 'true';
+  if (!fireAndForgetEnabled) {
+    console.log("⚠️ Fire-and-forget not enabled");
+    return res.status(501).json({
+      status: 'error',
+      message: 'Fire-and-forget mode not enabled. Set FIRE_AND_FORGET=true'
+    });
+  }
+
+  if (!vertexAIClient || !geminiModelId) {
+    console.error("❌ Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
+    return res.status(503).json({
+      status: 'error',
+      message: "Multi-tenant post scoring unavailable (Gemini config missing)."
+    });
+  }
+
+  try {
+    // Parse query parameters (same as original endpoint)
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
+    const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true';
+    const singleClientId = req.query.clientId || req.query.client_id || null;
+    const stream = req.query.stream ? parseInt(req.query.stream, 10) : 1;
+
+    // Generate job ID for this execution
+    const { generateJobId } = require('../services/clientService');
+    const jobId = generateJobId('post_scoring', stream);
+    
+    console.log(`🎯 Starting fire-and-forget post scoring: jobId=${jobId}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}`);
+    
+    // FIRE-AND-FORGET: Respond immediately with 202 Accepted
+    res.status(202).json({
+      status: 'accepted',
+      message: 'Post scoring job started in background',
+      jobId: jobId,
+      stream: stream,
+      clientId: singleClientId || 'ALL',
+      mode: dryRun ? 'dryRun' : 'live',
+      estimatedDuration: '5-30 minutes depending on client count',
+      note: 'Check job status via client tracking fields in Airtable'
+    });
+
+    // Start background processing (don't await - fire and forget!)
+    processPostScoringInBackground(jobId, stream, {
+      limit,
+      dryRun,
+      singleClientId
+    }).catch(error => {
+      console.error(`❌ Background post scoring failed for job ${jobId}:`, error.message);
+    });
+
+  } catch (error) {
+    console.error("❌ Fire-and-forget post scoring startup error:", error.message);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        status: 'error',
+        message: `Failed to start post scoring job: ${error.message}`
+      });
+    }
+  }
+});
+
+/**
+ * Background processing function for fire-and-forget post scoring
+ */
+async function processPostScoringInBackground(jobId, stream, options) {
+  const { 
+    setJobStatus, 
+    setProcessingStream, 
+    formatDuration 
+  } = require('../services/clientService');
+  
+  const startTime = Date.now();
+  const maxClientMinutes = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
+  const maxJobHours = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
+  const maxJobMs = maxJobHours * 60 * 60 * 1000;
+  
+  console.log(`🔄 Background post scoring started: ${jobId}`);
+  
+  try {
+    // Get all active clients
+    const clientService = require("../services/clientService");
+    let clients = await clientService.getActiveClients(options.singleClientId);
+    
+    console.log(`📊 Processing ${clients.length} clients in stream ${stream}`);
+
+    let totalProcessed = 0;
+    let totalSuccessful = 0;
+    let totalFailed = 0;
+
+    // Process each client with timeout protection
+    for (let i = 0; i < clients.length; i++) {
+      const client = clients[i];
+      
+      // Check overall job timeout
+      if (Date.now() - startTime > maxJobMs) {
+        console.log(`⏰ Job timeout reached (${maxJobHours} hours) - stopping gracefully`);
+        await setJobStatus(client.clientId, 'post_scoring', 'JOB_TIMEOUT_KILLED', jobId, {
+          duration: formatDuration(Date.now() - startTime),
+          count: totalSuccessful
+        });
+        break;
+      }
+
+      try {
+        console.log(`🎯 Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
+        
+        // Set client processing stream and status
+        await setProcessingStream(client.clientId, stream);
+        await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
+        
+        const clientStartTime = Date.now();
+        
+        // Run post scoring for this client with timeout
+        const clientResult = await Promise.race([
+          postBatchScorer.runMultiTenantPostScoring(
+            vertexAIClient,
+            geminiModelId,
+            client.clientId,
+            options.limit,
+            {
+              dryRun: options.dryRun
+            }
+          ),
+          // Client timeout
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Client timeout')), maxClientMinutes * 60 * 1000)
+          )
+        ]);
+
+        // Success - update status
+        const clientDuration = formatDuration(Date.now() - clientStartTime);
+        const postsScored = clientResult.totalPostsScored || 0;
+        
+        await setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', jobId, {
+          duration: clientDuration,
+          count: postsScored
+        });
+        
+        console.log(`✅ ${client.clientName}: ${postsScored} posts scored in ${clientDuration}`);
+        totalSuccessful++;
+        totalProcessed += postsScored;
+
+      } catch (error) {
+        // Handle client failure or timeout
+        const clientDuration = formatDuration(Date.now() - clientStartTime);
+        const isTimeout = error.message.includes('timeout');
+        const status = isTimeout ? 'CLIENT_TIMEOUT_KILLED' : 'FAILED';
+        
+        await setJobStatus(client.clientId, 'post_scoring', status, jobId, {
+          duration: clientDuration,
+          count: 0
+        });
+        
+        console.error(`❌ ${client.clientName} ${isTimeout ? 'TIMEOUT' : 'FAILED'}: ${error.message}`);
+        totalFailed++;
+      }
+    }
+
+    // Final summary
+    const totalDuration = formatDuration(Date.now() - startTime);
+    console.log(`🎉 Fire-and-forget post scoring completed: ${jobId}`);
+    console.log(`📊 Summary: ${totalSuccessful} successful, ${totalFailed} failed, ${totalProcessed} posts scored, ${totalDuration}`);
+
+  } catch (error) {
+    console.error(`❌ Fatal error in background post scoring ${jobId}:`, error.message);
+  }
+}
+
+// ---------------------------------------------------------------
 // Simplified single-client post batch scoring (no table override, minimal params)
 // Usage:
 //   POST /run-post-batch-score-simple?clientId=Guy-Wilson&dryRun=true

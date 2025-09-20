@@ -116,7 +116,9 @@ async function getAllClients() {
                     secondaryFloor: secondaryFloor,
                     minimumFloor: minimumFloor,
                     floorStrategy: floorStrategy,
-                    autoAdjustFloors: autoAdjustFloors
+                    autoAdjustFloors: autoAdjustFloors,
+                    // Store raw record for fire-and-forget field access
+                    rawRecord: record
                 });
             });
             fetchNextPage();
@@ -598,6 +600,235 @@ function getClientBase(airtableBaseId) {
     return base;
 }
 
+// ============================================================================
+// FIRE-AND-FORGET JOB TRACKING FUNCTIONS
+// ============================================================================
+
+/**
+ * Generate a unique job ID for fire-and-forget operations
+ * @param {string} operation - Operation type: 'lead_scoring', 'post_harvesting', 'post_scoring'
+ * @param {number} stream - Processing stream number (1, 2, 3, etc.)
+ * @returns {string} Unique job ID
+ */
+function generateJobId(operation, stream) {
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    return `job_${operation}_stream${stream}_${timestamp}`;
+}
+
+/**
+ * Set job status for a specific operation and client
+ * @param {string} clientId - The Client ID
+ * @param {string} operation - Operation type: 'lead_scoring', 'post_harvesting', 'post_scoring'
+ * @param {string} status - Job status: STARTED, RUNNING, COMPLETED, CLIENT_TIMEOUT_KILLED, JOB_TIMEOUT_KILLED, FAILED
+ * @param {string} jobId - Unique job ID
+ * @param {Object} metrics - Optional metrics: { count, duration, errors }
+ * @returns {Promise<boolean>} True if update was successful
+ */
+async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
+    try {
+        console.log(`🔄 Setting ${operation} status for ${clientId}: ${status}`);
+        
+        const base = initializeClientsBase();
+        const client = await getClientById(clientId);
+        
+        if (!client) {
+            throw new Error(`Client ${clientId} not found`);
+        }
+
+        // Map operation to field names
+        const fieldMappings = {
+            'lead_scoring': {
+                status: 'Lead Scoring Job Status',
+                jobId: 'Lead Scoring Job ID',
+                lastRunDate: 'Lead Scoring Last Run Date',
+                lastRunTime: 'Lead Scoring Last Run Time',
+                lastRunCount: 'Leads Scored Last Run'
+            },
+            'post_harvesting': {
+                status: 'Post Harvesting Job Status',
+                jobId: 'Post Harvesting Job ID',
+                lastRunDate: 'Post Harvesting Last Run Date',
+                lastRunTime: 'Post Harvesting Last Run Time',
+                lastRunCount: 'Posts Harvested Last Run'
+            },
+            'post_scoring': {
+                status: 'Post Scoring Job Status',
+                jobId: 'Post Scoring Job ID',
+                lastRunDate: 'Post Scoring Last Run Date',
+                lastRunTime: 'Post Scoring Last Run Time',
+                lastRunCount: 'Posts Scored Last Run'
+            }
+        };
+
+        const fields = fieldMappings[operation];
+        if (!fields) {
+            throw new Error(`Invalid operation: ${operation}`);
+        }
+
+        // Build update object
+        const updateFields = {
+            [fields.status]: status,
+            [fields.jobId]: jobId,
+            [fields.lastRunDate]: new Date().toISOString()
+        };
+
+        // Add metrics if provided
+        if (metrics.duration) {
+            updateFields[fields.lastRunTime] = metrics.duration;
+        }
+        if (metrics.count !== undefined) {
+            updateFields[fields.lastRunCount] = metrics.count;
+        }
+
+        // Update the record
+        await base('Clients').update([{
+            id: client.id,
+            fields: updateFields
+        }]);
+
+        console.log(`✅ ${operation} status updated for ${clientId}: ${status}`);
+        
+        // Invalidate cache
+        clientsCache = null;
+        clientsCacheTimestamp = null;
+
+        return true;
+
+    } catch (error) {
+        console.error(`❌ Error setting ${operation} status for ${clientId}:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Get job status for a specific operation and client
+ * @param {string} clientId - The Client ID
+ * @param {string} operation - Operation type: 'lead_scoring', 'post_harvesting', 'post_scoring'
+ * @returns {Promise<Object|null>} Job status object or null if not found
+ */
+async function getJobStatus(clientId, operation) {
+    try {
+        const client = await getClientById(clientId);
+        if (!client) return null;
+
+        const fieldMappings = {
+            'lead_scoring': {
+                status: 'Lead Scoring Job Status',
+                jobId: 'Lead Scoring Job ID',
+                lastRunDate: 'Lead Scoring Last Run Date',
+                lastRunTime: 'Lead Scoring Last Run Time',
+                lastRunCount: 'Leads Scored Last Run'
+            },
+            'post_harvesting': {
+                status: 'Post Harvesting Job Status',
+                jobId: 'Post Harvesting Job ID', 
+                lastRunDate: 'Post Harvesting Last Run Date',
+                lastRunTime: 'Post Harvesting Last Run Time',
+                lastRunCount: 'Posts Harvested Last Run'
+            },
+            'post_scoring': {
+                status: 'Post Scoring Job Status',
+                jobId: 'Post Scoring Job ID',
+                lastRunDate: 'Post Scoring Last Run Date',
+                lastRunTime: 'Post Scoring Last Run Time',
+                lastRunCount: 'Posts Scored Last Run'
+            }
+        };
+
+        const fields = fieldMappings[operation];
+        if (!fields) return null;
+
+        return {
+            status: client.rawRecord?.get(fields.status) || null,
+            jobId: client.rawRecord?.get(fields.jobId) || null,
+            lastRunDate: client.rawRecord?.get(fields.lastRunDate) || null,
+            lastRunTime: client.rawRecord?.get(fields.lastRunTime) || null,
+            lastRunCount: client.rawRecord?.get(fields.lastRunCount) || null
+        };
+
+    } catch (error) {
+        console.error(`Error getting ${operation} status for ${clientId}:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Set processing stream for a client
+ * @param {string} clientId - The Client ID
+ * @param {number} stream - Stream number (1, 2, 3, etc.)
+ * @returns {Promise<boolean>} True if update was successful
+ */
+async function setProcessingStream(clientId, stream) {
+    try {
+        console.log(`🔄 Setting processing stream for ${clientId}: ${stream}`);
+        
+        const base = initializeClientsBase();
+        const client = await getClientById(clientId);
+        
+        if (!client) {
+            throw new Error(`Client ${clientId} not found`);
+        }
+
+        await base('Clients').update([{
+            id: client.id,
+            fields: {
+                'Processing Stream': stream
+            }
+        }]);
+
+        console.log(`✅ Processing stream set for ${clientId}: ${stream}`);
+        
+        // Invalidate cache
+        clientsCache = null;
+        clientsCacheTimestamp = null;
+
+        return true;
+
+    } catch (error) {
+        console.error(`❌ Error setting processing stream for ${clientId}:`, error.message);
+        return false;
+    }
+}
+
+/**
+ * Get processing stream for a client
+ * @param {string} clientId - The Client ID
+ * @returns {Promise<number|null>} Stream number or null if not set
+ */
+async function getProcessingStream(clientId) {
+    try {
+        const client = await getClientById(clientId);
+        if (!client) return null;
+
+        return client.rawRecord?.get('Processing Stream') || null;
+
+    } catch (error) {
+        console.error(`Error getting processing stream for ${clientId}:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Format duration from milliseconds to human-readable string
+ * @param {number} durationMs - Duration in milliseconds
+ * @returns {string} Human-readable duration
+ */
+function formatDuration(durationMs) {
+    const seconds = Math.floor(durationMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+
+    if (hours > 0) {
+        const remainingMinutes = minutes % 60;
+        return `${hours}.${Math.floor(remainingMinutes / 6)} hours`;
+    } else if (minutes > 0) {
+        const remainingSeconds = seconds % 60;
+        return `${minutes}.${Math.floor(remainingSeconds / 6)} minutes`;
+    } else {
+        return `${seconds} seconds`;
+    }
+}
+
 module.exports = {
     getAllClients,
     getAllActiveClients,
@@ -615,5 +846,12 @@ module.exports = {
     getClientFloorConfig,
     updateClientFloorConfig,
     validateLeadAgainstFloor,
-    getFloorValidationSummary
+    getFloorValidationSummary,
+    // Fire-and-forget tracking functions
+    generateJobId,
+    setJobStatus,
+    getJobStatus,
+    setProcessingStream,
+    getProcessingStream,
+    formatDuration
 };
