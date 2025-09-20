@@ -56,6 +56,127 @@ router.get("/audit-test", (_req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Debug Job Status (for client-by-client polling)
+// ---------------------------------------------------------------
+router.get("/debug-job-status", async (req, res) => {
+  try {
+    const { jobId } = req.query;
+    
+    if (!jobId) {
+      return res.status(400).json({
+        error: 'jobId parameter is required'
+      });
+    }
+    
+    const { getJobStatus } = require('../services/clientService');
+    
+    // Try to find job status in any client's records
+    // Job ID format: job_{operation}_stream{N}_{timestamp}
+    const jobParts = jobId.split('_');
+    if (jobParts.length < 4) {
+      return res.status(400).json({
+        error: 'Invalid jobId format'
+      });
+    }
+    
+    const operation = jobParts[1] + (jobParts[2].startsWith('stream') ? '' : '_' + jobParts[2]);
+    
+    // Get all active clients to search for job status
+    const { getAllActiveClients } = require('../services/clientService');
+    const clients = await getAllActiveClients();
+    
+    let foundStatus = null;
+    let foundClientId = null;
+    
+    // Search through all clients for this job
+    for (const client of clients) {
+      try {
+        const status = await getJobStatus(client.clientId, operation);
+        if (status && status.jobId === jobId) {
+          foundStatus = status.status;
+          foundClientId = client.clientId;
+          break;
+        }
+      } catch (error) {
+        // Continue searching other clients
+      }
+    }
+    
+    // If not found in specific clients, check global job status
+    if (!foundStatus) {
+      try {
+        const globalStatus = await getJobStatus(null, operation);
+        if (globalStatus && globalStatus.jobId === jobId) {
+          foundStatus = globalStatus.status;
+          foundClientId = 'global';
+        }
+      } catch (error) {
+        // Job not found
+      }
+    }
+    
+    if (foundStatus) {
+      res.json({
+        jobId,
+        status: foundStatus,
+        clientId: foundClientId,
+        operation,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(404).json({
+        error: 'Job not found',
+        jobId,
+        operation
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error in debug-job-status:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// Debug endpoint for checking specific client operation status
+router.get("/debug-job-status/:clientId/:operation", async (req, res) => {
+  try {
+    const { clientId, operation } = req.params;
+    const { getJobStatus } = require('../services/clientService');
+    
+    const status = await getJobStatus(clientId, operation);
+    
+    if (status) {
+      res.json({
+        clientId,
+        operation,
+        status: status.status,
+        jobId: status.jobId,
+        lastRunDate: status.lastRunDate,
+        lastRunTime: status.lastRunTime,
+        lastRunCount: status.lastRunCount,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(404).json({
+        error: 'Job status not found',
+        clientId,
+        operation
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error in debug-job-status client endpoint:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // LinkedIn Activity Extractor (today’s leads, limit 100)
 // THIS ROUTE HAS BEEN REMOVED AS PER THE NEW ARCHITECTURE
 // (Google Apps Script will populate the sheet, PB runs on schedule)
@@ -303,24 +424,27 @@ router.get("/run-batch-score-v2", async (req, res) => {
 
     const stream = parseInt(req.query.stream) || 1;
     const limit = Number(req.query.limit) || 500;
-    const { generateJobId, setJobStatus, setProcessingStream } = require('../services/clientService');
+    const singleClientId = req.query.clientId; // Optional: process single client
+    const { generateJobId, setJobStatus, setProcessingStream, getActiveClientsByStream } = require('../services/clientService');
     
     // Generate job ID and set initial status
     const jobId = generateJobId('lead_scoring', stream);
-    console.log(`[run-batch-score-v2] Starting fire-and-forget lead scoring, jobId: ${jobId}, stream: ${stream}, limit: ${limit}`);
+    const clientDesc = singleClientId ? ` for client ${singleClientId}` : '';
+    console.log(`[run-batch-score-v2] Starting fire-and-forget lead scoring${clientDesc}, jobId: ${jobId}, stream: ${stream}, limit: ${limit}`);
 
     // Return 202 Accepted immediately
     res.status(202).json({
       ok: true,
-      message: 'Lead scoring started in background',
+      message: `Lead scoring started in background${clientDesc}`,
       jobId,
       stream,
       limit,
+      clientId: singleClientId,
       timestamp: new Date().toISOString()
     });
 
     // Start background processing
-    processLeadScoringInBackground(jobId, stream, limit, { vertexAIClient, geminiModelId });
+    processLeadScoringInBackground(jobId, stream, limit, singleClientId, { vertexAIClient, geminiModelId });
 
   } catch (e) {
     console.error('[run-batch-score-v2] error:', e.message);
@@ -329,7 +453,7 @@ router.get("/run-batch-score-v2", async (req, res) => {
 });
 
 // Background processing function for lead scoring
-async function processLeadScoringInBackground(jobId, stream, limit, aiDependencies) {
+async function processLeadScoringInBackground(jobId, stream, limit, singleClientId, aiDependencies) {
   const {
     getAllActiveClients,
     setJobStatus,
@@ -351,18 +475,17 @@ async function processLeadScoringInBackground(jobId, stream, limit, aiDependenci
   try {
     console.log(`[lead-scoring-background] Starting job ${jobId} on stream ${stream} with limit ${limit}`);
 
-    // Set initial job status
-    await setProcessingStream('lead_scoring', stream);
+    // Set initial job status (don't set processing stream for operation)
     await setJobStatus(null, 'lead_scoring', 'STARTED', jobId, {
       lastRunDate: new Date().toISOString(),
       lastRunTime: '0 seconds',
       lastRunCount: 0
     });
 
-    // Get all active clients
-    const activeClients = await getAllActiveClients();
+    // Get active clients filtered by processing stream
+    const activeClients = await getActiveClientsByStream(stream, singleClientId);
     
-    console.log(`[lead-scoring-background] Found ${activeClients.length} active clients to process`);
+    console.log(`[lead-scoring-background] Found ${activeClients.length} active clients on stream ${stream} to process`);
 
     // Update status to RUNNING
     await setJobStatus(null, 'lead_scoring', 'RUNNING', jobId, {
@@ -852,7 +975,8 @@ async function processPostScoringInBackground(jobId, stream, options) {
   const { 
     setJobStatus, 
     setProcessingStream, 
-    formatDuration 
+    formatDuration,
+    getActiveClientsByStream
   } = require('../services/clientService');
   
   const startTime = Date.now();
@@ -863,9 +987,9 @@ async function processPostScoringInBackground(jobId, stream, options) {
   console.log(`🔄 Background post scoring started: ${jobId}`);
   
   try {
-    // Get all active clients
+    // Get active clients filtered by processing stream
     const clientService = require("../services/clientService");
-    let clients = await clientService.getActiveClients(options.singleClientId);
+    let clients = await getActiveClientsByStream(stream, options.singleClientId);
     
     console.log(`📊 Processing ${clients.length} clients in stream ${stream}`);
 
@@ -890,8 +1014,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
       try {
         console.log(`🎯 Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
         
-        // Set client processing stream and status
-        await setProcessingStream(client.clientId, stream);
+        // Set client status (stream already set/filtered)
         await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
         
         const clientStartTime = Date.now();

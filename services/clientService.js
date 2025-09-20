@@ -387,6 +387,30 @@ async function getActiveClients(clientId = null) {
 }
 
 /**
+ * Get active clients filtered by processing stream
+ * @param {number} stream - Processing stream number (1, 2, 3, etc.)
+ * @param {string} clientId - Optional specific client ID to get
+ * @returns {Array} Array of client objects that match the stream and are active
+ */
+async function getActiveClientsByStream(stream, clientId = null) {
+    try {
+        const activeClients = await getActiveClients(clientId);
+        
+        // Filter by processing stream
+        const streamClients = activeClients.filter(client => {
+            const clientStream = client.rawRecord?.get('Processing Stream');
+            return clientStream === stream;
+        });
+        
+        console.log(`📊 Found ${streamClients.length} active clients on stream ${stream}`);
+        return streamClients;
+    } catch (error) {
+        console.error(`Error getting active clients for stream ${stream}:`, error);
+        throw error;
+    }
+}
+
+/**
  * Clear the clients cache (useful for testing or forced refresh)
  */
 function clearCache() {
@@ -833,6 +857,7 @@ module.exports = {
     getAllClients,
     getAllActiveClients,
     getActiveClients,  // Add the new function
+    getActiveClientsByStream,  // Add stream filtering function
     getClientById,
     getClientByWpUserId, // Add the new WP User ID lookup function
     validateClient,
