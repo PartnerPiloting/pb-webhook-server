@@ -470,3 +470,172 @@ router.post('/api/apify/process-level2', async (req, res) => {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+// Fire-and-forget version: POST /api/apify/process-level2-v2
+// Headers: Authorization: Bearer PB_WEBHOOK_SECRET
+// Query params: ?stream=1 (optional, defaults to 1)
+router.post('/api/apify/process-level2-v2', async (req, res) => {
+  try {
+    const auth = req.headers['authorization'];
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+    if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+
+    const stream = parseInt(req.query.stream) || 1;
+    const { generateJobId, setJobStatus, setProcessingStream } = require('../services/clientService');
+    
+    // Generate job ID and set initial status
+    const jobId = generateJobId('post_harvesting', stream);
+    console.log(`[apify/process-level2-v2] Starting fire-and-forget post harvesting, jobId: ${jobId}, stream: ${stream}`);
+
+    // Return 202 Accepted immediately
+    res.status(202).json({
+      ok: true,
+      message: 'Post harvesting started in background',
+      jobId,
+      stream,
+      timestamp: new Date().toISOString()
+    });
+
+    // Start background processing
+    processPostHarvestingInBackground(jobId, stream, secret);
+
+  } catch (e) {
+    console.error('[apify/process-level2-v2] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Background processing function for post harvesting
+async function processPostHarvestingInBackground(jobId, stream, secret) {
+  const {
+    getAllActiveClients,
+    setJobStatus,
+    setProcessingStream,
+    formatDuration
+  } = require('../services/clientService');
+
+  const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
+  const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
+
+  const jobStartTime = Date.now();
+  const jobTimeoutMs = MAX_JOB_PROCESSING_HOURS * 60 * 60 * 1000;
+  const clientTimeoutMs = MAX_CLIENT_PROCESSING_MINUTES * 60 * 1000;
+
+  let processedCount = 0;
+  let harvestedCount = 0;
+  let errorCount = 0;
+
+  try {
+    console.log(`[post-harvesting-background] Starting job ${jobId} on stream ${stream}`);
+
+    // Set initial job status
+    await setProcessingStream('post_harvesting', stream);
+    await setJobStatus(null, 'post_harvesting', 'STARTED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: '0 seconds',
+      lastRunCount: 0
+    });
+
+    // Get active clients with service level >= 2
+    const activeClients = await getAllActiveClients();
+    const candidates = activeClients.filter(c => Number(c.serviceLevel) >= 2);
+    
+    console.log(`[post-harvesting-background] Found ${candidates.length} level 2+ clients to process`);
+
+    const baseUrl = process.env.API_PUBLIC_BASE_URL
+      || process.env.NEXT_PUBLIC_API_BASE_URL
+      || `http://localhost:${process.env.PORT || 3001}`;
+
+    // Update status to RUNNING
+    await setJobStatus(null, 'post_harvesting', 'RUNNING', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: formatDuration(Date.now() - jobStartTime),
+      lastRunCount: processedCount
+    });
+
+    // Process each client
+    for (const client of candidates) {
+      // Check job timeout
+      if (Date.now() - jobStartTime > jobTimeoutMs) {
+        console.log(`[post-harvesting-background] Job timeout reached (${MAX_JOB_PROCESSING_HOURS}h), killing job ${jobId}`);
+        await setJobStatus(null, 'post_harvesting', 'JOB_TIMEOUT_KILLED', jobId, {
+          lastRunDate: new Date().toISOString(),
+          lastRunTime: formatDuration(Date.now() - jobStartTime),
+          lastRunCount: processedCount
+        });
+        return;
+      }
+
+      const clientStartTime = Date.now();
+      console.log(`[post-harvesting-background] Processing client ${client.clientId} (${processedCount + 1}/${candidates.length})`);
+
+      try {
+        // Set up client timeout
+        const clientPromise = processClientForHarvesting(client.clientId, secret, baseUrl);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Client timeout')), clientTimeoutMs)
+        );
+
+        const result = await Promise.race([clientPromise, timeoutPromise]);
+        
+        if (result?.data?.harvest?.posts) {
+          harvestedCount += result.data.harvest.posts;
+        }
+
+        const clientDuration = Date.now() - clientStartTime;
+        console.log(`[post-harvesting-background] Client ${client.clientId} completed in ${formatDuration(clientDuration)}`);
+
+      } catch (error) {
+        errorCount++;
+        if (error.message === 'Client timeout') {
+          console.log(`[post-harvesting-background] Client ${client.clientId} timeout (${MAX_CLIENT_PROCESSING_MINUTES}m), skipping`);
+        } else {
+          console.error(`[post-harvesting-background] Client ${client.clientId} error:`, error.message);
+        }
+      }
+
+      processedCount++;
+
+      // Update progress
+      await setJobStatus(null, 'post_harvesting', 'RUNNING', jobId, {
+        lastRunDate: new Date().toISOString(),
+        lastRunTime: formatDuration(Date.now() - jobStartTime),
+        lastRunCount: harvestedCount
+      });
+    }
+
+    // Job completed successfully
+    const finalDuration = formatDuration(Date.now() - jobStartTime);
+    console.log(`[post-harvesting-background] Job ${jobId} completed. Processed: ${processedCount}, Harvested: ${harvestedCount}, Errors: ${errorCount}, Duration: ${finalDuration}`);
+
+    await setJobStatus(null, 'post_harvesting', 'COMPLETED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: finalDuration,
+      lastRunCount: harvestedCount
+    });
+
+  } catch (error) {
+    console.error(`[post-harvesting-background] Job ${jobId} failed:`, error.message);
+    await setJobStatus(null, 'post_harvesting', 'FAILED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: formatDuration(Date.now() - jobStartTime),
+      lastRunCount: harvestedCount
+    });
+  }
+}
+
+// Helper function to process individual client for harvesting
+async function processClientForHarvesting(clientId, secret, baseUrl) {
+  const url = `${baseUrl}/api/apify/process-client`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${secret}`,
+      'x-client-id': clientId,
+      'Content-Type': 'application/json'
+    }
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { status: resp.status, data };
+}
