@@ -284,6 +284,205 @@ router.get("/run-batch-score", async (req, res) => {
         res.status(500).send("Batch scoring error: " + e.message);
     });
 });
+
+// Fire-and-forget version: GET /run-batch-score-v2
+// Query params: ?stream=1&limit=500 (both optional)
+router.get("/run-batch-score-v2", async (req, res) => {
+  try {
+    if (!vertexAIClient || !geminiModelId) {
+      console.warn(`Lead scoring unavailable: vertexAIClient=${!!vertexAIClient}, geminiModelId=${geminiModelId}`);
+      return res.status(503).json({
+        ok: false,
+        error: "Lead scoring unavailable (Google VertexAI config missing)",
+        details: {
+          vertexAIClient: !!vertexAIClient,
+          geminiModelId: geminiModelId || "not set"
+        }
+      });
+    }
+
+    const stream = parseInt(req.query.stream) || 1;
+    const limit = Number(req.query.limit) || 500;
+    const { generateJobId, setJobStatus, setProcessingStream } = require('../services/clientService');
+    
+    // Generate job ID and set initial status
+    const jobId = generateJobId('lead_scoring', stream);
+    console.log(`[run-batch-score-v2] Starting fire-and-forget lead scoring, jobId: ${jobId}, stream: ${stream}, limit: ${limit}`);
+
+    // Return 202 Accepted immediately
+    res.status(202).json({
+      ok: true,
+      message: 'Lead scoring started in background',
+      jobId,
+      stream,
+      limit,
+      timestamp: new Date().toISOString()
+    });
+
+    // Start background processing
+    processLeadScoringInBackground(jobId, stream, limit, { vertexAIClient, geminiModelId });
+
+  } catch (e) {
+    console.error('[run-batch-score-v2] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Background processing function for lead scoring
+async function processLeadScoringInBackground(jobId, stream, limit, aiDependencies) {
+  const {
+    getAllActiveClients,
+    setJobStatus,
+    setProcessingStream,
+    formatDuration
+  } = require('../services/clientService');
+
+  const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
+  const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
+
+  const jobStartTime = Date.now();
+  const jobTimeoutMs = MAX_JOB_PROCESSING_HOURS * 60 * 60 * 1000;
+  const clientTimeoutMs = MAX_CLIENT_PROCESSING_MINUTES * 60 * 1000;
+
+  let processedCount = 0;
+  let scoredCount = 0;
+  let errorCount = 0;
+
+  try {
+    console.log(`[lead-scoring-background] Starting job ${jobId} on stream ${stream} with limit ${limit}`);
+
+    // Set initial job status
+    await setProcessingStream('lead_scoring', stream);
+    await setJobStatus(null, 'lead_scoring', 'STARTED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: '0 seconds',
+      lastRunCount: 0
+    });
+
+    // Get all active clients
+    const activeClients = await getAllActiveClients();
+    
+    console.log(`[lead-scoring-background] Found ${activeClients.length} active clients to process`);
+
+    // Update status to RUNNING
+    await setJobStatus(null, 'lead_scoring', 'RUNNING', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: formatDuration(Date.now() - jobStartTime),
+      lastRunCount: processedCount
+    });
+
+    // Process each client
+    for (const client of activeClients) {
+      // Check job timeout
+      if (Date.now() - jobStartTime > jobTimeoutMs) {
+        console.log(`[lead-scoring-background] Job timeout reached (${MAX_JOB_PROCESSING_HOURS}h), killing job ${jobId}`);
+        await setJobStatus(null, 'lead_scoring', 'JOB_TIMEOUT_KILLED', jobId, {
+          lastRunDate: new Date().toISOString(),
+          lastRunTime: formatDuration(Date.now() - jobStartTime),
+          lastRunCount: scoredCount
+        });
+        return;
+      }
+
+      const clientStartTime = Date.now();
+      console.log(`[lead-scoring-background] Processing client ${client.clientId} (${processedCount + 1}/${activeClients.length})`);
+
+      try {
+        // Set up client timeout
+        const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Client timeout')), clientTimeoutMs)
+        );
+
+        const result = await Promise.race([clientPromise, timeoutPromise]);
+        
+        if (result?.successful) {
+          scoredCount += result.successful;
+        }
+
+        const clientDuration = Date.now() - clientStartTime;
+        console.log(`[lead-scoring-background] Client ${client.clientId} completed in ${formatDuration(clientDuration)}`);
+
+      } catch (error) {
+        errorCount++;
+        if (error.message === 'Client timeout') {
+          console.log(`[lead-scoring-background] Client ${client.clientId} timeout (${MAX_CLIENT_PROCESSING_MINUTES}m), skipping`);
+        } else {
+          console.error(`[lead-scoring-background] Client ${client.clientId} error:`, error.message);
+        }
+      }
+
+      processedCount++;
+
+      // Update progress
+      await setJobStatus(null, 'lead_scoring', 'RUNNING', jobId, {
+        lastRunDate: new Date().toISOString(),
+        lastRunTime: formatDuration(Date.now() - jobStartTime),
+        lastRunCount: scoredCount
+      });
+    }
+
+    // Job completed successfully
+    const finalDuration = formatDuration(Date.now() - jobStartTime);
+    console.log(`[lead-scoring-background] Job ${jobId} completed. Processed: ${processedCount}, Scored: ${scoredCount}, Errors: ${errorCount}, Duration: ${finalDuration}`);
+
+    await setJobStatus(null, 'lead_scoring', 'COMPLETED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: finalDuration,
+      lastRunCount: scoredCount
+    });
+
+  } catch (error) {
+    console.error(`[lead-scoring-background] Job ${jobId} failed:`, error.message);
+    await setJobStatus(null, 'lead_scoring', 'FAILED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: formatDuration(Date.now() - jobStartTime),
+      lastRunCount: scoredCount
+    });
+  }
+}
+
+// Helper function to process individual client for lead scoring
+async function processClientForLeadScoring(clientId, limit, aiDependencies) {
+  // Create a fake request object for batchScorer.run() that targets a specific client
+  const fakeReq = {
+    query: {
+      limit: limit,
+      clientId: clientId
+    }
+  };
+
+  // Create a fake response object to capture results
+  let result = { processed: 0, successful: 0, failed: 0, tokensUsed: 0 };
+  const fakeRes = {
+    status: () => fakeRes,
+    json: (data) => {
+      // Extract metrics from batchScorer response
+      if (data && data.clients && data.clients.length > 0) {
+        const clientResult = data.clients[0];
+        result = {
+          processed: clientResult.processed || 0,
+          successful: clientResult.successful || 0,
+          failed: clientResult.failed || 0,
+          tokensUsed: clientResult.tokensUsed || 0
+        };
+      }
+      return fakeRes;
+    },
+    send: () => fakeRes,
+    headersSent: false
+  };
+
+  try {
+    // Use batchScorer.run() for a single client
+    await batchScorer.run(fakeReq, fakeRes, aiDependencies);
+    return result;
+  } catch (error) {
+    console.error(`[processClientForLeadScoring] Error processing client ${clientId}:`, error.message);
+    throw error;
+  }
+}
+
 // Single Lead Scorer
 // ---------------------------------------------------------------
 router.get("/score-lead", async (req, res) => {
