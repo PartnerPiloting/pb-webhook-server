@@ -164,7 +164,8 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
 }
 
 async function main() {
-    const baseUrl = process.env.API_PUBLIC_BASE_URL || 'http://localhost:3001';
+    // Use external URL for Render, localhost for local development
+    const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
     const secret = process.env.PB_WEBHOOK_SECRET;
     const stream = parseInt(process.env.BATCH_PROCESSING_STREAM) || 1;
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
