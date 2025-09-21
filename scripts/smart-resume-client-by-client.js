@@ -12,6 +12,21 @@
 
 console.log(`🔍 MODULE_DEBUG: Script loading started [${new Date().toISOString()}]`);
 
+// Catch ALL errors immediately
+process.on('uncaughtException', (error) => {
+    console.error(`🚨 UNCAUGHT_EXCEPTION: ${error.message}`);
+    console.error(`🚨 STACK: ${error.stack}`);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(`🚨 UNHANDLED_REJECTION: ${reason}`);
+    console.error(`🚨 PROMISE: ${promise}`);
+    process.exit(1);
+});
+
+console.log(`🔍 ERROR_HANDLERS: Installed global error handlers`);
+
 require('dotenv').config();
 
 console.log(`🔍 MODULE_DEBUG: dotenv configured, NODE_ENV: ${process.env.NODE_ENV}`);
