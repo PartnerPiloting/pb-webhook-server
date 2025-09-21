@@ -4127,6 +4127,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
   try {
     // Set up environment variables for the script
     process.env.BATCH_PROCESSING_STREAM = stream.toString();
+    process.env.SMART_RESUME_RUN_ID = jobId; // Add this for easier log identification
     if (leadScoringLimit) process.env.LEAD_SCORING_LIMIT = leadScoringLimit.toString();
     if (postScoringLimit) process.env.POST_SCORING_LIMIT = postScoringLimit.toString();
     
@@ -4135,6 +4136,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     const scriptPath = require('path').join(__dirname, '../scripts/smart-resume-client-by-client.js');
     
     console.log(`🏃 [${jobId}] Executing smart resume script...`);
+    console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Script execution beginning`);
     
     const result = execSync(`node "${scriptPath}"`, {
       env: { ...process.env },
@@ -4144,10 +4146,12 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     });
     
     console.log(`✅ [${jobId}] Smart resume completed successfully`);
-    console.log(`📄 [${jobId}] Output:`, result.substring(0, 500) + '...');
+    console.log(`� SMART_RESUME_${jobId} SCRIPT_END: Script execution completed`);
+    console.log(`�📄 [${jobId}] Output:`, result.substring(0, 500) + '...');
     
   } catch (error) {
     console.error(`❌ [${jobId}] Smart resume failed:`, error.message);
+    console.error(`🔍 SMART_RESUME_${jobId} SCRIPT_ERROR: ${error.message}`);
     
     // Try to send failure email if configured
     try {
