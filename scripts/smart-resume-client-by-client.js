@@ -94,15 +94,19 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
     const operationMap = {
         'lead_scoring': {
             url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}`,
-            method: 'GET'
+            method: 'GET',
+            headers: { 'x-webhook-secret': params.secret }
         },
         'post_harvesting': {
             url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}`,
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${params.secret}` }
         },
         'post_scoring': {
-            url: `/run-post-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}`,
-            method: 'POST'
+            url: `/run-post-batch-score-v2`,
+            method: 'POST',
+            headers: { 'x-webhook-secret': params.secret },
+            body: { stream: params.stream, limit: params.limit, clientId: clientId }
         }
     };
     
@@ -116,13 +120,21 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
     try {
         log(`🎯 Triggering ${operation} for ${clientId}...`);
         
-        const response = await fetch(`${baseUrl}${config.url}`, {
+        const fetchOptions = {
             method: config.method,
             headers: {
                 'Content-Type': 'application/json',
+                ...config.headers,
                 ...authHeaders
             }
-        });
+        };
+        
+        // Add body for POST requests
+        if (config.body) {
+            fetchOptions.body = JSON.stringify(config.body);
+        }
+        
+        const response = await fetch(`${baseUrl}${config.url}`, fetchOptions);
         
         const responseTime = Date.now() - startTime;
         const responseData = await response.json();
@@ -261,8 +273,8 @@ async function main() {
             
             for (const operation of workflow.operationsToRun) {
                 const operationParams = operation === 'post_scoring' 
-                    ? { stream, limit: postScoringLimit }
-                    : params;
+                    ? { stream, limit: postScoringLimit, secret }
+                    : { stream, limit: leadScoringLimit, secret };
                     
                 const authRequired = ['post_harvesting', 'post_scoring'].includes(operation);
                 const headers = authRequired ? authHeaders : {};
