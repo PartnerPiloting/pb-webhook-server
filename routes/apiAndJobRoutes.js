@@ -4162,8 +4162,6 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         console.error(`🚨 STDOUT: ${execError.stdout?.toString() || 'none'}`);
         console.error(`🚨 STDERR: ${execError.stderr?.toString() || 'none'}`);
     }
-    console.log(`� SMART_RESUME_${jobId} SCRIPT_END: Script execution completed`);
-    console.log(`�📄 [${jobId}] Output:`, result.substring(0, 500) + '...');
     
   } catch (error) {
     console.error(`❌ [${jobId}] Smart resume failed:`, error.message);
