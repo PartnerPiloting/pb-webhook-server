@@ -4062,4 +4062,108 @@ function generateSmartRecommendations(detectedIssues, auditData) {
   return recommendations;
 }
 
+// ---------------------------------------------------------------
+// SMART RESUME CLIENT-BY-CLIENT ENDPOINT
+// ---------------------------------------------------------------
+router.post("/smart-resume-client-by-client", async (req, res) => {
+  console.log("🚀 apiAndJobRoutes.js: /smart-resume-client-by-client endpoint hit");
+  
+  // Check webhook secret
+  const providedSecret = req.headers['x-webhook-secret'];
+  const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+  
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    console.log("❌ Smart resume: Unauthorized - invalid webhook secret");
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Unauthorized - invalid webhook secret' 
+    });
+  }
+  
+  // Check if fire-and-forget is enabled
+  if (process.env.FIRE_AND_FORGET !== 'true') {
+    console.log("⚠️ Fire-and-forget not enabled");
+    return res.status(400).json({
+      success: false,
+      message: 'Fire-and-forget mode not enabled. Set FIRE_AND_FORGET=true'
+    });
+  }
+  
+  try {
+    const { stream, leadScoringLimit, postScoringLimit } = req.body;
+    const jobId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    
+    console.log(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}`);
+    
+    // FIRE-AND-FORGET: Respond immediately with 202 Accepted
+    res.status(202).json({
+      success: true,
+      message: 'Smart resume processing started',
+      jobId: jobId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Start background processing
+    setImmediate(() => {
+      executeSmartResume(jobId, stream || 1, leadScoringLimit, postScoringLimit);
+    });
+    
+  } catch (error) {
+    console.error("❌ Smart resume startup error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start smart resume processing',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Background processing function for smart resume
+ */
+async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLimit) {
+  console.log(`🎯 [${jobId}] Smart resume background processing started`);
+  
+  try {
+    // Set up environment variables for the script
+    process.env.BATCH_PROCESSING_STREAM = stream.toString();
+    if (leadScoringLimit) process.env.LEAD_SCORING_LIMIT = leadScoringLimit.toString();
+    if (postScoringLimit) process.env.POST_SCORING_LIMIT = postScoringLimit.toString();
+    
+    // Run the smart resume script logic
+    const { execSync } = require('child_process');
+    const scriptPath = require('path').join(__dirname, '../scripts/smart-resume-client-by-client.js');
+    
+    console.log(`🏃 [${jobId}] Executing smart resume script...`);
+    
+    const result = execSync(`node "${scriptPath}"`, {
+      env: { ...process.env },
+      encoding: 'utf8',
+      timeout: 7200000, // 2 hours max
+      maxBuffer: 1024 * 1024 * 10 // 10MB buffer
+    });
+    
+    console.log(`✅ [${jobId}] Smart resume completed successfully`);
+    console.log(`📄 [${jobId}] Output:`, result.substring(0, 500) + '...');
+    
+  } catch (error) {
+    console.error(`❌ [${jobId}] Smart resume failed:`, error.message);
+    
+    // Try to send failure email if configured
+    try {
+      const emailService = require('../services/emailReportingService');
+      if (emailService.isConfigured()) {
+        await emailService.sendExecutionReport({
+          error: error.message,
+          runId: jobId,
+          stream: stream,
+          timestamp: Date.now()
+        });
+      }
+    } catch (emailError) {
+      console.error(`❌ [${jobId}] Failed to send error email:`, emailError.message);
+    }
+  }
+}
+
 module.exports = router;

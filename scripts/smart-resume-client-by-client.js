@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Smart Resume Client-by-Client Processing Pipeline
+ * Smart Resume Client-by-Client Processing Pipeline with Email Reporting
  * 
  * Checks each client's last execution status and resumes from where it left off:
  * - Skips clients where all operations completed successfully in last 24 hours
  * - Resumes incomplete workflows from the failed/missing operation
+ * - Sends comprehensive email reports with execution summary and data impact
  * - Reports what was skipped vs. what was processed
  */
 
@@ -146,12 +147,28 @@ async function main() {
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
     const postScoringLimit = parseInt(process.env.POST_SCORING_LIMIT) || 100;
     
+    // Initialize email reporting
+    const emailService = require('../services/emailReportingService');
+    
+    const runStartTime = Date.now();
+    const runId = `smart_resume_${runStartTime}_${Math.random().toString(36).substr(2, 5)}`;
+    
     if (!secret) {
-        log('❌ PB_WEBHOOK_SECRET environment variable is required', 'ERROR');
+        const errorMsg = 'PB_WEBHOOK_SECRET environment variable is required';
+        log(`❌ ${errorMsg}`, 'ERROR');
+        
+        // Send failure alert
+        await emailService.sendExecutionReport({
+            runId,
+            stream,
+            error: errorMsg,
+            duration: Date.now() - runStartTime,
+            clientsAnalyzed: 0
+        });
+        
         process.exit(1);
     }
     
-    const runId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     const authHeaders = { 'Authorization': `Bearer ${secret}` };
     
     log(`🚀 SMART RESUME CLIENT-BY-CLIENT PROCESSING STARTING`);
@@ -159,6 +176,7 @@ async function main() {
     log(`   Base URL: ${baseUrl}`);
     log(`   Stream: ${stream}`);
     log(`   Resume Logic: Skip completed operations from last 24 hours`);
+    log(`   Email Reporting: ${emailService.isConfigured() ? '✅ Enabled' : '⚠️  Not configured'}`);
     
     // Get clients for this stream
     const { getActiveClientsByStream } = require('../services/clientService');
@@ -169,6 +187,25 @@ async function main() {
         
         if (clients.length === 0) {
             log(`⚠️  No clients found on stream ${stream}`, 'WARN');
+            
+            // Send empty stream report
+            await emailService.sendExecutionReport({
+                runId,
+                stream,
+                startTime: runStartTime,
+                endTime: Date.now(),
+                duration: Date.now() - runStartTime,
+                clientsAnalyzed: 0,
+                clientsSkipped: 0,
+                clientsProcessed: 0,
+                totalOperationsTriggered: 0,
+                totalJobsStarted: 0,
+                successRate: 100,
+                executionResults: [],
+                skippedClients: [],
+                errors: [`No clients found on stream ${stream}`]
+            });
+            
             process.exit(0);
         }
         
@@ -259,12 +296,26 @@ async function main() {
             }
         }
         
-        // Final summary
+        // Comprehensive reporting
+        const runEndTime = Date.now();
+        const totalDuration = runEndTime - runStartTime;
+        const clientsSkipped = workflows.filter(w => !w.needsProcessing);
+        const successRate = totalTriggered > 0 ? Math.round((totalJobsStarted / totalTriggered) * 100) : 100;
+        const errors = [];
+        
+        // Collect any errors from failed job starts
+        if (totalJobsStarted < totalTriggered) {
+            errors.push(`${totalTriggered - totalJobsStarted} operations failed to start`);
+        }
+        
+        // Final console summary
         log(`\n🎉 SMART RESUME PROCESSING COMPLETED`);
         log(`   Total Operations Triggered: ${totalTriggered}`);
         log(`   Successful Job Starts: ${totalJobsStarted}`);
         log(`   Clients Processed: ${clientsNeedingWork.length}/${clients.length}`);
         log(`   Clients Skipped: ${clients.length - clientsNeedingWork.length} (up to date)`);
+        log(`   Success Rate: ${successRate}%`);
+        log(`   Total Duration: ${Math.round(totalDuration / 1000)}s`);
         
         if (executionResults.length > 0) {
             log(`\n📋 EXECUTION SUMMARY:`);
@@ -281,8 +332,63 @@ async function main() {
         log(`   - Check Airtable Client table for status updates`);
         log(`   - Jobs will complete independently with timeout protection`);
         
+        // Send comprehensive email report
+        const reportData = {
+            runId,
+            stream,
+            startTime: runStartTime,
+            endTime: runEndTime,
+            duration: totalDuration,
+            clientsAnalyzed: clients.length,
+            clientsSkipped: clientsSkipped.length,
+            clientsProcessed: clientsNeedingWork.length,
+            totalOperationsTriggered: totalTriggered,
+            totalJobsStarted: totalJobsStarted,
+            successRate,
+            executionResults,
+            skippedClients: clientsSkipped,
+            errors
+        };
+        
+        if (clientsNeedingWork.length === 0) {
+            // Special case: all clients up to date
+            log(`\n🎉 ALL CLIENTS UP TO DATE!`);
+            log(`   No operations needed - all clients completed recently`);
+            log(`   Next scheduled run will check again in 24 hours`);
+            
+            reportData.totalOperationsTriggered = 0;
+            reportData.totalJobsStarted = 0;
+            reportData.successRate = 100;
+            reportData.executionResults = [];
+            reportData.errors = [];
+        }
+        
+        const emailResult = await emailService.sendExecutionReport(reportData);
+        if (emailResult.sent) {
+            log(`📧 Email report sent successfully`);
+        } else {
+            log(`📧 Email report failed: ${emailResult.reason}`, 'WARN');
+        }
+        
     } catch (error) {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
+        
+        // Send failure alert email
+        const errorReportData = {
+            runId,
+            stream,
+            error: error.message,
+            duration: Date.now() - runStartTime,
+            clientsAnalyzed: 0
+        };
+        
+        const emailResult = await emailService.sendExecutionReport(errorReportData);
+        if (emailResult.sent) {
+            log(`📧 Failure alert sent successfully`);
+        } else {
+            log(`📧 Failure alert failed: ${emailResult.reason}`, 'WARN');
+        }
+        
         process.exit(1);
     }
 }
