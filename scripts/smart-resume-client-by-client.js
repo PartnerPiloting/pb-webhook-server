@@ -10,7 +10,12 @@
  * - Reports what was skipped vs. what was processed
  */
 
+console.log(`🔍 MODULE_DEBUG: Script loading started [${new Date().toISOString()}]`);
+
 require('dotenv').config();
+
+console.log(`🔍 MODULE_DEBUG: dotenv configured, NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_RUN_ID}`);
 
 async function log(message, level = 'INFO') {
     const timestamp = new Date().toISOString();
@@ -432,10 +437,17 @@ async function main() {
 }
 
 if (require.main === module) {
-    log(`🔍 SCRIPT_DEBUG: Script executed directly, calling main()`, 'INFO');
+    console.log(`🔍 SCRIPT_DEBUG: Script executed directly, calling main() [${new Date().toISOString()}]`);
+    console.log(`🔍 SCRIPT_DEBUG: require.main === module: ${require.main === module}`);
+    console.log(`🔍 SCRIPT_DEBUG: __filename: ${__filename}`);
+    console.log(`🔍 SCRIPT_DEBUG: require.main.filename: ${require.main.filename}`);
+    
     main().catch(error => {
         console.error(`🔍 SCRIPT_DEBUG: Fatal error in main():`, error);
         console.error('Full stack:', error.stack);
         process.exit(1);
     });
+} else {
+    console.log(`🔍 SCRIPT_DEBUG: Script loaded as module, NOT calling main()`);
+    console.log(`🔍 SCRIPT_DEBUG: require.main === module: ${require.main === module}`);
 }
