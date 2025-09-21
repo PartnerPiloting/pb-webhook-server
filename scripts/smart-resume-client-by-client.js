@@ -17,6 +17,9 @@ require('dotenv').config();
 console.log(`🔍 MODULE_DEBUG: dotenv configured, NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_RUN_ID}`);
 
+// FORCE EXECUTION - Skip the require.main check entirely
+console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date().toISOString()}]`);
+
 async function log(message, level = 'INFO') {
     const timestamp = new Date().toISOString();
     const runId = process.env.SMART_RESUME_RUN_ID || 'UNKNOWN';
@@ -436,18 +439,16 @@ async function main() {
     }
 }
 
-if (require.main === module) {
-    console.log(`🔍 SCRIPT_DEBUG: Script executed directly, calling main() [${new Date().toISOString()}]`);
-    console.log(`🔍 SCRIPT_DEBUG: require.main === module: ${require.main === module}`);
-    console.log(`🔍 SCRIPT_DEBUG: __filename: ${__filename}`);
-    console.log(`🔍 SCRIPT_DEBUG: require.main.filename: ${require.main.filename}`);
-    
-    main().catch(error => {
-        console.error(`🔍 SCRIPT_DEBUG: Fatal error in main():`, error);
-        console.error('Full stack:', error.stack);
-        process.exit(1);
-    });
-} else {
-    console.log(`🔍 SCRIPT_DEBUG: Script loaded as module, NOT calling main()`);
-    console.log(`🔍 SCRIPT_DEBUG: require.main === module: ${require.main === module}`);
+// FORCE EXECUTION - Always run main() regardless of how script is called
+console.log(`🔍 FORCE_DEBUG: Forcing main() execution [${new Date().toISOString()}]`);
+console.log(`🔍 FORCE_DEBUG: require.main === module: ${require.main === module}`);
+console.log(`🔍 FORCE_DEBUG: __filename: ${__filename}`);
+if (require.main) {
+    console.log(`🔍 FORCE_DEBUG: require.main.filename: ${require.main.filename}`);
 }
+
+main().catch(error => {
+    console.error(`🔍 FORCE_DEBUG: Fatal error in main():`, error);
+    console.error('Full stack:', error.stack);
+    process.exit(1);
+});
