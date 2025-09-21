@@ -164,6 +164,8 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
 }
 
 async function main() {
+    log(`🔍 SCRIPT_DEBUG: Starting main function`, 'INFO');
+    
     // Use external URL for Render, localhost for local development
     const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
     const secret = process.env.PB_WEBHOOK_SECRET;
@@ -171,12 +173,17 @@ async function main() {
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
     const postScoringLimit = parseInt(process.env.POST_SCORING_LIMIT) || 100;
     
+    log(`🔍 SCRIPT_DEBUG: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
+    
     // Initialize email reporting
+    log(`🔍 SCRIPT_DEBUG: Initializing email service...`, 'INFO');
     const emailService = require('../services/emailReportingService');
+    log(`🔍 SCRIPT_DEBUG: Email service loaded`, 'INFO');
     
     const runStartTime = Date.now();
     const runId = `smart_resume_${runStartTime}_${Math.random().toString(36).substr(2, 5)}`;
     
+    log(`🔍 SCRIPT_DEBUG: Checking secret...`, 'INFO');
     if (!secret) {
         const errorMsg = 'PB_WEBHOOK_SECRET environment variable is required';
         log(`❌ ${errorMsg}`, 'ERROR');
@@ -193,6 +200,8 @@ async function main() {
         process.exit(1);
     }
     
+    log(`🔍 SCRIPT_DEBUG: Secret found, length: ${secret.length}`, 'INFO');
+    
     const authHeaders = { 'Authorization': `Bearer ${secret}` };
     
     log(`🚀 SMART RESUME CLIENT-BY-CLIENT PROCESSING STARTING`);
@@ -203,10 +212,14 @@ async function main() {
     log(`   Email Reporting: ${emailService.isConfigured() ? '✅ Enabled' : '⚠️  Not configured'}`);
     
     // Get clients for this stream
+    log(`🔍 SCRIPT_DEBUG: Loading client service...`, 'INFO');
     const { getActiveClientsByStream } = require('../services/clientService');
+    log(`🔍 SCRIPT_DEBUG: Client service loaded, getting clients...`, 'INFO');
     
     try {
+        log(`🔍 SCRIPT_DEBUG: Calling getActiveClientsByStream(${stream})...`, 'INFO');
         const clients = await getActiveClientsByStream(stream);
+        log(`🔍 SCRIPT_DEBUG: getActiveClientsByStream returned ${clients ? clients.length : 'null'} clients`, 'INFO');
         log(`📊 Found ${clients.length} clients on stream ${stream}`);
         
         if (clients.length === 0) {
@@ -396,6 +409,7 @@ async function main() {
         
     } catch (error) {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
+        log(`🔍 SCRIPT_DEBUG: Full error stack: ${error.stack}`, 'ERROR');
         
         // Send failure alert email
         const errorReportData = {
@@ -418,8 +432,10 @@ async function main() {
 }
 
 if (require.main === module) {
+    log(`🔍 SCRIPT_DEBUG: Script executed directly, calling main()`, 'INFO');
     main().catch(error => {
-        console.error('Fatal error:', error);
+        console.error(`🔍 SCRIPT_DEBUG: Fatal error in main():`, error);
+        console.error('Full stack:', error.stack);
         process.exit(1);
     });
 }
