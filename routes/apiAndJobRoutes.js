@@ -4137,15 +4137,30 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     
     console.log(`🏃 [${jobId}] Executing smart resume script...`);
     console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Script execution beginning`);
+    console.log(`🔍 ENV_DEBUG: PB_WEBHOOK_SECRET = ${process.env.PB_WEBHOOK_SECRET ? 'SET' : 'MISSING'}`);
+    console.log(`🔍 ENV_DEBUG: NODE_ENV = ${process.env.NODE_ENV}`);
     
-    const result = execSync(`node "${scriptPath}"`, {
-      env: { ...process.env },
-      encoding: 'utf8',
-      timeout: 7200000, // 2 hours max
-      maxBuffer: 1024 * 1024 * 10 // 10MB buffer
-    });
-    
-    console.log(`✅ [${jobId}] Smart resume completed successfully`);
+    try {
+        const result = execSync(`node "${scriptPath}"`, {
+          env: { ...process.env },
+          encoding: 'utf8',
+          timeout: 7200000, // 2 hours max
+          maxBuffer: 1024 * 1024 * 10, // 10MB buffer
+          stdio: 'pipe' // Capture all output
+        });
+        
+        console.log(`✅ [${jobId}] Smart resume completed successfully`);
+        console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_END: Script execution completed`);
+        console.log(`📄 [${jobId}] Output (${result.length} chars):`, result.substring(0, 1000) + (result.length > 1000 ? '...' : ''));
+        
+    } catch (execError) {
+        console.error(`🚨 [${jobId}] EXECSYNC FAILED - THIS IS THE REAL ERROR:`);
+        console.error(`🚨 Exit code: ${execError.status}`);
+        console.error(`🚨 Signal: ${execError.signal}`);
+        console.error(`🚨 Error message: ${execError.message}`);
+        console.error(`🚨 STDOUT: ${execError.stdout?.toString() || 'none'}`);
+        console.error(`🚨 STDERR: ${execError.stderr?.toString() || 'none'}`);
+    }
     console.log(`� SMART_RESUME_${jobId} SCRIPT_END: Script execution completed`);
     console.log(`�📄 [${jobId}] Output:`, result.substring(0, 500) + '...');
     
