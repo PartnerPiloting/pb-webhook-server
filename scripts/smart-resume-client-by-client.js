@@ -14,7 +14,8 @@ require('dotenv').config();
 
 async function log(message, level = 'INFO') {
     const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] [${level}] ${message}`);
+    const runId = process.env.SMART_RESUME_RUN_ID || 'UNKNOWN';
+    console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
 }
 
 async function checkOperationStatus(clientId, operation) {
@@ -119,6 +120,10 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
     
     try {
         log(`🎯 Triggering ${operation} for ${clientId}...`);
+        log(`🔍 AUTH_DEBUG: ${operation} - URL: ${baseUrl}${config.url}`);
+        log(`🔍 AUTH_DEBUG: ${operation} - Method: ${config.method}`);
+        log(`🔍 AUTH_DEBUG: ${operation} - Headers: ${JSON.stringify(config.headers)}`);
+        log(`🔍 AUTH_DEBUG: ${operation} - Secret length: ${params.secret ? params.secret.length : 'MISSING'}`);
         
         const fetchOptions = {
             method: config.method,
@@ -132,6 +137,7 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         // Add body for POST requests
         if (config.body) {
             fetchOptions.body = JSON.stringify(config.body);
+            log(`🔍 AUTH_DEBUG: ${operation} - Body: ${JSON.stringify(config.body)}`);
         }
         
         const response = await fetch(`${baseUrl}${config.url}`, fetchOptions);
@@ -139,15 +145,20 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         const responseTime = Date.now() - startTime;
         const responseData = await response.json();
         
+        log(`🔍 AUTH_DEBUG: ${operation} - Response status: ${response.status}`);
+        log(`🔍 AUTH_DEBUG: ${operation} - Response data: ${JSON.stringify(responseData).substring(0, 200)}`);
+        
         if (response.status === 202) {
             log(`✅ ${operation} triggered for ${clientId}: 202 Accepted in ${responseTime}ms (Job: ${responseData.jobId})`);
             return { success: true, jobId: responseData.jobId };
         } else {
             log(`❌ ${operation} failed for ${clientId}: ${response.status} ${response.statusText}`, 'ERROR');
+            log(`🔍 AUTH_DEBUG: ${operation} - Full response: ${JSON.stringify(responseData)}`, 'ERROR');
             return { success: false, error: `${response.status} ${response.statusText}` };
         }
     } catch (error) {
         log(`❌ ${operation} error for ${clientId}: ${error.message}`, 'ERROR');
+        log(`🔍 AUTH_DEBUG: ${operation} - Fetch error: ${error.stack}`, 'ERROR');
         return { success: false, error: error.message };
     }
 }
