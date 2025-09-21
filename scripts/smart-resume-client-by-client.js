@@ -35,15 +35,20 @@ console.log(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_
 // FORCE EXECUTION - Skip the require.main check entirely
 console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date().toISOString()}]`);
 
+console.log(`🔍 TRACE: About to define log function`);
 async function log(message, level = 'INFO') {
     const timestamp = new Date().toISOString();
     const runId = process.env.SMART_RESUME_RUN_ID || 'UNKNOWN';
     console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
 }
+console.log(`🔍 TRACE: log function defined`);
 
+console.log(`🔍 TRACE: About to define checkOperationStatus function`);
 async function checkOperationStatus(clientId, operation) {
     try {
+        console.log(`🔍 TRACE: About to require clientService`);
         const { getJobStatus } = require('../services/clientService');
+        console.log(`🔍 TRACE: clientService required successfully`);
         const status = await getJobStatus(clientId, operation);
         
         if (!status || !status.status) {
@@ -79,7 +84,9 @@ async function checkOperationStatus(clientId, operation) {
         return { completed: false, reason: `Check failed: ${error.message}` };
     }
 }
+console.log(`🔍 TRACE: checkOperationStatus function defined`);
 
+console.log(`🔍 TRACE: About to define determineClientWorkflow function`);
 async function determineClientWorkflow(client) {
     const operations = ['lead_scoring', 'post_harvesting', 'post_scoring'];
     const workflow = {
@@ -113,7 +120,9 @@ async function determineClientWorkflow(client) {
     
     return workflow;
 }
+console.log(`🔍 TRACE: determineClientWorkflow function defined`);
 
+console.log(`🔍 TRACE: About to define triggerOperation function`);
 async function triggerOperation(baseUrl, clientId, operation, params = {}, authHeaders = {}) {
     const operationMap = {
         'lead_scoring': {
@@ -185,7 +194,9 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         return { success: false, error: error.message };
     }
 }
+console.log(`🔍 TRACE: triggerOperation function defined`);
 
+console.log(`🔍 TRACE: About to define main function`);
 async function main() {
     log(`🔍 SCRIPT_DEBUG: Starting main function`, 'INFO');
     
@@ -453,7 +464,9 @@ async function main() {
         process.exit(1);
     }
 }
+console.log(`🔍 TRACE: main function defined - ALL FUNCTIONS COMPLETE`);
 
+console.log(`🔍 TRACE: About to reach execution section`);
 // FORCE EXECUTION - Always run main() regardless of how script is called
 console.log(`🔍 FORCE_DEBUG: Forcing main() execution [${new Date().toISOString()}]`);
 console.log(`🔍 FORCE_DEBUG: require.main === module: ${require.main === module}`);
@@ -462,8 +475,10 @@ if (require.main) {
     console.log(`🔍 FORCE_DEBUG: require.main.filename: ${require.main.filename}`);
 }
 
+console.log(`🔍 TRACE: About to call main()`);
 main().catch(error => {
     console.error(`🔍 FORCE_DEBUG: Fatal error in main():`, error);
     console.error('Full stack:', error.stack);
     process.exit(1);
 });
+console.log(`🔍 TRACE: main() call initiated (async)`);
