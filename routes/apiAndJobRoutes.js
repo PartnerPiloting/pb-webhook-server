@@ -4139,6 +4139,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Script execution beginning`);
     console.log(`🔍 ENV_DEBUG: PB_WEBHOOK_SECRET = ${process.env.PB_WEBHOOK_SECRET ? 'SET' : 'MISSING'}`);
     console.log(`🔍 ENV_DEBUG: NODE_ENV = ${process.env.NODE_ENV}`);
+    console.log(`🔍 DEBUG: About to try execSync...`);
     
     try {
         const result = execSync(`node "${scriptPath}"`, {
