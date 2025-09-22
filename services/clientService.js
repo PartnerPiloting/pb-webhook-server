@@ -650,7 +650,14 @@ function generateJobId(operation, stream) {
  */
 async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
     try {
-        console.log(`🔄 Setting ${operation} status for ${clientId}: ${status}`);
+        console.log(`🔄 Setting ${operation} status for ${clientId || 'global'}: ${status}`);
+        
+        // Handle global operations (when clientId is null)
+        if (!clientId) {
+            // Log status for tracking but don't update any specific client
+            console.log(`ℹ️ Global ${operation} status: ${status}, jobId: ${jobId}`);
+            return true;
+        }
         
         const base = initializeClientsBase();
         const client = await getClientById(clientId);
