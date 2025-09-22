@@ -211,6 +211,25 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         duration: 0
     };
     
+    // Check if the post scoring job is already running for this client
+    try {
+        const isRunning = await clientService.isJobRunning(client.clientId, 'post_scoring');
+        if (isRunning) {
+            logger.setup(`Post scoring job is already running for client ${client.clientId}, skipping`);
+            console.log(`[INFO] Client ${client.clientId} already has post scoring job running, skipping`);
+            clientResult.status = 'skipped';
+            clientResult.skipReason = 'job_running';
+            return clientResult;
+        }
+        
+        // Set job as running (early) to prevent concurrent executions
+        await clientService.setJobStatus(client.clientId, 'post_scoring', 'RUNNING', options.jobId || `job_post_scoring_${Date.now()}`);
+        logger.setup(`Set job status to RUNNING for client ${client.clientId}`);
+    } catch (jobError) {
+        logger.warn(`Could not check/set job status: ${jobError.message}`);
+        console.warn(`[WARN] Could not check/set job status for ${client.clientId}: ${jobError.message}`);
+    }
+    
     try {
         // Get client-specific Airtable base
         const clientBase = await getClientBase(client.clientId);
@@ -353,6 +372,14 @@ async function loadClientPostScoringConfig(clientBase) {
 }
 
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
+    console.log(`[DEBUG] getLeadsForPostScoring: Starting with config:`, {
+        leadsTableName: config.leadsTableName,
+        postsContentField: config.fields.postsContent,
+        dateScoredField: config.fields.dateScored,
+        forceRescore: !!options.forceRescore,
+        limit: limit || 'unlimited'
+    });
+
     // If explicit targetIds provided, use them directly (bypass view path)
     if (Array.isArray(options.targetIds) && options.targetIds.length > 0) {
         const ids = options.targetIds.slice(0, Math.max(1, limit || options.targetIds.length));
@@ -376,10 +403,12 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
                 console.warn(`[postBatchScorer] Failed to fetch record by id ${id}: ${e.message}`);
             }
         }
+        console.log(`[DEBUG] getLeadsForPostScoring: Using explicit targetIds: ${ids.length} specified, ${found.length} found`);
         return found;
     }
 
-    // Primary: try using the named view (many bases have it), plus a safety filter to ensure unscored
+    // Primary: try using the named view (many bases have it) WITHOUT additional filters
+    // The view "Leads with Posts not yet scored" should already have proper filtering
     const primarySelect = {
         fields: [
             config.fields.postsContent,
@@ -390,15 +419,81 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             config.fields.topScoringPost
         ],
         view: 'Leads with Posts not yet scored',
-    filterByFormula: options.forceRescore ? undefined : `AND({${config.fields.dateScored}} = BLANK())`
+        // IMPORTANT: Remove additional filters that might conflict with the view's filters
+        // Only apply a force rescore filter if needed
+        filterByFormula: options.forceRescore ? `OR({${config.fields.dateScored}} = BLANK(), {${config.fields.dateScored}} != BLANK())` : undefined
     };
 
     let records = [];
     let usedFallback = false;
+    
+    // Check if the table exists first
+    try {
+        const tables = await clientBase.tables();
+        const tableExists = tables.some(t => t.name === config.leadsTableName);
+        if (!tableExists) {
+            console.error(`[ERROR] getLeadsForPostScoring: Table "${config.leadsTableName}" does not exist!`);
+            return [];
+        }
+        console.log(`[DEBUG] getLeadsForPostScoring: Confirmed table "${config.leadsTableName}" exists`);
+    } catch (tableError) {
+        console.error(`[ERROR] getLeadsForPostScoring: Failed to check tables: ${tableError.message}`);
+    }
+    
     try {
         console.log(`[DEBUG] getLeadsForPostScoring: Trying primary select with view "Leads with Posts not yet scored"`);
+        console.log(`[DEBUG] getLeadsForPostScoring: Using filter: ${primarySelect.filterByFormula || 'NONE (using view filters only)'}`);
         records = await clientBase(config.leadsTableName).select(primarySelect).all();
         console.log(`[DEBUG] getLeadsForPostScoring: Primary select found ${records.length} records`);
+        
+        if (records.length > 0) {
+            // Check if the records actually have posts content
+            const withPosts = records.filter(r => {
+                if (!r.fields || !r.fields[config.fields.postsContent]) return false;
+                
+                // Verify post content is not empty
+                const content = r.fields[config.fields.postsContent];
+                if (typeof content === 'string') {
+                    // Check if it's just whitespace or very short
+                    return content.trim().length > 10;
+                } else if (Array.isArray(content)) {
+                    // If it's an array (multi-line text in Airtable), check if it has entries
+                    return content.length > 0;
+                }
+                return false;
+            });
+            console.log(`[DEBUG] getLeadsForPostScoring: ${withPosts.length} of ${records.length} records have valid posts content`);
+            
+            // Check if the records have been scored already
+            const alreadyScored = records.filter(r => r.fields && r.fields[config.fields.dateScored]);
+            console.log(`[DEBUG] getLeadsForPostScoring: ${alreadyScored.length} of ${records.length} records have already been scored`);
+            
+            // Filter out records without valid post content
+            if (withPosts.length < records.length) {
+                console.warn(`[WARN] getLeadsForPostScoring: ${records.length - withPosts.length} records don't have valid posts content!`);
+                console.log(`[INFO] getLeadsForPostScoring: Filtering out records without valid posts content`);
+                records = withPosts;
+            }
+            
+            // Warn about already scored records (shouldn't happen with view-based filtering)
+            if (alreadyScored.length > 0) {
+                console.warn(`[WARN] getLeadsForPostScoring: ${alreadyScored.length} records have already been scored!`);
+            }
+            
+            // If we have records to process, log a sample to help with debugging
+            if (records.length > 0) {
+                const sample = records[0];
+                console.log(`[DEBUG] getLeadsForPostScoring: Sample record ID: ${sample.id}`);
+                console.log(`[DEBUG] getLeadsForPostScoring: Sample LinkedIn URL: ${sample.fields[config.fields.linkedinUrl] || 'N/A'}`);
+                
+                // Only log a snippet of the posts content for debugging
+                const postsContent = sample.fields[config.fields.postsContent];
+                if (typeof postsContent === 'string') {
+                    const snippet = postsContent.slice(0, 100) + (postsContent.length > 100 ? '...' : '');
+                    console.log(`[DEBUG] getLeadsForPostScoring: Sample posts content (snippet): ${snippet}`);
+                }
+            }
+        }
     } catch (e) {
         console.log(`[DEBUG] getLeadsForPostScoring: Primary select failed: ${e.message}`);
         // If the view doesn't exist on this tenant, fall back to a formula-only query below
@@ -425,16 +520,39 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         ];
         const makeFilter = (withActioned) => {
             const dateClause = options.forceRescore ? 'TRUE()' : `{${config.fields.dateScored}} = BLANK()`;
-            return withActioned
+            const filterFormula = withActioned
                 ? `AND({${config.fields.postsContent}} != '', ${dateClause}, ${actionedGuard})`
                 : `AND({${config.fields.postsContent}} != '', ${dateClause})`;
+            console.log(`[DEBUG] getLeadsForPostScoring: Generated filter formula: ${filterFormula}`);
+            return filterFormula;
         };
+
+        // First, try a very basic check to see if we can find ANY records with posts content
+        try {
+            console.log(`[DEBUG] getLeadsForPostScoring: Checking if any records have posts content`);
+            const basicCheck = await clientBase(config.leadsTableName).select({
+                fields: [config.fields.postsContent],
+                filterByFormula: `{${config.fields.postsContent}} != ''`,
+                maxRecords: 5
+            }).firstPage();
+            
+            console.log(`[DEBUG] getLeadsForPostScoring: Basic posts content check found ${basicCheck.length} records`);
+            
+            if (basicCheck.length === 0) {
+                console.warn(`[WARN] getLeadsForPostScoring: No records with posts content found at all!`);
+                // If no posts content found, there's nothing to score
+                return [];
+            }
+        } catch (e) {
+            console.warn(`[WARN] getLeadsForPostScoring: Basic posts content check failed: ${e.message}`);
+        }
 
         try {
             console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback with Posts Actioned guard`);
+            const filter = makeFilter(true);
             records = await clientBase(config.leadsTableName).select({
                 fields: baseFields,
-                filterByFormula: makeFilter(true)
+                filterByFormula: filter
             }).all();
             console.log(`[DEBUG] getLeadsForPostScoring: Fallback with guard found ${records.length} records`);
         } catch (e2) {
@@ -444,9 +562,10 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             console.warn(`[postBatchScorer] Fallback select with actioned guard failed: ${msg}. Retrying without Posts Actioned condition.`);
             try {
                 console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback without Posts Actioned guard`);
+                const filter = makeFilter(false);
                 records = await clientBase(config.leadsTableName).select({
                     fields: baseFields,
-                    filterByFormula: makeFilter(false)
+                    filterByFormula: filter
                 }).all();
                 console.log(`[DEBUG] getLeadsForPostScoring: Fallback without guard found ${records.length} records`);
             } catch (e3) {
@@ -464,6 +583,40 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     }
 
     console.log(`[DEBUG] getLeadsForPostScoring: Final result: ${records.length} records`);
+    
+    // Enhanced validation and logging
+    if (records.length > 0) {
+        // Check for field existence and format in the records
+        const sampleRecord = records[0];
+        console.log(`[DEBUG] getLeadsForPostScoring: Sample record fields: ${Object.keys(sampleRecord.fields || {}).join(', ')}`);
+        
+        const hasPostsContent = sampleRecord.fields && sampleRecord.fields[config.fields.postsContent];
+        console.log(`[DEBUG] getLeadsForPostScoring: Sample record has posts content: ${!!hasPostsContent}`);
+        
+        if (hasPostsContent) {
+            const postsValue = sampleRecord.fields[config.fields.postsContent];
+            const postsValueType = typeof postsValue;
+            const postsValueLength = postsValueType === 'string' ? postsValue.length : (Array.isArray(postsValue) ? postsValue.length : 'N/A');
+            console.log(`[DEBUG] getLeadsForPostScoring: Posts content type: ${postsValueType}, length: ${postsValueLength}`);
+        }
+        
+        // Count records with essential data
+        const withValidPostsCount = records.filter(r => {
+            const hasContent = r.fields && r.fields[config.fields.postsContent];
+            return hasContent && (typeof r.fields[config.fields.postsContent] === 'string' ? 
+                r.fields[config.fields.postsContent].length > 10 : true);
+        }).length;
+        
+        console.log(`[DEBUG] getLeadsForPostScoring: Records with valid posts content: ${withValidPostsCount} of ${records.length}`);
+        
+        // If many records have no posts content, that's a problem
+        if (withValidPostsCount < records.length * 0.5 && records.length > 1) {
+            console.warn(`[WARN] getLeadsForPostScoring: Less than half of records have valid posts content!`);
+        }
+    } else {
+        console.warn(`[WARN] getLeadsForPostScoring: No records found for post scoring!`);
+    }
+    
     return records;
 }
 
