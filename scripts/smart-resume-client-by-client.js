@@ -540,18 +540,31 @@ async function main() {
 console.log(`🔍 TRACE: main function defined - ALL FUNCTIONS COMPLETE`);
 
 console.log(`🔍 TRACE: About to reach execution section`);
-// FORCE EXECUTION - Always run main() regardless of how script is called
-console.log(`🔍 FORCE_DEBUG: Forcing main() execution [${new Date().toISOString()}]`);
-console.log(`🔍 FORCE_DEBUG: require.main === module: ${require.main === module}`);
-console.log(`🔍 FORCE_DEBUG: __filename: ${__filename}`);
-if (require.main) {
-    console.log(`🔍 FORCE_DEBUG: require.main.filename: ${require.main.filename}`);
-}
 
-console.log(`🔍 TRACE: About to call main()`);
-main().catch(error => {
-    console.error(`🔍 FORCE_DEBUG: Fatal error in main():`, error);
-    console.error('Full stack:', error.stack);
-    process.exit(1);
-});
-console.log(`🔍 TRACE: main() call initiated (async)`);
+// Export the main function and other important functions
+// Make sure this export is before any conditional execution
+module.exports = {
+    runSmartResume: main,
+    main: main,
+    checkOperationStatus,
+    determineClientWorkflow,
+    triggerOperation
+};
+
+// When run directly as script, execute main()
+if (require.main === module) {
+    console.log(`🔍 FORCE_DEBUG: Executing as script [${new Date().toISOString()}]`);
+    console.log(`🔍 FORCE_DEBUG: require.main === module: ${require.main === module}`);
+    console.log(`🔍 FORCE_DEBUG: __filename: ${__filename}`);
+    if (require.main) {
+        console.log(`🔍 FORCE_DEBUG: require.main.filename: ${require.main.filename}`);
+    }
+    
+    console.log(`🔍 TRACE: About to call main()`);
+    main().catch(error => {
+        console.error(`🔍 FORCE_DEBUG: Fatal error in main():`, error);
+        console.error('Full stack:', error.stack);
+        process.exit(1);
+    });
+    console.log(`🔍 TRACE: main() call initiated (async)`);
+}
