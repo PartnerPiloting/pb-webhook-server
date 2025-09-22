@@ -113,6 +113,55 @@ async function checkOperationStatus(clientId, operation) {
 }
 console.log(`🔍 TRACE: checkOperationStatus function defined`);
 
+console.log(`🔍 TRACE: About to define checkUnscoredPostsCount function`);
+async function checkUnscoredPostsCount(clientId) {
+    try {
+        console.log(`🔍 TRACE: About to check unscored posts for client ${clientId}`);
+        const { getClientBase } = require('../config/airtableClient');
+        const clientBase = await getClientBase(clientId);
+        
+        if (!clientBase) {
+            console.warn(`⚠️ Could not get client base for ${clientId}`);
+            return { hasUnscoredPosts: false, count: 0, error: 'Could not access client base' };
+        }
+        
+        // Try to get the view first - this is how the post scoring normally works
+        try {
+            // First try using the "Leads with Posts not yet scored" view
+            const viewRecords = await clientBase('Leads').select({
+                view: 'Leads with Posts not yet scored',
+                maxRecords: 1 // We just need to know if there are any
+            }).firstPage();
+            
+            const count = viewRecords.length;
+            return { 
+                hasUnscoredPosts: count > 0, 
+                count,
+                source: 'view'
+            };
+        } catch (viewError) {
+            console.warn(`⚠️ Could not use view for ${clientId}, falling back to formula: ${viewError.message}`);
+            
+            // Fallback - use formula to check for unscored posts
+            const formulaRecords = await clientBase('Leads').select({
+                filterByFormula: "AND({Posts Content} != '', {Date Posts Scored} = BLANK())",
+                maxRecords: 1 // We just need to know if there are any
+            }).firstPage();
+            
+            const count = formulaRecords.length;
+            return { 
+                hasUnscoredPosts: count > 0, 
+                count,
+                source: 'formula'
+            };
+        }
+    } catch (error) {
+        console.warn(`⚠️ Error checking unscored posts: ${error.message}`);
+        return { hasUnscoredPosts: false, count: 0, error: error.message };
+    }
+}
+console.log(`🔍 TRACE: checkUnscoredPostsCount function defined`);
+
 console.log(`🔍 TRACE: About to define determineClientWorkflow function`);
 async function determineClientWorkflow(client) {
     const operations = ['lead_scoring', 'post_harvesting', 'post_scoring'];
@@ -138,6 +187,24 @@ async function determineClientWorkflow(client) {
         
         const status = await checkOperationStatus(client.clientId, operation);
         workflow.statusSummary[operation] = status;
+        
+        // Special handling for post_scoring - check if there are unscored posts regardless of last run time
+        if (operation === 'post_scoring' && status.completed) {
+            const unscoredPostsStatus = await checkUnscoredPostsCount(client.clientId);
+            
+            // If we have unscored posts, we should run post_scoring even if it was recent
+            if (unscoredPostsStatus.hasUnscoredPosts) {
+                console.log(`🔍 Found ${unscoredPostsStatus.count} unscored posts for ${client.clientName} - will run post_scoring even though last run was recent`);
+                
+                // Override the completed status and add a reason
+                status.completed = false;
+                status.overrideReason = `Found ${unscoredPostsStatus.count} unscored posts`;
+                status.originalStatus = { ...status }; // Keep original status for reference
+                
+                // Update in the workflow summary
+                workflow.statusSummary[operation] = status;
+            }
+        }
         
         if (!status.completed) {
             workflow.needsProcessing = true;
@@ -381,6 +448,17 @@ async function main() {
             const workflow = clientsNeedingWork[i];
             log(`\n🚀 PROGRESS: Processing client [${i + 1}/${clientsNeedingWork.length}] ${workflow.clientName}:`);
             log(`   Operations needed: ${workflow.operationsToRun.join(', ')}`);
+            
+            // Log more details about post_scoring status if it's going to be executed
+            if (workflow.operationsToRun.includes('post_scoring')) {
+                const postScoringStatus = workflow.statusSummary['post_scoring'];
+                if (postScoringStatus.overrideReason) {
+                    log(`   📌 POST SCORING: ${postScoringStatus.overrideReason}`);
+                    if (postScoringStatus.originalStatus) {
+                        log(`   📌 Original reason: ${postScoringStatus.originalStatus.reason}`);
+                    }
+                }
+            }
             
             const params = { stream, limit: leadScoringLimit };
             const clientJobs = [];
