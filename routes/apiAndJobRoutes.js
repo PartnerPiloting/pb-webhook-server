@@ -4274,6 +4274,9 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
   // Reset any previous termination signal
   global.smartResumeTerminateSignal = false;
   
+  // Define heartbeatInterval in the outer scope so it's accessible in the finally block
+  let heartbeatInterval = null;
+  
   try {
     // Set up environment variables for the module
     process.env.BATCH_PROCESSING_STREAM = stream.toString();
@@ -4283,7 +4286,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     
     // Set up heartbeat logging with termination check
     const startTime = Date.now();
-    const heartbeatInterval = setInterval(() => {
+    heartbeatInterval = setInterval(() => {
       // Check for termination signal
       if (global.smartResumeTerminateSignal) {
         console.log(`🛑 [${jobId}] Termination signal detected, stopping process`);
