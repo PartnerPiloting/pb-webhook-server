@@ -62,13 +62,14 @@ console.log(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_
 // FORCE EXECUTION - Skip the require.main check entirely
 console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date().toISOString()}]`);
 
-console.log(`🔍 TRACE: About to define log function`);
-async function log(message, level = 'INFO') {
+console.log(`🔍 TRACE: About to load run ID generator`);
+const { generateRunId, createLogger } = require('../utils/runIdGenerator');
+let runId = 'INITIALIZING';
+let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();
-    const runId = process.env.SMART_RESUME_RUN_ID || 'UNKNOWN';
     console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
-}
-console.log(`🔍 TRACE: log function defined`);
+};
+console.log(`🔍 TRACE: Run ID generator loaded`);
 
 console.log(`🔍 TRACE: About to define checkOperationStatus function`);
 async function checkOperationStatus(clientId, operation) {
@@ -321,7 +322,15 @@ console.log(`🔍 TRACE: triggerOperation function defined`);
 
 console.log(`🔍 TRACE: About to define main function`);
 async function main() {
-    log(`� PROGRESS: Starting main function`, 'INFO');
+    console.log(`🔍 TRACE: Generating structured run ID...`);
+    
+    // Generate a structured, filterable run ID
+    runId = await generateRunId();
+    
+    // Create a logger that uses this run ID
+    log = createLogger(runId);
+    
+    log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId})`, 'INFO');
     
     // Use external URL for Render, localhost for local development
     const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
@@ -330,15 +339,14 @@ async function main() {
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
     const postScoringLimit = parseInt(process.env.POST_SCORING_LIMIT) || 100;
     
-    log(`� PROGRESS: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
+    log(`🚀 PROGRESS: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
     
     // Initialize email reporting
-    log(`� PROGRESS: Initializing email service...`, 'INFO');
+    log(`🚀 PROGRESS: Initializing email service...`, 'INFO');
     const emailService = require('../services/emailReportingService');
-    log(`� PROGRESS: Email service initialized successfully`, 'INFO');
+    log(`🚀 PROGRESS: Email service initialized successfully`, 'INFO');
     
     const runStartTime = Date.now();
-    const runId = `smart_resume_${runStartTime}_${Math.random().toString(36).substr(2, 5)}`;
     
     log(`🔍 SCRIPT_DEBUG: Checking secret...`, 'INFO');
     if (!secret) {
