@@ -4065,6 +4065,11 @@ function generateSmartRecommendations(detectedIssues, auditData) {
 // ---------------------------------------------------------------
 // SMART RESUME CLIENT-BY-CLIENT ENDPOINT
 // ---------------------------------------------------------------
+
+// Simple in-memory lock to prevent concurrent smart resume executions
+let smartResumeRunning = false;
+let currentSmartResumeJobId = null;
+
 router.post("/smart-resume-client-by-client", async (req, res) => {
   console.log("🚀 apiAndJobRoutes.js: /smart-resume-client-by-client endpoint hit");
   
@@ -4077,6 +4082,18 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     return res.status(401).json({ 
       success: false, 
       error: 'Unauthorized - invalid webhook secret' 
+    });
+  }
+  
+  // ⭐ CONCURRENT EXECUTION PROTECTION
+  if (smartResumeRunning) {
+    console.log(`⚠️ Smart resume already running (jobId: ${currentSmartResumeJobId})`);
+    return res.status(409).json({
+      success: false,
+      error: 'Smart resume process already running',
+      currentJobId: currentSmartResumeJobId,
+      message: 'Please wait for current execution to complete (15-20 minutes typical)',
+      retryAfter: 1200 // Suggest retry after 20 minutes
     });
   }
   
@@ -4093,14 +4110,20 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     const { stream, leadScoringLimit, postScoringLimit } = req.body;
     const jobId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     
+    // Set the lock
+    smartResumeRunning = true;
+    currentSmartResumeJobId = jobId;
+    
     console.log(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}`);
+    console.log(`🔒 Smart resume lock acquired for jobId: ${jobId}`);
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
     res.status(202).json({
       success: true,
       message: 'Smart resume processing started',
       jobId: jobId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      estimatedDuration: '15-20 minutes'
     });
     
     // Start background processing
@@ -4109,6 +4132,10 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     });
     
   } catch (error) {
+    // Release lock on startup error
+    smartResumeRunning = false;
+    currentSmartResumeJobId = null;
+    
     console.error("❌ Smart resume startup error:", error.message);
     res.status(500).json({
       success: false,
@@ -4181,6 +4208,11 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     } catch (emailError) {
       console.error(`❌ [${jobId}] Failed to send error email:`, emailError.message);
     }
+  } finally {
+    // ⭐ ALWAYS RELEASE THE LOCK WHEN DONE (SUCCESS OR FAILURE)
+    console.log(`🔓 [${jobId}] Releasing smart resume lock`);
+    smartResumeRunning = false;
+    currentSmartResumeJobId = null;
   }
 }
 
