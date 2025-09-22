@@ -4317,16 +4317,29 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
             throw new Error(`Module loading failed: ${loadError.message}`);
         }
         
-        // Validate module structure
-        if (!smartResumeModule || typeof smartResumeModule.runSmartResume !== 'function') {
-            throw new Error('Smart resume module does not export runSmartResume function');
+        // Add detailed diagnostic logs about the module structure
+        console.log(`🔍 DIAGNOSTIC: Module type: ${typeof smartResumeModule}`);
+        console.log(`🔍 DIAGNOSTIC: Module exports:`, Object.keys(smartResumeModule || {}));
+        
+        // Check what function is available and use the right one
+        if (typeof smartResumeModule === 'function') {
+            console.log(`🔍 [${jobId}] Module is a direct function, calling it...`);
+            await smartResumeModule(stream);
+        } else if (typeof smartResumeModule.runSmartResume === 'function') {
+            console.log(`🔍 [${jobId}] Found runSmartResume function, calling it...`);
+            // Pass the stream parameter properly
+            await smartResumeModule.runSmartResume(stream);
+        } else if (typeof smartResumeModule.main === 'function') {
+            console.log(`🔍 [${jobId}] Found main function, calling it...`);
+            await smartResumeModule.main(stream);
+        } else {
+            console.error(`❌ [${jobId}] CRITICAL: No usable function found in module`);
+            console.error(`❌ [${jobId}] Available exports:`, Object.keys(smartResumeModule || {}));
+            throw new Error('Smart resume module does not export a usable function');
         }
         
         console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
-        
-        // Execute the module's exported function directly
-        console.log(`🔍 DEBUG: About to call module.runSmartResume()...`);
-        await smartResumeModule.runSmartResume();
+        console.log(`✅ [${jobId}] Smart resume function called successfully`);
         
         console.log(`✅ [${jobId}] Smart resume completed successfully`);
         console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_END: Module execution completed`);
