@@ -116,7 +116,7 @@ console.log(`🔍 TRACE: checkOperationStatus function defined`);
 console.log(`🔍 TRACE: About to define checkUnscoredPostsCount function`);
 async function checkUnscoredPostsCount(clientId) {
     try {
-        console.log(`🔍 TRACE: About to check unscored posts for client ${clientId}`);
+        console.log(`� UNSCORED CHECK: Starting check for unscored posts for client ${clientId}`);
         const { getClientBase } = require('../config/airtableClient');
         const clientBase = await getClientBase(clientId);
         
@@ -125,15 +125,28 @@ async function checkUnscoredPostsCount(clientId) {
             return { hasUnscoredPosts: false, count: 0, error: 'Could not access client base' };
         }
         
+        console.log(`🚨 UNSCORED CHECK: Successfully connected to client base for ${clientId}`);
+        
         // Try to get the view first - this is how the post scoring normally works
         try {
             // First try using the "Leads with Posts not yet scored" view
+            console.log(`🚨 UNSCORED CHECK: Attempting to use view "Leads with Posts not yet scored" for ${clientId}`);
             const viewRecords = await clientBase('Leads').select({
                 view: 'Leads with Posts not yet scored',
-                maxRecords: 1 // We just need to know if there are any
+                maxRecords: 100 // Increase to get actual count up to 100
             }).firstPage();
             
             const count = viewRecords.length;
+            console.log(`🚨 UNSCORED CHECK: Found ${count} unscored posts for ${clientId} using VIEW method`);
+            
+            // If we found records, log the first few record IDs
+            if (count > 0) {
+                console.log(`🚨 UNSCORED CHECK: First ${Math.min(5, count)} records with unscored posts:`);
+                viewRecords.slice(0, 5).forEach(record => {
+                    console.log(`🚨 UNSCORED CHECK: - Record ID: ${record.id}, Name: ${record.fields['Full Name'] || 'N/A'}`);
+                });
+            }
+            
             return { 
                 hasUnscoredPosts: count > 0, 
                 count,
@@ -143,12 +156,23 @@ async function checkUnscoredPostsCount(clientId) {
             console.warn(`⚠️ Could not use view for ${clientId}, falling back to formula: ${viewError.message}`);
             
             // Fallback - use formula to check for unscored posts
+            console.log(`🚨 UNSCORED CHECK: Falling back to formula method for ${clientId}`);
             const formulaRecords = await clientBase('Leads').select({
                 filterByFormula: "AND({Posts Content} != '', {Date Posts Scored} = BLANK())",
-                maxRecords: 1 // We just need to know if there are any
+                maxRecords: 100 // Increase to get actual count up to 100
             }).firstPage();
             
             const count = formulaRecords.length;
+            console.log(`🚨 UNSCORED CHECK: Found ${count} unscored posts for ${clientId} using FORMULA method`);
+            
+            // If we found records, log the first few record IDs
+            if (count > 0) {
+                console.log(`🚨 UNSCORED CHECK: First ${Math.min(5, count)} records with unscored posts (formula method):`);
+                formulaRecords.slice(0, 5).forEach(record => {
+                    console.log(`🚨 UNSCORED CHECK: - Record ID: ${record.id}, Name: ${record.fields['Full Name'] || 'N/A'}`);
+                });
+            }
+            
             return { 
                 hasUnscoredPosts: count > 0, 
                 count,
@@ -190,11 +214,14 @@ async function determineClientWorkflow(client) {
         
         // Special handling for post_scoring - check if there are unscored posts regardless of last run time
         if (operation === 'post_scoring' && status.completed) {
+            console.log(`🚨 POST SCORING CHECK: Client ${client.clientName} (${client.clientId}) has completed post_scoring recently, checking for unscored posts...`);
             const unscoredPostsStatus = await checkUnscoredPostsCount(client.clientId);
+            
+            console.log(`🚨 POST SCORING DECISION: Client ${client.clientName} - Unscored posts check results:`, JSON.stringify(unscoredPostsStatus));
             
             // If we have unscored posts, we should run post_scoring even if it was recent
             if (unscoredPostsStatus.hasUnscoredPosts) {
-                console.log(`🔍 Found ${unscoredPostsStatus.count} unscored posts for ${client.clientName} - will run post_scoring even though last run was recent`);
+                console.log(`� POST SCORING OVERRIDE: Found ${unscoredPostsStatus.count} unscored posts for ${client.clientName} - WILL RUN post_scoring even though last run was recent`);
                 
                 // Override the completed status and add a reason
                 status.completed = false;
@@ -203,6 +230,8 @@ async function determineClientWorkflow(client) {
                 
                 // Update in the workflow summary
                 workflow.statusSummary[operation] = status;
+            } else {
+                console.log(`🚨 POST SCORING SKIPPED: No unscored posts found for ${client.clientName} - skipping post_scoring as it ran recently`);
             }
         }
         
