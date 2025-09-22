@@ -455,7 +455,7 @@ router.get("/run-batch-score-v2", async (req, res) => {
 // Background processing function for lead scoring
 async function processLeadScoringInBackground(jobId, stream, limit, singleClientId, aiDependencies) {
   const {
-    getAllActiveClients,
+    getActiveClientsByStream,
     setJobStatus,
     setProcessingStream,
     formatDuration
