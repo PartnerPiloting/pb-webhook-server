@@ -4,7 +4,34 @@
  * Smart Resume Client-by-Client Processing Pipeline with Email Reporting
  * 
  * Checks each client's last execution status and resumes from where it left off:
- * - Skips clients where all operations completed successfully in last 24 hours
+ * - Skips clients where all operations completed succes    // Get clients for this stream
+    log(`🚀        // Step 1: Analyze what needs to be done
+        log(`🚀 PROGRESS: [4/6] Analyzing client status and requirements...`);
+        const workflows = [];
+        
+        for (let i = 0; i < clients.length; i++) {
+            const client = clients[i];
+            log(`\n🚀 PROGRESS: Analyzing client [${i+1}/${clients.length}] ${client.clientName} (${client.clientId}):`);
+            
+            const workflow = await determineClientWorkflow(client);
+            workflows.push(workflow);
+            
+            // Report status for each operation
+            Object.entries(workflow.statusSummary).forEach(([op, status]) => {
+                const icon = status.completed ? '✅' : '❌';
+                log(`   ${icon} ${op}: ${status.reason}`);
+            }); Loading client service...`, 'INFO');
+    const { getActiveClientsByStream } = require('../services/clientService');
+    log(`🚀 PROGRESS: [2/6] Client service loaded, fetching clients for stream ${stream}...`, 'INFO');
+    
+    try {
+        log(`🔍 Calling getActiveClientsByStream(${stream})...`, 'INFO');
+        const clients = await getActiveClientsByStream(stream);
+        log(`✅ Found ${clients ? clients.length : 0} clients on stream ${stream}`, 'INFO');
+        log(`🚀 PROGRESS: [3/6] Client Discovery Complete: ${clients.length} clients available for processing`);
+        
+        if (clients.length === 0) {
+            log(`⚠️  No clients found on stream ${stream} - sending empty report`, 'WARN');t 24 hours
  * - Resumes incomplete workflows from the failed/missing operation
  * - Sends comprehensive email reports with execution summary and data impact
  * - Reports what was skipped vs. what was processed
@@ -198,7 +225,7 @@ console.log(`🔍 TRACE: triggerOperation function defined`);
 
 console.log(`🔍 TRACE: About to define main function`);
 async function main() {
-    log(`🔍 SCRIPT_DEBUG: Starting main function`, 'INFO');
+    log(`� PROGRESS: Starting main function`, 'INFO');
     
     // Use external URL for Render, localhost for local development
     const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
@@ -207,12 +234,12 @@ async function main() {
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
     const postScoringLimit = parseInt(process.env.POST_SCORING_LIMIT) || 100;
     
-    log(`🔍 SCRIPT_DEBUG: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
+    log(`� PROGRESS: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
     
     // Initialize email reporting
-    log(`🔍 SCRIPT_DEBUG: Initializing email service...`, 'INFO');
+    log(`� PROGRESS: Initializing email service...`, 'INFO');
     const emailService = require('../services/emailReportingService');
-    log(`🔍 SCRIPT_DEBUG: Email service loaded`, 'INFO');
+    log(`� PROGRESS: Email service initialized successfully`, 'INFO');
     
     const runStartTime = Date.now();
     const runId = `smart_resume_${runStartTime}_${Math.random().toString(36).substr(2, 5)}`;
@@ -246,18 +273,18 @@ async function main() {
     log(`   Email Reporting: ${emailService.isConfigured() ? '✅ Enabled' : '⚠️  Not configured'}`);
     
     // Get clients for this stream
-    log(`🔍 SCRIPT_DEBUG: Loading client service...`, 'INFO');
+    log(`� PROGRESS: [1/6] Loading client service...`, 'INFO');
     const { getActiveClientsByStream } = require('../services/clientService');
-    log(`🔍 SCRIPT_DEBUG: Client service loaded, getting clients...`, 'INFO');
+    log(`� PROGRESS: [2/6] Client service loaded, fetching clients...`, 'INFO');
     
     try {
-        log(`🔍 SCRIPT_DEBUG: Calling getActiveClientsByStream(${stream})...`, 'INFO');
+        log(`🔍 Calling getActiveClientsByStream(${stream})...`, 'INFO');
         const clients = await getActiveClientsByStream(stream);
-        log(`🔍 SCRIPT_DEBUG: getActiveClientsByStream returned ${clients ? clients.length : 'null'} clients`, 'INFO');
-        log(`📊 Found ${clients.length} clients on stream ${stream}`);
+        log(`✅ Found ${clients ? clients.length : 0} clients on stream ${stream}`, 'INFO');
+        log(`📊 Client Discovery Complete: ${clients.length} clients available for processing`);
         
         if (clients.length === 0) {
-            log(`⚠️  No clients found on stream ${stream}`, 'WARN');
+            log(`⚠️  No clients found on stream ${stream} - sending empty report`, 'WARN');
             
             // Send empty stream report
             await emailService.sendExecutionReport({
@@ -281,12 +308,12 @@ async function main() {
         }
         
         // Step 1: Analyze what needs to be done
-        log(`\n🔍 ANALYZING CLIENT STATUS...`);
+        log(`� PROGRESS: [3/6] Analyzing client status and requirements...`);
         const workflows = [];
         
         for (let i = 0; i < clients.length; i++) {
             const client = clients[i];
-            log(`\n📋 Checking ${client.clientName} (${client.clientId}):`);
+            log(`\n📋 [${i+1}/${clients.length}] Analyzing ${client.clientName} (${client.clientId}):`);
             
             const workflow = await determineClientWorkflow(client);
             workflows.push(workflow);
@@ -307,16 +334,44 @@ async function main() {
         // Step 2: Execute needed operations
         const clientsNeedingWork = workflows.filter(w => w.needsProcessing);
         
+        log(`� PROGRESS: [5/6] Analysis complete - preparing execution plan...`);
+        log(`📊 EXECUTION PLAN: ${clientsNeedingWork.length} clients need processing, ${workflows.length - clientsNeedingWork.length} clients up to date`);
+        
         if (clientsNeedingWork.length === 0) {
             log(`\n🎉 ALL CLIENTS UP TO DATE!`);
             log(`   No operations needed - all clients completed recently`);
             log(`   Next scheduled run will check again in 24 hours`);
+            
+            log(`� PROGRESS: [6/6] No work needed - sending success report...`);
+            
+            // Send success report for no-work scenario
+            await emailService.sendExecutionReport({
+                runId,
+                stream,
+                startTime: runStartTime,
+                endTime: Date.now(),
+                duration: Date.now() - runStartTime,
+                clientsAnalyzed: clients.length,
+                clientsSkipped: clients.length,
+                clientsProcessed: 0,
+                totalOperationsTriggered: 0,
+                totalJobsStarted: 0,
+                successRate: 100,
+                executionResults: [],
+                skippedClients: workflows.map(w => ({
+                    clientName: w.clientName,
+                    reason: 'All operations up to date'
+                })),
+                errors: []
+            });
+            
+            log(`� PROGRESS: [6/6] ✅ COMPLETE - All clients up to date!`);
             return;
         }
         
-        log(`\n🚀 EXECUTING NEEDED OPERATIONS...`);
-        log(`   Clients needing work: ${clientsNeedingWork.length}/${clients.length}`);
-        log(`   Total operations to run: ${clientsNeedingWork.reduce((sum, w) => sum + w.operationsToRun.length, 0)}`);
+        log(`� PROGRESS: [6/6] Executing operations for ${clientsNeedingWork.length} clients...`);
+        log(`📊 EXECUTION SUMMARY: ${clientsNeedingWork.length} clients need work, ${workflows.length - clientsNeedingWork.length} clients up to date`);
+        log(`📋 Total operations to run: ${clientsNeedingWork.reduce((sum, w) => sum + w.operationsToRun.length, 0)}`);
         
         let totalTriggered = 0;
         let totalJobsStarted = 0;
@@ -324,13 +379,15 @@ async function main() {
         
         for (let i = 0; i < clientsNeedingWork.length; i++) {
             const workflow = clientsNeedingWork[i];
-            log(`\n🎯 PROCESSING ${workflow.clientName} (${i + 1}/${clientsNeedingWork.length}):`);
+            log(`\n🚀 PROGRESS: Processing client [${i + 1}/${clientsNeedingWork.length}] ${workflow.clientName}:`);
             log(`   Operations needed: ${workflow.operationsToRun.join(', ')}`);
             
             const params = { stream, limit: leadScoringLimit };
             const clientJobs = [];
             
-            for (const operation of workflow.operationsToRun) {
+            for (let opIndex = 0; opIndex < workflow.operationsToRun.length; opIndex++) {
+                const operation = workflow.operationsToRun[opIndex];
+                log(`   🚀 Starting operation [${opIndex + 1}/${workflow.operationsToRun.length}] ${operation}...`);
                 const operationParams = operation === 'post_scoring' 
                     ? { stream, limit: postScoringLimit, secret }
                     : { stream, limit: leadScoringLimit, secret };
@@ -340,6 +397,13 @@ async function main() {
                 
                 const result = await triggerOperation(baseUrl, workflow.clientId, operation, operationParams, headers);
                 totalTriggered++;
+                
+                if (result.success) {
+                    log(`   ✅ ${operation} triggered successfully`);
+                    totalJobsStarted++;
+                } else {
+                    log(`   ❌ ${operation} failed: ${result.error}`);
+                }
                 
                 if (result.success) {
                     totalJobsStarted++;
@@ -368,6 +432,8 @@ async function main() {
         }
         
         // Comprehensive reporting
+        log(`🔄 PROGRESS: [6/6] Finalizing results and sending report...`);
+        
         const runEndTime = Date.now();
         const totalDuration = runEndTime - runStartTime;
         const clientsSkipped = workflows.filter(w => !w.needsProcessing);
@@ -380,13 +446,14 @@ async function main() {
         }
         
         // Final console summary
-        log(`\n🎉 SMART RESUME PROCESSING COMPLETED`);
-        log(`   Total Operations Triggered: ${totalTriggered}`);
-        log(`   Successful Job Starts: ${totalJobsStarted}`);
-        log(`   Clients Processed: ${clientsNeedingWork.length}/${clients.length}`);
-        log(`   Clients Skipped: ${clients.length - clientsNeedingWork.length} (up to date)`);
-        log(`   Success Rate: ${successRate}%`);
-        log(`   Total Duration: ${Math.round(totalDuration / 1000)}s`);
+        log(`\n🎉 SMART RESUME PROCESSING COMPLETED ✅`);
+        log(`   📊 FINAL STATS:`);
+        log(`   └─ Total Operations Triggered: ${totalTriggered}`);
+        log(`   └─ Successful Job Starts: ${totalJobsStarted}`);
+        log(`   └─ Clients Processed: ${clientsNeedingWork.length}/${clients.length}`);
+        log(`   └─ Clients Skipped: ${clients.length - clientsNeedingWork.length} (up to date)`);
+        log(`   └─ Success Rate: ${successRate}%`);
+        log(`   └─ Total Duration: ${Math.round(totalDuration / 1000)}s`);
         
         if (executionResults.length > 0) {
             log(`\n📋 EXECUTION SUMMARY:`);
@@ -436,10 +503,16 @@ async function main() {
         
         const emailResult = await emailService.sendExecutionReport(reportData);
         if (emailResult.sent) {
-            log(`📧 Email report sent successfully`);
+            log(`📧 ✅ Completion report sent successfully`);
         } else {
-            log(`📧 Email report failed: ${emailResult.reason}`, 'WARN');
+            log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
         }
+        
+        log(`\n🎉 ✅ SMART RESUME FULLY COMPLETED!`);
+        log(`🚀 PROGRESS: [6/6] ✅ ALL PHASES COMPLETE - Script execution finished successfully`);
+        log(`📝 Summary: ${clientsNeedingWork.length} clients processed, ${totalJobsStarted} operations started`);
+        log(`⏰ Duration: ${Math.round(totalDuration / 1000)} seconds`);
+        log(`📊 Success Rate: ${successRate}%`);
         
     } catch (error) {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
