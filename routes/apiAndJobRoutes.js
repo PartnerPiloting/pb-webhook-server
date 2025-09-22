@@ -769,25 +769,87 @@ router.get("/score-lead", async (req, res) => {
 // Gemini Debug
 // ---------------------------------------------------------------
 router.get("/debug-gemini-info", (_req, res) => {
-  const modelIdForScoring =
-    geminiConfig?.geminiModel?.model ||
-    process.env.GEMINI_MODEL_ID ||
-    "gemini-2.5-pro-preview-05-06 (default)";
+  const modelIdForScoring =
+    geminiConfig?.geminiModel?.model ||
+    process.env.GEMINI_MODEL_ID ||
+    "gemini-2.5-pro-preview-05-06 (default)";
 
-  res.json({
-    message: "Gemini Debug Info",
-    model_id_for_scoring: modelIdForScoring,
-    batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
-    project_id: process.env.GCP_PROJECT_ID,
-    location: process.env.GCP_LOCATION,
-    global_client_available: !!vertexAIClient,
-    default_model_instance_available:
-      !!(geminiConfig && geminiConfig.geminiModel),
-    gpt_chat_url: process.env.GPT_CHAT_URL || "Not Set",
-  });
+  res.json({
+    message: "Gemini Debug Info",
+    model_id_for_scoring: modelIdForScoring,
+    batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
+    project_id: process.env.GCP_PROJECT_ID,
+    location: process.env.GCP_LOCATION,
+    global_client_available: !!vertexAIClient,
+    default_model_instance_available:
+      !!(geminiConfig && geminiConfig.geminiModel),
+    gpt_chat_url: process.env.GPT_CHAT_URL || "Not Set",
+  });
 });
 
-// ---------------------------------------------------------------
+/**
+ * Get the status of any running or recent Smart Resume processes
+ */
+router.get("/debug-smart-resume-status", async (req, res) => {
+  console.log("ℹ️ Smart resume status check requested");
+  
+  try {
+    // Check webhook secret for sensitive operations
+    let isAuthenticated = false;
+    const providedSecret = req.headers['x-webhook-secret'];
+    const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+    
+    if (providedSecret && providedSecret === expectedSecret) {
+      isAuthenticated = true;
+    }
+    
+    // Build basic status response
+    const statusResponse = {
+      timestamp: new Date().toISOString(),
+      lockStatus: {
+        locked: !!smartResumeRunning,
+        currentJobId: currentSmartResumeJobId || null,
+        lockAcquiredAt: smartResumeLockTime ? new Date(smartResumeLockTime).toISOString() : null,
+        lockDuration: smartResumeLockTime ? `${Math.round((Date.now() - smartResumeLockTime)/1000/60)} minutes` : null
+      }
+    };
+    
+    // Add active process info if available and authenticated
+    if (global.smartResumeActiveProcess) {
+      statusResponse.activeProcess = {
+        status: global.smartResumeActiveProcess.status || 'unknown',
+        jobId: global.smartResumeActiveProcess.jobId,
+        stream: global.smartResumeActiveProcess.stream,
+        startedAt: global.smartResumeActiveProcess.startTime ? new Date(global.smartResumeActiveProcess.startTime).toISOString() : null,
+        runtime: global.smartResumeActiveProcess.startTime ? `${Math.round((Date.now() - global.smartResumeActiveProcess.startTime)/1000/60)} minutes` : 'unknown'
+      };
+      
+      // Include more sensitive details only if authenticated
+      if (isAuthenticated) {
+        if (global.smartResumeActiveProcess.error) {
+          statusResponse.activeProcess.error = global.smartResumeActiveProcess.error;
+        }
+        
+        if (global.smartResumeActiveProcess.endTime) {
+          statusResponse.activeProcess.endedAt = new Date(global.smartResumeActiveProcess.endTime).toISOString();
+          statusResponse.activeProcess.executionTime = `${Math.round((global.smartResumeActiveProcess.endTime - global.smartResumeActiveProcess.startTime)/1000/60)} minutes`;
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      ...statusResponse
+    });
+  } catch (error) {
+    console.error("❌ Failed to get smart resume status:", error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get status',
+      details: error.message
+    });
+  }
+});// ---------------------------------------------------------------
 // Import multi-tenant post scoring
 // ---------------------------------------------------------------
 const postBatchScorer = require("../postBatchScorer.js");
@@ -4066,9 +4128,24 @@ function generateSmartRecommendations(detectedIssues, auditData) {
 // SMART RESUME CLIENT-BY-CLIENT ENDPOINT
 // ---------------------------------------------------------------
 
-// Simple in-memory lock to prevent concurrent smart resume executions
+// In-memory lock to prevent concurrent smart resume executions
 let smartResumeRunning = false;
 let currentSmartResumeJobId = null;
+let smartResumeLockTime = null; // Track when the lock was acquired
+let currentStreamId = null; // Track which stream is being processed
+
+// Global termination controls
+global.smartResumeTerminateSignal = false;
+global.smartResumeActiveProcess = null;
+
+// Read timeout from environment variable or use default of 3.5 hours
+const DEFAULT_LOCK_TIMEOUT_HOURS = 3.5;
+const SMART_RESUME_LOCK_TIMEOUT = 
+  (process.env.SMART_RESUME_LOCK_TIMEOUT_HOURS 
+    ? parseFloat(process.env.SMART_RESUME_LOCK_TIMEOUT_HOURS) 
+    : DEFAULT_LOCK_TIMEOUT_HOURS) * 60 * 60 * 1000;
+
+console.log(`ℹ️ Smart resume stale lock timeout configured: ${SMART_RESUME_LOCK_TIMEOUT/1000/60/60} hours`);
 
 router.post("/smart-resume-client-by-client", async (req, res) => {
   console.log("🚀 apiAndJobRoutes.js: /smart-resume-client-by-client endpoint hit");
@@ -4085,25 +4162,26 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     });
   }
   
-  // ⭐ CONCURRENT EXECUTION PROTECTION
-  if (smartResumeRunning) {
-    console.log(`⚠️ Smart resume already running (jobId: ${currentSmartResumeJobId})`);
-    return res.status(409).json({
-      success: false,
-      error: 'Smart resume process already running',
-      currentJobId: currentSmartResumeJobId,
-      message: 'Please wait for current execution to complete (15-20 minutes typical)',
-      retryAfter: 1200 // Suggest retry after 20 minutes
-    });
+  // ⭐ STALE LOCK DETECTION: Check if existing lock is too old
+  if (smartResumeRunning && smartResumeLockTime) {
+    const lockAge = Date.now() - smartResumeLockTime;
+    if (lockAge > SMART_RESUME_LOCK_TIMEOUT) {
+      console.log(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
+      smartResumeRunning = false;
+      currentSmartResumeJobId = null;
+      smartResumeLockTime = null;
+    }
   }
   
   // ⭐ CONCURRENT EXECUTION PROTECTION
   if (smartResumeRunning) {
-    console.log(`⚠️ Smart resume already running (jobId: ${currentSmartResumeJobId})`);
+    const lockAge = smartResumeLockTime ? Math.round((Date.now() - smartResumeLockTime)/1000/60) : 'unknown';
+    console.log(`⚠️ Smart resume already running (jobId: ${currentSmartResumeJobId}, age: ${lockAge} minutes)`);
     return res.status(409).json({
       success: false,
       error: 'Smart resume process already running',
       currentJobId: currentSmartResumeJobId,
+      lockAgeMinutes: lockAge,
       message: 'Please wait for current execution to complete (15-20 minutes typical)',
       retryAfter: 1200 // Suggest retry after 20 minutes
     });
@@ -4140,12 +4218,13 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     const { stream, leadScoringLimit, postScoringLimit } = req.body;
     const jobId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     
-    // Set the lock
+    // Set the lock with timestamp
     smartResumeRunning = true;
     currentSmartResumeJobId = jobId;
+    smartResumeLockTime = Date.now();
     
     console.log(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}`);
-    console.log(`🔒 Smart resume lock acquired for jobId: ${jobId}`);
+    console.log(`🔒 Smart resume lock acquired for jobId: ${jobId} at ${new Date().toISOString()}`);
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
     res.status(202).json({
@@ -4181,68 +4260,197 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
 async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLimit) {
   console.log(`🎯 [${jobId}] Smart resume background processing started`);
   
+  // Track current stream
+  currentStreamId = stream;
+  
+  // Register as active process globally for monitoring
+  global.smartResumeActiveProcess = {
+    jobId,
+    stream,
+    startTime: Date.now(),
+    status: 'running'
+  };
+  
+  // Reset any previous termination signal
+  global.smartResumeTerminateSignal = false;
+  
   try {
-    // Set up environment variables for the script
+    // Set up environment variables for the module
     process.env.BATCH_PROCESSING_STREAM = stream.toString();
     process.env.SMART_RESUME_RUN_ID = jobId; // Add this for easier log identification
     if (leadScoringLimit) process.env.LEAD_SCORING_LIMIT = leadScoringLimit.toString();
     if (postScoringLimit) process.env.POST_SCORING_LIMIT = postScoringLimit.toString();
     
-    // Run the smart resume script logic
-    const { execSync } = require('child_process');
-    const scriptPath = require('path').join(__dirname, '../scripts/smart-resume-client-by-client.js');
+    // Set up heartbeat logging with termination check
+    const startTime = Date.now();
+    const heartbeatInterval = setInterval(() => {
+      // Check for termination signal
+      if (global.smartResumeTerminateSignal) {
+        console.log(`🛑 [${jobId}] Termination signal detected, stopping process`);
+        clearInterval(heartbeatInterval);
+        throw new Error('Process terminated by admin request');
+      }
+      
+      // Regular heartbeat
+      const elapsedMinutes = Math.round((Date.now() - startTime) / 1000 / 60);
+      console.log(`💓 [${jobId}] Smart resume still running... (${elapsedMinutes} minutes elapsed)`);
+    }, 15000); // Check every 15 seconds for faster termination response
     
-    console.log(`🏃 [${jobId}] Executing smart resume script...`);
-    console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Script execution beginning`);
+    // Import and use the smart resume module directly
+    const scriptPath = require('path').join(__dirname, '../scripts/smart-resume-client-by-client.js');
+    let smartResumeModule;
+    
+    console.log(`🏃 [${jobId}] Preparing to execute smart resume module...`);
     console.log(`🔍 ENV_DEBUG: PB_WEBHOOK_SECRET = ${process.env.PB_WEBHOOK_SECRET ? 'SET' : 'MISSING'}`);
     console.log(`🔍 ENV_DEBUG: NODE_ENV = ${process.env.NODE_ENV}`);
-    console.log(`🔍 DEBUG: About to try execSync...`);
     
     try {
-        const result = execSync(`node "${scriptPath}"`, {
-          env: { ...process.env },
-          encoding: 'utf8',
-          timeout: 7200000, // 2 hours max
-          maxBuffer: 1024 * 1024 * 10, // 10MB buffer
-          stdio: 'pipe' // Capture all output
-        });
+        // Clear module from cache to ensure fresh instance
+        delete require.cache[require.resolve(scriptPath)];
+        
+        // Safely load the module
+        try {
+            console.log(`🔍 [${jobId}] Loading smart resume module...`);
+            smartResumeModule = require(scriptPath);
+        } catch (loadError) {
+            console.error(`❌ [${jobId}] Failed to load smart resume module:`, loadError);
+            throw new Error(`Module loading failed: ${loadError.message}`);
+        }
+        
+        // Validate module structure
+        if (!smartResumeModule || typeof smartResumeModule.runSmartResume !== 'function') {
+            throw new Error('Smart resume module does not export runSmartResume function');
+        }
+        
+        console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
+        
+        // Execute the module's exported function directly
+        console.log(`🔍 DEBUG: About to call module.runSmartResume()...`);
+        await smartResumeModule.runSmartResume();
         
         console.log(`✅ [${jobId}] Smart resume completed successfully`);
-        console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_END: Script execution completed`);
-        console.log(`📄 [${jobId}] Output (${result.length} chars):`, result.substring(0, 1000) + (result.length > 1000 ? '...' : ''));
+        console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_END: Module execution completed`);
         
-    } catch (execError) {
-        console.error(`🚨 [${jobId}] EXECSYNC FAILED - THIS IS THE REAL ERROR:`);
-        console.error(`🚨 Exit code: ${execError.status}`);
-        console.error(`🚨 Signal: ${execError.signal}`);
-        console.error(`🚨 Error message: ${execError.message}`);
-        console.error(`🚨 STDOUT: ${execError.stdout?.toString() || 'none'}`);
-        console.error(`🚨 STDERR: ${execError.stderr?.toString() || 'none'}`);
+        // Update global process tracking
+        if (global.smartResumeActiveProcess) {
+          global.smartResumeActiveProcess.status = 'completed';
+          global.smartResumeActiveProcess.endTime = Date.now();
+          global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
+        }
+        
+        // Send success email report
+        await sendSmartResumeReport(jobId, true, {
+          stream: stream,
+          timestamp: Date.now(),
+          executionTime: Date.now() - smartResumeLockTime
+        });
+        
+    } catch (moduleError) {
+        console.error(`🚨 [${jobId}] MODULE EXECUTION FAILED - ERROR DETAILS:`);
+        console.error(`🚨 Error message: ${moduleError.message}`);
+        console.error(`🚨 Stack trace: ${moduleError.stack}`);
+        throw moduleError;
     }
     
   } catch (error) {
     console.error(`❌ [${jobId}] Smart resume failed:`, error.message);
     console.error(`🔍 SMART_RESUME_${jobId} SCRIPT_ERROR: ${error.message}`);
     
-    // Try to send failure email if configured
-    try {
-      const emailService = require('../services/emailReportingService');
-      if (emailService.isConfigured()) {
-        await emailService.sendExecutionReport({
+    // Update global process tracking
+    if (global.smartResumeActiveProcess) {
+      global.smartResumeActiveProcess.status = 'failed';
+      global.smartResumeActiveProcess.error = error.message || String(error);
+      global.smartResumeActiveProcess.endTime = Date.now();
+      global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
+    }
+    
+    // Check if this was an admin-triggered termination
+    const wasTerminated = error.message === 'Process terminated by admin request';
+    if (wasTerminated) {
+      console.log(`🛑 [${jobId}] Process was terminated by admin request`);
+    }
+    
+    // Try to send failure email if configured (but not for admin terminations)
+    if (!wasTerminated) {
+      try {
+        await sendSmartResumeReport(jobId, false, {
           error: error.message,
           runId: jobId,
           stream: stream,
           timestamp: Date.now()
         });
+      } catch (emailError) {
+        console.error(`❌ [${jobId}] Failed to send error email:`, emailError.message);
       }
-    } catch (emailError) {
-      console.error(`❌ [${jobId}] Failed to send error email:`, emailError.message);
     }
   } finally {
     // ⭐ ALWAYS RELEASE THE LOCK WHEN DONE (SUCCESS OR FAILURE)
-    console.log(`🔓 [${jobId}] Releasing smart resume lock`);
+    console.log(`🔓 [${jobId}] Releasing smart resume lock (held for ${Math.round((Date.now() - smartResumeLockTime)/1000)} seconds)`);
     smartResumeRunning = false;
     currentSmartResumeJobId = null;
+    smartResumeLockTime = null;
+    
+    // Reset stream tracking
+    currentStreamId = null;
+    
+    // Clear heartbeat interval
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+    
+    // Make sure global tracking is complete
+    if (global.smartResumeActiveProcess && !global.smartResumeActiveProcess.endTime) {
+      global.smartResumeActiveProcess.endTime = Date.now();
+      
+      // If status wasn't set earlier, mark as unknown
+      if (global.smartResumeActiveProcess.status === 'running') {
+        global.smartResumeActiveProcess.status = 'unknown';
+      }
+    }
+    
+    // Reset termination signal
+    global.smartResumeTerminateSignal = false;
+  }
+}
+
+/**
+ * Helper function for sending Smart Resume reports
+ * @param {string} jobId - The job ID
+ * @param {boolean} success - Whether the job succeeded
+ * @param {object} details - Job execution details
+ */
+async function sendSmartResumeReport(jobId, success, details) {
+  try {
+    console.log(`📧 [${jobId}] Sending ${success ? 'success' : 'failure'} report...`);
+    
+    // Load email service dynamically
+    let emailService;
+    try {
+      emailService = require('../services/emailReportingService');
+    } catch (loadError) {
+      console.error(`📧 [${jobId}] Could not load email service:`, loadError.message);
+      return { sent: false, reason: 'Email service not available' };
+    }
+    
+    // Check if email service is configured
+    if (!emailService || !emailService.isConfigured()) {
+      console.log(`📧 [${jobId}] Email service not configured, skipping report`);
+      return { sent: false, reason: 'Email service not configured' };
+    }
+    
+    // Send the report
+    const result = await emailService.sendExecutionReport({
+      ...details,
+      runId: jobId,
+      success: success
+    });
+    
+    console.log(`📧 [${jobId}] Email report sent successfully`);
+    return { sent: true, result };
+    
+  } catch (emailError) {
+    console.error(`📧 [${jobId}] Failed to send email report:`, emailError);
+    return { sent: false, error: emailError.message };
   }
 }
 
@@ -4267,20 +4475,46 @@ router.post("/reset-smart-resume-lock", async (req, res) => {
   try {
     const previousJobId = currentSmartResumeJobId;
     const wasRunning = smartResumeRunning;
+    const lockAge = smartResumeLockTime ? Math.round((Date.now() - smartResumeLockTime)/1000/60) : 'unknown';
+    
+    // Check if termination was requested
+    const { forceTerminate } = req.body || {};
+    let terminationRequested = false;
+    let activeProcess = null;
+    
+    if (forceTerminate && global.smartResumeActiveProcess && global.smartResumeActiveProcess.status === 'running') {
+      terminationRequested = true;
+      activeProcess = { ...global.smartResumeActiveProcess };
+      
+      // Set termination signal - will be detected by heartbeat
+      console.log(`🛑 Emergency reset: Setting termination signal for job ${activeProcess.jobId}`);
+      global.smartResumeTerminateSignal = true;
+    }
     
     // Force reset the lock
     smartResumeRunning = false;
     currentSmartResumeJobId = null;
+    smartResumeLockTime = null;
     
     console.log(`🔓 Emergency reset: Lock forcefully cleared`);
-    console.log(`   Previous state: running=${wasRunning}, jobId=${previousJobId}`);
+    console.log(`   Previous state: running=${wasRunning}, jobId=${previousJobId}, age=${lockAge} minutes`);
     
     res.json({
       success: true,
-      message: 'Smart resume lock forcefully reset',
+      message: terminationRequested 
+        ? 'Smart resume lock reset and termination signal sent' 
+        : 'Smart resume lock forcefully reset',
+      terminationRequested,
       previousState: {
         wasRunning,
-        previousJobId
+        previousJobId,
+        lockAgeMinutes: lockAge,
+        activeProcess: activeProcess ? {
+          jobId: activeProcess.jobId,
+          stream: activeProcess.stream,
+          startTime: activeProcess.startTime,
+          runtime: activeProcess.startTime ? Math.round((Date.now() - activeProcess.startTime)/1000/60) + ' minutes' : 'unknown'
+        } : null
       },
       timestamp: new Date().toISOString()
     });
@@ -4290,6 +4524,63 @@ router.post("/reset-smart-resume-lock", async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to reset lock',
+      details: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// SMART RESUME STATUS ENDPOINT
+// ---------------------------------------------------------------
+router.get("/smart-resume-status", async (req, res) => {
+  console.log("🔍 apiAndJobRoutes.js: /smart-resume-status endpoint hit");
+  
+  // Check webhook secret
+  const providedSecret = req.headers['x-webhook-secret'];
+  const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+  
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    console.log("❌ Smart resume status: Unauthorized - invalid webhook secret");
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Unauthorized - invalid webhook secret' 
+    });
+  }
+  
+  try {
+    // Calculate lock details
+    const lockAge = smartResumeLockTime ? Date.now() - smartResumeLockTime : null;
+    const isStale = lockAge && lockAge > SMART_RESUME_LOCK_TIMEOUT;
+    
+    // Build response
+    const status = {
+      isRunning: smartResumeRunning,
+      currentJobId: currentSmartResumeJobId,
+      lockAcquiredAt: smartResumeLockTime ? new Date(smartResumeLockTime).toISOString() : null,
+      lockAgeSeconds: lockAge ? Math.round(lockAge / 1000) : null,
+      lockAgeMinutes: lockAge ? Math.round(lockAge / 1000 / 60) : null,
+      isStale: isStale,
+      staleThresholdMinutes: Math.round(SMART_RESUME_LOCK_TIMEOUT / 1000 / 60),
+      serverTime: new Date().toISOString()
+    };
+    
+    // If stale, add warning
+    if (isStale && smartResumeRunning) {
+      console.log(`⚠️ Stale lock detected in status check (${status.lockAgeMinutes} minutes old)`);
+      status.warning = `Lock appears stale (${status.lockAgeMinutes} min old). Consider resetting.`;
+    }
+    
+    console.log(`🔍 Smart resume status check: isRunning=${status.isRunning}, jobId=${status.currentJobId}`);
+    res.json({
+      success: true,
+      status: status
+    });
+    
+  } catch (error) {
+    console.error("❌ Smart resume status check failed:", error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get status',
       details: error.message
     });
   }
