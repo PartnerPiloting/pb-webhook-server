@@ -1,10 +1,12 @@
 // services/leadService.js
 // UPDATED to better handle Scoring Status on updates and Date Connected
 // MODIFIED: To include "View In Sales Navigator" field
+// ENHANCED: To support run tracking metrics
 
 const base = require('../config/airtableClient.js'); 
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
-const { slimLead } = require('../promptBuilder.js'); 
+const { slimLead } = require('../promptBuilder.js');
+const airtableService = require('./airtableService');
 
 async function upsertLead(
     lead, 
@@ -15,7 +17,8 @@ async function upsertLead(
     auFlag = null,
     ai_excluded_val = null,         
     exclude_details_val = null,
-    clientAirtableBase = null  // NEW: Optional client-specific Airtable base
+    clientAirtableBase = null,  // Optional client-specific Airtable base
+    trackingInfo = null         // NEW: Optional tracking info for run metrics
 ) {
     // Use client-specific base if provided, otherwise use global base
     const airtableBase = clientAirtableBase || base;
@@ -24,6 +27,11 @@ async function upsertLead(
         console.error("CRITICAL ERROR in leadService/upsertLead: Airtable Base is not initialized. Cannot proceed.");
         throw new Error("Airtable base is not available in leadService. Check config/airtableClient.js logs.");
     }
+    
+    // Initialize tracking variables
+    let isNewLead = false;
+    let isScored = false;
+    let tokenUsage = 0;
 
     const {
         firstName = "", lastName = "", headline: lhHeadline = "",
@@ -116,15 +124,19 @@ async function upsertLead(
 
     const existing = await airtableBase("Leads").select({ filterByFormula: `{Profile Key} = "${profileKey}"`, maxRecords: 1 }).firstPage();
 
+    let recordId;
+    
     if (existing.length) {
+        isNewLead = false;
         console.log(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
         // For "Date Connected", if it's now "Connected" and didn't have a date before, or if a new date is provided
         if (currentConnectionStatus === "Connected" && !existing[0].fields["Date Connected"] && !fields["Date Connected"]) {
             fields["Date Connected"] = new Date().toISOString();
         }
         await airtableBase("Leads").update(existing[0].id, fields);
-        return existing[0].id; 
+        recordId = existing[0].id; 
     } else {
+        isNewLead = true;
         // If it's a new record, and scoringStatus wasn't explicitly set to "To Be Scored" (e.g. it was undefined)
         // default it to "To Be Scored".
         if (fields["Scoring Status"] === undefined) {
@@ -138,10 +150,59 @@ async function upsertLead(
         }
         console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
         const createdRecords = await airtableBase("Leads").create([{ fields }]);
-        return createdRecords[0].id; 
+        recordId = createdRecords[0].id; 
+    }
+    
+    // Track metrics if tracking info is provided
+    if (trackingInfo && finalScore !== null) {
+        isScored = true;
+        
+        // Extract token usage if available (from the AI service)
+        if (attribute_reasoning_obj && attribute_reasoning_obj._tokenUsage) {
+            tokenUsage = attribute_reasoning_obj._tokenUsage.totalTokens || 0;
+        }
+        
+        try {
+            // Update run metrics with this lead's information
+            if (trackingInfo.runId && trackingInfo.clientId) {
+                const updates = {
+                    'Profiles Successfully Scored': 1, // Increment by one for this lead
+                    'Profile Scoring Tokens': tokenUsage
+                };
+                
+                console.log(`leadService/upsertLead: Updating run metrics for client ${trackingInfo.clientId} - Lead ${finalUrl} scored (tokens: ${tokenUsage})`);
+                await airtableService.updateClientRun(trackingInfo.runId, trackingInfo.clientId, updates);
+            }
+        } catch (metricError) {
+            console.error(`leadService/upsertLead: Failed to update run metrics: ${metricError.message}`);
+            // Continue execution even if metrics update fails
+        }
+    }
+    
+    return recordId;
+}
+
+/**
+ * Track lead processing metrics for batch operations
+ * @param {string} runId - The run ID
+ * @param {string} clientId - The client ID
+ * @param {Object} metrics - Metrics to track (profiles, tokens, etc.)
+ */
+async function trackLeadProcessingMetrics(runId, clientId, metrics) {
+    if (!runId || !clientId) {
+        console.warn('leadService/trackLeadProcessingMetrics: Missing required tracking information');
+        return;
+    }
+    
+    try {
+        console.log(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${runId}`);
+        await airtableService.updateClientRun(runId, clientId, metrics);
+    } catch (error) {
+        console.error(`leadService/trackLeadProcessingMetrics: Failed to update metrics: ${error.message}`);
     }
 }
 
 module.exports = {
-    upsertLead
+    upsertLead,
+    trackLeadProcessingMetrics
 };

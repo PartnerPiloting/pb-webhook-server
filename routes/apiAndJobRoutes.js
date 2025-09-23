@@ -460,6 +460,7 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     setProcessingStream,
     formatDuration
   } = require('../services/clientService');
+  const { generateRunId } = require('../utils/runIdGenerator');
 
   const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
   const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
@@ -471,6 +472,15 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
   let processedCount = 0;
   let scoredCount = 0;
   let errorCount = 0;
+
+  // Generate a run ID for tracking
+  let runId;
+  try {
+    runId = await generateRunId();
+    console.log(`Generated run ID: ${runId} for lead scoring job ${jobId}`);
+  } catch (err) {
+    console.error(`Failed to generate run ID: ${err.message}. Continuing without run tracking.`);
+  }
 
   try {
     console.log(`[lead-scoring-background] Starting job ${jobId} on stream ${stream} with limit ${limit}`);
@@ -571,7 +581,8 @@ async function processClientForLeadScoring(clientId, limit, aiDependencies) {
   const fakeReq = {
     query: {
       limit: limit,
-      clientId: clientId
+      clientId: clientId,
+      runId: runId // Pass the run ID to track metrics
     }
   };
 
@@ -4215,7 +4226,7 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
   }
   
   try {
-    const { stream, leadScoringLimit, postScoringLimit } = req.body;
+    const { stream, leadScoringLimit, postScoringLimit, clientFilter } = req.body;
     const jobId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     
     // Set the lock with timestamp
@@ -4223,7 +4234,7 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     currentSmartResumeJobId = jobId;
     smartResumeLockTime = Date.now();
     
-    console.log(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}`);
+    console.log(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}${clientFilter ? `, clientFilter=${clientFilter}` : ''}`);
     console.log(`🔒 Smart resume lock acquired for jobId: ${jobId} at ${new Date().toISOString()}`);
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
