@@ -4,7 +4,19 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
-const clientService = require('./clientService');
+
+// Import the client service with explicit destructuring to ensure we get what we need
+// This helps identify missing exports immediately rather than at runtime
+let clientService;
+try {
+    clientService = require('./clientService');
+    // Verify the critical functions exist
+    if (!clientService.initializeClientsBase) {
+        console.error("ERROR: clientService.initializeClientsBase function is missing");
+    }
+} catch (e) {
+    console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
+}
 
 // Constants for table names
 const JOB_TRACKING_TABLE = 'Job Tracking';
@@ -18,7 +30,10 @@ let clientsBase = null;
  * @returns {Object} The Airtable base object
  */
 function initialize() {
-  if (clientsBase) return clientsBase;
+  if (clientsBase) {
+    console.log("Airtable Service: Using existing base connection");
+    return clientsBase;
+  }
 
   try {
     // Check if clientService is properly loaded
@@ -46,8 +61,22 @@ function initialize() {
       console.log("FALLBACK: Successfully initialized Airtable base directly");
     } else {
       // Use clientService's initialization (preferred method)
-      clientsBase = clientService.initializeClientsBase();
-      console.log("Airtable Service: Got base connection from clientService");
+      try {
+        console.log("Attempting to use clientService.initializeClientsBase()...");
+        clientsBase = clientService.initializeClientsBase();
+        console.log("Airtable Service: Successfully got base connection from clientService");
+      } catch (initError) {
+        console.error("ERROR using clientService.initializeClientsBase():", initError.message);
+        console.log("Falling back to direct initialization...");
+        
+        // Configure Airtable directly as fallback
+        Airtable.configure({
+          apiKey: process.env.AIRTABLE_API_KEY
+        });
+        
+        clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+        console.log("FALLBACK: Successfully initialized Airtable base directly after clientService failed");
+      }
     }
 
     if (!clientsBase) {
@@ -58,7 +87,19 @@ function initialize() {
     return clientsBase;
   } catch (error) {
     console.error("CRITICAL ERROR initializing Airtable connection:", error.message);
-    throw error;
+    // Create a last-resort fallback attempt
+    try {
+      console.log("CRITICAL FALLBACK: Attempting emergency direct Airtable connection...");
+      Airtable.configure({
+        apiKey: process.env.AIRTABLE_API_KEY
+      });
+      clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+      console.log("CRITICAL FALLBACK: Emergency Airtable connection successful");
+      return clientsBase;
+    } catch (fallbackError) {
+      console.error("FATAL ERROR: Emergency fallback also failed:", fallbackError.message);
+      throw error; // Throw the original error
+    }
   }
 }
 

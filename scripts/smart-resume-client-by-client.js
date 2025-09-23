@@ -587,7 +587,17 @@ async function main() {
         let successRate = 100; // Default if no operations triggered
         if (totalTriggered > 0) {
             // Calculate success rate and cap at 100%
-            successRate = Math.min(Math.round((totalJobsStarted / totalTriggered) * 100), 100);
+            const uncappedRate = Math.round((totalJobsStarted / (totalTriggered || 1)) * 100);
+            successRate = Math.min(uncappedRate, 100);
+            
+            // Log the actual calculation for debugging
+            log(`🔍 SUCCESS RATE DEBUG: Calculation ${totalJobsStarted}/${totalTriggered} = ${uncappedRate}%, capped to ${successRate}%`, 'INFO');
+            
+            // Force cap the totalJobsStarted to match totalTriggered for reporting consistency
+            if (totalJobsStarted > totalTriggered) {
+                log(`⚠️ WARNING: More jobs started (${totalJobsStarted}) than operations triggered (${totalTriggered}). Capping job count.`, 'WARN');
+                totalJobsStarted = totalTriggered;
+            }
         }
         
         const errors = [];
