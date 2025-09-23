@@ -254,6 +254,9 @@ class EmailReportingService {
                   `<div class="metric-badge">Operations: ${operationsCount}</div>
                    <div class="metric-badge">Jobs Started: ${jobCount}</div>` : 
                   `<div class="metric-badge">No operations run</div>`}
+                ${client.reason ? 
+                  `<div class="metric-badge reason-badge" style="background-color: #f8f9fa; color: #666; border: 1px solid #ddd; width: 100%;">${client.reason}</div>` : 
+                  ''}
             </div>
             
             ${client.jobs && client.jobs.length > 0 ? `
