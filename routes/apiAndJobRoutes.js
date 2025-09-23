@@ -479,7 +479,9 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     runId = await generateRunId();
     console.log(`Generated run ID: ${runId} for lead scoring job ${jobId}`);
   } catch (err) {
-    console.error(`Failed to generate run ID: ${err.message}. Continuing without run tracking.`);
+    // Set a default runId value if generation fails
+    runId = `fallback-${jobId}-${Date.now()}`;
+    console.error(`Failed to generate run ID: ${err.message}. Using fallback runId: ${runId}`);
   }
 
   try {
@@ -582,7 +584,8 @@ async function processClientForLeadScoring(clientId, limit, aiDependencies) {
     query: {
       limit: limit,
       clientId: clientId,
-      runId: runId // Pass the run ID to track metrics
+      // Only include runId if defined, or use a fallback
+      ...(runId ? { runId } : { runId: `client-fallback-${clientId}-${Date.now()}` })
     }
   };
 
