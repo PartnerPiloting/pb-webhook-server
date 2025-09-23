@@ -195,13 +195,25 @@ async function updateJobTracking(runId, updates) {
   console.log(`Airtable Service: Updating job tracking for ${runId}`);
   
   try {
-    // Find the record first
+    // Find all records with this run ID
     const records = await base(JOB_TRACKING_TABLE).select({
       filterByFormula: `{Run ID} = '${runId}'`
     }).firstPage();
     
     if (!records || records.length === 0) {
       throw new Error(`Job tracking record not found for run ID: ${runId}`);
+    }
+    
+    // Handle case where there are multiple records with the same run ID
+    if (records.length > 1) {
+      console.warn(`WARNING: Found ${records.length} records with the same Run ID: ${runId}. Updating the most recent one.`);
+      
+      // Sort by creation time and update the most recent one
+      records.sort((a, b) => {
+        const aTime = a.get('Start Time') ? new Date(a.get('Start Time')) : new Date(0);
+        const bTime = b.get('Start Time') ? new Date(b.get('Start Time')) : new Date(0);
+        return bTime - aTime; // Descending order (most recent first)
+      });
     }
     
     const recordId = records[0].id;
