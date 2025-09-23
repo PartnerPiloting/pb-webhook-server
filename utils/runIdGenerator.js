@@ -58,8 +58,11 @@ async function generateRunId() {
   const runNumber = await getRunNumberForToday();
   const runNumberStr = runNumber.toString().padStart(3, '0');
   
-  // Base ID (always present)
-  let runId = `SR-${dateStr}-${runNumberStr}`;
+  // Add a timestamp component to ensure uniqueness (last 4 digits of current timestamp)
+  const timestamp = Date.now().toString().slice(-4);
+  
+  // Base ID (always present) with timestamp for uniqueness
+  let runId = `SR-${dateStr}-${runNumberStr}-T${timestamp}`;
   
   // Optional components from environment variables
   const stream = process.env.DEBUG_STREAM || '';
