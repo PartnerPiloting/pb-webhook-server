@@ -30,11 +30,11 @@ function shouldLog(level, process) {
     
     // Get the process-specific log level, or fall back to general level
     let envLevel;
-    if (process === 'lead_scoring') {
+    if (this.processType === 'lead_scoring') {
         envLevel = (process.env.DEBUG_LEAD_SCORING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
-    } else if (process === 'post_harvesting') {
+    } else if (this.processType === 'post_harvesting') {
         envLevel = (process.env.DEBUG_POST_HARVESTING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
-    } else if (process === 'post_scoring') {
+    } else if (this.processType === 'post_scoring') {
         envLevel = (process.env.DEBUG_POST_SCORING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
     } else {
         envLevel = (process.env.DEBUG_LEVEL || 'info').toLowerCase();
