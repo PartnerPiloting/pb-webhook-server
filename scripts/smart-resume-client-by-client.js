@@ -664,10 +664,12 @@ async function main() {
         }
         
         const emailResult = await emailService.sendExecutionReport(reportData);
-        if (emailResult.sent) {
+        if (emailResult.success) {
             log(`📧 ✅ Completion report sent successfully`);
         } else {
-            log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
+            // Use error if available, otherwise fall back to reason
+            const errorMessage = emailResult.error || emailResult.reason || 'Unknown error';
+            log(`📧 ❌ Email report failed: ${errorMessage}`, 'WARN');
         }
         
         // Update aggregate metrics and complete job tracking
@@ -711,10 +713,12 @@ async function main() {
         };
         
         const emailResult = await emailService.sendExecutionReport(errorReportData);
-        if (emailResult.sent) {
+        if (emailResult.success) {
             log(`📧 Failure alert sent successfully`);
         } else {
-            log(`📧 Failure alert failed: ${emailResult.reason}`, 'WARN');
+            // Use error if available, otherwise fall back to reason
+            const errorMessage = emailResult.error || emailResult.reason || 'Unknown error';
+            log(`📧 Failure alert failed: ${errorMessage}`, 'WARN');
         }
         
         process.exit(1);
