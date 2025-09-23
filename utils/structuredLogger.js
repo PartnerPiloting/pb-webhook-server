@@ -21,20 +21,20 @@
  * - DEBUG_LEVEL is used as fallback for all processes
  * 
  * @param {string} level - Log level (debug|info|warn|error)
- * @param {string} process - Process name (lead_scoring|post_harvesting|post_scoring)
+ * @param {string} processType - Process name (lead_scoring|post_harvesting|post_scoring)
  * @returns {boolean} Whether this log should be displayed
  */
-function shouldLog(level, process) {
+function shouldLog(level, processType) {
     // Log levels in order of verbosity
     const levels = ['debug', 'info', 'warn', 'error'];
     
     // Get the process-specific log level, or fall back to general level
     let envLevel;
-    if (this.processType === 'lead_scoring') {
+    if (processType === 'lead_scoring') {
         envLevel = (process.env.DEBUG_LEAD_SCORING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
-    } else if (this.processType === 'post_harvesting') {
+    } else if (processType === 'post_harvesting') {
         envLevel = (process.env.DEBUG_POST_HARVESTING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
-    } else if (this.processType === 'post_scoring') {
+    } else if (processType === 'post_scoring') {
         envLevel = (process.env.DEBUG_POST_SCORING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
     } else {
         envLevel = (process.env.DEBUG_LEVEL || 'info').toLowerCase();
