@@ -1,0 +1,14 @@
+{
+  "name": "test-run-tracking",
+  "version": "1.0.0",
+  "description": "Test script for run tracking system",
+  "main": "test-run-tracking.js",
+  "type": "module",
+  "scripts": {
+    "test": "node test-run-tracking.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "node-fetch": "^3.2.0"
+  }
+}
