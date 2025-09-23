@@ -260,6 +260,32 @@ class EmailReportingService {
         `;
     }
     
+    // Store the last sent email to prevent duplicates
+    #lastSentEmail = {
+        timestamp: 0,
+        runId: null,
+        stream: null
+    };
+
+    // Check if this is a duplicate email send (within 30 seconds)
+    #isDuplicateEmailSend(reportData) {
+        const now = Date.now();
+        const runId = reportData.runId;
+        const stream = reportData.stream;
+        
+        // If we have the same runId and stream within 30 seconds, consider it a duplicate
+        if (runId && 
+            runId === this.#lastSentEmail.runId && 
+            stream === this.#lastSentEmail.stream &&
+            (now - this.#lastSentEmail.timestamp) < 30000) {
+            
+            console.log(`📧 DUPLICATE EMAIL DETECTED - Skipping duplicate email for runId: ${runId}`);
+            return true;
+        }
+        
+        return false;
+    }
+
     /**
      * Send execution report email
      */
@@ -267,6 +293,12 @@ class EmailReportingService {
         if (!this.configured) {
             console.log('📧 Email not configured - skipping report');
             return { success: false, reason: 'Email not configured' };
+        }
+        
+        // Check for duplicate email sends
+        if (this.#isDuplicateEmailSend(reportData)) {
+            console.log('📧 Preventing duplicate email send - same runId within 30 seconds');
+            return { success: true, sent: true, duplicate: true, message: 'Duplicate email prevented' };
         }
         
         try {
@@ -306,6 +338,15 @@ class EmailReportingService {
                 subject: subject,
                 html: htmlContent
             };
+            
+            // Record this email send attempt to prevent duplicates
+            if (reportData.runId) {
+                this.#lastSentEmail = {
+                    timestamp: Date.now(),
+                    runId: reportData.runId,
+                    stream: reportData.stream
+                };
+            }
             
             const result = await this.sendMailgunEmail(emailData);
             
