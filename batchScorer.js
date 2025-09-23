@@ -610,6 +610,12 @@ async function run(req, res, dependencies) {
         let totalFailed = 0;
         let totalTokensUsed = 0;
         const clientResults = [];
+        
+        // Extract runId from request if available
+        const runId = req?.query?.runId;
+        if (runId) {
+            systemLogger.setup(`Using run ID: ${runId}`);
+        }
 
         // Process each client sequentially for error isolation
         for (const client of clientsToProcess) {
@@ -619,6 +625,13 @@ async function run(req, res, dependencies) {
             // Create client-specific logger with shared session ID
             const clientLogger = new StructuredLogger(clientId, systemLogger.getSessionId(), 'lead_scoring');
             clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${clientId}) ---`);
+            
+            // Initialize client variables early
+            let clientProcessed = 0;
+            let clientSuccessful = 0;
+            let clientFailed = 0;
+            let clientTokensUsed = 0;
+            const clientErrors = [];
             
             try {
                 // Get client-specific Airtable base
@@ -697,11 +710,11 @@ async function run(req, res, dependencies) {
 
                 clientLogger.process(`Queuing ${leads.length} leads in ${chunks.length} chunk(s)`);
                 
-                let clientProcessed = 0;
-                let clientSuccessful = 0;
-                let clientFailed = 0;
-                let clientTokensUsed = 0;
-                const clientErrors = [];
+                // Reset the client counters since they were declared earlier
+                clientProcessed = 0;
+                clientSuccessful = 0;
+                clientFailed = 0;
+                clientTokensUsed = 0;
 
                 // Create client run record if runId is provided
                 if (runId) {
