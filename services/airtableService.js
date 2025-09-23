@@ -4,7 +4,7 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
-const { initializeClientsBase } = require('./clientService');
+const clientService = require('./clientService');
 
 // Constants for table names
 const JOB_TRACKING_TABLE = 'Job Tracking';
@@ -20,15 +20,46 @@ let clientsBase = null;
 function initialize() {
   if (clientsBase) return clientsBase;
 
-  // Use clientService's initialization
-  clientsBase = initializeClientsBase();
+  try {
+    // Check if clientService is properly loaded
+    if (!clientService || typeof clientService.initializeClientsBase !== 'function') {
+      console.error("ERROR: clientService is not properly loaded or initializeClientsBase is not a function");
+      console.error("clientService type:", typeof clientService);
+      console.error("clientService functions available:", 
+                   clientService ? Object.keys(clientService).join(", ") : "NONE");
+      
+      // Fallback: Initialize directly if clientService is not working
+      if (!process.env.MASTER_CLIENTS_BASE_ID) {
+        throw new Error("MASTER_CLIENTS_BASE_ID environment variable is not set");
+      }
+      if (!process.env.AIRTABLE_API_KEY) {
+        throw new Error("AIRTABLE_API_KEY environment variable is not set");
+      }
 
-  if (!clientsBase) {
-    throw new Error("Failed to initialize clients base in airtableService");
+      // Configure Airtable directly
+      Airtable.configure({
+        apiKey: process.env.AIRTABLE_API_KEY
+      });
+
+      console.log("FALLBACK: Directly initializing Airtable base connection");
+      clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+      console.log("FALLBACK: Successfully initialized Airtable base directly");
+    } else {
+      // Use clientService's initialization (preferred method)
+      clientsBase = clientService.initializeClientsBase();
+      console.log("Airtable Service: Got base connection from clientService");
+    }
+
+    if (!clientsBase) {
+      throw new Error("Failed to initialize clients base in airtableService");
+    }
+
+    console.log("Airtable Service: Run tracking tables connection initialized");
+    return clientsBase;
+  } catch (error) {
+    console.error("CRITICAL ERROR initializing Airtable connection:", error.message);
+    throw error;
   }
-
-  console.log("Airtable Service: Run tracking tables connection initialized");
-  return clientsBase;
 }
 
 /**

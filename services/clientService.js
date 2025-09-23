@@ -11,6 +11,10 @@ let clientsCache = null;
 let clientsCacheTimestamp = null;
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
+// In-memory job lock tracking to prevent duplicate jobs
+const runningJobs = new Map();
+const JOB_LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 // Clients base connection
 let clientsBase = null;
 
@@ -394,15 +398,26 @@ async function getActiveClients(clientId = null) {
  */
 async function getActiveClientsByStream(stream, clientId = null) {
     try {
+        // Clear cache to ensure fresh data
+        clearCache();
+        
         const activeClients = await getActiveClients(clientId);
         
-        // Filter by processing stream
+        // Enhanced logging for stream debugging
+        console.log(`📊 Active clients before stream filtering: ${activeClients.map(c => c.clientId).join(', ')}`);
+        
+        // Filter by processing stream with detailed logging
         const streamClients = activeClients.filter(client => {
             const clientStream = client.rawRecord?.get('Processing Stream');
-            return clientStream === stream;
+            const isMatch = clientStream === stream;
+            
+            // Log each client's stream assignment for debugging
+            console.log(`📊 Client ${client.clientId} has stream '${clientStream}' (match for stream ${stream}: ${isMatch})`);
+            
+            return isMatch;
         });
         
-        console.log(`📊 Found ${streamClients.length} active clients on stream ${stream}`);
+        console.log(`📊 Found ${streamClients.length} active clients on stream ${stream}: ${streamClients.map(c => c.clientId).join(', ')}`);
         return streamClients;
     } catch (error) {
         console.error(`Error getting active clients for stream ${stream}:`, error);
@@ -591,15 +606,6 @@ function getFloorValidationSummary(leadScore, floorConfig) {
 }
 
 /**
- * Clear the clients cache (useful for testing or forced refresh)
- */
-function clearCache() {
-    clientsCache = null;
-    clientsCacheTimestamp = null;
-    console.log("Client cache cleared");
-}
-
-/**
  * Get Airtable base connection for a specific client
  * @param {string} airtableBaseId - The Airtable Base ID for the client
  * @returns {Object} Airtable base instance
@@ -657,6 +663,24 @@ async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
             // Log status for tracking but don't update any specific client
             console.log(`ℹ️ Global ${operation} status: ${status}, jobId: ${jobId}`);
             return true;
+        }
+        
+        // Update in-memory lock tracking
+        const lockKey = `${clientId}:${operation}`;
+        
+        if (status === "RUNNING") {
+            // Add or refresh the lock
+            runningJobs.set(lockKey, { 
+                timestamp: Date.now(),
+                jobId: jobId || `job_${operation}_${Date.now()}`
+            });
+            console.log(`[INFO] Set memory lock for ${clientId}:${operation} with jobId: ${jobId}`);
+        } else if (status === "COMPLETED" || status === "FAILED") {
+            // Remove the lock when job completes or fails
+            if (runningJobs.has(lockKey)) {
+                console.log(`[INFO] Releasing memory lock for ${clientId}:${operation} (status: ${status})`);
+                runningJobs.delete(lockKey);
+            }
         }
         
         const base = initializeClientsBase();
@@ -784,6 +808,52 @@ async function getJobStatus(clientId, operation) {
 }
 
 /**
+ * Check if a specific job is currently running for a client
+ * @param {string} clientId - The Client ID
+ * @param {string} operation - The operation type ('lead_scoring', 'post_harvesting', 'post_scoring')
+ * @returns {Promise<boolean>} True if job is currently running
+ */
+async function isJobRunning(clientId, operation) {
+    try {
+        // First check the in-memory lock (faster than Airtable)
+        const lockKey = `${clientId}:${operation}`;
+        const lock = runningJobs.get(lockKey);
+        
+        if (lock) {
+            const now = Date.now();
+            // If the lock is recent (within JOB_LOCK_TIMEOUT_MS)
+            if (now - lock.timestamp < JOB_LOCK_TIMEOUT_MS) {
+                console.log(`[INFO] Memory lock found for ${clientId}:${operation}, created ${(now - lock.timestamp)/1000}s ago`);
+                return true;
+            } else {
+                // Lock is expired, remove it
+                console.log(`[INFO] Memory lock for ${clientId}:${operation} has expired (${(now - lock.timestamp)/1000}s old), releasing`);
+                runningJobs.delete(lockKey);
+            }
+        }
+        
+        // If no memory lock or it's expired, check Airtable
+        const jobStatus = await getJobStatus(clientId, operation);
+        // Job is running if status is "RUNNING"
+        const isRunning = jobStatus && jobStatus.status === "RUNNING";
+        
+        // If running in Airtable but not in memory, add to memory
+        if (isRunning && !lock) {
+            console.log(`[INFO] Job ${operation} for ${clientId} is running in Airtable but not in memory, adding memory lock`);
+            runningJobs.set(lockKey, { 
+                timestamp: Date.now(),
+                jobId: jobStatus.jobId || `unknown_${Date.now()}`
+            });
+        }
+        
+        return isRunning;
+    } catch (error) {
+        console.error(`Error checking if ${operation} is running for ${clientId}:`, error.message);
+        return false; // Default to false (not running) on error
+    }
+}
+
+/**
  * Set processing stream for a client
  * @param {string} clientId - The Client ID
  * @param {number} stream - Stream number (1, 2, 3, etc.)
@@ -874,6 +944,7 @@ module.exports = {
     clearCache,
     getClientTokenLimits,  // Add the new token limits function
     getClientBase,     // Add the new base connection function
+    initializeClientsBase,  // Export the base initialization function
     // Floor system functions
     getClientFloorConfig,
     updateClientFloorConfig,
@@ -883,6 +954,7 @@ module.exports = {
     generateJobId,
     setJobStatus,
     getJobStatus,
+    isJobRunning,  // Add the new job status checker
     setProcessingStream,
     getProcessingStream,
     formatDuration

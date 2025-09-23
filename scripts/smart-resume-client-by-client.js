@@ -582,7 +582,14 @@ async function main() {
         const runEndTime = Date.now();
         const totalDuration = runEndTime - runStartTime;
         const clientsSkipped = workflows.filter(w => !w.needsProcessing);
-        const successRate = totalTriggered > 0 ? Math.round((totalJobsStarted / totalTriggered) * 100) : 100;
+        
+        // Fix success rate calculation - cap at 100% and handle edge cases
+        let successRate = 100; // Default if no operations triggered
+        if (totalTriggered > 0) {
+            // Calculate success rate and cap at 100%
+            successRate = Math.min(Math.round((totalJobsStarted / totalTriggered) * 100), 100);
+        }
+        
         const errors = [];
         
         // Collect any errors from failed job starts
