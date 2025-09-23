@@ -524,7 +524,7 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
 
       try {
         // Set up client timeout
-        const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies);
+        const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies, runId);
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Client timeout')), clientTimeoutMs)
         );
@@ -578,14 +578,14 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
 }
 
 // Helper function to process individual client for lead scoring
-async function processClientForLeadScoring(clientId, limit, aiDependencies) {
+async function processClientForLeadScoring(clientId, limit, aiDependencies, runId) {
   // Create a fake request object for batchScorer.run() that targets a specific client
   const fakeReq = {
     query: {
       limit: limit,
       clientId: clientId,
       // Only include runId if defined, or use a fallback
-      ...(runId ? { runId } : { runId: `client-fallback-${clientId}-${Date.now()}` })
+      runId: runId || `client-fallback-${clientId}-${Date.now()}`
     }
   };
 
