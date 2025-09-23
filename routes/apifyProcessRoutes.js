@@ -610,7 +610,7 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
       // Complete job with reason
       await setJobStatus(null, 'post_harvesting', 'COMPLETED', jobId, {
         lastRunDate: new Date().toISOString(),
-        lastRunTime: formatDuration(Date.now() - startTime),
+        lastRunTime: formatDuration(Date.now() - jobStartTime),
         lastRunCount: 0,
         lastRunStatus: reason
       });
