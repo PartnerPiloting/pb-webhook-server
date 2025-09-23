@@ -271,9 +271,30 @@ class EmailReportingService {
         
         try {
             const isFailureReport = reportData.error;
+            
+            // Ensure successRate is a valid number between 0-100
+            let successRateFormatted = "N/A";
+            if (!isFailureReport) {
+                // Ensure success rate is a valid number between 0-100
+                let successRate = reportData.successRate;
+                
+                // If undefined or NaN, default to 100%
+                if (successRate === undefined || isNaN(successRate)) {
+                    console.log('⚠️ Success rate is undefined or NaN, defaulting to 100%');
+                    successRate = 100;
+                }
+                
+                // Cap at 100%
+                successRate = Math.min(Math.round(successRate), 100);
+                successRateFormatted = `${successRate}%`;
+                
+                // Update the report data
+                reportData.successRate = successRate;
+            }
+            
             const subject = isFailureReport 
                 ? `🚨 Smart Resume Processing Failed - Stream ${reportData.stream}`
-                : `✅ Smart Resume Processing Complete - Stream ${reportData.stream} (${Math.round(reportData.successRate)}% success)`;
+                : `✅ Smart Resume Processing Complete - Stream ${reportData.stream} (${successRateFormatted} success)`;
             
             const htmlContent = isFailureReport 
                 ? this.generateFailureAlertHTML(reportData)
