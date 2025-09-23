@@ -115,89 +115,198 @@ class EmailReportingService {
         } = reportData;
         
         const successClass = successRate >= 90 ? 'success' : successRate >= 70 ? 'warning' : 'error';
+        // Format date in a more readable format
+        const formattedDate = new Date(startTime).toLocaleString('en-AU', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
         
         return `
 <!DOCTYPE html>
 <html>
 <head>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; }
-        .header { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 10px; }
+        h1, h2, h3 { margin-top: 0.5em; margin-bottom: 0.5em; }
+        
+        /* Header Styles */
+        .header { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; }
+        .header h1 { font-size: 24px; color: #333; margin-bottom: 10px; }
+        .header-details { font-size: 14px; color: #555; }
+        
+        /* Status Colors */
         .success { color: #28a745; }
         .warning { color: #fd7e14; }
         .error { color: #dc3545; }
-        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
-        .metric-card { background: #f8f9fa; padding: 15px; border-radius: 6px; text-align: center; }
-        .metric-value { font-size: 24px; font-weight: bold; }
+        
+        /* Summary Table */
+        .summary-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        .summary-table th, .summary-table td { padding: 8px 12px; border: 1px solid #ddd; text-align: left; }
+        .summary-table th { background-color: #f2f2f2; font-weight: 600; }
+        .summary-table tr:nth-child(even) { background-color: #f9f9f9; }
+        
+        /* Section Headers */
+        .section-header { background-color: #eef2f5; padding: 10px 15px; border-radius: 6px; 
+                          margin: 25px 0 15px 0; border-left: 4px solid #6c757d; }
+        
+        /* Client Cards */
         .client-section { margin: 20px 0; }
-        .client-item { background: #f1f3f4; padding: 12px; margin: 8px 0; border-radius: 4px; }
-        .job-list { margin-left: 20px; font-size: 14px; color: #666; }
-        .footer { margin-top: 30px; padding: 20px; background: #e9ecef; border-radius: 8px; font-size: 14px; }
+        .client-card { border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; overflow: hidden; }
+        .client-header { background-color: #f8f9fa; padding: 12px 15px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
+        .client-name { font-size: 16px; font-weight: bold; margin: 0; }
+        .service-level { font-size: 12px; color: #666; margin-left: 8px; }
+        .client-metrics { display: flex; flex-wrap: wrap; padding: 10px 15px; background-color: #fbfbfb; border-bottom: 1px solid #eee; }
+        .metric-badge { background: #f0f8ff; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-right: 8px; margin-bottom: 5px; }
+        
+        /* Operations Table */
+        .operations-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .operations-table th, .operations-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; }
+        .operations-table th { font-weight: 600; color: #555; }
+        .job-id { font-family: monospace; font-size: 11px; color: #666; }
+        
+        /* Skipped Clients */
+        .skipped-clients { display: flex; flex-wrap: wrap; gap: 10px; margin: 15px 0; }
+        .skipped-client-badge { background: #f1f3f4; padding: 6px 10px; border-radius: 4px; font-size: 13px; }
+        
+        /* Footer */
+        .footer { margin-top: 30px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #ddd; }
+        
+        /* Mobile Responsiveness */
+        @media (max-width: 600px) {
+            .header { padding: 12px; }
+            .header h1 { font-size: 20px; }
+            .summary-table th, .summary-table td { padding: 6px 8px; }
+            .client-header { flex-direction: column; align-items: flex-start; }
+            .client-metrics { flex-direction: column; }
+            .metric-badge { margin-bottom: 5px; }
+            .operations-table { font-size: 12px; }
+            .operations-table th, .operations-table td { padding: 6px 8px; }
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>🚀 Smart Resume Processing Report</h1>
-        <p><strong>Run ID:</strong> ${runId}</p>
-        <p><strong>Stream:</strong> ${stream} | <strong>Duration:</strong> ${this.formatDuration(duration)} | <strong>Time:</strong> ${new Date(startTime).toLocaleString()}</p>
+        <div class="header-details">
+            <p><strong>Run ID:</strong> ${runId}</p>
+            <p><strong>Stream:</strong> ${stream} | <strong>Duration:</strong> ${this.formatDuration(duration)} | <strong>Time:</strong> ${formattedDate}</p>
+        </div>
     </div>
     
-    <div class="metrics">
-        <div class="metric-card">
-            <div class="metric-value ${successClass}">${Math.round(successRate)}%</div>
-            <div>Success Rate</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-value">${clientsProcessed}</div>
-            <div>Clients Processed</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-value">${totalJobsStarted}</div>
-            <div>Jobs Started</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-value">${clientsSkipped}</div>
-            <div>Clients Skipped</div>
-        </div>
+    <div class="section-header">
+        <h2>📊 Summary</h2>
     </div>
+    
+    <table class="summary-table">
+        <tr>
+            <th>Success Rate</th>
+            <td class="${successClass}"><strong>${Math.round(successRate)}%</strong></td>
+            <th>Duration</th>
+            <td>${this.formatDuration(duration)}</td>
+        </tr>
+        <tr>
+            <th>Operations Triggered</th>
+            <td>${totalOperationsTriggered}</td>
+            <th>Successful Jobs</th>
+            <td>${totalJobsStarted}</td>
+        </tr>
+        <tr>
+            <th>Clients Processed</th>
+            <td>${clientsProcessed}/${clientsAnalyzed}</td>
+            <th>Clients Skipped</th>
+            <td>${clientsSkipped?.length || 0}</td>
+        </tr>
+    </table>
     
     ${executionResults && executionResults.length > 0 ? `
-    <div class="client-section">
-        <h3>📊 Processed Clients</h3>
-        ${executionResults.map(client => `
-            <div class="client-item">
-                <strong>${client.clientName}</strong>
-                <div class="job-list">
-                    ${client.results && client.results.length > 0 ? client.results.map(job => `
-                        • ${job.operation}: ${job.success ? '✅' : '❌'} ${job.jobId || job.error || ''}
-                    `).join('<br>') : 'No job details available'}
-                </div>
-            </div>
-        `).join('')}
+    <div class="section-header">
+        <h2>� Client Results</h2>
     </div>
+    
+    ${executionResults.map(client => {
+        // Calculate operation success rate for this client
+        const jobCount = client.jobs?.length || 0;
+        const operationsCount = client.operationsRun?.length || 0;
+        const successIcon = jobCount === operationsCount ? '✅' : jobCount > 0 ? '⚠️' : '❌';
+        
+        return `
+        <div class="client-card">
+            <div class="client-header">
+                <div>
+                    <span class="client-name">${client.clientName}</span>
+                    <span class="service-level">(ID: ${client.clientId})</span>
+                </div>
+                <div>${successIcon} ${jobCount}/${operationsCount} Operations</div>
+            </div>
+            
+            <div class="client-metrics">
+                ${operationsCount > 0 ? 
+                  `<div class="metric-badge">Operations: ${operationsCount}</div>
+                   <div class="metric-badge">Jobs Started: ${jobCount}</div>` : 
+                  `<div class="metric-badge">No operations run</div>`}
+            </div>
+            
+            ${client.jobs && client.jobs.length > 0 ? `
+            <table class="operations-table">
+                <tr>
+                    <th>Operation</th>
+                    <th>Job ID</th>
+                    <th>Status</th>
+                </tr>
+                ${client.jobs.map(job => `
+                <tr>
+                    <td><strong>${job.operation}</strong></td>
+                    <td class="job-id">${job.jobId}</td>
+                    <td>✅ Triggered</td>
+                </tr>
+                `).join('')}
+            </table>
+            ` : ''}
+        </div>
+        `;
+    }).join('')}
     ` : ''}
     
     ${skippedClients && skippedClients.length > 0 ? `
-    <div class="client-section">
-        <h3>⏭️ Skipped Clients (Up to Date)</h3>
-        ${skippedClients.map(client => `
-            <div class="client-item">
-                <strong>${client}</strong> - All operations completed recently
-            </div>
-        `).join('')}
+    <div class="section-header">
+        <h2>⏭️ Skipped Clients</h2>
+        <p>These clients were skipped because all operations completed recently.</p>
+    </div>
+    
+    <div class="skipped-clients">
+        ${skippedClients.map(client => {
+            // Handle different client object formats
+            const clientName = typeof client === 'object' ? client.clientName : client;
+            const reason = typeof client === 'object' && client.reason ? ` - ${client.reason}` : '';
+            
+            return `<div class="skipped-client-badge">✓ ${clientName}${reason}</div>`;
+        }).join('')}
     </div>
     ` : ''}
     
     ${errors && errors.length > 0 ? `
-    <div class="client-section">
-        <h3>⚠️ Errors Encountered</h3>
-        ${errors.map(error => `
-            <div class="client-item error">
-                <strong>Error:</strong> ${error}
-            </div>
-        `).join('')}
+    <div class="section-header" style="border-left-color: #dc3545;">
+        <h2>⚠️ Errors Encountered</h2>
     </div>
+    
+    <ul style="color: #dc3545; padding-left: 20px;">
+        ${errors.map(error => `<li>${error}</li>`).join('')}
+    </ul>
     ` : ''}
+    
+    <div class="footer">
+        <p><strong>Next Steps:</strong></p>
+        <ul>
+            <li>View detailed metrics in Airtable's Client Run Results and Job Tracking tables</li>
+            <li>Jobs will complete independently with timeout protection</li>
+            <li>Check lead scoring results in your client base</li>
+        </ul>
+    </div>
+</body>
+</html>
     
     <div class="footer">
         <p><strong>Next Steps:</strong></p>
@@ -215,28 +324,68 @@ class EmailReportingService {
     generateFailureAlertHTML(reportData) {
         const { error, context, runId, stream, timestamp } = reportData;
         
+        // Format date in a more readable format
+        const formattedDate = new Date(timestamp || Date.now()).toLocaleString('en-AU', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
         return `
 <!DOCTYPE html>
 <html>
 <head>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; }
-        .alert-header { background: #dc3545; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        .error-details { background: #f8d7da; padding: 15px; border-radius: 6px; margin: 15px 0; }
-        .context-section { background: #f1f3f4; padding: 15px; border-radius: 6px; margin: 15px 0; }
-        .footer { margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 8px; font-size: 14px; }
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 10px; }
+        h1, h2, h3 { margin-top: 0.5em; margin-bottom: 0.5em; }
+        
+        /* Header Styles */
+        .header { background: #f8d7da; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #f5c6cb; }
+        .header h1 { font-size: 24px; color: #721c24; margin-bottom: 10px; }
+        .header-details { font-size: 14px; color: #721c24; }
+        
+        /* Error Details */
+        .error-details { background: #fff3f3; padding: 15px; border-radius: 6px; margin: 15px 0; border: 1px solid #f5c6cb; }
+        .error-details h3 { color: #721c24; }
+        
+        /* Section Headers */
+        .section-header { background-color: #eef2f5; padding: 10px 15px; border-radius: 6px; 
+                          margin: 25px 0 15px 0; border-left: 4px solid #dc3545; }
+        
+        /* Context Section */
+        .context-section { background: #f9f9f9; padding: 15px; border-radius: 6px; margin: 15px 0; border: 1px solid #ddd; }
+        .context-section pre { white-space: pre-wrap; font-size: 12px; background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        
+        /* Footer */
+        .footer { margin-top: 30px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; border: 1px solid #ddd; }
+        
+        /* Mobile Responsiveness */
+        @media (max-width: 600px) {
+            .header { padding: 12px; }
+            .header h1 { font-size: 20px; }
+            .error-details { padding: 10px; }
+            .context-section pre { font-size: 11px; }
+        }
     </style>
 </head>
 <body>
-    <div class="alert-header">
+    <div class="header">
         <h1>🚨 Smart Resume Processing Failed</h1>
-        <p><strong>Run ID:</strong> ${runId}</p>
-        <p><strong>Stream:</strong> ${stream} | <strong>Time:</strong> ${new Date(timestamp).toLocaleString()}</p>
+        <div class="header-details">
+            <p><strong>Run ID:</strong> ${runId}</p>
+            <p><strong>Stream:</strong> ${stream} | <strong>Time:</strong> ${formattedDate}</p>
+        </div>
+    </div>
+    
+    <div class="section-header">
+        <h2>❌ Error Information</h2>
     </div>
     
     <div class="error-details">
         <h3>Error Details</h3>
-        <p><strong>Error:</strong> ${error}</p>
+        <p><strong>Error Message:</strong> ${error}</p>
     </div>
     
     ${context ? `
