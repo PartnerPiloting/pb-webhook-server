@@ -115,6 +115,13 @@ class EmailReportingService {
         } = reportData;
         
         const successClass = successRate >= 90 ? 'success' : successRate >= 70 ? 'warning' : 'error';
+        
+        // Check if testing mode is enabled
+        const testingMode = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
+        const testingModeDisplay = testingMode 
+            ? '<span style="color: #dc3545; font-weight: bold; padding: 2px 8px; border: 1px solid #dc3545; border-radius: 4px;">TESTING MODE ON</span>' 
+            : '<span style="color: #28a745;">Testing Mode Off</span>';
+        
         // Format date in a more readable format
         const formattedDate = new Date(startTime).toLocaleString('en-AU', {
           year: 'numeric',
@@ -191,7 +198,7 @@ class EmailReportingService {
     <div class="header">
         <h1>🚀 Smart Resume Processing Report</h1>
         <div class="header-details">
-            <p><strong>Run ID:</strong> ${runId}</p>
+            <p><strong>Run ID:</strong> ${runId} | ${testingModeDisplay}</p>
             <p><strong>Stream:</strong> ${stream} | <strong>Duration:</strong> ${this.formatDuration(duration)} | <strong>Time:</strong> ${formattedDate}</p>
         </div>
     </div>
@@ -324,6 +331,12 @@ class EmailReportingService {
     generateFailureAlertHTML(reportData) {
         const { error, context, runId, stream, timestamp } = reportData;
         
+        // Check if testing mode is enabled
+        const testingMode = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
+        const testingModeDisplay = testingMode 
+            ? '<span style="color: #dc3545; font-weight: bold; padding: 2px 8px; border: 1px solid #dc3545; border-radius: 4px;">TESTING MODE ON</span>' 
+            : '<span style="color: #28a745;">Testing Mode Off</span>';
+        
         // Format date in a more readable format
         const formattedDate = new Date(timestamp || Date.now()).toLocaleString('en-AU', {
           year: 'numeric',
@@ -374,7 +387,7 @@ class EmailReportingService {
     <div class="header">
         <h1>🚨 Smart Resume Processing Failed</h1>
         <div class="header-details">
-            <p><strong>Run ID:</strong> ${runId}</p>
+            <p><strong>Run ID:</strong> ${runId} | ${testingModeDisplay}</p>
             <p><strong>Stream:</strong> ${stream} | <strong>Time:</strong> ${formattedDate}</p>
         </div>
     </div>
