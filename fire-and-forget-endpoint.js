@@ -139,14 +139,15 @@ async function processPostScoringInBackground(jobId, stream, options) {
         break;
       }
 
+      console.log(`🎯 Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
+      
+      // Set client processing stream and status
+      await setProcessingStream(client.clientId, stream);
+      await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
+      
+      const clientStartTime = Date.now();
+      
       try {
-        console.log(`🎯 Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
-        
-        // Set client processing stream and status
-        await setProcessingStream(client.clientId, stream);
-        await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
-        
-        const clientStartTime = Date.now();
         
         // Run post scoring for this client with timeout
         const clientResult = await Promise.race([
