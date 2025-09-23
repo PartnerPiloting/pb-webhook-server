@@ -64,6 +64,7 @@ console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date()
 
 console.log(`🔍 TRACE: About to load run ID generator`);
 const { generateRunId, createLogger } = require('../utils/runIdGenerator');
+const airtableService = require('../services/airtableService');
 let runId = 'INITIALIZING';
 let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();
@@ -339,6 +340,15 @@ async function main() {
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
     const postScoringLimit = parseInt(process.env.POST_SCORING_LIMIT) || 100;
     
+    // Initialize run tracking in Airtable
+    try {
+        log(`🚀 PROGRESS: Creating job tracking record for run ${runId}...`, 'INFO');
+        await airtableService.createJobTrackingRecord(runId, stream);
+        log(`✅ Job tracking record created successfully`, 'INFO');
+    } catch (error) {
+        log(`⚠️ Failed to create job tracking record: ${error.message}. Continuing execution.`, 'WARN');
+    }
+    
     log(`🚀 PROGRESS: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
     
     // Initialize email reporting
@@ -486,6 +496,15 @@ async function main() {
             log(`\n🚀 PROGRESS: Processing client [${i + 1}/${clientsNeedingWork.length}] ${workflow.clientName}:`);
             log(`   Operations needed: ${workflow.operationsToRun.join(', ')}`);
             
+            // Create client run record in Airtable
+            try {
+                log(`   📊 Creating run tracking record for ${workflow.clientName}...`);
+                await airtableService.createClientRunRecord(runId, workflow.clientId, workflow.clientName);
+                log(`   ✅ Run tracking record created`);
+            } catch (error) {
+                log(`   ⚠️ Failed to create run tracking record: ${error.message}. Continuing execution.`, 'WARN');
+            }
+            
             // Log more details about post_scoring status if it's going to be executed
             if (workflow.operationsToRun.includes('post_scoring')) {
                 const postScoringStatus = workflow.statusSummary['post_scoring'];
@@ -537,6 +556,17 @@ async function main() {
                 operationsRun: workflow.operationsToRun,
                 jobs: clientJobs
             });
+            
+            // Update client run record on completion
+            try {
+                log(`   📊 Updating run tracking for ${workflow.clientName}...`);
+                const success = clientJobs.length === workflow.operationsToRun.length;
+                const notes = `Executed operations: ${workflow.operationsToRun.join(', ')}\nJobs started: ${clientJobs.length}/${workflow.operationsToRun.length}`;
+                await airtableService.completeClientRun(runId, workflow.clientId, success, notes);
+                log(`   ✅ Run tracking updated`);
+            } catch (error) {
+                log(`   ⚠️ Failed to update run tracking: ${error.message}.`, 'WARN');
+            }
             
             log(`   ✅ ${workflow.clientName}: ${clientJobs.length}/${workflow.operationsToRun.length} jobs started`);
             
@@ -623,6 +653,17 @@ async function main() {
             log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
         }
         
+        // Update aggregate metrics and complete job tracking
+        try {
+            log(`📊 Updating job tracking metrics...`);
+            await airtableService.updateAggregateMetrics(runId);
+            const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
+            await airtableService.completeJobRun(runId, true, notes);
+            log(`✅ Job tracking metrics updated`);
+        } catch (error) {
+            log(`⚠️ Failed to update job tracking metrics: ${error.message}.`, 'WARN');
+        }
+        
         log(`\n🎉 ✅ SMART RESUME FULLY COMPLETED!`);
         log(`🚀 PROGRESS: [6/6] ✅ ALL PHASES COMPLETE - Script execution finished successfully`);
         log(`📝 Summary: ${clientsNeedingWork.length} clients processed, ${totalJobsStarted} operations started`);
@@ -632,6 +673,16 @@ async function main() {
     } catch (error) {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
         log(`🔍 SCRIPT_DEBUG: Full error stack: ${error.stack}`, 'ERROR');
+        
+        // Update job tracking to reflect failure
+        try {
+            log(`📊 Updating job tracking for failure...`);
+            const notes = `Run failed with error: ${error.message}`;
+            await airtableService.completeJobRun(runId, false, notes);
+            log(`✅ Job tracking updated for failure`);
+        } catch (trackingError) {
+            log(`⚠️ Failed to update job tracking for failure: ${trackingError.message}.`, 'WARN');
+        }
         
         // Send failure alert email
         const errorReportData = {

@@ -7,6 +7,8 @@ const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 // --- Multi-Tenant Dependencies ---
 const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
+const { trackLeadProcessingMetrics } = require('./services/leadService');
+const airtableService = require('./services/airtableService');
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
@@ -606,6 +608,17 @@ async function run(req, res, dependencies) {
                 let clientTokensUsed = 0;
                 const clientErrors = [];
 
+                // Create client run record if runId is provided
+                if (runId) {
+                    try {
+                        clientLogger.setup(`Creating client run record for ${clientId} in run ${runId}...`);
+                        await airtableService.createClientRunRecord(runId, clientId, client.clientName);
+                        clientLogger.setup(`Client run record created successfully`);
+                    } catch (error) {
+                        clientLogger.warn(`Failed to create client run record: ${error.message}. Continuing execution.`);
+                    }
+                }
+                
                 // Process chunks for this client
                 for (const chunk of chunks) {
                     try {
@@ -614,6 +627,20 @@ async function run(req, res, dependencies) {
                         clientSuccessful += chunkResult.successful;
                         clientFailed += chunkResult.failed;
                         clientTokensUsed += chunkResult.tokensUsed;
+                        
+                        // Update metrics in run tracking if runId is provided
+                        if (runId) {
+                            try {
+                                const metrics = {
+                                    'Profiles Examined for Scoring': chunkResult.processed,
+                                    'Profiles Successfully Scored': chunkResult.successful,
+                                    'Profile Scoring Tokens': chunkResult.tokensUsed
+                                };
+                                await trackLeadProcessingMetrics(runId, clientId, metrics);
+                            } catch (metricError) {
+                                clientLogger.warn(`Failed to update run metrics: ${metricError.message}`);
+                            }
+                        }
                     } catch (chunkError) {
                         clientLogger.error(`Chunk processing error: ${chunkError.message}`, chunkError.stack);
                         clientErrors.push(`Chunk error: ${chunkError.message}`);
@@ -623,6 +650,21 @@ async function run(req, res, dependencies) {
 
                 // Calculate client execution time
                 const clientDuration = Date.now() - clientStartTime;
+                
+                // Complete client run record if runId is provided
+                if (runId) {
+                    try {
+                        const success = clientErrors.length === 0;
+                        const notes = success ? 
+                            `Processed ${clientProcessed} leads, scored ${clientSuccessful} successfully` : 
+                            `Processed ${clientProcessed} leads with ${clientErrors.length} errors`;
+                        
+                        clientLogger.setup(`Completing client run record for ${clientId}...`);
+                        await airtableService.completeClientRun(runId, clientId, success, notes);
+                    } catch (error) {
+                        clientLogger.warn(`Failed to complete client run record: ${error.message}`);
+                    }
+                }
                 
                 // Update totals
                 totalLeadsProcessed += clientProcessed;
@@ -699,6 +741,22 @@ async function run(req, res, dependencies) {
             : `Multi-client batch scoring completed for ${clientsToProcess.length} clients. Total processed: ${totalLeadsProcessed}, Successful: ${totalSuccessful}, Failed: ${totalFailed}, Tokens: ${totalTokensUsed}, Duration: ${totalDuration}s`;
         
         systemLogger.summary(message);
+        
+        // Complete job tracking record if runId is provided
+        if (runId) {
+            try {
+                systemLogger.setup(`Updating aggregate metrics for run ${runId}...`);
+                await airtableService.updateAggregateMetrics(runId);
+                
+                const success = totalFailed === 0;
+                const notes = `Processed ${totalLeadsProcessed} leads across ${clientsToProcess.length} clients`;
+                
+                systemLogger.setup(`Completing job tracking record for run ${runId}...`);
+                await airtableService.completeJobRun(runId, success, notes);
+            } catch (error) {
+                systemLogger.warn(`Failed to update/complete job tracking record: ${error.message}`);
+            }
+        }
         
         if (res && res.json && !res.headersSent) {
             res.json({ 

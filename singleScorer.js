@@ -133,16 +133,28 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
         const parsedArrayOrObject = JSON.parse(cleanedJsonString);
 
+        // Prepare result with token usage information
+        let result = null;
+        const tokenUsageInfo = {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            responseTokens: usageMetadata.candidatesTokenCount || 0,
+            totalTokens: usageMetadata.totalTokenCount || 0
+        };
+
         if (Array.isArray(parsedArrayOrObject) && parsedArrayOrObject.length > 0) {
             logger.summary('scoreLeadNow', 'Successfully parsed single lead score from array format');
-            return parsedArrayOrObject[0]; 
+            result = parsedArrayOrObject[0];
         } else if (!Array.isArray(parsedArrayOrObject) && typeof parsedArrayOrObject === 'object' && parsedArrayOrObject !== null) {
             logger.warn('scoreLeadNow', 'Gemini returned single object directly for single lead scoring - using it');
-            return parsedArrayOrObject;
+            result = parsedArrayOrObject;
         } else {
             logger.error('scoreLeadNow', `Gemini response was not a valid non-empty array or direct object. Parsed: ${JSON.stringify(parsedArrayOrObject)}`);
             throw new Error("singleScorer: Gemini response format error: Expected array with one item or a single object.");
         }
+        
+        // Add token usage information to the result
+        result._tokenUsage = tokenUsageInfo;
+        return result;
     } catch (parseErr) {
         logger.error('scoreLeadNow', `Failed to parse Gemini JSON: ${parseErr.message}. Raw (first 500 chars): ${rawResponseText.substring(0, 500)}... Finish Reason: ${modelFinishReason}`);
         const error = new Error(`singleScorer: JSON Parse Error: ${parseErr.message}`);
