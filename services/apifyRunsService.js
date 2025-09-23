@@ -56,13 +56,15 @@ async function createApifyRun(runId, clientId, options = {}) {
             'Created At': new Date().toISOString(),
             'Actor ID': options.actorId || '',
             'Target URLs': Array.isArray(options.targetUrls) ? options.targetUrls.join('\n') : '',
+            // Mode field might not exist in the Apify table, remove if it causes issues
             'Mode': options.mode || 'webhook',
+            // Last Updated field might not exist in the Apify table, remove if it causes issues
             'Last Updated': new Date().toISOString()
         };
 
         console.log(`[ApifyRuns] Creating run record: ${runId} for client: ${clientId}`);
         
-        const createdRecords = await base('Apify Runs').create([{
+        const createdRecords = await base('Apify').create([{
             fields: recordData
         }]);
 
@@ -73,13 +75,14 @@ async function createApifyRun(runId, clientId, options = {}) {
             clientId: record.get('Client ID'),
             status: record.get('Status'),
             createdAt: record.get('Created At'),
-            actorId: record.get('Actor ID'),
-            targetUrls: record.get('Target URLs'),
-            mode: record.get('Mode'),
-            lastUpdated: record.get('Last Updated'),
-            datasetId: record.get('Dataset ID'),
-            completedAt: record.get('Completed At'),
-            error: record.get('Error')
+            actorId: record.fields['Actor ID'] ? record.get('Actor ID') : null,
+            targetUrls: record.fields['Target URLs'] ? record.get('Target URLs') : '',
+            // Handle potentially missing fields
+            mode: record.fields['Mode'] ? record.get('Mode') : 'webhook',
+            lastUpdated: record.fields['Last Updated'] ? record.get('Last Updated') : new Date().toISOString(),
+            datasetId: record.fields['Dataset ID'] ? record.get('Dataset ID') : null,
+            completedAt: record.fields['Completed At'] ? record.get('Completed At') : null,
+            error: record.fields['Error'] ? record.get('Error') : null
         };
 
         // Cache the record
@@ -112,7 +115,7 @@ async function getApifyRun(runId) {
         
         console.log(`[ApifyRuns] Fetching run data for: ${runId}`);
         
-        const records = await base('Apify Runs').select({
+        const records = await base('Apify').select({
             filterByFormula: `{Run ID} = '${runId}'`,
             maxRecords: 1
         }).firstPage();
@@ -129,13 +132,14 @@ async function getApifyRun(runId) {
             clientId: record.get('Client ID'),
             status: record.get('Status'),
             createdAt: record.get('Created At'),
-            actorId: record.get('Actor ID'),
-            targetUrls: record.get('Target URLs'),
-            mode: record.get('Mode'),
-            lastUpdated: record.get('Last Updated'),
-            datasetId: record.get('Dataset ID'),
-            completedAt: record.get('Completed At'),
-            error: record.get('Error')
+            actorId: record.fields['Actor ID'] ? record.get('Actor ID') : null,
+            targetUrls: record.fields['Target URLs'] ? record.get('Target URLs') : '',
+            // Handle potentially missing fields
+            mode: record.fields['Mode'] ? record.get('Mode') : 'webhook',
+            lastUpdated: record.fields['Last Updated'] ? record.get('Last Updated') : new Date().toISOString(),
+            datasetId: record.fields['Dataset ID'] ? record.get('Dataset ID') : null,
+            completedAt: record.fields['Completed At'] ? record.get('Completed At') : null,
+            error: record.fields['Error'] ? record.get('Error') : null
         };
 
         // Cache the result
@@ -190,7 +194,7 @@ async function updateApifyRun(runId, updateData) {
 
         console.log(`[ApifyRuns] Updating run ${runId} with status: ${updateData.status}`);
         
-        const updatedRecords = await base('Apify Runs').update([{
+        const updatedRecords = await base('Apify').update([{
             id: existingRun.id,
             fields: updateFields
         }]);
@@ -202,13 +206,14 @@ async function updateApifyRun(runId, updateData) {
             clientId: record.get('Client ID'),
             status: record.get('Status'),
             createdAt: record.get('Created At'),
-            actorId: record.get('Actor ID'),
-            targetUrls: record.get('Target URLs'),
-            mode: record.get('Mode'),
-            lastUpdated: record.get('Last Updated'),
-            datasetId: record.get('Dataset ID'),
-            completedAt: record.get('Completed At'),
-            error: record.get('Error')
+            actorId: record.fields['Actor ID'] ? record.get('Actor ID') : null,
+            targetUrls: record.fields['Target URLs'] ? record.get('Target URLs') : '',
+            // Handle potentially missing fields
+            mode: record.fields['Mode'] ? record.get('Mode') : 'webhook',
+            lastUpdated: record.fields['Last Updated'] ? record.get('Last Updated') : new Date().toISOString(),
+            datasetId: record.fields['Dataset ID'] ? record.get('Dataset ID') : null,
+            completedAt: record.fields['Completed At'] ? record.get('Completed At') : null,
+            error: record.fields['Error'] ? record.get('Error') : null
         };
 
         // Update cache
@@ -250,7 +255,7 @@ async function getClientRuns(clientId, limit = 10) {
         
         console.log(`[ApifyRuns] Fetching recent runs for client: ${clientId}`);
         
-        const records = await base('Apify Runs').select({
+        const records = await base('Apify').select({
             filterByFormula: `{Client ID} = '${clientId}'`,
             sort: [{ field: 'Created At', direction: 'desc' }],
             maxRecords: limit
@@ -262,13 +267,14 @@ async function getClientRuns(clientId, limit = 10) {
             clientId: record.get('Client ID'),
             status: record.get('Status'),
             createdAt: record.get('Created At'),
-            actorId: record.get('Actor ID'),
-            targetUrls: record.get('Target URLs'),
-            mode: record.get('Mode'),
-            lastUpdated: record.get('Last Updated'),
-            datasetId: record.get('Dataset ID'),
-            completedAt: record.get('Completed At'),
-            error: record.get('Error')
+            actorId: record.fields['Actor ID'] ? record.get('Actor ID') : null,
+            targetUrls: record.fields['Target URLs'] ? record.get('Target URLs') : '',
+            // Handle potentially missing fields
+            mode: record.fields['Mode'] ? record.get('Mode') : 'webhook',
+            lastUpdated: record.fields['Last Updated'] ? record.get('Last Updated') : new Date().toISOString(),
+            datasetId: record.fields['Dataset ID'] ? record.get('Dataset ID') : null,
+            completedAt: record.fields['Completed At'] ? record.get('Completed At') : null,
+            error: record.fields['Error'] ? record.get('Error') : null
         }));
 
         console.log(`[ApifyRuns] Found ${runs.length} runs for client: ${clientId}`);
