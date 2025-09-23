@@ -12,17 +12,7 @@ console.log(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREAM ||
 
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
-// --- Multi-Tenant                clientResults.push({
-                    clientId,
-                    processed: clientProcessed,
-                    successful: clientSuccessful,
-                    failed: clientFailed, 
-                    tokensUsed: clientTokensUsed,
-                    duration: Math.round(clientDuration / 1000),
-                    status: clientStatus,
-                    reason: reason, // Add the detailed reason
-                    errorDetails: clientErrors.length > 0 ? clientErrors : []
-                });ies ---
+// --- Multi-Tenant Dependencies ---
 const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
 const { trackLeadProcessingMetrics } = require('./services/leadService');
@@ -810,7 +800,7 @@ async function run(req, res, dependencies) {
                     duration: Math.round(clientDuration / 1000),
                     status: clientStatus,
                     reason: reason, // Add the detailed reason
-                    errorDetails: clientErrors  // Include error details for debugging
+                    errorDetails: clientErrors && clientErrors.length > 0 ? clientErrors : []  // Handle potential undefined
                 });
 
                 console.log(`batchScorer.run: [${clientId}] Client processing completed. Processed: ${clientProcessed}, Successful: ${clientSuccessful}, Failed: ${clientFailed}, Tokens: ${clientTokensUsed}`);
