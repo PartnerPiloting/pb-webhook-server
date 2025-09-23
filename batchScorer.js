@@ -2,9 +2,27 @@
 
 require("dotenv").config(); 
 
+// Debug logging for environment variables
+console.log('ENVIRONMENT VARIABLES CHECK (batchScorer):');
+console.log(`- FIRE_AND_FORGET_BATCH_PROCESS_TESTING: ${process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING || 'not set'}`);
+console.log(`- DEBUG_LEVEL: ${process.env.DEBUG_LEVEL || 'not set'}`);
+console.log(`- DEBUG_MODE: ${process.env.DEBUG_MODE || 'not set'}`);
+console.log(`- LEAD_SCORING_LIMIT: ${process.env.LEAD_SCORING_LIMIT || 'not set'}`);
+console.log(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREAM || 'not set'}`);
+
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
-// --- Multi-Tenant Dependencies ---
+// --- Multi-Tenant                clientResults.push({
+                    clientId,
+                    processed: clientProcessed,
+                    successful: clientSuccessful,
+                    failed: clientFailed, 
+                    tokensUsed: clientTokensUsed,
+                    duration: Math.round(clientDuration / 1000),
+                    status: clientStatus,
+                    reason: reason, // Add the detailed reason
+                    errorDetails: clientErrors.length > 0 ? clientErrors : []
+                });ies ---
 const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
 const { trackLeadProcessingMetrics } = require('./services/leadService');
@@ -42,7 +60,8 @@ async function enqueue(recs, clientId, clientBase, log = console) {
     queue.push({ records: recs, clientId, clientBase });
     if (running) return;
     running = true;
-    console.log(`batchScorer.enqueue: Queue started. ${queue.length} chunk(s) to process.`);
+    const logger = (log === console) ? new StructuredLogger('SYSTEM', null, 'lead_scoring') : log;
+    logger.debug(`batchScorer.enqueue: Queue started. ${queue.length} chunk(s) to process.`);
     while (queue.length) {
         const { records: chunk, clientId: chunkClientId, clientBase: chunkClientBase } = queue.shift();
         log.process(`Processing chunk of ${chunk.length} records for client [${chunkClientId || 'unknown'}]...`);
@@ -59,14 +78,74 @@ async function enqueue(recs, clientId, clientBase, log = console) {
 
 /* ---------- FETCH LEADS FROM AIRTABLE (Client-Specific) --------- */
 async function fetchLeads(limit, clientBase, clientId, logger = null) {
-    const log = logger || new StructuredLogger(clientId || 'UNKNOWN');
+    const log = logger || new StructuredLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
     
     if (!clientBase) {
         throw new Error(`Airtable base not provided for client ${clientId || 'unknown'}.`);
     }
     const records = [];
-    const filterFormula = `{Scoring Status} = "To Be Scored"`; 
+    
+    // Check if we're in testing mode
+    const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
+    
+    // Determine filter formula based on mode
+    let filterFormula = `{Scoring Status} = "To Be Scored"`;
+    
+    // In testing mode, we might want to allow rescoring of leads that were recently scored
+    if (TESTING_MODE) {
+        log.setup(`TESTING MODE ACTIVE: Including recently scored leads for testing`);
+        
+        // Modify the filter to include recently scored leads for testing
+        // This will re-score leads that were scored in the past 2 days
+        filterFormula = `OR({Scoring Status} = "To Be Scored", AND({Scoring Status} = "Scored", IS_AFTER(DATEADD(TODAY(), -2, 'days'), {Date Scored})))`;
+        
+        log.debug(`Testing mode filter formula: ${filterFormula}`);
+    } else {
+        log.setup(`Normal mode: Using standard filter for "To Be Scored" status only`);
+    }
+    
     log.setup(`Fetching up to ${limit} leads using formula: ${filterFormula}`);
+    
+    // Add debug logging for table discovery
+    try {
+        const tables = await clientBase.tables();
+        log.debug(`Available tables in base: ${tables.map(t => t.name).join(', ')}`);
+        
+        // Debug - check if Leads table exists
+        const leadsTable = tables.find(t => t.name === 'Leads');
+        if (!leadsTable) {
+            log.error(`'Leads' table not found in client base`);
+        } else {
+            log.debug(`'Leads' table found, id: ${leadsTable.id}`);
+            
+            // Debug - check if Scoring Status field exists
+            try {
+                const fields = await clientBase('Leads').fields();
+                const scoringStatusField = fields.find(f => f.name === 'Scoring Status');
+                if (!scoringStatusField) {
+                    log.error(`'Scoring Status' field not found in 'Leads' table`);
+                } else {
+                    log.debug(`'Scoring Status' field found, type: ${scoringStatusField.type}`);
+                }
+            } catch (fieldErr) {
+                log.error(`Failed to get fields for 'Leads' table: ${fieldErr.message}`);
+            }
+        }
+    } catch (tableErr) {
+        log.error(`Failed to list tables: ${tableErr.message}`);
+    }
+    
+    // Get a count of leads with "To Be Scored" status
+    try {
+        const countQuery = await clientBase("Leads")
+            .select({ 
+                filterByFormula: filterFormula 
+            })
+            .all();
+        log.debug(`TOTAL leads with "To Be Scored" status: ${countQuery.length}`);
+    } catch (countErr) {
+        log.error(`Failed to count leads: ${countErr.message}`);
+    }
     
     await clientBase("Leads") 
         .select({ 
@@ -81,6 +160,14 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
             throw err;
         });
     log.setup(`Fetched ${records.length} leads`);
+    
+    // Add more detailed logging
+    if (records.length === 0) {
+        log.debug(`No leads found with status "To Be Scored" for client ${clientId}`);
+    } else {
+        log.debug(`First lead ID: ${records[0].id}, fields: ${Object.keys(records[0].fields).join(', ')}`);
+    }
+    
     return records;
 }
 
@@ -88,7 +175,7 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     scoreChunk - Processes a chunk of leads with Gemini (Client-Aware)
 =================================================================== */
 async function scoreChunk(records, clientId, clientBase, logger = null) {
-    const log = logger || new StructuredLogger(clientId || 'UNKNOWN');
+    const log = logger || new StructuredLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
     
     if (!BATCH_SCORER_VERTEX_AI_CLIENT || !BATCH_SCORER_GEMINI_MODEL_ID) {
         const errorMsg = `Aborting. Gemini AI Client or Model ID not initialized/provided`;
@@ -469,7 +556,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
 /* ---------- MULTI-TENANT PUBLIC EXPORTED FUNCTION ---------------------- */
 async function run(req, res, dependencies) { 
     // Create system-level logger for multi-tenant lead scoring operations
-    const systemLogger = new StructuredLogger('SYSTEM');
+    const systemLogger = new StructuredLogger('SYSTEM', null, 'lead_scoring');
     
     systemLogger.setup("=== STARTING MULTI-TENANT LEAD SCORING ===");
 
@@ -540,7 +627,7 @@ async function run(req, res, dependencies) {
             const clientStartTime = Date.now();
             
             // Create client-specific logger with shared session ID
-            const clientLogger = new StructuredLogger(clientId, systemLogger.getSessionId());
+            const clientLogger = new StructuredLogger(clientId, systemLogger.getSessionId(), 'lead_scoring');
             clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${clientId}) ---`);
             
             try {
@@ -566,7 +653,13 @@ async function run(req, res, dependencies) {
                 }
                 
                 if (!leads.length) {
-                    clientLogger.summary(`No leads found in 'To Be Scored' to process`);
+                    // Get a more detailed reason for no leads
+                    const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
+                    const reason = TESTING_MODE ? 
+                        `No leads found with "To Be Scored" status or recently scored (testing mode active)` : 
+                        `No leads found with "To Be Scored" status`;
+                    
+                    clientLogger.summary(reason);
                     
                     // Log execution for this client
                     const duration = Date.now() - clientStartTime;
@@ -579,6 +672,17 @@ async function run(req, res, dependencies) {
                     });
                     await clientService.updateExecutionLog(clientId, logEntry);
                     
+                    // Create client run record with detailed reason if runId is provided
+                    if (runId) {
+                        try {
+                            clientLogger.setup(`Creating client run record with reason: ${reason}`);
+                            await airtableService.createClientRunRecord(runId, clientId, client.clientName);
+                            await airtableService.completeClientRun(runId, clientId, true, `No action taken: ${reason}`);
+                        } catch (error) {
+                            clientLogger.warn(`Failed to create/update client run record: ${error.message}`);
+                        }
+                    }
+                    
                     clientResults.push({
                         clientId,
                         processed: 0,
@@ -587,6 +691,7 @@ async function run(req, res, dependencies) {
                         tokensUsed: 0,
                         duration: Math.round(duration / 1000),
                         status: 'No leads to process',
+                        reason: reason,
                         errorDetails: []  // ADD: Empty array for consistency
                     });
                     continue;
@@ -651,16 +756,25 @@ async function run(req, res, dependencies) {
                 // Calculate client execution time
                 const clientDuration = Date.now() - clientStartTime;
                 
+                // Create a detailed reason/notes about what happened
+                let reason;
+                if (clientProcessed === 0) {
+                    reason = `No leads were processed`;
+                } else if (clientSuccessful === 0 && clientProcessed > 0) {
+                    reason = `Processed ${clientProcessed} leads but none were scored successfully`;
+                } else if (clientErrors.length === 0) {
+                    reason = `Processed ${clientProcessed} leads, scored ${clientSuccessful} successfully`;
+                } else {
+                    reason = `Processed ${clientProcessed} leads with ${clientErrors.length} errors`;
+                }
+                
                 // Complete client run record if runId is provided
                 if (runId) {
                     try {
                         const success = clientErrors.length === 0;
-                        const notes = success ? 
-                            `Processed ${clientProcessed} leads, scored ${clientSuccessful} successfully` : 
-                            `Processed ${clientProcessed} leads with ${clientErrors.length} errors`;
                         
                         clientLogger.setup(`Completing client run record for ${clientId}...`);
-                        await airtableService.completeClientRun(runId, clientId, success, notes);
+                        await airtableService.completeClientRun(runId, clientId, success, reason);
                     } catch (error) {
                         clientLogger.warn(`Failed to complete client run record: ${error.message}`);
                     }
@@ -695,7 +809,8 @@ async function run(req, res, dependencies) {
                     tokensUsed: clientTokensUsed,
                     duration: Math.round(clientDuration / 1000),
                     status: clientStatus,
-                    errorDetails: clientErrors  // ADD: Include error details for debugging
+                    reason: reason, // Add the detailed reason
+                    errorDetails: clientErrors  // Include error details for debugging
                 });
 
                 console.log(`batchScorer.run: [${clientId}] Client processing completed. Processed: ${clientProcessed}, Successful: ${clientSuccessful}, Failed: ${clientFailed}, Tokens: ${clientTokensUsed}`);
@@ -705,6 +820,8 @@ async function run(req, res, dependencies) {
                 
                 // Log client failure
                 const clientDuration = Date.now() - clientStartTime;
+                const errorReason = `Failed to process client: ${clientError.message}`;
+                
                 const logEntry = clientService.formatExecutionLog({
                     status: 'Failed',
                     leadsProcessed: {
@@ -717,6 +834,16 @@ async function run(req, res, dependencies) {
                     errors: [`Fatal error: ${clientError.message}`]
                 });
                 await clientService.updateExecutionLog(clientId, logEntry);
+                
+                // Complete client run record if runId is provided
+                if (runId) {
+                    try {
+                        console.log(`Completing failed client run record for ${clientId}...`);
+                        await airtableService.completeClientRun(runId, clientId, false, errorReason);
+                    } catch (error) {
+                        console.warn(`Failed to complete client run record: ${error.message}`);
+                    }
+                }
 
                 clientResults.push({
                     clientId,
@@ -726,6 +853,7 @@ async function run(req, res, dependencies) {
                     tokensUsed: 0,
                     duration: Math.round(clientDuration / 1000),
                     status: `Failed: ${clientError.message}`,
+                    reason: errorReason,
                     errorDetails: [`Fatal error: ${clientError.message}`]  // ADD: Include fatal error details
                 });
 

@@ -8,6 +8,9 @@ const { getClientById } = require('../services/clientService');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 
+// Check if we're in batch process testing mode
+const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
+
 const LEADS_TABLE = 'Leads';
 const LINKEDIN_URL_FIELD = 'LinkedIn Profile URL';
 const STATUS_FIELD = 'Posts Harvest Status';
@@ -104,23 +107,40 @@ router.post('/api/apify/process-client', async (req, res) => {
     }
     console.log(`[apify/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
     
-    if (client.status !== 'Active') {
-      console.log(`[apify/process-client] Client ${clientId} not Active, skipping`);
-      return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
-    }
-    if (Number(client.serviceLevel) < 2) {
-      console.log(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
-      return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
+    // Skip inactive clients and service level check UNLESS we're in testing mode
+    if (!TESTING_MODE) {
+      if (client.status !== 'Active') {
+        console.log(`[apify/process-client] Client ${clientId} not Active, skipping`);
+        return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
+      }
+      if (Number(client.serviceLevel) < 2) {
+        console.log(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
+        return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
+      }
+    } else {
+      console.log(`[apify/process-client] 🧪 TESTING MODE - Bypassing active status and service level checks`);
     }
 
-    const postsTarget = Number(client.postsDailyTarget || 0);
-    const batchSize = Number(client.leadsBatchSizeForPostCollection || 20);
-    const maxBatches = Number(req.body?.maxBatchesOverride ?? client.maxPostBatchesPerDayGuardrail ?? 10);
-    console.log(`[apify/process-client] Client ${clientId} targets: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
+    // In testing mode, use small fixed limits; otherwise use client configuration
+    let postsTarget, batchSize, maxBatches;
     
-    if (!postsTarget || !batchSize) {
-      console.log(`[apify/process-client] Client ${clientId} missing targets, skipping`);
-      return res.status(200).json({ ok: true, skipped: true, reason: 'Missing targets' });
+    if (TESTING_MODE) {
+      // Use limited values for testing
+      postsTarget = 5; // Target 5 posts total
+      batchSize = 5;   // Process 5 profiles at a time
+      maxBatches = 1;  // Run only 1 batch
+      console.log(`[apify/process-client] 🧪 TESTING MODE - Using limited batch settings: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
+    } else {
+      // Use normal client settings
+      postsTarget = Number(client.postsDailyTarget || 0);
+      batchSize = Number(client.leadsBatchSizeForPostCollection || 20);
+      maxBatches = Number(req.body?.maxBatchesOverride ?? client.maxPostBatchesPerDayGuardrail ?? 10);
+      console.log(`[apify/process-client] Client ${clientId} targets: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
+      
+      if (!postsTarget || !batchSize) {
+        console.log(`[apify/process-client] Client ${clientId} missing targets, skipping`);
+        return res.status(200).json({ ok: true, skipped: true, reason: 'Missing targets' });
+      }
     }
 
     const base = await getClientBase(clientId);
@@ -178,7 +198,8 @@ router.post('/api/apify/process-client', async (req, res) => {
           // Allow overriding actor/build to match a proven-good console run
           actorId: process.env.ACTOR_ID || process.env.APIFY_ACTOR_ID || undefined,
           options: {
-            maxPosts: Number(process.env.APIFY_MAX_POSTS) || 2,
+            // In testing mode, always use 1-2 posts; otherwise use configured values
+            maxPosts: TESTING_MODE ? 2 : (Number(process.env.APIFY_MAX_POSTS) || 2),
             // Default to 'year' window to align with testing and reduce stale content
             postedLimit: process.env.APIFY_POSTED_LIMIT || 'year',
             expectsCookies: true,
@@ -325,12 +346,31 @@ router.post('/api/apify/process', async (req, res) => {
       return res.status(result.status).json({ ok: true, mode: 'single', clientId: singleClientId, result: result.data });
     }
 
-    // No client specified: iterate active clients sequentially
-    const { getAllActiveClients } = require('../services/clientService');
-    const activeClients = await getAllActiveClients();
+    // No client specified: iterate through clients
+    let clientsToProcess = [];
+    
+    if (TESTING_MODE) {
+      // In testing mode, get ALL clients, not just active ones, but limit to 5
+      const { getAllClients } = require('../services/clientService');
+      const allClients = await getAllClients();
+      clientsToProcess = allClients.slice(0, 5); // Process at most 5 clients in testing mode
+      console.log(`[apify/process] 🧪 TESTING MODE - Processing up to 5 clients regardless of status: ${clientsToProcess.map(c => c.clientId).join(', ')}`);
+    } else {
+      // Normal mode - only process active clients
+      const { getAllActiveClients } = require('../services/clientService');
+      clientsToProcess = await getAllActiveClients();
+      console.log(`[apify/process] Normal mode - Processing ${clientsToProcess.length} active clients`);
+    }
     const summaries = [];
 
-    for (const c of activeClients) {
+    for (const c of clientsToProcess) {
+      // In normal mode, skip clients with service level < 2; in testing mode, process all
+      if (!TESTING_MODE && Number(c.serviceLevel) < 2) {
+        console.log(`[apify/process] Skipping client ${c.clientId}: service level ${c.serviceLevel} < 2`);
+        summaries.push({ clientId: c.clientId, skipped: true, reason: 'Service level < 2' });
+        continue;
+      }
+      
       try {
         const r = await callProcessClient(c.clientId);
         summaries.push({ clientId: c.clientId, status: r.status, result: r.data });
@@ -362,7 +402,15 @@ router.post('/api/apify/pick-run-score', async (req, res) => {
     const clientId = req.headers['x-client-id'];
     if (!clientId) return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
 
-    const limit = Math.max(1, parseInt(req.query.limit || req.body?.limit || '10', 10));
+    // In testing mode, always limit to 5, otherwise use the provided limit
+    const limit = TESTING_MODE ? 
+      Math.min(5, Math.max(1, parseInt(req.query.limit || req.body?.limit || '5', 10))) :
+      Math.max(1, parseInt(req.query.limit || req.body?.limit || '10', 10));
+      
+    if (TESTING_MODE) {
+      console.log(`[apify/pick-run-score] 🧪 TESTING MODE - Limiting batch to ${limit} leads`);
+    }
+    
     const base = await getClientBase(clientId);
 
     // Pick leads (reuse pickLeadBatch but cap to limit)
@@ -386,7 +434,8 @@ router.post('/api/apify/pick-run-score', async (req, res) => {
         targetUrls,
         mode: 'inline',
         options: {
-          maxPosts: Number(req.body?.maxPosts) || Number(process.env.APIFY_MAX_POSTS) || 2,
+          // In testing mode, cap at 2 posts per profile
+          maxPosts: TESTING_MODE ? 2 : (Number(req.body?.maxPosts) || Number(process.env.APIFY_MAX_POSTS) || 2),
           postedLimit: typeof req.body?.postedLimit === 'string' ? req.body.postedLimit : (process.env.APIFY_POSTED_LIMIT || 'year'),
           expectsCookies: true
         }
@@ -518,6 +567,10 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
     formatDuration,
     getActiveClientsByStream
   } = require('../services/clientService');
+  
+  // Create a structured logger for post harvesting with the specific process type
+  const { StructuredLogger } = require('../utils/structuredLogger');
+  const harvestLogger = new StructuredLogger('POST-HARVEST-JOB', null, 'post_harvesting');
 
   const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
   const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
@@ -531,7 +584,7 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
   let errorCount = 0;
 
   try {
-    console.log(`[post-harvesting-background] Starting job ${jobId} on stream ${stream}`);
+    harvestLogger.setup(`Starting job ${jobId} on stream ${stream}`);
 
     // Set initial job status (don't set processing stream for operation)
     await setJobStatus(null, 'post_harvesting', 'STARTED', jobId, {
@@ -544,7 +597,31 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
     const streamClients = await getActiveClientsByStream(stream, singleClientId);
     const candidates = streamClients.filter(c => Number(c.serviceLevel) >= 2);
     
-    console.log(`[post-harvesting-background] Found ${candidates.length} level 2+ clients on stream ${stream} to process`);
+    harvestLogger.setup(`Found ${candidates.length} level 2+ clients on stream ${stream} to process`);
+    
+    // Add detailed reason if no clients found
+    if (candidates.length === 0) {
+      const reason = singleClientId 
+        ? `No eligible client found with ID ${singleClientId} (requires service level 2+)`
+        : `No eligible clients found on stream ${stream} (requires service level 2+)`;
+      
+      harvestLogger.info(reason);
+      
+      // Complete job with reason
+      await setJobStatus(null, 'post_harvesting', 'COMPLETED', jobId, {
+        lastRunDate: new Date().toISOString(),
+        lastRunTime: formatDuration(Date.now() - startTime),
+        lastRunCount: 0,
+        lastRunStatus: reason
+      });
+      
+      return {
+        processed: 0,
+        harvested: 0,
+        errors: 0,
+        reason: reason
+      };
+    }
 
     const baseUrl = process.env.API_PUBLIC_BASE_URL
       || process.env.NEXT_PUBLIC_API_BASE_URL
@@ -561,17 +638,20 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
     for (const client of candidates) {
       // Check job timeout
       if (Date.now() - jobStartTime > jobTimeoutMs) {
-        console.log(`[post-harvesting-background] Job timeout reached (${MAX_JOB_PROCESSING_HOURS}h), killing job ${jobId}`);
+        const timeoutReason = `Job timeout reached (${MAX_JOB_PROCESSING_HOURS}h), killing job ${jobId}`;
+        harvestLogger.warn(timeoutReason);
+        
         await setJobStatus(null, 'post_harvesting', 'JOB_TIMEOUT_KILLED', jobId, {
           lastRunDate: new Date().toISOString(),
           lastRunTime: formatDuration(Date.now() - jobStartTime),
-          lastRunCount: processedCount
+          lastRunCount: processedCount,
+          lastRunStatus: timeoutReason
         });
         return;
       }
 
       const clientStartTime = Date.now();
-      console.log(`[post-harvesting-background] Processing client ${client.clientId} (${processedCount + 1}/${candidates.length})`);
+      harvestLogger.process(`Processing client ${client.clientId} (${processedCount + 1}/${candidates.length})`);
 
       try {
         // Set up client timeout
@@ -587,14 +667,14 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
         }
 
         const clientDuration = Date.now() - clientStartTime;
-        console.log(`[post-harvesting-background] Client ${client.clientId} completed in ${formatDuration(clientDuration)}`);
+        harvestLogger.info(`Client ${client.clientId} completed in ${formatDuration(clientDuration)}`);
 
       } catch (error) {
         errorCount++;
         if (error.message === 'Client timeout') {
-          console.log(`[post-harvesting-background] Client ${client.clientId} timeout (${MAX_CLIENT_PROCESSING_MINUTES}m), skipping`);
+          harvestLogger.warn(`Client ${client.clientId} timeout (${MAX_CLIENT_PROCESSING_MINUTES}m), skipping`);
         } else {
-          console.error(`[post-harvesting-background] Client ${client.clientId} error:`, error.message);
+          harvestLogger.error(`Client ${client.clientId} error: ${error.message}`);
         }
       }
 
@@ -610,20 +690,28 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
 
     // Job completed successfully
     const finalDuration = formatDuration(Date.now() - jobStartTime);
-    console.log(`[post-harvesting-background] Job ${jobId} completed. Processed: ${processedCount}, Harvested: ${harvestedCount}, Errors: ${errorCount}, Duration: ${finalDuration}`);
+    
+    // Create a detailed summary of what happened
+    const summaryReason = `Job completed. Processed ${processedCount} clients, harvested ${harvestedCount} posts${errorCount > 0 ? `, with ${errorCount} errors` : ''}`;
+    
+    harvestLogger.summary(`Job ${jobId} completed. Processed: ${processedCount}, Harvested: ${harvestedCount}, Errors: ${errorCount}, Duration: ${finalDuration}`);
 
     await setJobStatus(null, 'post_harvesting', 'COMPLETED', jobId, {
       lastRunDate: new Date().toISOString(),
       lastRunTime: finalDuration,
-      lastRunCount: harvestedCount
+      lastRunCount: harvestedCount,
+      lastRunStatus: summaryReason // Include the summary reason
     });
 
   } catch (error) {
-    console.error(`[post-harvesting-background] Job ${jobId} failed:`, error.message);
+    harvestLogger.error(`Job ${jobId} failed: ${error.message}`);
+    const failureReason = `Job failed: ${error.message}`;
+    
     await setJobStatus(null, 'post_harvesting', 'FAILED', jobId, {
       lastRunDate: new Date().toISOString(),
       lastRunTime: formatDuration(Date.now() - jobStartTime),
-      lastRunCount: harvestedCount
+      lastRunCount: harvestedCount,
+      lastRunStatus: failureReason
     });
   }
 }

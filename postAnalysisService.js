@@ -16,7 +16,7 @@ const { StructuredLogger } = require('./utils/structuredLogger');
  * Logs type, length, head/tail, and prints raw value if parsing fails.
  */
 function diagnosePostsContent(rawField, recordId = '', logger = null) {
-    const log = logger || new StructuredLogger('DIAGNOSTICS');
+    const log = logger || new StructuredLogger('DIAGNOSTICS', null, 'post_scoring');
     
     log.debug('------------------------');
     log.debug(`Diagnosing Posts Content for record: ${recordId}`);
@@ -62,7 +62,7 @@ function normalizeUrl(url) {
  * the posts for a single lead record.
  */
 async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, logger = null) {
-    const log = logger || new StructuredLogger(`LEAD-${leadRecord.id}`);
+    const log = logger || new StructuredLogger(`LEAD-${leadRecord.id}`, null, 'post_scoring');
     
     log.setup(`Analyzing posts for lead: ${leadRecord.id}`);
 
@@ -274,7 +274,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
  * Processes posts for all leads in Airtable that haven't been scored yet.
  */
 async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, forceRescore, viewName, logger = null) {
-    const log = logger || new StructuredLogger('POST-BATCH-PROCESSOR');
+    const log = logger || new StructuredLogger('POST-BATCH-PROCESSOR', null, 'post_scoring');
     
     log.setup("=== STARTING POST BATCH PROCESSING ===");
     let processedCount = 0, errorCount = 0;
@@ -301,6 +301,26 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
             recordsToProcess = recordsToProcess.slice(0, limit);
             log.setup(`Limiting batch to first ${limit} leads`);
         }
+        
+        // Generate detailed reason if no leads found
+        let statusReason = '';
+        if (recordsToProcess.length === 0) {
+            if (forceRescore) {
+                statusReason = `No leads found for post scoring (even with force rescore enabled)`;
+            } else {
+                statusReason = `No leads found without post scores (use forceRescore=true to re-analyze already scored posts)`;
+            }
+            log.setup(statusReason);
+            
+            // Return the detailed reason in the result
+            return {
+                processed: 0,
+                successful: 0,
+                failed: 0,
+                reason: statusReason
+            };
+        }
+        
         log.setup(`Found ${recordsToProcess.length} leads to process for post scoring`);
         for (const leadRecord of recordsToProcess) {
             try {
@@ -322,7 +342,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
  * and returns the scoring outcome.
  */
 async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config, logger = null) {
-    const log = logger || new StructuredLogger(`SPECIFIC-LEAD-${leadId}`);
+    const log = logger || new StructuredLogger(`SPECIFIC-LEAD-${leadId}`, null, 'post_scoring');
     
     log.setup(`Processing specific lead: ${leadId}`);
     try {
