@@ -299,13 +299,18 @@ router.post('/api/apify-webhook', async (req, res) => {
         // Update client run record with post harvesting metrics if we have a run ID
         try {
           const airtableService = require('../services/airtableService');
+          const runIdUtils = require('../utils/runIdUtils');
           
           // Try to update client run record with posts harvested
           if (runId) {
-            await airtableService.updateClientRun(runId, clientId, {
+            // Make sure we're using a client-suffixed run ID for consistency
+            const clientSuffixedRunId = runIdUtils.addClientSuffix(runId, clientId);
+            console.log(`[ApifyWebhook] Using client-suffixed run ID: ${clientSuffixedRunId} (from ${runId})`);
+            
+            await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
               'Total Posts Harvested': posts.length
             });
-            console.log(`[ApifyWebhook] Updated client run ${runId} record for ${clientId} with ${posts.length} posts harvested`);
+            console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId} with ${posts.length} posts harvested`);
           }
         } catch (metricError) {
           console.error(`[ApifyWebhook] Failed to update post harvesting metrics: ${metricError.message}`);
