@@ -251,12 +251,12 @@ console.log(`🔍 TRACE: About to define triggerOperation function`);
 async function triggerOperation(baseUrl, clientId, operation, params = {}, authHeaders = {}) {
     const operationMap = {
         'lead_scoring': {
-            url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}`,
+            url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}&parentRunId=${runId}`,
             method: 'GET',
             headers: { 'x-webhook-secret': params.secret }
         },
         'post_harvesting': {
-            url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}`,
+            url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}&parentRunId=${runId}`,
             method: 'POST',
             headers: { 'Authorization': `Bearer ${params.secret}` }
         },
@@ -264,7 +264,7 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
             url: `/run-post-batch-score-v2`,
             method: 'POST',
             headers: { 'x-webhook-secret': params.secret },
-            body: { stream: params.stream, limit: params.limit, clientId: clientId }
+            body: { stream: params.stream, limit: params.limit, clientId: clientId, parentRunId: runId }
         }
     };
     
@@ -522,9 +522,10 @@ async function main() {
             for (let opIndex = 0; opIndex < workflow.operationsToRun.length; opIndex++) {
                 const operation = workflow.operationsToRun[opIndex];
                 log(`   🚀 Starting operation [${opIndex + 1}/${workflow.operationsToRun.length}] ${operation}...`);
+                // Pass the parent run ID (our current run ID) to maintain consistent tracking
                 const operationParams = operation === 'post_scoring' 
-                    ? { stream, limit: postScoringLimit, secret }
-                    : { stream, limit: leadScoringLimit, secret };
+                    ? { stream, limit: postScoringLimit, secret, parentRunId: runId }
+                    : { stream, limit: leadScoringLimit, secret, parentRunId: runId };
                     
                 const authRequired = ['post_harvesting', 'post_scoring'].includes(operation);
                 const headers = authRequired ? authHeaders : {};

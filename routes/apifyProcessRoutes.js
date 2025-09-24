@@ -99,6 +99,9 @@ router.post('/api/apify/process-client', async (req, res) => {
     const clientId = req.headers['x-client-id'];
     if (!clientId) return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
 
+    // Get parent run ID from query params or body (if provided)
+    const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
+
     const client = await getClientById(clientId);
     console.log(`[apify/process-client] Processing client: ${clientId}`);
     if (!client) {
@@ -248,13 +251,24 @@ router.post('/api/apify/process-client', async (req, res) => {
   // Update client run record with post harvest metrics
   try {
     const airtableService = require('../services/airtableService');
-    // Get the latest run ID from the runs array
-    const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
-    if (latestRun && latestRun.runId) {
-      await airtableService.updateClientRun(latestRun.runId, clientId, {
+    // Use parentRunId if provided, otherwise fall back to the latest run ID
+    let runIdToUse;
+    
+    if (parentRunId) {
+      // If we have a parent run ID from Smart Resume, use it for consistent tracking
+      runIdToUse = parentRunId;
+      console.log(`[apify/process-client] Using parent run ID for metrics: ${parentRunId}`);
+    } else {
+      // Fall back to latest run ID from this process
+      const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
+      runIdToUse = latestRun?.runId;
+    }
+    
+    if (runIdToUse) {
+      await airtableService.updateClientRun(runIdToUse, clientId, {
         'Total Posts Harvested': postsToday
       });
-      console.log(`[apify/process-client] Updated client run record for ${clientId} with ${postsToday} posts harvested`);
+      console.log(`[apify/process-client] Updated client run record for ${clientId} with ${postsToday} posts harvested (Run ID: ${runIdToUse})`);
     }
   } catch (metricError) {
     console.error(`[apify/process-client] Failed to update post harvesting metrics: ${metricError.message}`);
@@ -549,6 +563,7 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
 
     const stream = parseInt(req.query.stream) || 1;
     const singleClientId = req.query.clientId; // Optional: process single client
+    const parentRunId = req.query.parentRunId; // Optional: parent run ID from Smart Resume
     const { generateJobId, setJobStatus, setProcessingStream, getActiveClientsByStream } = require('../services/clientService');
     
     // Generate job ID and set initial status
@@ -567,7 +582,7 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
     });
 
     // Start background processing
-    processPostHarvestingInBackground(jobId, stream, secret, singleClientId);
+    processPostHarvestingInBackground(jobId, stream, secret, singleClientId, parentRunId);
 
   } catch (e) {
     console.error('[apify/process-level2-v2] error:', e.message);
@@ -576,7 +591,7 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
 });
 
 // Background processing function for post harvesting
-async function processPostHarvestingInBackground(jobId, stream, secret, singleClientId) {
+async function processPostHarvestingInBackground(jobId, stream, secret, singleClientId, parentRunId) {
   const {
     getAllActiveClients,
     setJobStatus,
@@ -672,7 +687,7 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
 
       try {
         // Set up client timeout
-        const clientPromise = processClientForHarvesting(client.clientId, secret, baseUrl);
+        const clientPromise = processClientForHarvesting(client.clientId, secret, baseUrl, parentRunId);
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Client timeout')), clientTimeoutMs)
         );
@@ -713,6 +728,24 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
     
     harvestLogger.summary(`Job ${jobId} completed. Processed: ${processedCount}, Harvested: ${harvestedCount}, Errors: ${errorCount}, Duration: ${finalDuration}`);
 
+    // If we have a parent run ID, update the client run record with the harvested posts count
+    if (parentRunId) {
+      try {
+        const airtableService = require('../services/airtableService');
+        for (const client of candidates) {
+          await airtableService.updateClientRun(parentRunId, client.clientId, {
+            'Total Posts Harvested': harvestedCount,
+            'Last Run Date': new Date().toISOString(),
+            'Last Run Time': finalDuration
+          });
+          harvestLogger.info(`Updated client run record for ${client.clientId} with ${harvestedCount} posts harvested using parent run ID: ${parentRunId}`);
+        }
+      } catch (metricError) {
+        harvestLogger.error(`Failed to update post harvesting metrics with parent run ID: ${metricError.message}`);
+        // Continue execution even if metrics update fails
+      }
+    }
+
     await setJobStatus(null, 'post_harvesting', 'COMPLETED', jobId, {
       lastRunDate: new Date().toISOString(),
       lastRunTime: finalDuration,
@@ -734,15 +767,18 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
 }
 
 // Helper function to process individual client for harvesting
-async function processClientForHarvesting(clientId, secret, baseUrl) {
-  const url = `${baseUrl}/api/apify/process-client`;
+async function processClientForHarvesting(clientId, secret, baseUrl, parentRunId) {
+  const url = `${baseUrl}/api/apify/process-client${parentRunId ? `?parentRunId=${encodeURIComponent(parentRunId)}` : ''}`;
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${secret}`,
       'x-client-id': clientId,
       'Content-Type': 'application/json'
-    }
+    },
+    body: JSON.stringify({
+      parentRunId: parentRunId // Also include in body for safety
+    })
   });
   const data = await resp.json().catch(() => ({}));
   return { status: resp.status, data };
