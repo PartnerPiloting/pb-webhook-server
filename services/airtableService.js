@@ -289,12 +289,23 @@ async function updateClientRun(runId, clientId, updates) {
   console.log(`Airtable Service: Updating client run for ${clientId} in run ${runId}`);
   
   try {
-    // First get or create the client run record
-    const record = await createClientRunRecord(runId, clientId, clientId); // Using clientId as name fallback
+    // Get the record ID from cache
+    const cachedRecordId = recordCache.getClientRunRecordId(runId, clientId);
+    
+    // If we don't have it cached, attempt to find or create the record
+    let recordId;
+    if (cachedRecordId) {
+      console.log(`Airtable Service: Using cached record ID ${cachedRecordId} for ${clientId} in run ${runId}`);
+      recordId = cachedRecordId;
+    } else {
+      // If no cached record, we need to get or create one
+      const record = await createClientRunRecord(runId, clientId, clientId); // Using clientId as name fallback
+      recordId = record.id;
+    }
     
     // Now update it
-    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(record.id, updates);
-    console.log(`Airtable Service: Updated client run record ${record.id}`);
+    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(recordId, updates);
+    console.log(`Airtable Service: Updated client run record ${recordId}`);
     
     return updated;
   } catch (error) {
