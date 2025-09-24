@@ -18,6 +18,12 @@ try {
     console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
 }
 
+// Import runIdUtils for handling client-suffixed run IDs
+const runIdUtils = require('../utils/runIdUtils');
+
+// Import record caching service
+const recordCache = require('./recordCache');
+
 // Constants for table names
 const JOB_TRACKING_TABLE = 'Job Tracking';
 const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
@@ -154,9 +160,41 @@ async function createJobTrackingRecord(runId, stream) {
 async function createClientRunRecord(runId, clientId, clientName) {
   const base = initialize();
   
-  console.log(`Airtable Service: Creating client run record for ${clientId} in run ${runId}`);
+  // Check if we already have a record ID in the cache
+  const cachedRecordId = recordCache.getClientRunRecordId(runId, clientId);
   
+  if (cachedRecordId) {
+    console.log(`Airtable Service: Using cached record ID ${cachedRecordId} for ${clientId} in run ${runId}`);
+    try {
+      // Verify the record exists
+      const record = await base(CLIENT_RUN_RESULTS_TABLE).find(cachedRecordId);
+      console.log(`Airtable Service: Found existing record with ID ${cachedRecordId} for ${clientId} in run ${runId}`);
+      return record;
+    } catch (err) {
+      console.log(`Airtable Service: Cached record ID ${cachedRecordId} no longer valid, will create new record`);
+      // Fall through to create a new record
+    }
+  }
+  
+  // Check if a record already exists for this client and run
   try {
+    console.log(`Airtable Service: Checking for existing client run record for ${clientId} in run ${runId}`);
+    const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: `AND({Run ID} = '${runId}', {Client ID} = '${clientId}')`
+    }).firstPage();
+    
+    if (existingRecords && existingRecords.length > 0) {
+      console.log(`Airtable Service: Found existing client run record ID: ${existingRecords[0].id} for ${clientId} in run ${runId}`);
+      
+      // Cache the record ID for future use
+      recordCache.storeClientRunRecordId(runId, clientId, existingRecords[0].id);
+      
+      return existingRecords[0];
+    }
+    
+    // If we get here, no existing record was found
+    console.log(`Airtable Service: Creating new client run record for ${clientId} in run ${runId}`);
+    
     const records = await base(CLIENT_RUN_RESULTS_TABLE).create([
       {
         fields: {
@@ -175,6 +213,9 @@ async function createClientRunRecord(runId, clientId, clientName) {
       }
     ]);
 
+    // Cache the new record ID
+    recordCache.storeClientRunRecordId(runId, clientId, records[0].id);
+    
     console.log(`Airtable Service: Created client run record ID: ${records[0].id}`);
     return records[0];
   } catch (error) {
@@ -185,28 +226,31 @@ async function createClientRunRecord(runId, clientId, clientName) {
 
 /**
  * Update an existing job tracking record
- * @param {string} runId - The run ID to update
+ * @param {string} runId - The run ID to update (may contain client suffix)
  * @param {Object} updates - Field updates to apply
  * @returns {Promise<Object>} The updated record
  */
 async function updateJobTracking(runId, updates) {
   const base = initialize();
   
-  console.log(`Airtable Service: Updating job tracking for ${runId}`);
+  // Strip client suffix from runId to get the base run ID used for tracking
+  const baseRunId = runIdUtils.stripClientSuffix(runId);
+  
+  console.log(`Airtable Service: Updating job tracking for ${runId} (base run ID: ${baseRunId})`);
   
   try {
-    // Find all records with this run ID
+    // Find all records with the base run ID (without client suffix)
     const records = await base(JOB_TRACKING_TABLE).select({
-      filterByFormula: `{Run ID} = '${runId}'`
+      filterByFormula: `{Run ID} = '${baseRunId}'`
     }).firstPage();
     
     if (!records || records.length === 0) {
-      throw new Error(`Job tracking record not found for run ID: ${runId}`);
+      throw new Error(`Job tracking record not found for run ID: ${runId} (base: ${baseRunId})`);
     }
     
     // Handle case where there are multiple records with the same run ID
     if (records.length > 1) {
-      console.warn(`WARNING: Found ${records.length} records with the same Run ID: ${runId}. Updating the most recent one.`);
+      console.warn(`WARNING: Found ${records.length} records with the same Run ID: ${baseRunId}. Updating the most recent one.`);
       
       // Sort by creation time and update the most recent one
       records.sort((a, b) => {
@@ -242,20 +286,12 @@ async function updateClientRun(runId, clientId, updates) {
   console.log(`Airtable Service: Updating client run for ${clientId} in run ${runId}`);
   
   try {
-    // Find the record first
-    const records = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${runId}', {Client ID} = '${clientId}')`
-    }).firstPage();
+    // First get or create the client run record
+    const record = await createClientRunRecord(runId, clientId, clientId); // Using clientId as name fallback
     
-    if (!records || records.length === 0) {
-      throw new Error(`Client run record not found for run ID: ${runId} and client ID: ${clientId}`);
-    }
-    
-    const recordId = records[0].id;
-    
-    // Update the record
-    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(recordId, updates);
-    console.log(`Airtable Service: Updated client run record ${recordId}`);
+    // Now update it
+    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(record.id, updates);
+    console.log(`Airtable Service: Updated client run record ${record.id}`);
     
     return updated;
   } catch (error) {
@@ -299,26 +335,35 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
   };
   
   if (notes) {
-    updates['System Notes'] = `${notes}\nProcessing ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+    updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   }
+  
+  // Log the cache key we're using
+  console.log(`Airtable Service: Completing client run for ${clientId} in run ${runId}`);
+  console.log(`Airtable Service: Cached record ID: ${recordCache.getClientRunRecordId(runId, clientId) || 'none'}`);
   
   return await updateClientRun(runId, clientId, updates);
 }
 
 /**
- * Calculate and update aggregated metrics for the job tracking record
- * @param {string} runId - The run ID to update
+ * Update aggregate metrics for a run by combining client results
+ * @param {string} runId - The run ID to update (may contain client suffix)
  * @returns {Promise<Object>} The updated record
  */
 async function updateAggregateMetrics(runId) {
   const base = initialize();
   
-  console.log(`Airtable Service: Updating aggregate metrics for ${runId}`);
+  // Get the base run ID (without client suffix) for lookup in client records
+  // Since client record run IDs may include their own client suffixes
+  const baseRunId = runIdUtils.stripClientSuffix(runId);
+  
+  console.log(`Airtable Service: Updating aggregate metrics for ${runId} (base run ID: ${baseRunId})`);
   
   try {
-    // Get all client run records for this run ID
+    // Get all client run records for this run ID using base run ID pattern match
+    // This handles cases where client records have varied client suffixes
     const clientRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `{Run ID} = '${runId}'`
+      filterByFormula: `FIND('${baseRunId}', {Run ID}) = 1`
     }).all();
     
     if (!clientRecords || clientRecords.length === 0) {
@@ -339,6 +384,8 @@ async function updateAggregateMetrics(runId) {
       'Post Scoring Tokens': 0
     };
     
+    console.log(`Found ${clientRecords.length} client records for base run ID ${baseRunId}`);
+    
     // Sum up metrics from all client records
     clientRecords.forEach(record => {
       aggregates['Total Profiles Examined'] += Number(record.get('Profiles Examined for Scoring') || 0);
@@ -350,8 +397,8 @@ async function updateAggregateMetrics(runId) {
       aggregates['Post Scoring Tokens'] += Number(record.get('Post Scoring Tokens') || 0);
     });
     
-    // Update the job tracking record
-    return await updateJobTracking(runId, aggregates);
+    // Update the job tracking record using the base run ID
+    return await updateJobTracking(baseRunId, aggregates);
   } catch (error) {
     console.error(`Airtable Service ERROR: Failed to update aggregate metrics: ${error.message}`);
     throw error;

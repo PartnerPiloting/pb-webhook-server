@@ -7,6 +7,7 @@ const { getClientBase, createBaseInstance } = require('../config/airtableClient'
 const { getClientById } = require('../services/clientService');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
+const runIdUtils = require('../utils/runIdUtils');
 
 // Check if we're in batch process testing mode
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
@@ -750,22 +751,9 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
       try {
         const airtableService = require('../services/airtableService');
         for (const client of candidates) {
-          // Create a client-specific version of the parent run ID
-          let baseRunId = parentRunId;
-          
-          // More comprehensive check for client suffix - handles both -C[ClientId] and -C[Client-Name]
-          // Pattern: Look for -C followed by any characters until the end or the next dash
-          const clientSuffixRegex = /-C[^-]+-?[^-]*/;
-          const match = baseRunId.match(clientSuffixRegex);
-          
-          if (match) {
-            // Remove the existing client suffix
-            baseRunId = baseRunId.substring(0, match.index);
-            harvestLogger.info(`Removed existing client suffix, base run ID: ${baseRunId}`);
-          }
-          
-          // Add client-specific suffix using standardized format
-          const clientRunId = `${baseRunId}-C${client.clientId}`;
+          // Create a client-specific version of the parent run ID using utility functions
+          const baseRunId = runIdUtils.stripClientSuffix(parentRunId);
+          const clientRunId = runIdUtils.addClientSuffix(baseRunId, client.clientId);
           harvestLogger.info(`Generated client-specific run ID: ${clientRunId} from parent ID ${parentRunId}`);
           
           await airtableService.updateClientRun(clientRunId, client.clientId, {

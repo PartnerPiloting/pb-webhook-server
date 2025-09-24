@@ -98,16 +98,15 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     
     // Add debug logging for table discovery
     try {
-        const tables = await clientBase.tables();
-        log.debug(`Available tables in base: ${tables.map(t => t.name).join(', ')}`);
-        
-        // Debug - check if Leads table exists
-        const leadsTable = tables.find(t => t.name === 'Leads');
-        if (!leadsTable) {
-            log.error(`'Leads' table not found in client base`);
-        } else {
-            log.debug(`'Leads' table found, id: ${leadsTable.id}`);
-            
+        // NOTE: clientBase.tables() doesn't exist in the Airtable API
+        // Instead, we'll check if we can access the Leads table directly
+        try {
+            await clientBase('Leads').select({ maxRecords: 1 }).all();
+            log.debug(`'Leads' table found and accessible`);
+        } catch (tableError) {
+            log.error(`'Leads' table not found or not accessible in client base: ${tableError.message}`);
+        }
+    
             // Debug - check if Scoring Status field exists
             try {
                 const fields = await clientBase('Leads').fields();

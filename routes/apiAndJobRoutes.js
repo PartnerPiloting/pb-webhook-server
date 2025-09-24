@@ -3,7 +3,7 @@
 const express = require("express");
 const router = express.Router();
 const fetch = (...args) =>
-  import("node-fetch").then(({ default: f }) => f(...args));
+  import("node-fetch").then(({ default: f }) => f(...args));
 const dirtyJSON = require('dirty-json');
 
 // ---------------------------------------------------------------
@@ -13,8 +13,7 @@ const geminiConfig = require("../config/geminiClient.js");
 const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
-
-const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
+const runIdUtils = require('../utils/runIdUtils.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
 const { scoreLeadNow } = require("../singleScorer.js");
@@ -540,21 +539,10 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       try {
         // Generate a unique client-specific run ID based on the parent run ID
         // This ensures each client gets its own unique run ID while maintaining the connection to the job
-        let baseRunId = runId;
         
-        // More comprehensive check for client suffix - handles both -C[ClientId] and -C[Client-Name]
-        // Pattern: Look for -C followed by any characters until the end or the next dash
-        const clientSuffixRegex = /-C[^-]+-?[^-]*/;
-        const match = baseRunId.match(clientSuffixRegex);
-        
-        if (match) {
-          // Remove the existing client suffix
-          baseRunId = baseRunId.substring(0, match.index);
-          console.log(`Removed existing client suffix, base run ID: ${baseRunId}`);
-        }
-        
-        // Add client-specific suffix using standardized format
-        const clientRunId = `${baseRunId}-C${client.clientId}`;
+        // Strip any existing client suffix and add the new client suffix using utility functions
+        const baseRunId = runIdUtils.stripClientSuffix(runId);
+        const clientRunId = runIdUtils.addClientSuffix(baseRunId, client.clientId);
         console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
         
         // Set up client timeout
