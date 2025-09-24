@@ -164,21 +164,56 @@ async function createJobTrackingRecord(runId, stream) {
 async function createClientRunRecord(runId, clientId, clientName) {
   const base = initialize();
   
-  // Use runIdService to normalize the run ID with client suffix
-  const clientRunId = runIdService.normalizeRunId(runId, clientId);
+  // CLEAN SLATE APPROACH: Always generate a new standardized ID
+  const standardRunId = runIdService.normalizeRunId(null, clientId);
   
-  console.log(`Airtable Service: Processing run record for clientId ${clientId}`);
-  console.log(`Airtable Service: Original runId: ${runId}, Normalized runId: ${clientRunId}`);
+  console.log(`Airtable Service: Creating run record for client ${clientId}`);
+  console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
   
-  // Check if we already have a record ID in runIdService
-  const cachedRecordId = runIdService.getRunRecordId(clientRunId, clientId);
+  // STEP 1: First check for any existing RUNNING record for this client
+  // This is the most reliable way to prevent duplicates
+  try {
+    console.log(`Airtable Service: Checking for any RUNNING records for client ${clientId}`);
+    const runningRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: `AND({Client ID} = '${clientId}', {Status} = 'Running')`,
+      maxRecords: 1,
+      sort: [{ field: "Start Time", direction: "desc" }]
+    }).firstPage();
+    
+    if (runningRecords && runningRecords.length > 0) {
+      const existingRecord = runningRecords[0];
+      const existingRunId = existingRecord.fields['Run ID'];
+      console.log(`Airtable Service: Found existing RUNNING record ${existingRecord.id} with run ID ${existingRunId}`);
+      
+      // Register with our normalized ID for future lookups
+      runIdService.registerRunRecord(normalizedRunId, clientId, existingRecord.id);
+      
+      // Update the record to use our standardized format
+      if (existingRunId !== normalizedRunId) {
+        console.log(`Airtable Service: Updating record to use standardized run ID: ${normalizedRunId}`);
+        await base(CLIENT_RUN_RESULTS_TABLE).update(existingRecord.id, {
+          'Run ID': normalizedRunId
+        });
+      }
+      
+      return existingRecord;
+    }
+    
+    console.log(`Airtable Service: No running records found for client ${clientId}`);
+  } catch (error) {
+    console.error(`Airtable Service ERROR during running records check: ${error.message}`);
+    // Continue even if this check fails
+  }
+  
+  // STEP 2: Check cache for existing record ID
+  const cachedRecordId = runIdService.getRunRecordId(normalizedRunId, clientId);
   
   if (cachedRecordId) {
-    console.log(`Airtable Service: Using cached record ID ${cachedRecordId} for ${clientId} in run ${clientRunId}`);
+    console.log(`Airtable Service: Using cached record ID ${cachedRecordId}`);
     try {
       // Verify the record exists
       const record = await base(CLIENT_RUN_RESULTS_TABLE).find(cachedRecordId);
-      console.log(`Airtable Service: Found existing record with ID ${cachedRecordId} for ${clientId} in run ${clientRunId}`);
+      console.log(`Airtable Service: Found existing record with ID ${cachedRecordId}`);
       return record;
     } catch (err) {
       console.log(`Airtable Service: Cached record ID ${cachedRecordId} no longer valid, will create new record`);
@@ -186,50 +221,31 @@ async function createClientRunRecord(runId, clientId, clientName) {
     }
   }
   
-  // Check if a record already exists for this client and run
+  // STEP 3: Check if a record already exists with this run ID
   try {
-    console.log(`Airtable Service: Checking for existing client run record for ${clientId} in run ${clientRunId}`);
+    console.log(`Airtable Service: Checking for existing record with run ID ${normalizedRunId}`);
     
-    // First try exact match with client-suffixed run ID
-    let existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${clientRunId}', {Client ID} = '${clientId}')`
+    const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: `AND({Run ID} = '${normalizedRunId}', {Client ID} = '${clientId}')`,
+      maxRecords: 1
     }).firstPage();
     
-    // If not found, also check with base run ID in case it was created without suffix
-    if (!existingRecords || existingRecords.length === 0) {
-      const baseRunId = runIdUtils.stripClientSuffix(runId);
-      console.log(`Airtable Service: No record found with client suffix, checking base run ID ${baseRunId}`);
-      
-      existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `AND({Run ID} = '${baseRunId}', {Client ID} = '${clientId}')`
-      }).firstPage();
-    }
-    
     if (existingRecords && existingRecords.length > 0) {
-      console.log(`Airtable Service: Found existing client run record ID: ${existingRecords[0].id} for ${clientId} in run ${clientRunId}`);
+      console.log(`Airtable Service: Found existing record ID: ${existingRecords[0].id}`);
       
-      // Register the record ID with runIdService for future use
-      runIdService.registerRunRecord(clientRunId, clientId, existingRecords[0].id);
-      
-      // Update the record to use the correct normalized run ID if needed
-      const currentRunId = existingRecords[0].fields['Run ID'];
-      if (currentRunId !== clientRunId) {
-        console.log(`Airtable Service: Updating record to use correct normalized run ID: ${clientRunId}`);
-        await base(CLIENT_RUN_RESULTS_TABLE).update(existingRecords[0].id, {
-          'Run ID': clientRunId
-        });
-      }
+      // Register the record ID for future lookups
+      runIdService.registerRunRecord(normalizedRunId, clientId, existingRecords[0].id);
       
       return existingRecords[0];
     }
     
-    // If we get here, no existing record was found
-    console.log(`Airtable Service: Creating new client run record for ${clientId} in run ${clientRunId}`);
+    // CLEAN SLATE: Create a new record with our standardized ID
+    console.log(`Airtable Service: Creating new client run record for ${clientId} with standardized ID ${standardRunId}`);
     
     const records = await base(CLIENT_RUN_RESULTS_TABLE).create([
       {
         fields: {
-          'Run ID': clientRunId, // Always use client-suffixed run ID
+          'Run ID': standardRunId, // Always use our standardized timestamp format
           'Client ID': clientId,
           'Client Name': clientName,
           'Start Time': new Date().toISOString(),
@@ -245,7 +261,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
     ]);
 
     // Register the new record ID with runIdService
-    runIdService.registerRunRecord(clientRunId, clientId, records[0].id);
+    runIdService.registerRunRecord(standardRunId, clientId, records[0].id);
     
     console.log(`Airtable Service: Created client run record ID: ${records[0].id}`);
     return records[0];
@@ -314,88 +330,43 @@ async function updateJobTracking(runId, updates) {
 async function updateClientRun(runId, clientId, updates) {
   const base = initialize();
   
-  // Use runIdService to normalize the run ID
-  const normalizedRunId = runIdService.normalizeRunId(runId, clientId);
+  // CLEAN SLATE: Always generate a new standardized ID
+  const standardRunId = runIdService.normalizeRunId(null, clientId);
   
   console.log(`Airtable Service: Updating client run for ${clientId}`);
-  console.log(`Airtable Service: Original run ID: ${runId}, Normalized run ID: ${normalizedRunId}`);
+  console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
   
   try {
-    // Get the record ID from runIdService using the normalized run ID
-    let cachedRecordId = runIdService.getRunRecordId(normalizedRunId, clientId);
+    // CLEAN SLATE APPROACH: Only two steps:
+    // 1. Check for any RUNNING record for this client
+    // 2. If not found, create a new one
     
-    // Also check cache with the original run ID if different
-    if (!cachedRecordId && runId !== normalizedRunId) {
-      cachedRecordId = runIdService.getRunRecordId(runId, clientId);
-    }
+    // Step 1: Check for a running record
+    let recordId = null;
     
-    // If we don't have it cached, attempt to FIND the record in Airtable before creating
-    let recordId;
-    if (cachedRecordId) {
-      console.log(`Airtable Service: Using cached record ID ${cachedRecordId} for ${clientId} in run ${runId}`);
-      recordId = cachedRecordId;
+    console.log(`Airtable Service: Checking for any RUNNING records for client ${clientId}`);
+    const runningRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: `AND({Client ID} = '${clientId}', {Status} = 'Running')`,
+      maxRecords: 1,
+      sort: [{ field: "Start Time", direction: "desc" }]
+    }).firstPage();
+    
+    if (runningRecords && runningRecords.length > 0) {
+      recordId = runningRecords[0].id;
+      const existingRunId = runningRecords[0].fields['Run ID'];
+      
+      console.log(`Airtable Service: Found RUNNING record ${recordId} with run ID ${existingRunId}`);
+      
+      // Register with our standardized ID for future lookups
+      runIdService.registerRunRecord(standardRunId, clientId, recordId);
+      
+      // Always update to our standardized ID for consistency
+      updates['Run ID'] = standardRunId;
     } else {
-      // SEARCH FOR EXISTING RECORD FIRST instead of immediately creating one
-      console.log(`Airtable Service: No cached record found, searching Airtable for run records with client ${clientId}`);
-      
-      // Build a list of all possible run ID formats to check
-      const possibleRunIds = [
-        runId, 
-        normalizedRunId
-      ];
-      
-      // Add base run ID without client suffix
-      const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
-      possibleRunIds.push(baseRunId);
-      
-      // Add version with C prefix
-      const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
-      possibleRunIds.push(`${baseRunId}-C${strippedClientId}`);
-      
-      // Also check for random-string type IDs that end with the client name
-      if (!runId.includes(clientId)) {
-        possibleRunIds.push(`${runId}-${clientId}`);
-      }
-      
-      // Remove duplicates
-      const uniqueRunIds = [...new Set(possibleRunIds)];
-      
-      console.log(`Airtable Service: Checking for run IDs: ${uniqueRunIds.join(', ')}`);
-      
-      // Build OR formula for all possible run IDs
-      const formulaParts = uniqueRunIds.map(id => `{Run ID} = '${id}'`);
-      const formula = `AND(OR(${formulaParts.join(',')}), {Client ID} = '${clientId}')`;
-      
-      // Search for any matching records
-      const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: formula,
-        maxRecords: 10, // Get multiple if there are duplicates
-        sort: [{ field: "Start Time", direction: "desc" }] // Get most recent first using Start Time field
-      }).firstPage();
-      
-      // Only create a new record if none found
-      if (existingRecords && existingRecords.length > 0) {
-        // Use the most recent record if there are multiple
-        recordId = existingRecords[0].id;
-        const foundRunId = existingRecords[0].fields['Run ID'];
-        
-        console.log(`Airtable Service: Found ${existingRecords.length} existing record(s). Using ${recordId} with run ID ${foundRunId}`);
-        
-        if (existingRecords.length > 1) {
-          console.log(`Airtable Service: WARNING - Found multiple records for same run/client. This indicates potential duplication.`);
-        }
-        
-        // Register in cache for future use with both original and normalized ID
-        runIdService.registerRunRecord(runId, clientId, recordId);
-        if (runId !== normalizedRunId) {
-          runIdService.registerRunRecord(normalizedRunId, clientId, recordId);
-        }
-      } else {
-        // No record found - now it's safe to create one
-        console.log(`Airtable Service: No existing record found, creating new for ${clientId} in run ${normalizedRunId}`);
-        const record = await createClientRunRecord(runId, clientId, clientId); // Using clientId as name fallback
-        recordId = record.id;
-      }
+      // No running record found - create a new one
+      console.log(`Airtable Service: No RUNNING record found, creating new record for client ${clientId}`);
+      const record = await createClientRunRecord(standardRunId, clientId, clientId);
+      recordId = record.id;
     }
     
     // Now update it
@@ -447,16 +418,14 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
     updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   }
   
-  // Use runIdService to normalize the run ID
+  // Generate a standardized run ID
   const normalizedRunId = runIdService.normalizeRunId(runId, clientId);
   
-  // Log the run ID we're using
+  // Log what we're doing
   console.log(`Airtable Service: Completing client run for ${clientId}`);
-  console.log(`Airtable Service: Original runId: ${runId}, Normalized runId: ${normalizedRunId}`);
-  console.log(`Airtable Service: Cached record ID: ${runIdService.getRunRecordId(normalizedRunId, clientId) || 'none'}`);
+  console.log(`Airtable Service: Using standardized run ID: ${normalizedRunId}`);
   
-  // Use the normalized run ID for the update
-  // updateClientRun will handle normalization
+  // updateClientRun will find the record - using RUNNING status first if possible
   return await updateClientRun(normalizedRunId, clientId, updates);
 }
 
@@ -468,15 +437,15 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
 async function updateAggregateMetrics(runId) {
   const base = initialize();
   
-  // Get the base run ID (without client suffix) for lookup in client records
-  const baseRunId = runIdUtils.stripClientSuffix(runId);
+  // Extract the timestamp base ID (without client suffix)
+  // Our format is YYMMDD-HHMMSS-ClientID, so we take just YYMMDD-HHMMSS
+  const baseRunId = runIdUtils.getBaseRunId(runId);
   
   console.log(`Airtable Service: Updating aggregate metrics for ${runId} (base run ID: ${baseRunId})`);
   
   try {
-    // Get all client run records for this run by searching with a FIND formula
-    // This will match any record where the Run ID starts with the base run ID
-    // Which will match both exact matches and client-suffixed variants
+    // Find all client records with the same timestamp base
+    // This should find all related records regardless of client
     const clientRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
       filterByFormula: `FIND('${baseRunId}', {Run ID}) = 1`
     }).all();

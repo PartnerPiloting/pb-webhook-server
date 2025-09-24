@@ -26,14 +26,12 @@ function getNextSequence() {
 }
 
 /**
- * Generate a new standardized run ID
+ * Generate a new simplified run ID
  * @param {string} clientId - The client ID to include in the run ID
- * @param {string|number} [taskId=null] - Optional task identifier
- * @param {string|number} [stepId=null] - Optional step identifier
- * @returns {string} A new standardized run ID with client suffix
+ * @returns {string} A new simplified run ID with timestamp and client suffix
  */
-function generateRunId(clientId, taskId = null, stepId = null) {
-  // Generate date part YYMMDD
+function generateRunId(clientId) {
+  // Generate timestamp part YYMMDD-HHMMSS
   const now = new Date();
   const datePart = [
     now.getFullYear().toString().slice(2),
@@ -41,13 +39,14 @@ function generateRunId(clientId, taskId = null, stepId = null) {
     now.getDate().toString().padStart(2, '0')
   ].join('');
   
-  // Generate sequence part
-  const sequencePart = getNextSequence();
+  const timePart = [
+    now.getHours().toString().padStart(2, '0'),
+    now.getMinutes().toString().padStart(2, '0'),
+    now.getSeconds().toString().padStart(2, '0')
+  ].join('');
   
-  // Assemble base ID
-  let baseId = `SR-${datePart}-${sequencePart}`;
-  if (taskId) baseId += `-T${taskId}`;
-  if (stepId) baseId += `-S${stepId}`;
+  // Assemble base ID with timestamp only
+  const baseId = `${datePart}-${timePart}`;
   
   // Add client suffix
   return normalizeRunId(baseId, clientId);
@@ -55,27 +54,38 @@ function generateRunId(clientId, taskId = null, stepId = null) {
 
 /**
  * Create a consistent run ID format for any input
- * @param {string} runId - The run ID to normalize
- * @param {string} clientId - The client ID to ensure is added
- * @returns {string} A normalized run ID with proper client suffix
+ * @param {string} runId - The run ID to normalize (ignored with clean slate approach)
+ * @param {string} clientId - The client ID to include
+ * @returns {string} A normalized run ID with the timestamp-clientId format
  */
 function normalizeRunId(runId, clientId) {
-  if (!runId) return null;
-  if (!clientId) return runId;
+  if (!clientId) return null;
   
-  // First check if the client ID is already in the run ID
-  if (runIdUtils.hasSpecificClientSuffix(runId, clientId)) {
-    console.log(`[runIdService] Client ID ${clientId} already in run ID ${runId}, returning as is`);
-    return runId;
-  }
+  // Clean slate approach: Always generate a new timestamp-based ID
+  // Completely ignore the input runId
+  const now = new Date();
   
-  const baseId = runIdUtils.getBaseRunId(runId);
+  // Format: YYMMDD-HHMMSS-ClientID
+  const datePart = [
+    now.getFullYear().toString().slice(2),
+    (now.getMonth() + 1).toString().padStart(2, '0'),
+    now.getDate().toString().padStart(2, '0')
+  ].join('');
   
-  // Strip existing C prefix if present
-  const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  const timePart = [
+    now.getHours().toString().padStart(2, '0'),
+    now.getMinutes().toString().padStart(2, '0'),
+    now.getSeconds().toString().padStart(2, '0')
+  ].join('');
   
-  // Return without the "C" prefix
-  return `${baseId}-${strippedClientId}`;
+  // Always use the clean clientId without any prefixes
+  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  
+  // Create the standardized format
+  const standardId = `${datePart}-${timePart}-${cleanClientId}`;
+  
+  console.log(`[runIdService] Created new standardized ID: ${standardId} for client ${clientId}`);
+  return standardId;
 }
 
 /**
@@ -87,11 +97,11 @@ function normalizeRunId(runId, clientId) {
  * @returns {string} The normalized run ID
  */
 function registerRunRecord(runId, clientId, recordId, metadata = {}) {
+  // CRITICAL FIX: Always normalize the run ID for consistent key generation
   const normalizedId = normalizeRunId(runId, clientId);
-  // Use just the normalized ID as the key - client ID is already part of it
-  const key = normalizedId;
   
-  runRecordCache[key] = {
+  // SIMPLIFIED: Store each record with just its normalized ID as the key
+  runRecordCache[normalizedId] = {
     recordId,
     baseId: runIdUtils.getBaseRunId(normalizedId),
     clientId,
@@ -100,6 +110,21 @@ function registerRunRecord(runId, clientId, recordId, metadata = {}) {
   };
   
   console.log(`[runIdService] Registered record ${recordId} for run ${normalizedId} (client ${clientId})`);
+  
+  // BONUS: Also register the base run ID (without client suffix) for additional reliability
+  const baseRunId = runIdUtils.getBaseRunId(runId);
+  if (baseRunId !== normalizedId) {
+    const baseKey = normalizeRunId(baseRunId, clientId);
+    runRecordCache[baseKey] = {
+      recordId,
+      baseId: runIdUtils.getBaseRunId(normalizedId),
+      clientId,
+      timestamp: new Date().toISOString(),
+      metadata
+    };
+    console.log(`[runIdService] Also registered record under base run ID ${baseKey}`);
+  }
+  
   return normalizedId;
 }
 
@@ -110,13 +135,12 @@ function registerRunRecord(runId, clientId, recordId, metadata = {}) {
  * @returns {string|null} The Airtable record ID or null if not found
  */
 function getRunRecordId(runId, clientId) {
+  // CRITICAL FIX: Consistently use normalized run ID as the key
   const normalizedId = normalizeRunId(runId, clientId);
-  // Use just the normalized ID as the key - client ID is already part of it
-  const key = normalizedId;
   
-  if (runRecordCache[key]) {
-    console.log(`[runIdService] Found cached record ${runRecordCache[key].recordId} for run ${normalizedId}`);
-    return runRecordCache[key].recordId;
+  if (runRecordCache[normalizedId]) {
+    console.log(`[runIdService] Found cached record ${runRecordCache[normalizedId].recordId} for run ${normalizedId}`);
+    return runRecordCache[normalizedId].recordId;
   }
   
   console.log(`[runIdService] No record found for run ${normalizedId}`);
@@ -177,7 +201,7 @@ function registerApifyRunId(apifyRunId, clientId) {
  */
 function getCachedRunInfo(runId, clientId) {
   const normalizedId = normalizeRunId(runId, clientId);
-  const key = `${normalizedId}-${clientId}`;
+  const key = normalizedId; // FIXED: Use consistent key format
   
   return runRecordCache[key] || null;
 }
