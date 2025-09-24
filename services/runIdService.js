@@ -65,10 +65,11 @@ function normalizeRunId(runId, clientId) {
   
   const baseId = runIdUtils.getBaseRunId(runId);
   
-  // Check if clientId already starts with 'C' prefix
-  const normalizedClientId = clientId.startsWith('C') ? clientId : `C${clientId}`;
+  // Strip existing C prefix if present
+  const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
   
-  return `${baseId}-${normalizedClientId}`;
+  // Return without the "C" prefix
+  return `${baseId}-${strippedClientId}`;
 }
 
 /**

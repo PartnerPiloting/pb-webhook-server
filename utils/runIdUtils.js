@@ -3,16 +3,16 @@
 
 /**
  * Identifies standard run ID format with optional client suffix
- * SR-date-sequence-T[taskid]-S[step][-C{clientId}]
- * Example: SR-250924-001-T1899-S1, SR-250924-001-T1899-S1-CGuy-Wilson
+ * SR-date-sequence-T[taskid]-S[step][-{clientId}]
+ * Example: SR-250924-001-T1899-S1, SR-250924-001-T1899-S1-Guy-Wilson
  */
-const STANDARD_RUN_ID_REGEX = /^(SR-\d{6}-\d{3}-T\d+-S\d+)(?:-C(.+))?$/;
+const STANDARD_RUN_ID_REGEX = /^(SR-\d{6}-\d{3}-T\d+-S\d+)(?:-([^-].+))?$/;
 
 /**
  * Identifies any run ID with client suffix at the end
- * Example: anything-C{clientId}
+ * Example: anything-{clientId}
  */
-const CLIENT_SUFFIX_REGEX = /-C([^-]+)$/;
+const CLIENT_SUFFIX_REGEX = /-([^-][^-]+)$/;
 
 /**
  * Helper function to identify if the run ID has any client suffix
@@ -21,7 +21,11 @@ const CLIENT_SUFFIX_REGEX = /-C([^-]+)$/;
  */
 function hasClientSuffix(runId) {
   if (!runId) return false;
-  return runId.indexOf('-C') > 0;
+  // Updated to check for any suffix (not just -C)
+  // The regex pattern will determine if it's valid
+  return runId.lastIndexOf('-') > 0 && 
+         !runId.endsWith('-') &&
+         CLIENT_SUFFIX_REGEX.test(runId);
 }
 
 /**
@@ -32,7 +36,9 @@ function hasClientSuffix(runId) {
  */
 function hasSpecificClientSuffix(runId, clientId) {
   if (!runId || !clientId) return false;
-  const suffix = `-C${clientId}`;
+  // Strip any C prefix from the clientId
+  const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  const suffix = `-${strippedClientId}`;
   return runId.endsWith(suffix);
 }
 
@@ -83,7 +89,10 @@ function addClientSuffix(runId, clientId) {
   
   // First, get the base run ID without any client suffixes
   const baseRunId = getBaseRunId(runId);
-  const clientSuffix = `-C${clientId}`;
+  
+  // Strip any C prefix from the clientId
+  const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  const clientSuffix = `-${strippedClientId}`;
   
   // Always use the clean base ID + single client suffix
   return baseRunId + clientSuffix;
