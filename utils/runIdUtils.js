@@ -2,20 +2,38 @@
 // Utility functions for dealing with run IDs in a multi-tenant system
 
 /**
- * Identifies standard run ID format
- * SR-date-sequence-T[taskid]-S[step]
- * Example: SR-250924-001-T1899-S1
+ * Identifies standard run ID format with optional client suffix
+ * SR-date-sequence-T[taskid]-S[step][-C{clientId}]
+ * Example: SR-250924-001-T1899-S1, SR-250924-001-T1899-S1-CGuy-Wilson
  */
 const STANDARD_RUN_ID_REGEX = /^(SR-\d{6}-\d{3}-T\d+-S\d+)(?:-C(.+))?$/;
 
 /**
- * Helper function to identify if the last part of the run ID is a client suffix
+ * Identifies any run ID with client suffix at the end
+ * Example: anything-C{clientId}
+ */
+const CLIENT_SUFFIX_REGEX = /-C([^-]+)$/;
+
+/**
+ * Helper function to identify if the run ID has any client suffix
  * @param {string} runId - The run ID to check
- * @returns {boolean} Whether the runId ends with a client suffix
+ * @returns {boolean} Whether the runId has any client suffix
  */
 function hasClientSuffix(runId) {
   if (!runId) return false;
-  return STANDARD_RUN_ID_REGEX.test(runId) && runId.lastIndexOf('-C') > 0;
+  return runId.indexOf('-C') > 0;
+}
+
+/**
+ * Helper function to identify if the run ID has a specific client suffix
+ * @param {string} runId - The run ID to check
+ * @param {string} clientId - The client ID to check for
+ * @returns {boolean} Whether the runId has the specific client suffix
+ */
+function hasSpecificClientSuffix(runId, clientId) {
+  if (!runId || !clientId) return false;
+  const suffix = `-C${clientId}`;
+  return runId.endsWith(suffix);
 }
 
 /**
@@ -26,20 +44,23 @@ function hasClientSuffix(runId) {
 function getBaseRunId(runId) {
   if (!runId) return '';
   
-  // Special handling for "SR-250924-001-C123-T1899-S1" format where C is in the middle
-  // This is not a client suffix case, just return the original
-  if (runId.includes('-C') && !runId.includes('-S')) {
-    return runId;
-  }
+  // If no -C in the string, it can't have a client suffix
+  if (runId.indexOf('-C') === -1) return runId;
   
-  // For standard pattern with client suffix
+  // Handle standard SR-style run IDs
   const match = runId.match(STANDARD_RUN_ID_REGEX);
   if (match) {
     return match[1]; // Return the base part
   }
   
-  // Not a standard run ID, return as is
-  return runId;
+  // Handle non-standard IDs (e.g., Apify run IDs)
+  // Find all occurrences of -C pattern
+  const parts = runId.split('-C');
+  // If there's only one part, no client suffix
+  if (parts.length === 1) return runId;
+  
+  // Otherwise, the base ID is the first part
+  return parts[0];
 }
 
 /**
@@ -60,16 +81,12 @@ function stripClientSuffix(runId) {
 function addClientSuffix(runId, clientId) {
   if (!runId || !clientId) return runId;
   
-  // Get the base run ID without client suffix
+  // First, get the base run ID without any client suffixes
   const baseRunId = getBaseRunId(runId);
+  const clientSuffix = `-C${clientId}`;
   
-  // Check if the runId already has this specific client suffix
-  if (runId === `${baseRunId}-C${clientId}`) {
-    return runId;
-  }
-  
-  // Add the new client suffix
-  return `${baseRunId}-C${clientId}`;
+  // Always use the clean base ID + single client suffix
+  return baseRunId + clientSuffix;
 }
 
 // Export the functions
@@ -77,27 +94,6 @@ module.exports = {
   getBaseRunId,
   stripClientSuffix,
   addClientSuffix,
-  hasClientSuffix
-};
-
-// Export the functions
-module.exports = {
-  getBaseRunId,
-  stripClientSuffix,
-  addClientSuffix,
-  hasClientSuffix
-};
-
-// Export the functions
-module.exports = {
-  getBaseRunId,
-  stripClientSuffix,
-  addClientSuffix,
-  hasClientSuffix
-};
-
-module.exports = {
-  getBaseRunId,
-  stripClientSuffix,
-  addClientSuffix
+  hasClientSuffix,
+  hasSpecificClientSuffix
 };
