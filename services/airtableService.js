@@ -19,9 +19,6 @@ try {
     console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
 }
 
-// Import runIdUtils for handling client-suffixed run IDs
-const runIdUtils = require('../utils/runIdUtils');
-
 // Import run ID service for centralized run ID management
 const runIdService = require('./runIdService');
 
