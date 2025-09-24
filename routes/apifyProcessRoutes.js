@@ -256,8 +256,25 @@ router.post('/api/apify/process-client', async (req, res) => {
     
     if (parentRunId) {
       // If we have a parent run ID from Smart Resume, use it for consistent tracking
-      runIdToUse = parentRunId;
-      console.log(`[apify/process-client] Using parent run ID for metrics: ${parentRunId}`);
+      // But we need to generate a client-specific run ID version
+      
+      // Start with the parent run ID
+      let baseRunId = parentRunId;
+      
+      // More comprehensive check for client suffix - handles both -C[ClientId] and -C[Client-Name]
+      // Pattern: Look for -C followed by any characters until the end or the next dash
+      const clientSuffixRegex = /-C[^-]+-?[^-]*/;
+      const match = baseRunId.match(clientSuffixRegex);
+      
+      if (match) {
+        // Remove the existing client suffix
+        baseRunId = baseRunId.substring(0, match.index);
+        console.log(`[apify/process-client] Removed existing client suffix, base run ID: ${baseRunId}`);
+      }
+      
+      // Add client-specific suffix using standardized format
+      runIdToUse = `${baseRunId}-C${clientId}`;
+      console.log(`[apify/process-client] Generated client-specific run ID: ${runIdToUse} from parent ID ${parentRunId}`);
     } else {
       // Fall back to latest run ID from this process
       const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
@@ -733,12 +750,29 @@ async function processPostHarvestingInBackground(jobId, stream, secret, singleCl
       try {
         const airtableService = require('../services/airtableService');
         for (const client of candidates) {
-          await airtableService.updateClientRun(parentRunId, client.clientId, {
-            'Total Posts Harvested': harvestedCount,
-            'Last Run Date': new Date().toISOString(),
-            'Last Run Time': finalDuration
+          // Create a client-specific version of the parent run ID
+          let baseRunId = parentRunId;
+          
+          // More comprehensive check for client suffix - handles both -C[ClientId] and -C[Client-Name]
+          // Pattern: Look for -C followed by any characters until the end or the next dash
+          const clientSuffixRegex = /-C[^-]+-?[^-]*/;
+          const match = baseRunId.match(clientSuffixRegex);
+          
+          if (match) {
+            // Remove the existing client suffix
+            baseRunId = baseRunId.substring(0, match.index);
+            harvestLogger.info(`Removed existing client suffix, base run ID: ${baseRunId}`);
+          }
+          
+          // Add client-specific suffix using standardized format
+          const clientRunId = `${baseRunId}-C${client.clientId}`;
+          harvestLogger.info(`Generated client-specific run ID: ${clientRunId} from parent ID ${parentRunId}`);
+          
+          await airtableService.updateClientRun(clientRunId, client.clientId, {
+            'Total Posts Harvested': harvestedCount
+            // Removed problematic fields 'Last Run Date' and 'Last Run Time'
           });
-          harvestLogger.info(`Updated client run record for ${client.clientId} with ${harvestedCount} posts harvested using parent run ID: ${parentRunId}`);
+          harvestLogger.info(`Updated client run record for ${client.clientId} with ${harvestedCount} posts harvested using run ID: ${clientRunId}`);
         }
       } catch (metricError) {
         harvestLogger.error(`Failed to update post harvesting metrics with parent run ID: ${metricError.message}`);
