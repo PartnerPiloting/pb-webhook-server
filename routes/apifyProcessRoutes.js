@@ -244,6 +244,23 @@ router.post('/api/apify/process-client', async (req, res) => {
     }
 
   console.log(`[apify/process-client] Client ${clientId} completed: ${batches} batches, postsToday: ${postsToday}, target: ${postsTarget}`);
+  
+  // Update client run record with post harvest metrics
+  try {
+    const airtableService = require('../services/airtableService');
+    // Get the latest run ID from the runs array
+    const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
+    if (latestRun && latestRun.runId) {
+      await airtableService.updateClientRun(latestRun.runId, clientId, {
+        'Total Posts Harvested': postsToday
+      });
+      console.log(`[apify/process-client] Updated client run record for ${clientId} with ${postsToday} posts harvested`);
+    }
+  } catch (metricError) {
+    console.error(`[apify/process-client] Failed to update post harvesting metrics: ${metricError.message}`);
+    // Continue execution even if metrics update fails
+  }
+  
   const payload = { ok: true, clientId, postsToday, postsTarget, batches, runs };
   if (debugMode) payload.debug = { batches: debugBatches };
   return res.json(payload);
