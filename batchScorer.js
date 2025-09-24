@@ -119,7 +119,6 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
             } catch (fieldErr) {
                 log.error(`Failed to get fields for 'Leads' table: ${fieldErr.message}`);
             }
-        }
     } catch (tableErr) {
         log.error(`Failed to list tables: ${tableErr.message}`);
     }
@@ -145,9 +144,6 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
             .eachPage((pageRecords, next) => {
                 records.push(...pageRecords);
                 next();
-            }).catch(err => {
-                log.error(`Error fetching leads from Airtable: ${err.message}`);
-                throw err;
             });
     } catch (err) {
         log.error(`Failed to fetch leads: ${err.message}`);
