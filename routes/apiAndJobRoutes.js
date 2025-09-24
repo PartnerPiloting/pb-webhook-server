@@ -1144,11 +1144,28 @@ async function processPostScoringInBackground(jobId, stream, options) {
         // Success - update status
         const clientDuration = formatDuration(Date.now() - clientStartTime);
         const postsScored = clientResult.totalPostsScored || 0;
+        const postsExamined = clientResult.totalPostsProcessed || 0;
         
         await setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', jobId, {
           duration: clientDuration,
           count: postsScored
         });
+        
+        // If we have a parent run ID, update the client run record with post scoring metrics
+        if (options.parentRunId) {
+          try {
+            const airtableService = require('../services/airtableService');
+            await airtableService.updateClientRun(options.parentRunId, client.clientId, {
+              'Posts Examined for Scoring': postsExamined,
+              'Posts Successfully Scored': postsScored,
+              'Post Scoring Success Rate': postsExamined > 0 ? Math.round((postsScored / postsExamined) * 100) + '%' : '0%',
+              'Post Scoring Tokens': clientResult.totalTokensUsed || 0
+            });
+            console.log(`📊 Updated client run record for ${client.clientId} with post scoring metrics using parent run ID: ${options.parentRunId}`);
+          } catch (metricError) {
+            console.error(`❌ Failed to update post scoring metrics with parent run ID: ${metricError.message}`);
+          }
+        }
         
         console.log(`✅ ${client.clientName}: ${postsScored} posts scored in ${clientDuration}`);
         totalSuccessful++;
