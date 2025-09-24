@@ -296,6 +296,22 @@ router.post('/api/apify-webhook', async (req, res) => {
         const result = await syncPBPostsToAirtable(posts, clientBase);
         console.log(`[ApifyWebhook] Successfully synced ${posts.length} posts from dataset ${datasetId} for client ${clientId}`);
         
+        // Update client run record with post harvesting metrics if we have a run ID
+        try {
+          const airtableService = require('../services/airtableService');
+          
+          // Try to update client run record with posts harvested
+          if (runId) {
+            await airtableService.updateClientRun(runId, clientId, {
+              'Total Posts Harvested': posts.length
+            });
+            console.log(`[ApifyWebhook] Updated client run ${runId} record for ${clientId} with ${posts.length} posts harvested`);
+          }
+        } catch (metricError) {
+          console.error(`[ApifyWebhook] Failed to update post harvesting metrics: ${metricError.message}`);
+          // Continue execution even if metrics update fails
+        }
+        
       } catch (e) {
         console.error('[ApifyWebhook] Background processing error:', e.message);
         // Update run status to failed

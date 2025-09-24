@@ -476,8 +476,13 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
   // Generate a run ID for tracking
   let runId;
   try {
+    // Generate a global run ID - this will be the base ID for the job
     runId = await generateRunId();
-    console.log(`Generated run ID: ${runId} for lead scoring job ${jobId}`);
+    console.log(`Generated base run ID: ${runId} for lead scoring job ${jobId}`);
+    
+    // Store the original run ID as the job's parent ID
+    // This will be used for aggregate metrics
+    const parentRunId = runId;
   } catch (err) {
     // Set a default runId value if generation fails
     runId = `fallback-${jobId}-${Date.now()}`;
@@ -523,8 +528,13 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       console.log(`[lead-scoring-background] Processing client ${client.clientId} (${processedCount + 1}/${activeClients.length})`);
 
       try {
+        // Generate a unique client-specific run ID based on the parent run ID
+        // This ensures each client gets its own unique run ID while maintaining the connection to the job
+        const clientRunId = `${runId.replace(/-CGuy-Wilson$/, '')}-C${client.clientId}`;
+        console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
+        
         // Set up client timeout
-        const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies, runId);
+        const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies, clientRunId);
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Client timeout')), clientTimeoutMs)
         );
