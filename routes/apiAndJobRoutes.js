@@ -540,12 +540,20 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       try {
         // Generate a unique client-specific run ID based on the parent run ID
         // This ensures each client gets its own unique run ID while maintaining the connection to the job
-        // First check if the run ID already has a client suffix to avoid duplicates
         let baseRunId = runId;
-        // Remove any existing client suffix before adding the new one
-        if (baseRunId.includes('-C')) {
-          baseRunId = baseRunId.substring(0, baseRunId.indexOf('-C'));
+        
+        // More comprehensive check for client suffix - handles both -C[ClientId] and -C[Client-Name]
+        // Pattern: Look for -C followed by any characters until the end or the next dash
+        const clientSuffixRegex = /-C[^-]+-?[^-]*/;
+        const match = baseRunId.match(clientSuffixRegex);
+        
+        if (match) {
+          // Remove the existing client suffix
+          baseRunId = baseRunId.substring(0, match.index);
+          console.log(`Removed existing client suffix, base run ID: ${baseRunId}`);
         }
+        
+        // Add client-specific suffix using standardized format
         const clientRunId = `${baseRunId}-C${client.clientId}`;
         console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
         
@@ -1154,14 +1162,32 @@ async function processPostScoringInBackground(jobId, stream, options) {
         // If we have a parent run ID, update the client run record with post scoring metrics
         if (options.parentRunId) {
           try {
+            // Generate client-specific run ID for metrics updating
+            let baseRunId = options.parentRunId;
+            
+            // More comprehensive check for client suffix - handles both -C[ClientId] and -C[Client-Name]
+            // Pattern: Look for -C followed by any characters until the end or the next dash
+            const clientSuffixRegex = /-C[^-]+-?[^-]*/;
+            const match = baseRunId.match(clientSuffixRegex);
+            
+            if (match) {
+              // Remove the existing client suffix
+              baseRunId = baseRunId.substring(0, match.index);
+              console.log(`Removed existing client suffix, base run ID: ${baseRunId}`);
+            }
+            
+            // Add client-specific suffix using standardized format
+            const clientRunId = `${baseRunId}-C${client.clientId}`;
+            console.log(`Generated client-specific run ID for metrics: ${clientRunId} for client ${client.clientId}`);
+            
             const airtableService = require('../services/airtableService');
-            await airtableService.updateClientRun(options.parentRunId, client.clientId, {
+            await airtableService.updateClientRun(clientRunId, client.clientId, {
               'Posts Examined for Scoring': postsExamined,
               'Posts Successfully Scored': postsScored,
-              'Post Scoring Success Rate': postsExamined > 0 ? Math.round((postsScored / postsExamined) * 100) + '%' : '0%',
+              // Remove the computed field that caused errors
               'Post Scoring Tokens': clientResult.totalTokensUsed || 0
             });
-            console.log(`📊 Updated client run record for ${client.clientId} with post scoring metrics using parent run ID: ${options.parentRunId}`);
+            console.log(`📊 Updated client run record for ${client.clientId} with post scoring metrics using run ID: ${clientRunId}`);
           } catch (metricError) {
             console.error(`❌ Failed to update post scoring metrics with parent run ID: ${metricError.message}`);
           }
