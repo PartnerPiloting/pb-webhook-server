@@ -63,6 +63,12 @@ function normalizeRunId(runId, clientId) {
   if (!runId) return null;
   if (!clientId) return runId;
   
+  // First check if the client ID is already in the run ID
+  if (runIdUtils.hasSpecificClientSuffix(runId, clientId)) {
+    console.log(`[runIdService] Client ID ${clientId} already in run ID ${runId}, returning as is`);
+    return runId;
+  }
+  
   const baseId = runIdUtils.getBaseRunId(runId);
   
   // Strip existing C prefix if present
@@ -82,7 +88,8 @@ function normalizeRunId(runId, clientId) {
  */
 function registerRunRecord(runId, clientId, recordId, metadata = {}) {
   const normalizedId = normalizeRunId(runId, clientId);
-  const key = `${normalizedId}-${clientId}`;
+  // Use just the normalized ID as the key - client ID is already part of it
+  const key = normalizedId;
   
   runRecordCache[key] = {
     recordId,
@@ -104,7 +111,8 @@ function registerRunRecord(runId, clientId, recordId, metadata = {}) {
  */
 function getRunRecordId(runId, clientId) {
   const normalizedId = normalizeRunId(runId, clientId);
-  const key = `${normalizedId}-${clientId}`;
+  // Use just the normalized ID as the key - client ID is already part of it
+  const key = normalizedId;
   
   if (runRecordCache[key]) {
     console.log(`[runIdService] Found cached record ${runRecordCache[key].recordId} for run ${normalizedId}`);
@@ -131,7 +139,8 @@ function clearCache(runId = null, clientId = null) {
   if (runId && clientId) {
     // Clear specific entry
     const normalizedId = normalizeRunId(runId, clientId);
-    const key = `${normalizedId}-${clientId}`;
+    // Use just the normalized ID as the key
+    const key = normalizedId;
     delete runRecordCache[key];
     console.log(`[runIdService] Cleared cache for run ${normalizedId} (client ${clientId})`);
     return;
@@ -139,8 +148,12 @@ function clearCache(runId = null, clientId = null) {
   
   // Clear by client
   if (clientId) {
+    // Find keys that contain the client ID (now embedded in the normalized run ID)
     Object.keys(runRecordCache)
-      .filter(key => key.endsWith(`-${clientId}`))
+      .filter(key => {
+        const cacheItem = runRecordCache[key];
+        return cacheItem && cacheItem.clientId === clientId;
+      })
       .forEach(key => delete runRecordCache[key]);
     console.log(`[runIdService] Cleared all cache entries for client ${clientId}`);
   }

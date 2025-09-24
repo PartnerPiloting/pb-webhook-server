@@ -4,6 +4,7 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const runIdService = require('./runIdService');
 
 // Cache for performance (short-lived since runs are typically short)
 let runsCache = new Map();
@@ -49,8 +50,12 @@ async function createApifyRun(runId, clientId, options = {}) {
     try {
         const base = initializeMasterClientsBase();
         
+        // Normalize the Apify run ID with the client suffix for consistent format
+        const normalizedRunId = runIdService.registerApifyRunId(runId, clientId);
+        console.log(`[ApifyRuns] Normalizing Apify run ID: ${runId} -> ${normalizedRunId} for client ${clientId}`);
+        
         const recordData = {
-            'Run ID': runId,
+            'Run ID': normalizedRunId,
             'Client ID': clientId,
             'Status': 'RUNNING',
             'Created At': new Date().toISOString(),

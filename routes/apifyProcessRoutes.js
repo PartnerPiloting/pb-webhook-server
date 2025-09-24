@@ -8,6 +8,7 @@ const { getClientById } = require('../services/clientService');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const runIdUtils = require('../utils/runIdUtils');
+const runIdService = require('../services/runIdService');
 
 // Check if we're in batch process testing mode
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
@@ -170,8 +171,9 @@ router.post('/api/apify/process-client', async (req, res) => {
         break;
       }
 
-      // mark Processing + set run id placeholder
-      const placeholderRunId = `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      // Generate a proper run ID using runIdService
+      const placeholderRunId = runIdService.generateRunId(clientId);
+      console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: Generated run ID: ${placeholderRunId}`);
       await base(LEADS_TABLE).update(pick.map(r => ({
         id: r.id,
         fields: { [STATUS_FIELD]: 'Processing', [RUN_ID_FIELD]: placeholderRunId, [LAST_CHECK_AT_FIELD]: nowISO() }
@@ -259,14 +261,9 @@ router.post('/api/apify/process-client', async (req, res) => {
     
     if (parentRunId) {
       // If we have a parent run ID from Smart Resume, use it for consistent tracking
-      // Strip any existing client suffix and add the correct one using runIdUtils
-      
-      // First strip any existing client suffix to get the base run ID
-      const baseRunId = runIdUtils.stripClientSuffix(parentRunId);
-      console.log(`[apify/process-client] Using base run ID: ${baseRunId} from parent ID ${parentRunId}`);
-      
-      // Add client-specific suffix using standardized format
-      runIdToUse = runIdUtils.addClientSuffix(baseRunId, clientId);
+      // Use runIdService to normalize the run ID with the client suffix
+      runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
+      console.log(`[apify/process-client] Using normalized run ID: ${runIdToUse} from parent ID ${parentRunId}`);
       console.log(`[apify/process-client] Generated client-specific run ID: ${runIdToUse} from parent ID ${parentRunId}`);
     } else {
       // Fall back to latest run ID from this process
