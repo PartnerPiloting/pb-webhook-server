@@ -11,6 +11,8 @@ const runIdUtils = require('../utils/runIdUtils');
 
 // Check if we're in batch process testing mode
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
+// Check if we should ignore post harvesting limits
+const IGNORE_POST_HARVESTING_LIMITS = process.env.IGNORE_POST_HARVESTING_LIMITS === 'true';
 
 const LEADS_TABLE = 'Leads';
 const LINKEDIN_URL_FIELD = 'LinkedIn Profile URL';
@@ -159,7 +161,7 @@ router.post('/api/apify/process-client', async (req, res) => {
   const debugMode = req.query?.debug === '1' || req.body?.debug === true;
   const debugBatches = [];
 
-  while (postsToday < postsTarget && batches < maxBatches) {
+  while ((IGNORE_POST_HARVESTING_LIMITS || postsToday < postsTarget) && batches < maxBatches) {
       console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: picking ${batchSize} leads`);
       const pick = await pickLeadBatch(base, batchSize);
       console.log(`[apify/process-client] Client ${clientId} picked ${pick.length} leads`);
