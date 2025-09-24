@@ -118,13 +118,16 @@ function initialize() {
 async function createJobTrackingRecord(runId, stream) {
   const base = initialize();
   
-  console.log(`Airtable Service: Creating job tracking record for ${runId}`);
+  // Strip client suffix from runId to get the base run ID for tracking
+  const baseRunId = runIdUtils.stripClientSuffix(runId);
+  
+  console.log(`Airtable Service: Creating job tracking record for ${runId} (base run ID: ${baseRunId})`);
   
   try {
     const records = await base(JOB_TRACKING_TABLE).create([
       {
         fields: {
-          'Run ID': runId,
+          'Run ID': baseRunId, // Use the base run ID without client suffix
           'Start Time': new Date().toISOString(),
           'Status': 'Running',
           'Stream': stream,
