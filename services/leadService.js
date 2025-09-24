@@ -7,6 +7,7 @@ const base = require('../config/airtableClient.js');
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
 const { slimLead } = require('../promptBuilder.js');
 const airtableService = require('./airtableService');
+const runIdService = require('./runIdService');
 
 async function upsertLead(
     lead, 
@@ -195,8 +196,10 @@ async function trackLeadProcessingMetrics(runId, clientId, metrics) {
     }
     
     try {
-        console.log(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${runId}`);
-        await airtableService.updateClientRun(runId, clientId, metrics);
+        // Normalize the run ID to ensure consistent format
+        const normalizedRunId = runIdService.normalizeRunId(runId, clientId);
+        console.log(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${normalizedRunId}`);
+        await airtableService.updateClientRun(normalizedRunId, clientId, metrics);
     } catch (error) {
         console.error(`leadService/trackLeadProcessingMetrics: Failed to update metrics: ${error.message}`);
     }

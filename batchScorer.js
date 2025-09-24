@@ -17,6 +17,7 @@ const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
 const { trackLeadProcessingMetrics } = require('./services/leadService');
 const airtableService = require('./services/airtableService');
+const runIdService = require('./services/runIdService');
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
