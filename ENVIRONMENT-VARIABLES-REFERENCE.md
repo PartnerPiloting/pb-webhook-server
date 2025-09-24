@@ -59,6 +59,16 @@ These variables override the `DEBUG_LEVEL` for specific processes:
 - `warn`: Only warnings and more severe issues
 - `error`: Only error messages
 
+## Apify & Post Harvesting Configuration
+
+| Variable | Purpose | Possible Values | Default |
+|----------|---------|-----------------|---------|
+| `APIFY_MAX_POSTS` | Maximum posts to collect per profile | Number | `2` |
+| `APIFY_POSTED_LIMIT` | Time window for post collection | `year`, `month`, `week` | `year` |
+| `ACTOR_ID` | Specific Apify actor ID to use | String | N/A |
+| `APIFY_BUILD` | Specific Apify build to use | String | N/A |
+| `IGNORE_POST_HARVESTING_LIMITS` | Bypass daily post target limits | `true`, `false` | `false` |
+
 ## Batch Processing Configuration
 
 | Variable | Purpose | Possible Values | Default |
