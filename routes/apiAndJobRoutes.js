@@ -425,6 +425,7 @@ router.get("/run-batch-score-v2", async (req, res) => {
     const stream = parseInt(req.query.stream) || 1;
     const limit = Number(req.query.limit) || 500;
     const singleClientId = req.query.clientId; // Optional: process single client
+    const parentRunId = req.query.parentRunId; // Optional: parent run ID from Smart Resume
     const { generateJobId, setJobStatus, setProcessingStream, getActiveClientsByStream } = require('../services/clientService');
     
     // Generate job ID and set initial status
@@ -444,7 +445,11 @@ router.get("/run-batch-score-v2", async (req, res) => {
     });
 
     // Start background processing
-    processLeadScoringInBackground(jobId, stream, limit, singleClientId, { vertexAIClient, geminiModelId });
+    processLeadScoringInBackground(jobId, stream, limit, singleClientId, { 
+      vertexAIClient, 
+      geminiModelId,
+      parentRunId // Pass the parent run ID if provided
+    });
 
   } catch (e) {
     console.error('[run-batch-score-v2] error:', e.message);
@@ -473,16 +478,21 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
   let scoredCount = 0;
   let errorCount = 0;
 
-  // Generate a run ID for tracking
+  // Generate or use provided run ID for tracking
   let runId;
   try {
-    // Generate a global run ID - this will be the base ID for the job
-    runId = await generateRunId();
-    console.log(`Generated base run ID: ${runId} for lead scoring job ${jobId}`);
+    // If parentRunId is provided, use it as the base runId to maintain consistency
+    const parentRunId = req && req.query && req.query.parentRunId;
     
-    // Store the original run ID as the job's parent ID
-    // This will be used for aggregate metrics
-    const parentRunId = runId;
+    if (parentRunId) {
+      // Use the parent run ID to maintain connection to the Smart Resume process
+      runId = parentRunId;
+      console.log(`Using parent run ID: ${runId} for lead scoring job ${jobId}`);
+    } else {
+      // Generate a new run ID if no parent is provided
+      runId = await generateRunId();
+      console.log(`Generated base run ID: ${runId} for lead scoring job ${jobId}`);
+    }
   } catch (err) {
     // Set a default runId value if generation fails
     runId = `fallback-${jobId}-${Date.now()}`;
@@ -530,7 +540,13 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       try {
         // Generate a unique client-specific run ID based on the parent run ID
         // This ensures each client gets its own unique run ID while maintaining the connection to the job
-        const clientRunId = `${runId.replace(/-CGuy-Wilson$/, '')}-C${client.clientId}`;
+        // First check if the run ID already has a client suffix to avoid duplicates
+        let baseRunId = runId;
+        // Remove any existing client suffix before adding the new one
+        if (baseRunId.includes('-C')) {
+          baseRunId = baseRunId.substring(0, baseRunId.indexOf('-C'));
+        }
+        const clientRunId = `${baseRunId}-C${client.clientId}`;
         console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
         
         // Set up client timeout
@@ -1011,10 +1027,11 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
 
   try {
     // Parse query parameters (same as original endpoint)
-    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
-    const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true';
-    const singleClientId = req.query.clientId || req.query.client_id || null;
-    const stream = req.query.stream ? parseInt(req.query.stream, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : (req.body?.limit || null);
+    const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true' || req.body?.dryRun === true;
+    const singleClientId = req.query.clientId || req.query.client_id || req.body?.clientId || null;
+    const stream = req.query.stream ? parseInt(req.query.stream, 10) : (req.body?.stream || 1);
+    const parentRunId = req.query.parentRunId || req.body?.parentRunId || null;
 
     // Generate job ID for this execution
     const { generateJobId } = require('../services/clientService');
@@ -1038,7 +1055,8 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     processPostScoringInBackground(jobId, stream, {
       limit,
       dryRun,
-      singleClientId
+      singleClientId,
+      parentRunId
     }).catch(error => {
       console.error(`❌ Background post scoring failed for job ${jobId}:`, error.message);
     });
