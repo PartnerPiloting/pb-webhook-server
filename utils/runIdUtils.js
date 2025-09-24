@@ -1,18 +1,13 @@
 // utils/runIdUtils.js
 // Utility functions for dealing with run IDs in a multi-tenant system
+// CLEAN SLATE IMPLEMENTATION - Simple timestamp-based IDs only
 
 /**
- * Identifies standard run ID format with optional client suffix
- * SR-date-sequence-T[taskid]-S[step][-{clientId}] OR [-C{clientId}]
- * Example: SR-250924-001-T1899-S1, SR-250924-001-T1899-S1-Guy-Wilson, SR-250924-001-T1899-S1-CGuy-Wilson
+ * Identifies our standard timestamp format with client suffix
+ * Format: YYMMDD-HHMMSS-{clientId}
+ * Example: 250924-152230-Dean-Hobin
  */
-const STANDARD_RUN_ID_REGEX = /^(SR-\d{6}-\d{3}-T\d+-S\d+)(?:-(?:C)?(.+))?$/;
-
-/**
- * Identifies any run ID with client suffix at the end
- * Example: anything-{clientId} OR anything-C{clientId}
- */
-const CLIENT_SUFFIX_REGEX = /-(?:C)?([^-]+)$/;
+const TIMESTAMP_RUN_ID_REGEX = /^(\d{6}-\d{6})(?:-(.+))?$/;
 
 /**
  * Helper function to identify if the run ID has any client suffix
@@ -21,11 +16,9 @@ const CLIENT_SUFFIX_REGEX = /-(?:C)?([^-]+)$/;
  */
 function hasClientSuffix(runId) {
   if (!runId) return false;
-  // Support both formats: with -C prefix and without
-  return (runId.indexOf('-C') > 0) || 
-         (runId.lastIndexOf('-') > 0 && 
-          !runId.endsWith('-') &&
-          CLIENT_SUFFIX_REGEX.test(runId));
+  // Our format always has exactly two hyphens: YYMMDD-HHMMSS-ClientID
+  const parts = runId.split('-');
+  return parts.length >= 3;
 }
 
 /**
@@ -36,10 +29,20 @@ function hasClientSuffix(runId) {
  */
 function hasSpecificClientSuffix(runId, clientId) {
   if (!runId || !clientId) return false;
-  // Strip any C prefix from the clientId
-  const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
-  const suffix = `-${strippedClientId}`;
-  return runId.endsWith(suffix);
+  
+  // Clean the client ID (remove C prefix if present)
+  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  
+  // Split the run ID by hyphens
+  const parts = runId.split('-');
+  
+  // If it's our format, the client ID is everything after the second hyphen
+  if (parts.length >= 3) {
+    const runIdClientPart = parts.slice(2).join('-');
+    return runIdClientPart === cleanClientId;
+  }
+  
+  return false;
 }
 
 /**
@@ -50,23 +53,14 @@ function hasSpecificClientSuffix(runId, clientId) {
 function getBaseRunId(runId) {
   if (!runId) return '';
   
-  // If no -C in the string, it can't have a client suffix
-  if (runId.indexOf('-C') === -1) return runId;
-  
-  // Handle standard SR-style run IDs
-  const match = runId.match(STANDARD_RUN_ID_REGEX);
+  // With our clean slate format, the base is always just the timestamp part
+  const match = runId.match(TIMESTAMP_RUN_ID_REGEX);
   if (match) {
-    return match[1]; // Return the base part
+    return match[1]; // Return just the timestamp part (YYMMDD-HHMMSS)
   }
   
-  // Handle non-standard IDs (e.g., Apify run IDs)
-  // Find all occurrences of -C pattern
-  const parts = runId.split('-C');
-  // If there's only one part, no client suffix
-  if (parts.length === 1) return runId;
-  
-  // Otherwise, the base ID is the first part
-  return parts[0];
+  // If it's not our format, return the original (shouldn't happen with clean slate)
+  return runId;
 }
 
 /**
@@ -87,15 +81,14 @@ function stripClientSuffix(runId) {
 function addClientSuffix(runId, clientId) {
   if (!runId || !clientId) return runId;
   
-  // First, get the base run ID without any client suffixes
+  // Get just the timestamp part
   const baseRunId = getBaseRunId(runId);
   
-  // Strip any C prefix from the clientId
-  const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
-  const clientSuffix = `-${strippedClientId}`;
+  // Clean the client ID (remove C prefix if present)
+  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
   
-  // Always use the clean base ID + single client suffix
-  return baseRunId + clientSuffix;
+  // Create the standard format
+  return `${baseRunId}-${cleanClientId}`;
 }
 
 // Export the functions
