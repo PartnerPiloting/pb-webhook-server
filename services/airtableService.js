@@ -164,8 +164,9 @@ async function createJobTrackingRecord(runId, stream) {
 async function createClientRunRecord(runId, clientId, clientName) {
   const base = initialize();
   
-  // CLEAN SLATE APPROACH: Always generate a new standardized ID
-  const standardRunId = runIdService.normalizeRunId(null, clientId);
+  // CONSISTENCY FIX: Try to reuse the existing run ID's timestamp if possible
+  // This helps prevent duplication by maintaining the same timestamp
+  const standardRunId = runIdService.normalizeRunId(runId, clientId, false);
   
   console.log(`Airtable Service: Creating run record for client ${clientId}`);
   console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
@@ -364,8 +365,9 @@ async function updateJobTracking(runId, updates) {
 async function updateClientRun(runId, clientId, updates) {
   const base = initialize();
   
-  // CLEAN SLATE: Always generate a new standardized ID
-  const standardRunId = runIdService.normalizeRunId(null, clientId);
+  // CONSISTENCY FIX: Try to reuse the existing run ID's timestamp if possible
+  // This helps prevent duplication by maintaining the same timestamp
+  const standardRunId = runIdService.normalizeRunId(runId, clientId, false);
   
   console.log(`Airtable Service: Updating client run for ${clientId}`);
   console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
@@ -452,8 +454,8 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
     updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   }
   
-  // Generate a standardized run ID
-  const normalizedRunId = runIdService.normalizeRunId(runId, clientId);
+  // Generate a standardized run ID - reuse timestamp if possible
+  const normalizedRunId = runIdService.normalizeRunId(runId, clientId, false);
   
   // Log what we're doing
   console.log(`Airtable Service: Completing client run for ${clientId}`);
