@@ -257,24 +257,14 @@ router.post('/api/apify/process-client', async (req, res) => {
     
     if (parentRunId) {
       // If we have a parent run ID from Smart Resume, use it for consistent tracking
-      // But we need to generate a client-specific run ID version
+      // Strip any existing client suffix and add the correct one using runIdUtils
       
-      // Start with the parent run ID
-      let baseRunId = parentRunId;
-      
-      // More comprehensive check for client suffix - handles both -C[ClientId] and -C[Client-Name]
-      // Pattern: Look for -C followed by any characters until the end or the next dash
-      const clientSuffixRegex = /-C[^-]+-?[^-]*/;
-      const match = baseRunId.match(clientSuffixRegex);
-      
-      if (match) {
-        // Remove the existing client suffix
-        baseRunId = baseRunId.substring(0, match.index);
-        console.log(`[apify/process-client] Removed existing client suffix, base run ID: ${baseRunId}`);
-      }
+      // First strip any existing client suffix to get the base run ID
+      const baseRunId = runIdUtils.stripClientSuffix(parentRunId);
+      console.log(`[apify/process-client] Using base run ID: ${baseRunId} from parent ID ${parentRunId}`);
       
       // Add client-specific suffix using standardized format
-      runIdToUse = `${baseRunId}-C${clientId}`;
+      runIdToUse = runIdUtils.addClientSuffix(baseRunId, clientId);
       console.log(`[apify/process-client] Generated client-specific run ID: ${runIdToUse} from parent ID ${parentRunId}`);
     } else {
       // Fall back to latest run ID from this process
