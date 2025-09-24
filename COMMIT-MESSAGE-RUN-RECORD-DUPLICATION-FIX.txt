@@ -1,0 +1,12 @@
+fix: prevent duplicate run records during metrics updates
+
+- Fixed critical issue in airtableService.updateClientRun where new records were
+  being created instead of finding existing ones
+- Added proper record lookup before creating new run records
+- Added missing runIdUtils import to airtableService.js
+- Confirmed client ID prefix handling working correctly in normalizeRunId
+
+This addresses the issue where multiple run records were being created for the
+same operation, leading to fragmented metrics and confusion in the tracking
+system. The system now properly searches for existing records before creating
+new ones.
