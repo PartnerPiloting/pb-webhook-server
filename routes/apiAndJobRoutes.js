@@ -482,7 +482,7 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
   let runId;
   try {
     // If parentRunId is provided, use it as the base runId to maintain consistency
-    const parentRunId = req && req.query && req.query.parentRunId;
+    const { parentRunId } = aiDependencies;
     
     if (parentRunId) {
       // Use the parent run ID to maintain connection to the Smart Resume process
@@ -495,7 +495,7 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     }
   } catch (err) {
     // Set a default runId value if generation fails
-    runId = `fallback-${jobId}-${Date.now()}`;
+    runId = `fallback_job_lead_scoring_stream${stream}_${new Date().toISOString().replace(/[-:T.Z]/g, '')}`;
     console.error(`Failed to generate run ID: ${err.message}. Using fallback runId: ${runId}`);
   }
 
