@@ -3,16 +3,16 @@
 
 /**
  * Identifies standard run ID format with optional client suffix
- * SR-date-sequence-T[taskid]-S[step][-{clientId}]
- * Example: SR-250924-001-T1899-S1, SR-250924-001-T1899-S1-Guy-Wilson
+ * SR-date-sequence-T[taskid]-S[step][-{clientId}] OR [-C{clientId}]
+ * Example: SR-250924-001-T1899-S1, SR-250924-001-T1899-S1-Guy-Wilson, SR-250924-001-T1899-S1-CGuy-Wilson
  */
-const STANDARD_RUN_ID_REGEX = /^(SR-\d{6}-\d{3}-T\d+-S\d+)(?:-([^-].+))?$/;
+const STANDARD_RUN_ID_REGEX = /^(SR-\d{6}-\d{3}-T\d+-S\d+)(?:-(?:C)?(.+))?$/;
 
 /**
  * Identifies any run ID with client suffix at the end
- * Example: anything-{clientId}
+ * Example: anything-{clientId} OR anything-C{clientId}
  */
-const CLIENT_SUFFIX_REGEX = /-([^-][^-]+)$/;
+const CLIENT_SUFFIX_REGEX = /-(?:C)?([^-]+)$/;
 
 /**
  * Helper function to identify if the run ID has any client suffix
@@ -21,11 +21,11 @@ const CLIENT_SUFFIX_REGEX = /-([^-][^-]+)$/;
  */
 function hasClientSuffix(runId) {
   if (!runId) return false;
-  // Updated to check for any suffix (not just -C)
-  // The regex pattern will determine if it's valid
-  return runId.lastIndexOf('-') > 0 && 
-         !runId.endsWith('-') &&
-         CLIENT_SUFFIX_REGEX.test(runId);
+  // Support both formats: with -C prefix and without
+  return (runId.indexOf('-C') > 0) || 
+         (runId.lastIndexOf('-') > 0 && 
+          !runId.endsWith('-') &&
+          CLIENT_SUFFIX_REGEX.test(runId));
 }
 
 /**
