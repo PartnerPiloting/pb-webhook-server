@@ -322,7 +322,12 @@ async function updateClientRun(runId, clientId, updates) {
   
   try {
     // Get the record ID from runIdService using the normalized run ID
-    const cachedRecordId = runIdService.getRunRecordId(normalizedRunId, clientId);
+    let cachedRecordId = runIdService.getRunRecordId(normalizedRunId, clientId);
+    
+    // Also check cache with the original run ID if different
+    if (!cachedRecordId && runId !== normalizedRunId) {
+      cachedRecordId = runIdService.getRunRecordId(runId, clientId);
+    }
     
     // If we don't have it cached, attempt to FIND the record in Airtable before creating
     let recordId;
@@ -331,42 +336,60 @@ async function updateClientRun(runId, clientId, updates) {
       recordId = cachedRecordId;
     } else {
       // SEARCH FOR EXISTING RECORD FIRST instead of immediately creating one
-      console.log(`Airtable Service: No cached record found, searching Airtable for ${normalizedRunId} and ${clientId}`);
+      console.log(`Airtable Service: No cached record found, searching Airtable for run records with client ${clientId}`);
       
-      // First try with normalized run ID (without C prefix)
-      let existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `AND({Run ID} = '${normalizedRunId}', {Client ID} = '${clientId}')`
+      // Build a list of all possible run ID formats to check
+      const possibleRunIds = [
+        runId, 
+        normalizedRunId
+      ];
+      
+      // Add base run ID without client suffix
+      const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+      possibleRunIds.push(baseRunId);
+      
+      // Add version with C prefix
+      const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+      possibleRunIds.push(`${baseRunId}-C${strippedClientId}`);
+      
+      // Also check for random-string type IDs that end with the client name
+      if (!runId.includes(clientId)) {
+        possibleRunIds.push(`${runId}-${clientId}`);
+      }
+      
+      // Remove duplicates
+      const uniqueRunIds = [...new Set(possibleRunIds)];
+      
+      console.log(`Airtable Service: Checking for run IDs: ${uniqueRunIds.join(', ')}`);
+      
+      // Build OR formula for all possible run IDs
+      const formulaParts = uniqueRunIds.map(id => `{Run ID} = '${id}'`);
+      const formula = `AND(OR(${formulaParts.join(',')}), {Client ID} = '${clientId}')`;
+      
+      // Search for any matching records
+      const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
+        filterByFormula: formula,
+        maxRecords: 10, // Get multiple if there are duplicates
+        sort: [{ field: "Created Time", direction: "desc" }] // Get most recent first
       }).firstPage();
-      
-      // Also try with old C-prefixed format
-      if (!existingRecords || existingRecords.length === 0) {
-        // Construct the old format with C prefix for backward compatibility
-        const strippedClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
-        const oldFormatId = `${runIdUtils.getBaseRunId(normalizedRunId)}-C${strippedClientId}`;
-        
-        console.log(`Airtable Service: Also checking old format with C prefix: ${oldFormatId}`);
-        existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-          filterByFormula: `AND({Run ID} = '${oldFormatId}', {Client ID} = '${clientId}')`
-        }).firstPage();
-      }
-      
-      // If not found, also check with base run ID
-      if (!existingRecords || existingRecords.length === 0) {
-        const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
-        console.log(`Airtable Service: Checking with base run ID ${baseRunId}`);
-        
-        existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-          filterByFormula: `AND({Run ID} = '${baseRunId}', {Client ID} = '${clientId}')`
-        }).firstPage();
-      }
       
       // Only create a new record if none found
       if (existingRecords && existingRecords.length > 0) {
-        console.log(`Airtable Service: Found existing record ${existingRecords[0].id} for ${clientId} in run ${normalizedRunId}`);
+        // Use the most recent record if there are multiple
         recordId = existingRecords[0].id;
+        const foundRunId = existingRecords[0].fields['Run ID'];
         
-        // Register in cache for future use
-        runIdService.registerRunRecord(normalizedRunId, clientId, recordId);
+        console.log(`Airtable Service: Found ${existingRecords.length} existing record(s). Using ${recordId} with run ID ${foundRunId}`);
+        
+        if (existingRecords.length > 1) {
+          console.log(`Airtable Service: WARNING - Found multiple records for same run/client. This indicates potential duplication.`);
+        }
+        
+        // Register in cache for future use with both original and normalized ID
+        runIdService.registerRunRecord(runId, clientId, recordId);
+        if (runId !== normalizedRunId) {
+          runIdService.registerRunRecord(normalizedRunId, clientId, recordId);
+        }
       } else {
         // No record found - now it's safe to create one
         console.log(`Airtable Service: No existing record found, creating new for ${clientId} in run ${normalizedRunId}`);
