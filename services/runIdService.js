@@ -52,28 +52,46 @@ function generateRunId(clientId, existingRunId = null) {
  * @returns {string} A normalized run ID with the timestamp-clientId format
  */
 function normalizeRunId(runId, clientId, forceNew = false) {
-  if (!clientId) return null;
+  console.log(`[runIdService] DEBUG: normalizeRunId called with runId=${runId}, clientId=${clientId}, forceNew=${forceNew}`);
+  
+  if (!clientId) {
+    console.log(`[runIdService] ERROR: Missing clientId in normalizeRunId call`);
+    return null;
+  }
   
   // Always use the clean clientId without any prefixes
   const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  console.log(`[runIdService] DEBUG: Using clean clientId: ${cleanClientId}`);
 
   // Regular expression to match our timestamp format (YYMMDD-HHMMSS)
   const timestampRegex = /^\d{6}-\d{6}$/;
   
   // Check if we have a valid timestamp-based ID already and we're not forcing a new one
   if (!forceNew && runId && typeof runId === 'string') {
+    console.log(`[runIdService] DEBUG: Attempting to extract timestamp from existing ID: ${runId}`);
+    
     // Extract just the timestamp part if it includes a client ID
     const parts = runId.split('-');
+    console.log(`[runIdService] DEBUG: Split parts:`, parts);
+    
     if (parts.length >= 2) {
       const possibleTimestamp = `${parts[0]}-${parts[1]}`;
+      console.log(`[runIdService] DEBUG: Possible timestamp: ${possibleTimestamp}`);
+      console.log(`[runIdService] DEBUG: Regex test result: ${timestampRegex.test(possibleTimestamp)}`);
       
       // If this is already a valid timestamp format, use it with the current client ID
       if (timestampRegex.test(possibleTimestamp)) {
         const standardId = `${possibleTimestamp}-${cleanClientId}`;
-        console.log(`[runIdService] Using existing timestamp from ID: ${standardId} for client ${clientId}`);
+        console.log(`[runIdService] SUCCESS: Using existing timestamp from ID: ${standardId} for client ${clientId}`);
         return standardId;
+      } else {
+        console.log(`[runIdService] DEBUG: Timestamp format invalid: ${possibleTimestamp}`);
       }
+    } else {
+      console.log(`[runIdService] DEBUG: Not enough parts in ID to extract timestamp: ${parts.length} parts`);
     }
+  } else {
+    console.log(`[runIdService] DEBUG: Conditions not met to reuse existing ID, forceNew=${forceNew}, runId exists=${!!runId}`);
   }
   
   // If we get here, either forceNew was true or the input wasn't a valid timestamp format
