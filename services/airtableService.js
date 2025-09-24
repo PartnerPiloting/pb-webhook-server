@@ -186,13 +186,13 @@ async function createClientRunRecord(runId, clientId, clientName) {
       console.log(`Airtable Service: Found existing RUNNING record ${existingRecord.id} with run ID ${existingRunId}`);
       
       // Register with our normalized ID for future lookups
-      runIdService.registerRunRecord(normalizedRunId, clientId, existingRecord.id);
+      runIdService.registerRunRecord(standardRunId, clientId, existingRecord.id);
       
       // Update the record to use our standardized format
-      if (existingRunId !== normalizedRunId) {
-        console.log(`Airtable Service: Updating record to use standardized run ID: ${normalizedRunId}`);
+      if (existingRunId !== standardRunId) {
+        console.log(`Airtable Service: Updating record to use standardized run ID: ${standardRunId}`);
         await base(CLIENT_RUN_RESULTS_TABLE).update(existingRecord.id, {
-          'Run ID': normalizedRunId
+          'Run ID': standardRunId
         });
       }
       
@@ -206,7 +206,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
   }
   
   // STEP 2: Check cache for existing record ID
-  const cachedRecordId = runIdService.getRunRecordId(normalizedRunId, clientId);
+  const cachedRecordId = runIdService.getRunRecordId(standardRunId, clientId);
   
   if (cachedRecordId) {
     console.log(`Airtable Service: Using cached record ID ${cachedRecordId}`);
@@ -223,10 +223,10 @@ async function createClientRunRecord(runId, clientId, clientName) {
   
   // STEP 3: Check if a record already exists with this run ID
   try {
-    console.log(`Airtable Service: Checking for existing record with run ID ${normalizedRunId}`);
+    console.log(`Airtable Service: Checking for existing record with run ID ${standardRunId}`);
     
     const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${normalizedRunId}', {Client ID} = '${clientId}')`,
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`,
       maxRecords: 1
     }).firstPage();
     
@@ -234,7 +234,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
       console.log(`Airtable Service: Found existing record ID: ${existingRecords[0].id}`);
       
       // Register the record ID for future lookups
-      runIdService.registerRunRecord(normalizedRunId, clientId, existingRecords[0].id);
+      runIdService.registerRunRecord(standardRunId, clientId, existingRecords[0].id);
       
       return existingRecords[0];
     }
@@ -280,8 +280,32 @@ async function createClientRunRecord(runId, clientId, clientName) {
 async function updateJobTracking(runId, updates) {
   const base = initialize();
   
-  // Strip client suffix from runId to get the base run ID used for tracking
-  const baseRunId = runIdUtils.stripClientSuffix(runId);
+  // CLEAN SLATE APPROACH: Use timestamp format for consistency
+  // If the runId is in old format, generate a timestamp-based ID from the current time
+  let baseRunId;
+  
+  // Check if this is an old-format ID (SR prefix)
+  if (runId.startsWith('SR-')) {
+    // Generate a new timestamp-based ID without client suffix
+    const now = new Date();
+    const datePart = [
+      now.getFullYear().toString().slice(2),
+      (now.getMonth() + 1).toString().padStart(2, '0'),
+      now.getDate().toString().padStart(2, '0')
+    ].join('');
+    
+    const timePart = [
+      now.getHours().toString().padStart(2, '0'),
+      now.getMinutes().toString().padStart(2, '0'),
+      now.getSeconds().toString().padStart(2, '0')
+    ].join('');
+    
+    baseRunId = `${datePart}-${timePart}`;
+    console.log(`Airtable Service: Converted old format ID ${runId} to timestamp format ${baseRunId} for job tracking`);
+  } else {
+    // For timestamp-based IDs, just strip the client suffix
+    baseRunId = runIdUtils.stripClientSuffix(runId);
+  }
   
   console.log(`Airtable Service: Updating job tracking for ${runId} (base run ID: ${baseRunId})`);
   
@@ -292,7 +316,17 @@ async function updateJobTracking(runId, updates) {
     }).firstPage();
     
     if (!records || records.length === 0) {
-      throw new Error(`Job tracking record not found for run ID: ${runId} (base: ${baseRunId})`);
+      // FALLBACK: Create a new job tracking record if one doesn't exist
+      console.log(`Airtable Service: Job tracking record not found for ${runId}, creating a new one`);
+      const newRecord = await createJobTrackingRecord(baseRunId, 1);
+      if (newRecord) {
+        console.log(`Airtable Service: Created fallback job tracking record ID: ${newRecord.id}`);
+        // Continue with update now that we have a record
+        const updated = await base(JOB_TRACKING_TABLE).update(newRecord.id, updates);
+        return updated;
+      } else {
+        throw new Error(`Failed to create fallback job tracking record for: ${runId} (base: ${baseRunId})`);
+      }
     }
     
     // Handle case where there are multiple records with the same run ID
@@ -437,27 +471,57 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
 async function updateAggregateMetrics(runId) {
   const base = initialize();
   
-  // Extract the timestamp base ID (without client suffix)
-  // Our format is YYMMDD-HHMMSS-ClientID, so we take just YYMMDD-HHMMSS
-  const baseRunId = runIdUtils.getBaseRunId(runId);
+  // CLEAN SLATE APPROACH: Handle old and new formats consistently
+  let baseRunId;
+  
+  // Check if this is an old-format ID (SR prefix)
+  if (runId.startsWith('SR-')) {
+    // Generate a new timestamp-based ID without client suffix
+    const now = new Date();
+    const datePart = [
+      now.getFullYear().toString().slice(2),
+      (now.getMonth() + 1).toString().padStart(2, '0'),
+      now.getDate().toString().padStart(2, '0')
+    ].join('');
+    
+    const timePart = [
+      now.getHours().toString().padStart(2, '0'),
+      now.getMinutes().toString().padStart(2, '0'),
+      now.getSeconds().toString().padStart(2, '0')
+    ].join('');
+    
+    baseRunId = `${datePart}-${timePart}`;
+    console.log(`Airtable Service: Converted old format ID ${runId} to timestamp format ${baseRunId} for aggregate metrics`);
+  } else {
+    // Extract the timestamp base ID (without client suffix)
+    // Our format is YYMMDD-HHMMSS-ClientID, so we take just YYMMDD-HHMMSS
+    baseRunId = runIdUtils.getBaseRunId(runId);
+  }
   
   console.log(`Airtable Service: Updating aggregate metrics for ${runId} (base run ID: ${baseRunId})`);
   
   try {
-    // Find all client records with the same timestamp base
-    // This should find all related records regardless of client
+    // Use modified formula to find all client records with the right date part
+    // This should be more flexible and find all related records regardless of exact timestamp
+    const datePartOnly = baseRunId.split('-')[0]; // Just get the YYMMDD part
     const clientRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `FIND('${baseRunId}', {Run ID}) = 1`
+      filterByFormula: `FIND('${datePartOnly}', {Run ID}) = 1`
     }).all();
     
     // Log the records and their run IDs for debugging
-    console.log(`Found ${clientRecords.length} client records matching base run ID ${baseRunId}:`);
+    console.log(`Found ${clientRecords.length} client records matching base run ID ${baseRunId} (date part ${datePartOnly}):`);
     clientRecords.forEach(record => {
       console.log(`- Record ${record.id}: Run ID = ${record.get('Run ID')}, Client ID = ${record.get('Client ID')}`);
     });
     
     if (!clientRecords || clientRecords.length === 0) {
       console.warn(`Airtable Service WARNING: No client records found for run ID: ${runId}`);
+      // Create a dummy record to avoid null errors downstream
+      const jobTrackingRecord = await createJobTrackingRecord(baseRunId, 1);
+      if (jobTrackingRecord) {
+        console.log(`Airtable Service: Created fallback job tracking record with no client data: ${jobTrackingRecord.id}`);
+        return jobTrackingRecord;
+      }
       return null;
     }
     
