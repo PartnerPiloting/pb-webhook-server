@@ -28,41 +28,56 @@ function getNextSequence() {
 /**
  * Generate a new simplified run ID
  * @param {string} clientId - The client ID to include in the run ID
+ * @param {string} [existingRunId=null] - Optional existing run ID to try to reuse its timestamp
  * @returns {string} A new simplified run ID with timestamp and client suffix
  */
-function generateRunId(clientId) {
-  // Generate timestamp part YYMMDD-HHMMSS
-  const now = new Date();
-  const datePart = [
-    now.getFullYear().toString().slice(2),
-    (now.getMonth() + 1).toString().padStart(2, '0'),
-    now.getDate().toString().padStart(2, '0')
-  ].join('');
+function generateRunId(clientId, existingRunId = null) {
+  // Try to reuse timestamp from existing ID if provided
+  if (existingRunId) {
+    const normalizedWithExisting = normalizeRunId(existingRunId, clientId, false);
+    if (normalizedWithExisting) {
+      return normalizedWithExisting;
+    }
+  }
   
-  const timePart = [
-    now.getHours().toString().padStart(2, '0'),
-    now.getMinutes().toString().padStart(2, '0'),
-    now.getSeconds().toString().padStart(2, '0')
-  ].join('');
-  
-  // Assemble base ID with timestamp only
-  const baseId = `${datePart}-${timePart}`;
-  
-  // Add client suffix
-  return normalizeRunId(baseId, clientId);
+  // Otherwise, force creation of a new timestamp-based ID
+  return normalizeRunId(null, clientId, true);
 }
 
 /**
  * Create a consistent run ID format for any input
- * @param {string} runId - The run ID to normalize (ignored with clean slate approach)
+ * @param {string} runId - The run ID to normalize (used if valid timestamp format)
  * @param {string} clientId - The client ID to include
+ * @param {boolean} [forceNew=false] - Whether to force generation of a new ID
  * @returns {string} A normalized run ID with the timestamp-clientId format
  */
-function normalizeRunId(runId, clientId) {
+function normalizeRunId(runId, clientId, forceNew = false) {
   if (!clientId) return null;
   
-  // Clean slate approach: Always generate a new timestamp-based ID
-  // Completely ignore the input runId
+  // Always use the clean clientId without any prefixes
+  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+
+  // Regular expression to match our timestamp format (YYMMDD-HHMMSS)
+  const timestampRegex = /^\d{6}-\d{6}$/;
+  
+  // Check if we have a valid timestamp-based ID already and we're not forcing a new one
+  if (!forceNew && runId && typeof runId === 'string') {
+    // Extract just the timestamp part if it includes a client ID
+    const parts = runId.split('-');
+    if (parts.length >= 2) {
+      const possibleTimestamp = `${parts[0]}-${parts[1]}`;
+      
+      // If this is already a valid timestamp format, use it with the current client ID
+      if (timestampRegex.test(possibleTimestamp)) {
+        const standardId = `${possibleTimestamp}-${cleanClientId}`;
+        console.log(`[runIdService] Using existing timestamp from ID: ${standardId} for client ${clientId}`);
+        return standardId;
+      }
+    }
+  }
+  
+  // If we get here, either forceNew was true or the input wasn't a valid timestamp format
+  // Generate a new timestamp-based ID
   const now = new Date();
   
   // Format: YYMMDD-HHMMSS-ClientID
@@ -77,9 +92,6 @@ function normalizeRunId(runId, clientId) {
     now.getMinutes().toString().padStart(2, '0'),
     now.getSeconds().toString().padStart(2, '0')
   ].join('');
-  
-  // Always use the clean clientId without any prefixes
-  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
   
   // Create the standardized format
   const standardId = `${datePart}-${timePart}-${cleanClientId}`;
