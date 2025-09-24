@@ -109,12 +109,18 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     
             // Debug - check if Scoring Status field exists
             try {
-                const fields = await clientBase('Leads').fields();
-                const scoringStatusField = fields.find(f => f.name === 'Scoring Status');
-                if (!scoringStatusField) {
-                    log.error(`'Scoring Status' field not found in 'Leads' table`);
+                // Get a sample record to examine its fields
+                const sampleRecords = await clientBase('Leads').select({ maxRecords: 1 }).all();
+                if (sampleRecords.length > 0) {
+                    const fields = Object.keys(sampleRecords[0].fields);
+                    const hasScoringStatus = fields.includes('Scoring Status');
+                    if (!hasScoringStatus) {
+                        log.error(`'Scoring Status' field not found in 'Leads' table`);
+                    } else {
+                        log.debug(`'Scoring Status' field found in 'Leads' table`);
+                    }
                 } else {
-                    log.debug(`'Scoring Status' field found, type: ${scoringStatusField.type}`);
+                    log.warn(`No records found in 'Leads' table to check for 'Scoring Status' field`);
                 }
             } catch (fieldErr) {
                 log.error(`Failed to get fields for 'Leads' table: ${fieldErr.message}`);
