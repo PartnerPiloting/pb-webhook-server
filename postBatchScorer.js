@@ -429,13 +429,15 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     
     // Check if the table exists first
     try {
-        const tables = await clientBase.tables();
-        const tableExists = tables.some(t => t.name === config.leadsTableName);
-        if (!tableExists) {
-            console.error(`[ERROR] getLeadsForPostScoring: Table "${config.leadsTableName}" does not exist!`);
+        // NOTE: clientBase.tables() doesn't exist in the Airtable API
+        // Instead, we'll check if we can access the table directly
+        try {
+            await clientBase(config.leadsTableName).select({ maxRecords: 1 }).all();
+            console.log(`[DEBUG] getLeadsForPostScoring: Confirmed table "${config.leadsTableName}" exists`);
+        } catch (accessError) {
+            console.error(`[ERROR] getLeadsForPostScoring: Table "${config.leadsTableName}" does not exist or is not accessible!`);
             return [];
         }
-        console.log(`[DEBUG] getLeadsForPostScoring: Confirmed table "${config.leadsTableName}" exists`);
     } catch (tableError) {
         console.error(`[ERROR] getLeadsForPostScoring: Failed to check tables: ${tableError.message}`);
     }
