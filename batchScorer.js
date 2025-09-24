@@ -136,18 +136,22 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
         log.error(`Failed to count leads: ${countErr.message}`);
     }
     
-    await clientBase("Leads") 
-        .select({ 
-            maxRecords: limit, 
-            filterByFormula: filterFormula 
-        }) 
-        .eachPage((pageRecords, next) => {
-            records.push(...pageRecords);
-            next();
-        }).catch(err => {
-            log.error(`Error fetching leads from Airtable: ${err.message}`);
-            throw err;
-        });
+    try {
+        await clientBase("Leads") 
+            .select({ 
+                maxRecords: limit, 
+                filterByFormula: filterFormula 
+            }) 
+            .eachPage((pageRecords, next) => {
+                records.push(...pageRecords);
+                next();
+            }).catch(err => {
+                log.error(`Error fetching leads from Airtable: ${err.message}`);
+                throw err;
+            });
+    } catch (err) {
+        log.error(`Failed to fetch leads: ${err.message}`);
+    }
     log.setup(`Fetched ${records.length} leads`);
     
     // Add more detailed logging
