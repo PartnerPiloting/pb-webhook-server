@@ -28,6 +28,19 @@ function generateRunId() {
   return `${datePart}-${timePart}`;
 }
 
+/**
+ * Creates a logger function that includes the run ID in each log message
+ * @param {string} runId - The run ID to include in log messages
+ * @returns {Function} A logger function
+ */
+function createLogger(runId) {
+  return (message, level = 'INFO') => {
+    const timestamp = new Date().toISOString();
+    console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
+  };
+}
+
 module.exports = {
-  generateRunId
+  generateRunId,
+  createLogger
 };
