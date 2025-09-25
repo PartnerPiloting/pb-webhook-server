@@ -87,6 +87,11 @@
 
 ## **⚙️ SPECIALIZED FEATURES**
 
+### **Run Record Management**
+- **[CLIENT_RUN_RECORD_DESIGN.md](CLIENT_RUN_RECORD_DESIGN.md)** - Single creation pattern for client run records
+- **[RUN_RECORD_IMPLEMENTATION_SUMMARY.md](RUN_RECORD_IMPLEMENTATION_SUMMARY.md)** - Summary of implementation changes
+- **[RUN_RECORD_TRACKING_FIX.md](RUN_RECORD_TRACKING_FIX.md)** - Fixes for duplicate run records
+
 ### **Token & Budget Management**
 - **[TOKEN-BUDGET-TODO.md](TOKEN-BUDGET-TODO.md)** - Token budget implementation
 - **[MODEL-STRATEGY.md](MODEL-STRATEGY.md)** - AI model strategy
