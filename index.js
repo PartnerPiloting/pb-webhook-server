@@ -48,6 +48,15 @@ if (!base) {
     console.log("index.js: Airtable Base loaded successfully from config.");
 }
 
+// Initialize the run record service (Single Creation Point pattern implementation)
+const runRecordService = require('./services/runRecordAdapter');
+try {
+    runRecordService.initialize();
+    console.log("index.js: Run Record Service initialized successfully - Single Creation Point pattern active");
+} catch (runRecordError) {
+    console.error("FATAL ERROR in index.js: Run Record Service failed to initialize:", runRecordError.message);
+}
+
 /* ---------- APP-LEVEL ENV CONFIGURATION & CONSTANTS --- */
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL;
 if (!GPT_CHAT_URL) {

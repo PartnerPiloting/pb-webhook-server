@@ -16,8 +16,11 @@ const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
 const { trackLeadProcessingMetrics } = require('./services/leadService');
+// Legacy import - only used for functions not related to run records
 const airtableService = require('./services/airtableService');
 const runIdService = require('./services/runIdService');
+// Using the adapter that enforces the Single Creation Point pattern
+const runRecordService = require('./services/runRecordAdapter');
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
@@ -685,8 +688,14 @@ async function run(req, res, dependencies) {
                     if (runId) {
                         try {
                             clientLogger.setup(`Creating client run record with reason: ${reason}`);
-                            await airtableService.createClientRunRecord(runId, clientId, client.clientName);
-                            await airtableService.completeClientRun(runId, clientId, true, `No action taken: ${reason}`);
+                            await runRecordService.createRunRecord(runId, clientId, client.clientName, {
+                                logger: clientLogger,
+                                source: 'batchScorer_skip'
+                            });
+                            await runRecordService.completeRunRecord(runId, clientId, 'Skipped', `No action taken: ${reason}`, {
+                                logger: clientLogger,
+                                source: 'batchScorer_skip'
+                            });
                         } catch (error) {
                             clientLogger.warn(`Failed to create/update client run record: ${error.message}`);
                         }
@@ -726,7 +735,10 @@ async function run(req, res, dependencies) {
                 if (runId) {
                     try {
                         clientLogger.setup(`Creating client run record for ${clientId} in run ${runId}...`);
-                        await airtableService.createClientRunRecord(runId, clientId, client.clientName);
+                        await runRecordService.createRunRecord(runId, clientId, client.clientName, {
+                            logger: clientLogger,
+                            source: 'batchScorer_process'
+                        });
                         clientLogger.setup(`Client run record created successfully`);
                     } catch (error) {
                         clientLogger.warn(`Failed to create client run record: ${error.message}. Continuing execution.`);
@@ -783,7 +795,11 @@ async function run(req, res, dependencies) {
                         const success = clientErrors.length === 0;
                         
                         clientLogger.setup(`Completing client run record for ${clientId}...`);
-                        await airtableService.completeClientRun(runId, clientId, success, reason);
+                        const status = success ? 'Success' : 'Error';
+                        await runRecordService.completeRunRecord(runId, clientId, status, reason, {
+                            logger: clientLogger,
+                            source: 'batchScorer_complete'
+                        });
                     } catch (error) {
                         clientLogger.warn(`Failed to complete client run record: ${error.message}`);
                     }
@@ -848,7 +864,9 @@ async function run(req, res, dependencies) {
                 if (runId) {
                     try {
                         console.log(`Completing failed client run record for ${clientId}...`);
-                        await airtableService.completeClientRun(runId, clientId, false, errorReason);
+                        await runRecordService.completeRunRecord(runId, clientId, 'Error', errorReason, {
+                            source: 'batchScorer_error'
+                        });
                     } catch (error) {
                         console.warn(`Failed to complete client run record: ${error.message}`);
                     }
