@@ -5,7 +5,41 @@
 const express = require('express');
 const router = express.Router();
 const dirtyJSON = require('dirty-json');
-const syncPBPostsToAirtable = require('../utils/pbPostsSync');
+con            // First get the current count to avoid overwriting with a lower count
+            try {
+              // Get the client run record to check existing post count
+              const clientBase = await getClientBase(clientId);
+              const runRecords = await clientBase('Client Run Results').select({
+                filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
+                maxRecords: 1
+              }).firstPage();
+              
+              if (runRecords && runRecords.length > 0) {
+                // Get current count, default to 0 if not set
+                const currentCount = Number(runRecords[0].get('Total Posts Harvested') || 0);
+                // Use the higher of current count or new posts.length
+                const updatedCount = Math.max(currentCount, posts.length);
+                
+                await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
+                  'Total Posts Harvested': updatedCount
+                });
+                
+                console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId}: ${currentCount} → ${updatedCount} posts harvested`);
+              } else {
+                // If record not found, create a new one with the current count
+                await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
+                  'Total Posts Harvested': posts.length
+                });
+                console.log(`[ApifyWebhook] Created/updated client run ${clientSuffixedRunId} record for ${clientId} with ${posts.length} posts harvested`);
+              }
+            } catch (recordError) {
+              // Fall back to simple update if record lookup fails
+              console.warn(`[ApifyWebhook] Failed to check existing record, using simple update: ${recordError.message}`);
+              await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
+                'Total Posts Harvested': posts.length
+              });
+              console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId} with ${posts.length} posts harvested`);
+            }yncPBPostsToAirtable = require('../utils/pbPostsSync');
 const { getFetch } = require('../utils/safeFetch');
 const fetchDynamic = getFetch();
 
@@ -310,10 +344,50 @@ router.post('/api/apify-webhook', async (req, res) => {
               : `${runId}-${clientId}`;
             console.log(`[ApifyWebhook] Using client-suffixed run ID: ${clientSuffixedRunId} (from ${runId})`);
             
-            await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
-              'Total Posts Harvested': posts.length
-            });
-            console.log(`[ApifyWebhook] Updated client run ${normalizedRunId} record for ${clientId} with ${posts.length} posts harvested`);
+            // Calculate estimated API costs (based on LinkedIn post queries)
+            const estimatedCost = (posts.length * 0.02).toFixed(2); // $0.02 per post as estimate
+            
+            // Get the client run record to check existing values
+            const clientBase = await getClientBase(clientId);
+            const runRecords = await clientBase('Client Run Results').select({
+              filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
+              maxRecords: 1
+            }).firstPage();
+            
+            if (runRecords && runRecords.length > 0) {
+              // Get current counts, default to 0 if not set
+              const currentRecord = runRecords[0];
+              const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
+              const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
+              const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
+              
+              // Use the higher count (in case we're processing multiple batches)
+              const updatedCount = Math.max(currentPostCount, posts.length);
+              // Add to API costs
+              const updatedCosts = currentApiCosts + Number(estimatedCost);
+              
+              // Update the record with all relevant fields
+              await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
+                'Total Posts Harvested': updatedCount,
+                'Apify API Costs': updatedCosts,
+                'Profiles Submitted for Post Harvesting': Math.max(profilesSubmittedCount, posts.length) // Update if higher
+              });
+              
+              console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId}:`);
+              console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
+              console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
+            } else {
+              // If record not found, create a new one with the current values
+              await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
+                'Total Posts Harvested': posts.length,
+                'Apify API Costs': estimatedCost,
+                'Profiles Submitted for Post Harvesting': posts.length
+              });
+              
+              console.log(`[ApifyWebhook] Created/updated client run ${clientSuffixedRunId} record for ${clientId}:`);
+              console.log(`  - Total Posts Harvested: ${posts.length}`);
+              console.log(`  - Apify API Costs: ${estimatedCost}`);
+            }
           }
         } catch (metricError) {
           console.error(`[ApifyWebhook] Failed to update post harvesting metrics: ${metricError.message}`);
