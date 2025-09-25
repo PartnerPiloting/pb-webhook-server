@@ -229,6 +229,27 @@ function getCachedRunInfo(runId, clientId) {
   return runRecordCache[key] || null;
 }
 
+/**
+ * Strip client suffix from a run ID to get the base run ID
+ * @param {string} runId - The run ID with client suffix
+ * @returns {string} The base run ID without client suffix
+ */
+function stripClientSuffix(runId) {
+  if (!runId || typeof runId !== 'string') {
+    console.error(`[runIdService] ERROR: Invalid runId provided to stripClientSuffix: ${runId}`);
+    return runId;
+  }
+  
+  // Match pattern: YYMMDD-HHMMSS-ClientID
+  const match = runId.match(/^(\d{6}-\d{6})-(.+)$/);
+  if (match) {
+    return match[1]; // Return just the timestamp portion
+  }
+  
+  console.log(`[runIdService] Could not strip client suffix from ${runId}, returning as-is`);
+  return runId;
+}
+
 module.exports = {
   generateRunId,
   normalizeRunId,
@@ -236,5 +257,6 @@ module.exports = {
   getRunRecordId,
   clearCache,
   registerApifyRunId,
-  getCachedRunInfo
+  getCachedRunInfo,
+  stripClientSuffix
 };

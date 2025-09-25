@@ -134,9 +134,18 @@ async function createJobRecord(runId, stream, options = {}) {
   }
   
   try {
+    // Ensure the run ID is properly formatted (should be just the base run ID without client suffix)
+    const baseRunId = runIdService.stripClientSuffix(runId);
+    
+    if (!baseRunId) {
+      logger.error(`Run Record Service: Invalid run ID format: ${runId}`);
+      trackActivity('create_job', runId, 'SYSTEM', source, `ERROR: Invalid run ID format`);
+      throw new Error(`Invalid run ID format: ${runId}`);
+    }
+    
     // Create fields object without the problematic Source field
     const recordFields = {
-      'Run ID': runId,
+      'Run ID': baseRunId, // Ensure we're using the properly formatted run ID
       'Start Time': new Date().toISOString(),
       'Status': 'Running',
       'Stream': stream,
@@ -151,6 +160,8 @@ async function createJobRecord(runId, stream, options = {}) {
       'Post Scoring Tokens': 0,
       'System Notes': `Run initiated at ${new Date().toISOString()} from ${source}`
     };
+    
+    logger.debug(`Run Record Service: Creating job tracking record with ID: ${baseRunId}`);
     
     const records = await base(JOB_TRACKING_TABLE).create([
       {
@@ -201,8 +212,44 @@ async function createClientRunRecord(runId, clientId, clientName, options = {}) 
   
   logger.debug(`Run Record Service: Using standardized ID: ${standardRunId}`);
   
-  // Check if a record already exists with this run ID
+  // First, check for existing record in the registry
+  const registryKey = `${standardRunId}:${clientId}`;
+  if (runRecordRegistry.has(registryKey)) {
+    const existingRecord = runRecordRegistry.get(registryKey);
+    const errorMsg = `Client run record already exists in registry for ${standardRunId}, client ${clientId}, record ID ${existingRecord.id}`;
+    logger.error(errorMsg);
+    trackActivity('create_client', standardRunId, clientId, source, `ERROR: ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  // Then check for existing record in the database
   try {
+    // Look up by base run ID first (without client suffix) to catch potential variant IDs
+    const baseRunId = runIdService.stripClientSuffix(standardRunId);
+    const baseIdQuery = `AND(FIND('${baseRunId}', {Run ID}) > 0, {Client ID} = '${clientId}')`;
+    logger.debug(`Run Record Service: Looking for base run ID match: ${baseIdQuery}`);
+    
+    const baseMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: baseIdQuery,
+      maxRecords: 10 // Check more records to catch all variants
+    }).firstPage();
+    
+    if (baseMatches && baseMatches.length > 0) {
+      // Found records with matching base ID and client
+      const existingRecord = baseMatches[0];
+      const existingId = existingRecord.fields['Run ID'];
+      const errorMsg = `Client run record already exists for this timestamp (${baseRunId}), client ${clientId}, existing run ID: ${existingId}`;
+      logger.error(errorMsg);
+      
+      // Register this record to prevent future duplication attempts
+      runIdService.registerRunRecord(existingId, clientId, existingRecord.id);
+      runRecordRegistry.set(registryKey, existingRecord);
+      
+      trackActivity('create_client', standardRunId, clientId, source, `ERROR: ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+    
+    // Then check for exact match as a final verification
     const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
     logger.debug(`Run Record Service: Looking for exact Run ID match: ${exactIdQuery}`);
     
@@ -212,8 +259,14 @@ async function createClientRunRecord(runId, clientId, clientName, options = {}) 
     }).firstPage();
     
     if (exactMatches && exactMatches.length > 0) {
-      const errorMsg = `Client run record already exists for ${standardRunId}, client ${clientId}`;
+      const existingRecord = exactMatches[0];
+      const errorMsg = `Client run record already exists for ${standardRunId}, client ${clientId}, record ID ${existingRecord.id}`;
       logger.error(errorMsg);
+      
+      // Register this record to prevent future duplication attempts
+      runIdService.registerRunRecord(standardRunId, clientId, existingRecord.id);
+      runRecordRegistry.set(registryKey, existingRecord);
+      
       trackActivity('create_client', standardRunId, clientId, source, `ERROR: ${errorMsg}`);
       throw new Error(errorMsg);
     }
@@ -537,9 +590,9 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
   };
   
   // Source info is already added to System Notes - don't try to use the Source field at all
-  
+  // Duration info added to System Notes instead of using Duration field
   if (duration !== null) {
-    updates['Duration (seconds)'] = duration;
+    updates['System Notes'] += ` Duration: ${duration} seconds.`;
   }
   
   // Track this activity

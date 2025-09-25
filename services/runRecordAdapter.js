@@ -22,15 +22,29 @@ async function adaptCreateRunRecord(runId, clientId, clientName, options = {}) {
     }
     
     try {
+        // Strip client suffix if present to get the base run ID
+        const baseRunId = runIdService.stripClientSuffix(runId);
+        
+        if (logger) {
+            logger.debug(`[Adapter] Base run ID: ${baseRunId} from original: ${runId}`);
+        }
+        
+        // Normalize the run ID with client suffix
+        const normalizedId = runIdService.normalizeRunId(baseRunId, clientId);
+        
+        if (logger) {
+            logger.debug(`[Adapter] Normalized run ID: ${normalizedId}`);
+        }
+        
         // First try to get an existing record - V2 never creates during updates
-        const existingRecord = await runRecordServiceV2.getRunRecord(runId, clientId, {
+        const existingRecord = await runRecordServiceV2.getRunRecord(normalizedId, clientId, {
             logger,
             source: `adapter_from_${source}`
         });
         
         if (existingRecord) {
             if (logger) {
-                logger.debug(`[Adapter] Run record already exists for ${runId}, client ${clientId} - using existing`);
+                logger.debug(`[Adapter] Run record already exists for ${normalizedId}, client ${clientId} - using existing`);
             }
             
             // Record exists, return it
@@ -68,12 +82,12 @@ async function adaptCreateRunRecord(runId, clientId, clientName, options = {}) {
             throw new Error(`Unauthorized source "${source}" attempted to create run record`);
         }
         
-        // Create the record with V2 service
+        // Create the record with V2 service using normalized ID
         if (logger) {
-            logger.debug(`[Adapter] Creating new run record for ${runId}, client ${clientId} with source ${options.source}`);
+            logger.debug(`[Adapter] Creating new run record for ${normalizedId}, client ${clientId} with source ${options.source}`);
         }
         
-        return await runRecordServiceV2.createClientRunRecord(runId, clientId, clientName, options);
+        return await runRecordServiceV2.createClientRunRecord(normalizedId, clientId, clientName, options);
     } catch (error) {
         if (logger) {
             logger.error(`[Adapter] Error in adaptCreateRunRecord: ${error.message}`);
