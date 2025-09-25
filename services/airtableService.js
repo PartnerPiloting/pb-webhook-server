@@ -164,53 +164,13 @@ async function createJobTrackingRecord(runId, stream) {
 async function createClientRunRecord(runId, clientId, clientName) {
   const base = initialize();
   
-  // CONSISTENCY FIX: Try to reuse the existing run ID's timestamp if possible
-  // This helps prevent duplication by maintaining the same timestamp
+  // SIMPLIFIED: Just normalize the run ID once to ensure consistency
   const standardRunId = runIdService.normalizeRunId(runId, clientId, false);
   
   console.log(`Airtable Service: Creating run record for client ${clientId}`);
   console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
-  console.log(`Airtable Service: Original runId: ${runId}`);
-  console.log(`Airtable Service: DEBUG - Timestamp extraction from RunID`);
   
-  // Extract timestamp information for debugging
-  if (standardRunId) {
-    const parts = standardRunId.split('-');
-    if (parts.length >= 2) {
-      console.log(`Airtable Service: DEBUG - ID parts: Date=${parts[0]}, Time=${parts[1]}, Client=${parts.slice(2).join('-')}`);
-    }
-  }
-  
-  // STEP 1: First check for exact Run ID match - this is the most reliable way to prevent duplicates
-  try {
-    // Look for exact Run ID match first
-    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
-    console.log(`Airtable Service: CREATE DEBUG - Looking for exact Run ID match`);
-    console.log(`Airtable Service: CREATE DEBUG - Query: ${exactIdQuery}`);
-    
-    const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: exactIdQuery,
-      maxRecords: 1
-    }).firstPage();
-    
-    if (exactMatches && exactMatches.length > 0) {
-      const existingRecord = exactMatches[0];
-      const existingRunId = existingRecord.fields['Run ID'];
-      console.log(`Airtable Service: Found existing record ${existingRecord.id} with exact Run ID match ${existingRunId}`);
-      
-      // Register with our normalized ID for future lookups
-      runIdService.registerRunRecord(standardRunId, clientId, existingRecord.id);
-      
-      return existingRecord;
-    }
-    
-    console.log(`Airtable Service: No exact Run ID matches found for ${standardRunId}`);
-  } catch (error) {
-    console.error(`Airtable Service ERROR during exact Run ID check: ${error.message}`);
-    // Continue even if this check fails
-  }
-  
-  // STEP 2: Check cache for existing record ID
+  // First check if we have a cached record ID
   const cachedRecordId = runIdService.getRunRecordId(standardRunId, clientId);
   
   if (cachedRecordId) {
@@ -221,65 +181,44 @@ async function createClientRunRecord(runId, clientId, clientName) {
       console.log(`Airtable Service: Found existing record with ID ${cachedRecordId}`);
       return record;
     } catch (err) {
-      console.log(`Airtable Service: Cached record ID ${cachedRecordId} no longer valid, will create new record`);
-      // Fall through to create a new record
+      console.log(`Airtable Service: Cached record ID ${cachedRecordId} no longer valid`);
+      // Fall through to check by query
     }
   }
   
-  // STEP 3: Check if a record already exists with this run ID
+  // Check if a record already exists with this run ID
   try {
-    console.log(`Airtable Service: Checking for existing record with run ID ${standardRunId}`);
+    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
+    console.log(`Airtable Service: Looking for exact Run ID match: ${exactIdQuery}`);
     
-    const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`,
+    const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: exactIdQuery,
       maxRecords: 1
     }).firstPage();
     
-    if (existingRecords && existingRecords.length > 0) {
-      console.log(`Airtable Service: Found existing record ID: ${existingRecords[0].id}`);
+    if (exactMatches && exactMatches.length > 0) {
+      console.log(`Airtable Service: Found existing record ID: ${exactMatches[0].id}`);
       
       // Register the record ID for future lookups
-      runIdService.registerRunRecord(standardRunId, clientId, existingRecords[0].id);
+      runIdService.registerRunRecord(standardRunId, clientId, exactMatches[0].id);
       
-      return existingRecords[0];
+      return exactMatches[0];
     }
     
-    // CLEAN SLATE: Create a new record with our standardized ID
-    console.log(`Airtable Service: Creating new client run record for ${clientId} with standardized ID ${standardRunId}`);
-    
-    // Extract timestamp from the standardized ID for Start Time
-    let startTimestamp = new Date().toISOString();
-    
-    // Try to use the timestamp from the Run ID
-    if (standardRunId) {
-      const parts = standardRunId.split('-');
-      if (parts.length >= 2) {
-        // Extract date and time parts (format: YYMMDD-HHMMSS)
-        const datePart = parts[0]; // e.g., "250924"
-        const timePart = parts[1]; // e.g., "232213"
-        
-        if (datePart && timePart && datePart.length === 6 && timePart.length === 6) {
-          // Format: YYMMDD-HHMMSS -> 20YY-MM-DDT:HH:MM:SSZ
-          const year = `20${datePart.substring(0, 2)}`;
-          const month = datePart.substring(2, 4);
-          const day = datePart.substring(4, 6);
-          const hour = timePart.substring(0, 2);
-          const minute = timePart.substring(2, 4);
-          const second = timePart.substring(4, 6);
-          
-          try {
-            // Create a proper ISO timestamp from the Run ID parts
-            startTimestamp = `${year}-${month}-${day}T${hour}:${minute}:${second}.000Z`;
-            console.log(`Airtable Service: CREATE DEBUG - Extracted timestamp from Run ID: ${startTimestamp}`);
-          } catch (err) {
-            console.log(`Airtable Service: CREATE DEBUG - Failed to parse timestamp from Run ID, using current time`);
-          }
-        }
-      }
-    }
-    
-    console.log(`Airtable Service: CREATE DEBUG - Using Start Time: ${startTimestamp}`);
-    
+    console.log(`Airtable Service: No existing record found, will create new one`);
+  } catch (error) {
+    console.error(`Airtable Service ERROR during record check: ${error.message}`);
+    // Continue to create a new record
+  }
+  
+  // Create a new record with our standardized ID
+  console.log(`Airtable Service: Creating new client run record for ${clientId} with standardized ID ${standardRunId}`);
+  
+  // SIMPLIFIED: Just use current time for Start Time
+  const startTimestamp = new Date().toISOString();
+  console.log(`Airtable Service: Using Start Time: ${startTimestamp}`);
+  
+  try {
     // Create new record with detailed debug
     console.log(`Airtable Service: CREATE DEBUG - Full record creation request:`);
     const recordData = {
@@ -405,70 +344,56 @@ async function updateJobTracking(runId, updates) {
 async function updateClientRun(runId, clientId, updates) {
   const base = initialize();
   
-  // CONSISTENCY FIX: Try to reuse the existing run ID's timestamp if possible
-  // This helps prevent duplication by maintaining the same timestamp
+  // SIMPLIFIED: Just normalize the run ID once to ensure consistency
   const standardRunId = runIdService.normalizeRunId(runId, clientId, false);
   
   console.log(`Airtable Service: Updating client run for ${clientId}`);
   console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
-  console.log(`Airtable Service: Original runId: ${runId}`);
-  console.log(`Airtable Service: Detailed Update Debug - Updates Object:`, JSON.stringify(updates));
   
   try {
-    // SIMPLIFIED APPROACH: First look for exact Run ID match, which is the most reliable
+    // SIMPLE APPROACH: Look for exact Run ID match - this is the only reliable way
     let recordId = null;
     
-    // Step 1: Check for an exact Run ID match
-    console.log(`Airtable Service: SEARCH ATTEMPT 1 - Looking for exact Run ID match`);
-    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
-    console.log(`Airtable Service: Query: ${exactIdQuery}`);
-    console.log(`Airtable Service: Table: ${CLIENT_RUN_RESULTS_TABLE}`);
+    // First check if we have a cached record ID for this run
+    recordId = runIdService.getRunRecordId(standardRunId, clientId);
     
-    const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: exactIdQuery,
-      maxRecords: 1
-    }).firstPage();
+    if (recordId) {
+      console.log(`Airtable Service: Using cached record ID ${recordId} for run ${standardRunId}`);
+      
+      try {
+        // Verify the record exists
+        await base(CLIENT_RUN_RESULTS_TABLE).find(recordId);
+        console.log(`Airtable Service: Verified cached record exists`);
+      } catch (err) {
+        console.log(`Airtable Service: Cached record not found, will search again`);
+        recordId = null;
+      }
+    }
     
-    console.log(`Airtable Service: SEARCH RESULTS 1 - Found ${exactMatches ? exactMatches.length : 0} records`);
-    
-    if (exactMatches && exactMatches.length > 0) {
-      recordId = exactMatches[0].id;
-      const existingRunId = exactMatches[0].fields['Run ID'];
+    // If not found in cache, search by exact Run ID match
+    if (!recordId) {
+      console.log(`Airtable Service: Looking for exact Run ID match`);
+      const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
       
-      console.log(`Airtable Service: SUCCESS - Found exact Run ID match ${recordId}`);
-      console.log(`Airtable Service: DETAILS - Existing Run ID: ${existingRunId}`);
-      console.log(`Airtable Service: DETAILS - Start Time: ${exactMatches[0].fields['Start Time']}`);
-      console.log(`Airtable Service: DETAILS - Status: ${exactMatches[0].fields['Status']}`);
-      console.log(`Airtable Service: DETAILS - Fields:`, JSON.stringify(exactMatches[0].fields));
-      
-      // Register with our standardized ID for future lookups
-      runIdService.registerRunRecord(standardRunId, clientId, recordId);
-    } else {
-      console.log(`Airtable Service: SEARCH FAILED - No exact Run ID match found for ${standardRunId}`);
-      
-      // Step 2: As a fallback, try to find any record for this client
-      console.log(`Airtable Service: SEARCH ATTEMPT 2 - Looking for any record for this client`);
-      const anyClientQuery = `{Client ID} = '${clientId}'`;
-      console.log(`Airtable Service: Query: ${anyClientQuery}`);
-      
-      const clientRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: anyClientQuery,
-        sort: [{ field: "Start Time", direction: "desc" }],
-        maxRecords: 5
+      const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
+        filterByFormula: exactIdQuery,
+        maxRecords: 1
       }).firstPage();
       
-      console.log(`Airtable Service: SEARCH RESULTS 2 - Found ${clientRecords ? clientRecords.length : 0} records`);
-      
-      if (clientRecords && clientRecords.length > 0) {
-        console.log(`Airtable Service: FOUND CLIENT RECORDS but none match current Run ID`);
-        clientRecords.forEach((rec, idx) => {
-          console.log(`Airtable Service: RECORD ${idx} - ID: ${rec.id}, Run ID: ${rec.fields['Run ID']}, Status: ${rec.fields['Status']}, Start Time: ${rec.fields['Start Time']}`);
-        });
+      if (exactMatches && exactMatches.length > 0) {
+        recordId = exactMatches[0].id;
+        console.log(`Airtable Service: Found exact Run ID match ${recordId}`);
+        
+        // Register for future lookups
+        runIdService.registerRunRecord(standardRunId, clientId, recordId);
+      } else {
+        console.log(`Airtable Service: No exact Run ID match found for ${standardRunId}`);
       }
+    }
       
-      // No matching record found after all searches - create a new one
-      console.log(`Airtable Service: RECORD NOT FOUND - Creating new client run record`);
-      console.log(`Airtable Service: CREATION DETAILS - Client ID: ${clientId}, Run ID: ${standardRunId}`);
+    // If still not found, create a new record
+    if (!recordId) {
+      console.log(`Airtable Service: Creating new client run record`);
       const record = await createClientRunRecord(standardRunId, clientId, clientId);
       recordId = record.id;
     }
