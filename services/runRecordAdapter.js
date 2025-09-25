@@ -3,8 +3,7 @@
 
 const runRecordServiceV2 = require('./runRecordServiceV2');
 
-// Import the original service for functionality reference
-const originalService = require('./runRecordService');
+// We don't need to import the original service since we're implementing all functionality directly
 
 /**
  * Adapts from the original runRecordService.createRunRecord pattern to new V2 pattern
