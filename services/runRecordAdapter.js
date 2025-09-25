@@ -2,6 +2,7 @@
 // Adapter to bridge from the old service to the new V2 service with Single Creation Point pattern
 
 const runRecordServiceV2 = require('./runRecordServiceV2');
+const runIdService = require('./runIdService');
 
 // We don't need to import the original service since we're implementing all functionality directly
 
