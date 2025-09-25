@@ -380,12 +380,14 @@ router.post('/api/apify-webhook', async (req, res) => {
               console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${updatedCount}`);
               console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
               
-              // Update the record with all relevant fields
-              await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
-                'Total Posts Harvested': updatedCount,
-                'Apify API Costs': updatedCosts,
-                'Profiles Submitted for Post Harvesting': Math.max(profilesSubmittedCount, posts.length), // Update if higher
-                'Apify Run ID': runId // Set the actual Apify run ID
+              // Get the centralized metrics update function
+              const { updateClientRunMetrics } = require('../services/apifyRunsService');
+              
+              // Update metrics using the centralized function with custom values
+              // that preserve the existing logic specific to webhook handling
+              await updateClientRunMetrics(runId, clientId, {
+                postsCount: updatedCount,  // Use the max of current and new
+                profilesCount: Math.max(profilesSubmittedCount, posts.length)  // Use the max
               });
               
               console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId}:`);
@@ -399,11 +401,13 @@ router.post('/api/apify-webhook', async (req, res) => {
               console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${posts.length}`);
               console.log(`[DEBUG][METRICS_TRACKING] - Apify Run ID: ${runId || '(empty)'}`);
               
-              await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
-                'Total Posts Harvested': posts.length,
-                'Apify API Costs': estimatedCost,
-                'Profiles Submitted for Post Harvesting': posts.length,
-                'Apify Run ID': runId // Set the actual Apify run ID
+              // Get the centralized metrics update function
+              const { updateClientRunMetrics } = require('../services/apifyRunsService');
+              
+              // Create a new record with the centralized function
+              await updateClientRunMetrics(runId, clientId, {
+                postsCount: posts.length,
+                profilesCount: posts.length
               });
               
               console.log(`[ApifyWebhook] Created/updated client run ${clientSuffixedRunId} record for ${clientId}:`);
