@@ -42,14 +42,26 @@ function hasSpecificClientSuffix(runId, clientId) {
 function getBaseRunId(runId) {
   if (!runId) return '';
   
+  // Check for null, undefined, or other non-string values
+  if (typeof runId !== 'string') {
+    console.error(`[runIdUtils] ERROR: Non-string runId provided to getBaseRunId: ${runId}`);
+    return '';
+  }
+  
+  // First try our standard format
   const match = runId.match(TIMESTAMP_RUN_ID_REGEX);
   if (match) {
     return match[1]; // Return just the timestamp part (YYMMDD-HHMMSS)
   }
   
-  // If it's not our format, log a warning and return an empty string
-  console.warn(`[METDEBUG] Encountered non-standard run ID format: ${runId}`);
-  return '';
+  // If not in our standard format, check if it's already a base ID (YYMMDD-HHMMSS)
+  if (/^\d{6}-\d{6}$/.test(runId)) {
+    return runId; // It's already in base format
+  }
+  
+  // If it's not our format, log a warning but return the original runId to prevent data loss
+  console.warn(`[runIdUtils] WARNING: Encountered non-standard run ID format: ${runId}`);
+  return runId;
 }
 
 /**

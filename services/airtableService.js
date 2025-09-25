@@ -119,8 +119,27 @@ function initialize() {
 async function createJobTrackingRecord(runId, stream) {
   const base = initialize();
   
+  // Handle null or invalid run ID
+  if (!runId) {
+    console.error(`Airtable Service ERROR: Attempting to create job tracking with invalid runId: ${runId}`);
+    // Generate a valid runId if none provided
+    const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').substring(2, 14);
+    runId = `${timestamp.substring(0, 6)}-${timestamp.substring(6, 12)}`;
+    console.log(`Airtable Service: Generated new runId: ${runId}`);
+  }
+  
   // Strip client suffix from runId to get the base run ID for tracking
-  const baseRunId = runIdUtils.stripClientSuffix(runId);
+  let baseRunId = runIdUtils.stripClientSuffix(runId);
+  
+  // Format check - ensure baseRunId matches expected pattern
+  const runIdPattern = /^(\d{6}-\d{6})$/;
+  if (!runIdPattern.test(baseRunId)) {
+    console.error(`Airtable Service WARNING: baseRunId doesn't match expected format: ${baseRunId}`);
+    // Try to repair the format if possible
+    const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').substring(2, 14);
+    baseRunId = `${timestamp.substring(0, 6)}-${timestamp.substring(6, 12)}`;
+    console.log(`Airtable Service: Repaired baseRunId to: ${baseRunId}`);
+  }
   
   console.log(`Airtable Service: Creating job tracking record for ${runId} (base run ID: ${baseRunId})`);
   
