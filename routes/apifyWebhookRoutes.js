@@ -10,15 +10,16 @@ const { normalizeRunId } = require('../services/runIdService');
 const runIdService = require('../services/runIdService');
 const { createPost } = require('../services/postService');
 
-// Rate limiting for webhook endpoints
-const rateLimit = require("express-rate-limit");
-const webhookLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // Max 100 requests per minute per IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: "Too many webhook requests from this IP, please try again after a minute",
-});
+// Rate limiting for webhook endpoints - TEMPORARILY DISABLED
+// const rateLimit = require("express-rate-limit");
+// const webhookLimiter = rateLimit({
+//   windowMs: 1 * 60 * 1000, // 1 minute
+//   max: 100, // Max 100 requests per minute per IP
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   message: "Too many webhook requests from this IP, please try again after a minute",
+// });
+const webhookLimiter = (req, res, next) => next(); // Dummy middleware that does nothing
 
 // Initialize webhook handler
 const apifyWebhookHandler = async (req, res) => {
