@@ -437,10 +437,10 @@ async function updateRunRecord(runId, clientId, updates, options = {}) {
   
   const base = initialize();
   
-  // Update with new values, completely removing Source field
+  // Update with new values
   const updateFields = {
-    ...updates,
-    'Last Updated': new Date().toISOString()
+    ...updates
+    // 'Last Updated' field removed as it doesn't exist in Airtable schema
   };
   
   // Add information about the update to System Notes field
