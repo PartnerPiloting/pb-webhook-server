@@ -20,7 +20,8 @@ async function testEndToEndRunIdHandling() {
   
   try {
     // Generate a run ID (similar to what batchScorer.js would do)
-    const baseRunId = await runIdGenerator.generateRunId();
+    // Note: generateRunId is synchronous, no need to await
+    const baseRunId = runIdGenerator.generateRunId();
     console.log(`Generated base run ID: ${baseRunId}`);
     
     // Create job tracking record

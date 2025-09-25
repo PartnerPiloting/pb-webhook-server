@@ -59,7 +59,9 @@ function getBaseRunId(runId) {
     return match[1]; // Return just the timestamp part (YYMMDD-HHMMSS)
   }
   
-  // If it's not our format, return the original (shouldn't happen with clean slate)
+  // If it's not our format, return the original
+  // This could happen if a legacy SR-format ID is encountered
+  console.warn(`Encountered non-standard run ID format: ${runId}`);
   return runId;
 }
 
@@ -81,10 +83,10 @@ function stripClientSuffix(runId) {
 function addClientSuffix(runId, clientId) {
   if (!runId || !clientId) return runId;
   
-  // Get just the timestamp part
+  // Get just the base part without client suffix
   const baseRunId = getBaseRunId(runId);
   
-  // Clean the client ID (remove C prefix if present)
+  // Clean the client ID (remove C prefix if present for standardization)
   const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
   
   // Create the standard format

@@ -46,6 +46,13 @@ function normalizeRunId(runId, clientId, forceNew = false) {
     return null;
   }
   
+  // Check if runId is a Promise and log a warning with stack trace to help debugging
+  if (runId && typeof runId === 'object' && runId.then) {
+    console.error(`[runIdService] WARNING: Received Promise instead of string for runId. This is likely a bug.`);
+    console.error(`[runIdService] Stack trace:`, new Error().stack);
+    // Continue with standard ID generation - ignore the Promise
+  }
+  
   // Clean client ID (remove C prefix if present)
   const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
   
@@ -66,37 +73,64 @@ function normalizeRunId(runId, clientId, forceNew = false) {
  * @returns {string} The normalized run ID
  */
 function registerRunRecord(runId, clientId, recordId) {
-  // Always normalize the run ID for consistent key generation
-  const normalizedId = normalizeRunId(runId, clientId);
-  
-  if (!normalizedId) {
-    console.log(`[runIdService] ERROR: Failed to normalize run ID ${runId} for client ${clientId}`);
-    return null;
-  }
-  
-  // Store the record with a simple key structure
-  runRecordCache[normalizedId] = {
-    recordId,
-    clientId,
-    timestamp: new Date().toISOString()
-  };
-  
-  console.log(`[runIdService] Registered record ${recordId} for run ${normalizedId} (client ${clientId})`);
-  
-  // BONUS: Also register the base run ID (without client suffix) for additional reliability
-  const baseRunId = runIdUtils.getBaseRunId(runId);
-  if (baseRunId !== normalizedId) {
-    const baseKey = normalizeRunId(baseRunId, clientId);
-    runRecordCache[baseKey] = {
+  try {
+    // Handle if runId is a Promise
+    if (runId && typeof runId === 'object' && runId.then) {
+      console.error(`[runIdService] WARNING: Received Promise instead of string for runId in registerRunRecord.`);
+      console.error(`[runIdService] Stack trace:`, new Error().stack);
+      
+      // Use client ID with timestamp as a fallback
+      const fallbackId = createRunId();
+      console.log(`[runIdService] Using fallback run ID: ${fallbackId} for client ${clientId}`);
+      runId = fallbackId;
+    }
+    
+    // Handle null or undefined runId
+    if (!runId) {
+      console.error(`[runIdService] ERROR: Received null/undefined runId in registerRunRecord for client ${clientId}`);
+      const fallbackId = createRunId();
+      console.log(`[runIdService] Using fallback run ID: ${fallbackId} for client ${clientId}`);
+      runId = fallbackId;
+    }
+    
+    // Always normalize the run ID for consistent key generation
+    const normalizedId = normalizeRunId(runId, clientId);
+    
+    if (!normalizedId) {
+      console.error(`[runIdService] ERROR: Failed to normalize run ID ${runId} for client ${clientId}`);
+      return null;
+    }
+    
+    // Store the record with a simple key structure
+    runRecordCache[normalizedId] = {
       recordId,
-      baseId: runIdUtils.getBaseRunId(normalizedId),
       clientId,
       timestamp: new Date().toISOString()
     };
-    console.log(`[runIdService] Also registered record under base run ID ${baseKey}`);
+    
+    console.log(`[runIdService] Registered record ${recordId} for run ${normalizedId} (client ${clientId})`);
+    
+    // BONUS: Also register the base run ID (without client suffix) for additional reliability
+    const baseRunId = runIdUtils.getBaseRunId(runId);
+    if (baseRunId !== normalizedId) {
+      const baseKey = normalizeRunId(baseRunId, clientId);
+      runRecordCache[baseKey] = {
+        recordId,
+        baseId: runIdUtils.getBaseRunId(normalizedId),
+        clientId,
+        timestamp: new Date().toISOString()
+      };
+      console.log(`[runIdService] Also registered record under base run ID ${baseKey}`);
+    }
+    
+    return normalizedId;
+  } catch (error) {
+    console.log(`[runIdService] ERROR in registerRunRecord: ${error.message}`);
+    // Return a fallback ID
+    const fallbackId = `${createRunId()}-${clientId}`;
+    console.log(`[runIdService] Using fallback ID: ${fallbackId}`);
+    return fallbackId;
   }
-  
-  return normalizedId;
 }
 
 /**
