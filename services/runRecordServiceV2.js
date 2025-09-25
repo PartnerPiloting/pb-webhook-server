@@ -536,13 +536,7 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
     'System Notes': `Completed at ${endTimestamp} with status ${status} from ${source}. ${notes || ''}`
   };
   
-  // Only add Source field if it exists in the Airtable schema
-  try {
-    updates['Source'] = source;
-  } catch (fieldError) {
-    // Source info is already added to System Notes
-    logger.debug(`Source field might not exist in Airtable schema - info added to System Notes instead`);
-  }
+  // Source info is already added to System Notes - don't try to use the Source field at all
   
   if (duration !== null) {
     updates['Duration (seconds)'] = duration;
