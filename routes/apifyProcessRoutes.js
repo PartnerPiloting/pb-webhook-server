@@ -272,10 +272,55 @@ router.post('/api/apify/process-client', async (req, res) => {
     }
     
     if (runIdToUse) {
-      await airtableService.updateClientRun(runIdToUse, clientId, {
-        'Total Posts Harvested': postsToday
-      });
-      console.log(`[apify/process-client] Updated client run record for ${clientId} with ${postsToday} posts harvested (Run ID: ${runIdToUse})`);
+      // Calculate estimated API costs (based on LinkedIn post queries)
+      const estimatedCost = (postsToday * 0.02).toFixed(2); // $0.02 per post as estimate
+      
+      // Get the client run record to check existing values
+      try {
+        const clientBase = await getClientBase(clientId);
+        const runRecords = await clientBase('Client Run Results').select({
+          filterByFormula: `{Run ID} = '${runIdToUse}'`,
+          maxRecords: 1
+        }).firstPage();
+        
+        if (runRecords && runRecords.length > 0) {
+          // Get current values, default to 0 if not set
+          const currentRecord = runRecords[0];
+          const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
+          const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
+          
+          // Take the higher count for posts harvested
+          const updatedCount = Math.max(currentPostCount, postsToday);
+          // Add to API costs
+          const updatedCosts = currentApiCosts + Number(estimatedCost);
+          
+          await airtableService.updateClientRun(runIdToUse, clientId, {
+            'Total Posts Harvested': updatedCount,
+            'Apify API Costs': updatedCosts
+          });
+          
+          console.log(`[apify/process-client] Updated client run record for ${clientId}:`);
+          console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
+          console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
+        } else {
+          // No record found, create a new one
+          await airtableService.updateClientRun(runIdToUse, clientId, {
+            'Total Posts Harvested': postsToday,
+            'Apify API Costs': estimatedCost
+          });
+          
+          console.log(`[apify/process-client] Created client run record for ${clientId}:`);
+          console.log(`  - Total Posts Harvested: ${postsToday}`);
+          console.log(`  - Apify API Costs: ${estimatedCost}`);
+        }
+      } catch (recordError) {
+        // Fall back to simple update if record lookup fails
+        console.warn(`[apify/process-client] Failed to check existing record, using simple update: ${recordError.message}`);
+        await airtableService.updateClientRun(runIdToUse, clientId, {
+          'Total Posts Harvested': postsToday
+        });
+        console.log(`[apify/process-client] Updated client run record for ${clientId} with ${postsToday} posts harvested (Run ID: ${runIdToUse})`);
+      }
     }
   } catch (metricError) {
     console.error(`[apify/process-client] Failed to update post harvesting metrics: ${metricError.message}`);
