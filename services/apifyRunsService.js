@@ -13,6 +13,14 @@ const CACHE_DURATION_MS = 2 * 60 * 1000; // 2 minutes
 // Master Clients base connection for Apify Runs table
 let masterClientsBase = null;
 
+// Load airtableService for updating client run metrics
+let airtableService;
+try {
+    airtableService = require('./airtableService');
+} catch (err) {
+    console.error("Failed to load airtableService:", err.message);
+}
+
 /**
  * Initialize connection to the Master Clients base
  */
@@ -334,8 +342,57 @@ function clearRunsCache() {
     console.log("[ApifyRuns] Cache cleared");
 }
 
+/**
+ * Update client run metrics with post harvesting data
+ * This centralizes the logic for updating metrics in both webhook and inline modes
+ * 
+ * @param {string} runId - Apify run ID
+ * @param {string} clientId - Client ID
+ * @param {Object} data - The data to update
+ * @param {number} data.postsCount - Number of posts harvested
+ * @param {number} data.profilesCount - Number of profiles submitted for harvesting
+ * @returns {Promise<Object>} - The updated client run record
+ */
+async function updateClientRunMetrics(runId, clientId, data) {
+    try {
+        if (!airtableService) {
+            airtableService = require('./airtableService');
+        }
+        
+        // Ensure we have a client-suffixed run ID
+        const standardizedRunId = runIdService.normalizeRunId(runId, clientId);
+        
+        console.log(`[METDEBUG] updateClientRunMetrics called for ${standardizedRunId}`);
+        console.log(`[METDEBUG] - Client: ${clientId}`);
+        console.log(`[METDEBUG] - Apify Run ID: ${runId}`);
+        console.log(`[METDEBUG] - Posts Count: ${data.postsCount}`);
+        console.log(`[METDEBUG] - Profiles Count: ${data.profilesCount}`);
+        
+        // Calculate estimated API costs (based on LinkedIn post queries)
+        const estimatedCost = (data.postsCount * 0.02).toFixed(2); // $0.02 per post as estimate
+        
+        // Update the client run record with all metrics
+        const updated = await airtableService.updateClientRun(standardizedRunId, clientId, {
+            'Total Posts Harvested': data.postsCount,
+            'Apify API Costs': estimatedCost,
+            'Apify Run ID': runId,
+            'Profiles Submitted for Post Harvesting': data.profilesCount
+        });
+        
+        console.log(`[ApifyRuns] Updated client run metrics for ${clientId}:`);
+        console.log(`  - Total Posts Harvested: ${data.postsCount}`);
+        console.log(`  - Apify Run ID: ${runId}`);
+        
+        return updated;
+    } catch (error) {
+        console.error(`[ApifyRuns] Failed to update client run metrics: ${error.message}`);
+        throw error;
+    }
+}
+
 module.exports = {
     createApifyRun,
+    updateClientRunMetrics,
     getApifyRun,
     updateApifyRun,
     getClientIdForRun,

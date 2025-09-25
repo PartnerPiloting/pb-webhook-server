@@ -328,6 +328,21 @@ router.post('/api/apify/run', async (req, res) => {
           console.warn(`[ApifyControl] Failed to resolve client base for ${clientId}: ${e.message}`);
         }
         result = await syncPBPostsToAirtable(posts, clientBase || null);
+        
+        // Update the client run record with post harvesting metrics using the centralized function
+        try {
+          const { updateClientRunMetrics } = require('../services/apifyRunsService');
+          
+          // Update metrics using the centralized function
+          await updateClientRunMetrics(run.id, clientId, {
+            postsCount: posts.length,
+            profilesCount: targetUrls.length
+          });
+          
+        } catch (metricsError) {
+          console.error(`[ApifyControl] Failed to update post harvesting metrics: ${metricsError.message}`);
+          // Continue execution even if metrics update fails
+        }
       }
       return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, datasetId, counts: { items: (items||[]).length, posts: posts.length }, result });
     }
