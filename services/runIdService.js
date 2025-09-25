@@ -56,12 +56,25 @@ function normalizeRunId(runId, clientId, forceNew = false) {
   // Clean client ID (remove C prefix if present)
   const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
   
-  // Always generate a new timestamp-based ID to ensure uniqueness for each client
-  // This prevents multiple clients from having the same timestamp in batch processing
-  const baseId = createRunId();
-  const standardId = `${baseId}-${cleanClientId}`;
+  // Extract the base ID if it exists and looks valid, otherwise create a new one
+  let baseId;
+  if (runId && typeof runId === 'string') {
+    // Check if runId has our expected timestamp format (YYMMDD-HHMMSS...)
+    const timestampMatch = runId.match(/^(\d{6}-\d{6})/);
+    if (timestampMatch) {
+      baseId = timestampMatch[1]; // Use the existing timestamp
+      console.log(`[runIdService] Using existing timestamp: ${baseId} from ${runId}`);
+    } else {
+      baseId = createRunId(); // Create new if not in expected format
+      console.log(`[runIdService] Created new timestamp: ${baseId} (original format not recognized)`);
+    }
+  } else {
+    baseId = createRunId(); // Create new if runId is not a string
+    console.log(`[runIdService] Created new timestamp: ${baseId} (no valid runId provided)`);
+  }
   
-  console.log(`[runIdService] Created new standardized ID: ${standardId}`);
+  const standardId = `${baseId}-${cleanClientId}`;
+  console.log(`[runIdService] Standardized ID: ${standardId}`);
   return standardId;
 }
 
