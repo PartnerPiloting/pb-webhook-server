@@ -240,14 +240,18 @@ function stripClientSuffix(runId) {
     return runId;
   }
   
-  // Match pattern: YYMMDD-HHMMSS-ClientID
-  const match = runId.match(/^(\d{6}-\d{6})-(.+)$/);
-  if (match) {
-    return match[1]; // Return just the timestamp portion
+  // Use the runIdUtils implementation which is more robust
+  const utils = require('../utils/runIdUtils');
+  const baseRunId = utils.stripClientSuffix(runId);
+  
+  // If the baseRunId is empty but runId isn't, something went wrong
+  // Return the original to prevent data loss
+  if (!baseRunId && runId) {
+    console.error(`[runIdService] WARNING: stripClientSuffix failed for ${runId}, returning original`);
+    return runId;
   }
   
-  console.log(`[runIdService] Could not strip client suffix from ${runId}, returning as-is`);
-  return runId;
+  return baseRunId;
 }
 
 module.exports = {
