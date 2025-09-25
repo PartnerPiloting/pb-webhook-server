@@ -340,8 +340,11 @@ async function updateClientRun(runId, clientId, updates) {
   // SIMPLIFIED: Just normalize the run ID once to ensure consistency
   const standardRunId = runIdService.normalizeRunId(runId, clientId, false);
   
-  console.log(`Airtable Service: Updating client run for ${clientId}`);
-  console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
+  console.log(`[METDEBUG] AirtableService updateClientRun called:`);
+  console.log(`[METDEBUG] - Client: ${clientId}`);
+  console.log(`[METDEBUG] - Original Run ID: ${runId}`);
+  console.log(`[METDEBUG] - Standardized Run ID: ${standardRunId}`);
+  console.log(`[METDEBUG] - Updates:`, JSON.stringify(updates));
   
   try {
     // SIMPLE APPROACH: Look for exact Run ID match - this is the only reliable way
@@ -387,22 +390,33 @@ async function updateClientRun(runId, clientId, updates) {
     // If not found, create a new record but only if it includes a 'Status' field
     // This ensures we only auto-create records when we have the proper initialization data
     if (!recordId) {
+      console.log(`[METDEBUG] No record found for ${standardRunId}, checking if we should auto-create`);
+      
       if (updates && updates['Status']) {
-        console.log(`Airtable Service: No record found for ${clientId} with run ID ${standardRunId}, creating new one`);
+        console.log(`[DEBUG][METRICS_TRACKING] Auto-creating record for ${standardRunId} because Status field is present`);
         const record = await createClientRunRecord(standardRunId, clientId, clientId);
         recordId = record.id;
+        console.log(`[DEBUG][METRICS_TRACKING] Created new record with ID: ${recordId}`);
+      } else if (updates && (updates['Total Posts Harvested'] !== undefined || updates['Apify Run ID'])) {
+        // MODIFIED: Auto-create for post harvesting metrics too
+        console.log(`[DEBUG][METRICS_TRACKING] Auto-creating record for ${standardRunId} for post harvesting metrics`);
+        const record = await createClientRunRecord(standardRunId, clientId, clientId);
+        recordId = record.id;
+        console.log(`[DEBUG][METRICS_TRACKING] Created new post harvesting record with ID: ${recordId}`);
       } else {
-        // If no Status field, this is probably an update to an existing record that should be there
+        // If no Status field or post metrics, this is probably an update to an existing record that should be there
         const errorMsg = `No client run record found for client ${clientId} with run ID ${standardRunId}`;
-        console.error(`Airtable Service ERROR: ${errorMsg}`);
+        console.error(`[DEBUG][METRICS_TRACKING] ERROR: ${errorMsg}`);
+        console.error(`[DEBUG][METRICS_TRACKING] Updates that failed:`, JSON.stringify(updates));
         throw new Error(errorMsg);
       }
     }
     
     // Now update it
-    console.log(`Airtable Service: Updating record ${recordId} with:`, JSON.stringify(updates));
+    console.log(`[METDEBUG] Updating record ${recordId} with:`, JSON.stringify(updates));
     const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(recordId, updates);
-    console.log(`Airtable Service: Updated client run record ${recordId}`);
+    console.log(`[METDEBUG] Successfully updated client run record ${recordId}`);
+    console.log(`[METDEBUG] Updated fields:`, JSON.stringify(Object.keys(updates)));
     
     return updated;
   } catch (error) {

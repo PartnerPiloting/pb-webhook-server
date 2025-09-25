@@ -39,10 +39,14 @@ function generateRunId(clientId) {
  * @returns {string} A normalized run ID with the timestamp-clientId format
  */
 function normalizeRunId(runId, clientId, forceNew = false) {
-  console.log(`[runIdService] normalizeRunId called with runId=${runId}, clientId=${clientId}`);
+  console.log(`[runIdService] normalizeRunId called with runId=${runId}, clientId=${clientId}, forceNew=${forceNew}`);
+  console.log(`[METDEBUG] normalizeRunId processing run ID: ${runId}`);
+  console.log(`[METDEBUG] normalizeRunId for client: ${clientId}`);
+  console.log(`[METDEBUG] normalizeRunId forceNew flag: ${forceNew}`);
   
   if (!clientId) {
     console.log(`[runIdService] ERROR: Missing clientId in normalizeRunId call`);
+    console.error(`[METDEBUG] ERROR: Missing clientId in normalizeRunId call`);
     return null;
   }
   
