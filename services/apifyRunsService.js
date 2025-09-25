@@ -359,7 +359,7 @@ async function updateClientRunMetrics(runId, clientId, data) {
             airtableService = require('./airtableService');
         }
         
-        // Ensure we have a client-suffixed run ID
+        // Ensure we have a client-suffixed run ID in our standard format
         const standardizedRunId = runIdService.normalizeRunId(runId, clientId);
         
         console.log(`[METDEBUG] updateClientRunMetrics called for ${standardizedRunId}`);
@@ -379,13 +379,14 @@ async function updateClientRunMetrics(runId, clientId, data) {
             'Profiles Submitted for Post Harvesting': data.profilesCount
         });
         
-        console.log(`[ApifyRuns] Updated client run metrics for ${clientId}:`);
-        console.log(`  - Total Posts Harvested: ${data.postsCount}`);
-        console.log(`  - Apify Run ID: ${runId}`);
+        console.log(`[METDEBUG] Updated client run metrics for ${clientId}:`);
+        console.log(`[METDEBUG] - Total Posts Harvested: ${data.postsCount}`);
+        console.log(`[METDEBUG] - Apify Run ID: ${runId}`);
+        console.log(`[METDEBUG] - Using standardized run ID: ${standardizedRunId}`);
         
         return updated;
     } catch (error) {
-        console.error(`[ApifyRuns] Failed to update client run metrics: ${error.message}`);
+        console.error(`[METDEBUG] Failed to update client run metrics: ${error.message}`);
         throw error;
     }
 }
