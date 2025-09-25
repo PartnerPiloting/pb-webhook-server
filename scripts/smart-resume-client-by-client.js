@@ -326,7 +326,8 @@ async function main() {
     console.log(`🔍 TRACE: Generating structured run ID...`);
     
     // Generate a structured, filterable run ID
-    runId = await generateRunId();
+    // Note: generateRunId is actually synchronous, no need to await
+    runId = generateRunId();
     
     // Create a logger that uses this run ID
     log = createLogger(runId);
