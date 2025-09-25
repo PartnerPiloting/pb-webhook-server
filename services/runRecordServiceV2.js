@@ -134,7 +134,7 @@ async function createJobRecord(runId, stream, options = {}) {
   }
   
   try {
-    // Create fields object with required fields first
+    // Create fields object without the problematic Source field
     const recordFields = {
       'Run ID': runId,
       'Start Time': new Date().toISOString(),
@@ -149,18 +149,8 @@ async function createJobRecord(runId, stream, options = {}) {
       'Posts Successfully Scored': 0,
       'Profile Scoring Tokens': 0,
       'Post Scoring Tokens': 0,
-      // Include Source info in System Notes to ensure we don't lose tracking info
       'System Notes': `Run initiated at ${new Date().toISOString()} from ${source}`
     };
-    
-    // Only add Source field if it exists in the Airtable schema
-    try {
-      // Try to add the Source field - will only work if the field exists in Airtable
-      recordFields['Source'] = source;
-    } catch (fieldError) {
-      // If it fails, we already have the info in System Notes
-      logger.debug(`Source field might not exist in Airtable schema - info added to System Notes instead`);
-    }
     
     const records = await base(JOB_TRACKING_TABLE).create([
       {
@@ -244,7 +234,7 @@ async function createClientRunRecord(runId, clientId, clientName, options = {}) 
   const startTimestamp = new Date().toISOString();
   
   try {
-    // Create new record with detailed logging
+    // Create new record without the problematic Source field
     const recordFields = {
       'Run ID': standardRunId,
       'Client ID': clientId,
@@ -256,18 +246,8 @@ async function createClientRunRecord(runId, clientId, clientName, options = {}) 
       'Total Posts Harvested': 0,
       'Profile Scoring Tokens': 0,
       'Post Scoring Tokens': 0,
-      // Include Source info in System Notes to ensure we don't lose tracking info
       'System Notes': `Processing started at ${startTimestamp} from ${source}`
     };
-    
-    // Only add Source field if it exists in the Airtable schema
-    try {
-      // Try to add the Source field - will only work if the field exists in Airtable
-      recordFields['Source'] = source;
-    } catch (fieldError) {
-      // If it fails, we already have the info in System Notes
-      logger.debug(`Source field might not exist in Airtable schema - info added to System Notes instead`);
-    }
     
     const recordData = {
       fields: recordFields
@@ -394,7 +374,7 @@ async function updateRunRecord(runId, clientId, updates, options = {}) {
   
   const base = initialize();
   
-  // Update with new values
+  // Update with new values, completely removing Source field
   const updateFields = {
     ...updates,
     'Last Updated': new Date().toISOString()
@@ -406,14 +386,6 @@ async function updateRunRecord(runId, clientId, updates, options = {}) {
   } else {
     const existingNotes = record.fields['System Notes'] || '';
     updateFields['System Notes'] = `${existingNotes}${existingNotes ? '. ' : ''}Updated at ${new Date().toISOString()} from ${source}`;
-  }
-  
-  // Only add Source field if it exists in the Airtable schema
-  try {
-    updateFields['Source'] = source;
-  } catch (fieldError) {
-    // Source info is already added to System Notes
-    logger.debug(`Source field might not exist in Airtable schema - info added to System Notes instead`);
   }
   
   const updateData = {
@@ -510,14 +482,6 @@ async function updateClientMetrics(runId, clientId, metrics, options = {}) {
     updatedMetrics['System Notes'] += `. ${metricsUpdateNote}`;
   } else {
     updatedMetrics['System Notes'] = metricsUpdateNote;
-  }
-  
-  // Only add Source field if it exists in the Airtable schema
-  try {
-    updatedMetrics['Source'] = source;
-  } catch (fieldError) {
-    // Source info is already added to System Notes
-    logger.debug(`Source field might not exist in Airtable schema - info added to System Notes instead`);
   }
   
   return await updateRunRecord(runId, clientId, updatedMetrics, { 
@@ -626,7 +590,7 @@ async function updateJobRecord(runId, updates, options = {}) {
     
     const record = records[0];
     
-    // Update the record with all required fields
+    // Update the record with all required fields, completely removing Source field
     const updateFields = {
       ...updates,
       'Last Updated': new Date().toISOString()
@@ -639,14 +603,6 @@ async function updateJobRecord(runId, updates, options = {}) {
     } else {
       const existingNotes = record.fields['System Notes'] || '';
       updateFields['System Notes'] = `${existingNotes}${existingNotes ? '. ' : ''}${updateNote}`;
-    }
-    
-    // Only add Source field if it exists in the Airtable schema
-    try {
-      updateFields['Source'] = source;
-    } catch (fieldError) {
-      // Source info is already added to System Notes
-      logger.debug(`Source field might not exist in Airtable schema - info added to System Notes instead`);
     }
     
     const updateData = {
@@ -701,14 +657,6 @@ async function completeJobRecord(runId, success, notes = '', options = {}) {
     // Add completion source to System Notes to ensure we capture this info
     'System Notes': `Job completed at ${endTimestamp} with status ${success ? 'Success' : 'Error'} from ${source}. ${notes || ''}`
   };
-  
-  // Only add Source field if it exists in the Airtable schema
-  try {
-    updates['Source'] = source;
-  } catch (fieldError) {
-    // Source info is already added to System Notes
-    logger.debug(`Source field might not exist in Airtable schema - info added to System Notes instead`);
-  }
   
   // Track this activity
   trackActivity('complete_job', baseRunId, 'SYSTEM', source, `Success: ${success}, Notes: ${notes}`);
