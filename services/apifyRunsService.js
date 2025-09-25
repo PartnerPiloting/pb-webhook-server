@@ -369,7 +369,7 @@ async function updateClientRunMetrics(runId, clientId, data) {
         console.log(`[METDEBUG] - Profiles Count: ${data.profilesCount}`);
         
         // Calculate estimated API costs (based on LinkedIn post queries)
-        const estimatedCost = (data.postsCount * 0.02).toFixed(2); // $0.02 per post as estimate
+        const estimatedCost = data.postsCount * 0.02; // $0.02 per post as estimate
         
         // Update the client run record with all metrics
         const updated = await airtableService.updateClientRun(standardizedRunId, clientId, {

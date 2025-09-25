@@ -387,12 +387,11 @@ async function updateClientRun(runId, clientId, updates) {
       }
     }
       
-    // If not found, create a new record
+    // If not found, throw an error instead of creating a new record
     if (!recordId) {
-      console.log(`[METDEBUG] No record found for ${standardRunId}, creating new record`);
-      const record = await createClientRunRecord(standardRunId, clientId, clientId);
-      recordId = record.id;
-      console.log(`[METDEBUG] Created new record with ID: ${recordId}`);
+      const errorMsg = `[ERROR] No record found for ${standardRunId}. To prevent duplicate records, refusing to create a new one.`;
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
     
     // Now update it

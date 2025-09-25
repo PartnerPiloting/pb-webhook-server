@@ -5,8 +5,9 @@
  * by triggering a small lead scoring job and monitoring the results.
  */
 
-import dotenv from 'dotenv';
-import fetch from 'node-fetch';
+const dotenv = require('dotenv');
+const { getFetch } = require('./utils/safeFetch');
+const fetch = getFetch();
 
 // Initialize dotenv
 dotenv.config();
