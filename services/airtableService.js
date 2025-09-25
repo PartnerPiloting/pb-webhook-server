@@ -384,11 +384,19 @@ async function updateClientRun(runId, clientId, updates) {
       }
     }
       
-    // If still not found, report an error instead of creating a new record
+    // If not found, create a new record but only if it includes a 'Status' field
+    // This ensures we only auto-create records when we have the proper initialization data
     if (!recordId) {
-      const errorMsg = `No client run record found for client ${clientId} with run ID ${standardRunId}`;
-      console.error(`Airtable Service ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
+      if (updates && updates['Status']) {
+        console.log(`Airtable Service: No record found for ${clientId} with run ID ${standardRunId}, creating new one`);
+        const record = await createClientRunRecord(standardRunId, clientId, clientId);
+        recordId = record.id;
+      } else {
+        // If no Status field, this is probably an update to an existing record that should be there
+        const errorMsg = `No client run record found for client ${clientId} with run ID ${standardRunId}`;
+        console.error(`Airtable Service ERROR: ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
     }
     
     // Now update it
