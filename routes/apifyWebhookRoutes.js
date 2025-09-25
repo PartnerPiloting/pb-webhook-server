@@ -348,6 +348,7 @@ router.post('/api/apify-webhook', async (req, res) => {
             const estimatedCost = (posts.length * 0.02).toFixed(2); // $0.02 per post as estimate
             
             // Get the client run record to check existing values
+            console.log(`[METDEBUG] Webhook checking for existing record: ${clientSuffixedRunId} for client ${clientId}`);
             const clientBase = await getClientBase(clientId);
             const runRecords = await clientBase('Client Run Results').select({
               filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
@@ -360,17 +361,31 @@ router.post('/api/apify-webhook', async (req, res) => {
               const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
               const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
               const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
+              const currentApifyRunId = currentRecord.get('Apify Run ID');
+              
+              console.log(`[DEBUG][METRICS_TRACKING] Webhook found existing record for ${clientSuffixedRunId}:`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Current Posts Harvested: ${currentPostCount}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Current API Costs: ${currentApiCosts}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Current Profiles Submitted: ${profilesSubmittedCount}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Current Apify Run ID: ${currentApifyRunId || '(empty)'}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - New posts.length value: ${posts.length}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - New runId value: ${runId}`);
               
               // Use the higher count (in case we're processing multiple batches)
               const updatedCount = Math.max(currentPostCount, posts.length);
               // Add to API costs
               const updatedCosts = currentApiCosts + Number(estimatedCost);
               
+              console.log(`[DEBUG][METRICS_TRACKING] - Updated values to save:`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${updatedCount}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
+              
               // Update the record with all relevant fields
               await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
                 'Total Posts Harvested': updatedCount,
                 'Apify API Costs': updatedCosts,
-                'Profiles Submitted for Post Harvesting': Math.max(profilesSubmittedCount, posts.length) // Update if higher
+                'Profiles Submitted for Post Harvesting': Math.max(profilesSubmittedCount, posts.length), // Update if higher
+                'Apify Run ID': runId // Set the actual Apify run ID
               });
               
               console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId}:`);
@@ -378,10 +393,17 @@ router.post('/api/apify-webhook', async (req, res) => {
               console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
             } else {
               // If record not found, create a new one with the current values
+              console.log(`[DEBUG][METRICS_TRACKING] Webhook creating new record for ${clientSuffixedRunId}:`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${posts.length}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${estimatedCost}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${posts.length}`);
+              console.log(`[DEBUG][METRICS_TRACKING] - Apify Run ID: ${runId || '(empty)'}`);
+              
               await airtableService.updateClientRun(clientSuffixedRunId, clientId, {
                 'Total Posts Harvested': posts.length,
                 'Apify API Costs': estimatedCost,
-                'Profiles Submitted for Post Harvesting': posts.length
+                'Profiles Submitted for Post Harvesting': posts.length,
+                'Apify Run ID': runId // Set the actual Apify run ID
               });
               
               console.log(`[ApifyWebhook] Created/updated client run ${clientSuffixedRunId} record for ${clientId}:`);
@@ -391,6 +413,10 @@ router.post('/api/apify-webhook', async (req, res) => {
           }
         } catch (metricError) {
           console.error(`[ApifyWebhook] Failed to update post harvesting metrics: ${metricError.message}`);
+          console.error(`[DEBUG][METRICS_TRACKING] ERROR updating webhook metrics: ${metricError.message}`);
+          console.error(`[DEBUG][METRICS_TRACKING] Error stack: ${metricError.stack}`);
+          console.error(`[DEBUG][METRICS_TRACKING] Client ID: ${clientId}, Run ID: ${clientSuffixedRunId || '(none)'}`);
+          console.error(`[DEBUG][METRICS_TRACKING] Posts length: ${posts ? posts.length : 0}`);
           // Continue execution even if metrics update fails
         }
         

@@ -217,6 +217,13 @@ router.post('/api/apify/process-client', async (req, res) => {
       });
       const startData = await startResp.json().catch(() => ({}));
       console.log(`[apify/process-client] Client ${clientId} Apify response status: ${startResp.status}, data:`, startData);
+      
+      // Log detailed information about the startData object for debugging
+      console.log(`[DEBUG][METRICS_TRACKING] Received startData for client ${clientId}:`);
+      console.log(`[DEBUG][METRICS_TRACKING] - runId: ${startData.runId || '(not present)'}`);
+      console.log(`[DEBUG][METRICS_TRACKING] - apifyRunId: ${startData.apifyRunId || '(not present)'}`);
+      console.log(`[DEBUG][METRICS_TRACKING] - actorRunId: ${startData.actorRunId || '(not present)'}`);
+      console.log(`[DEBUG][METRICS_TRACKING] - full data:`, JSON.stringify(startData));
 
   // after inline run, use returned counts to compute gained
   const gained = Number((startData && startData.counts && startData.counts.posts) || 0);
@@ -262,13 +269,18 @@ router.post('/api/apify/process-client', async (req, res) => {
     if (parentRunId) {
       // If we have a parent run ID from Smart Resume, use it for consistent tracking
       // Use runIdService to normalize the run ID with the client suffix
+      console.log(`[DEBUG][METRICS_TRACKING] Parent run ID provided: ${parentRunId}`);
       runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
+      console.log(`[DEBUG][METRICS_TRACKING] Normalized parent run ID: ${runIdToUse}`);
       console.log(`[apify/process-client] Using normalized run ID: ${runIdToUse} from parent ID ${parentRunId}`);
       console.log(`[apify/process-client] Generated client-specific run ID: ${runIdToUse} from parent ID ${parentRunId}`);
     } else {
       // Fall back to latest run ID from this process
+      console.log(`[DEBUG][METRICS_TRACKING] No parent run ID, using latest run from this process`);
       const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
       runIdToUse = latestRun?.runId;
+      console.log(`[DEBUG][METRICS_TRACKING] Selected run ID: ${runIdToUse || '(none)'}`);
+      console.log(`[DEBUG][METRICS_TRACKING] Available runs:`, JSON.stringify(runs));
     }
     
     if (runIdToUse) {
@@ -277,6 +289,7 @@ router.post('/api/apify/process-client', async (req, res) => {
       
       // Get the client run record to check existing values
       try {
+        console.log(`[DEBUG][METRICS_TRACKING] Checking for existing client run record: ${runIdToUse} for client ${clientId}`);
         const clientBase = await getClientBase(clientId);
         const runRecords = await clientBase('Client Run Results').select({
           filterByFormula: `{Run ID} = '${runIdToUse}'`,
@@ -288,15 +301,37 @@ router.post('/api/apify/process-client', async (req, res) => {
           const currentRecord = runRecords[0];
           const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
           const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
+          const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
+          const currentApifyRunId = currentRecord.get('Apify Run ID');
+          
+          console.log(`[DEBUG][METRICS_TRACKING] Found existing record for ${runIdToUse}:`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Current Posts Harvested: ${currentPostCount}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Current API Costs: ${currentApiCosts}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Current Profiles Submitted: ${profilesSubmittedCount}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Current Apify Run ID: ${currentApifyRunId || '(empty)'}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - New postsToday value: ${postsToday}`);
+          
+          // Get the Apify Run ID if it exists in the start data
+          const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
+          console.log(`[DEBUG][METRICS_TRACKING] - New Apify Run ID from startData: ${apifyRunId || '(empty)'}`);
           
           // Take the higher count for posts harvested
           const updatedCount = Math.max(currentPostCount, postsToday);
           // Add to API costs
           const updatedCosts = currentApiCosts + Number(estimatedCost);
+          // Track profiles submitted (should be at least the batch size we processed)
+          const updatedProfilesSubmitted = Math.max(profilesSubmittedCount, targetUrls ? targetUrls.length : 0);
+          
+          console.log(`[DEBUG][METRICS_TRACKING] - Updated values to save:`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${updatedCount}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${updatedProfilesSubmitted}`);
           
           await airtableService.updateClientRun(runIdToUse, clientId, {
             'Total Posts Harvested': updatedCount,
-            'Apify API Costs': updatedCosts
+            'Apify API Costs': updatedCosts,
+            'Apify Run ID': apifyRunId,
+            'Profiles Submitted for Post Harvesting': updatedProfilesSubmitted
           });
           
           console.log(`[apify/process-client] Updated client run record for ${clientId}:`);
@@ -304,9 +339,23 @@ router.post('/api/apify/process-client', async (req, res) => {
           console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
         } else {
           // No record found, create a new one
+          console.log(`[DEBUG][METRICS_TRACKING] No existing record found for ${runIdToUse}, creating new one`);
+          
+          // Get the Apify Run ID if it exists in the start data
+          const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
+          const profilesSubmitted = targetUrls ? targetUrls.length : 0;
+          
+          console.log(`[DEBUG][METRICS_TRACKING] Creating new record with:`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${postsToday}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${estimatedCost}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Apify Run ID: ${apifyRunId || '(empty)'}`);
+          console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${profilesSubmitted}`);
+          
           await airtableService.updateClientRun(runIdToUse, clientId, {
             'Total Posts Harvested': postsToday,
-            'Apify API Costs': estimatedCost
+            'Apify API Costs': estimatedCost,
+            'Apify Run ID': apifyRunId,
+            'Profiles Submitted for Post Harvesting': profilesSubmitted
           });
           
           console.log(`[apify/process-client] Created client run record for ${clientId}:`);
@@ -316,14 +365,24 @@ router.post('/api/apify/process-client', async (req, res) => {
       } catch (recordError) {
         // Fall back to simple update if record lookup fails
         console.warn(`[apify/process-client] Failed to check existing record, using simple update: ${recordError.message}`);
+        
+        // Get the Apify Run ID if it exists in the start data
+        const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
+        
         await airtableService.updateClientRun(runIdToUse, clientId, {
-          'Total Posts Harvested': postsToday
+          'Total Posts Harvested': postsToday,
+          'Apify Run ID': apifyRunId,
+          'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
         });
         console.log(`[apify/process-client] Updated client run record for ${clientId} with ${postsToday} posts harvested (Run ID: ${runIdToUse})`);
       }
     }
   } catch (metricError) {
     console.error(`[apify/process-client] Failed to update post harvesting metrics: ${metricError.message}`);
+    console.error(`[DEBUG][METRICS_TRACKING] ERROR updating metrics: ${metricError.message}`);
+    console.error(`[DEBUG][METRICS_TRACKING] Error stack: ${metricError.stack}`);
+    console.error(`[DEBUG][METRICS_TRACKING] Client ID: ${clientId}, Run ID to use: ${runIdToUse || '(none)'}`);
+    console.error(`[DEBUG][METRICS_TRACKING] Posts today value: ${postsToday}`);
     // Continue execution even if metrics update fails
   }
   
