@@ -94,6 +94,18 @@ async function computeTodaysPosts(base) {
 // Headers: Authorization: Bearer PB_WEBHOOK_SECRET, x-client-id: <clientId>
 // Body: { maxBatchesOverride?: number } optional
 router.post('/api/apify/process-client', async (req, res) => {
+  // Define variables at the top level so they're available in all scopes
+  let runIdToUse;
+  let startData = {};
+  let postsToday = 0;
+  let postsTarget = 0;
+  let batches = 0;
+  let runs = [];
+  let debugBatches = [];
+  let targetUrls = [];
+  let debugMode = false;
+  let clientId = '';
+  
   try {
     const auth = req.headers['authorization'];
     const secret = process.env.PB_WEBHOOK_SECRET;
@@ -260,32 +272,61 @@ router.post('/api/apify/process-client', async (req, res) => {
 
   console.log(`[apify/process-client] Client ${clientId} completed: ${batches} batches, postsToday: ${postsToday}, target: ${postsTarget}`);
   
+  // Generate a run ID for this client's process - THIS IS THE SINGLE CREATION POINT
+  const airtableService = require('../services/airtableService');
+  let runIdToUse;
+  
+  if (parentRunId) {
+    // If we have a parent run ID from Smart Resume, use it for consistent tracking
+    console.log(`[DEBUG][METRICS_TRACKING] Parent run ID provided: ${parentRunId}`);
+    runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
+    console.log(`[DEBUG][METRICS_TRACKING] Normalized parent run ID: ${runIdToUse}`);
+  } else {
+    // Fall back to latest run ID from this process
+    console.log(`[DEBUG][METRICS_TRACKING] No parent run ID, using latest run from this process`);
+    const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
+    runIdToUse = latestRun?.runId;
+    console.log(`[DEBUG][METRICS_TRACKING] Selected run ID: ${runIdToUse || '(none)'}`);
+  }
+  
+  // Ensure runIdToUse is always defined
+  if (!runIdToUse) {
+    const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').substring(0, 12);
+    runIdToUse = `${timestamp}-${clientId}`;
+    console.log(`[DEBUG][METRICS_TRACKING] Generated fallback run ID: ${runIdToUse}`);
+  }
+  
+  // THIS IS THE SINGLE CREATION POINT - Create the client run record
+  console.log(`[apify/process-client] Creating client run record for ${runIdToUse}`);
+  try {
+    await airtableService.createClientRunRecord(runIdToUse, clientId, clientId);
+    console.log(`[apify/process-client] Successfully created client run record for ${runIdToUse}`);
+  } catch (createError) {
+    if (createError.message.includes('already exists')) {
+      console.log(`[apify/process-client] Client run record already exists for ${runIdToUse}`);
+    } else {
+      console.error(`[apify/process-client] ERROR creating client run record: ${createError.message}`);
+      // Still continue - this is the initial creation point
+    }
+  }
+  
   // Update client run record with post harvest metrics
   try {
-    const airtableService = require('../services/airtableService');
-    // Use parentRunId if provided, otherwise fall back to the latest run ID
-    let runIdToUse;
     
-    if (parentRunId) {
-      // If we have a parent run ID from Smart Resume, use it for consistent tracking
-      // Use runIdService to normalize the run ID with the client suffix
-      console.log(`[DEBUG][METRICS_TRACKING] Parent run ID provided: ${parentRunId}`);
-      runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
-      console.log(`[DEBUG][METRICS_TRACKING] Normalized parent run ID: ${runIdToUse}`);
-      console.log(`[apify/process-client] Using normalized run ID: ${runIdToUse} from parent ID ${parentRunId}`);
-      console.log(`[apify/process-client] Generated client-specific run ID: ${runIdToUse} from parent ID ${parentRunId}`);
-    } else {
-      // Fall back to latest run ID from this process
-      console.log(`[DEBUG][METRICS_TRACKING] No parent run ID, using latest run from this process`);
-      const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
-      runIdToUse = latestRun?.runId;
-      console.log(`[DEBUG][METRICS_TRACKING] Selected run ID: ${runIdToUse || '(none)'}`);
-      console.log(`[DEBUG][METRICS_TRACKING] Available runs:`, JSON.stringify(runs));
+    // First create the client run record to ensure it exists before we try to update it
+    try {
+      console.log(`[apify/process-client] Creating client run record for ${runIdToUse}`);
+      await airtableService.createClientRunRecord(runIdToUse, clientId, clientId);
+    } catch (createError) {
+      if (createError.message.includes('already exists')) {
+        console.log(`[apify/process-client] Client run record already exists for ${runIdToUse}`);
+      } else {
+        console.error(`[apify/process-client] Error creating client run record: ${createError.message}`);
+      }
     }
     
-    if (runIdToUse) {
-      // Calculate estimated API costs (based on LinkedIn post queries)
-      const estimatedCost = (postsToday * 0.02).toFixed(2); // $0.02 per post as estimate
+    // Calculate estimated API costs (based on LinkedIn post queries)
+    const estimatedCost = (postsToday * 0.02); // $0.02 per post as estimate - send as number, not string
       
       // Get the client run record to check existing values
       try {
@@ -338,43 +379,52 @@ router.post('/api/apify/process-client', async (req, res) => {
           console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
           console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
         } else {
-          // No record found, create a new one
-          console.log(`[DEBUG][METRICS_TRACKING] No existing record found for ${runIdToUse}, creating new one`);
+          // ERROR: Record not found - this should have been created at the beginning of this process
+          const errorMsg = `ERROR: Client run record not found for ${runIdToUse} (${clientId})`;
+          console.error(`[apify/process-client] ${errorMsg}`);
+          console.error(`[apify/process-client] This indicates a process kickoff issue - run record should exist`);
+          console.error(`[apify/process-client] Run ID: ${runIdToUse}, Client ID: ${clientId}`);
           
           // Get the Apify Run ID if it exists in the start data
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
           const profilesSubmitted = targetUrls ? targetUrls.length : 0;
           
-          console.log(`[DEBUG][METRICS_TRACKING] Creating new record with:`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${postsToday}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${estimatedCost}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Apify Run ID: ${apifyRunId || '(empty)'}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${profilesSubmitted}`);
+          // We still need to try to update metrics for operational continuity
+          // but we'll log it as an error
+          try {
+            await airtableService.updateClientRun(runIdToUse, clientId, {
+              'Total Posts Harvested': postsToday,
+              'Apify API Costs': estimatedCost,
+              'Apify Run ID': apifyRunId,
+              'Profiles Submitted for Post Harvesting': profilesSubmitted
+            });
+            
+            console.log(`[apify/process-client] Attempted metrics update despite missing run record`);
+            console.log(`  - Total Posts Harvested: ${postsToday}`);
+            console.log(`  - Apify API Costs: ${estimatedCost}`);
+          } catch (updateError) {
+            console.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);
+          }
+        }
+      } catch (recordError) {
+        // Error checking for existing record
+        console.error(`[apify/process-client] ERROR: Failed to check for existing record: ${recordError.message}`);
+        console.error(`[apify/process-client] Run ID: ${runIdToUse}, Client ID: ${clientId}`);
+        
+        // Try to update metrics anyway for operational continuity
+        try {
+          // Get the Apify Run ID if it exists in the start data
+          const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
           
           await airtableService.updateClientRun(runIdToUse, clientId, {
             'Total Posts Harvested': postsToday,
-            'Apify API Costs': estimatedCost,
             'Apify Run ID': apifyRunId,
-            'Profiles Submitted for Post Harvesting': profilesSubmitted
+            'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
           });
-          
-          console.log(`[apify/process-client] Created client run record for ${clientId}:`);
-          console.log(`  - Total Posts Harvested: ${postsToday}`);
-          console.log(`  - Apify API Costs: ${estimatedCost}`);
+          console.log(`[apify/process-client] Attempted metrics update despite record lookup failure`);
+        } catch (updateError) {
+          console.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);
         }
-      } catch (recordError) {
-        // Fall back to simple update if record lookup fails
-        console.warn(`[apify/process-client] Failed to check existing record, using simple update: ${recordError.message}`);
-        
-        // Get the Apify Run ID if it exists in the start data
-        const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
-        
-        await airtableService.updateClientRun(runIdToUse, clientId, {
-          'Total Posts Harvested': postsToday,
-          'Apify Run ID': apifyRunId,
-          'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
-        });
-        console.log(`[apify/process-client] Updated client run record for ${clientId} with ${postsToday} posts harvested (Run ID: ${runIdToUse})`);
       }
     }
   } catch (metricError) {
@@ -389,11 +439,12 @@ router.post('/api/apify/process-client', async (req, res) => {
   const payload = { ok: true, clientId, postsToday, postsTarget, batches, runs };
   if (debugMode) payload.debug = { batches: debugBatches };
   return res.json(payload);
-
+  
   } catch (e) {
     console.error('[apify/process-client] error:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
+});
 });
 
 // Lightweight canary to test 1 post per 3 sample leads before a full batch
