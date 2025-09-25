@@ -196,8 +196,8 @@ async function trackLeadProcessingMetrics(runId, clientId, metrics) {
     }
     
     try {
-        // Normalize the run ID to ensure consistent format
-        const normalizedRunId = runIdService.normalizeRunId(runId, clientId);
+        // Normalize the run ID to ensure consistent format - explicitly prevent new timestamp generation
+        const normalizedRunId = runIdService.normalizeRunId(runId, clientId, false);
         console.log(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${normalizedRunId}`);
         await airtableService.updateClientRun(normalizedRunId, clientId, metrics);
     } catch (error) {
