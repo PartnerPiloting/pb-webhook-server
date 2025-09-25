@@ -414,6 +414,46 @@ async function updateClientRun(runId, clientId, updates) {
     
     // Now update it
     console.log(`[METDEBUG] Updating record ${recordId} with:`, JSON.stringify(updates));
+    
+    // Define the Apify-related fields we want to preserve
+    const apifyFields = [
+      'Apify Run ID',
+      'Total Posts Harvested',
+      'Profiles Submitted for Post Harvesting',
+      'Apify API Costs',
+      'Posts Examined for Scoring',
+      'Posts Successfully Scored'
+    ];
+    
+    // Check if we need to preserve any existing values
+    const fieldsMissingInUpdate = apifyFields.filter(field => 
+      updates[field] === undefined || updates[field] === '');
+    
+    if (fieldsMissingInUpdate.length > 0) {
+      try {
+        // Get the existing record to check for values
+        const existingRecord = await base(CLIENT_RUN_RESULTS_TABLE).find(recordId);
+        let preservedAny = false;
+        
+        // Check each field that's missing in the update
+        for (const field of fieldsMissingInUpdate) {
+          const existingValue = existingRecord.get(field);
+          // If the field has a value, preserve it
+          if (existingValue !== undefined && existingValue !== null && existingValue !== '') {
+            console.log(`[METDEBUG] Preserving existing value for ${field}: ${existingValue}`);
+            updates[field] = existingValue;
+            preservedAny = true;
+          }
+        }
+        
+        if (preservedAny) {
+          console.log(`[METDEBUG] Final update with preserved values:`, JSON.stringify(updates));
+        }
+      } catch (findError) {
+        console.warn(`[METDEBUG] Could not check for existing field values: ${findError.message}`);
+      }
+    }
+    
     const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(recordId, updates);
     console.log(`[METDEBUG] Successfully updated client run record ${recordId}`);
     console.log(`[METDEBUG] Updated fields:`, JSON.stringify(Object.keys(updates)));
