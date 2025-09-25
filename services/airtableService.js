@@ -406,11 +406,33 @@ async function updateClientRun(runId, clientId, updates) {
       }
     }
       
-    // If not found, throw an error instead of creating a new record
+    // If not found, attempt to create a new record using runRecordServiceV2
     if (!recordId) {
-      const errorMsg = `[ERROR] No record found for ${standardRunId}. To prevent duplicate records, refusing to create a new one.`;
-      console.error(errorMsg);
-      throw new Error(errorMsg);
+      try {
+        console.log(`[METDEBUG] No record found for ${standardRunId}, attempting to create via runRecordServiceV2...`);
+        const runRecordServiceV2 = require('./runRecordServiceV2');
+        
+        // Create with adapter-compatible options
+        const createdRecord = await runRecordServiceV2.createClientRunRecord(
+          standardRunId.split('-').slice(0, 2).join('-'), // Base run ID
+          clientId, 
+          clientName,
+          { source: 'airtable_service_recovery' }
+        );
+        
+        if (createdRecord && createdRecord.id) {
+          console.log(`[METDEBUG] Successfully created run record via recovery path: ${createdRecord.id}`);
+          recordId = createdRecord.id;
+        } else {
+          const errorMsg = `[ERROR] Failed to create run record for ${standardRunId} via recovery path.`;
+          console.error(errorMsg);
+          throw new Error(errorMsg);
+        }
+      } catch (createError) {
+        const errorMsg = `[ERROR] No record found for ${standardRunId} and creation failed: ${createError.message}`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
     }
     
     // Now update it
