@@ -413,10 +413,11 @@ async function updateClientRun(runId, clientId, updates) {
         const runRecordServiceV2 = require('./runRecordServiceV2');
         
         // Create with adapter-compatible options
+        // Use clientId as fallback for clientName since it's not provided to this function
         const createdRecord = await runRecordServiceV2.createClientRunRecord(
           standardRunId.split('-').slice(0, 2).join('-'), // Base run ID
           clientId, 
-          clientName,
+          clientId, // Using clientId as fallback for clientName
           { source: 'airtable_service_recovery' }
         );
         
