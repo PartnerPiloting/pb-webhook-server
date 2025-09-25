@@ -65,6 +65,8 @@ console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date()
 console.log(`🔍 TRACE: About to load run ID generator`);
 const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 const airtableService = require('../services/airtableService');
+// Using the adapter that enforces the Single Creation Point pattern
+const runRecordService = require('../services/runRecordAdapter');
 let runId = 'INITIALIZING';
 let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();
@@ -500,7 +502,9 @@ async function main() {
             // Create client run record in Airtable
             try {
                 log(`   📊 Creating run tracking record for ${workflow.clientName}...`);
-                await airtableService.createClientRunRecord(runId, workflow.clientId, workflow.clientName);
+                await runRecordService.createRunRecord(runId, workflow.clientId, workflow.clientName, {
+                    source: 'smart_resume_workflow'
+                });
                 log(`   ✅ Run tracking record created`);
             } catch (error) {
                 log(`   ⚠️ Failed to create run tracking record: ${error.message}. Continuing execution.`, 'WARN');
@@ -563,8 +567,11 @@ async function main() {
             try {
                 log(`   📊 Updating run tracking for ${workflow.clientName}...`);
                 const success = clientJobs.length === workflow.operationsToRun.length;
+                const status = success ? 'Success' : 'Partial';
                 const notes = `Executed operations: ${workflow.operationsToRun.join(', ')}\nJobs started: ${clientJobs.length}/${workflow.operationsToRun.length}`;
-                await airtableService.completeClientRun(runId, workflow.clientId, success, notes);
+                await runRecordService.completeRunRecord(runId, workflow.clientId, status, notes, {
+                    source: 'smart_resume_workflow_complete'
+                });
                 log(`   ✅ Run tracking updated`);
             } catch (error) {
                 log(`   ⚠️ Failed to update run tracking: ${error.message}.`, 'WARN');

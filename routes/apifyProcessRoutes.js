@@ -9,6 +9,8 @@ const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const runIdUtils = require('../utils/runIdUtils');
 const runIdService = require('../services/runIdService');
+// Use the adapter that enforces the Single Creation Point pattern
+const runRecordService = require('../services/runRecordAdapter');
 
 // Check if we're in batch process testing mode
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
@@ -272,6 +274,7 @@ router.post('/api/apify/process-client', async (req, res) => {
     console.log(`[apify/process-client] Client ${clientId} completed: ${batches} batches, postsToday: ${postsToday}, target: ${postsTarget}`);
     
     // Generate a run ID for this client's process - THIS IS THE SINGLE CREATION POINT
+    // Legacy import - only used for other functions not related to run records
     const airtableService = require('../services/airtableService');
     
     if (parentRunId) {
@@ -294,10 +297,12 @@ router.post('/api/apify/process-client', async (req, res) => {
       console.log(`[DEBUG][METRICS_TRACKING] Generated fallback run ID: ${runIdToUse}`);
     }
     
-    // THIS IS THE SINGLE CREATION POINT - Create the client run record
+    // Create the client run record using the centralized runRecordService
     console.log(`[apify/process-client] Creating client run record for ${runIdToUse}`);
     try {
-      await airtableService.createClientRunRecord(runIdToUse, clientId, clientId);
+      await runRecordService.createRunRecord(runIdToUse, clientId, clientId, {
+        source: 'apifyProcessRoutes'
+      });
       console.log(`[apify/process-client] Successfully created client run record for ${runIdToUse}`);
     } catch (createError) {
       if (createError.message.includes('already exists')) {
@@ -353,12 +358,12 @@ router.post('/api/apify/process-client', async (req, res) => {
           console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
           console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${updatedProfilesSubmitted}`);
           
-          await airtableService.updateClientRun(runIdToUse, clientId, {
+          await runRecordService.updateClientMetrics(runIdToUse, clientId, {
             'Total Posts Harvested': updatedCount,
             'Apify API Costs': updatedCosts,
             'Apify Run ID': apifyRunId,
             'Profiles Submitted for Post Harvesting': updatedProfilesSubmitted
-          });
+          }, { source: 'apifyProcessRoutes' });
           
           console.log(`[apify/process-client] Updated client run record for ${clientId}:`);
           console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
@@ -377,12 +382,12 @@ router.post('/api/apify/process-client', async (req, res) => {
           // We still need to try to update metrics for operational continuity
           // but we'll log it as an error
           try {
-            await airtableService.updateClientRun(runIdToUse, clientId, {
+            await runRecordService.updateClientMetrics(runIdToUse, clientId, {
               'Total Posts Harvested': postsToday,
               'Apify API Costs': estimatedCost,
               'Apify Run ID': apifyRunId,
               'Profiles Submitted for Post Harvesting': profilesSubmitted
-            });
+            }, { source: 'apifyProcessRoutes_fallback' });
             
             console.log(`[apify/process-client] Attempted metrics update despite missing run record`);
             console.log(`  - Total Posts Harvested: ${postsToday}`);
@@ -401,11 +406,11 @@ router.post('/api/apify/process-client', async (req, res) => {
           // Get the Apify Run ID if it exists in the start data
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
           
-          await airtableService.updateClientRun(runIdToUse, clientId, {
+          await runRecordService.updateClientMetrics(runIdToUse, clientId, {
             'Total Posts Harvested': postsToday,
             'Apify Run ID': apifyRunId,
             'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
-          });
+          }, { source: 'apifyProcessRoutes_emergency' });
           console.log(`[apify/process-client] Attempted metrics update despite record lookup failure`);
         } catch (updateError) {
           console.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);
