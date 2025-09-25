@@ -1,120 +1,74 @@
 // services/runIdService.js
-// Central service for managing run IDs in a multi-tenant system
+// Simple service for managing run IDs
 
 const runIdUtils = require('../utils/runIdUtils');
-const { v4: uuidv4 } = require('uuid');
+const { generateRunId: createRunId } = require('../utils/runIdGenerator');
 
 /**
  * In-memory cache for run records
- * Structure: { 'runId-clientId': { recordId, baseId, clientId, timestamp, metadata } }
+ * Structure: { 'runId-clientId': { recordId, clientId, timestamp } }
  */
 const runRecordCache = {};
 
 /**
- * Sequence counter for run IDs (with rollover at 1000)
- */
-let sequenceCounter = 1;
-
-/**
- * Get the next sequence number for run IDs
- * @returns {string} The next sequence number, padded to 3 digits
- */
-function getNextSequence() {
-  const seq = sequenceCounter.toString().padStart(3, '0');
-  sequenceCounter = (sequenceCounter % 999) + 1;
-  return seq;
-}
-
-/**
- * Generate a new simplified run ID
+ * Generate a client-specific run ID
  * @param {string} clientId - The client ID to include in the run ID
- * @param {string} [existingRunId=null] - Optional existing run ID to try to reuse its timestamp
- * @returns {string} A new simplified run ID with timestamp and client suffix
+ * @returns {string} A new run ID with client suffix
  */
-function generateRunId(clientId, existingRunId = null) {
-  // Try to reuse timestamp from existing ID if provided
-  if (existingRunId) {
-    const normalizedWithExisting = normalizeRunId(existingRunId, clientId, false);
-    if (normalizedWithExisting) {
-      return normalizedWithExisting;
-    }
+function generateRunId(clientId) {
+  if (!clientId) {
+    console.log(`[runIdService] ERROR: Missing clientId in generateRunId call`);
+    return null;
   }
   
-  // Otherwise, force creation of a new timestamp-based ID
-  return normalizeRunId(null, clientId, true);
+  // Clean client ID (remove C prefix if present)
+  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  
+  // Get base timestamp ID
+  const baseId = createRunId();
+  
+  // Add client ID
+  return `${baseId}-${cleanClientId}`;
 }
 
 /**
- * Create a consistent run ID format for any input
- * @param {string} runId - The run ID to normalize (used if valid timestamp format)
+ * Normalize a run ID to our standard format
+ * @param {string} runId - The run ID to normalize
  * @param {string} clientId - The client ID to include
  * @param {boolean} [forceNew=false] - Whether to force generation of a new ID
  * @returns {string} A normalized run ID with the timestamp-clientId format
  */
 function normalizeRunId(runId, clientId, forceNew = false) {
-  console.log(`[runIdService] DEBUG: normalizeRunId called with runId=${runId}, clientId=${clientId}, forceNew=${forceNew}`);
+  console.log(`[runIdService] normalizeRunId called with runId=${runId}, clientId=${clientId}`);
   
   if (!clientId) {
     console.log(`[runIdService] ERROR: Missing clientId in normalizeRunId call`);
     return null;
   }
   
-  // Always use the clean clientId without any prefixes
+  // Clean client ID (remove C prefix if present)
   const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
-  console.log(`[runIdService] DEBUG: Using clean clientId: ${cleanClientId}`);
-
-  // Regular expression to match our timestamp format (YYMMDD-HHMMSS)
-  const timestampRegex = /^\d{6}-\d{6}$/;
   
-  // Check if we have a valid timestamp-based ID already and we're not forcing a new one
+  // If we have a run ID and we're not forcing a new one, try to use it
   if (!forceNew && runId && typeof runId === 'string') {
-    console.log(`[runIdService] DEBUG: Attempting to extract timestamp from existing ID: ${runId}`);
-    
-    // Extract just the timestamp part if it includes a client ID
+    // Split the run ID by hyphens
     const parts = runId.split('-');
-    console.log(`[runIdService] DEBUG: Split parts:`, parts);
     
-    if (parts.length >= 2) {
-      const possibleTimestamp = `${parts[0]}-${parts[1]}`;
-      console.log(`[runIdService] DEBUG: Possible timestamp: ${possibleTimestamp}`);
-      console.log(`[runIdService] DEBUG: Regex test result: ${timestampRegex.test(possibleTimestamp)}`);
-      
-      // If this is already a valid timestamp format, use it with the current client ID
-      if (timestampRegex.test(possibleTimestamp)) {
-        const standardId = `${possibleTimestamp}-${cleanClientId}`;
-        console.log(`[runIdService] SUCCESS: Using existing timestamp from ID: ${standardId} for client ${clientId}`);
-        return standardId;
-      } else {
-        console.log(`[runIdService] DEBUG: Timestamp format invalid: ${possibleTimestamp}`);
-      }
-    } else {
-      console.log(`[runIdService] DEBUG: Not enough parts in ID to extract timestamp: ${parts.length} parts`);
+    // For timestamp format (YYMMDD-HHMMSS), extract and use those parts
+    if (parts.length >= 2 && parts[0].length === 6 && parts[1].length === 6) {
+      const baseId = `${parts[0]}-${parts[1]}`;
+      const standardId = `${baseId}-${cleanClientId}`;
+      console.log(`[runIdService] Using timestamp from existing ID: ${standardId}`);
+      return standardId;
     }
-  } else {
-    console.log(`[runIdService] DEBUG: Conditions not met to reuse existing ID, forceNew=${forceNew}, runId exists=${!!runId}`);
   }
   
   // If we get here, either forceNew was true or the input wasn't a valid timestamp format
   // Generate a new timestamp-based ID
-  const now = new Date();
+  const baseId = createRunId();
+  const standardId = `${baseId}-${cleanClientId}`;
   
-  // Format: YYMMDD-HHMMSS-ClientID
-  const datePart = [
-    now.getFullYear().toString().slice(2),
-    (now.getMonth() + 1).toString().padStart(2, '0'),
-    now.getDate().toString().padStart(2, '0')
-  ].join('');
-  
-  const timePart = [
-    now.getHours().toString().padStart(2, '0'),
-    now.getMinutes().toString().padStart(2, '0'),
-    now.getSeconds().toString().padStart(2, '0')
-  ].join('');
-  
-  // Create the standardized format
-  const standardId = `${datePart}-${timePart}-${cleanClientId}`;
-  
-  console.log(`[runIdService] Created new standardized ID: ${standardId} for client ${clientId}`);
+  console.log(`[runIdService] Created new standardized ID: ${standardId}`);
   return standardId;
 }
 
@@ -123,20 +77,22 @@ function normalizeRunId(runId, clientId, forceNew = false) {
  * @param {string} runId - The run ID
  * @param {string} clientId - The client ID
  * @param {string} recordId - The Airtable record ID
- * @param {Object} [metadata={}] - Additional metadata to store with the record
  * @returns {string} The normalized run ID
  */
-function registerRunRecord(runId, clientId, recordId, metadata = {}) {
-  // CRITICAL FIX: Always normalize the run ID for consistent key generation
+function registerRunRecord(runId, clientId, recordId) {
+  // Always normalize the run ID for consistent key generation
   const normalizedId = normalizeRunId(runId, clientId);
   
-  // SIMPLIFIED: Store each record with just its normalized ID as the key
+  if (!normalizedId) {
+    console.log(`[runIdService] ERROR: Failed to normalize run ID ${runId} for client ${clientId}`);
+    return null;
+  }
+  
+  // Store the record with a simple key structure
   runRecordCache[normalizedId] = {
     recordId,
-    baseId: runIdUtils.getBaseRunId(normalizedId),
     clientId,
-    timestamp: new Date().toISOString(),
-    metadata
+    timestamp: new Date().toISOString()
   };
   
   console.log(`[runIdService] Registered record ${recordId} for run ${normalizedId} (client ${clientId})`);
@@ -149,8 +105,7 @@ function registerRunRecord(runId, clientId, recordId, metadata = {}) {
       recordId,
       baseId: runIdUtils.getBaseRunId(normalizedId),
       clientId,
-      timestamp: new Date().toISOString(),
-      metadata
+      timestamp: new Date().toISOString()
     };
     console.log(`[runIdService] Also registered record under base run ID ${baseKey}`);
   }
