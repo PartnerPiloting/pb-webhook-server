@@ -528,12 +528,11 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
     duration = (end - start) / 1000; // Duration in seconds
   }
   
-  // Update with completion info
+  // Update with completion info, removing problematic fields
   const updates = {
     'Status': status,
     'End Time': endTimestamp,
-    'Completion Notes': notes,
-    // Add completion source to notes to ensure we capture this info
+    // Notes added directly to System Notes instead of using Completion Notes field
     'System Notes': `Completed at ${endTimestamp} with status ${status} from ${source}. ${notes || ''}`
   };
   
@@ -653,8 +652,7 @@ async function completeJobRecord(runId, success, notes = '', options = {}) {
   const updates = {
     'Status': success ? 'Success' : 'Error',
     'End Time': endTimestamp,
-    'Completion Notes': notes,
-    // Add completion source to System Notes to ensure we capture this info
+    // Notes added directly to System Notes instead of using Completion Notes field
     'System Notes': `Job completed at ${endTimestamp} with status ${success ? 'Success' : 'Error'} from ${source}. ${notes || ''}`
   };
   
