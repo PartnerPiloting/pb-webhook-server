@@ -296,17 +296,10 @@ async function updateJobTracking(runId, updates) {
     }).firstPage();
     
     if (!records || records.length === 0) {
-      // FALLBACK: Create a new job tracking record if one doesn't exist
-      console.log(`Airtable Service: Job tracking record not found for ${runId}, creating a new one`);
-      const newRecord = await createJobTrackingRecord(baseRunId, 1);
-      if (newRecord) {
-        console.log(`Airtable Service: Created fallback job tracking record ID: ${newRecord.id}`);
-        // Continue with update now that we have a record
-        const updated = await base(JOB_TRACKING_TABLE).update(newRecord.id, updates);
-        return updated;
-      } else {
-        throw new Error(`Failed to create fallback job tracking record for: ${runId} (base: ${baseRunId})`);
-      }
+      // CRITICAL CHANGE: Don't create a new record, log an error instead
+      const errorMsg = `Job tracking record not found for ${runId} (base: ${baseRunId}). Updates will not be applied.`;
+      console.error(`Airtable Service ERROR: ${errorMsg}`);
+      return { error: errorMsg, runId, baseRunId, notFound: true };
     }
     
     // Handle case where there are multiple records with the same run ID
@@ -391,11 +384,11 @@ async function updateClientRun(runId, clientId, updates) {
       }
     }
       
-    // If still not found, create a new record
+    // If still not found, report an error instead of creating a new record
     if (!recordId) {
-      console.log(`Airtable Service: Creating new client run record`);
-      const record = await createClientRunRecord(standardRunId, clientId, clientId);
-      recordId = record.id;
+      const errorMsg = `No client run record found for client ${clientId} with run ID ${standardRunId}`;
+      console.error(`Airtable Service ERROR: ${errorMsg}`);
+      throw new Error(errorMsg);
     }
     
     // Now update it
