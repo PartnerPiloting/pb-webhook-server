@@ -197,7 +197,7 @@ async function createClientRunRecord(runId, clientId, clientName, options = {}) 
   const source = options.source || 'unknown';
   
   // Only certain sources are allowed to create records
-  const allowedSources = ['orchestrator', 'master_process', 'smart_resume_workflow', 'batch_process', 'airtable_service_recovery'];
+  const allowedSources = ['orchestrator', 'master_process', 'smart_resume_workflow', 'batch_process', 'airtable_service_recovery', 'run_record_recovery'];
   if (!allowedSources.includes(source)) {
     const errorMsg = `Unauthorized source "${source}" attempted to create client run record`;
     logger.error(errorMsg);
@@ -415,14 +415,24 @@ async function updateRunRecord(runId, clientId, updates, options = {}) {
   logger.debug(`Run Record Service: Updating run record for ${runId}, client ${clientId} (source: ${source})`);
   
   // First, get the record - this will NOT create if missing
-  const record = await getRunRecord(runId, clientId, options);
+  let record = await getRunRecord(runId, clientId, options);
   
-  // If record not found, this is an error condition
+  // If record not found, attempt to create it using the recovery path
   if (!record) {
-    const errorMsg = `Cannot update: Run record not found for ${runId}, client ${clientId}`;
-    logger.error(errorMsg);
-    trackActivity('update', runId, clientId, source, `ERROR: ${errorMsg}`);
-    throw new Error(errorMsg);
+    logger.debug(`Run Record Service: No record found for ${runId}, client ${clientId}, attempting to create one for recovery`);
+    try {
+      // Create a new record with clientId as fallback for clientName
+      record = await createClientRunRecord(runIdService.stripClientSuffix(runId), clientId, clientId, {
+        source: 'run_record_recovery', 
+        logger
+      });
+      logger.debug(`Run Record Service: Successfully created recovery record for ${runId}, client ${clientId}`);
+    } catch (createError) {
+      const errorMsg = `Cannot update: Run record not found for ${runId}, client ${clientId} and creation failed: ${createError.message}`;
+      logger.error(errorMsg);
+      trackActivity('update', runId, clientId, source, `ERROR: ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
   }
   
   const base = initialize();
@@ -559,14 +569,24 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
   logger.debug(`Run Record Service: Completing run record for ${runId}, client ${clientId} with status ${status} (source: ${source})`);
   
   // First, get the record - this will NOT create if missing
-  const record = await getRunRecord(runId, clientId, options);
+  let record = await getRunRecord(runId, clientId, options);
   
-  // If record not found, this is an error condition
+  // If record not found, attempt to create it using the recovery path
   if (!record) {
-    const errorMsg = `Cannot complete: Run record not found for ${runId}, client ${clientId}`;
-    logger.error(errorMsg);
-    trackActivity('complete', runId, clientId, source, `ERROR: ${errorMsg}`);
-    throw new Error(errorMsg);
+    logger.debug(`Run Record Service: No record found for ${runId}, client ${clientId}, attempting to create one for recovery`);
+    try {
+      // Create a new record with clientId as fallback for clientName
+      record = await createClientRunRecord(runIdService.stripClientSuffix(runId), clientId, clientId, {
+        source: 'run_record_recovery', 
+        logger
+      });
+      logger.debug(`Run Record Service: Successfully created recovery record for ${runId}, client ${clientId}`);
+    } catch (createError) {
+      const errorMsg = `Cannot complete: Run record not found for ${runId}, client ${clientId} and creation failed: ${createError.message}`;
+      logger.error(errorMsg);
+      trackActivity('complete', runId, clientId, source, `ERROR: ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
   }
   
   const endTimestamp = new Date().toISOString();
