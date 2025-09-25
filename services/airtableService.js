@@ -337,8 +337,8 @@ async function updateJobTracking(runId, updates) {
 async function updateClientRun(runId, clientId, updates) {
   const base = initialize();
   
-  // SIMPLIFIED: Just normalize the run ID once to ensure consistency
-  const standardRunId = runIdService.normalizeRunId(runId, clientId, false);
+  // Use the standardized run ID format
+  const standardRunId = runIdService.normalizeRunId(runId, clientId);
   
   console.log(`[METDEBUG] AirtableService updateClientRun called:`);
   console.log(`[METDEBUG] - Client: ${clientId}`);
@@ -347,28 +347,28 @@ async function updateClientRun(runId, clientId, updates) {
   console.log(`[METDEBUG] - Updates:`, JSON.stringify(updates));
   
   try {
-    // SIMPLE APPROACH: Look for exact Run ID match - this is the only reliable way
+    // Look for exact Run ID match using our standard format
     let recordId = null;
     
     // First check if we have a cached record ID for this run
     recordId = runIdService.getRunRecordId(standardRunId, clientId);
     
     if (recordId) {
-      console.log(`Airtable Service: Using cached record ID ${recordId} for run ${standardRunId}`);
+      console.log(`[METDEBUG] Using cached record ID ${recordId} for run ${standardRunId}`);
       
       try {
         // Verify the record exists
         await base(CLIENT_RUN_RESULTS_TABLE).find(recordId);
-        console.log(`Airtable Service: Verified cached record exists`);
+        console.log(`[METDEBUG] Verified cached record exists`);
       } catch (err) {
-        console.log(`Airtable Service: Cached record not found, will search again`);
+        console.log(`[METDEBUG] Cached record not found, will search again`);
         recordId = null;
       }
     }
     
     // If not found in cache, search by exact Run ID match
     if (!recordId) {
-      console.log(`Airtable Service: Looking for exact Run ID match`);
+      console.log(`[METDEBUG] Looking for exact Run ID match`);
       const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
       
       const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
@@ -378,45 +378,28 @@ async function updateClientRun(runId, clientId, updates) {
       
       if (exactMatches && exactMatches.length > 0) {
         recordId = exactMatches[0].id;
-        console.log(`Airtable Service: Found exact Run ID match ${recordId}`);
+        console.log(`[METDEBUG] Found exact Run ID match ${recordId}`);
         
         // Register for future lookups
         runIdService.registerRunRecord(standardRunId, clientId, recordId);
       } else {
-        console.log(`Airtable Service: No exact Run ID match found for ${standardRunId}`);
+        console.log(`[METDEBUG] No exact Run ID match found for ${standardRunId}`);
       }
     }
       
-    // If not found, create a new record but only if it includes a 'Status' field
-    // This ensures we only auto-create records when we have the proper initialization data
+    // If not found, create a new record
     if (!recordId) {
-      console.log(`[METDEBUG] No record found for ${standardRunId}, checking if we should auto-create`);
-      
-      if (updates && updates['Status']) {
-        console.log(`[DEBUG][METRICS_TRACKING] Auto-creating record for ${standardRunId} because Status field is present`);
-        const record = await createClientRunRecord(standardRunId, clientId, clientId);
-        recordId = record.id;
-        console.log(`[DEBUG][METRICS_TRACKING] Created new record with ID: ${recordId}`);
-      } else if (updates && (updates['Total Posts Harvested'] !== undefined || updates['Apify Run ID'])) {
-        // MODIFIED: Auto-create for post harvesting metrics too
-        console.log(`[DEBUG][METRICS_TRACKING] Auto-creating record for ${standardRunId} for post harvesting metrics`);
-        const record = await createClientRunRecord(standardRunId, clientId, clientId);
-        recordId = record.id;
-        console.log(`[DEBUG][METRICS_TRACKING] Created new post harvesting record with ID: ${recordId}`);
-      } else {
-        // If no Status field or post metrics, this is probably an update to an existing record that should be there
-        const errorMsg = `No client run record found for client ${clientId} with run ID ${standardRunId}`;
-        console.error(`[DEBUG][METRICS_TRACKING] ERROR: ${errorMsg}`);
-        console.error(`[DEBUG][METRICS_TRACKING] Updates that failed:`, JSON.stringify(updates));
-        throw new Error(errorMsg);
-      }
+      console.log(`[METDEBUG] No record found for ${standardRunId}, creating new record`);
+      const record = await createClientRunRecord(standardRunId, clientId, clientId);
+      recordId = record.id;
+      console.log(`[METDEBUG] Created new record with ID: ${recordId}`);
     }
     
     // Now update it
     console.log(`[METDEBUG] Updating record ${recordId} with:`, JSON.stringify(updates));
     
-    // Define the Apify-related fields we want to preserve
-    const apifyFields = [
+    // Define the fields we want to preserve when not explicitly updated
+    const fieldsToPreserve = [
       'Apify Run ID',
       'Total Posts Harvested',
       'Profiles Submitted for Post Harvesting',
@@ -426,7 +409,7 @@ async function updateClientRun(runId, clientId, updates) {
     ];
     
     // Check if we need to preserve any existing values
-    const fieldsMissingInUpdate = apifyFields.filter(field => 
+    const fieldsMissingInUpdate = fieldsToPreserve.filter(field => 
       updates[field] === undefined || updates[field] === '');
     
     if (fieldsMissingInUpdate.length > 0) {
@@ -484,6 +467,8 @@ async function completeJobRun(runId, success = true, notes = '') {
   
   return await updateJobTracking(runId, updates);
 }
+
+// Removed findClientRunByTimestampPrefix function - we now use only exact run ID matching
 
 /**
  * Complete a client run by updating end time and status

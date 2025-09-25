@@ -1,13 +1,13 @@
 // utils/runIdUtils.js
 // Utility functions for dealing with run IDs in a multi-tenant system
-// CLEAN SLATE IMPLEMENTATION - Simple timestamp-based IDs only
+// SIMPLIFIED IMPLEMENTATION - Only supports timestamp-based IDs with exact client ID
 
 /**
  * Identifies our standard timestamp format with client suffix
  * Format: YYMMDD-HHMMSS-{clientId}
  * Example: 250924-152230-Dean-Hobin
  */
-const TIMESTAMP_RUN_ID_REGEX = /^(\d{6}-\d{6})(?:-(.+))?$/;
+const TIMESTAMP_RUN_ID_REGEX = /^(\d{6}-\d{6})-(.+)$/;
 
 /**
  * Helper function to identify if the run ID has any client suffix
@@ -16,9 +16,7 @@ const TIMESTAMP_RUN_ID_REGEX = /^(\d{6}-\d{6})(?:-(.+))?$/;
  */
 function hasClientSuffix(runId) {
   if (!runId) return false;
-  // Our format always has exactly two hyphens: YYMMDD-HHMMSS-ClientID
-  const parts = runId.split('-');
-  return parts.length >= 3;
+  return TIMESTAMP_RUN_ID_REGEX.test(runId);
 }
 
 /**
@@ -30,19 +28,10 @@ function hasClientSuffix(runId) {
 function hasSpecificClientSuffix(runId, clientId) {
   if (!runId || !clientId) return false;
   
-  // Clean the client ID (remove C prefix if present)
-  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
+  const match = runId.match(TIMESTAMP_RUN_ID_REGEX);
+  if (!match) return false;
   
-  // Split the run ID by hyphens
-  const parts = runId.split('-');
-  
-  // If it's our format, the client ID is everything after the second hyphen
-  if (parts.length >= 3) {
-    const runIdClientPart = parts.slice(2).join('-');
-    return runIdClientPart === cleanClientId;
-  }
-  
-  return false;
+  return match[2] === clientId;
 }
 
 /**
@@ -53,16 +42,14 @@ function hasSpecificClientSuffix(runId, clientId) {
 function getBaseRunId(runId) {
   if (!runId) return '';
   
-  // With our clean slate format, the base is always just the timestamp part
   const match = runId.match(TIMESTAMP_RUN_ID_REGEX);
   if (match) {
     return match[1]; // Return just the timestamp part (YYMMDD-HHMMSS)
   }
   
-  // If it's not our format, return the original
-  // This could happen if a legacy SR-format ID is encountered
-  console.warn(`Encountered non-standard run ID format: ${runId}`);
-  return runId;
+  // If it's not our format, log a warning and return an empty string
+  console.warn(`[METDEBUG] Encountered non-standard run ID format: ${runId}`);
+  return '';
 }
 
 /**
@@ -85,12 +72,10 @@ function addClientSuffix(runId, clientId) {
   
   // Get just the base part without client suffix
   const baseRunId = getBaseRunId(runId);
+  if (!baseRunId) return runId; // Return original if not in our format
   
-  // Clean the client ID (remove C prefix if present for standardization)
-  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
-  
-  // Create the standard format
-  return `${baseRunId}-${cleanClientId}`;
+  // Create the standard format with the exact client ID (no modifications)
+  return `${baseRunId}-${clientId}`;
 }
 
 // Export the functions

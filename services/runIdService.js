@@ -17,18 +17,15 @@ const runRecordCache = {};
  */
 function generateRunId(clientId) {
   if (!clientId) {
-    console.log(`[runIdService] ERROR: Missing clientId in generateRunId call`);
+    console.error(`[METDEBUG] ERROR: Missing clientId in generateRunId call`);
     return null;
   }
-  
-  // Clean client ID (remove C prefix if present)
-  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
   
   // Get base timestamp ID
   const baseId = createRunId();
   
-  // Add client ID
-  return `${baseId}-${cleanClientId}`;
+  // Add client ID - use exact client ID as provided with no modifications
+  return `${baseId}-${clientId}`;
 }
 
 /**
@@ -39,47 +36,51 @@ function generateRunId(clientId) {
  * @returns {string} A normalized run ID with the timestamp-clientId format
  */
 function normalizeRunId(runId, clientId, forceNew = false) {
-  console.log(`[runIdService] normalizeRunId called with runId=${runId}, clientId=${clientId}, forceNew=${forceNew}`);
   console.log(`[METDEBUG] normalizeRunId processing run ID: ${runId}`);
   console.log(`[METDEBUG] normalizeRunId for client: ${clientId}`);
   console.log(`[METDEBUG] normalizeRunId forceNew flag: ${forceNew}`);
   
   if (!clientId) {
-    console.log(`[runIdService] ERROR: Missing clientId in normalizeRunId call`);
     console.error(`[METDEBUG] ERROR: Missing clientId in normalizeRunId call`);
     return null;
   }
   
-  // Check if runId is a Promise and log a warning with stack trace to help debugging
-  if (runId && typeof runId === 'object' && runId.then) {
-    console.error(`[runIdService] WARNING: Received Promise instead of string for runId. This is likely a bug.`);
-    console.error(`[runIdService] Stack trace:`, new Error().stack);
-    // Continue with standard ID generation - ignore the Promise
+  // If force new is true, always generate a new ID
+  if (forceNew) {
+    const baseId = createRunId();
+    const standardId = `${baseId}-${clientId}`;
+    console.log(`[METDEBUG] Force-created new run ID: ${standardId}`);
+    return standardId;
   }
   
-  // Clean client ID (remove C prefix if present)
-  const cleanClientId = clientId.startsWith('C') ? clientId.substring(1) : clientId;
-  
-  // Extract the base ID if it exists and looks valid, otherwise create a new one
-  let baseId;
+  // Check if runId matches our standard format already
   if (runId && typeof runId === 'string') {
-    // Check if runId has our expected timestamp format (YYMMDD-HHMMSS...)
-    const timestampMatch = runId.match(/^(\d{6}-\d{6})/);
-    if (timestampMatch) {
-      baseId = timestampMatch[1]; // Use the existing timestamp
-      console.log(`[runIdService] Using existing timestamp: ${baseId} from ${runId}`);
-    } else {
-      baseId = createRunId(); // Create new if not in expected format
-      console.log(`[runIdService] Created new timestamp: ${baseId} (original format not recognized)`);
+    // Check exact match for our format: YYMMDD-HHMMSS-ClientID
+    const match = runId.match(/^(\d{6}-\d{6})-(.+)$/);
+    if (match && match[2] === clientId) {
+      console.log(`[METDEBUG] Run ID already in standard format: ${runId}`);
+      return runId;
     }
-  } else {
-    baseId = createRunId(); // Create new if runId is not a string
-    console.log(`[runIdService] Created new timestamp: ${baseId} (no valid runId provided)`);
+    
+    // If we have a timestamp prefix but wrong client ID, extract the timestamp and add the correct client ID
+    if (match) {
+      const baseId = match[1];
+      const standardId = `${baseId}-${clientId}`;
+      console.log(`[METDEBUG] Standardized run ID from partial match: ${standardId}`);
+      return standardId;
+    }
   }
   
-  const standardId = `${baseId}-${cleanClientId}`;
-  console.log(`[runIdService] Standardized ID: ${standardId}`);
+  // If we get here, either runId is not a string or doesn't match our format
+  // Generate a new timestamp and create a standard ID
+  const baseId = createRunId();
+  const standardId = `${baseId}-${clientId}`;
+  console.log(`[METDEBUG] Created new run ID: ${standardId}`);
   return standardId;
+  
+  // This section has been replaced by the simplified logic above
+  console.log(`[METDEBUG] Using simplified standardized ID format`);
+  return null; // This line should never be reached, it's replaced by the above return statements
 }
 
 /**
