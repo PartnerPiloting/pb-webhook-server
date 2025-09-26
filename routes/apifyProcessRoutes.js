@@ -410,14 +410,22 @@ async function processClientHandler(req, res) {
           console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
           console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${updatedProfilesSubmitted}`);
           
-          await runRecordService.updateClientMetrics(runIdToUse, clientId, {
-            'Total Posts Harvested': updatedCount,
-            'Apify API Costs': updatedCosts,
-            'Apify Run ID': apifyRunId,
-            'Profiles Submitted for Post Harvesting': updatedProfilesSubmitted
-          }, { source: 'apifyProcessRoutes' });
-          
-          console.log(`[apify/process-client] Updated client run record for ${clientId}:`);
+          try {
+            if (typeof runRecordService.updateClientMetrics !== 'function') {
+              console.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics`);
+            } else {
+              await runRecordService.updateClientMetrics(runIdToUse, clientId, {
+                'Total Posts Harvested': updatedCount,
+                'Apify API Costs': updatedCosts,
+                'Apify Run ID': apifyRunId,
+                'Profiles Submitted for Post Harvesting': updatedProfilesSubmitted
+              }, { source: 'apifyProcessRoutes' });
+              
+              console.log(`[apify/process-client] Updated client run record for ${clientId}:`);
+            }
+          } catch (metricError) {
+            console.error(`[ERROR] Failed to update client metrics: ${metricError.message}`);
+          }
           console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
           console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
         } else {
@@ -434,19 +442,23 @@ async function processClientHandler(req, res) {
           // We still need to try to update metrics for operational continuity
           // but we'll log it as an error
           try {
-            await runRecordService.updateClientMetrics(runIdToUse, clientId, {
-              'Total Posts Harvested': postsToday,
-              'Apify API Costs': estimatedCost,
-              'Apify Run ID': apifyRunId,
-              'Profiles Submitted for Post Harvesting': profilesSubmitted
-            }, { source: 'apifyProcessRoutes_fallback' });
-            
-            console.log(`[apify/process-client] Attempted metrics update despite missing run record`);
-            console.log(`  - Total Posts Harvested: ${postsToday}`);
-            console.log(`  - Apify API Costs: ${estimatedCost}`);
-          } catch (updateError) {
-            console.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);
+            if (typeof runRecordService.updateClientMetrics !== 'function') {
+              console.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics in fallback handler`);
+            } else {
+              await runRecordService.updateClientMetrics(runIdToUse, clientId, {
+                'Total Posts Harvested': postsToday,
+                'Apify API Costs': estimatedCost,
+                'Apify Run ID': apifyRunId,
+                'Profiles Submitted for Post Harvesting': profilesSubmitted
+              }, { source: 'apifyProcessRoutes_fallback' });
+              
+              console.log(`[apify/process-client] Attempted metrics update despite missing run record`);
+              console.log(`  - Total Posts Harvested: ${postsToday}`);
+            }
+          } catch (metricError) {
+            console.error(`[ERROR] Failed to update client metrics in fallback handler: ${metricError.message}`);
           }
+          console.log(`  - Apify API Costs: ${estimatedCost}`);
         }
       } catch (recordError) {
         // Error checking for existing record
@@ -458,11 +470,15 @@ async function processClientHandler(req, res) {
           // Get the Apify Run ID if it exists in the start data
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
           
-          await runRecordService.updateClientMetrics(runIdToUse, clientId, {
-            'Total Posts Harvested': postsToday,
-            'Apify Run ID': apifyRunId,
-            'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
-          }, { source: 'apifyProcessRoutes_emergency' });
+          if (typeof runRecordService.updateClientMetrics !== 'function') {
+            console.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics in emergency handler`);
+          } else {
+            await runRecordService.updateClientMetrics(runIdToUse, clientId, {
+              'Total Posts Harvested': postsToday,
+              'Apify Run ID': apifyRunId,
+              'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
+            }, { source: 'apifyProcessRoutes_emergency' });
+          }
           console.log(`[apify/process-client] Attempted metrics update despite record lookup failure`);
         } catch (updateError) {
           console.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);

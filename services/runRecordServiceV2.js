@@ -105,10 +105,20 @@ function initialize() {
  * @param {string} options.source - Source of the creation request
  * @returns {Promise<Object>} The created record
  */
-async function createJobRecord(runId, stream, options = {}) {
+async function createJobRecord(params, options = {}) {
   const base = initialize();
-  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
-  const source = options.source || 'unknown';
+  
+  // Handle both new object style and legacy parameter style for backward compatibility
+  const isLegacyCall = typeof params === 'string';
+  
+  // Extract parameters based on calling style
+  const runId = isLegacyCall ? params : params.runId;
+  const stream = isLegacyCall ? options : params.stream;
+  const legacyOptions = isLegacyCall ? arguments[2] || {} : options;
+  
+  const logger = (isLegacyCall ? legacyOptions.logger : params.logger) || 
+                new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  const source = (isLegacyCall ? legacyOptions.source : params.source) || 'unknown';
   
   logger.debug(`Run Record Service: Creating job tracking record for ${runId}`);
   
