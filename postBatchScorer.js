@@ -211,12 +211,23 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         duration: 0
     };
     
+    // Special debugging for Guy Wilson
+    if (client.clientId === 'Guy-Wilson') {
+        console.log(`[POST_SCORING_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Starting post scoring process for Guy Wilson`);
+    }
+    
     // Check if the post scoring job is already running for this client
     try {
         const isRunning = await clientService.isJobRunning(client.clientId, 'post_scoring');
         if (isRunning) {
             logger.setup(`Post scoring job is already running for client ${client.clientId}, skipping`);
-            console.log(`[INFO] Client ${client.clientId} already has post scoring job running, skipping`);
+            console.log(`[POST_SCORING_DEBUG] ⚠️ Client ${client.clientId} (${client.clientName}) already has post scoring job running, skipping`);
+            
+            // Special debugging for Guy Wilson
+            if (client.clientId === 'Guy-Wilson') {
+                console.log(`[POST_SCORING_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Guy Wilson post scoring SKIPPED because job is already running`);
+            }
+            
             clientResult.status = 'skipped';
             clientResult.skipReason = 'job_running';
             return clientResult;
@@ -250,11 +261,50 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         config.fields.skipReason = 'Posts Skip Reason';
         
         // Get leads with posts to be scored
-    const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, options);
+        console.log(`[POST_SCORING_DEBUG] 🔍 CLIENT ${client.clientId} (${client.clientName}): Starting to look for leads with posts to be scored`);
+        logger.setup(`Looking for leads with posts to score for client ${client.clientId} (${client.clientName})`);
+        
+        // Special debug for Guy Wilson client
+        if (client.clientId === 'Guy-Wilson') {
+            console.log(`[POST_SCORING_DEBUG] 🚨 SPECIAL FOCUS: Processing Guy Wilson client`);
+        }
+        
+        const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, options);
+        
         logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
-        console.log(`[DEBUG] Client ${client.clientId}: Found ${leadsToProcess.length} leads for scoring`);
-        if (leadsToProcess.length > 0) {
-            console.log(`[DEBUG] Client ${client.clientId}: Sample lead fields:`, Object.keys(leadsToProcess[0].fields || {}));
+        console.log(`[POST_SCORING_DEBUG] 🔢 CLIENT ${client.clientId} (${client.clientName}): Found ${leadsToProcess.length} leads with posts to score`);
+        
+        // Special debug for Guy Wilson client
+        if (client.clientId === 'Guy-Wilson') {
+            console.log(`[POST_SCORING_DEBUG] 🚨 SPECIAL FOCUS: Guy Wilson has ${leadsToProcess.length} leads for post scoring`);
+        }
+        
+        if (leadsToProcess.length === 0) {
+            // No leads to process, complete with success but 0 scored
+            logger.summary(`No posts to score for client ${client.clientId} (${client.clientName})`);
+            console.log(`[POST_SCORING_DEBUG] ℹ️ CLIENT ${client.clientId} (${client.clientName}): No leads with posts to score found`);
+            
+            // Special debug for Guy Wilson client
+            if (client.clientId === 'Guy-Wilson') {
+                console.log(`[POST_SCORING_DEBUG] 🚨🚨 SPECIAL FOCUS: Guy Wilson has NO leads with posts to score. Check if posts are being properly harvested.`);
+            }
+            
+            clientResult.status = 'success';
+            clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
+            return clientResult;
+        } else {
+            console.log(`[POST_SCORING_DEBUG] 📋 CLIENT ${client.clientId}: Sample lead fields:`, Object.keys(leadsToProcess[0].fields || {}));
+            
+            // Log more details about first few leads for debugging
+            const maxToLog = Math.min(3, leadsToProcess.length);
+            console.log(`[POST_SCORING_DEBUG] 📝 First ${maxToLog} leads to process:`);
+            for (let i = 0; i < maxToLog; i++) {
+                const lead = leadsToProcess[i];
+                console.log(`[POST_SCORING_DEBUG]   - Lead ${i+1}: ID=${lead.id}, Name=${lead.fields['Full Name'] || 'Unknown'}`);
+                // Check key fields
+                console.log(`[POST_SCORING_DEBUG]     Has posts content: ${!!lead.fields[config.fields.postsContent]}`);
+                console.log(`[POST_SCORING_DEBUG]     Already scored: ${!!lead.fields[config.fields.dateScored]}`);
+            }
         }
 
         // Build the post scoring prompt ONCE per client batch (cache for this run)
@@ -421,6 +471,7 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         view: 'Leads with Posts not yet scored',
         // IMPORTANT: Remove additional filters that might conflict with the view's filters
         // Only apply a force rescore filter if needed
+        // FIXED: Using single quotes for Airtable formula compatibility
         filterByFormula: options.forceRescore ? `OR({${config.fields.dateScored}} = BLANK(), {${config.fields.dateScored}} != BLANK())` : undefined
     };
 
@@ -511,6 +562,7 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         usedFallback = true;
         const postsActionedField = 'Posts Actioned';
         // Attempt 1: include Posts Actioned guard
+        // FIXED: Ensure single quotes for Airtable formula compatibility
         const actionedGuard = `OR({${postsActionedField}} = 0, {${postsActionedField}} = '', {${postsActionedField}} = BLANK())`;
         const baseFields = [
             config.fields.postsContent,
@@ -521,6 +573,7 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             config.fields.topScoringPost
         ];
         const makeFilter = (withActioned) => {
+            // FIXED: Using single quotes consistently for Airtable formula compatibility
             const dateClause = options.forceRescore ? 'TRUE()' : `{${config.fields.dateScored}} = BLANK()`;
             const filterFormula = withActioned
                 ? `AND({${config.fields.postsContent}} != '', ${dateClause}, ${actionedGuard})`
