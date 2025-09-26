@@ -151,11 +151,103 @@ async function updateJobAggregates(runId) {
   }
 }
 
+/**
+ * Update client metrics for a run record (posts harvesting, scoring, etc.)
+ * @param {string} runId - Run ID
+ * @param {string} clientId - Client ID
+ * @param {Object} metrics - Metrics to update
+ * @param {Object} options - Options including logger and source
+ * @returns {Promise<Object>} - The updated record
+ */
+async function updateClientMetrics(runId, clientId, metrics, options = {}) {
+  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', runId, 'run_record');
+  const source = options.source || 'unknown';
+  
+  logger.debug(`[RunRecordAdapterSimple] Updating client metrics for ${runId} and client ${clientId}`);
+  
+  try {
+    // Clean/standardize the run ID (strip any client suffix)
+    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    
+    // Add client suffix for client-specific run ID
+    const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+    
+    // Merge metrics with necessary fields for update
+    const updates = {
+      ...metrics,
+      'Metrics Updated': new Date().toISOString()
+    };
+    
+    // Add note about update source
+    const metricsUpdateNote = `Metrics updated at ${new Date().toISOString()} from ${source}`;
+    if (updates['System Notes']) {
+      updates['System Notes'] += `. ${metricsUpdateNote}`;
+    } else {
+      updates['System Notes'] = metricsUpdateNote;
+    }
+    
+    // Use airtableServiceSimple to update the record
+    return await airtableServiceSimple.updateClientRun(standardRunId, clientId, updates);
+  } catch (error) {
+    logger.error(`[RunRecordAdapterSimple] Failed to update metrics: ${error.message}`);
+    throw error;
+  }
+}
+
 module.exports = {
   createRunRecord,
   updateRunRecord,
   completeRunRecord,
   createJobRecord,
   completeJobRecord,
-  updateJobAggregates
+  updateJobAggregates,
+  updateClientMetrics,
+  
+  /**
+   * Create a client run record with object parameters
+   * This function is used by apifyProcessRoutes.js and other modules that expect
+   * to call createClientRunRecord with an object parameter
+   * @param {Object} params - Parameters for run record creation
+   * @returns {Promise<Object>} - The created record
+   */
+  createClientRunRecord: async function(params) {
+    const logger = new StructuredLogger(params.clientId || 'SYSTEM', params.runId, 'run_record');
+    
+    logger.debug(`[RunRecordAdapterSimple] Creating client run record from object params`);
+    
+    try {
+      // Extract parameters from the object
+      const { runId, clientId, operation } = params;
+      
+      if (!runId || !clientId) {
+        throw new Error('Missing required parameters: runId and clientId');
+      }
+      
+      // Get the client name from clientId if available
+      let clientName = clientId;
+      try {
+        const { getClientById } = require('../services/clientService');
+        const client = await getClientById(clientId);
+        if (client && client.name) {
+          clientName = client.name;
+        }
+      } catch (e) {
+        logger.warn(`Could not resolve client name for ${clientId}: ${e.message}`);
+      }
+      
+      // Clean/standardize the run ID (strip any client suffix)
+      const baseRunId = runIdUtils.stripClientSuffix(runId);
+      
+      // Add client suffix for client-specific run ID
+      const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+      
+      logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
+      
+      // Direct call to the simple service
+      return await airtableServiceSimple.createClientRunRecord(standardRunId, clientId, clientName);
+    } catch (error) {
+      logger.error(`[RunRecordAdapterSimple] Error creating run record: ${error.message}`);
+      throw error;
+    }
+  }
 };
