@@ -105,7 +105,108 @@ router.post('/api/apify/process-client', processClientHandler);
 // Body: { maxBatchesOverride?: number } optional
 router.post('/api/smart-resume/process-client', processClientHandler);
 
-// Shared handler function for both endpoints
+/**
+ * POST /api/apify/process-level2-v2 - Fire-and-forget endpoint for post harvesting in client-by-client processing
+ * 
+ * This endpoint implements the fire-and-forget pattern for post harvesting. It returns a 202 Accepted
+ * response immediately while continuing to process in the background. This is critical for the
+ * client-by-client processing flow to avoid timeouts during lengthy operations.
+ * 
+ * Headers:
+ *   - Authorization: Bearer PB_WEBHOOK_SECRET (required)
+ *   - x-client-id: <clientId> (required if not in query params)
+ * 
+ * Query parameters: 
+ *   - stream: Stream ID from the client-by-client process (for tracking)
+ *   - clientId: Client ID (can also be passed in header)
+ *   - parentRunId: Parent run ID for tracking execution flow
+ *   - limit: Maximum number of leads to process (optional)
+ * 
+ * Body: 
+ *   { 
+ *     maxBatchesOverride?: number,  // Optional override for max batches
+ *     clientId?: string,            // Alternative to header/query
+ *     parentRunId?: string          // Alternative to query param
+ *   }
+ * 
+ * Response: 202 Accepted with { ok: true, message: 'Post harvesting initiated', ... }
+ * 
+ * See POST-HARVESTING-ENDPOINT-DOCUMENTATION.md for more details
+ */
+router.post('/api/apify/process-level2-v2', async (req, res) => {
+  // Enhanced logging to track execution
+  console.log(`[process-level2-v2] ENTRY POINT: New request received at ${new Date().toISOString()}`);
+  console.log(`[process-level2-v2] Headers: ${JSON.stringify(Object.keys(req.headers))}`);
+  console.log(`[process-level2-v2] Query params: ${JSON.stringify(req.query)}`);
+  
+  // Validate auth first
+  const auth = req.headers['authorization'];
+  const secret = process.env.PB_WEBHOOK_SECRET;
+  if (!secret) {
+    console.error('[process-level2-v2] Server missing PB_WEBHOOK_SECRET');
+    return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+  }
+  if (!auth || auth !== `Bearer ${secret}`) {
+    console.error('[process-level2-v2] Unauthorized request');
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
+  // Get client ID from header, query param or body
+  const clientId = req.headers['x-client-id'] || req.query.clientId || (req.body && req.body.clientId);
+  if (!clientId) {
+    console.error('[process-level2-v2] Missing clientId');
+    return res.status(400).json({ ok: false, error: 'Missing clientId parameter' });
+  }
+
+  const stream = req.query.stream || 'default';
+  const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId) || '';
+  
+  console.log(`[process-level2-v2] Received post harvesting request for client ${clientId}, stream ${stream}, parentRunId: ${parentRunId || 'none'}`);
+  
+  // Acknowledge the request immediately (fire-and-forget pattern)
+  res.status(202).json({ 
+    ok: true, 
+    message: 'Post harvesting initiated', 
+    accepted: true, 
+    stream,
+    clientId
+  });
+  
+  console.log(`[process-level2-v2] ✅ Request acknowledged, starting background processing for client ${clientId}`);
+  
+  // Clone the request object and attach some tracking data
+  const reqClone = {...req};
+  reqClone.processingMetadata = {
+    startTime: Date.now(),
+    endpoint: 'process-level2-v2',
+    stream,
+    parentRunId
+  };
+  
+  // Process in the background
+  processClientHandler(reqClone, null).catch(err => {
+    console.error(`[process-level2-v2] Background processing error for client ${clientId}:`, err.message);
+    console.error(`[process-level2-v2] Error stack: ${err.stack}`);
+  });
+});
+
+/**
+ * Shared handler function for processing client post harvesting requests
+ * 
+ * This function is used by both the synchronous and fire-and-forget endpoints:
+ * - /api/apify/process-client (synchronous)
+ * - /api/smart-resume/process-client (synchronous)
+ * - /api/apify/process-level2-v2 (fire-and-forget)
+ * 
+ * When res is null, the function runs in fire-and-forget mode and won't
+ * attempt to send HTTP responses, instead throwing errors or returning 
+ * payload objects directly.
+ * 
+ * @param {Object} req - Express request object or equivalent
+ * @param {Object|null} res - Express response object or null for fire-and-forget mode
+ * @returns {Promise<Object|void>} - Returns response payload or void
+ * @throws {Error} - In fire-and-forget mode, throws errors instead of sending HTTP error responses
+ */
 async function processClientHandler(req, res) {
   // Define variables at the top level so they're available in all scopes
   let runIdToUse;
@@ -124,8 +225,18 @@ async function processClientHandler(req, res) {
   try {
     const auth = req.headers['authorization'];
     const secret = process.env.PB_WEBHOOK_SECRET;
-    if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
-    if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    
+    if (!secret) {
+      console.error('[processClientHandler] Server missing PB_WEBHOOK_SECRET');
+      if (res) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
+      throw new Error('Server missing PB_WEBHOOK_SECRET');
+    }
+    
+    if (!auth || auth !== `Bearer ${secret}`) {
+      console.error('[processClientHandler] Unauthorized request');
+      if (res) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+      throw new Error('Unauthorized');
+    }
 
     // Get client ID from header, query param or body
     clientId = req.headers['x-client-id'] || req.query.client || req.query.clientId || (req.body && (req.body.clientId || req.body.client));
@@ -135,10 +246,13 @@ async function processClientHandler(req, res) {
     
     if (!clientId && !processAllClients) {
       // For backward compatibility, require client ID if not explicitly processing all clients
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'Missing client identifier. Use x-client-id header, client query param, or add ?processAll=true to process all clients' 
-      });
+      const errMsg = 'Missing client identifier. Use x-client-id header, client query param, or add ?processAll=true to process all clients';
+      console.error(`[processClientHandler] ${errMsg}`);
+      
+      if (res) {
+        return res.status(400).json({ ok: false, error: errMsg });
+      }
+      throw new Error(errMsg);
     }
 
     // Get parent run ID from query params or body (if provided)
@@ -153,22 +267,30 @@ async function processClientHandler(req, res) {
       // Get all active clients
       const clients = await getAllClients();
       if (!clients || !clients.length) {
-        return res.status(404).json({ ok: false, error: 'No clients found' });
+        console.error(`[${endpoint}/process-client] No clients found`);
+        if (res) return res.status(404).json({ ok: false, error: 'No clients found' });
+        throw new Error('No clients found');
       }
       
       console.log(`[${endpoint}/process-client] Found ${clients.length} clients to process`);
       
       // Start processing - respond immediately to avoid timeout
-      res.json({ 
-        ok: true, 
-        message: `Processing ${clients.length} clients in the background`, 
-        clientCount: clients.length 
-      });
-      
-      // Process each client asynchronously (in the background)
-      processAllClientsInBackground(clients, req.path, parentRunId);
-      
-      return; // Already sent response
+      if (res) {
+        res.json({ 
+          ok: true, 
+          message: `Processing ${clients.length} clients in the background`, 
+          clientCount: clients.length 
+        });
+        
+        // Process each client asynchronously (in the background)
+        processAllClientsInBackground(clients, req.path, parentRunId);
+        
+        return; // Already sent response
+      } else {
+        console.log(`[${endpoint}/process-client] Background processing of ${clients.length} clients`);
+        // When in fire-and-forget mode, just throw since we can't process all clients
+        throw new Error('Process all clients not supported in fire-and-forget mode');
+      }
     }
 
     // Single client processing
@@ -176,7 +298,8 @@ async function processClientHandler(req, res) {
     console.log(`[${endpoint}/process-client] Processing client: ${clientId}`);
     if (!client) {
       console.log(`[${endpoint}/process-client] Client not found: ${clientId}`);
-      return res.status(404).json({ ok: false, error: 'Client not found' });
+      if (res) return res.status(404).json({ ok: false, error: 'Client not found' });
+      throw new Error(`Client not found: ${clientId}`);
     }
     console.log(`[${endpoint}/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
     
@@ -184,11 +307,13 @@ async function processClientHandler(req, res) {
     if (!TESTING_MODE) {
       if (client.status !== 'Active') {
         console.log(`[apify/process-client] Client ${clientId} not Active, skipping`);
-        return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
+        if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
+        throw new Error(`Client ${clientId} not Active, skipping`);
       }
       if (Number(client.serviceLevel) < 2) {
         console.log(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
-        return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
+        if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
+        throw new Error(`Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
       }
     } else {
       console.log(`[apify/process-client] 🧪 TESTING MODE - Bypassing active status and service level checks`);
@@ -510,12 +635,27 @@ async function processClientHandler(req, res) {
     
     const payload = { ok: true, clientId, postsToday, postsTarget, batches, runs };
     if (debugMode) payload.debug = { batches: debugBatches };
-    return res.json(payload);
+    
+    // Check if response object exists (will be null in fire-and-forget mode)
+    if (res) {
+      return res.json(payload);
+    } else {
+      console.log(`[apify/process-level2-v2] Background processing completed successfully for client ${clientId}`);
+      console.log(`[apify/process-level2-v2] Posts harvested: ${postsToday}, batches: ${batches}, runs: ${runs.length}`);
+      return payload;
+    }
     
   } catch (e) {
-    const endpoint = req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    const endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
     console.error(`[${endpoint}/process-client] error:`, e.message);
-    return res.status(500).json({ ok: false, error: e.message });
+    
+    // Check if response object exists (will be null in fire-and-forget mode)
+    if (res) {
+      return res.status(500).json({ ok: false, error: e.message });
+    } else {
+      console.error(`[apify/process-level2-v2] Background processing error: ${e.message}`);
+      throw e; // Re-throw to be caught by the caller for proper error logging
+    }
   }
 }
 
