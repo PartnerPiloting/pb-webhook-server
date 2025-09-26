@@ -601,6 +601,12 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
 
 // Helper function to process individual client for lead scoring
 async function processClientForLeadScoring(clientId, limit, aiDependencies, runId) {
+  // Add debug logging for Guy Wilson specific debugging
+  console.log(`[DEBUG] processClientForLeadScoring called for client: ${clientId}`);
+  if (clientId === 'guy-wilson') {
+    console.log(`[DEBUG-GUY-WILSON] Processing Guy Wilson client with runId: ${runId}`);
+  }
+  
   // Create a fake request object for batchScorer.run() that targets a specific client
   const fakeReq = {
     query: {

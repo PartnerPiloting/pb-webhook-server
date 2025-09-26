@@ -86,6 +86,10 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     // FIXED: Use single quotes for value to maintain compatibility with original code
     let filterFormula = `{Scoring Status} = 'To Be Scored'`;
     
+    // Debug logging for client ID and filter formula
+    console.log(`[DEBUG] fetchLeads for client: ${clientId} using filter formula with single quotes`);
+    console.log(`[DEBUG] Raw filter formula: ${filterFormula}`);
+    
     // In testing mode, we might want to allow rescoring of leads that were recently scored
     if (TESTING_MODE) {
         log.setup(`TESTING MODE ACTIVE: Including recently scored leads for testing`);
@@ -135,19 +139,41 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
         log.error(`Failed to list tables: ${tableErr.message}`);
     }
     
-    // Get a count of leads with "To Be Scored" status
+        // Get a count of leads with "To Be Scored" status
     try {
+        // Special debug for Guy Wilson
+        if (clientId === 'guy-wilson') {
+            console.log(`[DEBUG-GUY-WILSON] About to count Guy Wilson leads with filter: ${filterFormula}`);
+        }
+        
         const countQuery = await clientBase("Leads")
             .select({ 
                 filterByFormula: filterFormula 
             })
             .all();
         log.debug(`TOTAL leads with "To Be Scored" status: ${countQuery.length}`);
+        
+        // Special debug for Guy Wilson
+        if (clientId === 'guy-wilson') {
+            console.log(`[DEBUG-GUY-WILSON] Found ${countQuery.length} leads to score for Guy Wilson`);
+            if (countQuery.length === 0) {
+                try {
+                    // Try to query with double quotes to confirm issue
+                    const doubleQuoteFilter = `{Scoring Status} = "To Be Scored"`;
+                    const doubleQuoteQuery = await clientBase("Leads")
+                        .select({ 
+                            filterByFormula: doubleQuoteFilter
+                        })
+                        .all();
+                    console.log(`[DEBUG-GUY-WILSON] Double quote query found ${doubleQuoteQuery.length} leads`);
+                } catch (doubleQuoteErr) {
+                    console.log(`[DEBUG-GUY-WILSON] Double quote query error: ${doubleQuoteErr.message}`);
+                }
+            }
+        }
     } catch (countErr) {
         log.error(`Failed to count leads: ${countErr.message}`);
-    }
-    
-    try {
+    }    try {
         await clientBase("Leads") 
             .select({ 
                 maxRecords: limit, 
