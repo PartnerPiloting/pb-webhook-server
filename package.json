@@ -24,7 +24,13 @@
     "apify:runs:staging": "cross-env BASE_URL=https://pb-webhook-server-staging.onrender.com node scripts/showRuns.js",
     "ports:check": "node scripts/killPorts.js 3000 3001",
     "ports:free": "node scripts/killPorts.js --kill 3000 3001",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    
+    "workflow:run": "node src/runner.js",
+    "workflow:client": "node src/runner.js --client",
+    "workflow:all": "node src/runner.js --all",
+    "workflow:dryrun": "node src/runner.js --client --dry-run",
+    "verify": "node src/verify-services.js"
   },
   "keywords": [],
   "author": "",
@@ -38,6 +44,7 @@
     "dirty-json": "^0.9.2",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
     "form-data": "^4.0.0",
     "luxon": "^3.6.1",
     "node-fetch": "^3.3.2",
