@@ -9,8 +9,8 @@ const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const runIdUtils = require('../utils/runIdUtils');
 const runIdService = require('../services/runIdService');
-// Use the adapter that enforces the Single Creation Point pattern
-const runRecordService = require('../services/runRecordAdapter');
+// SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
+const runRecordService = require('../services/runRecordAdapterSimple');
 
 // Check if we're in batch process testing mode
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
@@ -273,45 +273,33 @@ router.post('/api/apify/process-client', async (req, res) => {
 
     console.log(`[apify/process-client] Client ${clientId} completed: ${batches} batches, postsToday: ${postsToday}, target: ${postsTarget}`);
     
-    // Generate a run ID for this client's process - THIS IS THE SINGLE CREATION POINT
+    // SIMPLIFIED: We must get a parent run ID from Smart Resume - THIS IS THE KEY CHANGE
     // Legacy import - only used for other functions not related to run records
     const airtableService = require('../services/airtableService');
     
-    if (parentRunId) {
-      // If we have a parent run ID from Smart Resume, use it for consistent tracking
-      console.log(`[DEBUG][METRICS_TRACKING] Parent run ID provided: ${parentRunId}`);
-      runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
-      console.log(`[DEBUG][METRICS_TRACKING] Normalized parent run ID: ${runIdToUse}`);
-    } else {
-      // Fall back to latest run ID from this process
-      console.log(`[DEBUG][METRICS_TRACKING] No parent run ID, using latest run from this process`);
-      const latestRun = runs.length > 0 ? runs[runs.length - 1] : null;
-      runIdToUse = latestRun?.runId;
-      console.log(`[DEBUG][METRICS_TRACKING] Selected run ID: ${runIdToUse || '(none)'}`);
+    // SIMPLIFIED: We strictly require a parent run ID - no fallbacks
+    if (!parentRunId) {
+      // No parent run ID provided - this is now a hard error
+      const errorMsg = `No parent run ID provided - this process requires a parent run ID`;
+      console.error(`[ERROR] ${errorMsg}`);
+      return res.status(400).json({ ok: false, error: errorMsg });
     }
     
-    // Ensure runIdToUse is always defined
+    // Use the parent run ID from Smart Resume
+    console.log(`[DEBUG][METRICS_TRACKING] Parent run ID provided: ${parentRunId}`);
+    runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
+    console.log(`[DEBUG][METRICS_TRACKING] Using parent run ID: ${runIdToUse}`);
+    
+    // Verify that we have a runIdToUse (from parent) - it should always be provided
     if (!runIdToUse) {
-      const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').substring(0, 12);
-      runIdToUse = `${timestamp}-${clientId}`;
-      console.log(`[DEBUG][METRICS_TRACKING] Generated fallback run ID: ${runIdToUse}`);
+      throw new Error('[apify/process-client] No run ID provided - this process should be called with a parent run ID');
     }
+    console.log(`[apify/process-client] Using parent run record: ${runIdToUse}`);
     
-    // Create the client run record using the centralized runRecordService
-    console.log(`[apify/process-client] Creating client run record for ${runIdToUse}`);
-    try {
-      await runRecordService.createRunRecord(runIdToUse, clientId, clientId, {
-        source: 'apifyProcessRoutes'
-      });
-      console.log(`[apify/process-client] Successfully created client run record for ${runIdToUse}`);
-    } catch (createError) {
-      if (createError.message.includes('already exists')) {
-        console.log(`[apify/process-client] Client run record already exists for ${runIdToUse}`);
-      } else {
-        console.error(`[apify/process-client] ERROR creating client run record: ${createError.message}`);
-        // Still continue - this is the initial creation point
-      }
-    }
+    // NOTE: We no longer create a run record here. The Smart Resume process (parent)
+    // is responsible for creating the run record, and we just update it.
+    // This ensures all metrics (lead scoring, post harvesting, post scoring)
+    // accumulate in the same record in the Client Run Results table.
     
     // Update client run record with post harvest metrics
     try {      
