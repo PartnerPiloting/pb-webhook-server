@@ -95,7 +95,15 @@ async function computeTodaysPosts(base) {
 // POST /api/apify/process-client
 // Headers: Authorization: Bearer PB_WEBHOOK_SECRET, x-client-id: <clientId>
 // Body: { maxBatchesOverride?: number } optional
-router.post('/api/apify/process-client', async (req, res) => {
+router.post('/api/apify/process-client', processClientHandler);
+
+// POST /api/smart-resume/process-client - Clearer name for the same functionality
+// Headers: Authorization: Bearer PB_WEBHOOK_SECRET, x-client-id: <clientId>
+// Body: { maxBatchesOverride?: number } optional
+router.post('/api/smart-resume/process-client', processClientHandler);
+
+// Shared handler function for both endpoints
+async function processClientHandler(req, res) {
   // Define variables at the top level so they're available in all scopes
   let runIdToUse;
   let startData = {};
@@ -123,12 +131,13 @@ router.post('/api/apify/process-client', async (req, res) => {
     const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
 
     const client = await getClientById(clientId);
-    console.log(`[apify/process-client] Processing client: ${clientId}`);
+    const endpoint = req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    console.log(`[${endpoint}/process-client] Processing client: ${clientId}`);
     if (!client) {
-      console.log(`[apify/process-client] Client not found: ${clientId}`);
+      console.log(`[${endpoint}/process-client] Client not found: ${clientId}`);
       return res.status(404).json({ ok: false, error: 'Client not found' });
     }
-    console.log(`[apify/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
+    console.log(`[${endpoint}/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
     
     // Skip inactive clients and service level check UNLESS we're in testing mode
     if (!TESTING_MODE) {
@@ -418,10 +427,11 @@ router.post('/api/apify/process-client', async (req, res) => {
     return res.json(payload);
     
   } catch (e) {
-    console.error('[apify/process-client] error:', e.message);
+    const endpoint = req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    console.error(`[${endpoint}/process-client] error:`, e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
-});
+}
 
 // Lightweight canary to test 1 post per 3 sample leads before a full batch
 // POST /api/apify/canary
