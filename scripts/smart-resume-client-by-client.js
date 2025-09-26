@@ -161,8 +161,13 @@ async function checkUnscoredPostsCount(clientId) {
             
             // Fallback - use formula to check for unscored posts
             console.log(`🚨 UNSCORED CHECK: Falling back to formula method for ${clientId}`);
+            
+            // FIXED: Using single quotes for Airtable formula compatibility
+            const formula = "AND({Posts Content} != '', {Date Posts Scored} = BLANK())";
+            console.log(`🚨 UNSCORED CHECK: Using formula: ${formula}`);
+            
             const formulaRecords = await clientBase('Leads').select({
-                filterByFormula: "AND({Posts Content} != '', {Date Posts Scored} = BLANK())",
+                filterByFormula: formula,
                 maxRecords: 100 // Increase to get actual count up to 100
             }).firstPage();
             
