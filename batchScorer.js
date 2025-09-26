@@ -83,7 +83,8 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
     
     // Determine filter formula based on mode
-    let filterFormula = `{Scoring Status} = "To Be Scored"`;
+    // FIXED: Use single quotes for value to maintain compatibility with original code
+    let filterFormula = `{Scoring Status} = 'To Be Scored'`;
     
     // In testing mode, we might want to allow rescoring of leads that were recently scored
     if (TESTING_MODE) {
@@ -91,7 +92,8 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
         
         // Modify the filter to include recently scored leads for testing
         // This will re-score leads that were scored in the past 2 days
-        filterFormula = `OR({Scoring Status} = "To Be Scored", AND({Scoring Status} = "Scored", IS_AFTER(DATEADD(TODAY(), -2, 'days'), {Date Scored})))`;
+        // FIXED: Use single quotes for values to maintain compatibility with original code
+        filterFormula = `OR({Scoring Status} = 'To Be Scored', AND({Scoring Status} = 'Scored', IS_AFTER(DATEADD(TODAY(), -2, 'days'), {Date Scored})))`;
         
         log.debug(`Testing mode filter formula: ${filterFormula}`);
     } else {
