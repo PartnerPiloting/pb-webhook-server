@@ -327,12 +327,26 @@ async function processClientHandler(req, res) {
     // Legacy import - only used for other functions not related to run records
     const airtableService = require('../services/airtableService');
     
-    // SIMPLIFIED: We strictly require a parent run ID - no fallbacks
+    // SIMPLIFIED: We prefer a parent run ID but can generate one if needed
     if (!parentRunId) {
-      // No parent run ID provided - this is now a hard error
-      const errorMsg = `No parent run ID provided - this process requires a parent run ID`;
-      console.error(`[ERROR] ${errorMsg}`);
-      return res.status(400).json({ ok: false, error: errorMsg });
+      // Generate a parent run ID if not provided
+      parentRunId = generateRunId(clientId);
+      console.log(`[DEBUG][METRICS_TRACKING] No parent run ID provided - generating one: ${parentRunId}`);
+      
+      // Create a new run record for this process
+      try {
+        await runRecordService.createClientRunRecord({
+          runId: parentRunId,
+          clientId,
+          operation: 'post_harvesting',
+          status: 'running',
+          date: new Date().toISOString()
+        });
+        console.log(`[DEBUG][METRICS_TRACKING] Created new run record for ${parentRunId}`);
+      } catch (createError) {
+        console.error(`[WARNING] Could not create run record: ${createError.message}`);
+        // Continue processing even if run record creation fails
+      }
     }
     
     // Use the parent run ID from Smart Resume
@@ -561,7 +575,8 @@ async function getAllClients() {
  */
 async function processAllClientsInBackground(clients, path, parentRunId) {
   try {
-    const masterRunId = generateRunId();
+    // Generate master run ID with a generic client ID prefix for batch processing
+    const masterRunId = generateRunId('batch-all-clients');
     console.log(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
     
     const endpoint = path.includes('smart-resume') ? 'smart-resume' : 'apify';
@@ -603,7 +618,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
         const mockReq = {
           headers: { 'x-client-id': client.clientId, 'authorization': `Bearer ${process.env.PB_WEBHOOK_SECRET}` },
           query: { parentRunId: masterRunId },
-          body: {},
+          body: { parentRunId: masterRunId },  // Add parentRunId in both query and body for redundancy
           path
         };
         
