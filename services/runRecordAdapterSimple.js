@@ -67,7 +67,7 @@ async function createRunRecord(params) {
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
     // Direct call to the simple service
-    return await airtableServiceSimple.createClientRunRecord(standardRunId, clientId, clientName);
+    return await airtableServiceSimple.createClientRunRecord(standardRunId, clientId, providedClientName);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating run record: ${error.message}`);
     throw error;
