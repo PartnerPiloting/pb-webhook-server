@@ -1,6 +1,14 @@
 // services/runRecordServiceV2.js
 // Centralized service for run record management
 // Implements the STRICT Single Creation Point pattern
+// 
+// ARCHITECTURAL NOTE:
+// This module implements the standardized object parameter pattern.
+// All functions accept a single object with named parameters instead of
+// positional arguments. See docs/STANDARDIZED-PARAMETER-PATTERN.md for details.
+// 
+// For backward compatibility, all functions still accept old-style positional parameters
+// but new code should use the object parameter style exclusively.
 
 require('dotenv').config();
 
@@ -98,26 +106,30 @@ function initialize() {
 
 /**
  * Create a new job tracking record - ONLY called at the start of a process
- * @param {string} runId - The base run ID (without client suffix)
- * @param {number} stream - The stream number
- * @param {Object} options - Additional options
- * @param {Object} options.logger - Optional logger to use
- * @param {string} options.source - Source of the creation request
+ * @param {Object} params - Parameters for job record creation
+ * @param {string} params.runId - The base run ID (without client suffix)
+ * @param {number} [params.stream=1] - The stream number
+ * @param {Object} [params.options] - Additional options
+ * @param {Object} [params.options.logger] - Optional logger to use
+ * @param {string} [params.options.source] - Source of the creation request
  * @returns {Promise<Object>} The created record
  */
-async function createJobRecord(params, options = {}) {
+async function createJobRecord(params) {
   const base = initialize();
   
-  // Handle both new object style and legacy parameter style for backward compatibility
-  const isLegacyCall = typeof params === 'string';
+  // For backward compatibility, handle old-style function calls
+  if (typeof params === 'string') {
+    // Legacy call format: createJobRecord(runId, stream, options)
+    const runId = arguments[0];
+    const stream = arguments[1] || 1;
+    const options = arguments[2] || {};
+    
+    // Convert to new format
+    return createJobRecord({ runId, stream, options });
+  }
   
-  // Extract parameters based on calling style
-  const runId = isLegacyCall ? params : params.runId;
-  const stream = isLegacyCall ? options : params.stream;
-  const legacyOptions = isLegacyCall ? arguments[2] || {} : options;
-  
-  const logger = (isLegacyCall ? legacyOptions.logger : params.logger) || 
-                new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  const { runId, stream = 1, options = {} } = params;
+  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
   const source = (isLegacyCall ? legacyOptions.source : params.source) || 'unknown';
   
   logger.debug(`Run Record Service: Creating job tracking record for ${runId}`);
@@ -201,8 +213,33 @@ async function createJobRecord(params, options = {}) {
  * @param {string} options.source - Source of the creation request
  * @returns {Promise<Object>} The created record
  */
-async function createClientRunRecord(runId, clientId, clientName, options = {}) {
+/**
+ * Create a client run record
+ * @param {Object} params - Parameters for client run record creation
+ * @param {string} params.runId - The run ID
+ * @param {string} params.clientId - The client ID
+ * @param {string} params.clientName - The client name
+ * @param {Object} [params.options] - Additional options
+ * @param {Object} [params.options.logger] - Optional logger to use
+ * @param {string} [params.options.source] - Source of the creation request
+ * @returns {Promise<Object>} The created record
+ */
+async function createClientRunRecord(params) {
   const base = initialize();
+  
+  // For backward compatibility, handle old-style function calls
+  if (typeof params === 'string') {
+    // Legacy call format: createClientRunRecord(runId, clientId, clientName, options)
+    const runId = arguments[0];
+    const clientId = arguments[1];
+    const clientName = arguments[2];
+    const options = arguments[3] || {};
+    
+    // Convert to new format
+    return createClientRunRecord({ runId, clientId, clientName, options });
+  }
+  
+  const { runId, clientId, clientName, options = {} } = params;
   const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
@@ -349,7 +386,29 @@ async function createClientRunRecord(runId, clientId, clientName, options = {}) 
  * @param {Object} options - Additional options
  * @returns {Promise<Object>} The run record, or null if not found
  */
-async function getRunRecord(runId, clientId, options = {}) {
+/**
+ * Get a run record by ID and client
+ * @param {Object} params - Parameters for getting run record
+ * @param {string} params.runId - The run ID
+ * @param {string} params.clientId - The client ID
+ * @param {Object} [params.options] - Additional options
+ * @param {Object} [params.options.logger] - Optional logger to use
+ * @param {string} [params.options.source] - Source of the request
+ * @returns {Promise<Object|null>} The record if found, null otherwise
+ */
+async function getRunRecord(params) {
+  // For backward compatibility, handle old-style function calls
+  if (typeof params === 'string') {
+    // Legacy call format: getRunRecord(runId, clientId, options)
+    const runId = arguments[0];
+    const clientId = arguments[1];
+    const options = arguments[2] || {};
+    
+    // Convert to new format
+    return getRunRecord({ runId, clientId, options });
+  }
+  
+  const { runId, clientId, options = {} } = params;
   const base = initialize();
   const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
   const source = options.source || 'unknown';
@@ -418,14 +477,38 @@ async function getRunRecord(runId, clientId, options = {}) {
  * @param {Object} options - Additional options
  * @returns {Promise<Object>} The updated record
  */
-async function updateRunRecord(runId, clientId, updates, options = {}) {
+/**
+ * Update an existing run record - enforces that record must exist
+ * @param {Object} params - Parameters for run record update
+ * @param {string} params.runId - The run ID
+ * @param {string} params.clientId - The client ID
+ * @param {Object} params.updates - The updates to apply
+ * @param {Object} [params.options] - Additional options
+ * @param {Object} [params.options.logger] - Optional logger to use
+ * @param {string} [params.options.source] - Source of the update request
+ * @returns {Promise<Object>} The updated record
+ */
+async function updateRunRecord(params) {
+  // For backward compatibility, handle old-style function calls
+  if (typeof params === 'string') {
+    // Legacy call format: updateRunRecord(runId, clientId, updates, options)
+    const runId = arguments[0];
+    const clientId = arguments[1];
+    const updates = arguments[2];
+    const options = arguments[3] || {};
+    
+    // Convert to new format
+    return updateRunRecord({ runId, clientId, updates, options });
+  }
+  
+  const { runId, clientId, updates, options = {} } = params;
   const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`Run Record Service: Updating run record for ${runId}, client ${clientId} (source: ${source})`);
   
   // First, get the record - this will NOT create if missing
-  let record = await getRunRecord(runId, clientId, options);
+  let record = await getRunRecord({ runId, clientId, options });
   
   // STRICT ENFORCEMENT: Do NOT create new records, only update existing ones
   if (!record) {
