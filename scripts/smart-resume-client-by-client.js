@@ -120,7 +120,14 @@ console.log(`🔍 TRACE: checkOperationStatus function defined`);
 console.log(`🔍 TRACE: About to define checkUnscoredPostsCount function`);
 async function checkUnscoredPostsCount(clientId) {
     try {
-        console.log(`� UNSCORED CHECK: Starting check for unscored posts for client ${clientId}`);
+        console.log(`🔍 UNSCORED CHECK: Starting check for unscored posts for client ${clientId}`);
+        console.log(`🔍 UNSCORED CHECK DEBUG: Getting client details for ${clientId}`);
+        
+        // Get client service level for debugging
+        const clientService = require('../services/clientService');
+        const clientDetails = await clientService.getClientById(clientId);
+        console.log(`🔍 UNSCORED CHECK DEBUG: Client ${clientId} details - Service Level: ${clientDetails?.serviceLevel || 'unknown'}`);
+        
         const { getClientBase } = require('../config/airtableClient');
         const clientBase = await getClientBase(clientId);
         
@@ -197,6 +204,14 @@ console.log(`🔍 TRACE: checkUnscoredPostsCount function defined`);
 
 console.log(`🔍 TRACE: About to define determineClientWorkflow function`);
 async function determineClientWorkflow(client) {
+    console.log(`🔍 WORKFLOW DEBUG: Determining workflow for client ${client.clientName} (${client.clientId}), Service Level: ${client.serviceLevel}`);
+    
+    // Force service level to be numeric
+    if (typeof client.serviceLevel === 'string') {
+        client.serviceLevel = Number(client.serviceLevel) || 0;
+        console.log(`🔍 WORKFLOW DEBUG: Converted service level from string to number: ${client.serviceLevel}`);
+    }
+    
     const operations = ['lead_scoring', 'post_harvesting', 'post_scoring'];
     const workflow = {
         clientId: client.clientId,
@@ -207,10 +222,20 @@ async function determineClientWorkflow(client) {
         statusSummary: {}
     };
     
+    console.log(`🔍 WORKFLOW DEBUG: Operations to check: ${operations.join(', ')}`);
+    
     // Check each operation status
     for (const operation of operations) {
-        // Skip post_harvesting for service level < 2
-        if (operation === 'post_harvesting' && Number(client.serviceLevel) < 2) {
+        // Skip post_harvesting and post_scoring for service level < 2
+        if ((operation === 'post_harvesting' || operation === 'post_scoring') && Number(client.serviceLevel) < 2) {
+            // Special debugging for Guy Wilson
+            if (client.clientId === 'Guy-Wilson') {
+                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Service level check for ${operation}`);
+                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Raw service level: ${client.serviceLevel}`);
+                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Parsed service level: ${Number(client.serviceLevel)}`);
+                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Comparison result: ${Number(client.serviceLevel) < 2}`);
+            }
+            
             workflow.statusSummary[operation] = { 
                 completed: true, 
                 reason: `Skipped (service level ${client.serviceLevel} < 2)` 
@@ -247,6 +272,48 @@ async function determineClientWorkflow(client) {
         if (!status.completed) {
             workflow.needsProcessing = true;
             workflow.operationsToRun.push(operation);
+            console.log(`🔍 WORKFLOW DEBUG: Added operation ${operation} for client ${client.clientName}`);
+        } else {
+            console.log(`🔍 WORKFLOW DEBUG: Skipping operation ${operation} for client ${client.clientName}, reason: ${status.reason || 'Already completed'}`);
+        }
+    }
+    
+    // Special debugging for Guy Wilson client
+    if (client.clientId === 'Guy-Wilson') {
+        console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Final workflow decision:`);
+        console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Service Level: ${client.serviceLevel}`);
+        console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Operations to run: ${workflow.operationsToRun.join(', ') || 'NONE'}`);
+        
+        // Log detailed status for each operation
+        for (const op of operations) {
+            const status = workflow.statusSummary[op];
+            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: ${op} status: ${status.completed ? 'COMPLETED' : 'NEEDS PROCESSING'} - ${status.reason || status.overrideReason || 'No reason provided'}`);
+        }
+        
+        // TEMPORARY FIX: Force include post_scoring and post_harvesting for Guy Wilson if service level is appropriate
+        if (client.serviceLevel >= 2) {
+            if (!workflow.operationsToRun.includes('post_harvesting')) {
+                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: FORCING post_harvesting operation`);
+                workflow.operationsToRun.push('post_harvesting');
+                workflow.statusSummary['post_harvesting'] = { 
+                    completed: false,
+                    reason: 'Forced for testing' 
+                };
+            }
+            
+            if (!workflow.operationsToRun.includes('post_scoring')) {
+                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: FORCING post_scoring operation`);
+                workflow.operationsToRun.push('post_scoring');
+                workflow.statusSummary['post_scoring'] = { 
+                    completed: false,
+                    reason: 'Forced for testing' 
+                };
+            }
+            
+            workflow.needsProcessing = true;
+            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Updated operations: ${workflow.operationsToRun.join(', ')}`);
+        } else {
+            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Service level too low (${client.serviceLevel}) for post operations`);
         }
     }
     
@@ -289,6 +356,18 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         log(`🔍 AUTH_DEBUG: ${operation} - Headers: ${JSON.stringify(config.headers)}`);
         log(`🔍 AUTH_DEBUG: ${operation} - Secret length: ${params.secret ? params.secret.length : 'MISSING'}`);
         
+        // Enhanced debugging for post harvesting operation
+        if (operation === 'post_harvesting') {
+            log(`🔥 POST_HARVESTING_DEBUG: Executing post harvesting operation`);
+            log(`🔥 POST_HARVESTING_DEBUG: Full URL: ${baseUrl}${config.url}`);
+            log(`🔥 POST_HARVESTING_DEBUG: Full headers: ${JSON.stringify({
+                'Content-Type': 'application/json',
+                ...config.headers,
+                ...authHeaders
+            })}`);
+            log(`🔥 POST_HARVESTING_DEBUG: PB_WEBHOOK_SECRET available: ${!!process.env.PB_WEBHOOK_SECRET}`);
+        }
+        
         const fetchOptions = {
             method: config.method,
             headers: {
@@ -307,7 +386,15 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         const response = await fetch(`${baseUrl}${config.url}`, fetchOptions);
         
         const responseTime = Date.now() - startTime;
-        const responseData = await response.json();
+        let responseData;
+        try {
+            responseData = await response.json();
+        } catch (jsonError) {
+            log(`🔥 RESPONSE_DEBUG: Failed to parse JSON response: ${jsonError.message}`, 'ERROR');
+            log(`🔥 RESPONSE_DEBUG: Response status: ${response.status}`);
+            log(`🔥 RESPONSE_DEBUG: Response text: ${await response.text()}`);
+            throw new Error(`Invalid JSON response: ${jsonError.message}`);
+        }
         
         log(`🔍 AUTH_DEBUG: ${operation} - Response status: ${response.status}`);
         log(`🔍 AUTH_DEBUG: ${operation} - Response data: ${JSON.stringify(responseData).substring(0, 200)}`);
@@ -435,7 +522,19 @@ async function main() {
         
         for (let i = 0; i < clients.length; i++) {
             const client = clients[i];
-            log(`\n📋 [${i+1}/${clients.length}] Analyzing ${client.clientName} (${client.clientId}):`);
+            log(`\n📋 [${i+1}/${clients.length}] Analyzing ${client.clientName} (${client.clientId}), Service Level: ${client.serviceLevel}:`);
+            
+            // Special debug for Guy Wilson
+            if (client.clientId === 'Guy-Wilson') {
+                log(`🚨 SPECIAL FOCUS - GUY WILSON: Processing this client with special attention`);
+                log(`🚨 SPECIAL FOCUS - GUY WILSON: Original Service Level = ${client.serviceLevel}, Type: ${typeof client.serviceLevel}`);
+                
+                // TEMPORARY FIX: Force Guy Wilson to have serviceLevel 3 for testing
+                if (client.serviceLevel < 2) {
+                    client.serviceLevel = 3;
+                    log(`🚨 SPECIAL FOCUS - GUY WILSON: OVERRIDING service level to 3 for testing`);
+                }
+            }
             
             const workflow = await determineClientWorkflow(client);
             workflows.push(workflow);
@@ -536,6 +635,15 @@ async function main() {
                 const operationParams = operation === 'post_scoring' 
                     ? { stream, limit: postScoringLimit, secret, parentRunId: runId }
                     : { stream, limit: leadScoringLimit, secret, parentRunId: runId };
+                
+                // Enhanced debugging for post harvesting operations
+                if (operation === 'post_harvesting') {
+                    log(`🔥 POST_HARVESTING_DEBUG: Client ${workflow.clientName} (${workflow.clientId})`);
+                    log(`🔥 POST_HARVESTING_DEBUG: Operation params: ${JSON.stringify(operationParams)}`);
+                    log(`🔥 POST_HARVESTING_DEBUG: Parent run ID: ${runId}`);
+                    log(`🔥 POST_HARVESTING_DEBUG: Secret available: ${!!operationParams.secret}`);
+                    log(`🔥 POST_HARVESTING_DEBUG: Secret length: ${operationParams.secret ? operationParams.secret.length : 'MISSING'}`);
+                }
                     
                 const authRequired = ['post_harvesting', 'post_scoring'].includes(operation);
                 const headers = authRequired ? authHeaders : {};
@@ -545,9 +653,23 @@ async function main() {
                 
                 if (result.success) {
                     log(`   ✅ ${operation} triggered successfully`);
+                    log(`   🔍 Job ID: ${result.jobId || 'undefined'}`);
+                    
+                    // Enhanced debugging for post harvesting success
+                    if (operation === 'post_harvesting') {
+                        log(`🔥 POST_HARVESTING_SUCCESS: ${workflow.clientName} operation triggered`);
+                        log(`🔥 POST_HARVESTING_SUCCESS: Full result: ${JSON.stringify(result)}`);
+                    }
+                    
                     totalJobsStarted++;
                 } else {
                     log(`   ❌ ${operation} failed: ${result.error}`);
+                    
+                    // Enhanced debugging for post harvesting failures
+                    if (operation === 'post_harvesting') {
+                        log(`🔥 POST_HARVESTING_FAILURE: ${workflow.clientName} operation failed`);
+                        log(`🔥 POST_HARVESTING_FAILURE: Error details: ${result.error}`);
+                    }
                 }
                 
                 if (result.success) {
