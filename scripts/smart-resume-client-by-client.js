@@ -65,8 +65,8 @@ console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date()
 console.log(`🔍 TRACE: About to load run ID generator`);
 const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 const airtableService = require('../services/airtableService');
-// Using the adapter that enforces the Single Creation Point pattern
-const runRecordService = require('../services/runRecordAdapter');
+// SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
+const runRecordService = require('../services/runRecordAdapterSimple');
 let runId = 'INITIALIZING';
 let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();

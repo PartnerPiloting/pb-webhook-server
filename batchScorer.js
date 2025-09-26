@@ -20,7 +20,7 @@ const { trackLeadProcessingMetrics } = require('./services/leadService');
 const airtableService = require('./services/airtableService');
 const runIdService = require('./services/runIdService');
 // Using the adapter that enforces the Single Creation Point pattern
-const runRecordService = require('./services/runRecordAdapter');
+const runRecordService = require('./services/runRecordAdapterSimple');
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
