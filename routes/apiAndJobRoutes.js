@@ -1169,13 +1169,30 @@ async function processPostScoringInBackground(jobId, stream, options) {
             console.log(`Generated client-specific run ID for metrics: ${clientRunId} for client ${client.clientId}`);
             
             const airtableService = require('../services/airtableService');
-            await airtableService.updateClientRun(clientRunId, client.clientId, {
-              'Posts Examined for Scoring': postsExamined,
-              'Posts Successfully Scored': postsScored,
-              // Remove the computed field that caused errors
-              'Post Scoring Tokens': clientResult.totalTokensUsed || 0
-            });
-            console.log(`📊 Updated client run record for ${client.clientId} with post scoring metrics using run ID: ${clientRunId}`);
+            const runRecordService = require('../services/runRecordServiceV2');
+            
+            try {
+              // First check if the run record exists before attempting to update it
+              const recordExists = await runRecordService.checkRunRecordExists(clientRunId);
+              
+              if (recordExists) {
+                // STRICT UPDATE-ONLY POLICY: Use updateClientRun only if the record exists
+                // This prevents duplicate records from being created when records don't exist
+                await airtableService.updateClientRun(clientRunId, client.clientId, {
+                  'Posts Examined for Scoring': postsExamined,
+                  'Posts Successfully Scored': postsScored,
+                  // Remove the computed field that caused errors
+                  'Post Scoring Tokens': clientResult.totalTokensUsed || 0
+                });
+                console.log(`📊 Updated client run record for ${client.clientId} with post scoring metrics using run ID: ${clientRunId}`);
+              } else {
+                // STRICT UPDATE-ONLY POLICY: Record doesn't exist - log error but DO NOT create a new record
+                // This is part of the system-wide policy to never create records during updates
+                console.error(`❌ STRICT POLICY: Cannot update non-existent run record for ${clientRunId}. Record update skipped.`);
+              }
+            } catch (runRecordError) {
+              console.error(`❌ Error checking run record existence: ${runRecordError.message}`);
+            }
           } catch (metricError) {
             console.error(`❌ Failed to update post scoring metrics with parent run ID: ${metricError.message}`);
           }
