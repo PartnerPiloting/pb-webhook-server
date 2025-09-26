@@ -26,6 +26,9 @@ const apifyWebhookHandler = async (req, res) => {
   try {
     const payload = req.body;
     
+    // Check for client ID in query parameters first
+    const queryClientId = req.query.clientId || req.query.testClient;
+    
     // For debugging
     // console.log('[ApifyWebhook] Received webhook:', JSON.stringify(payload, null, 2));
     
@@ -36,13 +39,19 @@ const apifyWebhookHandler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'No run ID found in payload' });
     }
     
-    console.log(`[ApifyWebhook] Received webhook for run: ${runId}`);
+    // Log warning if no client ID in query params
+    if (!queryClientId) {
+      console.warn(`⚠️ [ApifyWebhook] No clientId provided in query parameters for run: ${runId}`);
+      console.warn(`⚠️ [ApifyWebhook] Please update webhook URL to include ?clientId=CLIENT_ID`);
+    } else {
+      console.log(`[ApifyWebhook] Received webhook for run: ${runId}, clientId: ${queryClientId}`);
+    }
     
     // Send immediate 200 response to avoid Apify retries
     res.status(200).json({ success: true, message: `Processing webhook for run ${runId}` });
     
-    // Process the webhook in the background
-    processWebhookInBackground(payload, runId).catch(err => {
+    // Process the webhook in the background, passing query clientId if available
+    processWebhookInBackground(payload, runId, queryClientId).catch(err => {
       console.error(`[ApifyWebhook] Unhandled error in background processing: ${err.message}`);
     });
     
@@ -91,8 +100,9 @@ function normalizeLinkedInProfileURL(url) {
  * Process the webhook payload in the background
  * @param {Object} payload - The raw webhook payload
  * @param {string} runId - The Apify run ID
+ * @param {string|null} queryClientId - Client ID from query parameters, if provided
  */
-async function processWebhookInBackground(payload, runId) {
+async function processWebhookInBackground(payload, runId, queryClientId = null) {
   let clientBase;
   let clientId;
   let posts = [];
@@ -100,12 +110,18 @@ async function processWebhookInBackground(payload, runId) {
   try {
     console.log(`[ApifyWebhook] Processing webhook for run ${runId} (background)`);
     
-    // Step 1: Identify the client from the run ID
-    clientId = await getClientIdForRun(runId);
-    if (!clientId) {
-      // Fall back to payload analysis
-      console.log(`[ApifyWebhook] No client ID found for run ${runId}, trying payload analysis`);
-      clientId = extractClientIdFromPayload(payload);
+    // Step 1: Identify the client - prioritize query parameter if available
+    if (queryClientId) {
+      console.log(`[ApifyWebhook] Using client ID from query parameters: ${queryClientId}`);
+      clientId = queryClientId;
+    } else {
+      // Step 1b: Fall back to run ID lookup
+      clientId = await getClientIdForRun(runId);
+      if (!clientId) {
+        // Step 1c: Fall back to payload analysis as last resort
+        console.log(`[ApifyWebhook] No client ID found for run ${runId}, trying payload analysis`);
+        clientId = extractClientIdFromPayload(payload);
+      }
     }
 
     if (!clientId) {
@@ -228,6 +244,10 @@ async function processWebhookInBackground(payload, runId) {
           console.error(`[ApifyWebhook] This indicates a process kickoff issue - run record should exist`);
           console.error(`[ApifyWebhook] Run ID: ${runId}, Client ID: ${clientId}`);
           console.error(`[ApifyWebhook] Posts count: ${posts.length}`);
+          console.error(`[ApifyWebhook] IMPORTANT: Ensure webhook URL includes ?clientId=${clientId} parameter`);
+          
+          // Add enhanced debugging to help diagnose why the record wasn't found
+          await debugRunRecordLookupFailure(clientId, clientSuffixedRunId, runId);
           
           // STRICT ENFORCEMENT: Do NOT attempt to create or update missing records
           console.error(`[ApifyWebhook] STRICT ENFORCEMENT: Skipping metrics update for missing record`);
@@ -449,6 +469,71 @@ function extractRunIdFromPayload(body) {
   } catch (error) {
     console.error('[ApifyWebhook] Error extracting run ID from payload:', error.message);
     return null;
+  }
+}
+
+/**
+ * Enhanced debugging function to help diagnose why a run record wasn't found
+ * @param {string} clientId - The client ID
+ * @param {string} clientSuffixedRunId - The run ID with client suffix
+ * @param {string} originalRunId - The original run ID from the webhook
+ */
+async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, originalRunId) {
+  try {
+    console.log(`[DEBUG][RUN_RECORD_LOOKUP] Starting enhanced debugging for failed run record lookup`);
+    console.log(`[DEBUG][RUN_RECORD_LOOKUP] Client ID: ${clientId}`);
+    console.log(`[DEBUG][RUN_RECORD_LOOKUP] Client-suffixed Run ID: ${clientSuffixedRunId}`);
+    console.log(`[DEBUG][RUN_RECORD_LOOKUP] Original Run ID: ${originalRunId}`);
+    
+    // Check if run ID normalization is working correctly
+    const runIdService = require('../services/runIdService');
+    const normalizedRunId = runIdService.normalizeRunId(originalRunId, clientId);
+    console.log(`[DEBUG][RUN_RECORD_LOOKUP] Normalized Run ID: ${normalizedRunId}`);
+    console.log(`[DEBUG][RUN_RECORD_LOOKUP] Expected format should match: ${clientSuffixedRunId}`);
+    
+    // Try to find any run records for this client
+    try {
+      const clientBase = await getClientBase(clientId);
+      const recentRunRecords = await clientBase('Client Run Results').select({
+        filterByFormula: `{Client ID} = '${clientId}'`,
+        maxRecords: 5,
+        sort: [{field: 'Created Time', direction: 'desc'}]
+      }).firstPage();
+      
+      if (recentRunRecords && recentRunRecords.length > 0) {
+        console.log(`[DEBUG][RUN_RECORD_LOOKUP] Found ${recentRunRecords.length} recent run records for client ${clientId}:`);
+        recentRunRecords.forEach(record => {
+          console.log(`[DEBUG][RUN_RECORD_LOOKUP] - Run ID: ${record.get('Run ID')}, Created: ${record.get('Created Time')}`);
+        });
+      } else {
+        console.log(`[DEBUG][RUN_RECORD_LOOKUP] No recent run records found for client ${clientId}`);
+      }
+      
+      // Try a wildcard search for similar run IDs
+      const baseRunId = originalRunId.split('-').slice(0, 2).join('-');
+      console.log(`[DEBUG][RUN_RECORD_LOOKUP] Searching for any run records with base ID: ${baseRunId}`);
+      const similarRecords = await clientBase('Client Run Results').select({
+        filterByFormula: `FIND('${baseRunId}', {Run ID})`,
+        maxRecords: 5
+      }).firstPage();
+      
+      if (similarRecords && similarRecords.length > 0) {
+        console.log(`[DEBUG][RUN_RECORD_LOOKUP] Found ${similarRecords.length} similar run records with base ID ${baseRunId}:`);
+        similarRecords.forEach(record => {
+          console.log(`[DEBUG][RUN_RECORD_LOOKUP] - Run ID: ${record.get('Run ID')}, Client: ${record.get('Client ID')}`);
+        });
+      } else {
+        console.log(`[DEBUG][RUN_RECORD_LOOKUP] No similar run records found with base ID ${baseRunId}`);
+      }
+      
+    } catch (error) {
+      console.error(`[DEBUG][RUN_RECORD_LOOKUP] Error during enhanced debugging: ${error.message}`);
+    }
+    
+    console.log(`[DEBUG][RUN_RECORD_LOOKUP] Debugging complete - check webhook URL includes ?clientId=${clientId}`);
+    
+  } catch (debugError) {
+    console.error(`[DEBUG][RUN_RECORD_LOOKUP] Error in debug function: ${debugError.message}`);
   }
 }
 
