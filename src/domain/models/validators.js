@@ -177,6 +177,12 @@ const validators = {
     }
     
     const now = new Date();
+    // Simple future date check
+    if (lastCheck > now) {
+      console.warn(`Future date detected for lastCheckTime: ${lastCheckTime}`);
+      return true; // Consider it stuck if date is in the future
+    }
+    
     const diffMinutes = (now - lastCheck) / (1000 * 60);
     return diffMinutes > timeoutMinutes;
   },
