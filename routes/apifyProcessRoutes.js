@@ -3,12 +3,15 @@
 
 const express = require('express');
 const router = express.Router();
+const Airtable = require('airtable');
 const { getClientBase, createBaseInstance } = require('../config/airtableClient');
 const { getClientById } = require('../services/clientService');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const runIdUtils = require('../utils/runIdUtils');
 const runIdService = require('../services/runIdService');
+// Import run ID generator
+const { generateRunId } = runIdService;
 // SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
 const runRecordService = require('../services/runRecordAdapterSimple');
 
@@ -124,14 +127,52 @@ async function processClientHandler(req, res) {
     if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
     if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
-    clientId = req.headers['x-client-id'];
-    if (!clientId) return res.status(400).json({ ok: false, error: 'Missing x-client-id header' });
+    // Get client ID from header, query param or body
+    clientId = req.headers['x-client-id'] || req.query.client || req.query.clientId || (req.body && (req.body.clientId || req.body.client));
+    
+    // If no client ID specified, check if this is an all-clients batch processing request
+    const processAllClients = !clientId && (req.query.processAll === 'true' || (req.body && req.body.processAll === true));
+    
+    if (!clientId && !processAllClients) {
+      // For backward compatibility, require client ID if not explicitly processing all clients
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'Missing client identifier. Use x-client-id header, client query param, or add ?processAll=true to process all clients' 
+      });
+    }
 
     // Get parent run ID from query params or body (if provided)
     const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
-
-    const client = await getClientById(clientId);
+    
     const endpoint = req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+
+    // Process all clients if requested
+    if (processAllClients) {
+      console.log(`[${endpoint}/process-client] Processing all clients`);
+      
+      // Get all active clients
+      const clients = await getAllClients();
+      if (!clients || !clients.length) {
+        return res.status(404).json({ ok: false, error: 'No clients found' });
+      }
+      
+      console.log(`[${endpoint}/process-client] Found ${clients.length} clients to process`);
+      
+      // Start processing - respond immediately to avoid timeout
+      res.json({ 
+        ok: true, 
+        message: `Processing ${clients.length} clients in the background`, 
+        clientCount: clients.length 
+      });
+      
+      // Process each client asynchronously (in the background)
+      processAllClientsInBackground(clients, req.path, parentRunId);
+      
+      return; // Already sent response
+    }
+
+    // Single client processing
+    const client = await getClientById(clientId);
     console.log(`[${endpoint}/process-client] Processing client: ${clientId}`);
     if (!client) {
       console.log(`[${endpoint}/process-client] Client not found: ${clientId}`);
@@ -480,5 +521,144 @@ router.post('/api/apify/canary', async (req, res) => {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+/**
+ * Get all active clients from the master clients base
+ */
+async function getAllClients() {
+  try {
+    const masterClientsBase = process.env.MASTER_CLIENTS_BASE_ID;
+    if (!masterClientsBase) {
+      console.error('Missing MASTER_CLIENTS_BASE_ID env variable');
+      return [];
+    }
+    
+    // Connect to the master clients base
+    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(masterClientsBase);
+    
+    // Get all active clients
+    const records = await base('Clients').select({
+      filterByFormula: "{Status} = 'Active'"
+    }).all();
+    
+    return records.map(record => ({
+      clientId: record.get('Client ID'),
+      clientName: record.get('Client Name'),
+      serviceLevel: record.get('Service Level'),
+      status: record.get('Status')
+    })).filter(client => client.clientId);
+  } catch (error) {
+    console.error('Error getting all clients:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Process all clients in the background
+ * @param {Array} clients List of client objects
+ * @param {string} path Original request path
+ * @param {string} parentRunId Optional parent run ID for tracking
+ */
+async function processAllClientsInBackground(clients, path, parentRunId) {
+  try {
+    const masterRunId = generateRunId();
+    console.log(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
+    
+    const endpoint = path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    const results = {
+      masterRunId,
+      successful: 0,
+      failed: 0,
+      skipped: 0,
+      clientResults: {},
+      startTime: new Date().toISOString(),
+      endTime: null
+    };
+    
+    // Process clients sequentially to avoid rate limits and resource contention
+    for (const client of clients) {
+      try {
+        console.log(`[${endpoint}/batch] Processing client ${client.clientId} (${client.clientName})`);
+        
+        // Skip inactive clients
+        if (client.status !== 'Active') {
+          console.log(`[${endpoint}/batch] Skipping inactive client ${client.clientId}`);
+          results.skipped++;
+          results.clientResults[client.clientId] = { status: 'skipped', reason: 'inactive' };
+          continue;
+        }
+        
+        // Skip clients with service level < 2 for post harvesting (apify endpoint)
+        if (endpoint === 'apify' && Number(client.serviceLevel) < 2) {
+          console.log(`[${endpoint}/batch] Skipping client ${client.clientId} - service level ${client.serviceLevel} < 2`);
+          results.skipped++;
+          results.clientResults[client.clientId] = { status: 'skipped', reason: 'service_level' };
+          continue;
+        }
+        
+        // Create a client-specific run ID
+        const clientRunId = `${masterRunId}-${client.clientId}`;
+        
+        // Call the process-client handler directly with a mock request/response
+        const mockReq = {
+          headers: { 'x-client-id': client.clientId, 'authorization': `Bearer ${process.env.PB_WEBHOOK_SECRET}` },
+          query: { parentRunId: masterRunId },
+          body: {},
+          path
+        };
+        
+        // Use a promise to capture the response
+        const responsePromise = new Promise(resolve => {
+          const mockRes = {
+            json: resolve,
+            status: () => ({ json: resolve })
+          };
+          
+          processClientHandler(mockReq, mockRes);
+        });
+        
+        const result = await responsePromise;
+        console.log(`[${endpoint}/batch] Client ${client.clientId} result:`, result);
+        
+        if (result.ok) {
+          results.successful++;
+          results.clientResults[client.clientId] = { status: 'success', ...result };
+        } else {
+          results.failed++;
+          results.clientResults[client.clientId] = { status: 'failed', error: result.error };
+        }
+      } catch (clientError) {
+        console.error(`[${endpoint}/batch] Error processing client ${client.clientId}:`, clientError.message);
+        results.failed++;
+        results.clientResults[client.clientId] = { status: 'failed', error: clientError.message };
+      }
+      
+      // Add a small delay between client processing to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    
+    results.endTime = new Date().toISOString();
+    
+    // Log the final results
+    console.log(`[${endpoint}/batch] Batch processing complete: ${results.successful} successful, ${results.failed} failed, ${results.skipped} skipped`);
+    
+    // Save batch results to a file for debugging if needed
+    try {
+      const fs = require('fs');
+      const resultsDir = './batch-results';
+      if (!fs.existsSync(resultsDir)) {
+        fs.mkdirSync(resultsDir);
+      }
+      fs.writeFileSync(`${resultsDir}/${masterRunId}.json`, JSON.stringify(results, null, 2));
+    } catch (fsError) {
+      console.error(`[${endpoint}/batch] Error saving results:`, fsError.message);
+    }
+    
+    return results;
+  } catch (error) {
+    console.error('[batch-process] Error processing clients in background:', error.message);
+    return { error: error.message };
+  }
+}
 
 module.exports = router;
