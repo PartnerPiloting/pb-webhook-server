@@ -406,34 +406,16 @@ async function updateClientRun(runId, clientId, updates) {
       }
     }
       
-    // If not found, attempt to create a new record using runRecordServiceV2
+    // STRICT ENFORCEMENT: Do NOT create new records, only update existing ones
     if (!recordId) {
-      try {
-        console.log(`[METDEBUG] No record found for ${standardRunId}, attempting to create via runRecordServiceV2...`);
-        const runRecordServiceV2 = require('./runRecordServiceV2');
-        
-        // Create with adapter-compatible options
-        // Use clientId as fallback for clientName since it's not provided to this function
-        const createdRecord = await runRecordServiceV2.createClientRunRecord(
-          standardRunId.split('-').slice(0, 2).join('-'), // Base run ID
-          clientId, 
-          clientId, // Using clientId as fallback for clientName
-          { source: 'airtable_service_recovery' }
-        );
-        
-        if (createdRecord && createdRecord.id) {
-          console.log(`[METDEBUG] Successfully created run record via recovery path: ${createdRecord.id}`);
-          recordId = createdRecord.id;
-        } else {
-          const errorMsg = `[ERROR] Failed to create run record for ${standardRunId} via recovery path.`;
-          console.error(errorMsg);
-          throw new Error(errorMsg);
-        }
-      } catch (createError) {
-        const errorMsg = `[ERROR] No record found for ${standardRunId} and creation failed: ${createError.message}`;
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-      }
+      // Generate a detailed error message
+      const errorMsg = `[STRICT ENFORCEMENT] No existing record found for ${standardRunId} (client ${clientId}). UPDATES REJECTED.`;
+      console.error(errorMsg);
+      console.error(`[STRICT ENFORCEMENT] This indicates a process kickoff issue - run record should already exist`);
+      console.error(`[STRICT ENFORCEMENT] Update operation skipped - updates would have been:`, JSON.stringify(updates));
+      
+      // Throw error as explicitly requested
+      throw new Error(`Cannot update non-existent run record for ${clientId} (${standardRunId}). Record must exist before updates.`);
     }
     
     // Now update it

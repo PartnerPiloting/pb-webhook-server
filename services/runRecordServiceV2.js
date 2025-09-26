@@ -417,22 +417,19 @@ async function updateRunRecord(runId, clientId, updates, options = {}) {
   // First, get the record - this will NOT create if missing
   let record = await getRunRecord(runId, clientId, options);
   
-  // If record not found, attempt to create it using the recovery path
+  // STRICT ENFORCEMENT: Do NOT create new records, only update existing ones
   if (!record) {
-    logger.debug(`Run Record Service: No record found for ${runId}, client ${clientId}, attempting to create one for recovery`);
-    try {
-      // Create a new record with clientId as fallback for clientName
-      record = await createClientRunRecord(runIdService.stripClientSuffix(runId), clientId, clientId, {
-        source: 'run_record_recovery', 
-        logger
-      });
-      logger.debug(`Run Record Service: Successfully created recovery record for ${runId}, client ${clientId}`);
-    } catch (createError) {
-      const errorMsg = `Cannot update: Run record not found for ${runId}, client ${clientId} and creation failed: ${createError.message}`;
-      logger.error(errorMsg);
-      trackActivity('update', runId, clientId, source, `ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
+    // Generate a detailed error message
+    const errorMsg = `[STRICT ENFORCEMENT] No existing record found for ${runId} (client ${clientId}). UPDATE REJECTED.`;
+    logger.error(errorMsg);
+    logger.error(`[STRICT ENFORCEMENT] This indicates a process kickoff issue - run record should already exist`);
+    logger.error(`[STRICT ENFORCEMENT] Update operation skipped - updates would have been:`, JSON.stringify(updates));
+    
+    // Track the failure for metrics and debugging
+    trackActivity('update', runId, clientId, source, `ERROR: ${errorMsg}`);
+    
+    // Throw error as explicitly requested
+    throw new Error(`Cannot update non-existent run record for ${clientId} (${runId}). Record must exist before updates.`);
   }
   
   const base = initialize();
@@ -571,22 +568,19 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
   // First, get the record - this will NOT create if missing
   let record = await getRunRecord(runId, clientId, options);
   
-  // If record not found, attempt to create it using the recovery path
+  // STRICT ENFORCEMENT: Do NOT create new records, only update existing ones
   if (!record) {
-    logger.debug(`Run Record Service: No record found for ${runId}, client ${clientId}, attempting to create one for recovery`);
-    try {
-      // Create a new record with clientId as fallback for clientName
-      record = await createClientRunRecord(runIdService.stripClientSuffix(runId), clientId, clientId, {
-        source: 'run_record_recovery', 
-        logger
-      });
-      logger.debug(`Run Record Service: Successfully created recovery record for ${runId}, client ${clientId}`);
-    } catch (createError) {
-      const errorMsg = `Cannot complete: Run record not found for ${runId}, client ${clientId} and creation failed: ${createError.message}`;
-      logger.error(errorMsg);
-      trackActivity('complete', runId, clientId, source, `ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
+    // Generate a detailed error message
+    const errorMsg = `[STRICT ENFORCEMENT] No existing record found for ${runId} (client ${clientId}). COMPLETION REJECTED.`;
+    logger.error(errorMsg);
+    logger.error(`[STRICT ENFORCEMENT] This indicates a process kickoff issue - run record should already exist`);
+    logger.error(`[STRICT ENFORCEMENT] Completion operation skipped - status would have been: ${status}`);
+    
+    // Track the failure for metrics and debugging
+    trackActivity('complete', runId, clientId, source, `ERROR: ${errorMsg}`);
+    
+    // Throw error as explicitly requested
+    throw new Error(`Cannot complete non-existent run record for ${clientId} (${runId}). Record must exist before completion.`);
   }
   
   const endTimestamp = new Date().toISOString();
@@ -776,6 +770,36 @@ function countRecordTypes() {
   return counts;
 }
 
+/**
+ * Check if a run record exists without attempting to create it
+ * @param {string} runId - The run ID
+ * @param {string} clientId - The client ID (optional, can be extracted from runId if it contains client suffix)
+ * @returns {Promise<boolean>} True if record exists, false otherwise
+ */
+async function checkRunRecordExists(runId, clientId = null) {
+  try {
+    // Extract client ID from runId if not provided and runId contains client suffix
+    if (!clientId && runId && runId.includes('-C')) {
+      const parts = runId.split('-C');
+      if (parts.length > 1) {
+        clientId = parts[1];
+      }
+    }
+    
+    if (!clientId) {
+      console.error(`Run Record Service: Cannot check existence without clientId for runId ${runId}`);
+      return false;
+    }
+    
+    // Use getRunRecord which never creates if not found
+    const record = await getRunRecord(runId, clientId, { source: 'checkRunRecordExists' });
+    return record !== null;
+  } catch (error) {
+    console.error(`Run Record Service: Error checking run record existence for ${runId}, client ${clientId}: ${error.message}`);
+    return false;
+  }
+}
+
 // Export all functions
 module.exports = {
   initialize,
@@ -788,5 +812,6 @@ module.exports = {
   updateJobRecord,
   completeJobRecord,
   getActivityLog,
-  getStats
+  getStats,
+  checkRunRecordExists
 };

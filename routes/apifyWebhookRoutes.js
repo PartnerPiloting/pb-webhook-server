@@ -156,6 +156,16 @@ async function processWebhookInBackground(payload, runId) {
         // Generate a standardized run ID with client suffix for tracking
         const clientSuffixedRunId = runIdService.normalizeRunId(runId, clientId);
         console.log(`[DEBUG][METRICS_TRACKING] Webhook tracking for run: ${clientSuffixedRunId} (${clientId})`);
+        console.log(`[DEBUG][METRICS_TRACKING] Original runId from Apify: ${runId}`);
+        console.log(`[DEBUG][METRICS_TRACKING] Normalized run ID: ${clientSuffixedRunId}`);
+        
+        // Enhanced debugging to trace where the record might be missing
+        console.log(`[WEBHOOK_DEBUG] RECORD SEARCH DIAGNOSTICS:`);
+        console.log(`[WEBHOOK_DEBUG] 1. Looking for run ID: ${clientSuffixedRunId}`);
+        console.log(`[WEBHOOK_DEBUG] 2. Looking for client ID: ${clientId}`); 
+        console.log(`[WEBHOOK_DEBUG] 3. Raw webhook runId format: ${runId}`);
+        console.log(`[WEBHOOK_DEBUG] 4. Expected record would have been created by apifyProcessRoutes.js`);
+        console.log(`[WEBHOOK_DEBUG] 5. Current timestamp for reference: ${new Date().toISOString()}`);
         
         // NOTE: We expect the run record to already exist
         // It should have been created when the process was kicked off
@@ -219,23 +229,20 @@ async function processWebhookInBackground(payload, runId) {
           console.error(`[ApifyWebhook] Run ID: ${runId}, Client ID: ${clientId}`);
           console.error(`[ApifyWebhook] Posts count: ${posts.length}`);
           
-          // We still need to try to update metrics for operational continuity
-          // but we'll log it as an error
-          try {
-            // Get the centralized metrics update function
-            const { updateClientRunMetrics } = require('../services/apifyRunsService');
-            
-            // Update metrics despite the missing record
-            await updateClientRunMetrics(runId, clientId, {
-              postsCount: posts.length,
-              profilesCount: posts.length
-            });
-            
-            console.log(`[ApifyWebhook] Attempted metrics update despite missing run record`);
-            console.log(`  - Total Posts Harvested: ${posts.length}`);
-          } catch (metricsError) {
-            console.error(`[ApifyWebhook] Failed to update metrics: ${metricsError.message}`);
-          }
+          // STRICT ENFORCEMENT: Do NOT attempt to create or update missing records
+          console.error(`[ApifyWebhook] STRICT ENFORCEMENT: Skipping metrics update for missing record`);
+          console.error(`[ApifyWebhook] This webhook data will not be recorded as requested`);
+          
+          // Log detailed diagnostics to help identify the root cause
+          console.error(`[ApifyWebhook] Diagnostics for missing record:`);
+          console.error(`[ApifyWebhook] - Standard run ID format: ${clientSuffixedRunId}`);
+          console.error(`[ApifyWebhook] - Original Apify run ID: ${runId}`);
+          console.error(`[ApifyWebhook] - Client ID: ${clientId}`);
+          console.error(`[ApifyWebhook] - Posts processed: ${posts.length}`);
+          console.error(`[ApifyWebhook] - Webhook received at: ${new Date().toISOString()}`);
+          
+          // Return without attempting any updates - as explicitly requested
+          // Will rely on error logs for visibility
         }
       } catch (metricError) {
         console.error(`[ApifyWebhook] Failed to update post harvesting metrics: ${metricError.message}`);
