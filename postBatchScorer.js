@@ -213,7 +213,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     
     // Special debugging for Guy Wilson
     if (client.clientId === 'Guy-Wilson') {
-        console.log(`[POST_SCORING_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Starting post scoring process for Guy Wilson`);
+        console.log(`[POST_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Starting post scoring process for Guy Wilson`);
     }
     
     // Check if the post scoring job is already running for this client
@@ -221,11 +221,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         const isRunning = await clientService.isJobRunning(client.clientId, 'post_scoring');
         if (isRunning) {
             logger.setup(`Post scoring job is already running for client ${client.clientId}, skipping`);
-            console.log(`[POST_SCORING_DEBUG] ⚠️ Client ${client.clientId} (${client.clientName}) already has post scoring job running, skipping`);
+            console.log(`[POST_DEBUG] ⚠️ Client ${client.clientId} (${client.clientName}) already has post scoring job running, skipping`);
             
             // Special debugging for Guy Wilson
             if (client.clientId === 'Guy-Wilson') {
-                console.log(`[POST_SCORING_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Guy Wilson post scoring SKIPPED because job is already running`);
+                console.log(`[POST_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Guy Wilson post scoring SKIPPED because job is already running`);
             }
             
             clientResult.status = 'skipped';
@@ -261,49 +261,49 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         config.fields.skipReason = 'Posts Skip Reason';
         
         // Get leads with posts to be scored
-        console.log(`[POST_SCORING_DEBUG] 🔍 CLIENT ${client.clientId} (${client.clientName}): Starting to look for leads with posts to be scored`);
+        console.log(`[POST_DEBUG] 🔍 CLIENT ${client.clientId} (${client.clientName}): Starting to look for leads with posts to be scored`);
         logger.setup(`Looking for leads with posts to score for client ${client.clientId} (${client.clientName})`);
         
         // Special debug for Guy Wilson client
         if (client.clientId === 'Guy-Wilson') {
-            console.log(`[POST_SCORING_DEBUG] 🚨 SPECIAL FOCUS: Processing Guy Wilson client`);
+            console.log(`[POST_DEBUG] 🚨 SPECIAL FOCUS: Processing Guy Wilson client`);
         }
         
         const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, options);
         
         logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
-        console.log(`[POST_SCORING_DEBUG] 🔢 CLIENT ${client.clientId} (${client.clientName}): Found ${leadsToProcess.length} leads with posts to score`);
+        console.log(`[POST_DEBUG] 🔢 CLIENT ${client.clientId} (${client.clientName}): Found ${leadsToProcess.length} leads with posts to score`);
         
         // Special debug for Guy Wilson client
         if (client.clientId === 'Guy-Wilson') {
-            console.log(`[POST_SCORING_DEBUG] 🚨 SPECIAL FOCUS: Guy Wilson has ${leadsToProcess.length} leads for post scoring`);
+            console.log(`[POST_DEBUG] 🚨 SPECIAL FOCUS: Guy Wilson has ${leadsToProcess.length} leads for post scoring`);
         }
         
         if (leadsToProcess.length === 0) {
             // No leads to process, complete with success but 0 scored
             logger.summary(`No posts to score for client ${client.clientId} (${client.clientName})`);
-            console.log(`[POST_SCORING_DEBUG] ℹ️ CLIENT ${client.clientId} (${client.clientName}): No leads with posts to score found`);
+            console.log(`[POST_DEBUG] ℹ️ CLIENT ${client.clientId} (${client.clientName}): No leads with posts to score found`);
             
             // Special debug for Guy Wilson client
             if (client.clientId === 'Guy-Wilson') {
-                console.log(`[POST_SCORING_DEBUG] 🚨🚨 SPECIAL FOCUS: Guy Wilson has NO leads with posts to score. Check if posts are being properly harvested.`);
+                console.log(`[POST_DEBUG] 🚨🚨 SPECIAL FOCUS: Guy Wilson has NO leads with posts to score. Check if posts are being properly harvested.`);
             }
             
             clientResult.status = 'success';
             clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
             return clientResult;
         } else {
-            console.log(`[POST_SCORING_DEBUG] 📋 CLIENT ${client.clientId}: Sample lead fields:`, Object.keys(leadsToProcess[0].fields || {}));
+            console.log(`[POST_DEBUG] 📋 CLIENT ${client.clientId}: Sample lead fields:`, Object.keys(leadsToProcess[0].fields || {}));
             
             // Log more details about first few leads for debugging
             const maxToLog = Math.min(3, leadsToProcess.length);
-            console.log(`[POST_SCORING_DEBUG] 📝 First ${maxToLog} leads to process:`);
+            console.log(`[POST_DEBUG] 📝 First ${maxToLog} leads to process:`);
             for (let i = 0; i < maxToLog; i++) {
                 const lead = leadsToProcess[i];
-                console.log(`[POST_SCORING_DEBUG]   - Lead ${i+1}: ID=${lead.id}, Name=${lead.fields['Full Name'] || 'Unknown'}`);
+                console.log(`[POST_DEBUG]   - Lead ${i+1}: ID=${lead.id}, Name=${lead.fields['Full Name'] || 'Unknown'}`);
                 // Check key fields
-                console.log(`[POST_SCORING_DEBUG]     Has posts content: ${!!lead.fields[config.fields.postsContent]}`);
-                console.log(`[POST_SCORING_DEBUG]     Already scored: ${!!lead.fields[config.fields.dateScored]}`);
+                console.log(`[POST_DEBUG]     Has posts content: ${!!lead.fields[config.fields.postsContent]}`);
+                console.log(`[POST_DEBUG]     Already scored: ${!!lead.fields[config.fields.dateScored]}`);
             }
         }
 
@@ -384,42 +384,74 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
 // Safely update a lead record; if Airtable rejects an unknown skip reason field,
 // retry without that field so we still persist scoring results and date.
 async function safeLeadUpdate(clientBase, tableName, recordId, fields, skipReasonFieldName) {
-    console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] 🔄 Updating record ${recordId} in table ${tableName}`);
-    console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] Fields to update: ${JSON.stringify(Object.keys(fields))}`);
+    // Get more info about the lead for better logging
+    let profileUrl = 'unknown';
+    let leadName = 'unknown';
+    try {
+        const lead = await clientBase(tableName).find(recordId);
+        if (lead && lead.fields) {
+            profileUrl = lead.fields['LinkedIn Profile URL'] || lead.fields['LinkedIn URL'] || 'unknown';
+            const firstName = lead.fields['First Name'] || '';
+            const lastName = lead.fields['Last Name'] || '';
+            leadName = `${firstName} ${lastName}`.trim() || 'Unknown';
+        }
+    } catch (error) {
+        console.log(`[POST_DEBUG] Error retrieving lead details: ${error.message}`);
+    }
+
+    console.log(`[POST_DEBUG] 🔄 Updating lead: ${recordId} (${leadName}) - LinkedIn URL: ${profileUrl}`);
+    console.log(`[POST_DEBUG][AIRTABLE-UPDATE] 🔄 Updating record ${recordId} in table ${tableName}`);
+    console.log(`[POST_DEBUG] Fields being updated: ${JSON.stringify(fields, null, 2)}`);
+    console.log(`[POST_DEBUG][AIRTABLE-UPDATE] Fields to update: ${JSON.stringify(Object.keys(fields))}`);
     
     // Check for Date Posts Scored field specifically
     if (fields['Date Posts Scored']) {
-        console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ Setting Date Posts Scored to: ${fields['Date Posts Scored']}`);
+        console.log(`[POST_DEBUG] ✅ Setting Date Posts Scored to: ${fields['Date Posts Scored']} for lead ${recordId} (${profileUrl})`);
+        console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ Setting Date Posts Scored to: ${fields['Date Posts Scored']}`);
     } else {
-        console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ❌ WARNING: Date Posts Scored field not present in update!`);
+        console.log(`[POST_DEBUG] ❌ WARNING: Date Posts Scored field not present in update for lead ${recordId} (${profileUrl})!`);
+        console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ❌ WARNING: Date Posts Scored field not present in update!`);
     }
     
     try {
         const result = await clientBase(tableName).update(recordId, fields);
-        console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ SUCCESS: Updated record ${recordId}`);
+        console.log(`[POST_DEBUG] ✅ SUCCESS: Updated lead ${recordId} (${profileUrl}) with fields: ${Object.keys(fields).join(', ')}`);
+        console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ SUCCESS: Updated record ${recordId}`);
         
         // Verify the result
         if (Array.isArray(result) && result.length > 0) {
-            console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ Verification: Record updated with ID ${result[0].id}`);
+            console.log(`[POST_DEBUG] ✅ Verification: Lead updated successfully with ID ${result[0].id}`);
+            console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ Verification: Record updated with ID ${result[0].id}`);
+            
+            // Double-check if Date Posts Scored is actually set in the result
+            if (result[0].fields && result[0].fields['Date Posts Scored']) {
+                console.log(`[POST_DEBUG] ✅ CONFIRMED: Date Posts Scored field is set to ${result[0].fields['Date Posts Scored']} in the response`);
+            } else {
+                console.log(`[POST_DEBUG] ⚠️ POTENTIAL ISSUE: Date Posts Scored field not present in the response!`);
+            }
         } else {
-            console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ⚠️ Unusual: Update succeeded but no record returned`);
+            console.log(`[POST_DEBUG] ⚠️ Unusual: Update for lead ${recordId} (${profileUrl}) succeeded but no record returned`);
+            console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ⚠️ Unusual: Update succeeded but no record returned`);
         }
         
         return result;
     } catch (err) {
-        console.error(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ❌ ERROR: ${err.message}`);
+        console.log(`[POST_DEBUG] ❌ ERROR updating lead ${recordId} (${profileUrl}): ${err.message}`);
+        console.error(`[POST_DEBUG][AIRTABLE-UPDATE] ❌ ERROR: ${err.message}`);
         const msg = (err && err.message) || '';
         if (skipReasonFieldName && msg.includes(skipReasonFieldName)) {
-            console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] 🔄 Retrying without ${skipReasonFieldName} field`);
+            console.log(`[POST_DEBUG] 🔄 Retrying without ${skipReasonFieldName} field for lead ${recordId} (${profileUrl})`);
+            console.log(`[POST_DEBUG][AIRTABLE-UPDATE] 🔄 Retrying without ${skipReasonFieldName} field`);
             // Remove the skip reason field and retry once
             const cloned = { ...fields };
             delete cloned[skipReasonFieldName];
             try {
                 const retryResult = await clientBase(tableName).update(recordId, cloned);
-                console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ RETRY SUCCESS: Updated record ${recordId} without ${skipReasonFieldName}`);
+                console.log(`[POST_DEBUG] ✅ RETRY SUCCESS: Updated lead ${recordId} (${profileUrl}) without ${skipReasonFieldName}`);
+                console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ RETRY SUCCESS: Updated record ${recordId} without ${skipReasonFieldName}`);
                 return retryResult;
             } catch (e2) {
-                console.error(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ❌ RETRY ERROR: ${e2.message}`);
+                console.error(`[POST_DEBUG][AIRTABLE-UPDATE] ❌ RETRY ERROR: ${e2.message}`);
                 // Re-throw original context with note
                 throw new Error(`${msg} (and retry without '${skipReasonFieldName}' also failed: ${e2.message})`);
             }
@@ -447,7 +479,7 @@ async function loadClientPostScoringConfig(clientBase) {
 }
 
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
-    console.log(`[DEBUG-POST-SCORING] getLeadsForPostScoring: Starting with config:`, {
+    console.log(`[POST_DEBUG] getLeadsForPostScoring: Starting with config:`, {
         leadsTableName: config.leadsTableName,
         postsContentField: config.fields.postsContent,
         dateScoredField: config.fields.dateScored,
@@ -456,16 +488,16 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     });
     
     // Display the full environment variables that might affect post scoring
-    console.log(`[DEBUG-POST-SCORING] Environment variables:`);
-    console.log(`[DEBUG-POST-SCORING] - POST_SCORING_LIMIT: ${process.env.POST_SCORING_LIMIT || 'not set'}`);
-    console.log(`[DEBUG-POST-SCORING] - VERBOSE_POST_SCORING: ${process.env.VERBOSE_POST_SCORING || 'not set'}`);
-    console.log(`[DEBUG-POST-SCORING] - OVERRIDE_POSTS_TABLE_NAME: ${process.env.OVERRIDE_POSTS_TABLE_NAME || 'not set'}`);
-    console.log(`[DEBUG-POST-SCORING] - GEMINI_TIMEOUT_MS: ${process.env.GEMINI_TIMEOUT_MS || 'not set'}`);
-    console.log(`[DEBUG-POST-SCORING] - POST_BATCH_CHUNK_SIZE: ${process.env.POST_BATCH_CHUNK_SIZE || 'not set'}`);
+    console.log(`[POST_DEBUG] Environment variables:`);
+    console.log(`[POST_DEBUG] - POST_SCORING_LIMIT: ${process.env.POST_SCORING_LIMIT || 'not set'}`);
+    console.log(`[POST_DEBUG] - VERBOSE_POST_SCORING: ${process.env.VERBOSE_POST_SCORING || 'not set'}`);
+    console.log(`[POST_DEBUG] - OVERRIDE_POSTS_TABLE_NAME: ${process.env.OVERRIDE_POSTS_TABLE_NAME || 'not set'}`);
+    console.log(`[POST_DEBUG] - GEMINI_TIMEOUT_MS: ${process.env.GEMINI_TIMEOUT_MS || 'not set'}`);
+    console.log(`[POST_DEBUG] - POST_BATCH_CHUNK_SIZE: ${process.env.POST_BATCH_CHUNK_SIZE || 'not set'}`);
     
     // Check the client base connection
-    console.log(`[DEBUG-POST-SCORING] Client base object type: ${typeof clientBase}`);
-    console.log(`[DEBUG-POST-SCORING] Client base has Leads table: ${typeof clientBase(config.leadsTableName) === 'object'}`);
+    console.log(`[POST_DEBUG] Client base object type: ${typeof clientBase}`);
+    console.log(`[POST_DEBUG] Client base has Leads table: ${typeof clientBase(config.leadsTableName) === 'object'}`);
     
     // Add a count query to get the total number of leads with unscored posts
     try {
@@ -474,7 +506,7 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             filterByFormula: `AND({${config.fields.postsContent}} != '', {${config.fields.dateScored}} = BLANK())`
         }).all();
         
-        console.log(`[DEBUG-POST-SCORING] TOTAL UNSCORED LEADS: ${countQuery.length} leads have posts content but no Date Posts Scored`);
+        console.log(`[POST_DEBUG] TOTAL UNSCORED LEADS: ${countQuery.length} leads have posts content but no Date Posts Scored`);
         
         // Check limit constraints
         if (limit && limit < countQuery.length) {
@@ -803,19 +835,32 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
  * Analyze and score posts for a single lead - adapted from postAnalysisService.js
  */
 async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger, options = {}) {
+    // Retrieve LinkedIn profile URL for more explicit logging
+    const linkedinProfileUrl = leadRecord.fields[config.fields.linkedinUrl] || 'unknown';
+    const firstName = leadRecord.fields['First Name'] || '';
+    const lastName = leadRecord.fields['Last Name'] || '';
+    const fullName = `${firstName} ${lastName}`.trim() || 'Unknown';
+    
+    console.log(`[POST_DEBUG] Processing lead: ${leadRecord.id} (${fullName}) - LinkedIn URL: ${linkedinProfileUrl}`);
     logger.debug(`Analyzing posts for lead ${leadRecord.id} in client ${clientId}`);
     
     // Parse posts content
     const rawPostsContent = leadRecord.fields[config.fields.postsContent];
     if (!rawPostsContent) {
+        console.log(`[POST_DEBUG] Lead ${leadRecord.id} (${linkedinProfileUrl}): No posts content found in Airtable`);
         logger.debug(`Lead ${leadRecord.id}: No posts content, skipping`);
         if (!options.dryRun && options.markSkips !== false) {
             try {
-                await clientBase(config.leadsTableName).update(leadRecord.id, {
+                const updateFields = {
                     [config.fields.dateScored]: new Date().toISOString(),
                     [config.fields.skipReason]: 'NO_CONTENT'
-                });
-            } catch (e) { /* field may not exist */ }
+                };
+                console.log(`[POST_DEBUG] Updating lead ${leadRecord.id} (${linkedinProfileUrl}) with Date Posts Scored: ${updateFields[config.fields.dateScored]}`);
+                await clientBase(config.leadsTableName).update(leadRecord.id, updateFields);
+                console.log(`[POST_DEBUG] Successfully marked lead ${leadRecord.id} (${linkedinProfileUrl}) as skipped due to NO_CONTENT`);
+            } catch (e) { 
+                console.log(`[POST_DEBUG] Error updating lead ${leadRecord.id} (${linkedinProfileUrl}): ${e.message}`);
+            }
         }
         return { status: 'skipped', skipReason: 'NO_CONTENT' };
     }
@@ -1103,19 +1148,54 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
 
         // Update record with scoring results (matching original format exactly)
         if (!options.dryRun) {
-            await safeLeadUpdate(
+            // Log before the update
+            const profileUrl = leadRecord.fields[config.fields.linkedinUrl] || 'unknown';
+            const dateScoredValue = new Date().toISOString();
+            
+            console.log(`[POST_DEBUG] 🌟 About to update lead ${leadRecord.id} (${profileUrl}) with scoring results`);
+            console.log(`[POST_DEBUG] 🌟 Date Posts Scored value being set: ${dateScoredValue}`);
+            console.log(`[POST_DEBUG] 🌟 Highest scoring post score: ${highestScoringPost.post_score}`);
+            
+            const updateFields = {
+                [config.fields.relevanceScore]: highestScoringPost.post_score,
+                [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
+                [config.fields.topScoringPost]: topScoringPostText,
+                [config.fields.dateScored]: dateScoredValue,
+                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+            };
+            
+            console.log(`[POST_DEBUG] 🌟 Fields being updated: ${JSON.stringify(Object.keys(updateFields))}`);
+            console.log(`[POST_DEBUG] 🌟 dateScored field name: ${config.fields.dateScored}`);
+            
+            // Verify the field mappings
+            console.log(`[POST_DEBUG] 🌟 Field mapping check:`);
+            console.log(`[POST_DEBUG] 🌟 - dateScored maps to: ${config.fields.dateScored}`);
+            console.log(`[POST_DEBUG] 🌟 - relevanceScore maps to: ${config.fields.relevanceScore}`);
+            console.log(`[POST_DEBUG] 🌟 - skipReason maps to: ${config.fields.skipReason}`);
+            
+            const result = await safeLeadUpdate(
                 clientBase,
                 config.leadsTableName,
                 leadRecord.id,
-                {
-                    [config.fields.relevanceScore]: highestScoringPost.post_score,
-                    [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
-                    [config.fields.topScoringPost]: topScoringPostText,
-                    [config.fields.dateScored]: new Date().toISOString(),
-                    ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
-                },
+                updateFields,
                 options.markSkips !== false ? config.fields.skipReason : null
             );
+            
+            // After update verification
+            console.log(`[POST_DEBUG] ✅ Post-update verification for lead ${leadRecord.id} (${profileUrl})`);
+            try {
+                const updatedLead = await clientBase(config.leadsTableName).find(leadRecord.id);
+                if (updatedLead && updatedLead.fields) {
+                    const dateScored = updatedLead.fields[config.fields.dateScored];
+                    if (dateScored) {
+                        console.log(`[POST_DEBUG] ✅ CONFIRMED: Date Posts Scored is now set to ${dateScored}`);
+                    } else {
+                        console.log(`[POST_DEBUG] ❌ ERROR: Date Posts Scored field is still not set after update!`);
+                    }
+                }
+            } catch (verifyError) {
+                console.log(`[POST_DEBUG] ❌ Error verifying update: ${verifyError.message}`);
+            }
         }
         
         logger.summary(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
@@ -1148,17 +1228,46 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         }
         const aiErrorCategory = classifyAiError(error, errorDetails);
         if (!options.dryRun) {
-            await safeLeadUpdate(
+            // Log before the update
+            const profileUrl = leadRecord.fields[config.fields.linkedinUrl] || 'unknown';
+            const dateScoredValue = new Date().toISOString();
+            
+            console.log(`[POST_DEBUG] ⚠️ About to update lead ${leadRecord.id} (${profileUrl}) with error result`);
+            console.log(`[POST_DEBUG] ⚠️ Date Posts Scored value being set: ${dateScoredValue}`);
+            console.log(`[POST_DEBUG] ⚠️ AI Error Category: ${aiErrorCategory}`);
+            
+            const updateFields = {
+                [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
+                [config.fields.dateScored]: dateScoredValue,
+                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+            };
+            
+            console.log(`[POST_DEBUG] ⚠️ Fields being updated in error case: ${JSON.stringify(Object.keys(updateFields))}`);
+            console.log(`[POST_DEBUG] ⚠️ dateScored field name: ${config.fields.dateScored}`);
+            
+            const result = await safeLeadUpdate(
                 clientBase,
                 config.leadsTableName,
                 leadRecord.id,
-                {
-                    [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
-                    [config.fields.dateScored]: new Date().toISOString(),
-                    ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
-                },
+                updateFields,
                 options.markSkips !== false ? config.fields.skipReason : null
             );
+            
+            // After update verification
+            console.log(`[POST_DEBUG] ✅ Post-update verification for lead with error ${leadRecord.id} (${profileUrl})`);
+            try {
+                const updatedLead = await clientBase(config.leadsTableName).find(leadRecord.id);
+                if (updatedLead && updatedLead.fields) {
+                    const dateScored = updatedLead.fields[config.fields.dateScored];
+                    if (dateScored) {
+                        console.log(`[POST_DEBUG] ✅ CONFIRMED: Date Posts Scored is now set to ${dateScored} for error case`);
+                    } else {
+                        console.log(`[POST_DEBUG] ❌ ERROR: Date Posts Scored field is still not set after error update!`);
+                    }
+                }
+            } catch (verifyError) {
+                console.log(`[POST_DEBUG] ❌ Error verifying update: ${verifyError.message}`);
+            }
         }
         return { status: "error", reason: 'AI_SCORING_ERROR', errorCategory: aiErrorCategory, error: error.message, leadId: leadRecord.id, errorDetails };
     }
