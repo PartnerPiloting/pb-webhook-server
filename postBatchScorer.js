@@ -1284,6 +1284,15 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         
         // Find the highest scoring post (matching original logic)
         if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
+            // Instead of throwing an error directly, handle this case more gracefully
+            // Log what happened for debugging
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] ⚠️ AI response was not a valid or non-empty array of post scores for lead ${leadRecord.id}`);
+                console.log(`[POST_DEBUG] ⚠️ Raw response type: ${typeof aiResponseArray}`);
+                console.log(`[POST_DEBUG] ⚠️ Is array: ${Array.isArray(aiResponseArray)}`);
+                console.log(`[POST_DEBUG] ⚠️ Length: ${Array.isArray(aiResponseArray) ? aiResponseArray.length : 'N/A'}`);
+            }
+            // Now throw the error which will be caught and handled by the error handler below
             throw new Error("AI response was not a valid or non-empty array of post scores.");
         }
 
