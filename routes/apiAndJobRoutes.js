@@ -1039,7 +1039,15 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     const { generateJobId } = require('../services/clientService');
     const jobId = generateJobId('post_scoring', stream);
     
-    console.log(`🎯 Starting fire-and-forget post scoring: jobId=${jobId}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}`);
+    // Determine if this is a standalone run or part of a parent process
+    const isStandaloneRun = !parentRunId;
+    
+    console.log(`🎯 Starting fire-and-forget post scoring: jobId=${jobId}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, ${isStandaloneRun ? 'STANDALONE MODE' : `parentRunId=${parentRunId}`}`);
+    
+    // For standalone runs, we'll skip metrics recording (simplification)
+    if (isStandaloneRun) {
+      console.log(`ℹ️ Running in standalone mode - metrics recording will be skipped (no parentRunId)`);
+    }
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
     res.status(202).json({
@@ -1134,7 +1142,9 @@ async function processPostScoringInBackground(jobId, stream, options) {
             client.clientId,
             options.limit,
             {
-              dryRun: options.dryRun
+              dryRun: options.dryRun,
+              parentRunId: options.parentRunId, // Pass the parentRunId to control metrics recording
+              jobId: jobId // Pass the jobId for reference
             }
           ),
           // Client timeout
