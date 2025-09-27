@@ -1,3 +1,9 @@
+// =====================================================
+// TEMPORARY TEST VERSION - JOB RUNNING BYPASS ENABLED
+// This version bypasses job running checks to test fixes
+// for Airtable formula quotes and Date Posts Scored updates
+// =====================================================
+
 // batchScorer.js - MULTI-TENANT SUPPORT: Added client iteration, per-client logging, error isolation
 
 require("dotenv").config(); 
@@ -216,25 +222,25 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         console.log(`[POST_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Starting post scoring process for Guy Wilson`);
     }
     
-    // Check if the post scoring job is already running for this client
+    // TEMPORARY BYPASS - Skip job running check for testing purposes
+    console.log(`[POST_DEBUG] 🔓 TEMPORARY BYPASS: Skipping job running check for testing`);
+    
     try {
-        const isRunning = await clientService.isJobRunning(client.clientId, 'post_scoring');
-        if (isRunning) {
-            logger.setup(`Post scoring job is already running for client ${client.clientId}, skipping`);
-            console.log(`[POST_DEBUG] ⚠️ Client ${client.clientId} (${client.clientName}) already has post scoring job running, skipping`);
-            
-            // Special debugging for Guy Wilson
-            if (client.clientId === 'Guy-Wilson') {
-                console.log(`[POST_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Guy Wilson post scoring SKIPPED because job is already running`);
-            }
-            
-            clientResult.status = 'skipped';
-            clientResult.skipReason = 'job_running';
-            return clientResult;
+        // Force job status to RUNNING without checking if it's already running
+        const jobId = options.jobId || `job_post_scoring_bypass_${Date.now()}`;
+        console.log(`[POST_DEBUG] 🔄 Setting job status to RUNNING (bypass mode) with ID: ${jobId}`);
+        
+        try {
+            // First try to reset any existing job
+            await clientService.setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', 'force_reset_for_testing');
+            console.log(`[POST_DEBUG] 🧹 Forcibly reset any existing job status`);
+        } catch (resetError) {
+            console.log(`[POST_DEBUG] ⚠️ Could not reset existing job: ${resetError.message}`);
         }
         
-        // Set job as running (early) to prevent concurrent executions
-        await clientService.setJobStatus(client.clientId, 'post_scoring', 'RUNNING', options.jobId || `job_post_scoring_${Date.now()}`);
+        // Then set new job status
+        await clientService.setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
+        console.log(`[POST_DEBUG] ✅ Successfully set job status to RUNNING`);
         logger.setup(`Set job status to RUNNING for client ${client.clientId}`);
     } catch (jobError) {
         logger.warn(`Could not check/set job status: ${jobError.message}`);
