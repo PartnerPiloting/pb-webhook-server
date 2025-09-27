@@ -19,6 +19,8 @@ const runRecordService = require('../services/runRecordAdapterSimple');
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
 // Check if we should ignore post harvesting limits
 const IGNORE_POST_HARVESTING_LIMITS = process.env.IGNORE_POST_HARVESTING_LIMITS === 'true';
+// Check if we should use relaxed selection criteria (useful for debugging)
+const RELAXED_LEAD_SELECTION = process.env.RELAXED_LEAD_SELECTION === 'true';
 
 const LEADS_TABLE = 'Leads';
 const LINKEDIN_URL_FIELD = 'LinkedIn Profile URL';
@@ -39,8 +41,66 @@ const nowISO = () => new Date().toISOString();
 // Permanently skip any with status 'No Posts'
 async function pickLeadBatch(base, batchSize) {
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  
+  console.log(`🔍 LEAD_SELECTION_START: Starting to pick leads batch of size ${batchSize}`);
+  
+  // Query Airtable to get counts of leads matching different criteria
+  try {
+    console.log(`🔍 LEAD_SELECTION_DIAG: Running diagnostic counts on lead criteria...`);
+    
+    // Check LinkedIn URL field presence
+    const urlRecords = await base(LEADS_TABLE).select({
+      filterByFormula: `{${LINKEDIN_URL_FIELD}} != ''`,
+      fields: ['id'],
+      maxRecords: 1
+    }).firstPage();
+    console.log(`🔍 LEAD_SELECTION_DIAG: Leads with LinkedIn URLs: ${urlRecords.length ? 'YES' : 'NONE'}`);
+    
+    // Check status field values
+    const statusesByValue = {};
+    ['Pending', '', 'Processing', 'No Posts', 'Complete'].forEach(async (status) => {
+      try {
+        let filter = status === '' 
+          ? `OR({${STATUS_FIELD}} = '', {${STATUS_FIELD}} = BLANK())`
+          : `{${STATUS_FIELD}} = '${status}'`;
+        
+        const statusRecords = await base(LEADS_TABLE).select({
+          filterByFormula: filter,
+          fields: ['id'],
+          maxRecords: 100
+        }).firstPage();
+        
+        console.log(`🔍 LEAD_SELECTION_DIAG: Leads with status '${status || 'BLANK'}': ${statusRecords.length}`);
+        statusesByValue[status || 'BLANK'] = statusRecords.length;
+      } catch (err) {
+        console.log(`🔍 LEAD_SELECTION_DIAG: Error checking status '${status}': ${err.message}`);
+      }
+    });
+    
+    // Check Posts Actioned field
+    const actionedRecords = await base(LEADS_TABLE).select({
+      filterByFormula: `OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK())`,
+      fields: ['id'],
+      maxRecords: 1
+    }).firstPage();
+    console.log(`🔍 LEAD_SELECTION_DIAG: Leads with Posts Actioned empty/0: ${actionedRecords.length ? 'YES' : 'NONE'}`);
+    
+    // Check Date Posts Scored field
+    const scoredRecords = await base(LEADS_TABLE).select({
+      filterByFormula: `{${DATE_POSTS_SCORED_FIELD}} = BLANK()`,
+      fields: ['id'],
+      maxRecords: 1
+    }).firstPage();
+    console.log(`🔍 LEAD_SELECTION_DIAG: Leads not yet scored (Date Posts Scored empty): ${scoredRecords.length ? 'YES' : 'NONE'}`);
+  } catch (err) {
+    console.log(`🔍 LEAD_SELECTION_DIAG: Error running diagnostics: ${err.message}`);
+  }
+  
+  let formula;
+  
+  // Regular strict criteria
   // Align with selection criteria: has URL, not actioned, not already post-scored, and eligible harvest status
-  const formula = `AND({${LINKEDIN_URL_FIELD}} != '',
+  formula = `AND({${LINKEDIN_URL_FIELD}} != '',
     OR(
       {${STATUS_FIELD}} = 'Pending',
       {${STATUS_FIELD}} = '',
@@ -51,6 +111,9 @@ async function pickLeadBatch(base, batchSize) {
     OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK()),
     {${DATE_POSTS_SCORED_FIELD}} = BLANK()
   )`;
+  
+  console.log(`🔍 LEAD_SELECTION_FORMULA: ${formula.replace(/\n\s+/g, ' ')}`);
+  
   // Prefer sorting by most recently created leads first. If the Created Time field
   // does not exist on a tenant base, gracefully fall back to no explicit sort.
   const selectOptions = {
@@ -138,6 +201,37 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
   console.log(`[process-level2-v2] ENTRY POINT: New request received at ${new Date().toISOString()}`);
   console.log(`[process-level2-v2] Headers: ${JSON.stringify(Object.keys(req.headers))}`);
   console.log(`[process-level2-v2] Query params: ${JSON.stringify(req.query)}`);
+  console.log(`[process-level2-v2] Body params: ${JSON.stringify(req.body || {})}`);
+  
+  // Detailed debugging for clientId identification
+  console.log(`[process-level2-v2] COMPARISON DEBUG: clientId sources:`);
+  console.log(`[process-level2-v2] - From x-client-id header: ${req.headers['x-client-id'] || 'missing'}`);
+  console.log(`[process-level2-v2] - From query.client: ${req.query.client || 'missing'}`);
+  console.log(`[process-level2-v2] - From query.clientId: ${req.query.clientId || 'missing'}`);
+  console.log(`[process-level2-v2] - From body.clientId: ${req.body?.clientId || 'missing'}`);
+  console.log(`[process-level2-v2] - From body.client: ${req.body?.client || 'missing'}`);
+  console.log(`[process-level2-v2] - From stream: ${req.query.stream || 'missing'}`);
+  console.log(`[process-level2-v2] - Authorization present: ${!!req.headers['authorization']}`);
+  
+  // Compare with values expected in the processClientHandler
+  const clientIdForHandler = req.headers['x-client-id'] || req.query.client || req.query.clientId || (req.body && (req.body.clientId || req.body.client));
+  console.log(`[process-level2-v2] - Effective clientId for handler: ${clientIdForHandler || 'missing'}`);
+  
+  // Log full request structure for complete debugging
+  try {
+    const requestStructure = {
+      url: req.url,
+      method: req.method,
+      headers: req.headers,
+      query: req.query,
+      body: req.body || {},
+      params: req.params || {}
+    };
+    console.log(`[process-level2-v2] 🔍 FULL REQUEST: ${JSON.stringify(requestStructure, null, 2).substring(0, 1000)}...`);
+  } catch (e) {
+    console.log(`[process-level2-v2] Could not stringify full request: ${e.message}`);
+  }
+  
   
   // Validate auth first
   const auth = req.headers['authorization'];
@@ -175,13 +269,31 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
   console.log(`[process-level2-v2] ✅ Request acknowledged, starting background processing for client ${clientId}`);
   
   // Clone the request object and attach some tracking data
-  const reqClone = {...req};
+  // Create a deeper clone that preserves important objects like headers
+  const reqClone = {
+    ...req,
+    headers: {...req.headers},
+    query: {...req.query},
+    body: req.body ? {...req.body} : undefined
+  };
+  
+  // Explicitly ensure clientId is preserved in multiple locations
+  if (clientId) {
+    reqClone.headers['x-client-id'] = clientId;
+    reqClone.query.clientId = clientId;
+  }
+  
   reqClone.processingMetadata = {
     startTime: Date.now(),
     endpoint: 'process-level2-v2',
     stream,
     parentRunId
   };
+  
+  console.log(`[process-level2-v2] DEBUG CLONE: Cloned request object with clientId=${clientId}`);
+  console.log(`[process-level2-v2] DEBUG CLONE: Cloned headers x-client-id=${reqClone.headers['x-client-id']}`);
+  console.log(`[process-level2-v2] DEBUG CLONE: Cloned query clientId=${reqClone.query.clientId}`);
+  
   
   // Process in the background
   processClientHandler(reqClone, null).catch(err => {
@@ -352,11 +464,83 @@ async function processClientHandler(req, res) {
 
     while ((IGNORE_POST_HARVESTING_LIMITS || postsToday < postsTarget) && batches < maxBatches) {
       console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: picking ${batchSize} leads`);
+      
+      // Enhanced debugging for post harvesting
+      console.log(`🔍 POST_HARVEST_LEADS: About to select eligible leads for client ${clientId}`);
+      
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      console.log(`🔍 POST_HARVEST_CRITERIA: Selection criteria includes:
+        - Has LinkedIn Profile URL
+        - Status is 'Pending', blank, or 'Processing' but older than ${thirtyMinAgo}
+        - Status is not 'No Posts'
+        - Posts Actioned is 0, blank, or null
+        - Date Posts Scored is blank`);
+      
       const pick = await pickLeadBatch(base, batchSize);
       console.log(`[apify/process-client] Client ${clientId} picked ${pick.length} leads`);
+      
+      // Detailed inspection of the client's base
+      try {
+        const clientInfo = await getClientById(clientId);
+        console.log(`🔍 CLIENT_DEBUG: Client ${clientId} info found: ${!!clientInfo}`);
+        if (clientInfo) {
+          console.log(`🔍 CLIENT_DEBUG: Client ${clientId} service level: ${clientInfo.serviceLevel}`);
+          console.log(`🔍 CLIENT_DEBUG: Client ${clientId} base ID: ${clientInfo.airtableBaseId}`);
+          
+          // Query total number of leads in the base for context
+          const allLeads = await base(LEADS_TABLE).select({
+            fields: ['id'],
+            maxRecords: 1
+          }).firstPage();
+          
+          console.log(`🔍 CLIENT_DEBUG: Client ${clientId} has leads in Airtable: ${allLeads.length > 0 ? 'YES' : 'NO'}`);
+        }
+      } catch (err) {
+        console.log(`🔍 CLIENT_DEBUG: Error getting client info: ${err.message}`);
+      }
+      
       if (!pick.length) {
         console.log(`[apify/process-client] Client ${clientId} no more eligible leads, breaking`);
+        console.log(`🔍 POST_HARVEST_LEADS: No eligible leads found for client ${clientId}.`);
+        console.log(`🔍 POST_HARVEST_LEADS: This is likely because:`);
+        console.log(`🔍 POST_HARVEST_LEADS: 1. All leads have already been processed`);
+        console.log(`🔍 POST_HARVEST_LEADS: 2. There are no new leads with LinkedIn URLs`);
+        console.log(`🔍 POST_HARVEST_LEADS: 3. All leads have been marked 'No Posts'`);
+        console.log(`🔍 POST_HARVEST_LEADS: 4. All leads have already had posts scored`);
+        
+        // Try a quick diagnostic query with minimal criteria
+        try {
+          const anyLeadsWithUrl = await base(LEADS_TABLE).select({
+            filterByFormula: `{${LINKEDIN_URL_FIELD}} != ''`,
+            fields: ['id', STATUS_FIELD, POSTS_ACTIONED_FIELD, DATE_POSTS_SCORED_FIELD],
+            maxRecords: 5
+          }).firstPage();
+          
+          if (anyLeadsWithUrl.length) {
+            console.log(`🔍 DIAGNOSTIC: Found ${anyLeadsWithUrl.length} leads with LinkedIn URLs`);
+            for (let i = 0; i < anyLeadsWithUrl.length; i++) {
+              const lead = anyLeadsWithUrl[i];
+              console.log(`🔍 DIAGNOSTIC: Lead #${i+1} - Status: ${lead.fields[STATUS_FIELD] || 'EMPTY'}, ` +
+                `Posts Actioned: ${lead.fields[POSTS_ACTIONED_FIELD] || 'EMPTY'}, ` +
+                `Date Posts Scored: ${lead.fields[DATE_POSTS_SCORED_FIELD] || 'EMPTY'}`);
+            }
+          } else {
+            console.log(`🔍 DIAGNOSTIC: No leads found with LinkedIn URLs`);
+          }
+        } catch (err) {
+          console.log(`🔍 DIAGNOSTIC: Error running quick diagnostic: ${err.message}`);
+        }
+        
         break;
+      }
+      
+      console.log(`🔍 POST_HARVEST_LEADS: Found ${pick.length} eligible leads for client ${clientId}`);
+      // Log the first 3 leads to provide context
+      if (pick.length > 0) {
+        console.log(`🔍 POST_HARVEST_LEADS_SAMPLE: Showing details for first ${Math.min(3, pick.length)} leads:`);
+        for (let i = 0; i < Math.min(3, pick.length); i++) {
+          console.log(`🔍 POST_HARVEST_LEADS_SAMPLE: Lead #${i+1} - ID: ${pick[i].id}, LinkedIn URL: ${pick[i].fields[LINKEDIN_URL_FIELD] ? 'Present' : 'Missing'}`);
+        }
       }
 
       // Generate a proper run ID using runIdService
