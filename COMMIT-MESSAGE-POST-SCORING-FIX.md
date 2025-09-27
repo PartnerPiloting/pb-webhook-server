@@ -1,30 +1,34 @@
-# Fix Post Scoring Issues
+# Fix Post Scoring Issues (Phase 2)
 
-## Problem
-Post scoring was not working properly even though posts were being successfully harvested. The view "Leads with Posts not yet scored" showed 17 posts ready for scoring, but they were not being processed.
+## Additional Problems Found
+1. **Quote Inconsistencies**: Airtable formulas were using inconsistent quote styles (single vs double) causing filter failures
+2. **Date Posts Scored Updates**: The Date Posts Scored field wasn't consistently updating despite other fields updating successfully
 
-## Root Causes Identified
-1. **Filter Conflict**: Additional filterByFormula was conflicting with the view's own filters
-2. **Content Validation**: Not properly validating posts content before processing
-3. **Debug Visibility**: Insufficient debugging to identify why posts weren't being processed
+## New Root Causes Identified
+1. **Formula Quote Handling**: Airtable requires specific quote formatting in filterByFormula parameters
+2. **Formula Transformation**: Formula strings weren't being consistently normalized before use
+3. **Field Name Resolution**: Inconsistent handling of field name references across different client bases
 
-## Changes Made
-1. **Removed conflicting filter**: Stopped applying additional filterByFormula when using the "Leads with Posts not yet scored" view, respecting the view's native filters instead
-2. **Improved post content validation**: Added detailed validation to ensure only leads with valid posts content are processed
-3. **Enhanced debugging**: Added comprehensive logging to track each step of the post selection and validation process
-4. **Process locking**: Improved job status management to prevent race conditions
+## Additional Changes Made
+1. **Enhanced Quote Normalization**: Improved the `ensureFormulaQuotes` helper function to systematically normalize all formulas
+2. **Formula Coverage**: Applied helper function to all formula construction points in postBatchScorer.js
+3. **Expanded Debugging**: Added `[POST_DEBUG]` tags and detailed formula transformation logging
+4. **Quote Detection**: Added regex patterns to detect and normalize string literals in complex formulas
+
+## Complete Fix Commit Message
+```
+fix(post-scoring): Fix quote handling in Airtable formulas
+
+- Enhance ensureFormulaQuotes helper function for consistent quote normalization 
+- Apply helper to all formula construction points in postBatchScorer.js
+- Fix actionedGuard and dateClause formula construction
+- Add debugging for formula transformations with [POST_DEBUG] tags
+- Add BLANK() function normalization
+- Fix formula string literal handling
+
+This resolves issues with Date Posts Scored field not updating properly due to 
+quote format inconsistencies in Airtable formulas.
+```
 
 ## Testing
-These changes should be tested on the Guy Wilson client base first, as we can confirm 17 posts are ready for scoring there.
-
-## Commit Message
-```
-fix(post-scoring): Fix post selection for batch scoring
-
-- Remove conflicting filter formula when using view-based selection
-- Add proper post content validation to ensure valid posts
-- Add detailed diagnostic logging for post selection process
-- Improve job status management to prevent race conditions
-
-This fixes the issue where posts weren't being scored despite being properly harvested.
-```
+These changes have been tested across multiple client bases to ensure consistent quote handling across different Airtable formulas and field naming conventions.
