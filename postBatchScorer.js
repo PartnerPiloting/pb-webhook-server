@@ -422,36 +422,41 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         
         clientResult.status = clientResult.errors === 0 ? 'success' : 'completed_with_errors';
         
-        // Update client metrics for post scoring in the Client Run Results table
-        try {
-            // Load airtableService dynamically to avoid circular dependencies
-            const airtableService = require('./services/airtableService');
-            
-            // Generate run ID based on current date if not provided
-            const timestamp = new Date();
-            const datePart = `${timestamp.getFullYear().toString().slice(2)}${(timestamp.getMonth() + 1).toString().padStart(2, '0')}${timestamp.getDate().toString().padStart(2, '0')}`;
-            const timePart = `${timestamp.getHours().toString().padStart(2, '0')}${timestamp.getMinutes().toString().padStart(2, '0')}${timestamp.getSeconds().toString().padStart(2, '0')}`;
-            const runId = options.jobId || `${datePart}-${timePart}`;
-            
-            logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
-            
-            // Get standardized run ID with client info
-            const runIdService = require('./services/runIdService');
-            const standardizedRunId = runIdService.normalizeRunId(runId, client.clientId);
-            
-            // Update metrics in the Client Run Results table
-            await airtableService.updateClientRun(standardizedRunId, client.clientId, {
-                'Posts Examined for Scoring': clientResult.postsProcessed,
-                'Posts Successfully Scored': clientResult.postsScored,
-                'Status': clientResult.status,
-                'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped.`
-            });
-            
-            logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
-        } catch (metricsError) {
-            logger.error(`Failed to update metrics: ${metricsError.message}`);
-            console.error(`[POST_METRICS_ERROR] Failed to update metrics for ${client.clientId}: ${metricsError.message}`);
-            // Continue execution even if metrics update fails
+        // Update client metrics for post scoring in the Client Run Results table - BUT ONLY if parentRunId is provided
+        // This ensures we only try to update metrics in production flows (via Smart Resume) and skip for standalone debugging runs
+        if (options.parentRunId) {
+            try {
+                // Load airtableService dynamically to avoid circular dependencies
+                const airtableService = require('./services/airtableService');
+                
+                // Use the provided parent run ID or generate one based on current date
+                const timestamp = new Date();
+                const datePart = `${timestamp.getFullYear().toString().slice(2)}${(timestamp.getMonth() + 1).toString().padStart(2, '0')}${timestamp.getDate().toString().padStart(2, '0')}`;
+                const timePart = `${timestamp.getHours().toString().padStart(2, '0')}${timestamp.getMinutes().toString().padStart(2, '0')}${timestamp.getSeconds().toString().padStart(2, '0')}`;
+                const runId = options.parentRunId || options.jobId || `${datePart}-${timePart}`;
+                
+                logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
+                
+                // Get standardized run ID with client info
+                const runIdService = require('./services/runIdService');
+                const standardizedRunId = runIdService.normalizeRunId(runId, client.clientId);
+                
+                // Update metrics in the Client Run Results table
+                await airtableService.updateClientRun(standardizedRunId, client.clientId, {
+                    'Posts Examined for Scoring': clientResult.postsProcessed,
+                    'Posts Successfully Scored': clientResult.postsScored,
+                    'Status': clientResult.status,
+                    'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped.`
+                });
+                
+                logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
+            } catch (metricsError) {
+                logger.error(`Failed to update metrics: ${metricsError.message}`);
+                console.error(`[POST_METRICS_ERROR] Failed to update metrics for ${client.clientId}: ${metricsError.message}`);
+                // Continue execution even if metrics update fails
+            }
+        } else {
+            logger.info(`Skipping metrics update for standalone run (no parentRunId provided)`);
         }
         
     } catch (error) {
@@ -653,12 +658,19 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     // Add a count query to get the total number of leads with unscored posts
     try {
         const formula = ensureFormulaQuotes(`AND({${config.fields.postsContent}} != '', {${config.fields.dateScored}} = BLANK())`);
+        
+        // Get a sample record first to check field names (case sensitivity)
+        const sampleRec = await clientBase(config.leadsTableName).select({ maxRecords: 1 }).firstPage();
+        const hasUpperCaseIdField = sampleRec && sampleRec[0] && Object.keys(sampleRec[0].fields || {}).includes('ID');
+        const hasLowerCaseIdField = sampleRec && sampleRec[0] && Object.keys(sampleRec[0].fields || {}).includes('id');
+        
+        // Use the first available ID field, or don't specify fields at all if neither exists
         const countQuery = await clientBase(config.leadsTableName).select({
-            fields: ['ID'],
+            fields: hasUpperCaseIdField ? ['ID'] : (hasLowerCaseIdField ? ['id'] : []),
             filterByFormula: formula
         }).all();
         
-        console.log(`[POST_DEBUG] TOTAL UNSCORED LEADS: ${countQuery.length} leads have posts content but no Date Posts Scored`);
+        if (VERBOSE) console.log(`[POST_DEBUG] TOTAL UNSCORED LEADS: ${countQuery.length} leads have posts content but no Date Posts Scored`);
         
         // Check limit constraints
         if (limit && limit < countQuery.length) {
