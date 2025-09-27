@@ -48,23 +48,12 @@ async function pickLeadBatch(base, batchSize) {
   try {
     console.log(`🔍 LEAD_SELECTION_DIAG: Running diagnostic counts on lead criteria...`);
     
-    // Get a sample record first to check field names (case sensitivity)
-    let idFieldName = 'id';
-    try {
-      const sampleRec = await base(LEADS_TABLE).select({ maxRecords: 1 }).firstPage();
-      if (sampleRec && sampleRec[0]) {
-        const fieldNames = Object.keys(sampleRec[0].fields || {});
-        if (fieldNames.includes('ID')) idFieldName = 'ID';
-        else if (fieldNames.includes('id')) idFieldName = 'id';
-      }
-    } catch (fieldError) {
-      console.log(`🔍 FIELD_CHECK: Error checking field names: ${fieldError.message}`);
-    }
+    // Remove field name detection since we're not using id field anymore
     
     // Check LinkedIn URL field presence
     const urlRecords = await base(LEADS_TABLE).select({
       filterByFormula: `{${LINKEDIN_URL_FIELD}} != ''`,
-      fields: [idFieldName],
+      // Don't request any fields - we only need count
       maxRecords: 1
     }).firstPage();
     console.log(`🔍 LEAD_SELECTION_DIAG: Leads with LinkedIn URLs: ${urlRecords.length ? 'YES' : 'NONE'}`);
@@ -79,7 +68,7 @@ async function pickLeadBatch(base, batchSize) {
         
         const statusRecords = await base(LEADS_TABLE).select({
           filterByFormula: filter,
-          fields: [idFieldName], // Use detected field name
+          // No fields needed for count
           maxRecords: 100
         }).firstPage();
         
@@ -93,7 +82,7 @@ async function pickLeadBatch(base, batchSize) {
     // Check Posts Actioned field
     const actionedRecords = await base(LEADS_TABLE).select({
       filterByFormula: `OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK())`,
-      fields: [idFieldName], // Use detected field name
+      // No fields needed for count
       maxRecords: 1
     }).firstPage();
     console.log(`🔍 LEAD_SELECTION_DIAG: Leads with Posts Actioned empty/0: ${actionedRecords.length ? 'YES' : 'NONE'}`);
@@ -101,7 +90,7 @@ async function pickLeadBatch(base, batchSize) {
     // Check Date Posts Scored field
     const scoredRecords = await base(LEADS_TABLE).select({
       filterByFormula: `{${DATE_POSTS_SCORED_FIELD}} = BLANK()`,
-      fields: [idFieldName], // Use detected field name
+      // No fields needed for count
       maxRecords: 1
     }).firstPage();
     console.log(`🔍 LEAD_SELECTION_DIAG: Leads not yet scored (Date Posts Scored empty): ${scoredRecords.length ? 'YES' : 'NONE'}`);
@@ -507,21 +496,10 @@ async function processClientHandler(req, res) {
           console.log(`🔍 CLIENT_DEBUG: Client ${clientId} base ID: ${clientInfo.airtableBaseId}`);
           
           // Query total number of leads in the base for context
-          // Get a sample record first to check field names (case sensitivity)
-          let idFieldName = 'id';
-          try {
-            const sampleRec = await base(LEADS_TABLE).select({ maxRecords: 1 }).firstPage();
-            if (sampleRec && sampleRec[0]) {
-              const fieldNames = Object.keys(sampleRec[0].fields || {});
-              if (fieldNames.includes('ID')) idFieldName = 'ID';
-              else if (fieldNames.includes('id')) idFieldName = 'id';
-            }
-          } catch (fieldError) {
-            console.log(`🔍 FIELD_CHECK: Error checking field names: ${fieldError.message}`);
-          }
+          // Remove field name check as we don't need specific fields
           
           const allLeads = await base(LEADS_TABLE).select({
-            fields: [idFieldName], // Use detected field name
+            // No fields needed - just checking if records exist
             maxRecords: 1
           }).firstPage();
           
@@ -542,22 +520,11 @@ async function processClientHandler(req, res) {
         
         // Try a quick diagnostic query with minimal criteria
         try {
-          // Get a sample record first to check field names (case sensitivity)
-          let idFieldName = 'id';
-          try {
-            const sampleRec = await base(LEADS_TABLE).select({ maxRecords: 1 }).firstPage();
-            if (sampleRec && sampleRec[0]) {
-              const fieldNames = Object.keys(sampleRec[0].fields || {});
-              if (fieldNames.includes('ID')) idFieldName = 'ID';
-              else if (fieldNames.includes('id')) idFieldName = 'id';
-            }
-          } catch (fieldError) {
-            console.log(`🔍 FIELD_CHECK: Error checking field names: ${fieldError.message}`);
-          }
+          // Remove field name check as we don't need to request id field
           
           const anyLeadsWithUrl = await base(LEADS_TABLE).select({
             filterByFormula: `{${LINKEDIN_URL_FIELD}} != ''`,
-            fields: [idFieldName, STATUS_FIELD, POSTS_ACTIONED_FIELD, DATE_POSTS_SCORED_FIELD],
+            fields: [STATUS_FIELD, POSTS_ACTIONED_FIELD, DATE_POSTS_SCORED_FIELD],
             maxRecords: 5
           }).firstPage();
           

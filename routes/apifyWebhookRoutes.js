@@ -224,19 +224,29 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
           console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${updatedCount}`);
           console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
           
-          // Get the centralized metrics update function
-          const { updateClientRunMetrics } = require('../services/apifyRunsService');
+          // Check if this is part of an orchestrated flow by looking for parentRunId marker
+          // For webhooks, we can check if the run was initiated as part of an orchestrated flow
+          const apifyRunsService = require('../services/apifyRunsService');
+          const runDetails = await apifyRunsService.getApifyRun(runId).catch(() => null);
+          const isOrchestrated = runDetails?.meta?.parentRunId || false;
           
-          // Update metrics using the centralized function with custom values
-          // that preserve the existing logic specific to webhook handling
-          await updateClientRunMetrics(runId, clientId, {
-            postsCount: updatedCount,  // Use the max of current and new
-            profilesCount: Math.max(profilesSubmittedCount, posts.length)  // Use the max
-          });
-          
-          console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId}:`);
-          console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
-          console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
+          if (isOrchestrated) {
+            // Get the centralized metrics update function
+            const { updateClientRunMetrics } = require('../services/apifyRunsService');
+            
+            // Update metrics using the centralized function with custom values
+            // that preserve the existing logic specific to webhook handling
+            await updateClientRunMetrics(runId, clientId, {
+              postsCount: updatedCount,  // Use the max of current and new
+              profilesCount: Math.max(profilesSubmittedCount, posts.length)  // Use the max
+            });
+            
+            console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId}:`);
+            console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
+            console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
+          } else {
+            console.log(`[ApifyWebhook] Skipping metrics update for standalone run (no parentRunId found)`);
+          }
         } else {
           // ERROR: Record not found - this should have been created at process kickoff
           const errorMsg = `ERROR: Client run record not found for ${clientSuffixedRunId} (${clientId})`;

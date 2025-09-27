@@ -329,19 +329,27 @@ router.post('/api/apify/run', async (req, res) => {
         }
         result = await syncPBPostsToAirtable(posts, clientBase || null);
         
-        // Update the client run record with post harvesting metrics using the centralized function
-        try {
-          const { updateClientRunMetrics } = require('../services/apifyRunsService');
-          
-          // Update metrics using the centralized function
-          await updateClientRunMetrics(run.id, clientId, {
-            postsCount: posts.length,
-            profilesCount: targetUrls.length
-          });
-          
-        } catch (metricsError) {
-          console.error(`[ApifyControl] Failed to update post harvesting metrics: ${metricsError.message}`);
-          // Continue execution even if metrics update fails
+        // Update metrics ONLY if we're in an orchestrated run (not standalone)
+        // Check if this is part of an orchestrated flow by looking for parent run ID
+        const isOrchestrated = req.query.parentRunId || req.body.parentRunId;
+        
+        if (isOrchestrated) {
+          // Update the client run record with post harvesting metrics using the centralized function
+          try {
+            const { updateClientRunMetrics } = require('../services/apifyRunsService');
+            
+            // Update metrics using the centralized function
+            await updateClientRunMetrics(run.id, clientId, {
+              postsCount: posts.length,
+              profilesCount: targetUrls.length
+            });
+            
+          } catch (metricsError) {
+            console.error(`[ApifyControl] Failed to update post harvesting metrics: ${metricsError.message}`);
+            // Continue execution even if metrics update fails
+          }
+        } else {
+          console.log(`[ApifyControl] Skipping metrics update for standalone run (no parentRunId provided)`);
         }
       }
       return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, datasetId, counts: { items: (items||[]).length, posts: posts.length }, result });
