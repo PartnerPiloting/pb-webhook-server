@@ -1,10 +1,10 @@
 // =====================================================
-// TEMPORARY TEST VERSION - JOB RUNNING BYPASS ENABLED
-// This version bypasses job running checks to test fixes
-// for Airtable formula quotes and Date Posts Scored updates
-// =====================================================
-
-// batchScorer.js - MULTI-TENANT SUPPORT: Added client iteration, per-client logging, error isolation
+// PERMANENT SOLUTION - JOB RUNNING BYPASS ENABLED
+// This version permanently bypasses job running checks
+// to avoid issues with job locking in the client service.
+// This is the chosen permanent solution rather than
+// replacing it with an alternative approach.
+// ===================================================== // batchScorer.js - MULTI-TENANT SUPPORT: Added client iteration, per-client logging, error isolation
 
 require("dotenv").config(); 
 
@@ -31,7 +31,7 @@ let POST_BATCH_SCORER_GEMINI_MODEL_ID;
 
 /* ---------- ENV CONFIGURATION for Post Batch Scorer Operations ----------- */
 const CHUNK_SIZE = Math.max(1, parseInt(process.env.POST_BATCH_CHUNK_SIZE || "10", 10));
-const VERBOSE = process.env.VERBOSE_POST_SCORING !== "false"; // default = true
+const VERBOSE = process.env.VERBOSE_POST_SCORING === "true"; // default = false - only show debug logs when explicitly enabled
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10));
 
 /* =================================================================
@@ -218,29 +218,42 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     };
     
     // Special debugging for Guy Wilson
-    if (client.clientId === 'Guy-Wilson') {
+    if (client.clientId === 'Guy-Wilson' && process.env.VERBOSE_POST_SCORING === "true") {
         console.log(`[POST_DEBUG] 🚨🚨🚨 SPECIAL FOCUS: Starting post scoring process for Guy Wilson`);
     }
     
-    // TEMPORARY BYPASS - Skip job running check for testing purposes
-    console.log(`[POST_DEBUG] 🔓 TEMPORARY BYPASS: Skipping job running check for testing`);
+    // PERMANENT BYPASS - Skip job running check as we're now permanently bypassing the lock
+    if (process.env.VERBOSE_POST_SCORING === "true") {
+        console.log(`[POST_DEBUG] Using permanent job lock bypass`);
+    }
     
     try {
         // Force job status to RUNNING without checking if it's already running
         const jobId = options.jobId || `job_post_scoring_bypass_${Date.now()}`;
-        console.log(`[POST_DEBUG] 🔄 Setting job status to RUNNING (bypass mode) with ID: ${jobId}`);
+        
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] Setting job status to RUNNING with ID: ${jobId}`);
+        }
         
         try {
             // First try to reset any existing job
             await clientService.setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', 'force_reset_for_testing');
-            console.log(`[POST_DEBUG] 🧹 Forcibly reset any existing job status`);
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] Forcibly reset any existing job status`);
+            }
         } catch (resetError) {
-            console.log(`[POST_DEBUG] ⚠️ Could not reset existing job: ${resetError.message}`);
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] Could not reset existing job: ${resetError.message}`);
+            }
         }
         
         // Then set new job status
         await clientService.setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
-        console.log(`[POST_DEBUG] ✅ Successfully set job status to RUNNING`);
+        
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] Successfully set job status to RUNNING`);
+        }
+        
         logger.setup(`Set job status to RUNNING for client ${client.clientId}`);
     } catch (jobError) {
         logger.warn(`Could not check/set job status: ${jobError.message}`);
@@ -273,10 +286,14 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             if (sampleRec && sampleRec[0]) {
                 const fieldNames = Object.keys(sampleRec[0].fields || {});
                 hasSkipReasonField = fieldNames.includes('Posts Skip Reason');
-                console.log(`[POST_DEBUG] Field check for 'Posts Skip Reason': ${hasSkipReasonField ? '✅ exists' : '❌ missing'}`);
+                if (process.env.VERBOSE_POST_SCORING === "true") {
+                    console.log(`[POST_DEBUG] Field check for 'Posts Skip Reason': ${hasSkipReasonField ? 'exists' : 'missing'}`);
+                }
             }
         } catch (fieldCheckErr) {
-            console.log(`[POST_DEBUG] Error checking for field existence: ${fieldCheckErr.message}`);
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] Error checking for field existence: ${fieldCheckErr.message}`);
+            }
             hasSkipReasonField = false; // Be safe and assume it doesn't exist
         }
         
@@ -284,44 +301,54 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         if (hasSkipReasonField) {
             config.fields.skipReason = 'Posts Skip Reason';
         } else {
-            console.log(`[POST_DEBUG] 'Posts Skip Reason' field not found in this client base, skipping updates to this field`);
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] 'Posts Skip Reason' field not found in this client base, skipping updates to this field`);
+            }
             // Set to null to indicate field doesn't exist (different from undefined)
             config.fields.skipReason = null;
         }
         
-        // Get leads with posts to be scored
-        console.log(`[POST_DEBUG] 🔍 CLIENT ${client.clientId} (${client.clientName}): Starting to look for leads with posts to be scored`);
+        // Get leads with posts to be scored - reduce debug logging
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] CLIENT ${client.clientId}: Starting to look for leads with posts to be scored`);
+        }
         logger.setup(`Looking for leads with posts to score for client ${client.clientId} (${client.clientName})`);
         
-        // Special debug for Guy Wilson client
-        if (client.clientId === 'Guy-Wilson') {
-            console.log(`[POST_DEBUG] 🚨 SPECIAL FOCUS: Processing Guy Wilson client`);
+        // Special debug for Guy Wilson client - only in verbose mode
+        if (client.clientId === 'Guy-Wilson' && process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] SPECIAL FOCUS: Processing Guy Wilson client`);
         }
         
         const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, options);
         
         logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
-        console.log(`[POST_DEBUG] 🔢 CLIENT ${client.clientId} (${client.clientName}): Found ${leadsToProcess.length} leads with posts to score`);
+        
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] 🔢 CLIENT ${client.clientId} (${client.clientName}): Found ${leadsToProcess.length} leads with posts to score`);
+        }
         
         // Special debug for Guy Wilson client
-        if (client.clientId === 'Guy-Wilson') {
+        if (client.clientId === 'Guy-Wilson' && process.env.VERBOSE_POST_SCORING === "true") {
             console.log(`[POST_DEBUG] 🚨 SPECIAL FOCUS: Guy Wilson has ${leadsToProcess.length} leads for post scoring`);
         }
         
         if (leadsToProcess.length === 0) {
             // No leads to process, complete with success but 0 scored
             logger.summary(`No posts to score for client ${client.clientId} (${client.clientName})`);
-            console.log(`[POST_DEBUG] ℹ️ CLIENT ${client.clientId} (${client.clientName}): No leads with posts to score found`);
+            
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] ℹ️ CLIENT ${client.clientId} (${client.clientName}): No leads with posts to score found`);
+            }
             
             // Special debug for Guy Wilson client
-            if (client.clientId === 'Guy-Wilson') {
+            if (client.clientId === 'Guy-Wilson' && process.env.VERBOSE_POST_SCORING === "true") {
                 console.log(`[POST_DEBUG] 🚨🚨 SPECIAL FOCUS: Guy Wilson has NO leads with posts to score. Check if posts are being properly harvested.`);
             }
             
             clientResult.status = 'success';
             clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
             return clientResult;
-        } else {
+        } else if (process.env.VERBOSE_POST_SCORING === "true") {
             console.log(`[POST_DEBUG] 📋 CLIENT ${client.clientId}: Sample lead fields:`, Object.keys(leadsToProcess[0].fields || {}));
             
             // Log more details about first few leads for debugging
@@ -395,6 +422,38 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         
         clientResult.status = clientResult.errors === 0 ? 'success' : 'completed_with_errors';
         
+        // Update client metrics for post scoring in the Client Run Results table
+        try {
+            // Load airtableService dynamically to avoid circular dependencies
+            const airtableService = require('./services/airtableService');
+            
+            // Generate run ID based on current date if not provided
+            const timestamp = new Date();
+            const datePart = `${timestamp.getFullYear().toString().slice(2)}${(timestamp.getMonth() + 1).toString().padStart(2, '0')}${timestamp.getDate().toString().padStart(2, '0')}`;
+            const timePart = `${timestamp.getHours().toString().padStart(2, '0')}${timestamp.getMinutes().toString().padStart(2, '0')}${timestamp.getSeconds().toString().padStart(2, '0')}`;
+            const runId = options.jobId || `${datePart}-${timePart}`;
+            
+            logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
+            
+            // Get standardized run ID with client info
+            const runIdService = require('./services/runIdService');
+            const standardizedRunId = runIdService.normalizeRunId(runId, client.clientId);
+            
+            // Update metrics in the Client Run Results table
+            await airtableService.updateClientRun(standardizedRunId, client.clientId, {
+                'Posts Examined for Scoring': clientResult.postsProcessed,
+                'Posts Successfully Scored': clientResult.postsScored,
+                'Status': clientResult.status,
+                'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped.`
+            });
+            
+            logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
+        } catch (metricsError) {
+            logger.error(`Failed to update metrics: ${metricsError.message}`);
+            console.error(`[POST_METRICS_ERROR] Failed to update metrics for ${client.clientId}: ${metricsError.message}`);
+            // Continue execution even if metrics update fails
+        }
+        
     } catch (error) {
         clientResult.status = 'failed';
         clientResult.errors++;
@@ -402,7 +461,43 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         logger.error(`Failed to process client ${client.clientId}: ${error.message}`);
     }
     
+    // Calculate duration
     clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
+    
+    // Update job status in client service
+    try {
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] Setting job status to COMPLETED for client ${client.clientId}`);
+        }
+        // Use the jobId from options or the one created earlier in the function
+        const jobId = options.jobId || `job_post_scoring_bypass_${Date.now()}`;
+        
+        // Update job status with metrics
+        await clientService.setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', jobId, {
+            duration: clientResult.duration,
+            count: clientResult.postsScored
+        });
+        
+        logger.summary(`Set job status to COMPLETED with duration=${clientResult.duration}s, count=${clientResult.postsScored}`);
+        
+        // Now also update aggregate metrics
+        try {
+            // Load airtableService dynamically to avoid circular dependencies
+            const airtableService = require('./services/airtableService');
+            
+            // Update aggregate metrics across all clients for this job
+            await airtableService.updateAggregateMetrics(jobId);
+            
+            logger.summary(`Successfully updated aggregate metrics for post scoring job ${jobId}`);
+        } catch (aggregateError) {
+            logger.warn(`Could not update aggregate metrics: ${aggregateError.message}`);
+            console.error(`[POST_METRICS_ERROR] Failed to update aggregate metrics: ${aggregateError.message}`);
+        }
+    } catch (jobError) {
+        logger.warn(`Could not update job status: ${jobError.message}`);
+        console.error(`Error updating job status: ${jobError.message}`);
+    }
+    
     return clientResult;
 }
 
@@ -428,59 +523,63 @@ async function safeLeadUpdate(clientBase, tableName, recordId, fields, skipReaso
         console.log(`[POST_DEBUG] Error retrieving lead details: ${error.message}`);
     }
 
-    console.log(`[POST_DEBUG] 🔄 Updating lead: ${recordId} (${leadName}) - LinkedIn URL: ${profileUrl}`);
-    console.log(`[POST_DEBUG][AIRTABLE-UPDATE] 🔄 Updating record ${recordId} in table ${tableName}`);
-    console.log(`[POST_DEBUG] Fields being updated: ${JSON.stringify(fields, null, 2)}`);
-    console.log(`[POST_DEBUG][AIRTABLE-UPDATE] Fields to update: ${JSON.stringify(Object.keys(fields))}`);
-    
-    // Check for Date Posts Scored field specifically
-    if (fields['Date Posts Scored']) {
-        console.log(`[POST_DEBUG] ✅ Setting Date Posts Scored to: ${fields['Date Posts Scored']} for lead ${recordId} (${profileUrl})`);
-        console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ Setting Date Posts Scored to: ${fields['Date Posts Scored']}`);
-    } else {
-        console.log(`[POST_DEBUG] ❌ WARNING: Date Posts Scored field not present in update for lead ${recordId} (${profileUrl})!`);
-        console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ❌ WARNING: Date Posts Scored field not present in update!`);
+    // Reduced debug logging
+    if (process.env.VERBOSE_POST_SCORING === "true") {
+        console.log(`[POST_DEBUG] 🔄 Updating lead: ${recordId} (${leadName}) - LinkedIn URL: ${profileUrl}`);
+        console.log(`[POST_DEBUG] Fields to update: ${JSON.stringify(Object.keys(fields))}`);
+        
+        // Check for Date Posts Scored field specifically
+        if (fields['Date Posts Scored']) {
+            console.log(`[POST_DEBUG] Setting Date Posts Scored to: ${fields['Date Posts Scored']} for lead ${recordId}`);
+        } else {
+            console.log(`[POST_DEBUG] WARNING: Date Posts Scored field not present in update for lead ${recordId}!`);
+        }
     }
     
     try {
         const result = await clientBase(tableName).update(recordId, fields);
-        console.log(`[POST_DEBUG] ✅ SUCCESS: Updated lead ${recordId} (${profileUrl}) with fields: ${Object.keys(fields).join(', ')}`);
-        console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ SUCCESS: Updated record ${recordId}`);
         
-        // Verify the result
-        if (Array.isArray(result) && result.length > 0) {
-            console.log(`[POST_DEBUG] ✅ Verification: Lead updated successfully with ID ${result[0].id}`);
-            console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ Verification: Record updated with ID ${result[0].id}`);
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] SUCCESS: Updated lead ${recordId} with fields: ${Object.keys(fields).join(', ')}`);
             
-            // Double-check if Date Posts Scored is actually set in the result
-            if (result[0].fields && result[0].fields['Date Posts Scored']) {
-                console.log(`[POST_DEBUG] ✅ CONFIRMED: Date Posts Scored field is set to ${result[0].fields['Date Posts Scored']} in the response`);
-            } else {
-                console.log(`[POST_DEBUG] ⚠️ POTENTIAL ISSUE: Date Posts Scored field not present in the response!`);
+            // Verify the result
+            if (Array.isArray(result) && result.length > 0) {
+                // Double-check if Date Posts Scored is actually set in the result
+                if (result[0].fields && result[0].fields['Date Posts Scored']) {
+                    console.log(`[POST_DEBUG] CONFIRMED: Date Posts Scored field is set to ${result[0].fields['Date Posts Scored']}`);
+                }
             }
-        } else {
-            console.log(`[POST_DEBUG] ⚠️ Unusual: Update for lead ${recordId} (${profileUrl}) succeeded but no record returned`);
-            console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ⚠️ Unusual: Update succeeded but no record returned`);
         }
         
         return result;
     } catch (err) {
-        console.log(`[POST_DEBUG] ❌ ERROR updating lead ${recordId} (${profileUrl}): ${err.message}`);
-        console.error(`[POST_DEBUG][AIRTABLE-UPDATE] ❌ ERROR: ${err.message}`);
         const msg = (err && err.message) || '';
-        if (skipReasonFieldName && msg.includes(skipReasonFieldName)) {
-            console.log(`[POST_DEBUG] 🔄 Retrying without ${skipReasonFieldName} field for lead ${recordId} (${profileUrl})`);
-            console.log(`[POST_DEBUG][AIRTABLE-UPDATE] 🔄 Retrying without ${skipReasonFieldName} field`);
+        
+        // Log error but reduce verbosity
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] ERROR updating lead ${recordId}: ${err.message}`);
+        }
+        
+        // Handle missing field gracefully (especially skipReason)
+        if (skipReasonFieldName && (msg.includes(skipReasonFieldName) || msg.includes(`Unknown field name`))) {
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] Retrying without ${skipReasonFieldName} field for lead ${recordId}`);
+            }
+            
             // Remove the skip reason field and retry once
             const cloned = { ...fields };
             delete cloned[skipReasonFieldName];
+            
             try {
                 const retryResult = await clientBase(tableName).update(recordId, cloned);
-                console.log(`[POST_DEBUG] ✅ RETRY SUCCESS: Updated lead ${recordId} (${profileUrl}) without ${skipReasonFieldName}`);
-                console.log(`[POST_DEBUG][AIRTABLE-UPDATE] ✅ RETRY SUCCESS: Updated record ${recordId} without ${skipReasonFieldName}`);
+                if (process.env.VERBOSE_POST_SCORING === "true") {
+                    console.log(`[POST_DEBUG] RETRY SUCCESS: Updated lead ${recordId} without ${skipReasonFieldName} field`);
+                }
                 return retryResult;
             } catch (e2) {
-                console.error(`[POST_DEBUG][AIRTABLE-UPDATE] ❌ RETRY ERROR: ${e2.message}`);
+                if (process.env.VERBOSE_POST_SCORING === "true") {
+                    console.error(`[POST_DEBUG] RETRY ERROR: ${e2.message}`);
+                }
                 // Re-throw original context with note
                 throw new Error(`${msg} (and retry without '${skipReasonFieldName}' also failed: ${e2.message})`);
             }
@@ -518,10 +617,10 @@ function ensureFormulaQuotes(formula) {
         .replace(/ = *''/g, " = ''")
         // Fix any inconsistent BLANK() function syntax
         .replace(/BLANK\(\)/g, "BLANK()")
-        // Log the transformation if there was a change
+        // Log the transformation if there was a change (only in verbose mode)
         .replace(/(.*?)(["'])(.+?)\2(.*)/g, (match, before, quote, content, after) => {
             const fixed = before + "'" + content + "'" + after;
-            if (match !== fixed) {
+            if (match !== fixed && process.env.VERBOSE_POST_SCORING === "true") {
                 console.log(`[POST_DEBUG] Fixed quotes in formula: "${match}" → "${fixed}"`);
             }
             return fixed;
@@ -537,17 +636,19 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         limit: limit || 'unlimited'
     });
     
-    // Display the full environment variables that might affect post scoring
-    console.log(`[POST_DEBUG] Environment variables:`);
-    console.log(`[POST_DEBUG] - POST_SCORING_LIMIT: ${process.env.POST_SCORING_LIMIT || 'not set'}`);
-    console.log(`[POST_DEBUG] - VERBOSE_POST_SCORING: ${process.env.VERBOSE_POST_SCORING || 'not set'}`);
-    console.log(`[POST_DEBUG] - OVERRIDE_POSTS_TABLE_NAME: ${process.env.OVERRIDE_POSTS_TABLE_NAME || 'not set'}`);
-    console.log(`[POST_DEBUG] - GEMINI_TIMEOUT_MS: ${process.env.GEMINI_TIMEOUT_MS || 'not set'}`);
-    console.log(`[POST_DEBUG] - POST_BATCH_CHUNK_SIZE: ${process.env.POST_BATCH_CHUNK_SIZE || 'not set'}`);
-    
-    // Check the client base connection
-    console.log(`[POST_DEBUG] Client base object type: ${typeof clientBase}`);
-    console.log(`[POST_DEBUG] Client base has Leads table: ${typeof clientBase(config.leadsTableName) === 'object'}`);
+    // Display the full environment variables that might affect post scoring if in verbose mode
+    if (process.env.VERBOSE_POST_SCORING === "true") {
+        console.log(`[POST_DEBUG] Environment variables:`);
+        console.log(`[POST_DEBUG] - POST_SCORING_LIMIT: ${process.env.POST_SCORING_LIMIT || 'not set'}`);
+        console.log(`[POST_DEBUG] - VERBOSE_POST_SCORING: ${process.env.VERBOSE_POST_SCORING || 'not set'}`);
+        console.log(`[POST_DEBUG] - OVERRIDE_POSTS_TABLE_NAME: ${process.env.OVERRIDE_POSTS_TABLE_NAME || 'not set'}`);
+        console.log(`[POST_DEBUG] - GEMINI_TIMEOUT_MS: ${process.env.GEMINI_TIMEOUT_MS || 'not set'}`);
+        console.log(`[POST_DEBUG] - POST_BATCH_CHUNK_SIZE: ${process.env.POST_BATCH_CHUNK_SIZE || 'not set'}`);
+        
+        // Check the client base connection
+        console.log(`[POST_DEBUG] Client base object type: ${typeof clientBase}`);
+        console.log(`[POST_DEBUG] Client base has Leads table: ${typeof clientBase(config.leadsTableName) === 'object'}`);
+    }
     
     // Add a count query to get the total number of leads with unscored posts
     try {
@@ -1315,18 +1416,24 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             const profileUrl = leadRecord.fields[config.fields.linkedinUrl] || 'unknown';
             const dateScoredValue = new Date().toISOString();
             
-            console.log(`[POST_DEBUG] ⚠️ About to update lead ${leadRecord.id} (${profileUrl}) with error result`);
-            console.log(`[POST_DEBUG] ⚠️ Date Posts Scored value being set: ${dateScoredValue}`);
-            console.log(`[POST_DEBUG] ⚠️ AI Error Category: ${aiErrorCategory}`);
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] About to update lead ${leadRecord.id} with error result`);
+                console.log(`[POST_DEBUG] AI Error Category: ${aiErrorCategory}`);
+            }
             
             const updateFields = {
                 [config.fields.aiEvaluation]: `ERROR during AI post scoring: ${JSON.stringify(errorDetails, null, 2)}`,
-                [config.fields.dateScored]: dateScoredValue,
-                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+                [config.fields.dateScored]: dateScoredValue
             };
             
-            console.log(`[POST_DEBUG] ⚠️ Fields being updated in error case: ${JSON.stringify(Object.keys(updateFields))}`);
-            console.log(`[POST_DEBUG] ⚠️ dateScored field name: ${config.fields.dateScored}`);
+            // Only add skipReason if field exists and we're marking skips
+            if (options.markSkips !== false && config.fields.skipReason) {
+                updateFields[config.fields.skipReason] = '';
+            }
+            
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] Fields being updated in error case: ${JSON.stringify(Object.keys(updateFields))}`);
+            }
             
             const result = await safeLeadUpdate(
                 clientBase,
@@ -1336,20 +1443,20 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
                 options.markSkips !== false ? config.fields.skipReason : null
             );
             
-            // After update verification
-            console.log(`[POST_DEBUG] ✅ Post-update verification for lead with error ${leadRecord.id} (${profileUrl})`);
-            try {
-                const updatedLead = await clientBase(config.leadsTableName).find(leadRecord.id);
-                if (updatedLead && updatedLead.fields) {
-                    const dateScored = updatedLead.fields[config.fields.dateScored];
-                    if (dateScored) {
-                        console.log(`[POST_DEBUG] ✅ CONFIRMED: Date Posts Scored is now set to ${dateScored} for error case`);
-                    } else {
-                        console.log(`[POST_DEBUG] ❌ ERROR: Date Posts Scored field is still not set after error update!`);
+            // After update verification - only do this if verbose logging is enabled
+            if (process.env.VERBOSE_POST_SCORING === "true") {
+                console.log(`[POST_DEBUG] Post-update verification for lead with error ${leadRecord.id}`);
+                try {
+                    const updatedLead = await clientBase(config.leadsTableName).find(leadRecord.id);
+                    if (updatedLead && updatedLead.fields) {
+                        const dateScored = updatedLead.fields[config.fields.dateScored];
+                        if (dateScored) {
+                            console.log(`[POST_DEBUG] CONFIRMED: Date Posts Scored is now set to ${dateScored}`);
+                        }
                     }
+                } catch (verifyError) {
+                    // Silently ignore verification errors in production
                 }
-            } catch (verifyError) {
-                console.log(`[POST_DEBUG] ❌ Error verifying update: ${verifyError.message}`);
             }
         }
         return { status: "error", reason: 'AI_SCORING_ERROR', errorCategory: aiErrorCategory, error: error.message, leadId: leadRecord.id, errorDetails };
