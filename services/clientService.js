@@ -352,9 +352,23 @@ async function logExecution(clientId, executionData) {
             // For lead scoring or other types, use the existing format
             logEntry = formatExecutionLog(executionData);
         }
-
-        return await updateExecutionLog(clientId, logEntry);
-
+        
+        try {
+            // Get client name for record creation if needed
+            const client = await getClientById(clientId);
+            const clientName = client?.clientName || clientId;
+            
+            // Generate a unique run ID based on current time
+            const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(2, 14); // YYMMDD-HHMMSS
+            const runId = `${timestamp}-${clientId}`;
+            
+            // First try to update execution log directly
+            const updateResult = await updateExecutionLog(clientId, logEntry);
+            return updateResult;
+        } catch (innerError) {
+            console.error(`Airtable Service ERROR: Failed to update client run: ${innerError.message}`);
+            return false;
+        }
     } catch (error) {
         console.error(`Error logging execution for client ${clientId}:`, error);
         return false;
@@ -815,6 +829,43 @@ async function getJobStatus(clientId, operation) {
  */
 async function isJobRunning(clientId, operation) {
     try {
+        // RECOVERY PATH FOR TESTING - Check for "stuck" jobs on specific clients
+        if ((clientId === 'Guy-Wilson' || clientId === 'Dean-Hobin') && operation === 'post_scoring') {
+            console.log(`[JOB_DEBUG] � Checking for stuck job status on ${clientId} for ${operation}`);
+            
+            // Get the current job status
+            const jobStatus = await getJobStatus(clientId, operation);
+            
+            // If there's a running job, check when it was started
+            if (jobStatus && jobStatus.status === "RUNNING" && jobStatus.jobId) {
+                console.log(`[JOB_DEBUG] 🕰️ Found RUNNING job for ${clientId}:${operation}, ID: ${jobStatus.jobId}`);
+                
+                // Extract timestamp from jobId (assuming format job_post_scoring_TIMESTAMP)
+                const timestampMatch = jobStatus.jobId.match(/\d+$/);
+                if (timestampMatch) {
+                    const jobTimestamp = parseInt(timestampMatch[0], 10);
+                    const now = Date.now();
+                    const jobAgeMinutes = Math.round((now - jobTimestamp) / (60 * 1000));
+                    
+                    console.log(`[JOB_DEBUG] ⏱️ Job age: ${jobAgeMinutes} minutes`);
+                    
+                    // If job has been running for more than 30 minutes, consider it stuck
+                    if (jobAgeMinutes > 30) {
+                        console.log(`[JOB_DEBUG] 🚨 Detected stuck job for ${clientId}:${operation}, running for ${jobAgeMinutes} minutes. Auto-resetting.`);
+                        
+                        // Reset the job status
+                        await setJobStatus(clientId, operation, 'COMPLETED', jobStatus.jobId, { 
+                            resetReason: 'AUTO_RESET_STUCK_JOB',
+                            originalStartTime: new Date(jobTimestamp).toISOString()
+                        });
+                        
+                        console.log(`[JOB_DEBUG] ✅ Successfully reset stuck job for ${clientId}:${operation}`);
+                        return false; // Allow the job to run now
+                    }
+                }
+            }
+        }
+        
         // First check the in-memory lock (faster than Airtable)
         const lockKey = `${clientId}:${operation}`;
         const lock = runningJobs.get(lockKey);
@@ -823,11 +874,11 @@ async function isJobRunning(clientId, operation) {
             const now = Date.now();
             // If the lock is recent (within JOB_LOCK_TIMEOUT_MS)
             if (now - lock.timestamp < JOB_LOCK_TIMEOUT_MS) {
-                console.log(`[INFO] Memory lock found for ${clientId}:${operation}, created ${(now - lock.timestamp)/1000}s ago`);
+                console.log(`[JOB_DEBUG] Memory lock found for ${clientId}:${operation}, created ${(now - lock.timestamp)/1000}s ago`);
                 return true;
             } else {
                 // Lock is expired, remove it
-                console.log(`[INFO] Memory lock for ${clientId}:${operation} has expired (${(now - lock.timestamp)/1000}s old), releasing`);
+                console.log(`[JOB_DEBUG] Memory lock for ${clientId}:${operation} has expired (${(now - lock.timestamp)/1000}s old), releasing`);
                 runningJobs.delete(lockKey);
             }
         }
