@@ -478,6 +478,27 @@ async function loadClientPostScoringConfig(clientBase) {
     };
 }
 
+// Helper function to ensure consistent quotes in Airtable formulas
+function ensureFormulaQuotes(formula) {
+    // For empty string comparisons, use single quotes (Airtable's preferred format)
+    return formula
+        // Fix empty string comparisons - convert double quotes to single quotes
+        .replace(/!= *""/g, "!= ''")
+        .replace(/= *""/g, "= ''")
+        .replace(/ != *''/g, " != ''")
+        .replace(/ = *''/g, " = ''")
+        // Fix any inconsistent BLANK() function syntax
+        .replace(/BLANK\(\)/g, "BLANK()")
+        // Log the transformation if there was a change
+        .replace(/(.*?)(["'])(.+?)\2(.*)/g, (match, before, quote, content, after) => {
+            const fixed = before + "'" + content + "'" + after;
+            if (match !== fixed) {
+                console.log(`[POST_DEBUG] Fixed quotes in formula: "${match}" → "${fixed}"`);
+            }
+            return fixed;
+        });
+}
+
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     console.log(`[POST_DEBUG] getLeadsForPostScoring: Starting with config:`, {
         leadsTableName: config.leadsTableName,
@@ -501,9 +522,10 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     
     // Add a count query to get the total number of leads with unscored posts
     try {
+        const formula = ensureFormulaQuotes(`AND({${config.fields.postsContent}} != '', {${config.fields.dateScored}} = BLANK())`);
         const countQuery = await clientBase(config.leadsTableName).select({
             fields: ['ID'],
-            filterByFormula: `AND({${config.fields.postsContent}} != '', {${config.fields.dateScored}} = BLANK())`
+            filterByFormula: formula
         }).all();
         
         console.log(`[POST_DEBUG] TOTAL UNSCORED LEADS: ${countQuery.length} leads have posts content but no Date Posts Scored`);
@@ -522,8 +544,9 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         const found = [];
         for (const id of ids) {
             try {
+                const formula = ensureFormulaQuotes(`RECORD_ID() = '${id}'`);
                 const recs = await clientBase(config.leadsTableName).select({
-                    filterByFormula: `RECORD_ID() = '${id}'`,
+                    filterByFormula: formula,
                     fields: [
                         config.fields.postsContent,
                         config.fields.linkedinUrl,
@@ -557,8 +580,8 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         view: 'Leads with Posts not yet scored',
         // IMPORTANT: Remove additional filters that might conflict with the view's filters
         // Only apply a force rescore filter if needed
-        // FIXED: Using single quotes for Airtable formula compatibility
-        filterByFormula: options.forceRescore ? `OR({${config.fields.dateScored}} = BLANK(), {${config.fields.dateScored}} != BLANK())` : undefined
+        // Ensure consistent quotes for Airtable formula compatibility
+        filterByFormula: options.forceRescore ? ensureFormulaQuotes(`OR({${config.fields.dateScored}} = BLANK(), {${config.fields.dateScored}} != BLANK()})`) : undefined
     };
 
     let records = [];
@@ -648,8 +671,10 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         usedFallback = true;
         const postsActionedField = 'Posts Actioned';
         // Attempt 1: include Posts Actioned guard
-        // FIXED: Ensure single quotes for Airtable formula compatibility
-        const actionedGuard = `OR({${postsActionedField}} = 0, {${postsActionedField}} = '', {${postsActionedField}} = BLANK())`;
+        // Using helper function to ensure consistent quotes for Airtable formula compatibility
+        const actionedGuardRaw = `OR({${postsActionedField}} = 0, {${postsActionedField}} = '', {${postsActionedField}} = BLANK())`;
+        const actionedGuard = ensureFormulaQuotes(actionedGuardRaw);
+        
         const baseFields = [
             config.fields.postsContent,
             config.fields.linkedinUrl,
@@ -658,12 +683,18 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             config.fields.aiEvaluation,
             config.fields.topScoringPost
         ];
+        
         const makeFilter = (withActioned) => {
-            // FIXED: Using single quotes consistently for Airtable formula compatibility
-            const dateClause = options.forceRescore ? 'TRUE()' : `{${config.fields.dateScored}} = BLANK()`;
-            const filterFormula = withActioned
+            // Using helper function to ensure consistent quotes for Airtable formula compatibility
+            const dateClauseRaw = options.forceRescore ? 'TRUE()' : `{${config.fields.dateScored}} = BLANK()`;
+            const dateClause = ensureFormulaQuotes(dateClauseRaw);
+            
+            let filterFormula = withActioned
                 ? `AND({${config.fields.postsContent}} != '', ${dateClause}, ${actionedGuard})`
                 : `AND({${config.fields.postsContent}} != '', ${dateClause})`;
+            
+            // Apply quote fixing to ensure consistency
+            filterFormula = ensureFormulaQuotes(filterFormula);
             console.log(`[DEBUG] getLeadsForPostScoring: Generated filter formula: ${filterFormula}`);
             return filterFormula;
         };
@@ -671,9 +702,10 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         // First, try a very basic check to see if we can find ANY records with posts content
         try {
             console.log(`[DEBUG] getLeadsForPostScoring: Checking if any records have posts content`);
+            const basicFormula = ensureFormulaQuotes(`{${config.fields.postsContent}} != ''`);
             const basicCheck = await clientBase(config.leadsTableName).select({
                 fields: [config.fields.postsContent],
-                filterByFormula: `{${config.fields.postsContent}} != ''`,
+                filterByFormula: basicFormula,
                 maxRecords: 5
             }).firstPage();
             
@@ -691,9 +723,10 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         try {
             console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback with Posts Actioned guard`);
             const filter = makeFilter(true);
+            const formula = ensureFormulaQuotes(filter);
             records = await clientBase(config.leadsTableName).select({
                 fields: baseFields,
-                filterByFormula: filter
+                filterByFormula: formula
             }).all();
             console.log(`[DEBUG] getLeadsForPostScoring: Fallback with guard found ${records.length} records`);
         } catch (e2) {
@@ -704,9 +737,10 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             try {
                 console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback without Posts Actioned guard`);
                 const filter = makeFilter(false);
+                const formula = ensureFormulaQuotes(filter);
                 records = await clientBase(config.leadsTableName).select({
                     fields: baseFields,
-                    filterByFormula: filter
+                    filterByFormula: formula
                 }).all();
                 console.log(`[DEBUG] getLeadsForPostScoring: Fallback without guard found ${records.length} records`);
             } catch (e3) {
