@@ -4244,17 +4244,49 @@ const SMART_RESUME_LOCK_TIMEOUT =
 
 console.log(`ℹ️ Smart resume stale lock timeout configured: ${SMART_RESUME_LOCK_TIMEOUT/1000/60/60} hours`);
 
-// GET handler for smart-resume-client-by-client
-router.get("/smart-resume-client-by-client", async (req, res) => {
-  console.log("🚀 GET request to /smart-resume-client-by-client - treating as POST");
+// Special Guy Wilson post harvesting endpoint
+router.get("/guy-wilson-post-harvest", async (req, res) => {
+  console.log("� SPECIAL GUY WILSON POST HARVEST ENDPOINT HIT");
   
-  // Create a new req object with the body containing query params
-  const postReq = {...req};
-  postReq.body = {...req.body, ...req.query};
-  postReq.method = 'POST';
-  
-  // Call the POST handler directly
-  return router.post("/smart-resume-client-by-client")(postReq, res);
+  try {
+    // Direct way to trigger post harvesting for Guy Wilson
+    const { processLevel2ClientsV2 } = require('./apifyProcessRoutes');
+    
+    // Create a fake request with all the required parameters
+    const fakeReq = {
+      headers: { 'x-client-id': 'Guy-Wilson' },
+      query: { clientId: 'Guy-Wilson', stream: 1 },
+      body: { clientId: 'Guy-Wilson', debug: true, force: true }
+    };
+    
+    // Create a response collector
+    let responseData = null;
+    const fakeRes = {
+      status: (code) => ({
+        json: (data) => {
+          responseData = { statusCode: code, data };
+          console.log(`🚨 GUY WILSON POST HARVEST: Process completed with status ${code}`);
+          console.log(JSON.stringify(data, null, 2));
+        }
+      })
+    };
+    
+    console.log("� GUY WILSON POST HARVEST: Calling process handler directly");
+    await processLevel2ClientsV2(fakeReq, fakeRes);
+    
+    // Send the response back to the client
+    return res.json({
+      message: "Guy Wilson post harvest triggered successfully",
+      result: responseData
+    });
+  } catch (error) {
+    console.error("🚨 GUY WILSON POST HARVEST ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
 });
 
 router.post("/smart-resume-client-by-client", async (req, res) => {
