@@ -263,8 +263,31 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             logger.setup(`Overriding leads table name: ${config.leadsTableName} -> ${options.leadsTableName}`);
             config.leadsTableName = options.leadsTableName;
         }
-        // Add skip reason field to config (tolerant if missing in Airtable)
-        config.fields.skipReason = 'Posts Skip Reason';
+        
+        // Check if Posts Skip Reason field exists in this client base
+        let hasSkipReasonField = false;
+        try {
+            // Get a sample record to check fields
+            const sampleRec = await clientBase(config.leadsTableName).select({ maxRecords: 1 }).firstPage();
+            // Check if field exists in field list (different from having a value)
+            if (sampleRec && sampleRec[0]) {
+                const fieldNames = Object.keys(sampleRec[0].fields || {});
+                hasSkipReasonField = fieldNames.includes('Posts Skip Reason');
+                console.log(`[POST_DEBUG] Field check for 'Posts Skip Reason': ${hasSkipReasonField ? '✅ exists' : '❌ missing'}`);
+            }
+        } catch (fieldCheckErr) {
+            console.log(`[POST_DEBUG] Error checking for field existence: ${fieldCheckErr.message}`);
+            hasSkipReasonField = false; // Be safe and assume it doesn't exist
+        }
+        
+        // Only add skip reason field to config if it exists
+        if (hasSkipReasonField) {
+            config.fields.skipReason = 'Posts Skip Reason';
+        } else {
+            console.log(`[POST_DEBUG] 'Posts Skip Reason' field not found in this client base, skipping updates to this field`);
+            // Set to null to indicate field doesn't exist (different from undefined)
+            config.fields.skipReason = null;
+        }
         
         // Get leads with posts to be scored
         console.log(`[POST_DEBUG] 🔍 CLIENT ${client.clientId} (${client.clientName}): Starting to look for leads with posts to be scored`);
@@ -891,10 +914,16 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         logger.debug(`Lead ${leadRecord.id}: No posts content, skipping`);
         if (!options.dryRun && options.markSkips !== false) {
             try {
+                // Initialize basic update fields
                 const updateFields = {
-                    [config.fields.dateScored]: new Date().toISOString(),
-                    [config.fields.skipReason]: 'NO_CONTENT'
+                    [config.fields.dateScored]: new Date().toISOString()
                 };
+                
+                // Only add skipReason if the field exists
+                if (config.fields.skipReason) {
+                    updateFields[config.fields.skipReason] = 'NO_CONTENT';
+                }
+                
                 console.log(`[POST_DEBUG] Updating lead ${leadRecord.id} (${linkedinProfileUrl}) with Date Posts Scored: ${updateFields[config.fields.dateScored]}`);
                 await clientBase(config.leadsTableName).update(leadRecord.id, updateFields);
                 console.log(`[POST_DEBUG] Successfully marked lead ${leadRecord.id} (${linkedinProfileUrl}) as skipped due to NO_CONTENT`);
@@ -970,11 +999,20 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         console.warn(`Lead ${leadRecord.id}: Parsed Posts Content is not an array or empty, skipping`);
         if (!options.dryRun && options.markSkips !== false) {
             try {
-                await clientBase(config.leadsTableName).update(leadRecord.id, {
-                    [config.fields.dateScored]: new Date().toISOString(),
-                    [config.fields.skipReason]: 'NO_POSTS_PARSED'
-                });
-            } catch (e) { /* field may not exist */ }
+                // Initialize basic update fields
+                const updateFields = {
+                    [config.fields.dateScored]: new Date().toISOString()
+                };
+                
+                // Only add skipReason if the field exists
+                if (config.fields.skipReason) {
+                    updateFields[config.fields.skipReason] = 'NO_POSTS_PARSED';
+                }
+                
+                await clientBase(config.leadsTableName).update(leadRecord.id, updateFields);
+            } catch (e) {
+                console.log(`[POST_DEBUG] Error updating lead ${leadRecord.id}: ${e.message}`);
+            }
         }
         return { status: 'skipped', skipReason: 'NO_POSTS_PARSED', leadId: leadRecord.id };
     }
@@ -1196,13 +1234,18 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             console.log(`[POST_DEBUG] 🌟 Date Posts Scored value being set: ${dateScoredValue}`);
             console.log(`[POST_DEBUG] 🌟 Highest scoring post score: ${highestScoringPost.post_score}`);
             
+            // Initialize basic update fields
             const updateFields = {
                 [config.fields.relevanceScore]: highestScoringPost.post_score,
                 [config.fields.aiEvaluation]: JSON.stringify(aiResponseArray, null, 2), // Store the full array for debugging
                 [config.fields.topScoringPost]: topScoringPostText,
-                [config.fields.dateScored]: dateScoredValue,
-                ...(options.markSkips !== false ? { [config.fields.skipReason]: '' } : {})
+                [config.fields.dateScored]: dateScoredValue
             };
+            
+            // Only add skipReason if the field exists and we're marking skips
+            if (config.fields.skipReason && options.markSkips !== false) {
+                updateFields[config.fields.skipReason] = '';
+            }
             
             console.log(`[POST_DEBUG] 🌟 Fields being updated: ${JSON.stringify(Object.keys(updateFields))}`);
             console.log(`[POST_DEBUG] 🌟 dateScored field name: ${config.fields.dateScored}`);
@@ -1211,7 +1254,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             console.log(`[POST_DEBUG] 🌟 Field mapping check:`);
             console.log(`[POST_DEBUG] 🌟 - dateScored maps to: ${config.fields.dateScored}`);
             console.log(`[POST_DEBUG] 🌟 - relevanceScore maps to: ${config.fields.relevanceScore}`);
-            console.log(`[POST_DEBUG] 🌟 - skipReason maps to: ${config.fields.skipReason}`);
+            console.log(`[POST_DEBUG] 🌟 - skipReason maps to: ${config.fields.skipReason || 'NOT_AVAILABLE'}`);
             
             const result = await safeLeadUpdate(
                 clientBase,
