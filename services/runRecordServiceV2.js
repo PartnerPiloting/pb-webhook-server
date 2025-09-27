@@ -871,24 +871,57 @@ function countRecordTypes() {
  */
 async function checkRunRecordExists(runId, clientId = null) {
   try {
+    console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] checkRunRecordExists called with runId=${runId}, clientId=${clientId}`);
+    
     // Extract client ID from runId if not provided and runId contains client suffix
     if (!clientId && runId && runId.includes('-C')) {
       const parts = runId.split('-C');
       if (parts.length > 1) {
         clientId = parts[1];
+        console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Extracted clientId=${clientId} from runId`);
       }
     }
     
     if (!clientId) {
-      console.error(`Run Record Service: Cannot check existence without clientId for runId ${runId}`);
+      console.error(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] ❌ Cannot check existence without clientId for runId ${runId}`);
       return false;
     }
     
     // Use getRunRecord which never creates if not found
+    console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Calling getRunRecord with runId=${runId}, clientId=${clientId}`);
     const record = await getRunRecord(runId, clientId, { source: 'checkRunRecordExists' });
+    console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] getRunRecord result: ${record ? "Found record" : "No record found"}`);
+    
+    if (record) {
+      console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Record details: ID=${record.id}, Run ID=${record.fields['Run ID']}`);
+    } else {
+      // Try to find any similar records
+      try {
+        console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Searching for any records for client ${clientId}`);
+        const base = initialize();
+        const records = await base(CLIENT_RUN_RESULTS_TABLE).select({
+          filterByFormula: `{Client ID} = '${clientId}'`,
+          maxRecords: 5,
+          sort: [{ field: 'Start Time', direction: 'desc' }]
+        }).firstPage();
+        
+        if (records && records.length > 0) {
+          console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Found ${records.length} recent records for client ${clientId}:`);
+          records.forEach(rec => {
+            console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] - Run ID: ${rec.fields['Run ID']}, Start Time: ${rec.fields['Start Time']}`);
+          });
+        } else {
+          console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] No records found for client ${clientId}`);
+        }
+      } catch (searchError) {
+        console.error(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Error searching for client records: ${searchError.message}`);
+      }
+    }
+    
     return record !== null;
   } catch (error) {
-    console.error(`Run Record Service: Error checking run record existence for ${runId}, client ${clientId}: ${error.message}`);
+    console.error(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] ❌ Error checking run record existence: ${error.message}`);
+    console.error(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Stack trace: ${error.stack}`);
     return false;
   }
 }

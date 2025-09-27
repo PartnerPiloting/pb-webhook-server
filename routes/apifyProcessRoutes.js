@@ -643,37 +643,55 @@ async function processClientHandler(req, res) {
     const airtableService = require('../services/airtableService');
     
     // SIMPLIFIED: We prefer a parent run ID but can generate one if needed
+    console.log(`[DEBUG-RUN-ID-FLOW] Starting run ID check. parentRunId=${parentRunId}, clientId=${clientId}, req.body.parentRunId=${req.body.parentRunId}, req.query.parentRunId=${req.query.parentRunId}`);
+    
     if (!parentRunId) {
       // Generate a parent run ID if not provided
       parentRunId = generateRunId(clientId);
-      console.log(`[DEBUG][METRICS_TRACKING] No parent run ID provided - generating one: ${parentRunId}`);
+      console.log(`[DEBUG-RUN-ID-FLOW] No parent run ID provided - generating one: ${parentRunId}`);
       
       // Create a new run record for this process
       try {
+        console.log(`[DEBUG-RUN-ID-FLOW] Attempting to create run record with runId=${parentRunId}, clientId=${clientId}, source=post_harvesting_fallback`);
         await runRecordService.createClientRunRecord({
           runId: parentRunId,
           clientId,
+          clientName: clientId, // Add client name for better tracking
+          options: {
+            source: 'batch_process', // Use an allowed source from the allowlist
+          },
           operation: 'post_harvesting',
           status: 'running',
           date: new Date().toISOString()
         });
-        console.log(`[DEBUG][METRICS_TRACKING] Created new run record for ${parentRunId}`);
+        console.log(`[DEBUG-RUN-ID-FLOW] Successfully created new run record for ${parentRunId}`);
       } catch (createError) {
-        console.error(`[WARNING] Could not create run record: ${createError.message}`);
+        console.error(`[DEBUG-RUN-ID-FLOW] FAILED to create run record: ${createError.message}`);
+        console.error(`[DEBUG-RUN-ID-FLOW] Error stack: ${createError.stack}`);
         // Continue processing even if run record creation fails
       }
+    } else {
+      console.log(`[DEBUG-RUN-ID-FLOW] Using provided parent run ID: ${parentRunId}`);
     }
     
     // Use the parent run ID from Smart Resume
-    console.log(`[DEBUG][METRICS_TRACKING] Parent run ID provided: ${parentRunId}`);
+    console.log(`[DEBUG-RUN-ID-FLOW] Parent run ID before normalization: ${parentRunId}`);
+    
+    // Log the runIdService details
+    console.log(`[DEBUG-RUN-ID-FLOW] runIdService type: ${typeof runIdService}`);
+    console.log(`[DEBUG-RUN-ID-FLOW] runIdService.normalizeRunId type: ${typeof runIdService.normalizeRunId}`);
+    
+    // Normalize the run ID
     runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
-    console.log(`[DEBUG][METRICS_TRACKING] Using parent run ID: ${runIdToUse}`);
+    
+    console.log(`[DEBUG-RUN-ID-FLOW] After normalization: ${runIdToUse} (original: ${parentRunId}, clientId: ${clientId})`);
     
     // Verify that we have a runIdToUse (from parent) - it should always be provided
     if (!runIdToUse) {
+      console.error(`[DEBUG-RUN-ID-FLOW] CRITICAL ERROR: Normalization returned null/undefined runIdToUse`);
       throw new Error('[apify/process-client] No run ID provided - this process should be called with a parent run ID');
     }
-    console.log(`[apify/process-client] Using parent run record: ${runIdToUse}`);
+    console.log(`[DEBUG-RUN-ID-FLOW] Using parent run record: ${runIdToUse} for client ${clientId}`);
     
     // NOTE: We no longer create a run record here. The Smart Resume process (parent)
     // is responsible for creating the run record, and we just update it.
@@ -684,11 +702,21 @@ async function processClientHandler(req, res) {
     try {      
       // Calculate estimated API costs (based on LinkedIn post queries)
       const estimatedCost = (postsToday * 0.02); // $0.02 per post as estimate - send as number, not string
+      
+      console.log(`[DEBUG-RUN-ID-FLOW] METRICS UPDATE: About to update metrics for run ID ${runIdToUse}, client ${clientId}`);
+      console.log(`[DEBUG-RUN-ID-FLOW] METRICS UPDATE: Estimated cost: ${estimatedCost}, posts today: ${postsToday}`);
         
       // Get the client run record to check existing values
       try {
-        console.log(`[DEBUG][METRICS_TRACKING] Checking for existing client run record: ${runIdToUse} for client ${clientId}`);
+        console.log(`[DEBUG-RUN-ID-FLOW] RECORD CHECK: Checking for existing client run record with ID: ${runIdToUse} for client ${clientId}`);
+        console.log(`[DEBUG-RUN-ID-FLOW] RECORD CHECK: Using filter: {Run ID} = '${runIdToUse}'`);
+        
         const clientBase = await getClientBase(clientId);
+        
+        // Log client base details
+        console.log(`[DEBUG-RUN-ID-FLOW] CLIENT BASE: ${clientBase ? "Successfully retrieved" : "Failed to retrieve"} for ${clientId}`);
+        
+        // Query for the run record
         const runRecords = await clientBase('Client Run Results').select({
           filterByFormula: `{Run ID} = '${runIdToUse}'`,
           maxRecords: 1
@@ -697,17 +725,24 @@ async function processClientHandler(req, res) {
         if (runRecords && runRecords.length > 0) {
           // Get current values, default to 0 if not set
           const currentRecord = runRecords[0];
+          
+          console.log(`[DEBUG-RUN-ID-FLOW] RECORD FOUND: ✅ Found run record with ID ${currentRecord.id} for run ID ${runIdToUse}`);
+          
+          // Log all available fields for debugging
+          const allFields = Object.keys(currentRecord.fields).map(key => `${key}: ${currentRecord.fields[key]}`);
+          console.log(`[DEBUG-RUN-ID-FLOW] RECORD FIELDS: ${JSON.stringify(allFields, null, 2)}`);
+          
           const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
           const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
           const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
           const currentApifyRunId = currentRecord.get('Apify Run ID');
           
-          console.log(`[DEBUG][METRICS_TRACKING] Found existing record for ${runIdToUse}:`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Current Posts Harvested: ${currentPostCount}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Current API Costs: ${currentApiCosts}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Current Profiles Submitted: ${profilesSubmittedCount}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Current Apify Run ID: ${currentApifyRunId || '(empty)'}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - New postsToday value: ${postsToday}`);
+          console.log(`[DEBUG-RUN-ID-FLOW] RECORD VALUES: Found existing record for ${runIdToUse}:`);
+          console.log(`[DEBUG-RUN-ID-FLOW] - Current Posts Harvested: ${currentPostCount}`);
+          console.log(`[DEBUG-RUN-ID-FLOW] - Current API Costs: ${currentApiCosts}`);
+          console.log(`[DEBUG-RUN-ID-FLOW] - Current Profiles Submitted: ${profilesSubmittedCount}`);
+          console.log(`[DEBUG-RUN-ID-FLOW] - Current Apify Run ID: ${currentApifyRunId || '(empty)'}`);
+          console.log(`[DEBUG-RUN-ID-FLOW] - New postsToday value: ${postsToday}`);
           
           // Get the Apify Run ID if it exists in the start data
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
@@ -751,9 +786,35 @@ async function processClientHandler(req, res) {
         } else {
           // ERROR: Record not found - this should have been created at the beginning of this process
           const errorMsg = `ERROR: Client run record not found for ${runIdToUse} (${clientId})`;
-          console.error(`[apify/process-client] ${errorMsg}`);
-          console.error(`[apify/process-client] This indicates a process kickoff issue - run record should exist`);
-          console.error(`[apify/process-client] Run ID: ${runIdToUse}, Client ID: ${clientId}`);
+          console.error(`[DEBUG-RUN-ID-FLOW] ❌ RECORD NOT FOUND: ${errorMsg}`);
+          console.error(`[DEBUG-RUN-ID-FLOW] This indicates a process kickoff issue - run record should exist`);
+          console.error(`[DEBUG-RUN-ID-FLOW] Run ID details: originalParentRunId=${parentRunId}, normalizedRunId=${runIdToUse}, clientId=${clientId}`);
+          
+          // Try to find any records with similar run IDs
+          try {
+            console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching for similar run IDs...`);
+            const clientBase = await getClientBase(clientId);
+            const baseRunId = runIdService.stripClientSuffix(runIdToUse);
+            const partialRunId = baseRunId.split('-')[0]; // Just the date part
+            
+            console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching with partialRunId=${partialRunId}`);
+            
+            const similarRecords = await clientBase('Client Run Results').select({
+              filterByFormula: `AND(FIND('${partialRunId}', {Run ID}) > 0, {Client ID} = '${clientId}')`,
+              maxRecords: 5
+            }).firstPage();
+            
+            if (similarRecords && similarRecords.length > 0) {
+              console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Found ${similarRecords.length} similar records:`);
+              similarRecords.forEach(record => {
+                console.log(`[DEBUG-RUN-ID-FLOW] - Similar Run ID: ${record.fields['Run ID']}, Record ID: ${record.id}`);
+              });
+            } else {
+              console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: No similar records found`);
+            }
+          } catch (searchError) {
+            console.error(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT FAILED: ${searchError.message}`);
+          }
           
           // Get the Apify Run ID if it exists in the start data
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
