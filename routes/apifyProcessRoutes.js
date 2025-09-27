@@ -48,10 +48,23 @@ async function pickLeadBatch(base, batchSize) {
   try {
     console.log(`🔍 LEAD_SELECTION_DIAG: Running diagnostic counts on lead criteria...`);
     
+    // Get a sample record first to check field names (case sensitivity)
+    let idFieldName = 'id';
+    try {
+      const sampleRec = await base(LEADS_TABLE).select({ maxRecords: 1 }).firstPage();
+      if (sampleRec && sampleRec[0]) {
+        const fieldNames = Object.keys(sampleRec[0].fields || {});
+        if (fieldNames.includes('ID')) idFieldName = 'ID';
+        else if (fieldNames.includes('id')) idFieldName = 'id';
+      }
+    } catch (fieldError) {
+      console.log(`🔍 FIELD_CHECK: Error checking field names: ${fieldError.message}`);
+    }
+    
     // Check LinkedIn URL field presence
     const urlRecords = await base(LEADS_TABLE).select({
       filterByFormula: `{${LINKEDIN_URL_FIELD}} != ''`,
-      fields: ['id'],
+      fields: [idFieldName],
       maxRecords: 1
     }).firstPage();
     console.log(`🔍 LEAD_SELECTION_DIAG: Leads with LinkedIn URLs: ${urlRecords.length ? 'YES' : 'NONE'}`);
@@ -66,7 +79,7 @@ async function pickLeadBatch(base, batchSize) {
         
         const statusRecords = await base(LEADS_TABLE).select({
           filterByFormula: filter,
-          fields: ['id'],
+          fields: [idFieldName], // Use detected field name
           maxRecords: 100
         }).firstPage();
         
@@ -80,7 +93,7 @@ async function pickLeadBatch(base, batchSize) {
     // Check Posts Actioned field
     const actionedRecords = await base(LEADS_TABLE).select({
       filterByFormula: `OR({${POSTS_ACTIONED_FIELD}} = 0, {${POSTS_ACTIONED_FIELD}} = '', {${POSTS_ACTIONED_FIELD}} = BLANK())`,
-      fields: ['id'],
+      fields: [idFieldName], // Use detected field name
       maxRecords: 1
     }).firstPage();
     console.log(`🔍 LEAD_SELECTION_DIAG: Leads with Posts Actioned empty/0: ${actionedRecords.length ? 'YES' : 'NONE'}`);
@@ -88,7 +101,7 @@ async function pickLeadBatch(base, batchSize) {
     // Check Date Posts Scored field
     const scoredRecords = await base(LEADS_TABLE).select({
       filterByFormula: `{${DATE_POSTS_SCORED_FIELD}} = BLANK()`,
-      fields: ['id'],
+      fields: [idFieldName], // Use detected field name
       maxRecords: 1
     }).firstPage();
     console.log(`🔍 LEAD_SELECTION_DIAG: Leads not yet scored (Date Posts Scored empty): ${scoredRecords.length ? 'YES' : 'NONE'}`);
@@ -494,8 +507,21 @@ async function processClientHandler(req, res) {
           console.log(`🔍 CLIENT_DEBUG: Client ${clientId} base ID: ${clientInfo.airtableBaseId}`);
           
           // Query total number of leads in the base for context
+          // Get a sample record first to check field names (case sensitivity)
+          let idFieldName = 'id';
+          try {
+            const sampleRec = await base(LEADS_TABLE).select({ maxRecords: 1 }).firstPage();
+            if (sampleRec && sampleRec[0]) {
+              const fieldNames = Object.keys(sampleRec[0].fields || {});
+              if (fieldNames.includes('ID')) idFieldName = 'ID';
+              else if (fieldNames.includes('id')) idFieldName = 'id';
+            }
+          } catch (fieldError) {
+            console.log(`🔍 FIELD_CHECK: Error checking field names: ${fieldError.message}`);
+          }
+          
           const allLeads = await base(LEADS_TABLE).select({
-            fields: ['id'],
+            fields: [idFieldName], // Use detected field name
             maxRecords: 1
           }).firstPage();
           
@@ -516,9 +542,22 @@ async function processClientHandler(req, res) {
         
         // Try a quick diagnostic query with minimal criteria
         try {
+          // Get a sample record first to check field names (case sensitivity)
+          let idFieldName = 'id';
+          try {
+            const sampleRec = await base(LEADS_TABLE).select({ maxRecords: 1 }).firstPage();
+            if (sampleRec && sampleRec[0]) {
+              const fieldNames = Object.keys(sampleRec[0].fields || {});
+              if (fieldNames.includes('ID')) idFieldName = 'ID';
+              else if (fieldNames.includes('id')) idFieldName = 'id';
+            }
+          } catch (fieldError) {
+            console.log(`🔍 FIELD_CHECK: Error checking field names: ${fieldError.message}`);
+          }
+          
           const anyLeadsWithUrl = await base(LEADS_TABLE).select({
             filterByFormula: `{${LINKEDIN_URL_FIELD}} != ''`,
-            fields: ['id', STATUS_FIELD, POSTS_ACTIONED_FIELD, DATE_POSTS_SCORED_FIELD],
+            fields: [idFieldName, STATUS_FIELD, POSTS_ACTIONED_FIELD, DATE_POSTS_SCORED_FIELD],
             maxRecords: 5
           }).firstPage();
           
@@ -642,17 +681,22 @@ async function processClientHandler(req, res) {
     // Legacy import - only used for other functions not related to run records
     const airtableService = require('../services/airtableService');
     
-    // SIMPLIFIED: We prefer a parent run ID but can generate one if needed
+    // SIMPLIFIED: We use the parent run ID if provided, otherwise we're in standalone mode and skip metrics
     console.log(`[DEBUG-RUN-ID-FLOW] Starting run ID check. parentRunId=${parentRunId}, clientId=${clientId}, req.body.parentRunId=${req.body.parentRunId}, req.query.parentRunId=${req.query.parentRunId}`);
     
-    if (!parentRunId) {
-      // Generate a parent run ID if not provided
+    // Determine if this is a standalone run (no parent run ID)
+    const isStandaloneRun = !parentRunId;
+    
+    if (isStandaloneRun) {
+      // Generate a parent run ID just for tracking purposes, but don't create a record
       parentRunId = generateRunId(clientId);
-      console.log(`[DEBUG-RUN-ID-FLOW] No parent run ID provided - generating one: ${parentRunId}`);
+      console.log(`[DEBUG-RUN-ID-FLOW] Running in standalone mode (no metrics recording) with tracking ID: ${parentRunId}`);
+    } else {
+      console.log(`[DEBUG-RUN-ID-FLOW] Using provided parent run ID: ${parentRunId}`);
       
-      // Create a new run record for this process
+      // We have a parent run ID from a parent process (likely Smart Resume) - create a record
       try {
-        console.log(`[DEBUG-RUN-ID-FLOW] Attempting to create run record with runId=${parentRunId}, clientId=${clientId}, source=post_harvesting_fallback`);
+        console.log(`[DEBUG-RUN-ID-FLOW] Attempting to create run record with runId=${parentRunId}, clientId=${clientId}, source=post_harvesting_parent`);
         await runRecordService.createClientRunRecord({
           runId: parentRunId,
           clientId,
@@ -670,8 +714,6 @@ async function processClientHandler(req, res) {
         console.error(`[DEBUG-RUN-ID-FLOW] Error stack: ${createError.stack}`);
         // Continue processing even if run record creation fails
       }
-    } else {
-      console.log(`[DEBUG-RUN-ID-FLOW] Using provided parent run ID: ${parentRunId}`);
     }
     
     // Use the parent run ID from Smart Resume
@@ -711,10 +753,29 @@ async function processClientHandler(req, res) {
         console.log(`[DEBUG-RUN-ID-FLOW] RECORD CHECK: Checking for existing client run record with ID: ${runIdToUse} for client ${clientId}`);
         console.log(`[DEBUG-RUN-ID-FLOW] RECORD CHECK: Using filter: {Run ID} = '${runIdToUse}'`);
         
+        // Check client exists before trying to get base
+        const client = await clientService.getClientById(clientId);
+        if (!client || !client.airtableBaseId) {
+          throw new Error(`Client ${clientId} not found or has no associated Airtable base`);
+        }
+        
         const clientBase = await getClientBase(clientId);
         
         // Log client base details
         console.log(`[DEBUG-RUN-ID-FLOW] CLIENT BASE: ${clientBase ? "Successfully retrieved" : "Failed to retrieve"} for ${clientId}`);
+        
+        // Check if 'Client Run Results' table exists
+        let hasClientRunResultsTable = false;
+        try {
+          const tables = await clientBase.tables();
+          hasClientRunResultsTable = tables.some(table => table.name === 'Client Run Results');
+          if (!hasClientRunResultsTable) {
+            throw new Error(`'Client Run Results' table not found in ${clientId}'s base`);
+          }
+        } catch (tableError) {
+          console.error(`[DEBUG-RUN-ID-FLOW] TABLE CHECK ERROR: ${tableError.message}`);
+          throw tableError;
+        }
         
         // Query for the run record
         const runRecords = await clientBase('Client Run Results').select({
