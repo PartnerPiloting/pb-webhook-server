@@ -4669,43 +4669,80 @@ async function sendSmartResumeReport(jobId, success, details) {
 // GET HANDLER FOR SMART RESUME - Handles browser and simple curl requests
 // ---------------------------------------------------------------
 router.get("/smart-resume-client-by-client", async (req, res) => {
-  console.log("🚨 GET request received for /smart-resume-client-by-client - forwarding to POST handler");
+  console.log("🚨 GET request received for /smart-resume-client-by-client - processing directly");
   console.log("🔍 Query parameters:", req.query);
   
   try {
-    // Move query parameters to body for the POST handler
-    req.body = {...req.body, ...req.query};
+    // Check webhook secret from query parameter for GET requests
+    const providedSecret = req.query['secret'];
+    const expectedSecret = process.env.PB_WEBHOOK_SECRET;
     
-    // Create a copy of the request that can be modified
-    const modifiedReq = {...req};
-    modifiedReq.method = 'POST';
+    if (!providedSecret || providedSecret !== expectedSecret) {
+      console.log("❌ Smart resume: Unauthorized - invalid webhook secret");
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Unauthorized - invalid webhook secret' 
+      });
+    }
     
-    // Call the POST handler with the modified request
-    console.log("🔄 Forwarding GET request to POST handler");
-    return router.handle(modifiedReq, res, () => {
-      console.log("⚠️ Router handle did not process the request, calling POST handler directly");
-      // If forwarding fails, call the POST handler directly
-      const postHandler = router.stack.find(layer => 
-        layer.route && 
-        layer.route.path === "/smart-resume-client-by-client" && 
-        layer.route.methods.post
-      );
-      
-      if (postHandler && postHandler.route && postHandler.route.stack[0].handle) {
-        return postHandler.route.stack[0].handle(req, res);
-      } else {
-        console.error("❌ Could not find POST handler for /smart-resume-client-by-client");
-        return res.status(500).json({
-          success: false,
-          error: "Server configuration error - POST handler not found"
-        });
+    // Extract parameters from query string
+    const stream = parseInt(req.query.stream) || 1;
+    const leadScoringLimit = req.query.leadScoringLimit ? parseInt(req.query.leadScoringLimit) : null;
+    const postScoringLimit = req.query.postScoringLimit ? parseInt(req.query.postScoringLimit) : null;
+    
+    // ⭐ STALE LOCK DETECTION: Check if existing lock is too old
+    if (smartResumeRunning && smartResumeLockTime) {
+      const lockAge = Date.now() - smartResumeLockTime;
+      if (lockAge > SMART_RESUME_LOCK_TIMEOUT) {
+        console.log(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
+        smartResumeRunning = false;
+        currentSmartResumeJobId = null;
+        smartResumeLockTime = null;
       }
+    }
+    
+    // Check if another job is already running
+    if (smartResumeRunning) {
+      console.log(`⏳ Smart resume already running (job: ${currentSmartResumeJobId}), returning status`);
+      return res.json({
+        success: true,
+        status: 'running',
+        jobId: currentSmartResumeJobId,
+        message: `Smart resume already running (started ${new Date(smartResumeLockTime).toISOString()})`
+      });
+    }
+    
+    // Create a job ID and set the lock
+    const jobId = `job-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    smartResumeRunning = true;
+    currentSmartResumeJobId = jobId;
+    smartResumeLockTime = Date.now();
+    
+    console.log(`🔒 [${jobId}] Smart resume lock acquired - starting processing (GET request)`);
+    
+    // Return immediate response with job ID
+    res.json({ 
+      success: true,
+      status: 'started',
+      jobId,
+      message: 'Smart resume processing has been started'
     });
+    
+    // Start background processing
+    setImmediate(() => {
+      executeSmartResume(jobId, stream || 1, leadScoringLimit, postScoringLimit);
+    });
+    
   } catch (error) {
-    console.error("❌ Error in GET-to-POST forwarding:", error);
+    // Release lock on error
+    smartResumeRunning = false;
+    currentSmartResumeJobId = null;
+    smartResumeLockTime = null;
+    
+    console.error("❌ Error in GET smart-resume processing:", error);
     return res.status(500).json({
       success: false, 
-      error: `Error forwarding GET request to POST handler: ${error.message}`
+      error: `Error in smart resume GET handler: ${error.message}`
     });
   }
 });
