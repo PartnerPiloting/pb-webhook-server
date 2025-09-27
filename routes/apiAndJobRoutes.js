@@ -4244,6 +4244,19 @@ const SMART_RESUME_LOCK_TIMEOUT =
 
 console.log(`ℹ️ Smart resume stale lock timeout configured: ${SMART_RESUME_LOCK_TIMEOUT/1000/60/60} hours`);
 
+// GET handler for smart-resume-client-by-client
+router.get("/smart-resume-client-by-client", async (req, res) => {
+  console.log("🚀 GET request to /smart-resume-client-by-client - treating as POST");
+  
+  // Create a new req object with the body containing query params
+  const postReq = {...req};
+  postReq.body = {...req.body, ...req.query};
+  postReq.method = 'POST';
+  
+  // Call the POST handler directly
+  return router.post("/smart-resume-client-by-client")(postReq, res);
+});
+
 router.post("/smart-resume-client-by-client", async (req, res) => {
   console.log("🚀 apiAndJobRoutes.js: /smart-resume-client-by-client endpoint hit");
   
@@ -4566,6 +4579,51 @@ async function sendSmartResumeReport(jobId, success, details) {
     return { sent: false, error: emailError.message };
   }
 }
+
+// ---------------------------------------------------------------
+// GET HANDLER FOR SMART RESUME - Handles browser and simple curl requests
+// ---------------------------------------------------------------
+router.get("/smart-resume-client-by-client", async (req, res) => {
+  console.log("🚨 GET request received for /smart-resume-client-by-client - forwarding to POST handler");
+  console.log("🔍 Query parameters:", req.query);
+  
+  try {
+    // Move query parameters to body for the POST handler
+    req.body = {...req.body, ...req.query};
+    
+    // Create a copy of the request that can be modified
+    const modifiedReq = {...req};
+    modifiedReq.method = 'POST';
+    
+    // Call the POST handler with the modified request
+    console.log("🔄 Forwarding GET request to POST handler");
+    return router.handle(modifiedReq, res, () => {
+      console.log("⚠️ Router handle did not process the request, calling POST handler directly");
+      // If forwarding fails, call the POST handler directly
+      const postHandler = router.stack.find(layer => 
+        layer.route && 
+        layer.route.path === "/smart-resume-client-by-client" && 
+        layer.route.methods.post
+      );
+      
+      if (postHandler && postHandler.route && postHandler.route.stack[0].handle) {
+        return postHandler.route.stack[0].handle(req, res);
+      } else {
+        console.error("❌ Could not find POST handler for /smart-resume-client-by-client");
+        return res.status(500).json({
+          success: false,
+          error: "Server configuration error - POST handler not found"
+        });
+      }
+    });
+  } catch (error) {
+    console.error("❌ Error in GET-to-POST forwarding:", error);
+    return res.status(500).json({
+      success: false, 
+      error: `Error forwarding GET request to POST handler: ${error.message}`
+    });
+  }
+});
 
 // ---------------------------------------------------------------
 // EMERGENCY SMART RESUME LOCK RESET ENDPOINT
