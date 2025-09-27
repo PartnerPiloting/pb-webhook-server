@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 /**
+ * 🚨🚨🚨 DEPLOYMENT MARKER: FORCE GUY WILSON POST HARVESTING VERSION (2025-09-27 00:55) 🚨🚨🚨
+ * 
  * Smart Resume Client-by-Client Processing Pipeline with Email Reporting
  * 
  * Checks each client's last execution status and resumes from where it left off:
@@ -334,6 +336,9 @@ console.log(`🔍 TRACE: determineClientWorkflow function defined`);
 
 console.log(`🔍 TRACE: About to define triggerOperation function`);
 async function triggerOperation(baseUrl, clientId, operation, params = {}, authHeaders = {}) {
+    // 🚨 DEPLOYMENT MARKER: ENHANCED VERSION WITH DEBUG AND FIX FOR UNDEFINED JOB ID
+    log(`🚨 SPECIAL DEBUG - TRIGGER OPERATION: Starting ${operation} for client ${clientId}`);
+    
     const operationMap = {
         'lead_scoring': {
             url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}&parentRunId=${runId}`,
@@ -346,6 +351,12 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
             headers: { 
                 'Authorization': `Bearer ${params.secret}`,
                 'x-client-id': clientId  // Add client ID in header as well
+            },
+            // Add body for post_harvesting to ensure it doesn't come back undefined
+            body: { 
+                clientId: clientId, 
+                parentRunId: runId,
+                stream: params.stream 
             }
         },
         'post_scoring': {
@@ -355,6 +366,10 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
             body: { stream: params.stream, limit: params.limit, clientId: clientId, parentRunId: runId }
         }
     };
+    
+    if (clientId === 'Guy-Wilson' && operation === 'post_harvesting') {
+        log(`🚨 CRITICAL GUY WILSON FIX: Setting up special post harvesting call for Guy Wilson`);
+    }
     
     const config = operationMap[operation];
     if (!config) {
@@ -402,6 +417,14 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
                 stream: params.stream
             });
             log(`🔍 AUTH_DEBUG: ${operation} - Body added with clientId=${clientId}`);
+            
+            // Special handling for Guy Wilson post harvesting
+            if (clientId === 'Guy-Wilson') {
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: About to make request`);
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: URL = ${baseUrl}${config.url}`);
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Body = ${fetchOptions.body}`);
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Headers = ${JSON.stringify(fetchOptions.headers)}`);
+            }
         } else if (config.body) {
             fetchOptions.body = JSON.stringify(config.body);
             log(`🔍 AUTH_DEBUG: ${operation} - Body: ${JSON.stringify(config.body)}`);
@@ -423,10 +446,27 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         log(`🔍 AUTH_DEBUG: ${operation} - Response status: ${response.status}`);
         log(`🔍 AUTH_DEBUG: ${operation} - Response data: ${JSON.stringify(responseData).substring(0, 200)}`);
         
-        if (response.status === 202) {
-            log(`✅ ${operation} triggered for ${clientId}: 202 Accepted in ${responseTime}ms (Job: ${responseData.jobId})`);
+        // Handle special case for post_harvesting 202 response, which might not have jobId
+        if (response.status === 202 && operation === 'post_harvesting') {
+            // For post_harvesting, we may not have a jobId directly in the response
+            const jobId = responseData.jobId || `job_post_harvesting_${clientId}_${Date.now()}`;
+            log(`✅ ${operation} triggered for ${clientId}: 202 Accepted in ${responseTime}ms (Generated Job: ${jobId})`);
+            
+            // Special handling for Guy Wilson
+            if (clientId === 'Guy-Wilson') {
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Response received successfully`);
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Response status = ${response.status}`);
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Response data = ${JSON.stringify(responseData)}`);
+                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Generated job ID = ${jobId}`);
+            }
+            
+            return { success: true, jobId };
+        } 
+        else if (response.status === 202 || response.status === 200) {
+            log(`✅ ${operation} triggered for ${clientId}: ${response.status} in ${responseTime}ms (Job: ${responseData.jobId})`);
             return { success: true, jobId: responseData.jobId };
-        } else {
+        } 
+        else {
             log(`❌ ${operation} failed for ${clientId}: ${response.status} ${response.statusText}`, 'ERROR');
             log(`🔍 AUTH_DEBUG: ${operation} - Full response: ${JSON.stringify(responseData)}`, 'ERROR');
             return { success: false, error: `${response.status} ${response.statusText}` };
