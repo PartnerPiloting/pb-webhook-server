@@ -444,9 +444,8 @@ async function getRunRecord(params) {
   try {
     // First, validate that the table exists for this client
     try {
-      // Try to list tables to check if we can access the base at all
-      await base.tables;
       // Check specifically if the Client Run Results table exists
+      // Note: We don't need to check all tables, just try to access the one we need
       await base(CLIENT_RUN_RESULTS_TABLE).select({ maxRecords: 1 }).firstPage();
     } catch (tableError) {
       // Convert "not authorized" errors to a more helpful message about missing tables/fields

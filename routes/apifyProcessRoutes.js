@@ -727,18 +727,41 @@ async function processClientHandler(req, res) {
           throw new Error(`Client ${clientId} not found or has no associated Airtable base`);
         }
         
-        const clientBase = await getClientBase(clientId);
+        let clientBase = await getClientBase(clientId);
         
         // Log client base details
         console.log(`[DEBUG-RUN-ID-FLOW] CLIENT BASE: ${clientBase ? "Successfully retrieved" : "Failed to retrieve"} for ${clientId}`);
         
+        // Create a proxy to intercept and properly handle any attempts to access .tables
+        clientBase = new Proxy(clientBase, {
+          get: function(target, prop) {
+            if (prop === 'tables') {
+              console.error('[DEBUG-RUN-ID-FLOW] WARNING: Attempted to access clientBase.tables which is not a function');
+              // Return a mock function that logs an error when called
+              return function() {
+                throw new Error('clientBase.tables is not a function - use clientBase("TableName") instead');
+              };
+            }
+            return target[prop];
+          }
+        });
+        
         // Check if 'Client Run Results' table exists
         let hasClientRunResultsTable = false;
         try {
-          const tables = await clientBase.tables();
-          hasClientRunResultsTable = tables.some(table => table.name === 'Client Run Results');
-          if (!hasClientRunResultsTable) {
-            throw new Error(`'Client Run Results' table not found in ${clientId}'s base`);
+          // Use a safer approach - try to access the table directly
+          try {
+            // Just access the table - if it exists, this won't throw an error
+            const testQuery = await clientBase('Client Run Results').select({ maxRecords: 1 }).firstPage();
+            hasClientRunResultsTable = true;
+          } catch (err) {
+            if (err.message && err.message.includes('Could not find table')) {
+              hasClientRunResultsTable = false;
+              throw new Error(`'Client Run Results' table not found in ${clientId}'s base`);
+            } else {
+              // Some other error occurred when accessing the table
+              throw err;
+            }
           }
         } catch (tableError) {
           console.error(`[DEBUG-RUN-ID-FLOW] TABLE CHECK ERROR: ${tableError.message}`);
