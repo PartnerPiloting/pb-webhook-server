@@ -370,7 +370,13 @@ async function processClientHandler(req, res) {
     // Get parent run ID from query params or body (if provided)
     const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
     
-    const endpoint = req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    // Add debug logs to identify the issue
+    console.log(`[processClientHandler] DEBUG: req.path = ${req.path}`);
+    console.log(`[processClientHandler] DEBUG: req.url = ${req.url}`);
+    
+    // Fix: Add null check before calling includes
+    const endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    console.log(`[processClientHandler] DEBUG: Using endpoint = ${endpoint}`);
 
     // Process all clients if requested
     if (processAllClients) {
