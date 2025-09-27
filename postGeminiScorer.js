@@ -91,11 +91,21 @@ ${JSON.stringify(geminiInputObject, null, 2)}
 
         const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
         
+        // Import the robust JSON repair utility
+        const { repairAndParseJson } = require('./utils/jsonRepair');
+        
+        // Try to parse with advanced error recovery
+        const parseResult = repairAndParseJson(cleanedJsonString);
         let parsedJsonObject;
-        try {
-            parsedJsonObject = JSON.parse(cleanedJsonString);
-        } catch (parseError) {
-            logger.error('scorePostsWithGemini', `Failed to parse Gemini's JSON response: ${parseError.message}`);
+        
+        if (parseResult.success) {
+            parsedJsonObject = parseResult.data;
+            if (parseResult.method !== 'CLEAN') {
+                // Log that we had to repair the JSON
+                logger.warn('scorePostsWithGemini', `Had to repair JSON using method: ${parseResult.method}`);
+            }
+        } else {
+            logger.error('scorePostsWithGemini', `Failed to parse Gemini's JSON response: ${parseResult.error}`);
             throw new Error(`PostGeminiScorer: Failed to parse Gemini's response. Raw response: ${rawResponseText.substring(0, 500)}...`);
         }
 
