@@ -292,13 +292,17 @@ async function determineClientWorkflow(client) {
         
         // TEMPORARY FIX: Force include post_scoring and post_harvesting for Guy Wilson if service level is appropriate
         if (client.serviceLevel >= 2) {
+            console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: Service level check passed (${client.serviceLevel} >= 2)`);
             if (!workflow.operationsToRun.includes('post_harvesting')) {
                 console.log(`🚨 SPECIAL FOCUS - GUY WILSON: FORCING post_harvesting operation`);
+                console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: Adding post_harvesting to operations list`);
                 workflow.operationsToRun.push('post_harvesting');
                 workflow.statusSummary['post_harvesting'] = { 
                     completed: false,
                     reason: 'Forced for testing' 
                 };
+            } else {
+                console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: post_harvesting already in operations list`);
             }
             
             if (!workflow.operationsToRun.includes('post_scoring')) {
@@ -332,7 +336,10 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         'post_harvesting': {
             url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}&parentRunId=${runId}`,
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${params.secret}` }
+            headers: { 
+                'Authorization': `Bearer ${params.secret}`,
+                'x-client-id': clientId  // Add client ID in header as well
+            }
         },
         'post_scoring': {
             url: `/run-post-batch-score-v2`,
@@ -366,6 +373,8 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
                 ...authHeaders
             })}`);
             log(`🔥 POST_HARVESTING_DEBUG: PB_WEBHOOK_SECRET available: ${!!process.env.PB_WEBHOOK_SECRET}`);
+            log(`🔥 POST_HARVESTING_DEBUG: Client ID: ${clientId}`);
+            log(`🔥 POST_HARVESTING_DEBUG: Query params: stream=${params.stream}, parentRunId=${runId}`);
         }
         
         const fetchOptions = {
@@ -378,7 +387,15 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         };
         
         // Add body for POST requests
-        if (config.body) {
+        if (operation === 'post_harvesting') {
+            // For post_harvesting, always include clientId in the body as well
+            fetchOptions.body = JSON.stringify({
+                clientId: clientId,
+                parentRunId: params.parentRunId || runId,
+                stream: params.stream
+            });
+            log(`🔍 AUTH_DEBUG: ${operation} - Body added with clientId=${clientId}`);
+        } else if (config.body) {
             fetchOptions.body = JSON.stringify(config.body);
             log(`🔍 AUTH_DEBUG: ${operation} - Body: ${JSON.stringify(config.body)}`);
         }
@@ -659,6 +676,9 @@ async function main() {
                     if (operation === 'post_harvesting') {
                         log(`🔥 POST_HARVESTING_SUCCESS: ${workflow.clientName} operation triggered`);
                         log(`🔥 POST_HARVESTING_SUCCESS: Full result: ${JSON.stringify(result)}`);
+                        log(`🔥 POST_HARVESTING_ANALYSIS: Job ID: ${result.jobId || 'undefined'}`);
+                        log(`🔥 POST_HARVESTING_ANALYSIS: Request was successful but there may be no posts to harvest`);
+                        log(`🔥 POST_HARVESTING_ANALYSIS: Check Airtable for posts count before this job started`);
                     }
                     
                     totalJobsStarted++;
