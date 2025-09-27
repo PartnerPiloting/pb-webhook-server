@@ -290,27 +290,34 @@ async function determineClientWorkflow(client) {
             console.log(`🚨 SPECIAL FOCUS - GUY WILSON: ${op} status: ${status.completed ? 'COMPLETED' : 'NEEDS PROCESSING'} - ${status.reason || status.overrideReason || 'No reason provided'}`);
         }
         
-        // TEMPORARY FIX: Force include post_scoring and post_harvesting for Guy Wilson if service level is appropriate
+        // ENHANCED TEMPORARY FIX: ALWAYS force post_harvesting and post_scoring for Guy Wilson 
+        // regardless of completion status, if service level is appropriate
         if (client.serviceLevel >= 2) {
             console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: Service level check passed (${client.serviceLevel} >= 2)`);
-            if (!workflow.operationsToRun.includes('post_harvesting')) {
-                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: FORCING post_harvesting operation`);
-                console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: Adding post_harvesting to operations list`);
-                workflow.operationsToRun.push('post_harvesting');
-                workflow.statusSummary['post_harvesting'] = { 
-                    completed: false,
-                    reason: 'Forced for testing' 
-                };
-            } else {
-                console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: post_harvesting already in operations list`);
+            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: UNCONDITIONALLY FORCING post_harvesting operation`);
+            
+            // Remove post_harvesting if it's in the list, so we can add it back (to ensure it's not skipped)
+            if (workflow.operationsToRun.includes('post_harvesting')) {
+                workflow.operationsToRun = workflow.operationsToRun.filter(op => op !== 'post_harvesting');
+                console.log(`� ENHANCED DEBUG - ${client.clientId}: Removed existing post_harvesting to force refresh`);
             }
             
+            // Always add post_harvesting - regardless of its current status
+            console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: Adding post_harvesting to operations list`);
+            workflow.operationsToRun.push('post_harvesting');
+            workflow.statusSummary['post_harvesting'] = { 
+                completed: false,
+                reason: 'Forced for testing (unconditional override)'
+            };
+            console.log(`� SPECIAL FOCUS - GUY WILSON: FORCED post_harvesting with unconditional override`);
+            
+            // Also force post_scoring
             if (!workflow.operationsToRun.includes('post_scoring')) {
                 console.log(`🚨 SPECIAL FOCUS - GUY WILSON: FORCING post_scoring operation`);
                 workflow.operationsToRun.push('post_scoring');
                 workflow.statusSummary['post_scoring'] = { 
                     completed: false,
-                    reason: 'Forced for testing' 
+                    reason: 'Forced for testing'
                 };
             }
             
@@ -444,6 +451,21 @@ async function main() {
     log = createLogger(runId);
     
     log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId})`, 'INFO');
+    
+    // GUY WILSON SPECIAL DEBUG - Check for Guy Wilson client early
+    try {
+        const clientService = require('../services/clientService');
+        const guyWilsonClient = await clientService.getClientById('Guy-Wilson');
+        if (guyWilsonClient) {
+            log(`🚨 CRITICAL GUY WILSON DEBUG: Client found at startup with service level ${guyWilsonClient.serviceLevel}`);
+            log(`🚨 CRITICAL GUY WILSON DEBUG: Status: ${guyWilsonClient.status}, Name: ${guyWilsonClient.clientName}`);
+            log(`🚨 CRITICAL GUY WILSON DEBUG: Base ID: ${guyWilsonClient.airtableBaseId}`);
+        } else {
+            log(`🚨 CRITICAL GUY WILSON DEBUG: CLIENT NOT FOUND AT STARTUP - THIS IS A CRITICAL ERROR`, 'ERROR');
+        }
+    } catch (err) {
+        log(`🚨 CRITICAL GUY WILSON DEBUG: Error checking for Guy Wilson client: ${err.message}`, 'ERROR');
+    }
     
     // Use external URL for Render, localhost for local development
     const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
