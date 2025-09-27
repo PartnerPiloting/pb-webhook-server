@@ -1156,6 +1156,11 @@ async function processPostScoringInBackground(jobId, stream, options) {
         // If we have a parent run ID, update the client run record with post scoring metrics
         if (options.parentRunId) {
           try {
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Starting run ID processing for post scoring metrics`);
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Raw parent run ID: ${options.parentRunId}`);
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Client ID: ${client.clientId}`);
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Client name: ${client.clientName}`);
+            
             // Generate client-specific run ID for metrics updating
             let baseRunId = options.parentRunId;
             
@@ -1164,24 +1169,38 @@ async function processPostScoringInBackground(jobId, stream, options) {
             const clientSuffixRegex = /-C[^-]+-?[^-]*/;
             const match = baseRunId.match(clientSuffixRegex);
             
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Suffix regex match: ${match ? "Found match" : "No match"}`);
+            
             if (match) {
               // Remove the existing client suffix
               baseRunId = baseRunId.substring(0, match.index);
-              console.log(`Removed existing client suffix, base run ID: ${baseRunId}`);
+              console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Removed existing client suffix, base run ID: ${baseRunId}`);
             }
             
             // Add client-specific suffix using standardized format
             const clientRunId = `${baseRunId}-C${client.clientId}`;
-            console.log(`Generated client-specific run ID for metrics: ${clientRunId} for client ${client.clientId}`);
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Generated client-specific run ID for metrics: ${clientRunId} for client ${client.clientId}`);
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Transformation: ${options.parentRunId} → ${baseRunId} → ${clientRunId}`);
             
             const airtableService = require('../services/airtableService');
             const runRecordService = require('../services/runRecordServiceV2');
             
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Services loaded: airtableService=${!!airtableService}, runRecordService=${!!runRecordService}`);
+            console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] runRecordService.checkRunRecordExists exists: ${typeof runRecordService.checkRunRecordExists === 'function'}`);
+            
             try {
               // First check if the run record exists before attempting to update it
+              console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Checking if run record exists: ${clientRunId}`);
               const recordExists = await runRecordService.checkRunRecordExists(clientRunId);
+              console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Record exists check result: ${recordExists}`);
               
               if (recordExists) {
+                // Log the updates we're going to apply
+                console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Will update record with metrics:`);
+                console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] - Posts Examined for Scoring: ${postsExamined}`);
+                console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] - Posts Successfully Scored: ${postsScored}`);
+                console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] - Post Scoring Tokens: ${clientResult.totalTokensUsed || 0}`);
+                
                 // STRICT UPDATE-ONLY POLICY: Use updateClientRun only if the record exists
                 // This prevents duplicate records from being created when records don't exist
                 await airtableService.updateClientRun(clientRunId, client.clientId, {
@@ -1190,10 +1209,39 @@ async function processPostScoringInBackground(jobId, stream, options) {
                   // Remove the computed field that caused errors
                   'Post Scoring Tokens': clientResult.totalTokensUsed || 0
                 });
+                console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] ✅ Successfully updated client run record for ${client.clientId}`);
                 console.log(`📊 Updated client run record for ${client.clientId} with post scoring metrics using run ID: ${clientRunId}`);
               } else {
                 // STRICT UPDATE-ONLY POLICY: Record doesn't exist - log error but DO NOT create a new record
                 // This is part of the system-wide policy to never create records during updates
+                console.error(`[DEBUG-RUN-ID-FLOW][POST-SCORING] ❌ Record NOT FOUND: ${clientRunId}`);
+                
+                // Try to find similar records
+                try {
+                  console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Searching for similar run records...`);
+                  const clientBase = await getClientBase(client.clientId);
+                  const baseId = clientRunId.split('-C')[0]; // Get the part before -C
+                  const datePrefix = baseId.split('-')[0]; // Just get the date part
+                  
+                  console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Searching with datePrefix=${datePrefix}, clientId=${client.clientId}`);
+                  
+                  const similarRecords = await clientBase('Client Run Results').select({
+                    filterByFormula: `AND(FIND('${datePrefix}', {Run ID}) > 0, {Client ID} = '${client.clientId}')`,
+                    maxRecords: 5
+                  }).firstPage();
+                  
+                  if (similarRecords && similarRecords.length > 0) {
+                    console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Found ${similarRecords.length} similar records:`);
+                    similarRecords.forEach(record => {
+                      console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] - Similar Run ID: ${record.fields['Run ID']}, Record ID: ${record.id}`);
+                    });
+                  } else {
+                    console.log(`[DEBUG-RUN-ID-FLOW][POST-SCORING] No similar records found`);
+                  }
+                } catch (searchError) {
+                  console.error(`[DEBUG-RUN-ID-FLOW][POST-SCORING] Search failed: ${searchError.message}`);
+                }
+                
                 console.error(`❌ STRICT POLICY: Cannot update non-existent run record for ${clientRunId}. Record update skipped.`);
               }
             } catch (runRecordError) {
