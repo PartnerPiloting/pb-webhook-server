@@ -4568,6 +4568,59 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     
     // Reset termination signal
     global.smartResumeTerminateSignal = false;
+    
+// ---------------------------------------------------------------
+// SPECIAL GUY WILSON POST HARVESTING DIRECT ENDPOINT
+// ---------------------------------------------------------------
+router.get("/harvest-guy-wilson", async (req, res) => {
+  console.log("🚨 SPECIAL GUY WILSON DIRECT HARVEST ENDPOINT HIT");
+  
+  try {
+    // Use direct HTTP request to the existing endpoint
+    const fetch = require('node-fetch');
+    
+    // Prepare the base URL - use localhost to avoid network issues
+    const endpointUrl = `http://localhost:${process.env.PORT || 3001}/api/apify/process-level2-v2`;
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    
+    console.log(`🚨 GUY WILSON DIRECT HARVEST: Calling endpoint ${endpointUrl}`);
+    
+    // Make the request
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': 'Guy-Wilson',
+        'Authorization': `Bearer ${secret}`
+      },
+      body: JSON.stringify({
+        clientId: 'Guy-Wilson',
+        stream: 1,
+        debug: true,
+        force: true
+      })
+    });
+    
+    const responseData = await response.json();
+    
+    console.log(`🚨 GUY WILSON DIRECT HARVEST: Response status: ${response.status}`);
+    console.log(`🚨 GUY WILSON DIRECT HARVEST: Response data:`, JSON.stringify(responseData, null, 2));
+    
+    // Send the response back to the client
+    return res.json({
+      message: "Guy Wilson post harvest triggered successfully",
+      status: response.status,
+      result: responseData
+    });
+  } catch (error) {
+    console.error("🚨 GUY WILSON DIRECT HARVEST ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
   }
 }
 
