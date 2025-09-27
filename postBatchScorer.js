@@ -384,17 +384,42 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
 // Safely update a lead record; if Airtable rejects an unknown skip reason field,
 // retry without that field so we still persist scoring results and date.
 async function safeLeadUpdate(clientBase, tableName, recordId, fields, skipReasonFieldName) {
+    console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] 🔄 Updating record ${recordId} in table ${tableName}`);
+    console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] Fields to update: ${JSON.stringify(Object.keys(fields))}`);
+    
+    // Check for Date Posts Scored field specifically
+    if (fields['Date Posts Scored']) {
+        console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ Setting Date Posts Scored to: ${fields['Date Posts Scored']}`);
+    } else {
+        console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ❌ WARNING: Date Posts Scored field not present in update!`);
+    }
+    
     try {
-        return await clientBase(tableName).update(recordId, fields);
+        const result = await clientBase(tableName).update(recordId, fields);
+        console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ SUCCESS: Updated record ${recordId}`);
+        
+        // Verify the result
+        if (Array.isArray(result) && result.length > 0) {
+            console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ Verification: Record updated with ID ${result[0].id}`);
+        } else {
+            console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ⚠️ Unusual: Update succeeded but no record returned`);
+        }
+        
+        return result;
     } catch (err) {
+        console.error(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ❌ ERROR: ${err.message}`);
         const msg = (err && err.message) || '';
         if (skipReasonFieldName && msg.includes(skipReasonFieldName)) {
+            console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] 🔄 Retrying without ${skipReasonFieldName} field`);
             // Remove the skip reason field and retry once
             const cloned = { ...fields };
             delete cloned[skipReasonFieldName];
             try {
-                return await clientBase(tableName).update(recordId, cloned);
+                const retryResult = await clientBase(tableName).update(recordId, cloned);
+                console.log(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ✅ RETRY SUCCESS: Updated record ${recordId} without ${skipReasonFieldName}`);
+                return retryResult;
             } catch (e2) {
+                console.error(`[DEBUG-POST-SCORING][AIRTABLE-UPDATE] ❌ RETRY ERROR: ${e2.message}`);
                 // Re-throw original context with note
                 throw new Error(`${msg} (and retry without '${skipReasonFieldName}' also failed: ${e2.message})`);
             }
@@ -422,13 +447,42 @@ async function loadClientPostScoringConfig(clientBase) {
 }
 
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
-    console.log(`[DEBUG] getLeadsForPostScoring: Starting with config:`, {
+    console.log(`[DEBUG-POST-SCORING] getLeadsForPostScoring: Starting with config:`, {
         leadsTableName: config.leadsTableName,
         postsContentField: config.fields.postsContent,
         dateScoredField: config.fields.dateScored,
         forceRescore: !!options.forceRescore,
         limit: limit || 'unlimited'
     });
+    
+    // Display the full environment variables that might affect post scoring
+    console.log(`[DEBUG-POST-SCORING] Environment variables:`);
+    console.log(`[DEBUG-POST-SCORING] - POST_SCORING_LIMIT: ${process.env.POST_SCORING_LIMIT || 'not set'}`);
+    console.log(`[DEBUG-POST-SCORING] - VERBOSE_POST_SCORING: ${process.env.VERBOSE_POST_SCORING || 'not set'}`);
+    console.log(`[DEBUG-POST-SCORING] - OVERRIDE_POSTS_TABLE_NAME: ${process.env.OVERRIDE_POSTS_TABLE_NAME || 'not set'}`);
+    console.log(`[DEBUG-POST-SCORING] - GEMINI_TIMEOUT_MS: ${process.env.GEMINI_TIMEOUT_MS || 'not set'}`);
+    console.log(`[DEBUG-POST-SCORING] - POST_BATCH_CHUNK_SIZE: ${process.env.POST_BATCH_CHUNK_SIZE || 'not set'}`);
+    
+    // Check the client base connection
+    console.log(`[DEBUG-POST-SCORING] Client base object type: ${typeof clientBase}`);
+    console.log(`[DEBUG-POST-SCORING] Client base has Leads table: ${typeof clientBase(config.leadsTableName) === 'object'}`);
+    
+    // Add a count query to get the total number of leads with unscored posts
+    try {
+        const countQuery = await clientBase(config.leadsTableName).select({
+            fields: ['ID'],
+            filterByFormula: `AND({${config.fields.postsContent}} != '', {${config.fields.dateScored}} = BLANK())`
+        }).all();
+        
+        console.log(`[DEBUG-POST-SCORING] TOTAL UNSCORED LEADS: ${countQuery.length} leads have posts content but no Date Posts Scored`);
+        
+        // Check limit constraints
+        if (limit && limit < countQuery.length) {
+            console.log(`[DEBUG-POST-SCORING] LIMIT CONSTRAINT: Processing only ${limit} of ${countQuery.length} available leads due to limit parameter`);
+        }
+    } catch (countError) {
+        console.error(`[DEBUG-POST-SCORING] Error counting unscored leads: ${countError.message}`);
+    }
 
     // If explicit targetIds provided, use them directly (bypass view path)
     if (Array.isArray(options.targetIds) && options.targetIds.length > 0) {
