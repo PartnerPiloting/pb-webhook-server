@@ -442,6 +442,24 @@ async function getRunRecord(params) {
   
   // Query for the record
   try {
+    // First, validate that the table exists for this client
+    try {
+      // Try to list tables to check if we can access the base at all
+      await base.tables;
+      // Check specifically if the Client Run Results table exists
+      await base(CLIENT_RUN_RESULTS_TABLE).select({ maxRecords: 1 }).firstPage();
+    } catch (tableError) {
+      // Convert "not authorized" errors to a more helpful message about missing tables/fields
+      if (tableError.message.includes('not authorized')) {
+        const betterError = new Error(`Table '${CLIENT_RUN_RESULTS_TABLE}' may not exist in client ${clientId}'s base or you don't have access. Original error: ${tableError.message}`);
+        logger.warn(`Run Record Service: ${betterError.message}`);
+        trackActivity('get', standardRunId, clientId, source, `TABLE ERROR: ${betterError.message}`);
+        return null; // Return null instead of throwing - allows the calling code to continue
+      }
+      // For other errors, just pass through
+      throw tableError;
+    }
+    
     const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
     logger.debug(`Run Record Service: Querying for record: ${exactIdQuery}`);
     
