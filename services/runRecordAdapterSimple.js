@@ -397,21 +397,22 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
     // Import airtableClient once at the beginning of execution 
     const airtableClient = require('../config/airtableClient');
     
-    // Try with the exact run ID first using client's specific base - NOT the master base
+    // Try with the exact run ID first using MASTER base - not the client's specific base
     try {
-      console.log(`[DEBUG-EXTREME] Getting client base for clientId=${clientIdToUse}`);
+      console.log(`[DEBUG-EXTREME] Using Master Clients Base for querying Client Run Results table`);
       
-      // Use the imported module reference instead of re-importing
-      const base = await airtableClient.getClientBase(clientIdToUse);
-      console.log(`[DEBUG-EXTREME] Got base connection: ${base ? 'SUCCESS' : 'NULL'}`);
+      // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+      // The "Client Run Results" table exists in the Master Clients Base, not in client bases
+      const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+      console.log(`[DEBUG-EXTREME] Got master base connection: ${masterBase ? 'SUCCESS' : 'NULL'}`);
       
-      // Query the client-specific table
+      // Query the master table
       console.log(`[DEBUG-EXTREME] Querying ${airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE} for runId=${runId}`);
-      logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId} in client base`);
+      logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId} in master base`);
       
       console.log(`[DEBUG-EXTREME] Running query with formula: {Run ID} = '${runId}'`);
       console.log(`[DEBUG-EXTREME] Table name being queried: ${airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE}`);
-      const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+      const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `{Run ID} = '${runId}'`,
         maxRecords: 1
       }).firstPage();
@@ -446,10 +447,10 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       
       // Skip if it's the same as what we just tried
       if (standardRunId !== runId) {
-      // CIRCULAR DEPENDENCY FIX: Use the already imported airtableClient module
-      // No need to re-import, using the module reference from earlier
-      const base = await airtableClient.getClientBase(clientIdToUse);
-      const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+      // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+      // The "Client Run Results" table exists in the Master Clients Base, not in client bases
+      const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+      const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `{Run ID} = '${standardRunId}'`,
         maxRecords: 1
       }).firstPage();        if (records && records.length > 0) {
@@ -468,10 +469,10 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       if (parts.length > 0) {
         const datePart = parts[0];
         if (datePart && datePart.length === 6) { // YYMMDD format
-          // CRITICAL FIX: Use client's specific base instead of master base
-          const { getClientBase } = require('../config/airtableClient');
-          const base = await getClientBase(clientIdToUse);
-          const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+          // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+          // The "Client Run Results" table exists in the Master Clients Base, not in client bases
+          const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+          const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
             filterByFormula: `FIND('${datePart}', {Run ID}) > 0`,
             maxRecords: 5
           }).firstPage();
