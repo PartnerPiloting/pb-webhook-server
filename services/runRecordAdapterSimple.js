@@ -347,13 +347,9 @@ async function updateClientMetrics(params) {
  * @returns {Promise<boolean>} True if record exists, false otherwise
  */
 async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
-  console.log(`[DEBUG-EXTREME] checkRunRecordExists CALLED with:`, 
-              typeof runIdOrParams === 'string' ? `runId=${runIdOrParams}` : 'parameter object');
-  
   // For backward compatibility, handle old-style function calls
   if (typeof runIdOrParams === 'string') {
     // Convert to new format
-    console.log(`[DEBUG-EXTREME] Converting string parameters to object format`);
     return checkRunRecordExists({ runId: runIdOrParams, clientId, options });
   }
 
@@ -361,14 +357,7 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
   const logger = optionsParam.logger || new StructuredLogger(providedClientId || 'SYSTEM', runId, 'run_record');
   const source = optionsParam.source || 'unknown';
   
-  console.log(`[DEBUG-EXTREME] ====== START checkRunRecordExists DETAILS ======`);
-  console.log(`[DEBUG-EXTREME] runId: ${runId}`);
-  console.log(`[DEBUG-EXTREME] providedClientId: ${providedClientId}`);
-  console.log(`[DEBUG-EXTREME] source: ${source}`);
-  console.log(`[DEBUG-EXTREME] ============================================`);
-  
   if (!runId) {
-    console.error(`[DEBUG-EXTREME] ERROR: Missing runId in checkRunRecordExists call`);
     logger.error(`[RunRecordAdapterSimple] Missing runId in checkRunRecordExists call`);
     return false;
   }
@@ -399,42 +388,23 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
     
     // Try with the exact run ID first using MASTER base - not the client's specific base
     try {
-      console.log(`[DEBUG-EXTREME] Using Master Clients Base for querying Client Run Results table`);
-      
       // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
       // The "Client Run Results" table exists in the Master Clients Base, not in client bases
       const masterBase = airtableServiceSimple.initialize(); // Get the Master base
-      console.log(`[DEBUG-EXTREME] Got master base connection: ${masterBase ? 'SUCCESS' : 'NULL'}`);
       
       // Query the master table
-      console.log(`[DEBUG-EXTREME] Querying ${airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE} for runId=${runId}`);
       logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId} in master base`);
       
-      console.log(`[DEBUG-EXTREME] Running query with formula: {Run ID} = '${runId}'`);
-      console.log(`[DEBUG-EXTREME] Table name being queried: ${airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE}`);
       const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `{Run ID} = '${runId}'`,
         maxRecords: 1
       }).firstPage();
       
-      console.log(`[DEBUG-EXTREME] Query result: ${records ? records.length : 'NULL'} records`);
       if (records && records.length > 0) {
-        // Debug: Log actual field names and values to verify structure
-        console.log(`[DEBUG-EXTREME] SUCCESS: Found record with exact ID match, recordId=${records[0].id}`);
-        console.log(`[DEBUG-EXTREME] Record fields available: ${Object.keys(records[0].fields).join(', ')}`);
-        console.log(`[DEBUG-EXTREME] Actual 'Run ID' field value: ${records[0].fields['Run ID']}`);
         logger.debug(`[RunRecordAdapterSimple] Found record with exact ID match`);
         return true;
       }
     } catch (exactMatchError) {
-      console.log(`[DEBUG-EXTREME] ERROR in exact match: ${exactMatchError.message}`);
-      console.log(`[DEBUG-EXTREME] ERROR stack: ${exactMatchError.stack || 'No stack trace available'}`);
-      console.log(`[DEBUG-EXTREME] ERROR details: ${JSON.stringify({
-        name: exactMatchError.name,
-        code: exactMatchError.code,
-        statusCode: exactMatchError.statusCode,
-        type: typeof exactMatchError
-      })}`);
       logger.debug(`[RunRecordAdapterSimple] Exact match search failed: ${exactMatchError.message}`);
     }
     
