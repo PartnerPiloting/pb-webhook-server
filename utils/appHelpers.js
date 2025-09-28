@@ -1,7 +1,7 @@
 // utils/appHelpers.js
 
 // We need fetch for the alertAdmin function
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
+const fetch = require('node-fetch');
 
 /* ------------------------------------------------------------------
     helper: alertAdmin  (Mailgun)

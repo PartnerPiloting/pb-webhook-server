@@ -335,6 +335,122 @@ async function updateClientMetrics(params) {
 }
 
 /**
+ * Check if a run record exists without attempting to create it
+ * This function is designed to be very robust and handle variations in run ID format
+ * @param {string|Object} runIdOrParams - Run ID or parameter object
+ * @param {string} [clientId] - Optional client ID when using positional parameters
+ * @param {Object} [options] - Optional options when using positional parameters
+ * @returns {Promise<boolean>} True if record exists, false otherwise
+ */
+async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
+  // For backward compatibility, handle old-style function calls
+  if (typeof runIdOrParams === 'string') {
+    // Convert to new format
+    return checkRunRecordExists({ runId: runIdOrParams, clientId, options });
+  }
+
+  const { runId, clientId: providedClientId, options: optionsParam = {} } = runIdOrParams;
+  const logger = optionsParam.logger || new StructuredLogger(providedClientId || 'SYSTEM', runId, 'run_record');
+  const source = optionsParam.source || 'unknown';
+  
+  if (!runId) {
+    logger.error(`[RunRecordAdapterSimple] Missing runId in checkRunRecordExists call`);
+    return false;
+  }
+  
+  logger.debug(`[RunRecordAdapterSimple] Checking if run record exists: ${runId}, client: ${providedClientId || 'any'}`);
+  
+  try {
+    // Extract client ID from run ID if not provided
+    let clientIdToUse = providedClientId;
+    
+    if (!clientIdToUse) {
+      // Try to extract from run ID if it has a client suffix
+      const extractedClientId = runIdUtils.extractClientId(runId);
+      if (extractedClientId) {
+        clientIdToUse = extractedClientId;
+        logger.debug(`[RunRecordAdapterSimple] Extracted clientId=${clientIdToUse} from runId`);
+      }
+    }
+    
+    if (!clientIdToUse) {
+      logger.error(`[RunRecordAdapterSimple] Cannot check if record exists without clientId`);
+      return false;
+    }
+    
+    // Try with the exact run ID first
+    try {
+      const base = airtableServiceSimple.getBase();
+      const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+        filterByFormula: `AND({Run ID} = '${runId}', {Client ID} = '${clientIdToUse}')`,
+        maxRecords: 1
+      }).firstPage();
+      
+      if (records && records.length > 0) {
+        logger.debug(`[RunRecordAdapterSimple] Found record with exact ID match`);
+        return true;
+      }
+    } catch (exactMatchError) {
+      logger.debug(`[RunRecordAdapterSimple] Exact match search failed: ${exactMatchError.message}`);
+    }
+    
+    // Clean/standardize the run ID (strip any client suffix)
+    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    
+    // Try with standardized ID format
+    try {
+      const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientIdToUse);
+      
+      // Skip if it's the same as what we just tried
+      if (standardRunId !== runId) {
+        const base = airtableServiceSimple.getBase();
+        const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+          filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientIdToUse}')`,
+          maxRecords: 1
+        }).firstPage();
+        
+        if (records && records.length > 0) {
+          logger.debug(`[RunRecordAdapterSimple] Found record with standardized ID match: ${standardRunId}`);
+          return true;
+        }
+      }
+    } catch (standardMatchError) {
+      logger.debug(`[RunRecordAdapterSimple] Standard match search failed: ${standardMatchError.message}`);
+    }
+    
+    // Finally, try with just the date part of the run ID to find similar records
+    try {
+      // Extract date part (first segment before dash)
+      const parts = baseRunId.split('-');
+      if (parts.length > 0) {
+        const datePart = parts[0];
+        if (datePart && datePart.length === 6) { // YYMMDD format
+          const base = airtableServiceSimple.getBase();
+          const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+            filterByFormula: `AND(FIND('${datePart}', {Run ID}) > 0, {Client ID} = '${clientIdToUse}')`,
+            maxRecords: 5
+          }).firstPage();
+          
+          if (records && records.length > 0) {
+            logger.debug(`[RunRecordAdapterSimple] Found ${records.length} records with date part match: ${datePart}`);
+            // Return true if any records found with date part
+            return true;
+          }
+        }
+      }
+    } catch (datePartMatchError) {
+      logger.debug(`[RunRecordAdapterSimple] Date part match search failed: ${datePartMatchError.message}`);
+    }
+    
+    logger.debug(`[RunRecordAdapterSimple] No matching records found for runId=${runId}, clientId=${clientIdToUse}`);
+    return false;
+  } catch (error) {
+    logger.error(`[RunRecordAdapterSimple] Error checking if run record exists: ${error.message}`);
+    return false; // Fail safe - return false on any error
+  }
+}
+
+/**
  * Export all functions using the standardized object parameter approach
  * All functions now accept an object with named parameters for improved clarity
  * and flexibility, while maintaining backward compatibility with legacy calls.
@@ -347,6 +463,7 @@ module.exports = {
   completeJobRecord,
   updateJobAggregates,
   updateClientMetrics,
+  checkRunRecordExists,
   
   // For backward compatibility, alias createRunRecord to createClientRunRecord
   // This makes the transition seamless for existing code

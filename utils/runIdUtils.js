@@ -90,11 +90,29 @@ function addClientSuffix(runId, clientId) {
   return `${baseRunId}-${clientId}`;
 }
 
+/**
+ * Extract client ID from a run ID that may have various formats
+ * @param {string} runId - The run ID to extract client ID from
+ * @returns {string|null} The extracted client ID or null if not found
+ */
+function extractClientId(runId) {
+  if (!runId || typeof runId !== 'string') return null;
+  
+  // Try standard format: YYMMDD-HHMMSS-ClientId
+  const match = runId.match(TIMESTAMP_RUN_ID_REGEX);
+  if (match && match[2]) {
+    return match[2];
+  }
+  
+  return null;
+}
+
 // Export the functions
 module.exports = {
   getBaseRunId,
   stripClientSuffix,
   addClientSuffix,
   hasClientSuffix,
-  hasSpecificClientSuffix
+  hasSpecificClientSuffix,
+  extractClientId
 };

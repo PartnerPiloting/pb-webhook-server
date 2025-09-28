@@ -40,7 +40,7 @@
     "express": "^5.1.0",
     "form-data": "^4.0.0",
     "luxon": "^3.6.1",
-    "node-fetch": "^3.3.2",
+    "node-fetch": "^2.7.0",
     "nodemailer": "^7.0.6",
     "openai": "^4.69.0",
     "remark": "^15.0.1",
