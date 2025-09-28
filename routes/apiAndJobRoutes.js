@@ -28,9 +28,12 @@ const {
   isMissingCritical,
 } = require("../utils/appHelpers.js");
 
-const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
-  || process.env.NEXT_PUBLIC_API_BASE_URL
-  || `http://localhost:${process.env.PORT || 3001}`;
+// Import centralized configuration
+const config = require("../config");
+
+const __PUBLIC_BASE__ = config.server.apiPublicBaseUrl 
+  || process.env.NEXT_PUBLIC_API_BASE_URL 
+  || `http://localhost:${config.server.port}`;
 const ENQUEUE_URL = `${__PUBLIC_BASE__}/enqueue`;
 
 // ---------------------------------------------------------------
@@ -38,9 +41,15 @@ const ENQUEUE_URL = `${__PUBLIC_BASE__}/enqueue`;
 // ---------------------------------------------------------------
 router.get("/health", (_req, res) => {
   console.log("apiAndJobRoutes.js: /health hit");
+  
+  // Include configuration status in health check
+  const configValidation = config.validate();
+  
   res.json({
     status: "ok",
     enhanced_audit_system: "loaded",
+    config_valid: configValidation.isValid,
+    environment: config.env,
     timestamp: new Date().toISOString()
   });
 });
@@ -813,17 +822,35 @@ router.get("/score-lead", async (req, res) => {
 // Gemini Debug
 // ---------------------------------------------------------------
 router.get("/debug-gemini-info", (_req, res) => {
+  // Use centralized configuration for AI settings
   const modelIdForScoring =
     geminiConfig?.geminiModel?.model ||
-    process.env.GEMINI_MODEL_ID ||
-    "gemini-2.5-pro-preview-05-06 (default)";
+    config.ai.gemini.modelId;
 
   res.json({
     message: "Gemini Debug Info",
+    // New configuration values
+    ai_config: {
+      gemini: {
+        model_id: config.ai.gemini.modelId,
+        project_id: config.ai.gemini.projectId,
+        location: config.ai.gemini.location,
+        timeout: config.ai.gemini.timeout
+      },
+      openai: {
+        use_fallback: config.ai.openai.useFallback,
+        model: config.ai.openai.model
+      },
+      scoring: {
+        batch_size: config.ai.scoring.batchSize,
+        max_tokens: config.ai.scoring.maxTokens
+      }
+    },
+    // Legacy values for compatibility
     model_id_for_scoring: modelIdForScoring,
-    batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
-    project_id: process.env.GCP_PROJECT_ID,
-    location: process.env.GCP_LOCATION,
+    batch_scorer_model_id: geminiModelId || config.ai.gemini.modelId,
+    project_id: config.ai.gemini.projectId,
+    location: config.ai.gemini.location,
     global_client_available: !!vertexAIClient,
     default_model_instance_available:
       !!(geminiConfig && geminiConfig.geminiModel),
@@ -1425,7 +1452,7 @@ router.get("/debug-clients", async (req, res) => {
   // This is an admin endpoint - should require admin authentication
   // For now, we'll require a debug key to prevent unauthorized access
   const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
-  if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
+  if (!debugKey || debugKey !== config.server.debugApiKey) {
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Admin authentication required for debug endpoints'
@@ -1435,15 +1462,30 @@ router.get("/debug-clients", async (req, res) => {
   try {
     const clientService = require("../services/clientService");
     
-    // Check environment variables
+    // Use centralized configuration
     const debugInfo = {
+      // Configuration status
+      configStatus: {
+        isValid: config.validate().isValid,
+        airtableValid: config.airtable.validate().isValid,
+        aiValid: config.ai.validate().isValid,
+        serverValid: config.server.validate().isValid
+      },
+      // Airtable configuration
+      airtableConfig: {
+        masterClientsBaseId: config.airtable.masterClientsBaseId,
+        defaultBaseId: config.airtable.defaultBaseId,
+        apiKeyAvailable: !!config.airtable.apiKey,
+        apiKeyLength: config.airtable.apiKey ? config.airtable.apiKey.length : 0
+      },
+      // Legacy environment variables for compatibility
       environmentVariables: {
         MASTER_CLIENTS_BASE_ID: !!process.env.MASTER_CLIENTS_BASE_ID,
         AIRTABLE_API_KEY: !!process.env.AIRTABLE_API_KEY
       },
       values: {
-        MASTER_CLIENTS_BASE_ID: process.env.MASTER_CLIENTS_BASE_ID || "NOT SET",
-        AIRTABLE_API_KEY_LENGTH: process.env.AIRTABLE_API_KEY ? process.env.AIRTABLE_API_KEY.length : 0
+        MASTER_CLIENTS_BASE_ID: config.airtable.masterClientsBaseId || "NOT SET",
+        AIRTABLE_API_KEY_LENGTH: config.airtable.apiKey ? config.airtable.apiKey.length : 0
       }
     };
     

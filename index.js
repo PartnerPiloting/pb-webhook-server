@@ -4,10 +4,11 @@
 // Force redeploy for follow-ups endpoint - 2024-12-xx
 
 // index.js
-// Load environment variables from .env file
-require("dotenv").config();
+// Load centralized configuration (which loads environment variables)
+const config = require('./config');
 
 // --- CONFIGURATIONS ---
+// Legacy imports for backward compatibility
 const geminiConfig = require('./config/geminiClient.js');
 const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
 const base = require('./config/airtableClient.js'); // Your Airtable base connection
@@ -34,6 +35,14 @@ const { v4: uuidv4 } = require('uuid');
 console.log("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>"); // Your existing log
 
 // --- INITIALIZATION CHECKS ---
+// Check configuration validity
+const configValidation = config.validate();
+if (!configValidation.isValid) {
+    console.error("FATAL ERROR in index.js: Configuration validation failed");
+    config.getErrors().forEach(error => console.error(`- ${error}`));
+}
+
+// Legacy checks for backward compatibility
 if (!globalGeminiModel) {
     console.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize. Scoring will not work. Check logs in config/geminiClient.js.");
 } else {
@@ -1854,14 +1863,21 @@ app.get('/debug-linkedin-files', (req, res) => {
 /* ------------------------------------------------------------------
     3) Start server
 ------------------------------------------------------------------*/
-const port = process.env.PORT || 3001;
+const port = config.server.port;
 console.log(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.5) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}.`);
+    
+    // Check configuration again at startup
+    if (!configValidation.isValid) {
+        console.error("STARTUP WARNING: Configuration validation failed. Some features may not work.");
+    }
+    
+    // Legacy checks for backward compatibility
     if (!globalGeminiModel) {
         console.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
     } else if (!base) {
