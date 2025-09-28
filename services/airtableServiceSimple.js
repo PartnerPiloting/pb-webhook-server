@@ -312,6 +312,14 @@ async function updateAggregateMetrics(runId) {
   }
 }
 
+/**
+ * Get the initialized base connection
+ * @returns {Object} The Airtable base object
+ */
+function getBase() {
+  return initialize();
+}
+
 module.exports = {
   initialize,
   createJobTrackingRecord,
@@ -320,5 +328,8 @@ module.exports = {
   updateClientRun,
   completeJobRun,
   completeClientRun,
-  updateAggregateMetrics
+  updateAggregateMetrics,
+  getBase,
+  JOB_TRACKING_TABLE,
+  CLIENT_RUN_RESULTS_TABLE
 };
