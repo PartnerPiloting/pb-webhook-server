@@ -55,14 +55,18 @@ function isCacheValid() {
  * @returns {Promise<Array>} Array of client records
  */
 async function getAllClients() {
+    console.log(`[DEBUG-EXTREME] getAllClients CALLED`);
+    
     try {
         // Return cached data if valid
         if (isCacheValid()) {
-            console.log("Returning cached client data");
+            console.log(`[DEBUG-EXTREME] Returning cached client data (${clientsCache ? clientsCache.length : 0} clients)`);
             return clientsCache;
         }
 
+        console.log(`[DEBUG-EXTREME] Initializing clients base...`);
         const base = initializeClientsBase();
+        console.log(`[DEBUG-EXTREME] Clients base initialized: ${base ? 'SUCCESS' : 'FAILED'}`);
         const clients = [];
 
         console.log("Fetching all clients from Clients base...");
@@ -168,14 +172,19 @@ async function getAllActiveClients() {
  * @returns {Promise<Object|null>} Client record or null if not found
  */
 async function getClientById(clientId) {
+    console.log(`[DEBUG-EXTREME] getClientById CALLED with clientId=${clientId}`);
+    
     try {
+        console.log(`[DEBUG-EXTREME] Getting all clients...`);
         const allClients = await getAllClients();
+        console.log(`[DEBUG-EXTREME] Got ${allClients.length} clients, looking for clientId=${clientId}`);
+        
         const client = allClients.find(c => c.clientId === clientId);
         
         if (client) {
-            console.log(`Found client: ${client.clientName} (${clientId})`);
+            console.log(`[DEBUG-EXTREME] SUCCESS: Found client: ${client.clientName} (${clientId}), baseId=${client.airtableBaseId}`);
         } else {
-            console.log(`Client not found: ${clientId}`);
+            console.error(`[DEBUG-EXTREME] ERROR: Client not found: ${clientId}`);
         }
 
         return client || null;
