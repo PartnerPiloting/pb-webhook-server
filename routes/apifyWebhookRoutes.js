@@ -9,6 +9,8 @@ const { getClientIdForRun, updateApifyRun, updateClientRunMetrics } = require('.
 const { normalizeRunId } = require('../services/runIdService');
 const runIdService = require('../services/runIdService');
 const { createPost } = require('../services/postService');
+const { checkRunRecordExists, safeUpdateMetrics } = require('../services/runRecordAdapterSimple');
+const { handleClientError } = require('../utils/errorHandler');
 
 // Rate limiting for webhook endpoints - TEMPORARILY DISABLED
 // const rateLimit = require("express-rate-limit");
@@ -191,15 +193,27 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
         const estimatedCost = posts.length * 0.02; // $0.02 per post - stored as a number, not a string
         
         // Update metrics in client's run record
-        // Get the client run record to check existing values
-        console.log(`[METDEBUG] Webhook checking for existing record: ${clientSuffixedRunId} for client ${clientId}`);
-        const metricsClientBase = await getClientBase(clientId);
-        const runRecords = await metricsClientBase('Client Run Results').select({
-          filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
-          maxRecords: 1
-        }).firstPage();
+        // Check if run record exists using robust function from runRecordAdapterSimple
+        console.log(`[DEBUG-RUN-ID-FLOW] Checking for run record with ID: ${clientSuffixedRunId}`);
+        const recordExists = await checkRunRecordExists({ 
+          runId: clientSuffixedRunId, 
+          clientId,
+          options: { 
+            source: 'apify_webhook', 
+            logger: console 
+          }
+        });
         
-        if (runRecords && runRecords.length > 0) {
+        if (recordExists) {
+          // Record exists, now fetch it to get current values
+          console.log(`[METDEBUG] Run record exists, fetching details: ${clientSuffixedRunId} for client ${clientId}`);
+          const metricsClientBase = await getClientBase(clientId);
+          const runRecords = await metricsClientBase('Client Run Results').select({
+            filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
+            maxRecords: 1
+          }).firstPage();
+          
+          if (runRecords && runRecords.length > 0) {
           // Get current counts, default to 0 if not set
           const currentRecord = runRecords[0];
           const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
@@ -239,60 +253,92 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
           
           console.log(`[WEBHOOK_DEBUG] isOrchestrated set to: ${isOrchestrated} (FORCED TRUE for testing)`);
           
-          if (isOrchestrated) {
-            // Get the centralized metrics update function
-            const { updateClientRunMetrics } = require('../services/apifyRunsService');
-            
-            // Update metrics using the centralized function with custom values
-            // that preserve the existing logic specific to webhook handling
-            await updateClientRunMetrics(runId, clientId, {
-              postsCount: updatedCount,  // Use the max of current and new
-              profilesCount: Math.max(profilesSubmittedCount, posts.length)  // Use the max
-            });
-            
+          // Calculate the metrics updates
+          const metricsUpdates = {
+            'Total Posts Harvested': updatedCount,
+            'Apify API Costs': updatedCosts,
+            'Profiles Submitted for Post Harvesting': Math.max(profilesSubmittedCount, posts.length),
+            'Apify Run ID': runId
+          };
+          
+          // Use our new safeUpdateMetrics function for consistent handling
+          const updateResult = await safeUpdateMetrics({
+            runId: clientSuffixedRunId,
+            clientId,
+            processType: 'post_harvesting',
+            metrics: metricsUpdates,
+            options: {
+              isStandalone: !isOrchestrated,
+              logger: console,
+              source: 'apify_webhook'
+            }
+          });
+          
+          if (updateResult.success && !updateResult.skipped) {
             console.log(`[ApifyWebhook] Updated client run ${clientSuffixedRunId} record for ${clientId}:`);
             console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
             console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
+          } else if (updateResult.skipped) {
+            console.log(`[ApifyWebhook] Skipped metrics update: ${updateResult.reason || 'Unknown reason'}`);
           } else {
-            console.log(`[ApifyWebhook] Skipping metrics update for standalone run (no parentRunId found)`);
+            console.error(`[ApifyWebhook] Failed to update metrics: ${updateResult.error || 'Unknown error'}`);
+            }
+          } else {
+            // Record found by checkRunRecordExists but couldn't be fetched
+            console.warn(`[ApifyWebhook] Record exists but couldn't be fetched: ${clientSuffixedRunId}`);
           }
         } else {
-          // ERROR: Record not found - this should have been created at process kickoff
-          const errorMsg = `ERROR: Client run record not found for ${clientSuffixedRunId} (${clientId})`;
-          console.error(`[ApifyWebhook] ${errorMsg}`);
-          console.error(`[ApifyWebhook] This indicates a process kickoff issue - run record should exist`);
-          console.error(`[ApifyWebhook] Run ID: ${runId}, Client ID: ${clientId}`);
-          console.error(`[ApifyWebhook] Posts count: ${posts.length}`);
-          console.error(`[ApifyWebhook] IMPORTANT: Ensure webhook URL includes ?clientId=${clientId} parameter`);
+          // Record exists according to checkRunRecordExists but we couldn't fetch it
+          // This is an unusual case - log it but still try to update with our safe function
+          console.warn(`[ApifyWebhook] Record exists but couldn't be fetched: ${clientSuffixedRunId}`);
           
-          // Add enhanced debugging to help diagnose why the record wasn't found
-          await debugRunRecordLookupFailure(clientId, clientSuffixedRunId, runId);
+          // Calculate the metrics updates
+          const metricsUpdates = {
+            'Total Posts Harvested': posts.length,
+            'Apify API Costs': estimatedCost,
+            'Apify Run ID': runId
+          };
           
-          // STRICT ENFORCEMENT: Do NOT attempt to create or update missing records
-          console.error(`[ApifyWebhook] STRICT ENFORCEMENT: Skipping metrics update for missing record`);
-          console.error(`[ApifyWebhook] This webhook data will not be recorded as requested`);
+          // Use safeUpdateMetrics even in this case - it will handle the error gracefully
+          const updateResult = await safeUpdateMetrics({
+            runId: clientSuffixedRunId,
+            clientId,
+            processType: 'post_harvesting',
+            metrics: metricsUpdates,
+            options: {
+              isStandalone: false,  // Not a standalone run
+              logger: console,
+              source: 'apify_webhook_recovery'
+            }
+          });
           
-          // Log detailed diagnostics to help identify the root cause
-          console.error(`[ApifyWebhook] Diagnostics for missing record:`);
-          console.error(`[ApifyWebhook] - Standard run ID format: ${clientSuffixedRunId}`);
-          console.error(`[ApifyWebhook] - Original Apify run ID: ${runId}`);
-          console.error(`[ApifyWebhook] - Client ID: ${clientId}`);
-          console.error(`[ApifyWebhook] - Posts processed: ${posts.length}`);
-          console.error(`[ApifyWebhook] - Webhook received at: ${new Date().toISOString()}`);
-          
-          // Return without attempting any updates - as explicitly requested
-          // Will rely on error logs for visibility
+          if (updateResult.success && !updateResult.skipped) {
+            console.log(`[ApifyWebhook] Successfully updated metrics in recovery mode`);
+          } else {
+            // Add enhanced debugging to help diagnose why the record wasn't found/updated
+            console.error(`[ApifyWebhook] Failed to update metrics in recovery mode: ${updateResult.reason || updateResult.error || 'Unknown error'}`);
+            await debugRunRecordLookupFailure(clientId, clientSuffixedRunId, runId);
+          }
         }
       } catch (metricError) {
-        console.error(`[ApifyWebhook] Failed to update post harvesting metrics: ${metricError.message}`);
+        // Use the handleClientError function for better error handling
+        handleClientError(clientId, 'post_harvesting_metrics', metricError, {
+          logger: console,
+          includeStack: true
+        });
+        
         console.error(`[DEBUG][METRICS_TRACKING] ERROR updating webhook metrics: ${metricError.message}`);
-        console.error(`[DEBUG][METRICS_TRACKING] Error stack: ${metricError.stack}`);
         console.error(`[DEBUG][METRICS_TRACKING] Client ID: ${clientId}, Run ID: ${clientSuffixedRunId || '(none)'}`);
         console.error(`[DEBUG][METRICS_TRACKING] Posts length: ${posts ? posts.length : 0}`);
         // Continue execution even if metrics update fails
       }
     } catch (e) {
-      console.error('[ApifyWebhook] Background processing error:', e.message);
+      // Use handleClientError for standardized error handling
+      handleClientError(clientId, 'post_harvesting_processing', e, {
+        logger: console,
+        includeStack: true
+      });
+      
       // Update run status to failed
       try {
         await updateApifyRun(runId, { 
@@ -300,11 +346,19 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
           error: `Processing failed: ${e.message}` 
         });
       } catch (updateError) {
-        console.error(`[ApifyWebhook] Error updating run status: ${updateError.message}`);
+        handleClientError(clientId, 'post_harvesting_status_update', updateError, {
+          logger: console
+        });
       }
     }
   } catch (outerError) {
-    console.error(`[ApifyWebhook] Fatal error processing webhook: ${outerError.message}`);
+    // For the outer error, we might not have clientId yet
+    const errorClientId = clientId || 'UNKNOWN';
+    handleClientError(errorClientId, 'post_harvesting_webhook', outerError, {
+      logger: console,
+      includeStack: true
+    });
+    
     try {
       await updateApifyRun(runId, { 
         status: 'FAILED', 

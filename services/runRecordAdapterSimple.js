@@ -451,6 +451,104 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
 }
 
 /**
+ * Safely update metrics in a run record - checking if the record exists first
+ * and handling various error conditions gracefully
+ * 
+ * This is a common function that can be called from:
+ * - Lead scoring process
+ * - Post harvesting process
+ * - Post scoring process
+ * 
+ * It ensures consistency in how we handle metrics updates across all processes.
+ * 
+ * @param {Object} params - Parameters for metrics update
+ * @param {string} params.runId - The run ID to update metrics for
+ * @param {string} params.clientId - The client ID
+ * @param {string} params.processType - Type of process ('lead_scoring', 'post_harvesting', 'post_scoring')
+ * @param {Object} params.metrics - The metrics to update
+ * @param {Object} [params.options] - Additional options
+ * @param {boolean} [params.options.isStandalone=false] - Whether this is a standalone run (will skip metrics)
+ * @param {Object} [params.options.logger] - Logger instance
+ * @param {string} [params.options.source] - Source of the operation
+ * @returns {Promise<Object>} Result object with success status and details
+ */
+async function safeUpdateMetrics(params) {
+  const { runId, clientId, processType, metrics = {}, options = {} } = params;
+  const { isStandalone = false } = options;
+  const logger = options.logger || new StructuredLogger(clientId, null, processType);
+  const source = options.source || processType;
+  
+  // If this is a standalone run, don't update metrics
+  if (isStandalone) {
+    logger.info(`[${processType}] Skipping metrics update for standalone run ${runId}`);
+    return {
+      success: true,
+      skipped: true,
+      reason: 'standalone_run',
+      message: 'Metrics update skipped for standalone run'
+    };
+  }
+  
+  try {
+    logger.debug(`[${processType}] Checking if run record exists for ${runId} (${clientId})`);
+    
+    // First check if the run record exists using our robust function
+    const recordExists = await checkRunRecordExists({ 
+      runId, 
+      clientId,
+      options: { 
+        source: `${source}_metrics`, 
+        logger 
+      }
+    });
+    
+    if (!recordExists) {
+      // Record doesn't exist - log warning but don't throw error
+      logger.warn(`[${processType}] Run record not found for ${runId} (${clientId}). Metrics update skipped.`);
+      return {
+        success: false,
+        skipped: true,
+        reason: 'record_not_found',
+        message: `Run record not found for ${runId} (${clientId}). Metrics update skipped.`
+      };
+    }
+    
+    // Record exists, proceed with update
+    logger.debug(`[${processType}] Updating metrics for run ${runId} (${clientId})`);
+    
+    // Use the standard updateRunRecord function to apply the updates
+    const updateResult = await updateRunRecord({
+      runId,
+      clientId,
+      updates: metrics,
+      options: {
+        source: `${source}_metrics`,
+        logger
+      }
+    });
+    
+    logger.info(`[${processType}] Successfully updated metrics for run ${runId} (${clientId})`);
+    
+    return {
+      success: true,
+      skipped: false,
+      updateResult
+    };
+    
+  } catch (error) {
+    // If anything goes wrong, log error but don't fail the process
+    logger.error(`[${processType}] Error updating metrics for ${runId} (${clientId}): ${error.message}`);
+    
+    return {
+      success: false,
+      error: error.message,
+      skipped: true,
+      reason: 'update_error'
+    };
+  }
+}
+
+/**
  * Export all functions using the standardized object parameter approach
  * All functions now accept an object with named parameters for improved clarity
  * and flexibility, while maintaining backward compatibility with legacy calls.
@@ -464,6 +562,7 @@ module.exports = {
   updateJobAggregates,
   updateClientMetrics,
   checkRunRecordExists,
+  safeUpdateMetrics,
   
   // For backward compatibility, alias createRunRecord to createClientRunRecord
   // This makes the transition seamless for existing code
