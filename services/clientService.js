@@ -5,6 +5,7 @@
 require('dotenv').config();
 const Airtable = require('airtable');
 const { parseServiceLevel } = require('../utils/serviceLevel');
+const { safeFieldUpdate } = require('../utils/errorHandler');
 
 // Cache for client data to avoid repeated API calls
 let clientsCache = null;
@@ -749,19 +750,34 @@ async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
             updateFields[fields.lastRunCount] = metrics.count;
         }
 
-        // Update the record
-        await base('Clients').update([{
-            id: client.id,
-            fields: updateFields
-        }]);
+        // Use safeFieldUpdate to avoid errors with missing or invalid fields
+        const updateResult = await safeFieldUpdate(
+            base,
+            'Clients',
+            client.id,
+            updateFields,
+            {
+                clientId,
+                logger: console,
+                skipMissing: true,  // Skip fields that don't exist
+                source: `${operation}_status`
+            }
+        );
 
-        console.log(`✅ ${operation} status updated for ${clientId}: ${status}`);
+        if (updateResult.updated) {
+            console.log(`✅ ${operation} status updated for ${clientId}: ${status}`);
+        } else {
+            console.warn(`⚠️ ${operation} status update for ${clientId} had issues: ${updateResult.reason || updateResult.error || 'Unknown issue'}`);
+            if (updateResult.skippedFields && updateResult.skippedFields.length > 0) {
+                console.warn(`⚠️ Skipped fields: ${updateResult.skippedFields.join(', ')}`);
+            }
+        }
         
         // Invalidate cache
         clientsCache = null;
         clientsCacheTimestamp = null;
 
-        return true;
+        return updateResult.updated;
 
     } catch (error) {
         console.error(`❌ Error setting ${operation} status for ${clientId}:`, error.message);
