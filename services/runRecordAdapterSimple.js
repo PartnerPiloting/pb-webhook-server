@@ -471,6 +471,8 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
  * @param {Object} [params.options.logger] - Logger instance
  * @param {string} [params.options.source] - Source of the operation
  * @returns {Promise<Object>} Result object with success status and details
+ * 
+ * @see {docs/METRICS-UPDATE-SYSTEM.md} For detailed documentation on this metrics system
  */
 async function safeUpdateMetrics(params) {
   const { runId, clientId, processType, metrics = {}, options = {} } = params;
