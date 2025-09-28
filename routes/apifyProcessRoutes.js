@@ -7,6 +7,7 @@ const Airtable = require('airtable');
 const { getClientBase, createBaseInstance } = require('../config/airtableClient');
 const clientService = require('../services/clientService');
 const { getClientById } = clientService;
+const { StructuredLogger } = require('../utils/structuredLogger');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const runIdUtils = require('../utils/runIdUtils');
@@ -769,14 +770,23 @@ async function processClientHandler(req, res) {
         }
         
         // Use our enhanced checkRunRecordExists function from runRecordAdapterSimple
+        console.log(`[DEBUG-EXTREME] About to check if run record exists for runId=${runIdToUse}, clientId=${clientId}`);
+        const debugLogger = new StructuredLogger(clientId, runIdToUse, 'apify_process');
+        debugLogger.debug(`Starting run record check for ${runIdToUse}`);
+        
         const recordExists = await runRecordService.checkRunRecordExists({ 
           runId: runIdToUse, 
           clientId,
           options: { 
             source: 'apify_process_client', 
-            logger: console 
+            logger: debugLogger 
           }
         });
+        console.log(`[DEBUG-EXTREME] checkRunRecordExists result: ${recordExists}`);
+        
+        // Let's verify the fields and table names
+        console.log(`[DEBUG-EXTREME] FIELD_VERIFICATION: Expected table name = 'Client Run Results'`);
+        console.log(`[DEBUG-EXTREME] FIELD_VERIFICATION: Run ID field name = 'Run ID'`);
         
         if (recordExists) {
           // Record exists, now fetch it to get current values
