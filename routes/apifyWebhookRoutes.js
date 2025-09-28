@@ -213,7 +213,6 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
             // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
             // The "Client Run Results" table exists in the Master Clients Base, not in client bases
             const masterBase = airtableServiceSimple.initialize(); // Get the Master base
-            console.log(`[DEBUG-EXTREME] Got master base connection for metrics: ${masterBase ? 'SUCCESS' : 'NULL'}`);
             
             const runRecords = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
               filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
@@ -579,7 +578,6 @@ async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, origin
       // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
       // The "Client Run Results" table exists in the Master Clients Base, not in client bases
       const runRecordsMasterBase = airtableServiceSimple.initialize(); // Get the Master base
-      console.log(`[DEBUG-EXTREME] Got master base connection for recent runs: ${runRecordsMasterBase ? 'SUCCESS' : 'NULL'}`);
       
       const recentRunRecords = await runRecordsMasterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `{Client ID} = '${clientId}'`,
@@ -603,7 +601,6 @@ async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, origin
       // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
       // The "Client Run Results" table exists in the Master Clients Base, not in client bases
       const similarRecordsMasterBase = airtableServiceSimple.initialize(); // Get the Master base
-      console.log(`[DEBUG-EXTREME] Got master base connection for similar records: ${similarRecordsMasterBase ? 'SUCCESS' : 'NULL'}`);
       
       const similarRecords = await similarRecordsMasterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `FIND('${baseRunId}', {Run ID})`,
