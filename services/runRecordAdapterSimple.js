@@ -378,11 +378,18 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       return false;
     }
     
-    // Try with the exact run ID first
+    // Try with the exact run ID first using client's specific base - NOT the master base
     try {
-      const base = airtableServiceSimple.getBase();
+      // CRITICAL FIX: Use client's specific base instead of master base
+      // Import here to avoid circular dependencies
+      const { getClientBase } = require('../config/airtableClient');
+      const base = await getClientBase(clientIdToUse);
+      
+      // Query the client-specific table
+      logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId} in client base`);
+      
       const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `AND({Run ID} = '${runId}', {Client ID} = '${clientIdToUse}')`,
+        filterByFormula: `{Run ID} = '${runId}'`,
         maxRecords: 1
       }).firstPage();
       
@@ -403,9 +410,11 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       
       // Skip if it's the same as what we just tried
       if (standardRunId !== runId) {
-        const base = airtableServiceSimple.getBase();
+        // CRITICAL FIX: Use client's specific base instead of master base
+        const { getClientBase } = require('../config/airtableClient');
+        const base = await getClientBase(clientIdToUse);
         const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-          filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientIdToUse}')`,
+          filterByFormula: `{Run ID} = '${standardRunId}'`,
           maxRecords: 1
         }).firstPage();
         
@@ -425,9 +434,11 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       if (parts.length > 0) {
         const datePart = parts[0];
         if (datePart && datePart.length === 6) { // YYMMDD format
-          const base = airtableServiceSimple.getBase();
+          // CRITICAL FIX: Use client's specific base instead of master base
+          const { getClientBase } = require('../config/airtableClient');
+          const base = await getClientBase(clientIdToUse);
           const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-            filterByFormula: `AND(FIND('${datePart}', {Run ID}) > 0, {Client ID} = '${clientIdToUse}')`,
+            filterByFormula: `FIND('${datePart}', {Run ID}) > 0`,
             maxRecords: 5
           }).firstPage();
           
