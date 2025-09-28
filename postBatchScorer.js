@@ -18,6 +18,7 @@ const { getClientBase } = require('./config/airtableClient');
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 const { buildPostScoringPrompt } = require('./postPromptBuilder');
 const { scorePostsWithGemini } = require('./postGeminiScorer');
+const { safeUpdateMetrics } = require('./services/runRecordAdapterSimple');
 const { parsePlainTextPosts } = require('./utils/parsePlainTextPosts');
 const { repairAndParseJson } = require('./utils/jsonRepair');
 const { alertAdmin } = require('./utils/appHelpers.js');
@@ -468,16 +469,36 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                     console.log(`[DEBUG-METRICS] - clientResult.totalTokensUsed: ${clientResult.totalTokensUsed}`);
                 }
                 
-                await airtableService.updateClientRun(standardizedRunId, client.clientId, {
+                // Prepare metrics updates
+                const metricsUpdates = {
                     'Posts Examined for Scoring': clientResult.postsProcessed,
                     'Posts Successfully Scored': clientResult.postsScored,
                     'Post Scoring Tokens': postScoringTokens,
                     'Status': clientResult.status,
                     'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped. Total tokens: ${postScoringTokens}.`
+                };
+                
+                // Use the new safeUpdateMetrics function for consistent handling
+                const updateResult = await safeUpdateMetrics({
+                    runId: standardizedRunId,
+                    clientId: client.clientId,
+                    processType: 'post_scoring',
+                    metrics: metricsUpdates,
+                    options: {
+                        isStandalone: false,
+                        logger: console,
+                        source: 'post_batch_scorer'
+                    }
                 });
                 
-                logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
-                console.log(`[DEBUG-METRICS] POST METRICS UPDATE COMPLETED for ${client.clientId}`);
+                if (updateResult.success && !updateResult.skipped) {
+                    logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
+                    console.log(`[DEBUG-METRICS] POST METRICS UPDATE COMPLETED for ${client.clientId}`);
+                } else if (updateResult.skipped) {
+                    logger.warn(`[DEBUG-METRICS] Metrics update skipped: ${updateResult.reason || 'Unknown reason'}`);
+                } else {
+                    logger.error(`[DEBUG-METRICS] Failed to update metrics: ${updateResult.error || 'Unknown error'}`);
+                }
             } catch (metricsError) {
                 logger.error(`Failed to update metrics: ${metricsError.message}`);
                 console.error(`[POST_METRICS_ERROR] Failed to update metrics for ${client.clientId}: ${metricsError.message}`);
