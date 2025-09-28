@@ -768,15 +768,29 @@ async function processClientHandler(req, res) {
           throw tableError;
         }
         
-        // Query for the run record
-        const runRecords = await clientBase('Client Run Results').select({
-          filterByFormula: `{Run ID} = '${runIdToUse}'`,
-          maxRecords: 1
-        }).firstPage();
+        // Use our enhanced checkRunRecordExists function from runRecordAdapterSimple
+        const recordExists = await runRecordService.checkRunRecordExists({ 
+          runId: runIdToUse, 
+          clientId,
+          options: { 
+            source: 'apify_process_client', 
+            logger: console 
+          }
+        });
         
-        if (runRecords && runRecords.length > 0) {
-          // Get current values, default to 0 if not set
-          const currentRecord = runRecords[0];
+        if (recordExists) {
+          // Record exists, now fetch it to get current values
+          console.log(`[DEBUG-RUN-ID-FLOW] Run record exists for ${runIdToUse}, fetching details`);
+          
+          // Query for the run record now that we know it exists
+          const runRecords = await clientBase('Client Run Results').select({
+            filterByFormula: `{Run ID} = '${runIdToUse}'`,
+            maxRecords: 1
+          }).firstPage();
+          
+          if (runRecords && runRecords.length > 0) {
+            // Get current values, default to 0 if not set
+            const currentRecord = runRecords[0];
           
           console.log(`[DEBUG-RUN-ID-FLOW] RECORD FOUND: ✅ Found run record with ID ${currentRecord.id} for run ID ${runIdToUse}`);
           
@@ -835,6 +849,7 @@ async function processClientHandler(req, res) {
           }
           console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
           console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
+          }
         } else {
           // ERROR: Record not found - this should have been created at the beginning of this process
           const errorMsg = `ERROR: Client run record not found for ${runIdToUse} (${clientId})`;
