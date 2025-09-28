@@ -15,6 +15,8 @@
 const airtableServiceSimple = require('./airtableServiceSimple');
 const runIdUtils = require('../utils/runIdUtils');
 const { StructuredLogger } = require('../utils/structuredLogger');
+// CIRCULAR DEPENDENCY FIX: Import airtableClient once at module level
+const airtableClient = require('../config/airtableClient');
 
 /**
  * @typedef {Object} RunRecordParams
@@ -391,14 +393,16 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       return false;
     }
     
+    // CIRCULAR DEPENDENCY FIX: Import client base module at the top level
+    // Import airtableClient once at the beginning of execution 
+    const airtableClient = require('../config/airtableClient');
+    
     // Try with the exact run ID first using client's specific base - NOT the master base
     try {
-      // CRITICAL FIX: Use client's specific base instead of master base
-      // Import here to avoid circular dependencies
       console.log(`[DEBUG-EXTREME] Getting client base for clientId=${clientIdToUse}`);
-      const { getClientBase } = require('../config/airtableClient');
-      console.log(`[DEBUG-EXTREME] Calling getClientBase(${clientIdToUse})`);
-      const base = await getClientBase(clientIdToUse);
+      
+      // Use the imported module reference instead of re-importing
+      const base = await airtableClient.getClientBase(clientIdToUse);
       console.log(`[DEBUG-EXTREME] Got base connection: ${base ? 'SUCCESS' : 'NULL'}`);
       
       // Query the client-specific table
@@ -423,7 +427,13 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       }
     } catch (exactMatchError) {
       console.log(`[DEBUG-EXTREME] ERROR in exact match: ${exactMatchError.message}`);
-      console.log(`[DEBUG-EXTREME] ERROR stack: ${exactMatchError.stack}`);
+      console.log(`[DEBUG-EXTREME] ERROR stack: ${exactMatchError.stack || 'No stack trace available'}`);
+      console.log(`[DEBUG-EXTREME] ERROR details: ${JSON.stringify({
+        name: exactMatchError.name,
+        code: exactMatchError.code,
+        statusCode: exactMatchError.statusCode,
+        type: typeof exactMatchError
+      })}`);
       logger.debug(`[RunRecordAdapterSimple] Exact match search failed: ${exactMatchError.message}`);
     }
     
@@ -436,15 +446,13 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       
       // Skip if it's the same as what we just tried
       if (standardRunId !== runId) {
-        // CRITICAL FIX: Use client's specific base instead of master base
-        const { getClientBase } = require('../config/airtableClient');
-        const base = await getClientBase(clientIdToUse);
-        const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-          filterByFormula: `{Run ID} = '${standardRunId}'`,
-          maxRecords: 1
-        }).firstPage();
-        
-        if (records && records.length > 0) {
+      // CIRCULAR DEPENDENCY FIX: Use the already imported airtableClient module
+      // No need to re-import, using the module reference from earlier
+      const base = await airtableClient.getClientBase(clientIdToUse);
+      const records = await base(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+        filterByFormula: `{Run ID} = '${standardRunId}'`,
+        maxRecords: 1
+      }).firstPage();        if (records && records.length > 0) {
           logger.debug(`[RunRecordAdapterSimple] Found record with standardized ID match: ${standardRunId}`);
           return true;
         }
