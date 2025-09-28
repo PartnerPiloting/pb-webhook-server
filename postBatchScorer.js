@@ -214,7 +214,8 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         errors: 0, // lead-level errors
         errorReasonCounts: {},
         errorDetails: [],
-        duration: 0
+        duration: 0,
+        totalTokensUsed: 0 // Add missing token tracking field
     };
     
     // Special debugging for Guy Wilson
@@ -400,6 +401,13 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 clientResult.postsProcessed += chunkResult.processed;
                 clientResult.postsScored += chunkResult.scored;
                 clientResult.leadsSkipped += chunkResult.skipped || 0;
+                
+                // Track token usage from chunk
+                if (chunkResult.totalTokensUsed) {
+                    clientResult.totalTokensUsed += chunkResult.totalTokensUsed;
+                    logger.debug(`Chunk ${i + 1}: Added ${chunkResult.totalTokensUsed} tokens, cumulative total: ${clientResult.totalTokensUsed}`);
+                }
+                
                 if (chunkResult.skipCounts) {
                     for (const [reason, count] of Object.entries(chunkResult.skipCounts)) {
                         clientResult.skipCounts[reason] = (clientResult.skipCounts[reason] || 0) + count;
@@ -442,14 +450,34 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 const standardizedRunId = runIdService.normalizeRunId(runId, client.clientId);
                 
                 // Update metrics in the Client Run Results table
+                console.log(`[DEBUG-METRICS] PREPARING TO UPDATE POST METRICS for ${client.clientId}`);
+                console.log(`[DEBUG-METRICS] - Run ID: ${standardizedRunId}`);
+                console.log(`[DEBUG-METRICS] - Posts Examined for Scoring: ${clientResult.postsProcessed}`);
+                console.log(`[DEBUG-METRICS] - Posts Successfully Scored: ${clientResult.postsScored}`);
+                console.log(`[DEBUG-METRICS] - Status: ${clientResult.status}`);
+                
+                // Add post scoring tokens to the update
+                const postScoringTokens = clientResult.totalTokensUsed || 0;
+                console.log(`[DEBUG-METRICS] - Post Scoring Tokens to be updated: ${postScoringTokens}`);
+                
+                // Log if token tracking is properly implemented
+                if (postScoringTokens > 0) {
+                    console.log(`[DEBUG-METRICS] ✅ Token tracking is WORKING! ${postScoringTokens} tokens used.`);
+                } else {
+                    console.log(`[DEBUG-METRICS] ❌ WARNING: Token tracking still shows 0 tokens!`);
+                    console.log(`[DEBUG-METRICS] - clientResult.totalTokensUsed: ${clientResult.totalTokensUsed}`);
+                }
+                
                 await airtableService.updateClientRun(standardizedRunId, client.clientId, {
                     'Posts Examined for Scoring': clientResult.postsProcessed,
                     'Posts Successfully Scored': clientResult.postsScored,
+                    'Post Scoring Tokens': postScoringTokens,
                     'Status': clientResult.status,
-                    'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped.`
+                    'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped. Total tokens: ${postScoringTokens}.`
                 });
                 
                 logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
+                console.log(`[DEBUG-METRICS] POST METRICS UPDATE COMPLETED for ${client.clientId}`);
             } catch (metricsError) {
                 logger.error(`Failed to update metrics: ${metricsError.message}`);
                 console.error(`[POST_METRICS_ERROR] Failed to update metrics for ${client.clientId}: ${metricsError.message}`);
@@ -945,7 +973,8 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
         errors: 0,
         errorDetails: [],
         skipCounts: {},
-        errorReasonCounts: {}
+        errorReasonCounts: {},
+        totalTokensUsed: 0  // Add token tracking at chunk level
     };
     
     logger.process(`Processing ${records.length} leads for post scoring in client ${clientId}`);
@@ -955,6 +984,13 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
             chunkResult.processed++;
             
             const result = await analyzeAndScorePostsForLead(leadRecord, clientBase, config, clientId, logger, options);
+            
+            // Track token usage regardless of success/failure status
+            if (result.tokenUsage) {
+                chunkResult.totalTokensUsed += result.tokenUsage;
+                // Log token usage for debugging
+                logger.debug(`Lead ${leadRecord.id}: Used ${result.tokenUsage} tokens`);
+            }
             
             if (result.status === 'success' || result.status === 'scored') {
                 chunkResult.scored++;
@@ -1159,7 +1195,9 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         
         // Prepare input for Gemini
         const geminiInput = { lead_id: leadRecord.id, posts: allPosts };
-        const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
+        const aiResponse = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
+        const aiResponseArray = aiResponse.results;
+        const tokenUsage = aiResponse.tokenUsage || { totalTokens: 0 };
         
         // Merge original post data into AI response (now including reposts)
         function normalizePostUrl(u) {
@@ -1404,7 +1442,11 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         }
         
         logger.summary(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
-        return { status: "success", relevanceScore: highestScoringPost.post_score };
+        return { 
+            status: "success", 
+            relevanceScore: highestScoringPost.post_score,
+            tokenUsage: tokenUsage.totalTokens || 0
+        };
 
     } catch (error) {
         console.error(`Lead ${leadRecord.id}: Error during AI scoring process. Error: ${error.message}`, error.stack);

@@ -83,7 +83,8 @@ ${JSON.stringify(geminiInputObject, null, 2)}
         if (candidate.content?.parts?.[0]?.text) rawResponseText = candidate.content.parts[0].text;
         else logger.warn('scorePostsWithGemini', `Candidate had no text content - Finish Reason: ${modelFinishReason || "Unknown"}`);
         if (modelFinishReason && modelFinishReason !== "STOP") logger.warn('scorePostsWithGemini', `Gemini API call finished with non-STOP reason: ${modelFinishReason}`);
-        logger.debug('scorePostsWithGemini', `TOKENS (Gemini) – Prompt: ${usageMetadata.promptTokenCount || "?"}, Candidates: ${usageMetadata.candidatesTokenCount || "?"}, Total: ${usageMetadata.totalTokenCount || "?"}`);
+        const totalTokens = usageMetadata.totalTokenCount || 0;
+        logger.debug('scorePostsWithGemini', `TOKENS (Gemini) – Prompt: ${usageMetadata.promptTokenCount || "?"}, Candidates: ${usageMetadata.candidatesTokenCount || "?"}, Total: ${totalTokens}`);
         if (rawResponseText.trim() === "") {
             logger.error('scorePostsWithGemini', `Gemini response text is empty - Finish Reason: ${modelFinishReason || "Unknown"}`);
             throw new Error(`PostGeminiScorer: Gemini response text is empty. Finish Reason: ${modelFinishReason || "Unknown"}.`);
@@ -109,24 +110,38 @@ ${JSON.stringify(geminiInputObject, null, 2)}
             throw new Error(`PostGeminiScorer: Failed to parse Gemini's response. Raw response: ${rawResponseText.substring(0, 500)}...`);
         }
 
+        // Add token usage to result
+        const tokenUsage = {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0,
+            totalTokens: usageMetadata.totalTokenCount || 0
+        };
+        
         // Flexible parsing to handle multiple Gemini response formats
+        let resultArray;
         if (Array.isArray(parsedJsonObject)) {
             // Format 1: Direct array [{post_id: "...", post_score: 50}]
             logger.summary('scorePostsWithGemini', `Successfully parsed direct array format with ${parsedJsonObject.length} scored posts`);
-            return parsedJsonObject;
+            resultArray = parsedJsonObject;
         } else if (parsedJsonObject.post_analysis && Array.isArray(parsedJsonObject.post_analysis)) {
             // Format 2: Wrapped in object {post_analysis: [{post_id: "...", post_score: 50}]}
             logger.debug('scorePostsWithGemini', 'Detected wrapped response format, extracting post_analysis array');
             logger.summary('scorePostsWithGemini', `Successfully parsed wrapped format with ${parsedJsonObject.post_analysis.length} scored posts`);
-            return parsedJsonObject.post_analysis;
+            resultArray = parsedJsonObject.post_analysis;
         } else if (parsedJsonObject.posts && Array.isArray(parsedJsonObject.posts)) {
             // Format 3: Alternative wrapper {posts: [{post_id: "...", post_score: 50}]}
             logger.debug('scorePostsWithGemini', 'Detected alternative wrapped response format, extracting posts array');
             logger.summary('scorePostsWithGemini', `Successfully parsed alternative format with ${parsedJsonObject.posts.length} scored posts`);
-            return parsedJsonObject.posts;
+            resultArray = parsedJsonObject.posts;
         } else {
             logger.error('scorePostsWithGemini', `Gemini response not in recognized format: ${JSON.stringify(parsedJsonObject).substring(0, 200)}...`);
             throw new Error("PostGeminiScorer: Gemini response format error: Expected a JSON array or object containing an array of post score objects.");
+        }
+        
+        // Return the result array along with token usage information
+        return {
+            results: resultArray,
+            tokenUsage: tokenUsage
         }
     } catch (error) {
         logger.error('scorePostsWithGemini', `Gemini API call failed: ${error.message}`);

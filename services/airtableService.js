@@ -616,6 +616,62 @@ async function updateAggregateMetrics(runId) {
   }
 }
 
+/**
+ * Check if a client run record exists in Airtable
+ * @param {string} runId - The run ID to check
+ * @param {string} clientId - The client ID
+ * @returns {Promise<boolean>} True if record exists, false otherwise
+ */
+async function checkRunRecordExists(runId, clientId) {
+  const base = initialize();
+  
+  // Use the standardized run ID format
+  const standardRunId = runIdService.normalizeRunId(runId, clientId);
+  
+  console.log(`[RUNDEBUG] Checking if run record exists for ${standardRunId} (client ${clientId})`);
+  
+  try {
+    // First check if we have a cached record ID for this run
+    let recordId = runIdService.getRunRecordId(standardRunId, clientId);
+    
+    if (recordId) {
+      console.log(`[RUNDEBUG] Found cached record ID ${recordId} for run ${standardRunId}`);
+      try {
+        // Verify the record exists
+        await base(CLIENT_RUN_RESULTS_TABLE).find(recordId);
+        console.log(`[RUNDEBUG] Verified cached record exists`);
+        return true;
+      } catch (err) {
+        console.log(`[RUNDEBUG] Cached record not found, will search again`);
+        recordId = null;
+      }
+    }
+    
+    // If not found in cache, search by exact Run ID match
+    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
+    
+    const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: exactIdQuery,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (exactMatches && exactMatches.length > 0) {
+      recordId = exactMatches[0].id;
+      console.log(`[RUNDEBUG] Found exact Run ID match ${recordId}`);
+      
+      // Register for future lookups
+      runIdService.registerRunRecord(standardRunId, clientId, recordId);
+      return true;
+    } else {
+      console.log(`[RUNDEBUG] No run record found for ${standardRunId} (client ${clientId})`);
+      return false;
+    }
+  } catch (error) {
+    console.error(`[RUNDEBUG] Error checking run record: ${error.message}`);
+    return false;
+  }
+}
+
 module.exports = {
   initialize,
   createJobTrackingRecord,
@@ -624,5 +680,6 @@ module.exports = {
   updateClientRun,
   completeJobRun,
   completeClientRun,
-  updateAggregateMetrics
+  updateAggregateMetrics,
+  checkRunRecordExists
 };
