@@ -8,6 +8,7 @@ const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.
 const { slimLead } = require('../promptBuilder.js');
 const airtableService = require('./airtableService');
 const runIdService = require('./runIdService');
+const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 
 async function upsertLead(
     lead, 
@@ -192,16 +193,33 @@ async function upsertLead(
 async function trackLeadProcessingMetrics(runId, clientId, metrics) {
     if (!runId || !clientId) {
         console.warn('leadService/trackLeadProcessingMetrics: Missing required tracking information');
-        return;
+        return { success: false, reason: 'missing_parameters' };
     }
     
     try {
-        // Normalize the run ID to ensure consistent format - explicitly prevent new timestamp generation
-        const normalizedRunId = runIdService.normalizeRunId(runId, clientId, false);
-        console.log(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${normalizedRunId}`);
-        await airtableService.updateClientRun(normalizedRunId, clientId, metrics);
+        console.log(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${runId}`);
+        
+        // Use our new safeUpdateMetrics function for consistent handling
+        const updateResult = await safeUpdateMetrics({
+            runId,
+            clientId,
+            processType: 'lead_scoring',
+            metrics,
+            options: {
+                isStandalone: false, // Lead scoring is never standalone
+                logger: console,
+                source: 'lead_processing_metrics'
+            }
+        });
+        
+        return updateResult;
     } catch (error) {
         console.error(`leadService/trackLeadProcessingMetrics: Failed to update metrics: ${error.message}`);
+        return { 
+            success: false, 
+            error: error.message,
+            reason: 'update_error'
+        };
     }
 }
 
