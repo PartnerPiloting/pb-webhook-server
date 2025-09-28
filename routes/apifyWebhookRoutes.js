@@ -11,6 +11,7 @@ const runIdService = require('../services/runIdService');
 const { createPost } = require('../services/postService');
 const { checkRunRecordExists, safeUpdateMetrics } = require('../services/runRecordAdapterSimple');
 const { handleClientError } = require('../utils/errorHandler');
+const airtableServiceSimple = require('../services/airtableServiceSimple');
 
 // Rate limiting for webhook endpoints - TEMPORARILY DISABLED
 // const rateLimit = require("express-rate-limit");
@@ -209,8 +210,12 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
           // Record exists, now fetch it to get current values
           console.log(`[METDEBUG] Run record exists, fetching details: ${clientSuffixedRunId} for client ${clientId}`);
           try {
-            const metricsClientBase = await getClientBase(clientId);
-            const runRecords = await metricsClientBase('Client Run Results').select({
+            // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+            // The "Client Run Results" table exists in the Master Clients Base, not in client bases
+            const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+            console.log(`[DEBUG-EXTREME] Got master base connection for metrics: ${masterBase ? 'SUCCESS' : 'NULL'}`);
+            
+            const runRecords = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
               filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
               maxRecords: 1
             }).firstPage();
@@ -571,8 +576,12 @@ async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, origin
     
     // Try to find any run records for this client
     try {
-      const clientBase = await getClientBase(clientId);
-      const recentRunRecords = await clientBase('Client Run Results').select({
+      // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+      // The "Client Run Results" table exists in the Master Clients Base, not in client bases
+      const runRecordsMasterBase = airtableServiceSimple.initialize(); // Get the Master base
+      console.log(`[DEBUG-EXTREME] Got master base connection for recent runs: ${runRecordsMasterBase ? 'SUCCESS' : 'NULL'}`);
+      
+      const recentRunRecords = await runRecordsMasterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `{Client ID} = '${clientId}'`,
         maxRecords: 5,
         sort: [{field: 'Created Time', direction: 'desc'}]
@@ -590,7 +599,13 @@ async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, origin
       // Try a wildcard search for similar run IDs
       const baseRunId = originalRunId.split('-').slice(0, 2).join('-');
       console.log(`[DEBUG][RUN_RECORD_LOOKUP] Searching for any run records with base ID: ${baseRunId}`);
-      const similarRecords = await clientBase('Client Run Results').select({
+      
+      // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+      // The "Client Run Results" table exists in the Master Clients Base, not in client bases
+      const similarRecordsMasterBase = airtableServiceSimple.initialize(); // Get the Master base
+      console.log(`[DEBUG-EXTREME] Got master base connection for similar records: ${similarRecordsMasterBase ? 'SUCCESS' : 'NULL'}`);
+      
+      const similarRecords = await similarRecordsMasterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `FIND('${baseRunId}', {Run ID})`,
         maxRecords: 5
       }).firstPage();
