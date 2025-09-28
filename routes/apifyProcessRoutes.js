@@ -16,6 +16,8 @@ const runIdService = require('../services/runIdService');
 const { generateRunId } = runIdService;
 // SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
 const runRecordService = require('../services/runRecordAdapterSimple');
+// Import airtableServiceSimple for direct access to the Master base
+const airtableServiceSimple = require('../services/airtableServiceSimple');
 
 // Check if we're in batch process testing mode
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
@@ -747,26 +749,18 @@ async function processClientHandler(req, res) {
           }
         });
         
-        // Check if 'Client Run Results' table exists
-        let hasClientRunResultsTable = false;
+        // ARCHITECTURE FIX: Client Run Results table exists in Master base, not client bases
+        let hasClientRunResultsTable = true; // Assume true, we don't need to check anymore
         try {
-          // Use a safer approach - try to access the table directly
-          try {
-            // Just access the table - if it exists, this won't throw an error
-            const testQuery = await clientBase('Client Run Results').select({ maxRecords: 1 }).firstPage();
-            hasClientRunResultsTable = true;
-          } catch (err) {
-            if (err.message && err.message.includes('Could not find table')) {
-              hasClientRunResultsTable = false;
-              throw new Error(`'Client Run Results' table not found in ${clientId}'s base`);
-            } else {
-              // Some other error occurred when accessing the table
-              throw err;
-            }
-          }
+          // No need to check if the table exists in client base - it doesn't and shouldn't
+          // The correct approach is to use the Master Clients Base which we do through runRecordService
+          console.log(`[DEBUG-RUN-ID-FLOW] Skipping Client Run Results table check in client base - using Master base instead`);
+          
+          // We could verify the Master base has the table, but that would be redundant
+          // since runRecordService.checkRunRecordExists will handle that correctly
         } catch (tableError) {
           console.error(`[DEBUG-RUN-ID-FLOW] TABLE CHECK ERROR: ${tableError.message}`);
-          throw tableError;
+          // Don't throw the error - we'll let the runRecordService handle this
         }
         
         // Use our enhanced checkRunRecordExists function from runRecordAdapterSimple
@@ -792,8 +786,12 @@ async function processClientHandler(req, res) {
           // Record exists, now fetch it to get current values
           console.log(`[DEBUG-RUN-ID-FLOW] Run record exists for ${runIdToUse}, fetching details`);
           
+          // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+          const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+          console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for Client Run Results table query`);
+          
           // Query for the run record now that we know it exists
-          const runRecords = await clientBase('Client Run Results').select({
+          const runRecords = await masterBase('Client Run Results').select({
             filterByFormula: `{Run ID} = '${runIdToUse}'`,
             maxRecords: 1
           }).firstPage();
@@ -876,7 +874,11 @@ async function processClientHandler(req, res) {
             
             console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching with partialRunId=${partialRunId}`);
             
-            const similarRecords = await clientBase('Client Run Results').select({
+            // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+            const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+            console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for recovery search`);
+            
+            const similarRecords = await masterBase('Client Run Results').select({
               filterByFormula: `AND(FIND('${partialRunId}', {Run ID}) > 0, {Client ID} = '${clientId}')`,
               maxRecords: 5
             }).firstPage();
