@@ -7,6 +7,123 @@
 const { StructuredLogger } = require('./structuredLogger');
 
 /**
+ * Get the field types for a table
+ * @param {Object} base - The Airtable base object
+ * @param {string} tableName - The table name to check
+ * @param {Object} options - Additional options
+ * @param {Object} [options.logger] - Optional logger instance
+ * @returns {Promise<Object>} Object with field types mapping
+ */
+async function getFieldTypes(base, tableName, options = {}) {
+  const logger = options.logger || console;
+  const fieldTypes = {};
+  
+  try {
+    // Get table metadata (fields and their types)
+    const table = base(tableName);
+    const records = await table.select({ maxRecords: 1 }).firstPage();
+    
+    // If we have at least one record, we can examine its fields
+    if (records && records.length > 0) {
+      const record = records[0];
+      const recordFields = record._rawJson.fields;
+      
+      // Analyze each field value to determine its type
+      for (const [fieldName, value] of Object.entries(recordFields)) {
+        if (value === null || value === undefined) continue;
+        
+        // Determine type based on the value
+        if (Array.isArray(value)) {
+          fieldTypes[fieldName] = 'array';
+        } else if (typeof value === 'boolean') {
+          fieldTypes[fieldName] = 'boolean';
+        } else if (typeof value === 'number') {
+          fieldTypes[fieldName] = 'number';
+        } else if (typeof value === 'string') {
+          // Check if it's a date string
+          if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(value)) {
+            fieldTypes[fieldName] = 'date';
+          } else {
+            fieldTypes[fieldName] = 'text';
+          }
+        } else {
+          fieldTypes[fieldName] = 'object';
+        }
+      }
+    }
+    
+    return fieldTypes;
+  } catch (error) {
+    logger.error(`Error getting field types for ${tableName}: ${error.message}`);
+    return {};
+  }
+}
+
+/**
+ * Convert a value to the appropriate type for a field
+ * @param {*} value - The value to convert
+ * @param {string} fieldName - The field name for context
+ * @param {string} targetType - The target data type
+ * @param {Object} options - Additional options
+ * @param {Object} [options.logger] - Optional logger instance
+ * @returns {*} The converted value
+ */
+function convertValueToType(value, fieldName, targetType, options = {}) {
+  const logger = options.logger || console;
+  
+  try {
+    // Handle null/undefined
+    if (value === null || value === undefined) return value;
+    
+    switch (targetType) {
+      case 'text':
+        // Convert anything to string
+        return String(value);
+      
+      case 'number':
+        // Convert to number if possible
+        const num = Number(value);
+        if (isNaN(num)) {
+          logger.warn(`Could not convert value "${value}" to number for field ${fieldName}`);
+          return value; // Return original if conversion fails
+        }
+        return num;
+      
+      case 'date':
+        // Handle date conversion
+        if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(value)) {
+          return value; // Already a date string
+        } else if (value instanceof Date) {
+          return value.toISOString(); // Convert Date to ISO string
+        } else if (typeof value === 'number') {
+          return new Date(value).toISOString(); // Convert timestamp to ISO string
+        } else if (typeof value === 'string') {
+          const date = new Date(value);
+          if (!isNaN(date.getTime())) {
+            return date.toISOString(); // Convert valid date string
+          }
+        }
+        logger.warn(`Could not convert value "${value}" to date for field ${fieldName}`);
+        return value;
+      
+      case 'boolean':
+        // Convert to boolean
+        if (typeof value === 'string') {
+          if (value.toLowerCase() === 'true') return true;
+          if (value.toLowerCase() === 'false') return false;
+        }
+        return Boolean(value);
+      
+      default:
+        return value; // Return as is for unknown types
+    }
+  } catch (error) {
+    logger.error(`Error converting value for ${fieldName}: ${error.message}`);
+    return value; // Return original if conversion fails
+  }
+}
+
+/**
  * Handle errors in client-specific operations with proper isolation
  * @param {string} clientId - The client ID where error occurred
  * @param {string} operation - The operation being performed (e.g., 'lead_scoring', 'post_harvesting')
@@ -189,23 +306,61 @@ async function safeOperation(clientId, operationFn, fallbackFn = null, options =
  * @param {boolean} [options.skipMissing=true] - Whether to skip missing fields
  * @returns {Promise<Object>} The update result
  */
+/**
+ * Safely update fields in a record with validation and type conversion
+ * @param {Object} base - The Airtable base object
+ * @param {string} tableName - The table name
+ * @param {string} recordId - The record ID to update
+ * @param {Object} updates - The fields to update
+ * @param {Object} options - Additional options
+ * @param {string} [options.clientId] - Client ID for logging context
+ * @param {Object} [options.logger] - Optional logger instance
+ * @param {boolean} [options.skipMissing=true] - Skip fields that don't exist in table
+ * @param {boolean} [options.convertTypes=true] - Convert values to match field types
+ * @param {string} [options.source] - Source of the update
+ * @returns {Promise<Object>} The update result
+ */
 async function safeFieldUpdate(base, tableName, recordId, updates, options = {}) {
   const clientId = options.clientId || 'SYSTEM';
   const logger = options.logger || new StructuredLogger(clientId, null, 'field_update');
   const skipMissing = options.skipMissing !== false; // Default to true
+  const convertTypes = options.convertTypes !== false; // Default to true
   
   // First validate that the fields exist
   const fieldNames = Object.keys(updates);
   const validation = await validateFields(base, tableName, fieldNames, { logger });
   
-  // Create a new updates object with only valid fields
+  // Get field types if converting
+  let fieldTypes = {};
+  if (convertTypes) {
+    fieldTypes = await getFieldTypes(base, tableName, { logger });
+    logger.debug(`Found types for ${Object.keys(fieldTypes).length} fields in ${tableName}`);
+  }
+  
+  // Create a new updates object with only valid fields and converted values
   const safeUpdates = {};
   let skippedFields = [];
+  let convertedFields = [];
   
   for (const field of fieldNames) {
-    if (validation.caseSensitiveFields[field]) {
+    const correctField = validation.caseSensitiveFields[field];
+    
+    if (correctField) {
       // Use the correct case for the field
-      safeUpdates[validation.caseSensitiveFields[field]] = updates[field];
+      let value = updates[field];
+      
+      // Convert value if needed
+      if (convertTypes && fieldTypes[correctField]) {
+        const originalValue = value;
+        value = convertValueToType(value, correctField, fieldTypes[correctField], { logger });
+        
+        // Track if we converted the value
+        if (value !== originalValue) {
+          convertedFields.push(`${correctField} (${typeof originalValue} → ${fieldTypes[correctField]})`);
+        }
+      }
+      
+      safeUpdates[correctField] = value;
     } else if (!skipMissing) {
       // If not skipping missing fields, keep the original
       safeUpdates[field] = updates[field];
@@ -215,7 +370,10 @@ async function safeFieldUpdate(base, tableName, recordId, updates, options = {})
     }
   }
   
-  // Log skipped fields if any
+  // Log conversions and skips
+  if (convertedFields.length > 0) {
+    logger.info(`Converted fields in ${tableName}: ${convertedFields.join(', ')}`);
+  }
   if (skippedFields.length > 0) {
     logger.warn(`Skipping missing fields in ${tableName}: ${skippedFields.join(', ')}`);
   }
@@ -233,14 +391,16 @@ async function safeFieldUpdate(base, tableName, recordId, updates, options = {})
     return { 
       updated: true, 
       result,
-      skippedFields
+      skippedFields,
+      convertedFields
     };
   } catch (error) {
     logger.error(`Error updating record ${recordId} in ${tableName}: ${error.message}`);
     return {
       updated: false,
       error: error.message,
-      skippedFields
+      skippedFields,
+      convertedFields
     };
   }
 }
@@ -286,5 +446,7 @@ module.exports = {
   validateFields,
   safeOperation,
   safeFieldUpdate,
-  getFieldCase
+  getFieldCase,
+  getFieldTypes,
+  convertValueToType
 };

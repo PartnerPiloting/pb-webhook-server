@@ -1176,12 +1176,15 @@ async function processPostScoringInBackground(jobId, stream, options) {
             
             console.log(`[POST-SCORING] Using standardized run ID: ${clientRunId} (from ${options.parentRunId})`);
             
-            // Prepare metrics updates
+            // Calculate duration as human-readable text
+            const duration = formatDuration(Date.now() - (options.startTime || Date.now()));
+            
+            // Prepare metrics updates - now including Post Scoring Last Run Time as we have proper type conversion
             const metricsUpdates = {
               'Posts Examined for Scoring': postsExamined,
               'Posts Successfully Scored': postsScored,
               'Post Scoring Tokens': clientResult.totalTokensUsed || 0,
-              // Don't update 'Post Scoring Last Run Time' field as it was causing validation errors
+              'Post Scoring Last Run Time': duration, // Now included - our safeFieldUpdate will handle type conversion
               'System Notes': `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
             };
             
