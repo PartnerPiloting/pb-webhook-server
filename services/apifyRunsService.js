@@ -371,6 +371,26 @@ async function updateClientRunMetrics(runId, clientId, data) {
         // Calculate estimated API costs (based on LinkedIn post queries)
         const estimatedCost = data.postsCount * 0.02; // $0.02 per post as estimate
         
+        // First check if the run record exists
+        const recordExists = await airtableService.checkRunRecordExists(standardizedRunId, clientId);
+        console.log(`[APIFY_METRICS] Run record exists check for ${standardizedRunId}: ${recordExists ? 'YES' : 'NO'}`);
+        
+        if (!recordExists) {
+            console.log(`[APIFY_METRICS] Creating new run record for ${standardizedRunId} because it doesn't exist`);
+            try {
+                // Create the run record if it doesn't exist
+                await airtableService.createClientRunRecord(standardizedRunId, clientId, {
+                    'Status': 'RUNNING',
+                    'Client ID': clientId,
+                    'System Notes': `Created during Apify webhook processing for run ${runId}`
+                });
+                console.log(`[APIFY_METRICS] Successfully created new run record for ${standardizedRunId}`);
+            } catch (createError) {
+                console.error(`[APIFY_METRICS] Error creating run record: ${createError.message}`);
+                throw new Error(`Failed to create run record for ${clientId}: ${createError.message}`);
+            }
+        }
+        
         // Update the client run record with all metrics
         const updated = await airtableService.updateClientRun(standardizedRunId, clientId, {
             'Total Posts Harvested': data.postsCount,

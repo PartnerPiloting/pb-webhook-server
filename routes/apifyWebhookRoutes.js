@@ -228,7 +228,16 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
           // For webhooks, we can check if the run was initiated as part of an orchestrated flow
           const apifyRunsService = require('../services/apifyRunsService');
           const runDetails = await apifyRunsService.getApifyRun(runId).catch(() => null);
-          const isOrchestrated = runDetails?.meta?.parentRunId || false;
+          
+          console.log(`[WEBHOOK_DEBUG] Checking if run ${runId} is orchestrated`);
+          console.log(`[WEBHOOK_DEBUG] Run details:`, runDetails ? 'Available' : 'Not available');
+          console.log(`[WEBHOOK_DEBUG] parentRunId:`, runDetails?.meta?.parentRunId || 'None');
+          
+          // TEMPORARILY allow ALL runs to be processed as orchestrated for metrics tracking
+          // const isOrchestrated = runDetails?.meta?.parentRunId || false;
+          const isOrchestrated = true; // Force to true for testing
+          
+          console.log(`[WEBHOOK_DEBUG] isOrchestrated set to: ${isOrchestrated} (FORCED TRUE for testing)`);
           
           if (isOrchestrated) {
             // Get the centralized metrics update function
