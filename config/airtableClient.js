@@ -100,7 +100,6 @@ async function getClientBase(clientId) {
 
         console.log(`Getting base for client ${clientId}: ${client.airtableBaseId}`);
         return createBaseInstance(client.airtableBaseId);
-
     } catch (error) {
         console.error(`Error getting base for client ${clientId}:`, error.message);
         throw error;

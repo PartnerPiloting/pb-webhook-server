@@ -195,6 +195,7 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
         // Update metrics in client's run record
         // Check if run record exists using robust function from runRecordAdapterSimple
         console.log(`[DEBUG-RUN-ID-FLOW] Checking for run record with ID: ${clientSuffixedRunId}`);
+        
         const recordExists = await checkRunRecordExists({ 
           runId: clientSuffixedRunId, 
           clientId,
@@ -207,19 +208,20 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
         if (recordExists) {
           // Record exists, now fetch it to get current values
           console.log(`[METDEBUG] Run record exists, fetching details: ${clientSuffixedRunId} for client ${clientId}`);
-          const metricsClientBase = await getClientBase(clientId);
-          const runRecords = await metricsClientBase('Client Run Results').select({
-            filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
-            maxRecords: 1
-          }).firstPage();
-          
-          if (runRecords && runRecords.length > 0) {
-          // Get current counts, default to 0 if not set
-          const currentRecord = runRecords[0];
-          const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
-          const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
-          const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
-          const currentApifyRunId = currentRecord.get('Apify Run ID');
+          try {
+            const metricsClientBase = await getClientBase(clientId);
+            const runRecords = await metricsClientBase('Client Run Results').select({
+              filterByFormula: `{Run ID} = '${clientSuffixedRunId}'`,
+              maxRecords: 1
+            }).firstPage();
+            
+            if (runRecords && runRecords.length > 0) {
+              // Get current counts, default to 0 if not set
+              const currentRecord = runRecords[0];
+              const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
+              const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
+              const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
+              const currentApifyRunId = currentRecord.get('Apify Run ID');
           
           console.log(`[DEBUG][METRICS_TRACKING] Webhook found existing record for ${clientSuffixedRunId}:`);
           console.log(`[DEBUG][METRICS_TRACKING] - Current Posts Harvested: ${currentPostCount}`);
@@ -282,10 +284,13 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
             console.log(`[ApifyWebhook] Skipped metrics update: ${updateResult.reason || 'Unknown reason'}`);
           } else {
             console.error(`[ApifyWebhook] Failed to update metrics: ${updateResult.error || 'Unknown error'}`);
+          }
+            } else {
+              // Record found by checkRunRecordExists but couldn't be fetched
+              console.warn(`[ApifyWebhook] Record exists but couldn't be fetched: ${clientSuffixedRunId}`);
             }
-          } else {
-            // Record found by checkRunRecordExists but couldn't be fetched
-            console.warn(`[ApifyWebhook] Record exists but couldn't be fetched: ${clientSuffixedRunId}`);
+          } catch (metricError) {
+            console.error(`[apify/process-client] ERROR: Failed to check for existing record: ${metricError.message}`);
           }
         } else {
           // Record exists according to checkRunRecordExists but we couldn't fetch it
