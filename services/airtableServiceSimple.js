@@ -179,7 +179,7 @@ async function updateJobTracking(runId, updates) {
     return updated;
     
   } catch (error) {
-    console.error(`❌ Failed to update job tracking record: ${error.message}`);
+    console.error(`❌ [ERROR] Failed to update job tracking record: ${error.message}`);
     return { error: true, message: error.message };
   }
 }
@@ -213,7 +213,7 @@ async function updateClientRun(runId, clientId, updates) {
     return updated;
     
   } catch (error) {
-    console.error(`❌ Failed to update client run record: ${error.message}`);
+    console.error(`❌ [ERROR] Failed to update client run record: ${error.message}`);
     return { error: true, message: error.message };
   }
 }
@@ -307,7 +307,7 @@ async function updateAggregateMetrics(runId) {
     // Update the job tracking record
     return await updateJobTracking(runId, aggregates);
   } catch (error) {
-    console.error(`❌ Failed to update aggregate metrics: ${error.message}`);
+    console.error(`❌ [ERROR] Failed to update aggregate metrics: ${error.message}`);
     return { error: true, message: error.message };
   }
 }
