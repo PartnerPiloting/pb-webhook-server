@@ -868,8 +868,8 @@ async function main() {
                 runId,
                 updates: {
                     'Clients Processed': clientsNeedingWork.length,
-                    'Jobs Started': totalJobsStarted,
-                    'Success Rate': successRate
+                    'Success Rate': successRate,
+                    'System Notes': `Total jobs started: ${totalJobsStarted}` // Fixed to use existing field
                 }
             });
             
