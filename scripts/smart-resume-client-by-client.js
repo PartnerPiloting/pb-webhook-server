@@ -454,11 +454,11 @@ async function main() {
         // Use the new service architecture - use base runId (no client suffix)
         await airtableService.createJobTrackingRecord({
             runId,  // This is the base runId without client suffix
-            jobType: `Smart Resume Stream ${stream}`,
+            // jobType removed - 'Job Type' field doesn't exist in the Job Tracking table
             initialData: {
-                'Stream': Number(stream), // Ensure stream is a number for Airtable's number field
-                'Run Type': 'master',  // Mark this as a master run for diagnostics
-                'Base Run ID': runId   // Store the base run ID explicitly
+                'Stream': Number(stream) // Ensure stream is a number for Airtable's number field
+                // 'Run Type' field removed - doesn't exist in the Airtable schema
+                // 'Base Run ID' field removed - doesn't exist in the Airtable schema
             }
         });
         log(`✅ Job tracking record created successfully`, 'INFO');
@@ -635,8 +635,8 @@ async function main() {
                     parentRunId: runId,  // Add parent run ID reference
                     initialData: {
                         'Source': 'smart_resume_workflow',
-                        'Parent Run ID': runId,  // Track the parent run
-                        'Base Run ID': runId,    // Also store base run ID for diagnostics
+                        // 'Parent Run ID' field removed - might not exist in the Airtable schema
+                        // 'Base Run ID' field removed - doesn't exist in the Airtable schema
                         'Client ID': workflow.clientId // Store client ID explicitly
                     }
                 });
@@ -743,8 +743,8 @@ async function main() {
                     status,
                     notes,
                     metrics: {
-                        'Source': 'smart_resume_workflow_complete',
-                        'Parent Run ID': runId // Also store in metrics for visibility
+                        'Source': 'smart_resume_workflow_complete'
+                        // 'Parent Run ID' field removed - might not exist in the Airtable schema
                     }
                 });
                 log(`   ✅ Run tracking updated with status: ${status}`);
