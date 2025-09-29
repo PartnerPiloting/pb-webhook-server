@@ -132,7 +132,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
       {
         fields: {
           'Run ID': runId,
-          'Client': clientId,  // Changed from 'Client ID' to 'Client' to match Airtable field name
+          'Client ID': clientId,  // Fixed from 'Client' to 'Client ID' to match Airtable schema
           'Client Name': clientName,
           'Start Time': startTimestamp,
           'Status': 'Running',
