@@ -14,6 +14,11 @@ const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
 
+// --- Repository Layer Dependencies ---
+const runRecordRepository = require('./services/airtable/runRecordRepository');
+const jobTrackingRepository = require('./services/airtable/jobTrackingRepository');
+const runIdService = require('./services/airtable/runIdService');
+
 // --- Post Scoring Dependencies ---
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 const { buildPostScoringPrompt } = require('./postPromptBuilder');
@@ -434,9 +439,6 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         // This ensures we only try to update metrics in production flows (via Smart Resume) and skip for standalone debugging runs
         if (options.parentRunId) {
             try {
-                // Load airtableService dynamically to avoid circular dependencies
-                const airtableService = require('./services/airtableService');
-                
                 // Use the provided parent run ID or generate one based on current date
                 const timestamp = new Date();
                 const datePart = `${timestamp.getFullYear().toString().slice(2)}${(timestamp.getMonth() + 1).toString().padStart(2, '0')}${timestamp.getDate().toString().padStart(2, '0')}`;
@@ -446,8 +448,10 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
                 
                 // Get standardized run ID with client info
-                const runIdService = require('./services/runIdService');
-                const standardizedRunId = runIdService.normalizeRunId(runId, client.clientId);
+                const standardizedRunId = runIdService.addClientSuffix(
+                    runIdService.stripClientSuffix(runId),
+                    client.clientId
+                );
                 
                 // Update metrics in the Client Run Results table
                 console.log(`[DEBUG-METRICS] PREPARING TO UPDATE POST METRICS for ${client.clientId}`);
@@ -468,13 +472,30 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                     console.log(`[DEBUG-METRICS] - clientResult.totalTokensUsed: ${clientResult.totalTokensUsed}`);
                 }
                 
-                await airtableService.updateClientRun(standardizedRunId, client.clientId, {
-                    'Posts Examined for Scoring': clientResult.postsProcessed,
-                    'Posts Successfully Scored': clientResult.postsScored,
-                    'Post Scoring Tokens': postScoringTokens,
-                    'Status': clientResult.status,
-                    'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped. Total tokens: ${postScoringTokens}.`
-                });
+                logger.debug(`Updating run record for client ${client.clientId} with run ID ${standardizedRunId}`);
+                
+                try {
+                    await runRecordRepository.updateRunRecord({
+                        runId: standardizedRunId,
+                        clientId: client.clientId,
+                        updates: {
+                            'Posts Examined for Scoring': clientResult.postsProcessed,
+                            'Posts Successfully Scored': clientResult.postsScored,
+                            'Post Scoring Tokens': postScoringTokens,
+                            'Status': clientResult.status,
+                            'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped. Total tokens: ${postScoringTokens}.`
+                        },
+                        createIfMissing: true
+                    });
+                    logger.debug(`Successfully updated run record for client ${client.clientId}`);
+                } catch (error) {
+                    logger.error(`Failed to update run record for client ${client.clientId}: ${error.message}`, { 
+                        runId: standardizedRunId,
+                        errorMessage: error.message
+                    });
+                    // Don't fail the entire process just because metrics couldn't be updated
+                    console.error(`[METRICS_UPDATE_ERROR] Failed to update client run metrics: ${error.message}`);
+                }
                 
                 logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
                 console.log(`[DEBUG-METRICS] POST METRICS UPDATE COMPLETED for ${client.clientId}`);
@@ -515,16 +536,32 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         
         // Now also update aggregate metrics
         try {
-            // Load airtableService dynamically to avoid circular dependencies
-            const airtableService = require('./services/airtableService');
+            // Get base run ID without client suffix
+            const baseRunId = runIdService.stripClientSuffix(jobId);
+            
+            logger.debug(`Updating job tracking record for base run ID ${baseRunId}`);
+            
+            // Validate base run ID format to prevent errors
+            if (!baseRunId || baseRunId.trim() === '') {
+                throw new Error('Invalid base run ID after stripping client suffix');
+            }
             
             // Update aggregate metrics across all clients for this job
-            await airtableService.updateAggregateMetrics(jobId);
+            await jobTrackingRepository.updateJobTrackingRecord({
+                runId: baseRunId,
+                updates: {
+                    'Last Updated': new Date().toISOString(),
+                    'Status': 'Completed'  // Explicitly update status
+                }
+            });
             
             logger.summary(`Successfully updated aggregate metrics for post scoring job ${jobId}`);
         } catch (aggregateError) {
             logger.warn(`Could not update aggregate metrics: ${aggregateError.message}`);
-            console.error(`[POST_METRICS_ERROR] Failed to update aggregate metrics: ${aggregateError.message}`);
+            console.error(`[POST_METRICS_ERROR] Failed to update aggregate metrics: ${aggregateError.message}`, {
+                baseRunId: runIdService.stripClientSuffix(jobId),
+                errorDetails: aggregateError.stack?.split('\n')[0] || 'No stack trace'
+            });
         }
     } catch (jobError) {
         logger.warn(`Could not update job status: ${jobError.message}`);
