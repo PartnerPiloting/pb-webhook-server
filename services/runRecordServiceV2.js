@@ -917,7 +917,7 @@ async function checkRunRecordExists(runId, clientId = null) {
         console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Searching for any records for client ${clientId}`);
         const base = initialize();
         const records = await base(CLIENT_RUN_RESULTS_TABLE).select({
-          filterByFormula: `{Client} = '${clientId}'`, // Changed from Client ID to Client to match Airtable schema
+          filterByFormula: `{Client ID} = '${clientId}'`, // Fixed back to Client ID which is the correct field name in Airtable schema
           maxRecords: 5,
           sort: [{ field: 'Start Time', direction: 'desc' }]
         }).firstPage();

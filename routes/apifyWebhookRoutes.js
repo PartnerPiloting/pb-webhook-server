@@ -579,7 +579,7 @@ async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, origin
       const runRecordsMasterBase = airtableServiceSimple.initialize(); // Get the Master base
       
       const recentRunRecords = await runRecordsMasterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{Client} = '${clientId}'`, // Changed from Client ID to Client to match Airtable schema
+        filterByFormula: `{Client ID} = '${clientId}'`, // Fixed back to Client ID which is the correct field name in Airtable schema
         maxRecords: 5,
         sort: [{field: 'Created Time', direction: 'desc'}]
       }).firstPage();
