@@ -13,7 +13,10 @@
             const client = clients[i];
             log(`\n🚀 PROGRESS: Analyzing client [${i+1}/${clients.length}] ${client.clientName} (${client.clientId}):`);
             
-            const workflow = await determineClientWorkflow(client);
+            const workflow = await determineClien                    notes,
+                    metrics: {
+                        'System Notes': 'smart_resume_workflow_complete' // Changed from 'Source' to 'System Notes' to match the Airtable schema
+                        // 'Parent Run ID' field removed - might not exist in the Airtable schemakflow(client);
             workflows.push(workflow);
             
             // Report status for each operation
