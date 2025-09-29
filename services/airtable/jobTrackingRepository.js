@@ -17,12 +17,13 @@ const logger = new StructuredLogger('SYSTEM', null, 'job_tracking_repository');
  * @param {Object} params - Job tracking parameters
  * @param {string} params.runId - Run ID for the job (with or without client suffix)
  * @param {string} [params.clientId] - Optional client ID for the job
+ * @param {number|string} [params.stream=1] - Stream number for the job
  * @param {Object} [params.initialData] - Initial data for the job
  * @param {Object} [params.options] - Additional options
  * @returns {Promise<Object>} Created job tracking record
  */
 async function createJobTrackingRecord(params) {
-  const { runId, clientId, initialData = {}, options = {} } = params;
+  const { runId, clientId, stream = 1, initialData = {}, options = {} } = params;
   const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, 'job_tracking_repository');
   
   if (!runId) {
@@ -56,6 +57,9 @@ async function createJobTrackingRecord(params) {
       };
     }
     
+    // Convert stream to a number if it's a string (Airtable expects a number)
+    const streamNumber = typeof stream === 'string' ? parseInt(stream, 10) : stream;
+    
     // Create the record
     const record = await masterBase('Job Tracking').create({
       'Run ID': baseRunId,
@@ -63,6 +67,7 @@ async function createJobTrackingRecord(params) {
       // 'Job Type' field removed as it doesn't exist in the Job Tracking table
       'Start Time': startTime,
       'Status': 'Running',
+      'Stream': streamNumber, // Added Stream as a number for Airtable's number field
       ...initialData
     });
     

@@ -251,18 +251,19 @@ function clearCaches(options = {}) {
  * @param {string} params.runId - Run ID for the job
  * @param {string} [params.clientId] - Client ID
  * @param {string} params.jobType - Type of job
+ * @param {number|string} [params.stream=1] - Stream number for the job
  * @param {Object} [params.initialData] - Initial data for the job
  * @param {Object} [params.options] - Additional options
  * @returns {Promise<Object>} Created job tracking record
  */
 async function createJobTrackingRecord(params) {
-  const { runId, clientId, jobType, initialData = {}, options = {} } = params;
+  const { runId, clientId, jobType, stream = 1, initialData = {}, options = {} } = params;
   
   try {
     return await jobTrackingRepository.createJobTrackingRecord({
       runId,
       clientId,
-      jobType,
+      stream,
       initialData,
       options
     });

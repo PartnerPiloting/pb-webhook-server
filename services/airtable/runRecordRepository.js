@@ -19,12 +19,13 @@ const logger = new StructuredLogger('SYSTEM', null, 'run_record_repository');
  * @param {string} params.clientId - Client ID
  * @param {string} params.runId - Run ID (with or without client suffix)
  * @param {string} [params.clientName] - Client name (will be looked up if not provided)
+ * @param {number|string} [params.stream=1] - Stream number for the job
  * @param {Object} [params.initialData] - Initial data for the record
  * @param {Object} [params.options] - Additional options
  * @returns {Promise<Object>} Created run record
  */
 async function createRunRecord(params) {
-  const { clientId, runId, clientName, initialData = {}, options = {} } = params;
+  const { clientId, runId, clientName, stream = 1, initialData = {}, options = {} } = params;
   const logger = options.logger || new StructuredLogger(clientId, null, 'run_record_repository');
   
   if (!clientId || !runId) {
@@ -87,6 +88,7 @@ async function createRunRecord(params) {
       await jobTrackingRepository.createJobTrackingRecord({
         runId: baseRunId,
         clientId,
+        stream, // Pass the stream parameter to ensure proper tracking
         options: { logger }
       });
     } catch (jobError) {
