@@ -3,8 +3,11 @@ node_modules/
 
 # Environment variables
 .env
+.env.test*
+.env.local*
+.env.*-*
 
 # Logs
 *.log
 # Ignore Windows reserved device name that can appear accidentally
-NUL.env.test*
+NUL
