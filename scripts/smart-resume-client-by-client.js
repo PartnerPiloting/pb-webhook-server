@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
 /**
- * 🚨🚨🚨 DEPLOYMENT MARKER: FORCE GUY WILSON POST HARVESTING VERSION (2025-09-27 00:55) 🚨🚨🚨
- * 
  * Smart Resume Client-by-Client Processing Pipeline with Email Reporting
  * 
  * Checks each client's last execution status and resumes from where it left off:
@@ -66,9 +64,10 @@ console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date()
 
 console.log(`🔍 TRACE: About to load run ID generator`);
 const { generateRunId, createLogger } = require('../utils/runIdGenerator');
-const airtableService = require('../services/airtableService');
-// SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
-const runRecordService = require('../services/runRecordAdapterSimple');
+// Using the new architecture
+const airtableService = require('../services/airtable/airtableService');
+const runIdService = require('../services/airtable/runIdService');
+const runRecordRepository = require('../services/airtable/runRecordRepository');
 let runId = 'INITIALIZING';
 let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();
@@ -230,13 +229,7 @@ async function determineClientWorkflow(client) {
     for (const operation of operations) {
         // Skip post_harvesting and post_scoring for service level < 2
         if ((operation === 'post_harvesting' || operation === 'post_scoring') && Number(client.serviceLevel) < 2) {
-            // Special debugging for Guy Wilson
-            if (client.clientId === 'Guy-Wilson') {
-                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Service level check for ${operation}`);
-                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Raw service level: ${client.serviceLevel}`);
-                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Parsed service level: ${Number(client.serviceLevel)}`);
-                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Comparison result: ${Number(client.serviceLevel) < 2}`);
-            }
+            log(`ℹ️ Service level check: Client ${client.clientName} (${client.clientId}) has service level ${client.serviceLevel} < 2, skipping ${operation}`);
             
             workflow.statusSummary[operation] = { 
                 completed: true, 
@@ -280,53 +273,17 @@ async function determineClientWorkflow(client) {
         }
     }
     
-    // Special debugging for Guy Wilson client
-    if (client.clientId === 'Guy-Wilson') {
-        console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Final workflow decision:`);
-        console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Service Level: ${client.serviceLevel}`);
-        console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Operations to run: ${workflow.operationsToRun.join(', ') || 'NONE'}`);
+    // Log detailed workflow decision for debugging
+    if (workflow.operationsToRun.length > 0) {
+        log(`ℹ️ Workflow decision: Client ${client.clientName} (${client.clientId}) with service level ${client.serviceLevel}`);
+        log(`ℹ️ Operations to run: ${workflow.operationsToRun.join(', ')}`);
         
-        // Log detailed status for each operation
-        for (const op of operations) {
+        // Log detailed status for key operations
+        for (const op of ['lead_scoring', 'post_harvesting', 'post_scoring']) {
             const status = workflow.statusSummary[op];
-            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: ${op} status: ${status.completed ? 'COMPLETED' : 'NEEDS PROCESSING'} - ${status.reason || status.overrideReason || 'No reason provided'}`);
-        }
-        
-        // ENHANCED TEMPORARY FIX: ALWAYS force post_harvesting and post_scoring for Guy Wilson 
-        // regardless of completion status, if service level is appropriate
-        if (client.serviceLevel >= 2) {
-            console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: Service level check passed (${client.serviceLevel} >= 2)`);
-            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: UNCONDITIONALLY FORCING post_harvesting operation`);
-            
-            // Remove post_harvesting if it's in the list, so we can add it back (to ensure it's not skipped)
-            if (workflow.operationsToRun.includes('post_harvesting')) {
-                workflow.operationsToRun = workflow.operationsToRun.filter(op => op !== 'post_harvesting');
-                console.log(`� ENHANCED DEBUG - ${client.clientId}: Removed existing post_harvesting to force refresh`);
+            if (status) {
+                log(`ℹ️ ${op} status: ${status.completed ? 'COMPLETED' : 'NEEDS PROCESSING'} - ${status.reason || status.overrideReason || 'No reason provided'}`);
             }
-            
-            // Always add post_harvesting - regardless of its current status
-            console.log(`🔍 ENHANCED DEBUG - ${client.clientId}: Adding post_harvesting to operations list`);
-            workflow.operationsToRun.push('post_harvesting');
-            workflow.statusSummary['post_harvesting'] = { 
-                completed: false,
-                reason: 'Forced for testing (unconditional override)'
-            };
-            console.log(`� SPECIAL FOCUS - GUY WILSON: FORCED post_harvesting with unconditional override`);
-            
-            // Also force post_scoring
-            if (!workflow.operationsToRun.includes('post_scoring')) {
-                console.log(`🚨 SPECIAL FOCUS - GUY WILSON: FORCING post_scoring operation`);
-                workflow.operationsToRun.push('post_scoring');
-                workflow.statusSummary['post_scoring'] = { 
-                    completed: false,
-                    reason: 'Forced for testing'
-                };
-            }
-            
-            workflow.needsProcessing = true;
-            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Updated operations: ${workflow.operationsToRun.join(', ')}`);
-        } else {
-            console.log(`🚨 SPECIAL FOCUS - GUY WILSON: Service level too low (${client.serviceLevel}) for post operations`);
         }
     }
     
@@ -336,8 +293,7 @@ console.log(`🔍 TRACE: determineClientWorkflow function defined`);
 
 console.log(`🔍 TRACE: About to define triggerOperation function`);
 async function triggerOperation(baseUrl, clientId, operation, params = {}, authHeaders = {}) {
-    // 🚨 DEPLOYMENT MARKER: ENHANCED VERSION WITH DEBUG AND FIX FOR UNDEFINED JOB ID
-    log(`🚨 SPECIAL DEBUG - TRIGGER OPERATION: Starting ${operation} for client ${clientId}`);
+    log(`� OPERATION: Starting ${operation} for client ${clientId}`);
     
     const operationMap = {
         'lead_scoring': {
@@ -366,10 +322,6 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
             body: { stream: params.stream, limit: params.limit, clientId: clientId, parentRunId: runId }
         }
     };
-    
-    if (clientId === 'Guy-Wilson' && operation === 'post_harvesting') {
-        log(`🚨 CRITICAL GUY WILSON FIX: Setting up special post harvesting call for Guy Wilson`);
-    }
     
     const config = operationMap[operation];
     if (!config) {
@@ -417,13 +369,11 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
                 stream: params.stream
             });
             log(`🔍 AUTH_DEBUG: ${operation} - Body added with clientId=${clientId}`);
+            log(`🔍 REQUEST_DEBUG: ${operation} - URL=${baseUrl}${config.url}, method=${fetchOptions.method}`);
             
-            // Special handling for Guy Wilson post harvesting
-            if (clientId === 'Guy-Wilson') {
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: About to make request`);
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: URL = ${baseUrl}${config.url}`);
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Body = ${fetchOptions.body}`);
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Headers = ${JSON.stringify(fetchOptions.headers)}`);
+            if (process.env.DEBUG_LEVEL === 'verbose') {
+                log(`� VERBOSE_DEBUG: ${operation} - Request body: ${fetchOptions.body}`);
+                log(`� VERBOSE_DEBUG: ${operation} - Request headers: ${JSON.stringify(fetchOptions.headers)}`);
             }
         } else if (config.body) {
             fetchOptions.body = JSON.stringify(config.body);
@@ -451,13 +401,11 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
             // For post_harvesting, we may not have a jobId directly in the response
             const jobId = responseData.jobId || `job_post_harvesting_${clientId}_${Date.now()}`;
             log(`✅ ${operation} triggered for ${clientId}: 202 Accepted in ${responseTime}ms (Generated Job: ${jobId})`);
-            
-            // Special handling for Guy Wilson
-            if (clientId === 'Guy-Wilson') {
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Response received successfully`);
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Response status = ${response.status}`);
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Response data = ${JSON.stringify(responseData)}`);
-                log(`🚨🚨🚨 GUY WILSON POST HARVESTING: Generated job ID = ${jobId}`);
+            // Log detailed response for post_harvesting operations
+            if (process.env.DEBUG_LEVEL === 'verbose') {
+                log(`� VERBOSE_DEBUG: ${operation} - Response status: ${response.status}`);
+                log(`� VERBOSE_DEBUG: ${operation} - Response data: ${JSON.stringify(responseData)}`);
+                log(`� VERBOSE_DEBUG: ${operation} - Generated job ID: ${jobId}`);
             }
             
             return { success: true, jobId };
@@ -491,21 +439,7 @@ async function main() {
     log = createLogger(runId);
     
     log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId})`, 'INFO');
-    
-    // GUY WILSON SPECIAL DEBUG - Check for Guy Wilson client early
-    try {
-        const clientService = require('../services/clientService');
-        const guyWilsonClient = await clientService.getClientById('Guy-Wilson');
-        if (guyWilsonClient) {
-            log(`🚨 CRITICAL GUY WILSON DEBUG: Client found at startup with service level ${guyWilsonClient.serviceLevel}`);
-            log(`🚨 CRITICAL GUY WILSON DEBUG: Status: ${guyWilsonClient.status}, Name: ${guyWilsonClient.clientName}`);
-            log(`🚨 CRITICAL GUY WILSON DEBUG: Base ID: ${guyWilsonClient.airtableBaseId}`);
-        } else {
-            log(`🚨 CRITICAL GUY WILSON DEBUG: CLIENT NOT FOUND AT STARTUP - THIS IS A CRITICAL ERROR`, 'ERROR');
-        }
-    } catch (err) {
-        log(`🚨 CRITICAL GUY WILSON DEBUG: Error checking for Guy Wilson client: ${err.message}`, 'ERROR');
-    }
+    // Initialization complete
     
     // Use external URL for Render, localhost for local development
     const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
@@ -517,7 +451,16 @@ async function main() {
     // Initialize run tracking in Airtable
     try {
         log(`🚀 PROGRESS: Creating job tracking record for run ${runId}...`, 'INFO');
-        await airtableService.createJobTrackingRecord(runId, stream);
+        // Use the new service architecture - use base runId (no client suffix)
+        await airtableService.createJobTrackingRecord({
+            runId,  // This is the base runId without client suffix
+            jobType: `Smart Resume Stream ${stream}`,
+            initialData: {
+                'Stream': stream.toString(),
+                'Run Type': 'master',  // Mark this as a master run for diagnostics
+                'Base Run ID': runId   // Store the base run ID explicitly
+            }
+        });
         log(`✅ Job tracking record created successfully`, 'INFO');
     } catch (error) {
         log(`⚠️ Failed to create job tracking record: ${error.message}. Continuing execution.`, 'WARN');
@@ -603,17 +546,11 @@ async function main() {
             const client = clients[i];
             log(`\n📋 [${i+1}/${clients.length}] Analyzing ${client.clientName} (${client.clientId}), Service Level: ${client.serviceLevel}:`);
             
-            // Special debug for Guy Wilson
-            if (client.clientId === 'Guy-Wilson') {
-                log(`🚨 SPECIAL FOCUS - GUY WILSON: Processing this client with special attention`);
-                log(`🚨 SPECIAL FOCUS - GUY WILSON: Original Service Level = ${client.serviceLevel}, Type: ${typeof client.serviceLevel}`);
-                
-                // TEMPORARY FIX: Force Guy Wilson to have serviceLevel 3 for testing
-                if (client.serviceLevel < 2) {
-                    client.serviceLevel = 3;
-                    log(`🚨 SPECIAL FOCUS - GUY WILSON: OVERRIDING service level to 3 for testing`);
-                }
-            }
+            // Log client processing
+            log(`� Processing client: ${client.clientName} (${client.clientId})`);
+            log(`� Service Level: ${client.serviceLevel}`);
+            
+            // Note: No more service level overrides
             
             const workflow = await determineClientWorkflow(client);
             workflows.push(workflow);
@@ -682,13 +619,28 @@ async function main() {
             log(`\n🚀 PROGRESS: Processing client [${i + 1}/${clientsNeedingWork.length}] ${workflow.clientName}:`);
             log(`   Operations needed: ${workflow.operationsToRun.join(', ')}`);
             
-            // Create client run record in Airtable
+            // Create client run record in Airtable using new architecture
             try {
                 log(`   📊 Creating run tracking record for ${workflow.clientName}...`);
-                await runRecordService.createRunRecord(runId, workflow.clientId, workflow.clientName, {
-                    source: 'smart_resume_workflow'
+                
+                // Create a client-specific run ID with the new service
+                const clientRunId = runIdService.addClientSuffix(runId, workflow.clientId);
+                log(`   📝 Creating client run with ID: ${clientRunId} (from base: ${runId})`);
+                
+                // Create run record with the new repository
+                await runRecordRepository.createRunRecord({
+                    clientId: workflow.clientId,
+                    runId: clientRunId,
+                    clientName: workflow.clientName,
+                    parentRunId: runId,  // Add parent run ID reference
+                    initialData: {
+                        'Source': 'smart_resume_workflow',
+                        'Parent Run ID': runId,  // Track the parent run
+                        'Base Run ID': runId,    // Also store base run ID for diagnostics
+                        'Client ID': workflow.clientId // Store client ID explicitly
+                    }
                 });
-                log(`   ✅ Run tracking record created`);
+                log(`   ✅ Run tracking record created with ID: ${clientRunId}`);
             } catch (error) {
                 log(`   ⚠️ Failed to create run tracking record: ${error.message}. Continuing execution.`, 'WARN');
             }
@@ -772,16 +724,30 @@ async function main() {
                 jobs: clientJobs
             });
             
-            // Update client run record on completion
+            // Update client run record on completion using new architecture
             try {
                 log(`   📊 Updating run tracking for ${workflow.clientName}...`);
                 const success = clientJobs.length === workflow.operationsToRun.length;
                 const status = success ? 'Success' : 'Partial';
                 const notes = `Executed operations: ${workflow.operationsToRun.join(', ')}\nJobs started: ${clientJobs.length}/${workflow.operationsToRun.length}`;
-                await runRecordService.completeRunRecord(runId, workflow.clientId, status, notes, {
-                    source: 'smart_resume_workflow_complete'
+                
+                // Get client-specific run ID with the new service
+                const clientRunId = runIdService.addClientSuffix(runId, workflow.clientId);
+                log(`   📝 Generated client-specific run ID: ${clientRunId} (from base: ${runId})`);
+                
+                // Complete run record with the new repository
+                await runRecordRepository.completeRunRecord({
+                    clientId: workflow.clientId,
+                    runId: clientRunId,
+                    parentRunId: runId, // Link to parent run ID
+                    status,
+                    notes,
+                    metrics: {
+                        'Source': 'smart_resume_workflow_complete',
+                        'Parent Run ID': runId // Also store in metrics for visibility
+                    }
                 });
-                log(`   ✅ Run tracking updated`);
+                log(`   ✅ Run tracking updated with status: ${status}`);
             } catch (error) {
                 log(`   ⚠️ Failed to update run tracking: ${error.message}.`, 'WARN');
             }
@@ -890,13 +856,28 @@ async function main() {
             log(`📧 ❌ Email report failed: ${errorMessage}`, 'WARN');
         }
         
-        // Update aggregate metrics and complete job tracking
+        // Update aggregate metrics and complete job tracking with new architecture
         try {
             log(`📊 Updating job tracking metrics...`);
-            await airtableService.updateAggregateMetrics(runId);
+            
+            // Update job tracking record with metrics
+            await airtableService.updateJobTrackingRecord({
+                runId,
+                updates: {
+                    'Clients Processed': clientsNeedingWork.length,
+                    'Jobs Started': totalJobsStarted,
+                    'Success Rate': successRate
+                }
+            });
+            
+            // Complete the job tracking record
             const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
-            await airtableService.completeJobRun(runId, true, notes);
-            log(`✅ Job tracking metrics updated`);
+            await airtableService.completeJobTrackingRecord({
+                runId,
+                status: 'completed',
+                notes
+            });
+            log(`✅ Job tracking metrics updated and job marked complete`);
         } catch (error) {
             log(`⚠️ Failed to update job tracking metrics: ${error.message}.`, 'WARN');
         }
@@ -911,11 +892,16 @@ async function main() {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
         log(`🔍 SCRIPT_DEBUG: Full error stack: ${error.stack}`, 'ERROR');
         
-        // Update job tracking to reflect failure
+        // Update job tracking to reflect failure using new architecture
         try {
             log(`📊 Updating job tracking for failure...`);
             const notes = `Run failed with error: ${error.message}`;
-            await airtableService.completeJobRun(runId, false, notes);
+            
+            await airtableService.completeJobTrackingRecord({
+                runId,
+                status: 'failed',
+                notes
+            });
             log(`✅ Job tracking updated for failure`);
         } catch (trackingError) {
             log(`⚠️ Failed to update job tracking for failure: ${trackingError.message}.`, 'WARN');
