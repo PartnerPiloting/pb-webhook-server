@@ -104,24 +104,43 @@ async function updateJobTrackingRecord(params) {
   }
   
   try {
-    // Get the base run ID (strip client suffix if present)
-    const baseRunId = runIdService.stripClientSuffix(runId);
-    
     // Get the master clients base
     const masterBase = baseManager.getMasterClientsBase();
     
-    // Find the record by Run ID
+    // Extract the timestamp in YYMMDD-HHMMSS format (which is what's stored in Airtable)
+    let timestampId = runId;
+    
+    // If the ID is in the format job_post_scoring_stream1_20250929094802
+    const jobIdMatch = runId.match(/.*_(\d{8})(\d{6})$/);
+    if (jobIdMatch) {
+      // Convert to YYMMDD-HHMMSS format
+      const year = jobIdMatch[1].substring(2, 4);
+      const month = jobIdMatch[1].substring(4, 6);
+      const day = jobIdMatch[1].substring(6, 8);
+      const hour = jobIdMatch[2].substring(0, 2);
+      const minute = jobIdMatch[2].substring(2, 4);
+      const second = jobIdMatch[2].substring(4, 6);
+      timestampId = `${year}${month}${day}-${hour}${minute}${second}`;
+      
+      logger.debug(`Converted job ID ${runId} to timestamp format: ${timestampId}`);
+    }
+    
+    // Look for the record using the timestamp format
+    logger.debug(`Looking up job tracking record with Run ID: ${timestampId}`);
     const records = await masterBase('Job Tracking').select({
-      filterByFormula: `{Run ID} = '${baseRunId}'`
+      filterByFormula: `{Run ID} = '${timestampId}'`
     }).firstPage();
     
-    if (!records || records.length === 0) {
-      logger.error(`Job tracking record not found for ${baseRunId} (base: ${baseRunId}). Updates will not be applied.`);
+    if (records && records.length > 0) {
+      logger.info(`✅ Found job tracking record with Run ID: ${timestampId}`);
+    } else {
+      logger.error(`Job tracking record not found with Run ID: ${timestampId} (original: ${runId}). Updates will not be applied.`);
       
       // Don't try to create a new record, just return a placeholder with error info
       return {
         error: 'Job tracking record not found',
-        runId: baseRunId,
+        runId: timestampId,
+        originalRunId: runId,
         clientId: updates.clientId,
         status: 'Error',
         errorMessage: 'Job tracking record not found'
