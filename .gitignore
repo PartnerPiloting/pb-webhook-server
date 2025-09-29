@@ -7,4 +7,4 @@ node_modules/
 # Logs
 *.log
 # Ignore Windows reserved device name that can appear accidentally
-NUL
+NUL.env.test*
