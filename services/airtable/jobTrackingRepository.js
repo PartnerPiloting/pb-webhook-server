@@ -61,7 +61,7 @@ async function createJobTrackingRecord(params) {
     // Create the record
     const record = await masterBase('Job Tracking').create({
       'Run ID': baseRunId,
-      'Client ID': clientId || '',
+      // 'Client ID' field removed as it doesn't exist in the Job Tracking table
       'Job Type': jobType,
       'Start Time': startTime,
       'Status': 'Running',
@@ -119,6 +119,7 @@ async function updateJobTrackingRecord(params) {
       // Create a new record with recovery information
       return await createJobTrackingRecord({
         runId: baseRunId,
+        // clientId is still passed but won't be written to Airtable since we removed it from create method
         clientId: updates.clientId,
         jobType: updates.jobType || 'Unknown (Recovery)',
         initialData: {
