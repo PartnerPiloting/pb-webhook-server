@@ -222,7 +222,7 @@ async function updateClientRunRecord(runId, clientId, updates) {
     // Find the record by Run ID and Client
     let recordId = null;
     const records = await masterBase('Client Run Results').select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {client} = '${clientId}')`
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client} = '${clientId}')`
     }).firstPage();
     
     if (records.length > 0) {
