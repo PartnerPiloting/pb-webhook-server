@@ -1,0 +1,32 @@
+// Fix for api.js
+// This script should be manually applied to fix the Source field in the Next.js frontend
+
+// 1. In all getLeadById, createLead, and updateLead functions:
+//    Replace 'Source': lead.source with:
+
+      // Move Source data to System Notes instead of using the non-existent Source field
+      'System Notes': lead.source ? `Source: ${lead.source}` : undefined,
+
+// 2. In fieldMapping objects, comment out or remove 'source': 'Source' lines
+
+// 3. In all lists that include 'source' as a dropdown field, remove it:
+//    Example: const dropdownFields = ['source', 'status', 'priority', 'linkedinConnectionStatus'];
+//    becomes:  const dropdownFields = ['status', 'priority', 'linkedinConnectionStatus'];
+
+// 4. Add special handling for source data in both createLead and updateLead:
+
+    // Handle source specially - append to System Notes
+    if (leadData.source) {
+      let systemNotes = leadData.systemNotes || '';
+      if (systemNotes) {
+        systemNotes += `\nSource: ${leadData.source}`;
+      } else {
+        systemNotes = `Source: ${leadData.source}`;
+      }
+      backendData['System Notes'] = systemNotes;
+    }
+    
+    Object.keys(leadData).forEach(frontendField => {
+      // Skip source field as we're handling it specially
+      if (frontendField === 'source') return;
+
