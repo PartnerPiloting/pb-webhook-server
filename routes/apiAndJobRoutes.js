@@ -14,9 +14,11 @@ const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
 const runIdUtils = require('../utils/runIdUtils.js');
-// Use the new service boundaries architecture
-const runRecordRepository = require('../services/airtable/runRecordRepository.js');
-const runIdService = require('../services/airtable/runIdService.js');
+// Use the unified job tracking architecture
+const unifiedJobTrackingRepository = require('../services/unifiedJobTrackingRepository.js');
+const unifiedRunIdService = require('../services/unifiedRunIdService.js');
+const jobMetricsService = require('../services/jobMetricsService.js');
+const jobTrackingErrorHandling = require('../services/jobTrackingErrorHandling.js');
 const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
@@ -544,9 +546,9 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
         // Generate a unique client-specific run ID based on the parent run ID
         // This ensures each client gets its own unique run ID while maintaining the connection to the job
         
-        // Use the new service architecture for run ID management
+        // Use the unified service architecture for run ID management
         const baseRunId = runId; // Use the provided run ID as the base
-        const clientRunId = runIdService.addClientSuffix(baseRunId, client.clientId);
+        const clientRunId = unifiedRunIdService.addClientSuffix(baseRunId, client.clientId);
         console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
         
         // Set up client timeout
@@ -1184,7 +1186,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
             
             // Generate client-specific run ID using new service architecture
             const baseRunId = options.parentRunId;
-            const clientRunId = runIdService.addClientSuffix(baseRunId, client.clientId);
+            const clientRunId = unifiedRunIdService.addClientSuffix(baseRunId, client.clientId);
             
             console.log(`[POST-SCORING] Using standardized run ID: ${clientRunId} (from ${options.parentRunId})`);
             
@@ -1200,11 +1202,11 @@ async function processPostScoringInBackground(jobId, stream, options) {
               'System Notes': `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
             };
             
-            // Use the new runRecordRepository pattern
-            const updateResult = await runRecordRepository.updateRunRecord({
+            // Use the unified job tracking repository
+            const updateResult = await unifiedJobTrackingRepository.updateClientRunRecord({
               runId: clientRunId,
               clientId: client.clientId,
-              updates: metricsUpdates,
+              metrics: metricsUpdates,
               options: {
                 isStandalone: false,  // This is never standalone if we have a parentRunId
                 logger: console,
