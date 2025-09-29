@@ -15,9 +15,9 @@ const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
 
 // --- Repository Layer Dependencies ---
-const runRecordRepository = require('./services/airtable/runRecordRepository');
-const jobTrackingRepository = require('./services/airtable/jobTrackingRepository');
-const runIdService = require('./services/airtable/runIdService');
+const unifiedJobTrackingRepository = require('./services/unifiedJobTrackingRepository');
+const unifiedRunIdService = require('./services/unifiedRunIdService');
+const jobMetricsService = require('./services/jobMetricsService');
 
 // --- Post Scoring Dependencies ---
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
@@ -448,8 +448,8 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
                 
                 // Get standardized run ID with client info
-                const standardizedRunId = runIdService.addClientSuffix(
-                    runIdService.stripClientSuffix(runId),
+                const standardizedRunId = unifiedRunIdService.addClientSuffix(
+                    unifiedRunIdService.stripClientSuffix(runId),
                     client.clientId
                 );
                 
@@ -475,7 +475,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 logger.debug(`Updating run record for client ${client.clientId} with run ID ${standardizedRunId}`);
                 
                 try {
-                    await runRecordRepository.updateRunRecord({
+                    await unifiedRunIdService.updateRunRecord({
                         runId: standardizedRunId,
                         clientId: client.clientId,
                         updates: {
@@ -537,7 +537,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         // Now also update aggregate metrics
         try {
             // Get base run ID without client suffix
-            const baseRunId = runIdService.stripClientSuffix(jobId);
+            const baseRunId = unifiedRunIdService.stripClientSuffix(jobId);
             
             logger.debug(`Updating job tracking record for base run ID ${baseRunId}`);
             
@@ -547,7 +547,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             }
             
             // Update aggregate metrics across all clients for this job
-            await jobTrackingRepository.updateJobTrackingRecord({
+            await unifiedJobTrackingRepository.updateJobTrackingRecord({
                 runId: baseRunId,
                 updates: {
                     'Last Updated': new Date().toISOString(),
@@ -559,7 +559,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         } catch (aggregateError) {
             logger.warn(`Could not update aggregate metrics: ${aggregateError.message}`);
             console.error(`[POST_METRICS_ERROR] Failed to update aggregate metrics: ${aggregateError.message}`, {
-                baseRunId: runIdService.stripClientSuffix(jobId),
+                baseRunId: unifiedRunIdService.stripClientSuffix(jobId),
                 errorDetails: aggregateError.stack?.split('\n')[0] || 'No stack trace'
             });
         }
