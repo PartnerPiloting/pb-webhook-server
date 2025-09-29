@@ -4,6 +4,10 @@
 
 This document captures fixes made to field name inconsistencies between our codebase and the Airtable schema. These inconsistencies were causing runtime errors as the code attempted to access fields that didn't exist with the specified names.
 
+**Date:** September 29, 2025  
+**Branch:** feature/airtable-service-boundaries  
+**Commit:** Fix Client field name in airtableServiceSimple.js to Client ID
+
 ## Fixed Issues
 
 ### 1. 'Client' vs 'Client ID' Field
@@ -55,8 +59,38 @@ The following files were checked and fixed as needed:
 
 These fixes address the Airtable field name mismatch errors appearing in the Render logs. The application should now be able to properly create, update, and query records in the Airtable bases using the correct field names.
 
+### Error Symptoms Resolved
+
+The following errors should no longer appear in the Render logs:
+
+```
+❌ FATAL: Failed to create client run record: INVALID_REQUEST_PARAMETER: Unknown field name: Client
+```
+
+```
+❌ FATAL: Failed to create client run record: INVALID_REQUEST_PARAMETER: Unknown field name: Source
+```
+
+```
+❌ FATAL: Failed to update job tracking record: INVALID_REQUEST_PARAMETER: Unknown field name: Recovery Note
+```
+
+```
+❌ FATAL: Failed to update client run record: INVALID_REQUEST_PARAMETER: Unknown field name: Jobs Started
+```
+
 ## Best Practices for Future Development
 
 1. **Field Name Consistency**: Always refer to Airtable field names exactly as they appear in the Airtable UI, including spaces and capitalization.
 2. **Schema Documentation**: Consider maintaining a central schema document that lists all Airtable fields and their exact names.
 3. **Repository Pattern**: Continue using the repository pattern to encapsulate Airtable field access, which makes it easier to update field names in one place.
+4. **Field Name Constants**: Consider defining field names as constants in a single location to prevent typos and ensure consistency.
+5. **Runtime Validation**: Add validation that checks if field names exist in the Airtable schema before attempting to access them.
+
+## Deployment Notes
+
+After deploying these changes:
+1. Monitor the Render logs for any remaining field name mismatch errors
+2. Verify that client run records are being created correctly
+3. Check that metrics updates are working properly
+4. Ensure that job tracking records are being updated successfully
