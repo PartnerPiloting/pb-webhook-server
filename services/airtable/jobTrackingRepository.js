@@ -139,7 +139,7 @@ async function updateJobTrackingRecord(params) {
     if (updates.error) updateFields['Error'] = updates.error;
     if (updates.progress) updateFields['Progress'] = updates.progress;
     if (updates.itemsProcessed) updateFields['Items Processed'] = updates.itemsProcessed;
-    if (updates.notes) updateFields['Notes'] = updates.notes;
+    if (updates.notes) updateFields['System Notes'] = updates.notes; // Changed from 'Notes' to 'System Notes' to match the Airtable schema
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
