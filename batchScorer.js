@@ -720,7 +720,7 @@ async function run(req, res, dependencies) {
                                 logger: clientLogger,
                                 source: 'batchScorer_skip'
                             });
-                            await runRecordService.completeRunRecord(runId, clientId, 'Skipped', `No action taken: ${reason}`, {
+                            await runRecordService.completeRunRecord(runId, clientId, 'No Leads To Score', `No action taken: ${reason}`, {
                                 logger: clientLogger,
                                 source: 'batchScorer_skip'
                             });
@@ -840,7 +840,7 @@ async function run(req, res, dependencies) {
                 totalTokensUsed += clientTokensUsed;
 
                 // Log execution for this client
-                const clientStatus = clientErrors.length > 0 ? 'Completed with errors' : 'Completed successfully';
+                const clientStatus = clientErrors.length > 0 ? 'Completed' : 'Completed successfully';
                 const logEntry = clientService.formatExecutionLog({
                     status: clientStatus,
                     leadsProcessed: {

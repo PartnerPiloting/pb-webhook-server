@@ -224,18 +224,43 @@ async function updateClientRun(runId, clientId, updates) {
 /**
  * Complete a job run - MUST exist
  * @param {string} runId - The run ID
- * @param {boolean} success - Whether the job succeeded
+ * @param {boolean|string} success - Whether the job succeeded or specific status string
  * @param {string} notes - Notes to append
  * @returns {Promise<Object>} The updated record or error object
  */
 async function completeJobRun(runId, success = true, notes = '') {
+  let status;
+  
+  // Handle different status input types
+  if (typeof success === 'boolean') {
+    status = success ? 'Completed' : 'Failed';
+  } else if (success === 'No Leads To Score') {
+    status = 'No Leads To Score';
+  } else if (success === 'Completed With Errors') {
+    status = 'Completed'; // Use Completed instead of non-existent "Completed With Errors"
+    // Add more context to notes
+    notes = `Completed with some errors. ${notes}`;
+  } else {
+    status = success; // Use the string value directly (could be 'Running', 'Failed', etc.)
+  }
+  
   const updates = {
     'End Time': new Date().toISOString(),
-    'Status': success ? 'Completed' : 'Failed'
+    'Status': status
   };
   
+  // Build the system notes with appropriate status context
+  let statusContext;
+  if (status === 'No Leads To Score') {
+    statusContext = 'completed with no leads to process';
+  } else if (status === 'Completed' && notes.includes('with some errors')) {
+    statusContext = 'completed with some errors';
+  } else {
+    statusContext = status.toLowerCase();
+  }
+  
   if (notes) {
-    updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+    updates['System Notes'] = `${notes}\nRun ${statusContext} at ${new Date().toISOString()}`;
   }
   
   return await updateJobTracking(runId, updates);
@@ -245,18 +270,43 @@ async function completeJobRun(runId, success = true, notes = '') {
  * Complete a client run - MUST exist
  * @param {string} runId - The run ID
  * @param {string} clientId - The client ID
- * @param {boolean} success - Whether the client run succeeded
+ * @param {boolean|string} success - Whether the client run succeeded or specific status string
  * @param {string} notes - Notes to append
  * @returns {Promise<Object>} The updated record or error object
  */
 async function completeClientRun(runId, clientId, success = true, notes = '') {
+  let status;
+  
+  // Handle different status input types
+  if (typeof success === 'boolean') {
+    status = success ? 'Completed' : 'Failed';
+  } else if (success === 'No Leads To Score') {
+    status = 'No Leads To Score';
+  } else if (success === 'Completed With Errors') {
+    status = 'Completed'; // Use Completed instead of non-existent "Completed With Errors"
+    // Add more context to notes
+    notes = `Completed with some errors. ${notes}`;
+  } else {
+    status = success; // Use the string value directly (could be 'Running', 'Failed', etc.)
+  }
+  
   const updates = {
     'End Time': new Date().toISOString(),
-    'Status': success ? 'Completed' : 'Failed'
+    'Status': status
   };
   
+  // Build the system notes with appropriate status context
+  let statusContext;
+  if (status === 'No Leads To Score') {
+    statusContext = 'completed with no leads to process';
+  } else if (status === 'Completed' && notes.includes('with some errors')) {
+    statusContext = 'completed with some errors';
+  } else {
+    statusContext = status.toLowerCase();
+  }
+  
   if (notes) {
-    updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+    updates['System Notes'] = `${notes}\nRun ${statusContext} at ${new Date().toISOString()}`;
   }
   
   return await updateClientRun(runId, clientId, updates);

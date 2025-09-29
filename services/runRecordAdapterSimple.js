@@ -154,8 +154,21 @@ async function completeRunRecord(params) {
   logger.debug(`[RunRecordAdapterSimple] Completing run record for client ${clientId} from source ${source}`);
   
   try {
-    // Handle status as string or boolean
-    const success = typeof status === 'boolean' ? status : (status === 'Completed' || status === 'Success');
+    let success;
+    
+    // Handle status as string or boolean, with special handling for 'No Leads To Score'
+    if (typeof status === 'boolean') {
+      success = status;
+    } else if (status === 'No Leads To Score') {
+      success = 'No Leads To Score'; // Pass through as a special status
+    } else if (status === 'Skipped') {
+      success = 'No Leads To Score'; // Map 'Skipped' to 'No Leads To Score' for consistency
+    } else if (status === 'Completed With Errors' || status === 'completed_with_errors') {
+      success = true; // Map to Completed, with notes indicating errors
+      notes = `Completed with some errors. ${notes}`;
+    } else {
+      success = (status === 'Completed' || status === 'Success');
+    }
     
     // Clean/standardize the run ID
     const baseRunId = runIdUtils.stripClientSuffix(runId);

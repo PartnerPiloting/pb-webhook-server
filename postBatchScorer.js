@@ -118,7 +118,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
                 if (isSuccess) {
                     clientLogger.summary(`SUCCESS - Processed: ${clientResult.postsProcessed}, Scored: ${clientResult.postsScored}, Duration: ${clientResult.duration}s`);
                 } else {
-                    clientLogger.error(`COMPLETED WITH ERRORS - Errors: ${clientResult.errors}, Details: ${clientResult.errorDetails?.join('; ')}`);
+                    clientLogger.error(`Completed with errors - Errors: ${clientResult.errors}, Details: ${clientResult.errorDetails?.join('; ')}`);
                 }
                 
                 // Log execution for this client
@@ -339,8 +339,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         }
         
         if (leadsToProcess.length === 0) {
-            // No leads to process, complete with success but 0 scored
+            // No leads to process, set to 'No Leads To Score' status
             logger.summary(`No posts to score for client ${client.clientId} (${client.clientName})`);
+            
+            // Set the client result with proper status
+            clientResult.status = 'No Leads To Score';
             
             if (process.env.VERBOSE_POST_SCORING === "true") {
                 console.log(`[POST_DEBUG] ℹ️ CLIENT ${client.clientId} (${client.clientName}): No leads with posts to score found`);
@@ -433,7 +436,17 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             }
         }
         
-        clientResult.status = clientResult.errors === 0 ? 'success' : 'Failed';
+        // Determine the appropriate status value
+        if (clientResult.errors === 0) {
+            if (clientResult.postsProcessed === 0) {
+                clientResult.status = 'No Leads To Score';
+            } else {
+                clientResult.status = 'success';
+            }
+        } else {
+            // Use 'Failed' rather than 'Completed With Errors'
+            clientResult.status = 'Failed';
+        }
         
         // Update client metrics for post scoring in the Client Run Results table - BUT ONLY if parentRunId is provided
         // This ensures we only try to update metrics in production flows (via Smart Resume) and skip for standalone debugging runs
