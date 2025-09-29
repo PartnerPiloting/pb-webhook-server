@@ -173,7 +173,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
     const record = await masterBase('Client Run Results').create({
       'Run ID': standardRunId,
       'Base Run ID': baseRunId,
-      'Client': clientId,
+      'client': clientId, // Using lowercase 'client' to match the field name in Airtable
       'Client Name': resolvedClientName,
       'Start Time': startTime,
       'Status': 'Running'
@@ -222,7 +222,7 @@ async function updateClientRunRecord(runId, clientId, updates) {
     // Find the record by Run ID and Client
     let recordId = null;
     const records = await masterBase('Client Run Results').select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client} = '${clientId}')`
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {client} = '${clientId}')`
     }).firstPage();
     
     if (records.length > 0) {

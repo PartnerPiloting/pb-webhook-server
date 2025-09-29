@@ -50,7 +50,7 @@ async function createRunRecord(params) {
     
     // Check if record already exists
     const existingRecords = await masterBase('Client Run Results').select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client} = '${clientId}')`
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {client} = '${clientId}')`
     }).firstPage();
     
     if (existingRecords && existingRecords.length > 0) {
@@ -70,7 +70,7 @@ async function createRunRecord(params) {
     const fields = {
       'Run ID': standardRunId,
       'Base Run ID': baseRunId,
-      'Client': clientId,
+      'client': clientId, // Using lowercase 'client' to match the field name in Airtable
       'Client Name': clientName || clientId, // Use clientId as fallback
       'Start Time': startTime,
       'Status': 'Running',
