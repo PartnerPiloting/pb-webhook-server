@@ -147,8 +147,8 @@ async function upsertLead(
         if (currentConnectionStatus === "Connected" && !fields["Date Connected"]) {
             fields["Date Connected"] = new Date().toISOString();
         }
-        if (!fields["Source"]) { 
-            fields["Source"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
+        if (!fields["System Notes"]) { 
+            fields["System Notes"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
         }
         console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
         const createdRecords = await airtableBase("Leads").create([{ fields }]);
