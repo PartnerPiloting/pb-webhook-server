@@ -117,7 +117,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
   try {
     // Check if record already exists to prevent duplicates
     const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${runId}', {Client} = '${clientId}')`,
+      filterByFormula: `AND({Run ID} = '${runId}', {Client ID} = '${clientId}')`, // Fixed from 'Client' to 'Client ID' to match Airtable schema
       maxRecords: 1
     }).firstPage();
     
