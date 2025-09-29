@@ -14,7 +14,9 @@ const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
 const runIdUtils = require('../utils/runIdUtils.js');
-const { safeUpdateMetrics } = require('../services/runRecordAdapterSimple.js');
+// Use the new service boundaries architecture
+const runRecordRepository = require('../services/airtable/runRecordRepository.js');
+const runIdService = require('../services/airtable/runIdService.js');
 const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
@@ -542,9 +544,9 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
         // Generate a unique client-specific run ID based on the parent run ID
         // This ensures each client gets its own unique run ID while maintaining the connection to the job
         
-        // Strip any existing client suffix and add the new client suffix using utility functions
-        const baseRunId = runIdUtils.stripClientSuffix(runId);
-        const clientRunId = runIdUtils.addClientSuffix(baseRunId, client.clientId);
+        // Use the new service architecture for run ID management
+        const baseRunId = runId; // Use the provided run ID as the base
+        const clientRunId = runIdService.addClientSuffix(baseRunId, client.clientId);
         console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
         
         // Set up client timeout
@@ -1170,30 +1172,29 @@ async function processPostScoringInBackground(jobId, stream, options) {
           try {
             console.log(`[POST-SCORING] Starting metrics update for ${client.clientName} (${client.clientId})`);
             
-            // Generate client-specific run ID for metrics updating (simplified approach)
-            const baseRunId = runIdUtils.stripClientSuffix(options.parentRunId);
-            const clientRunId = runIdUtils.addClientSuffix(baseRunId, client.clientId);
+            // Generate client-specific run ID using new service architecture
+            const baseRunId = options.parentRunId;
+            const clientRunId = runIdService.addClientSuffix(baseRunId, client.clientId);
             
             console.log(`[POST-SCORING] Using standardized run ID: ${clientRunId} (from ${options.parentRunId})`);
             
             // Calculate duration as human-readable text
             const duration = formatDuration(Date.now() - (options.startTime || Date.now()));
             
-            // Prepare metrics updates - now including Post Scoring Last Run Time as we have proper type conversion
+            // Prepare metrics updates - removed Post Scoring Last Run Time field as it doesn't exist in Airtable
             const metricsUpdates = {
               'Posts Examined for Scoring': postsExamined,
               'Posts Successfully Scored': postsScored,
               'Post Scoring Tokens': clientResult.totalTokensUsed || 0,
-              'Post Scoring Last Run Time': duration, // Now included - our safeFieldUpdate will handle type conversion
+              // 'Post Scoring Last Run Time' field removed - not present in Airtable schema
               'System Notes': `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
             };
             
-            // Use our new safeUpdateMetrics function
-            const updateResult = await safeUpdateMetrics({
+            // Use the new runRecordRepository pattern
+            const updateResult = await runRecordRepository.updateRunRecord({
               runId: clientRunId,
               clientId: client.clientId,
-              processType: 'post_scoring',
-              metrics: metricsUpdates,
+              updates: metricsUpdates,
               options: {
                 isStandalone: false,  // This is never standalone if we have a parentRunId
                 logger: console,
@@ -1209,7 +1210,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
             } else if (updateResult.skipped) {
               console.log(`ℹ️ Metrics update skipped: ${updateResult.reason || 'Unknown reason'}`);
             } else {
-              console.error(`❌ Failed to update metrics: ${updateResult.error || 'Unknown error'}`);
+              console.error(`❌ [ERROR] Failed to update metrics: ${updateResult.error || 'Unknown error'}`);
             }
           } catch (metricError) {
             // Use standardized error handling
