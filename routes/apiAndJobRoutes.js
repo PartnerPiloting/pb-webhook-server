@@ -1053,6 +1053,16 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
       console.log(`ℹ️ Running in standalone mode - metrics recording will be skipped (no parentRunId)`);
     }
     
+    // Create a job tracking record to prevent errors when updating later
+    try {
+      const airtableServiceSimple = require('../services/airtableServiceSimple');
+      await airtableServiceSimple.createJobTrackingRecord(jobId, stream);
+      console.log(`✅ Job tracking record created for ${jobId}`);
+    } catch (trackingError) {
+      // Continue even if tracking record creation fails (may already exist)
+      console.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
+    }
+    
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
     res.status(202).json({
       status: 'accepted',
