@@ -66,7 +66,7 @@ if (!GPT_CHAT_URL) {
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID; // Corrected line from bug fix
 const AIRTABLE_LEADS_TABLE_ID_OR_NAME = "Leads";
 const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
-const AIRTABLE_NOTES_FIELD = "Notes";
+const AIRTABLE_NOTES_FIELD = "System Notes"; // Changed from "Notes" to match Airtable schema
 
 if (!AIRTABLE_BASE_ID) {
     console.error("CRITICAL WARNING: Missing AIRTABLE_BASE_ID environment variable. Airtable operations will fail for textblaze-linkedin-webhook.");
