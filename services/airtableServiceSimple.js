@@ -70,13 +70,16 @@ async function createJobTrackingRecord(runId, stream) {
     
     const startTimestamp = new Date().toISOString();
     
+    // Convert stream to a number if it's a string
+    const streamNumber = typeof stream === 'string' ? parseInt(stream, 10) : stream;
+
     const records = await base(JOB_TRACKING_TABLE).create([
       {
         fields: {
           'Run ID': runId,
           'Start Time': startTimestamp,
           'Status': 'Running',
-          'Stream': stream,
+          'Stream': streamNumber, // Ensure stream is a number for Airtable's number field
           'Clients Processed': 0,
           'Clients With Errors': 0,
           'Total Profiles Examined': 0,
@@ -114,7 +117,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
   try {
     // Check if record already exists to prevent duplicates
     const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${runId}', {Client ID} = '${clientId}')`,
+      filterByFormula: `AND({Run ID} = '${runId}', {Client} = '${clientId}')`,
       maxRecords: 1
     }).firstPage();
     
@@ -129,7 +132,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
       {
         fields: {
           'Run ID': runId,
-          'Client ID': clientId,
+          'Client': clientId,  // Changed from 'Client ID' to 'Client' to match Airtable field name
           'Client Name': clientName,
           'Start Time': startTimestamp,
           'Status': 'Running',

@@ -50,7 +50,7 @@ async function createRunRecord(params) {
     
     // Check if record already exists
     const existingRecords = await masterBase('Client Run Results').select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client} = '${clientId}')`
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`
     }).firstPage();
     
     if (existingRecords && existingRecords.length > 0) {
@@ -70,7 +70,7 @@ async function createRunRecord(params) {
     const fields = {
       'Run ID': standardRunId,
       'Base Run ID': baseRunId,
-      'Client': clientId, // Using 'Client' (capitalized) to match the field name in Airtable
+      'Client ID': clientId, // Reverted to 'Client ID' to match the actual field name in Airtable
       'Client Name': clientName || clientId, // Use clientId as fallback
       'Start Time': startTime,
       'Status': 'Running',
@@ -141,9 +141,9 @@ async function updateRunRecord(params) {
     // Get the master clients base
     const masterBase = baseManager.getMasterClientsBase();
     
-    // Find the record by Run ID and Client
+    // Find the record by Run ID and Client ID
     const records = await masterBase('Client Run Results').select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client} = '${clientId}')`
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`
     }).firstPage();
     
     // If record not found and createIfMissing is true, create it
@@ -291,9 +291,9 @@ async function runRecordExists(params) {
     // Get the master clients base
     const masterBase = baseManager.getMasterClientsBase();
     
-    // Find the record by Run ID and Client
+    // Find the record by Run ID and Client ID
     const records = await masterBase('Client Run Results').select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client} = '${clientId}')`
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`
     }).firstPage();
     
     return records && records.length > 0;
