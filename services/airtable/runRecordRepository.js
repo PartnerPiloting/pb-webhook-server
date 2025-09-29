@@ -50,7 +50,7 @@ async function createRunRecord(params) {
     
     // Check if record already exists
     const existingRecords = await masterBase('Client Run Results').select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {client} = '${clientId}')`
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client} = '${clientId}')`
     }).firstPage();
     
     if (existingRecords && existingRecords.length > 0) {
@@ -70,7 +70,7 @@ async function createRunRecord(params) {
     const fields = {
       'Run ID': standardRunId,
       'Base Run ID': baseRunId,
-      'client': clientId, // Using lowercase 'client' to match the field name in Airtable
+      'Client': clientId, // Using 'Client' (capitalized) to match the field name in Airtable
       'Client Name': clientName || clientId, // Use clientId as fallback
       'Start Time': startTime,
       'Status': 'Running',
@@ -87,7 +87,6 @@ async function createRunRecord(params) {
       await jobTrackingRepository.createJobTrackingRecord({
         runId: baseRunId,
         clientId,
-        jobType: initialData.jobType || 'Client Run',
         options: { logger }
       });
     } catch (jobError) {

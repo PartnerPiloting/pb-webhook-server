@@ -17,13 +17,12 @@ const logger = new StructuredLogger('SYSTEM', null, 'job_tracking_repository');
  * @param {Object} params - Job tracking parameters
  * @param {string} params.runId - Run ID for the job (with or without client suffix)
  * @param {string} [params.clientId] - Optional client ID for the job
- * @param {string} params.jobType - Type of job being tracked
  * @param {Object} [params.initialData] - Initial data for the job
  * @param {Object} [params.options] - Additional options
  * @returns {Promise<Object>} Created job tracking record
  */
 async function createJobTrackingRecord(params) {
-  const { runId, clientId, jobType, initialData = {}, options = {} } = params;
+  const { runId, clientId, initialData = {}, options = {} } = params;
   const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, 'job_tracking_repository');
   
   if (!runId) {
@@ -52,7 +51,6 @@ async function createJobTrackingRecord(params) {
         id: existingRecords[0].id,
         runId: baseRunId,
         clientId,
-        jobType,
         startTime: existingRecords[0].get('Start Time'),
         status: existingRecords[0].get('Status')
       };
@@ -62,7 +60,7 @@ async function createJobTrackingRecord(params) {
     const record = await masterBase('Job Tracking').create({
       'Run ID': baseRunId,
       // 'Client ID' field removed as it doesn't exist in the Job Tracking table
-      'Job Type': jobType,
+      // 'Job Type' field removed as it doesn't exist in the Job Tracking table
       'Start Time': startTime,
       'Status': 'Running',
       ...initialData
@@ -74,7 +72,6 @@ async function createJobTrackingRecord(params) {
       id: record.id,
       runId: baseRunId,
       clientId,
-      jobType,
       startTime,
       status: 'Running'
     };
@@ -114,19 +111,16 @@ async function updateJobTrackingRecord(params) {
     }).firstPage();
     
     if (!records || records.length === 0) {
-      logger.error(`Job tracking record not found for ${baseRunId}. Creating one...`);
+      logger.error(`Job tracking record not found for ${baseRunId} (base: ${baseRunId}). Updates will not be applied.`);
       
-      // Create a new record with recovery information
-      return await createJobTrackingRecord({
+      // Don't try to create a new record, just return a placeholder with error info
+      return {
+        error: 'Job tracking record not found',
         runId: baseRunId,
-        // clientId is still passed but won't be written to Airtable since we removed it from create method
         clientId: updates.clientId,
-        jobType: updates.jobType || 'Unknown (Recovery)',
-        initialData: {
-          'Recovery Note': 'Created during update attempt - original record missing',
-          ...updates
-        }
-      });
+        status: 'Error',
+        errorMessage: 'Job tracking record not found'
+      };
     }
     
     const recordId = records[0].id;
@@ -144,7 +138,7 @@ async function updateJobTrackingRecord(params) {
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
-      if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'clientId', 'jobType'].includes(key)) {
+      if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'clientId'].includes(key)) {
         updateFields[key] = updates[key];
       }
     });
