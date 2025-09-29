@@ -78,7 +78,7 @@ async function testServiceLayer() {
           runId: testRunId,
           jobType: 'TEST-SERVICE-BOUNDARIES',
           initialData: {
-            'Notes': 'Test run record from service boundaries test script',
+            'System Notes': 'Test run record from service boundaries test script',
             'Total Items': 10
           }
         });
@@ -90,7 +90,7 @@ async function testServiceLayer() {
           clientId,
           jobType: 'TEST-SERVICE-BOUNDARIES',
           initialData: {
-            'Notes': 'Test job tracking record from service boundaries test script',
+            'System Notes': 'Test job tracking record from service boundaries test script',
           }
         });
         console.log(`Created job tracking record with ID: ${jobRecord.id}`);

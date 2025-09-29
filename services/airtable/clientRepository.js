@@ -243,7 +243,7 @@ async function updateClientRunRecord(runId, clientId, updates) {
     if (updates.leadsProcessed) updateFields['Leads Processed'] = updates.leadsProcessed;
     if (updates.postsProcessed) updateFields['Posts Processed'] = updates.postsProcessed;
     if (updates.errors) updateFields['Errors'] = updates.errors;
-    if (updates.notes) updateFields['Notes'] = updates.notes;
+    if (updates.notes) updateFields['System Notes'] = updates.notes; // Changed from 'Notes' to 'System Notes' to match the Airtable schema
     if (updates.tokenUsage) updateFields['Token Usage'] = updates.tokenUsage;
     if (updates.promptTokens) updateFields['Prompt Tokens'] = updates.promptTokens;
     if (updates.completionTokens) updateFields['Completion Tokens'] = updates.completionTokens;
