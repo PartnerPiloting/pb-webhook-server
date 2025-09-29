@@ -70,7 +70,7 @@ async function createRunRecord(params) {
     // Prepare fields for the record
     const fields = {
       'Run ID': standardRunId,
-      'Base Run ID': baseRunId,
+      // 'Base Run ID' field removed - doesn't exist in the Airtable schema
       'Client ID': clientId, // Reverted to 'Client ID' to match the actual field name in Airtable
       'Client Name': clientName || clientId, // Use clientId as fallback
       'Start Time': startTime,

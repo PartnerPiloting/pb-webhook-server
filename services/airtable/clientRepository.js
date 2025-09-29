@@ -172,8 +172,8 @@ async function createClientRunRecord(runId, clientId, clientName) {
     
     const record = await masterBase('Client Run Results').create({
       'Run ID': standardRunId,
-      'Base Run ID': baseRunId,
-      'client': clientId, // Using lowercase 'client' to match the field name in Airtable
+      // 'Base Run ID' field removed - doesn't exist in the Airtable schema
+      'Client ID': clientId, // Using 'Client ID' to match the field name in Airtable
       'Client Name': resolvedClientName,
       'Start Time': startTime,
       'Status': 'Running'
