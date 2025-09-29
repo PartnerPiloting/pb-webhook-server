@@ -475,7 +475,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 logger.debug(`Updating run record for client ${client.clientId} with run ID ${standardizedRunId}`);
                 
                 try {
-                    await unifiedRunIdService.updateRunRecord({
+                    await unifiedJobTrackingRepository.updateClientRunRecord({
                         runId: standardizedRunId,
                         clientId: client.clientId,
                         updates: {
