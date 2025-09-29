@@ -637,7 +637,7 @@ async function main() {
                     clientName: workflow.clientName,
                     parentRunId: runId,  // Add parent run ID reference
                     initialData: {
-                        'Source': 'smart_resume_workflow',
+                        'System Notes': 'smart_resume_workflow', // Changed from 'Source' to 'System Notes' to match the Airtable schema
                         // 'Parent Run ID' field removed - might not exist in the Airtable schema
                         // 'Base Run ID' field removed - doesn't exist in the Airtable schema
                         'Client ID': workflow.clientId // Store client ID explicitly
@@ -746,7 +746,7 @@ async function main() {
                     status,
                     notes,
                     metrics: {
-                        'Source': 'smart_resume_workflow_complete'
+                        'System Notes': 'smart_resume_workflow_complete' // Changed from 'Source' to 'System Notes' to match the Airtable schema
                         // 'Parent Run ID' field removed - might not exist in the Airtable schema
                     }
                 });

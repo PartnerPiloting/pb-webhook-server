@@ -92,7 +92,7 @@ async function completeJobRun(runId, success, notes = '') {
     const baseRunId = runId.includes('-') ? runId.split('-').slice(0, 2).join('-') : runId;
     
     // Prepare status update
-    const status = success ? 'completed' : 'completed_with_errors';
+    const status = success ? 'Completed' : 'Failed';
     
     // Using the new service layer
     return await airtableService.completeJobTrackingRecord({

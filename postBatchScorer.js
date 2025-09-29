@@ -97,7 +97,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId =
                 const clientResult = await processClientPostScoring(client, limit, clientLogger, { ...options, diagnosticsCollector });
                 results.clientResults.push(clientResult);
                 
-                // We now treat both success and completed_with_errors/failed similarly for aggregation,
+                // We now treat both success and Failed similarly for aggregation,
                 // but status 'success' means errors=0.
                 const isSuccess = clientResult.status === 'success';
                 if (isSuccess) results.successfulClients++; else results.failedClients++;
@@ -433,7 +433,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             }
         }
         
-        clientResult.status = clientResult.errors === 0 ? 'success' : 'completed_with_errors';
+        clientResult.status = clientResult.errors === 0 ? 'success' : 'Failed';
         
         // Update client metrics for post scoring in the Client Run Results table - BUT ONLY if parentRunId is provided
         // This ensures we only try to update metrics in production flows (via Smart Resume) and skip for standalone debugging runs

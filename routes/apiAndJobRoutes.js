@@ -1374,7 +1374,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
           aggregate.totalPostsScored += first.postsScored || 0;
           aggregate.totalLeadsSkipped += first.leadsSkipped || 0;
           aggregate.totalErrors += first.errors || 0;
-          // Success vs failed (treat completed_with_errors as failed for counts)
+          // Success vs failed (treat Failed as failed for counts)
           if (first.status === 'success') aggregate.successfulClients++; else aggregate.failedClients++;
           // Merge skip counts
           if (first.skipCounts) {

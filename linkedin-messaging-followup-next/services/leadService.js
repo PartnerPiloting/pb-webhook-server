@@ -129,8 +129,12 @@ async function upsertLead(
         if (currentConnectionStatus === "Connected" && !fields["Date Connected"]) {
             fields["Date Connected"] = new Date().toISOString();
         }
-        if (!fields["Source"]) { 
-            fields["Source"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
+        // Capture source information in System Notes instead of Source field which doesn't exist
+        const sourceInfo = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
+        if (fields["System Notes"]) {
+            fields["System Notes"] += `\nSource: ${sourceInfo}`;
+        } else {
+            fields["System Notes"] = `Source: ${sourceInfo}`;
         }
         console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
         const createdRecords = await base("Leads").create([{ fields }]);
