@@ -150,7 +150,7 @@ async function createJobTrackingRecord(runId, stream) {
           'Run ID': baseRunId, // Use the base run ID without client suffix
           'Start Time': new Date().toISOString(),
           'Status': 'Running',
-          'Stream': stream,
+          'Stream': Number(stream), // Ensure stream is a number for Airtable's number field
           'Clients Processed': 0,
           'Clients With Errors': 0,
           'Total Profiles Examined': 0,

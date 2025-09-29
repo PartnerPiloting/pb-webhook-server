@@ -456,7 +456,7 @@ async function main() {
             runId,  // This is the base runId without client suffix
             jobType: `Smart Resume Stream ${stream}`,
             initialData: {
-                'Stream': stream.toString(),
+                'Stream': Number(stream), // Ensure stream is a number for Airtable's number field
                 'Run Type': 'master',  // Mark this as a master run for diagnostics
                 'Base Run ID': runId   // Store the base run ID explicitly
             }
