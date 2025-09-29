@@ -1433,7 +1433,8 @@ router.get("/debug-clients", async (req, res) => {
   }
   
   try {
-    const clientService = require("../services/clientService");
+    // Use the new airtableService instead of clientService directly
+    const airtableService = require("../services/airtable/airtableService");
     
     // Check environment variables
     const debugInfo = {
@@ -1447,14 +1448,20 @@ router.get("/debug-clients", async (req, res) => {
       }
     };
     
-    // Try to get all clients
+    // Try to get all clients using the new service layer
     let allClients = [];
     let activeClients = [];
     let error = null;
     
     try {
-      allClients = await clientService.getAllClients();
-      activeClients = await clientService.getAllActiveClients();
+      // Initialize the service first
+      airtableService.initialize();
+      
+      // Get all clients
+      allClients = await airtableService.getAllClients();
+      
+      // Filter for active clients (to maintain compatibility)
+      activeClients = allClients.filter(client => client.status === 'Active');
     } catch (clientError) {
       error = clientError.message;
     }
@@ -1464,7 +1471,8 @@ router.get("/debug-clients", async (req, res) => {
       activeClients: activeClients.length,
       allClientsData: allClients,
       activeClientsData: activeClients,
-      error: error
+      error: error,
+      usingNewServiceLayer: true
     };
     
     res.json(debugInfo);
