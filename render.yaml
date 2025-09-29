@@ -5,7 +5,7 @@ services:
     plan: starter
     region: oregon
     autoDeploy: true
-    branch: feature/apify-posts-ingestion
+    branch: feature/airtable-service-boundaries
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /basic-test
