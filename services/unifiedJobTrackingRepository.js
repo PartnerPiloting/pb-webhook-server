@@ -231,7 +231,7 @@ async function updateJobTrackingRecord(params) {
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
-      if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'clientId'].includes(key)) {
+      if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'clientId', 'Success Rate'].includes(key)) {
         updateFields[key] = updates[key];
       }
     });
@@ -509,7 +509,7 @@ async function updateClientRunRecord(params) {
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
       if (!['status', 'endTime', 'leadsProcessed', 'postsProcessed', 'errors', 'notes', 
-          'tokenUsage', 'promptTokens', 'completionTokens', 'totalTokens'].includes(key)) {
+          'tokenUsage', 'promptTokens', 'completionTokens', 'totalTokens', 'Success Rate'].includes(key)) {
         updateFields[key] = updates[key];
       }
     });
