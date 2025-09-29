@@ -10,6 +10,12 @@ We've implemented a new service boundaries architecture to address run ID consis
 
 2. **Stream Data Type** - Fixed "Field 'Stream' cannot accept the provided value" error by ensuring Stream is properly converted to a number type in jobTrackingRepository.js
 
+3. **Non-existent Fields** - Removed references to fields that don't exist in the Airtable schema:
+   - Removed 'Base Run ID' field (does not exist in Client Run Results table)
+   - Removed 'Run Type' field (does not exist in Job Tracking table)
+   - Removed 'Parent Run ID' field (does not exist in Client Run Results table)
+   - Removed 'jobType' parameter usage (Job Type field does not exist)
+
 ## Architecture Changes
 
 ### Core Components Implemented:
@@ -43,6 +49,7 @@ When reviewing logs for the service boundaries implementation, focus on:
 3. **Error Patterns**
    - "Record not found" errors - May indicate run ID inconsistency
    - "Cannot read property of undefined" - May indicate missing initialization
+   - "Unknown field name" errors - Indicates trying to use fields that don't exist in Airtable schema
 
 ### Key Files to Check
 
@@ -104,12 +111,25 @@ Watch for these error patterns:
                       └─────────────────┘     └──────────────────┘
 ```
 
+## Field Name Verification
+
+Always verify field names against the actual Airtable schema before adding new fields:
+
+1. **Check Airtable UI** - Open the table in Airtable and view field names exactly as they appear
+2. **Case Sensitivity** - Field names are case-sensitive ("Client ID" ≠ "client id")
+3. **Field Types** - Ensure data types match (number, string, date, etc.)
+4. **Common Mistakes:**
+   - Adding convenience fields (like "Base Run ID") that don't exist in Airtable
+   - Inconsistent capitalization ("Client" vs "Client ID")
+   - Using fields from documentation that might be outdated
+
 ## Next Steps
 
 After successful testing:
 - Continue monitoring for any issues with run ID consistency
 - Consider gradual migration of other endpoints to use the new service layer
 - Document any recurring patterns or issues for future reference
+- Validate all field names against the actual Airtable schema
 
 ## Contact Information
 
