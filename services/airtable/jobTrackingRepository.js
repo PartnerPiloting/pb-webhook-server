@@ -138,8 +138,15 @@ async function updateJobTrackingRecord(params) {
     if (updates.endTime) updateFields['End Time'] = updates.endTime;
     if (updates.error) updateFields['Error'] = updates.error;
     if (updates.progress) updateFields['Progress'] = updates.progress;
-    if (updates.itemsProcessed) updateFields['Items Processed'] = updates.itemsProcessed;
-    if (updates.notes) updateFields['System Notes'] = updates.notes; // Changed from 'Notes' to 'System Notes' to match the Airtable schema
+    // Removed mapping for 'Items Processed' since it doesn't exist in the Airtable schema
+    if (updates.itemsProcessed && updates.notes) {
+        // Add items processed info to System Notes instead
+        updateFields['System Notes'] = `${updates.notes}\nItems Processed: ${updates.itemsProcessed}`;
+    } else if (updates.itemsProcessed) {
+        updateFields['System Notes'] = `Items Processed: ${updates.itemsProcessed}`;
+    } else if (updates.notes) {
+        updateFields['System Notes'] = updates.notes; // Changed from 'Notes' to 'System Notes' to match the Airtable schema
+    }
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {

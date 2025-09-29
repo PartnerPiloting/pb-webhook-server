@@ -157,7 +157,7 @@ async function updateRunRecord(params) {
         clientId,
         runId: standardRunId,
         initialData: {
-          'Recovery Note': 'Created during update attempt - original record missing',
+          'System Notes': 'Created during update attempt - original record missing', // Changed from 'Recovery Note' to 'System Notes' to match the Airtable schema
           ...updates
         },
         options

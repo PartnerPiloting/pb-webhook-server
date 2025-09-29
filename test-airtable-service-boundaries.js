@@ -102,7 +102,7 @@ async function testServiceLayer() {
           runId: testRunId,
           updates: {
             'Progress': '50%',
-            'Items Processed': 5
+            'System Notes': 'Items Processed: 5' // Changed from 'Items Processed' to use 'System Notes' which exists in the schema
           }
         });
         console.log('Run record updated successfully');
@@ -113,7 +113,7 @@ async function testServiceLayer() {
           runId: testRunId,
           updates: {
             'Progress': '50%',
-            'Items Processed': 5
+            'System Notes': 'Items Processed: 5' // Changed from 'Items Processed' to use 'System Notes' which exists in the schema
           }
         });
         console.log('Job tracking record updated successfully');
@@ -124,7 +124,7 @@ async function testServiceLayer() {
           clientId,
           runId: testRunId,
           metrics: {
-            'Items Processed': 10,
+            'System Notes': 'Items Processed: 10', // Changed from 'Items Processed' to use 'System Notes' which exists in the schema
             'Success Count': 10,
             'Error Count': 0,
             'Duration (ms)': 1000
@@ -135,7 +135,7 @@ async function testServiceLayer() {
         await airtableService.completeJobTrackingRecord({
           runId: testRunId,
           metrics: {
-            'Items Processed': 10,
+            'System Notes': 'Items Processed: 10', // Changed from 'Items Processed' to use 'System Notes' which exists in the schema
             'Success Count': 10,
             'Error Count': 0,
             'Duration (ms)': 1000
