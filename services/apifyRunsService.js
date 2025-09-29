@@ -16,7 +16,7 @@ let masterClientsBase = null;
 // Load airtableService for updating client run metrics
 let airtableService;
 try {
-    airtableService = require('./airtableService');
+    airtableService = require('./airtable/airtableService');
 } catch (err) {
     console.error("Failed to load airtableService:", err.message);
 }
@@ -269,7 +269,7 @@ async function getClientRuns(clientId, limit = 10) {
         console.log(`[ApifyRuns] Fetching recent runs for client: ${clientId}`);
         
         const records = await base('Apify').select({
-            filterByFormula: `{Client ID} = '${clientId}'`,
+            filterByFormula: `{Client} = '${clientId}'`, // Changed from Client ID to Client to match Airtable schema
             sort: [{ field: 'Created At', direction: 'desc' }],
             maxRecords: limit
         }).firstPage();
@@ -356,7 +356,7 @@ function clearRunsCache() {
 async function updateClientRunMetrics(runId, clientId, data) {
     try {
         if (!airtableService) {
-            airtableService = require('./airtableService');
+            airtableService = require('./airtable/airtableService');
         }
         
         // Ensure we have a client-suffixed run ID in our standard format

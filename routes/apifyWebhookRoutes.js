@@ -1,17 +1,18 @@
 // routes/apifyWebhookRoutes.js
 // Routes for handling Apify webhooks for post harvesting
-// This is a clean, restored version that fixes syntax errors
+// Updated to use the new service boundaries architecture
 
 const express = require('express');
 const router = express.Router();
 const { getClientBase } = require('../config/airtableClient');
 const { getClientIdForRun, updateApifyRun, updateClientRunMetrics } = require('../services/apifyRunsService');
-const { normalizeRunId } = require('../services/runIdService');
-const runIdService = require('../services/runIdService');
+// Use the new service boundaries architecture
+const airtableService = require('../services/airtable/airtableService');
+const runIdService = require('../services/airtable/runIdService');
+const runRecordRepository = require('../services/airtable/runRecordRepository');
+const baseManager = require('../services/airtable/baseManager');
 const { createPost } = require('../services/postService');
-const { checkRunRecordExists, safeUpdateMetrics } = require('../services/runRecordAdapterSimple');
 const { handleClientError } = require('../utils/errorHandler');
-const airtableServiceSimple = require('../services/airtableServiceSimple');
 
 // Rate limiting for webhook endpoints - TEMPORARILY DISABLED
 // const rateLimit = require("express-rate-limit");
@@ -193,11 +194,11 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
         // Calculate an estimated API cost based on post count (rough estimate)
         const estimatedCost = posts.length * 0.02; // $0.02 per post - stored as a number, not a string
         
-        // Update metrics in client's run record
-        // Check if run record exists using robust function from runRecordAdapterSimple
+        // Update metrics in client's run record using the new architecture
+        // Check if run record exists using the runRecordRepository
         console.log(`[DEBUG-RUN-ID-FLOW] Checking for run record with ID: ${clientSuffixedRunId}`);
         
-        const recordExists = await checkRunRecordExists({ 
+        const recordExists = await runRecordRepository.checkRunRecordExists({ 
           runId: clientSuffixedRunId, 
           clientId,
           options: { 
@@ -267,14 +268,13 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
             'Apify Run ID': runId
           };
           
-          // Use our new safeUpdateMetrics function for consistent handling
-          const updateResult = await safeUpdateMetrics({
+          // Use the new architecture for updating metrics
+          const updateResult = await runRecordRepository.updateRunRecord({
             runId: clientSuffixedRunId,
             clientId,
-            processType: 'post_harvesting',
-            metrics: metricsUpdates,
+            updates: metricsUpdates,
+            createIfMissing: !isOrchestrated, // Create standalone records if needed
             options: {
-              isStandalone: !isOrchestrated,
               logger: console,
               source: 'apify_webhook'
             }
@@ -308,14 +308,13 @@ async function processWebhookInBackground(payload, runId, queryClientId = null) 
             'Apify Run ID': runId
           };
           
-          // Use safeUpdateMetrics even in this case - it will handle the error gracefully
-          const updateResult = await safeUpdateMetrics({
+          // Use the new architecture for updating metrics in recovery mode
+          const updateResult = await runRecordRepository.updateRunRecord({
             runId: clientSuffixedRunId,
             clientId,
-            processType: 'post_harvesting',
-            metrics: metricsUpdates,
+            updates: metricsUpdates,
+            createIfMissing: false,  // Not a standalone run, don't create if missing
             options: {
-              isStandalone: false,  // Not a standalone run
               logger: console,
               source: 'apify_webhook_recovery'
             }
@@ -568,8 +567,8 @@ async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, origin
     console.log(`[DEBUG][RUN_RECORD_LOOKUP] Original Run ID: ${originalRunId}`);
     
     // Check if run ID normalization is working correctly
-    const runIdService = require('../services/runIdService');
-    const normalizedRunId = runIdService.normalizeRunId(originalRunId, clientId);
+    // Use the already imported runIdService from the new architecture
+    const normalizedRunId = runIdService.addClientSuffix(originalRunId, clientId);
     console.log(`[DEBUG][RUN_RECORD_LOOKUP] Normalized Run ID: ${normalizedRunId}`);
     console.log(`[DEBUG][RUN_RECORD_LOOKUP] Expected format should match: ${clientSuffixedRunId}`);
     
@@ -580,7 +579,7 @@ async function debugRunRecordLookupFailure(clientId, clientSuffixedRunId, origin
       const runRecordsMasterBase = airtableServiceSimple.initialize(); // Get the Master base
       
       const recentRunRecords = await runRecordsMasterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{Client ID} = '${clientId}'`,
+        filterByFormula: `{Client} = '${clientId}'`, // Changed from Client ID to Client to match Airtable schema
         maxRecords: 5,
         sort: [{field: 'Created Time', direction: 'desc'}]
       }).firstPage();
