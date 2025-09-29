@@ -269,7 +269,7 @@ async function getClientRuns(clientId, limit = 10) {
         console.log(`[ApifyRuns] Fetching recent runs for client: ${clientId}`);
         
         const records = await base('Apify').select({
-            filterByFormula: `{Client} = '${clientId}'`, // Changed from Client ID to Client to match Airtable schema
+            filterByFormula: `{Client ID} = '${clientId}'`, // Reverted back to Client ID based on confirmation of Airtable schema
             sort: [{ field: 'Created At', direction: 'desc' }],
             maxRecords: limit
         }).firstPage();
