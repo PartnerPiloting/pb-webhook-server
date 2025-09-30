@@ -14,7 +14,8 @@ const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
 const runIdUtils = require('../utils/runIdUtils.js');
-// Use the unified job tracking service
+// Use the unified services
+const unifiedRunIdService = require('../services/unifiedRunIdService.js');
 const JobTracking = require('../services/jobTracking.js');
 const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
