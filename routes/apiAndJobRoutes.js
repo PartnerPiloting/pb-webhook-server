@@ -18,6 +18,7 @@ const runIdUtils = require('../utils/runIdUtils.js');
 // Use the unified services
 const unifiedRunIdService = require('../services/unifiedRunIdService.js');
 const unifiedJobTrackingRepository = require('../services/unifiedJobTrackingRepository.js');
+const jobOrchestrationService = require('../services/jobOrchestrationService.js');
 const JobTracking = require('../services/jobTracking.js');
 const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
@@ -962,21 +963,20 @@ router.post("/run-post-batch-score", async (req, res) => {
     if (singleClientId) {
       console.log(`Restricting run to single clientId=${singleClientId}`);
     }
-    // Generate a run ID for this job
-    const runId = JobTracking.generateRunId();
-    console.log(`Generated run ID for post scoring: ${runId}`);
-    
-    // Create the main job tracking record
+    // Use job orchestration service to start job
     try {
-      await JobTracking.createJob({
-        runId,
+      // This is the only place that should create job tracking records
+      const jobInfo = await jobOrchestrationService.startJob({
         jobType: 'post_scoring',
+        clientId: singleClientId, // May be null for all clients
         initialData: {
-          'Status': 'Running',
-          'Start Time': new Date().toISOString(),
           'System Notes': `Post scoring initiated for ${singleClientId || 'all clients'}`
         }
       });
+      
+      // Use the runId assigned by the orchestration service
+      const runId = jobInfo.runId;
+      console.log(`Using job run ID from orchestration service: ${runId}`);
       console.log(`Created job tracking record with ID ${runId}`);
     } catch (err) {
       console.error(`Failed to create job tracking record: ${err.message}`);
@@ -1103,20 +1103,24 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
       console.log(`ℹ️ Running in standalone mode - metrics recording will be skipped (no parentRunId)`);
     }
     
-    // Create a job tracking record to prevent errors when updating later
+    // Create a job tracking record using the orchestration service
     try {
-      // Use JobTracking service for consistent job record creation
-      await JobTracking.createJob({
-        runId: jobId,
+      // Use job orchestration service to start job
+      const jobInfo = await jobOrchestrationService.startJob({
         jobType: 'post_scoring',
+        clientId: client.clientId,
         initialData: {
-          'Stream': stream // Ensure stream is included
+          'Stream': stream, // Ensure stream is included
+          'Job ID': jobId // Store the original job ID
         },
         options: {
           logger: console
         }
       });
-      console.log(`✅ Job tracking record created for ${jobId}`);
+      
+      // Update jobId to use the one from orchestration service
+      jobId = jobInfo.runId;
+      console.log(`✅ Job tracking record created with ID ${jobId}`);
     } catch (trackingError) {
       // Continue even if tracking record creation fails (may already exist)
       console.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
@@ -1272,15 +1276,16 @@ async function processPostScoringInBackground(jobId, stream, options) {
               }
             });
             
-            if (updateResult.success && !updateResult.skipped) {
+            // Add safety checks for updateResult properties
+            if (updateResult && updateResult.success && !updateResult.skipped) {
               console.log(`📊 Updated client run record for ${client.clientName} with post scoring metrics`);
               console.log(`   - Posts Examined: ${postsExamined}`);
               console.log(`   - Posts Successfully Scored: ${postsScored}`);
               console.log(`   - Tokens Used: ${clientResult.totalTokensUsed || 0}`);
-            } else if (updateResult.skipped) {
+            } else if (updateResult && updateResult.skipped) {
               console.log(`ℹ️ Metrics update skipped: ${updateResult.reason || 'Unknown reason'}`);
             } else {
-              console.error(`❌ [ERROR] Failed to update metrics: ${updateResult.error || 'Unknown error'}`);
+              console.error(`❌ [ERROR] Failed to update metrics: ${updateResult ? updateResult.error || 'Unknown error' : 'No update result returned'}`);
             }
           } catch (metricError) {
             // Use standardized error handling
@@ -1345,18 +1350,17 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
   const idsFromBody = Array.isArray(req.body?.ids) ? req.body.ids.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim()) : [];
   const targetIds = (idsFromQuery.length ? idsFromQuery : idsFromBody);
   try {
-    // Generate a new run ID for this scoring operation
-    const runId = JobTracking.generateRunId();
-    
-    // Create job tracking record
-    await JobTracking.createJob({
-      runId,
+    // Use job orchestration service to start the job
+    const jobInfo = await jobOrchestrationService.startJob({
       jobType: 'post_scoring',
+      clientId: clientId,
       initialData: {
-        'Status': 'Running',
         'Client ID': clientId
       }
     });
+    
+    // Use the run ID assigned by the orchestration service
+    const runId = jobInfo.runId;
 
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
@@ -1433,18 +1437,16 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
 
     const startedAt = Date.now();
 
-    // Generate a single run ID for all candidates
-    const runId = JobTracking.generateRunId();
-    
-    // Create job tracking record
-    await JobTracking.createJob({
-      runId,
+    // Use job orchestration service to start the job
+    const jobInfo = await jobOrchestrationService.startJob({
       jobType: 'post_scoring_multi',
       initialData: {
-        'Status': 'Running',
         'Client Count': candidates.length
       }
     });
+    
+    // Use the run ID assigned by the orchestration service
+    const runId = jobInfo.runId;
 
     for (const c of candidates) {
       try {
