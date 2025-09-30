@@ -8,6 +8,7 @@
 
 const { StructuredLogger } = require('../utils/structuredLogger');
 const baseManager = require('./airtable/baseManager');
+const { STATUS_VALUES } = require('../constants/airtableConstants');
 
 // Table names
 const JOB_TRACKING_TABLE = 'Job Tracking';
@@ -349,13 +350,13 @@ async function updateClientRunRecord(params) {
  * Complete a job tracking record
  * @param {Object} params - Parameters
  * @param {string} params.runId - Run ID to complete
- * @param {string} [params.status='completed'] - Final status
+ * @param {string} [params.status=STATUS_VALUES.COMPLETED] - Final status
  * @param {Object} [params.updates={}] - Additional updates
  * @param {Object} [params.options={}] - Additional options
  * @returns {Promise<Object>} Completed record
  */
 async function completeJobTrackingRecord(params) {
-    const { runId, status = 'completed', updates = {}, options = {} } = params;
+    const { runId, status = STATUS_VALUES.COMPLETED, updates = {}, options = {} } = params;
     
     // Add completion details to updates
     const completeUpdates = {
@@ -377,13 +378,13 @@ async function completeJobTrackingRecord(params) {
  * @param {Object} params - Parameters
  * @param {string} params.runId - Base run ID
  * @param {string} params.clientId - Client ID
- * @param {string} [params.status='completed'] - Final status
+ * @param {string} [params.status=STATUS_VALUES.COMPLETED] - Final status
  * @param {Object} [params.updates={}] - Additional updates
  * @param {Object} [params.options={}] - Additional options
  * @returns {Promise<Object>} Completed record
  */
 async function completeClientRunRecord(params) {
-    const { runId, clientId, status = 'completed', updates = {}, options = {} } = params;
+    const { runId, clientId, status = STATUS_VALUES.COMPLETED, updates = {}, options = {} } = params;
     
     // Add completion details to updates
     const completeUpdates = {

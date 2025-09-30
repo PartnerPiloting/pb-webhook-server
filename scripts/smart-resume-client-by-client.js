@@ -72,6 +72,10 @@ const airtableService = require('../services/airtable/airtableService');
 const JobTracking = require('../services/jobTracking');
 // Add the missing unifiedRunIdService import
 const unifiedRunIdService = require('../services/unifiedRunIdService');
+// Import status constants
+const { STATUS_VALUES } = require('../constants/airtableConstants');
+// Import job orchestration service
+const jobOrchestrationService = require('../services/jobOrchestrationService');
 // Define runIdService for backward compatibility
 const runIdService = unifiedRunIdService;
 let runId = 'INITIALIZING';
@@ -454,19 +458,21 @@ async function main() {
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
     const postScoringLimit = parseInt(process.env.POST_SCORING_LIMIT) || 100;
     
-    // Initialize run tracking in Airtable
+    // Initialize run tracking in Airtable using the orchestration service
     try {
-        log(`🚀 PROGRESS: Creating job tracking record for run ${runId}...`, 'INFO');
-        // Use the new service architecture - use base runId (no client suffix)
-        await airtableService.createJobTrackingRecord({
-            runId,  // This is the base runId without client suffix
-            // jobType removed - 'Job Type' field doesn't exist in the Job Tracking table
+        log(`🚀 PROGRESS: Creating job tracking record using orchestration service...`, 'INFO');
+        // Use the job orchestration service to enforce proper service boundaries
+        const jobInfo = await jobOrchestrationService.startJob({
+            jobType: 'smart_resume',
             initialData: {
-                'Stream': Number(stream) // Ensure stream is a number for Airtable's number field
-                // 'Run Type' field removed - doesn't exist in the Airtable schema
-                // 'Base Run ID' field removed - doesn't exist in the Airtable schema
+                'Stream': Number(stream), // Ensure stream is a number for Airtable's number field
+                'System Notes': 'Smart Resume process started with client-by-client approach'
             }
         });
+        
+        // Use the run ID assigned by the orchestration service
+        runId = jobInfo.runId;
+        log(`🚀 PROGRESS: Created job with run ID ${runId}`, 'INFO');
         log(`✅ Job tracking record created successfully`, 'INFO');
     } catch (error) {
         log(`⚠️ Failed to create job tracking record: ${error.message}. Continuing execution.`, 'WARN');
@@ -873,12 +879,17 @@ async function main() {
                 }
             });
             
-            // Complete the job tracking record
+            // Complete the job using orchestration service
             const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
-            await airtableService.completeJobTrackingRecord({
+            await jobOrchestrationService.completeJob({
+                jobType: 'smart_resume',
                 runId,
-                status: 'completed',
-                notes
+                finalMetrics: {
+                    'Clients Processed': clientsNeedingWork.length, 
+                    'Total Operations': totalJobsStarted,
+                    'Success Rate': successRate,
+                    'System Notes': notes
+                }
             });
             log(`✅ Job tracking metrics updated and job marked complete`);
         } catch (error) {
@@ -895,15 +906,18 @@ async function main() {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
         log(`🔍 SCRIPT_DEBUG: Full error stack: ${error.stack}`, 'ERROR');
         
-        // Update job tracking to reflect failure using new architecture
+        // Update job tracking to reflect failure using orchestration service
         try {
             log(`📊 Updating job tracking for failure...`);
             const notes = `Run failed with error: ${error.message}`;
             
-            await airtableService.completeJobTrackingRecord({
+            await jobOrchestrationService.completeJob({
+                jobType: 'smart_resume',
                 runId,
-                status: 'failed',
-                notes
+                status: STATUS_VALUES.FAILED,
+                finalMetrics: {
+                    'System Notes': notes
+                }
             });
             log(`✅ Job tracking updated for failure`);
         } catch (trackingError) {
