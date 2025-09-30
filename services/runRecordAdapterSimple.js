@@ -316,9 +316,15 @@ async function updateClientMetrics(params) {
     // Add client suffix for client-specific run ID
     const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
     
+    // DO NOT include End Time or Status in regular metric updates
+    // These should only be set when the client processing is complete
+    const filteredMetrics = { ...metrics };
+    delete filteredMetrics['End Time'];
+    delete filteredMetrics['Status'];
+    
     // Merge metrics with necessary fields for update
     const updates = {
-      ...metrics,
+      ...filteredMetrics,
       'Metrics Updated': new Date().toISOString()
     };
     
@@ -334,6 +340,88 @@ async function updateClientMetrics(params) {
     return await airtableServiceSimple.updateClientRun(standardRunId, clientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Failed to update metrics: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Complete all processing for a client (after lead scoring, post harvesting, and post scoring)
+ * @param {Object} params - Parameters for completing client processing
+ * @param {string} params.runId - Run ID
+ * @param {string} params.clientId - Client ID
+ * @param {Object} params.finalMetrics - Final metrics from all processes
+ * @param {Object} [params.options] - Options including logger
+ * @returns {Promise<Object>} - The updated record
+ */
+async function completeClientProcessing(params) {
+  // For backward compatibility, handle old-style function calls
+  if (typeof params === 'string') {
+    // Legacy call format: completeClientProcessing(runId, clientId, finalMetrics, options)
+    const runId = arguments[0];
+    const clientId = arguments[1];
+    const finalMetrics = arguments[2];
+    const options = arguments[3] || {};
+    
+    // Convert to new format
+    return completeClientProcessing({ runId, clientId, finalMetrics, options });
+  }
+  
+  const { runId, clientId, finalMetrics = {}, options = {} } = params;
+  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', runId, 'run_record');
+  
+  logger.debug(`[RunRecordAdapterSimple] Completing all processing for client ${clientId}`);
+  
+  try {
+    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+    
+    // Determine final status based on metrics
+    let status = 'Completed';
+    const hasErrors = finalMetrics.errors && finalMetrics.errors > 0;
+    const noLeadsProcessed = (!finalMetrics['Profiles Examined for Scoring'] || finalMetrics['Profiles Examined for Scoring'] === 0) &&
+                             (!finalMetrics['Posts Examined for Scoring'] || finalMetrics['Posts Examined for Scoring'] === 0);
+    
+    if (noLeadsProcessed) {
+      status = 'No Leads To Score';
+    } else if (finalMetrics.failed) {
+      status = 'Failed';
+    }
+    
+    const updates = {
+      ...finalMetrics,
+      'End Time': new Date().toISOString(),
+      'Status': status,
+      'Metrics Updated': new Date().toISOString()
+    };
+    
+    // Build comprehensive system notes
+    const notes = [];
+    if (hasErrors) {
+      notes.push(`Completed with ${finalMetrics.errors} errors`);
+    }
+    if (finalMetrics['Profiles Successfully Scored']) {
+      notes.push(`Scored ${finalMetrics['Profiles Successfully Scored']} profiles`);
+    }
+    if (finalMetrics['Posts Successfully Scored']) {
+      notes.push(`Scored ${finalMetrics['Posts Successfully Scored']} posts`);
+    }
+    if (finalMetrics['Total Posts Harvested']) {
+      notes.push(`Harvested ${finalMetrics['Total Posts Harvested']} posts`);
+    }
+    
+    if (notes.length > 0) {
+      const notesStr = `Final: ${notes.join(', ')}`;
+      if (updates['System Notes']) {
+        updates['System Notes'] += ` | ${notesStr}`;
+      } else {
+        updates['System Notes'] = notesStr;
+      }
+    }
+    
+    // Use airtableServiceSimple to update the record
+    return await airtableServiceSimple.updateClientRun(standardRunId, clientId, updates);
+  } catch (error) {
+    logger.error(`[RunRecordAdapterSimple] Failed to complete client processing: ${error.message}`);
     throw error;
   }
 }
@@ -579,6 +667,7 @@ module.exports = {
   completeJobRecord,
   updateJobAggregates,
   updateClientMetrics,
+  completeClientProcessing,
   checkRunRecordExists,
   safeUpdateMetrics,
   
