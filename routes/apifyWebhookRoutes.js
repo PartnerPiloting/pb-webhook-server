@@ -113,16 +113,22 @@ async function apifyWebhookHandler(req, res) {
         
         // Update job tracking record if it was created
         if (jobRunId) {
-            await JobTracking.updateJob({
-                runId: jobRunId,
-                updates: {
-                    status: 'Failed',
-                    endTime: new Date().toISOString(),
-                    error: error.message
-                }
-            }).catch(updateError => {
-                logger.error(`Failed to update job record: ${updateError.message}`);
-            });
+            // Additional validation to ensure the jobRunId is properly defined
+            const normalizedRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+            if (!normalizedRunId) {
+                logger.error("Cannot update job status: normalized runId is not valid");
+            } else {
+                await JobTracking.updateJob({
+                    runId: normalizedRunId,
+                    updates: {
+                        status: 'Failed',
+                        endTime: new Date().toISOString(),
+                        error: error.message
+                    }
+                }).catch(updateError => {
+                    logger.error(`Failed to update job record: ${updateError.message}`);
+                });
+            }
         }
     }
 }
@@ -342,14 +348,20 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             });
             
             // Update job tracking record
-            await JobTracking.updateJob({
-                runId: jobRunId,
-                updates: {
-                    status: 'Completed',
-                    endTime: new Date().toISOString(),
-                    'System Notes': 'Completed with no posts found'
-                }
-            });
+            // Additional validation to ensure the jobRunId is properly defined
+            const normalizedMainRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+            if (!normalizedMainRunId) {
+                clientLogger.error("Cannot update job status: normalized runId is not valid");
+            } else {
+                await JobTracking.updateJob({
+                    runId: normalizedMainRunId,
+                    updates: {
+                        status: 'Completed',
+                        endTime: new Date().toISOString(),
+                        'System Notes': 'Completed with no posts found'
+                    }
+                });
+            }
             
             return;
         }
@@ -381,15 +393,21 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         });
         
         // Update job tracking record
-        await JobTracking.updateJob({
-            runId: jobRunId,
-            updates: {
-                status: 'Completed',
-                endTime: new Date().toISOString(),
-                'Items Processed': posts.length,
-                'System Notes': `Successfully processed ${posts.length} posts for client ${clientId}`
-            }
-        });
+        // Additional validation to ensure the jobRunId is properly defined
+        const normalizedMainRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+        if (!normalizedMainRunId) {
+            clientLogger.error("Cannot update job status: normalized runId is not valid");
+        } else {
+            await JobTracking.updateJob({
+                runId: normalizedMainRunId,
+                updates: {
+                    status: 'Completed',
+                    endTime: new Date().toISOString(),
+                    'Items Processed': posts.length,
+                    'System Notes': `Successfully processed ${posts.length} posts for client ${clientId}`
+                }
+            });
+        }
         
         clientLogger.info(`Processing complete: ${result.success} posts saved, ${result.errors} errors`);
     } catch (error) {
@@ -418,16 +436,22 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         });
         
         // Update job tracking record with error
-        await JobTracking.updateJob({
-            runId: jobRunId,
-            updates: {
-                status: 'Failed',
-                endTime: new Date().toISOString(),
-                'System Notes': `Error: ${error.message}`
-            }
-        }).catch(updateError => {
-            clientLogger.error(`Failed to update job tracking record: ${updateError.message}`);
-        });
+        // Additional validation to ensure the jobRunId is properly defined
+        const normalizedMainRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+        if (!normalizedMainRunId) {
+            clientLogger.error("Cannot update job status: normalized runId is not valid");
+        } else {
+            await JobTracking.updateJob({
+                runId: normalizedMainRunId,
+                updates: {
+                    status: 'Failed',
+                    endTime: new Date().toISOString(),
+                    'System Notes': `Error: ${error.message}`
+                }
+            }).catch(updateError => {
+                clientLogger.error(`Failed to update job tracking record: ${updateError.message}`);
+            });
+        }
         
         throw error; // Re-throw for caller handling
     }
