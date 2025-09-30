@@ -633,16 +633,14 @@ async function main() {
                 const clientRunId = runIdService.addClientSuffix(runId, workflow.clientId);
                 log(`   📝 Creating client run with ID: ${clientRunId} (from base: ${runId})`);
                 
-                // Create run record with the new repository
-                await runRecordRepository.createRunRecord({
+                // Create run record with airtableService directly - fixed to avoid runRecordRepository
+                await airtableService.createRunRecord({
                     clientId: workflow.clientId,
                     runId: clientRunId,
                     clientName: workflow.clientName,
-                    parentRunId: runId,  // Add parent run ID reference
                     initialData: {
                         'Source': 'smart_resume_workflow',
-                        // 'Parent Run ID' field removed - might not exist in the Airtable schema
-                        // 'Base Run ID' field removed - doesn't exist in the Airtable schema
+                        'Parent Run ID': runId,  // Add parent run ID reference
                         'Client ID': workflow.clientId // Store client ID explicitly
                     }
                 });
@@ -741,16 +739,15 @@ async function main() {
                 const clientRunId = runIdService.addClientSuffix(runId, workflow.clientId);
                 log(`   📝 Generated client-specific run ID: ${clientRunId} (from base: ${runId})`);
                 
-                // Complete run record with the new repository
-                await runRecordRepository.completeRunRecord({
+                // Complete run record with airtableService directly - fixed to avoid runRecordRepository
+                await airtableService.completeRunRecord({
                     clientId: workflow.clientId,
                     runId: clientRunId,
-                    parentRunId: runId, // Link to parent run ID
                     status,
                     notes,
-                    metrics: {
-                        'Source': 'smart_resume_workflow_complete'
-                        // 'Parent Run ID' field removed - might not exist in the Airtable schema
+                    updates: {
+                        'Source': 'smart_resume_workflow_complete',
+                        'Parent Run ID': runId // Link to parent run ID
                     }
                 });
                 log(`   ✅ Run tracking updated with status: ${status}`);
