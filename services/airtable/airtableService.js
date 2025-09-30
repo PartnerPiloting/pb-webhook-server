@@ -9,10 +9,10 @@ const { StructuredLogger } = require('../../utils/structuredLogger');
 const baseManager = require('./baseManager');
 const leadRepository = require('./leadRepository');
 const clientRepository = require('./clientRepository');
-// Fix import path to use unifiedRunIdService
+// Use unified services for run ID and job tracking
 const runIdService = require('../../services/unifiedRunIdService');
-const jobTrackingRepository = require('./jobTrackingRepository');
-const runRecordRepository = require('./runRecordRepository');
+const unifiedJobTrackingRepository = require('../../services/unifiedJobTrackingRepository');
+const runRecordService = require('../../services/runRecordServiceV2');
 
 // Default logger
 const logger = new StructuredLogger('SYSTEM', null, 'airtable_service');
@@ -134,8 +134,8 @@ async function createRunRecord(params) {
     const client = await getClient(clientId);
     const clientName = client ? client.clientName : clientId;
     
-    // Create the run record using the new repository
-    return await runRecordRepository.createRunRecord({
+    // Create the run record using the runRecordService
+    return await runRecordService.createRunRecord({
       clientId,
       runId,
       clientName,
@@ -162,8 +162,8 @@ async function updateRunRecord(params) {
   const { clientId, runId, updates, createIfMissing = true, options = {} } = params;
   
   try {
-    // Use the new repository
-    return await runRecordRepository.updateRunRecord({
+    // Use the runRecordService
+    return await runRecordService.updateRunRecord({
       clientId,
       runId,
       updates,
@@ -189,8 +189,8 @@ async function completeRunRecord(params) {
   const { clientId, runId, metrics = {}, options = {} } = params;
   
   try {
-    // Use the new repository
-    return await runRecordRepository.completeRunRecord({
+    // Use the runRecordService
+    return await runRecordService.completeRunRecord({
       clientId,
       runId,
       metrics,
@@ -260,7 +260,7 @@ async function createJobTrackingRecord(params) {
   const { runId, clientId, stream = 1, initialData = {}, options = {} } = params;
   
   try {
-    return await jobTrackingRepository.createJobTrackingRecord({
+    return await unifiedJobTrackingRepository.createJobTrackingRecord({
       runId,
       clientId,
       stream,
@@ -285,7 +285,7 @@ async function updateJobTrackingRecord(params) {
   const { runId, updates, options = {} } = params;
   
   try {
-    return await jobTrackingRepository.updateJobTrackingRecord({
+    return await unifiedJobTrackingRepository.updateJobTrackingRecord({
       runId,
       updates,
       options
@@ -309,7 +309,7 @@ async function completeJobTrackingRecord(params) {
   const { runId, status = 'Completed', metrics = {}, options = {} } = params;
   
   try {
-    return await jobTrackingRepository.completeJobTrackingRecord({
+    return await unifiedJobTrackingRepository.completeJobTrackingRecord({
       runId,
       status,
       metrics,
