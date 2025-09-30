@@ -712,20 +712,37 @@ async function run(req, res, dependencies) {
                     });
                     await clientService.updateExecutionLog(clientId, logEntry);
                     
-                    // Create client run record with detailed reason if runId is provided
+                    // ARCHITECTURAL FIX: Only update existing records, never create
                     if (runId) {
                         try {
-                            clientLogger.setup(`Creating client run record with reason: ${reason}`);
-                            await runRecordService.createRunRecord(runId, clientId, client.clientName, {
-                                logger: clientLogger,
-                                source: 'batchScorer_skip'
+                            // Check if record exists first
+                            const recordExists = await runRecordService.checkRunRecordExists({
+                                runId, 
+                                clientId,
+                                options: {
+                                    logger: clientLogger,
+                                    source: 'batchScorer_skip'
+                                }
                             });
-                            await runRecordService.completeRunRecord(runId, clientId, 'Skipped', `No action taken: ${reason}`, {
-                                logger: clientLogger,
-                                source: 'batchScorer_skip'
-                            });
+                            
+                            if (recordExists) {
+                                clientLogger.setup(`Updating existing client run record with skip reason: ${reason}`);
+                                // Only complete the record if it exists
+                                await runRecordService.completeRunRecord({
+                                    runId, 
+                                    clientId, 
+                                    status: 'Skipped', 
+                                    notes: `No action taken: ${reason}`,
+                                    options: {
+                                        logger: clientLogger,
+                                        source: 'batchScorer_skip'
+                                    }
+                                });
+                            } else {
+                                clientLogger.warn(`No run record exists for ${runId}/${clientId} - cannot update with skip status`);
+                            }
                         } catch (error) {
-                            clientLogger.warn(`Failed to create/update client run record: ${error.message}`);
+                            clientLogger.warn(`Failed to update client run record: ${error.message}`);
                         }
                     }
                     
@@ -759,17 +776,41 @@ async function run(req, res, dependencies) {
                 clientFailed = 0;
                 clientTokensUsed = 0;
 
-                // Create client run record if runId is provided
+                // ARCHITECTURAL FIX: Only check for existing records, never create
                 if (runId) {
                     try {
-                        clientLogger.setup(`Creating client run record for ${clientId} in run ${runId}...`);
-                        await runRecordService.createRunRecord(runId, clientId, client.clientName, {
-                            logger: clientLogger,
-                            source: 'batchScorer_process'
+                        clientLogger.setup(`Checking for existing client run record for ${clientId} in run ${runId}...`);
+                        
+                        // Check if record exists first
+                        const recordExists = await runRecordService.checkRunRecordExists({
+                            runId, 
+                            clientId,
+                            options: {
+                                logger: clientLogger,
+                                source: 'batchScorer_process'
+                            }
                         });
-                        clientLogger.setup(`Client run record created successfully`);
+                        
+                        if (recordExists) {
+                            clientLogger.setup(`Found existing run record for ${runId}/${clientId}`);
+                            
+                            // Update the existing record with processing started status
+                            await runRecordService.updateRunRecord({
+                                runId,
+                                clientId,
+                                updates: {
+                                    'System Notes': `Batch scoring process started at ${new Date().toISOString()}`
+                                },
+                                options: {
+                                    logger: clientLogger,
+                                    source: 'batchScorer_process'
+                                }
+                            });
+                        } else {
+                            clientLogger.warn(`No run record exists for ${runId}/${clientId} - continuing without metrics tracking`);
+                        }
                     } catch (error) {
-                        clientLogger.warn(`Failed to create client run record: ${error.message}. Continuing execution.`);
+                        clientLogger.warn(`Failed to verify client run record: ${error.message}. Continuing execution.`);
                     }
                 }
                 
