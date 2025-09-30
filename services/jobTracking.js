@@ -559,8 +559,8 @@ class JobTracking {
         runId,
         clientId,
         updates: {
-          ...filteredMetrics,
-          'Metrics Updated': new Date().toISOString()
+          ...filteredMetrics
+          // Note: 'Metrics Updated' field removed - not present in Airtable schema
         },
         createIfMissing: false,
         options

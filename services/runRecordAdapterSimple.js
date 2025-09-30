@@ -330,9 +330,9 @@ async function updateClientMetrics(params) {
     delete filteredMetrics['Status'];
     
     // Merge metrics with necessary fields for update
+    // Note: 'Metrics Updated' field removed - not present in Airtable schema
     const updates = {
-      ...filteredMetrics,
-      'Metrics Updated': new Date().toISOString()
+      ...filteredMetrics
     };
     
     // Add note about update source
@@ -398,8 +398,8 @@ async function completeClientProcessing(params) {
     const updates = {
       ...finalMetrics,
       'End Time': new Date().toISOString(),
-      'Status': status,
-      'Metrics Updated': new Date().toISOString()
+      'Status': status
+      // Note: 'Metrics Updated' field removed - not present in Airtable schema
     };
     
     // Build comprehensive system notes
