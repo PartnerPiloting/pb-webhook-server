@@ -19,6 +19,15 @@ const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
 // Default logger
 const logger = new StructuredLogger('SYSTEM', null, 'job_tracking');
 
+// Formula fields that should not be directly updated in Airtable
+const FORMULA_FIELDS = [
+  'Success Rate',
+  'Profile Scoring Success Rate',
+  'Post Scoring Success Rate',
+  'Duration',
+  'Progress Percentage'
+];
+
 /**
  * JobTracking class - single source of truth for job tracking operations
  */
@@ -74,12 +83,18 @@ class JobTracking {
     }
     
     try {
+      // First, normalize the run ID to prevent duplicates
+      const runIdService = require('../services/unifiedRunIdService');
+      const normalizedRunId = runIdService.normalizeRunId(runId);
+      
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Check if record already exists
+      // Check if record already exists using BOTH the original and normalized run IDs
+      const formula = `OR({Run ID} = '${runId}', {Run ID} = '${normalizedRunId}')`;
+      
       const existingRecords = await masterBase(JOB_TRACKING_TABLE).select({
-        filterByFormula: `{Run ID} = '${runId}'`,
+        filterByFormula: formula,
         maxRecords: 1
       }).firstPage();
       
@@ -183,7 +198,8 @@ class JobTracking {
       ];
       
       Object.keys(updates).forEach(key => {
-        if (safeFields.includes(key)) {
+        // Only include safe fields that aren't formula fields
+        if (safeFields.includes(key) && !FORMULA_FIELDS.includes(key)) {
           updateFields[key] = updates[key];
         }
       });
@@ -223,15 +239,22 @@ class JobTracking {
     }
     
     try {
-      // Create client-specific run ID
+      // First, normalize the run ID to prevent duplicates
+      const runIdService = require('../services/unifiedRunIdService');
+      const normalizedRunId = runIdService.normalizeRunId(runId);
+      
+      // Create client-specific run ID from both original and normalized
       const clientRunId = JobTracking.addClientSuffix(runId, clientId);
+      const normalizedClientRunId = JobTracking.addClientSuffix(normalizedRunId, clientId);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Check if record already exists
+      // Check if record already exists using BOTH the original and normalized run IDs
+      const formula = `OR({Run ID} = '${clientRunId}', {Run ID} = '${normalizedClientRunId}')`;
+      
       const existingRecords = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{Run ID} = '${clientRunId}'`,
+        filterByFormula: formula,
         maxRecords: 1
       }).firstPage();
       
@@ -330,6 +353,8 @@ class JobTracking {
       // Prepare update fields - only use fields that actually exist
       const updateFields = {};
       
+      // Use the globally defined list of formula fields
+      
       // Map common update fields to Airtable field names (only those that exist)
       if (updates.status) updateFields['Status'] = updates.status;
       if (updates.endTime) updateFields['End Time'] = updates.endTime;
@@ -352,6 +377,17 @@ class JobTracking {
       
       // Add API costs if they exist
       if (updates['Apify API Costs']) updateFields['Apify API Costs'] = updates['Apify API Costs'];
+      
+      // Process all other direct field mappings, filtering out formula fields
+      
+      // Add all remaining fields that aren't already processed and aren't formula fields
+      Object.keys(updates).forEach(key => {
+        if (updates[key] !== undefined &&
+            !updateFields.hasOwnProperty(key) &&
+            !FORMULA_FIELDS.includes(key)) {
+          updateFields[key] = updates[key];
+        }
+      });
       
       // Update the record
       await masterBase(CLIENT_RUN_RESULTS_TABLE).update(record.id, updateFields);
@@ -498,10 +534,15 @@ class JobTracking {
     }
     
     try {
-      // Make a copy of metrics to ensure we don't modify End Time or Status
+      // Make a copy of metrics to ensure we don't modify End Time, Status, or formula fields
       const filteredMetrics = { ...metrics };
       delete filteredMetrics['End Time'];
       delete filteredMetrics['Status'];
+      
+      // Also filter out any formula fields
+      FORMULA_FIELDS.forEach(field => {
+        delete filteredMetrics[field];
+      });
       
       // Log the metrics update
       log.debug(`Updating metrics for client ${clientId} with run ID ${runId}`, { metrics: filteredMetrics });
