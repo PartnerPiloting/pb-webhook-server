@@ -87,8 +87,7 @@ const CLIENT_RUN_FIELDS = {
   APIFY_API_COSTS: 'Apify API Costs',
   
   // System fields
-  SYSTEM_NOTES: 'System Notes',
-  METRICS_UPDATED: 'Metrics Updated'
+  SYSTEM_NOTES: 'System Notes'
 };
 
 // Field names for Job Tracking table

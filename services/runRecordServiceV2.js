@@ -644,8 +644,7 @@ async function updateClientMetrics(runId, clientId, metrics, options = {}) {
     }
   });
   
-  // Include metric update timestamp
-  updatedMetrics['Metrics Updated'] = new Date().toISOString();
+  // Note: 'Metrics Updated' field removed - not present in Airtable schema
   
   // Include update source in System Notes to ensure we don't lose tracking info
   const metricsUpdateNote = `Metrics updated at ${new Date().toISOString()} from ${source}`;
@@ -716,7 +715,7 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
   
   // Source info is already added to System Notes - don't try to use the Source field at all
   // Duration info added to System Notes instead of using Duration field
-  if (duration !== null) {
+  if (duration !== null && updates && updates['System Notes']) {
     updates['System Notes'] += ` Duration: ${duration} seconds.`;
   }
   

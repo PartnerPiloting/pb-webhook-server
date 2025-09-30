@@ -393,6 +393,34 @@ function registerApifyRunId(apifyRunId, clientId) {
   return normalizeRunId(apifyRunId, clientId);
 }
 
+/**
+ * Register a run record ID to associate with a run ID
+ * @param {string} runId - Run ID to register
+ * @param {string} clientId - Client ID associated with the run
+ * @param {string} recordId - Airtable record ID to associate with the run
+ * @returns {string} Normalized run ID
+ */
+function registerRunRecord(runId, clientId, recordId) {
+  try {
+    // Handle edge cases
+    if (!runId) {
+      console.error(`[runIdService] ERROR: Received null/undefined runId in registerRunRecord for client ${clientId}`);
+      return null;
+    }
+    
+    // Normalize the run ID first
+    const standardizedRunId = normalizeRunId(runId, clientId);
+    
+    // Cache the record ID
+    cacheRecordId(standardizedRunId, recordId);
+    
+    return standardizedRunId;
+  } catch (error) {
+    console.error(`[runIdService] ERROR in registerRunRecord: ${error.message}`);
+    return null;
+  }
+}
+
 module.exports = {
   // Core functions
   generateTimestampRunId,
@@ -417,6 +445,7 @@ module.exports = {
   generateRunId,
   getRunRecordId,
   registerApifyRunId,
+  registerRunRecord,
   
   // Format constants
   RUN_ID_FORMATS
