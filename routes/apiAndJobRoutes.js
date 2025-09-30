@@ -13,9 +13,11 @@ const geminiConfig = require("../config/geminiClient.js");
 const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
+const { STATUS_VALUES } = require("../constants/airtableConstants.js");
 const runIdUtils = require('../utils/runIdUtils.js');
 // Use the unified services
 const unifiedRunIdService = require('../services/unifiedRunIdService.js');
+const unifiedJobTrackingRepository = require('../services/unifiedJobTrackingRepository.js');
 const JobTracking = require('../services/jobTracking.js');
 const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
@@ -1001,7 +1003,7 @@ router.post("/run-post-batch-score", async (req, res) => {
     try {
       await JobTracking.completeJob({
         runId,
-        status: results.totalErrors > 0 ? 'Completed with Errors' : 'Completed',
+        status: results.totalErrors > 0 ? STATUS_VALUES.COMPLETED_WITH_ERRORS : STATUS_VALUES.COMPLETED,
         updates: {
           'System Notes': `Multi-tenant post scoring completed: ${results.successfulClients}/${results.totalClients} clients successful, ${results.totalPostsScored}/${results.totalPostsProcessed} posts scored`,
           'Items Processed': results.totalPostsProcessed,
@@ -1016,7 +1018,7 @@ router.post("/run-post-batch-score", async (req, res) => {
     
     // Return results immediately
     res.status(200).json({
-      status: 'completed',
+      status: STATUS_VALUES.COMPLETED.toLowerCase(),
       message: 'Multi-tenant post scoring completed',
       runId, // Include the run ID in the response
       summary: {
@@ -1366,7 +1368,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
     );
     const first = results.clientResults[0] || {};
     res.json({
-      status: 'completed',
+      status: STATUS_VALUES.COMPLETED.toLowerCase(),
       mode: dryRun ? 'dryRun' : 'live',
       clientId,
       limit: limit || 'UNLIMITED',
@@ -1498,7 +1500,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
     aggregate.duration = Math.round((Date.now() - startedAt) / 1000);
 
     return res.status(200).json({
-      status: 'completed',
+      status: STATUS_VALUES.COMPLETED.toLowerCase(),
       message: `Post scoring completed for service level >= ${minServiceLevel}`,
       summary: aggregate,
       clientResults: summaries,
@@ -4612,7 +4614,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         
         // Update global process tracking
         if (global.smartResumeActiveProcess) {
-          global.smartResumeActiveProcess.status = 'completed';
+          global.smartResumeActiveProcess.status = STATUS_VALUES.COMPLETED.toLowerCase();
           global.smartResumeActiveProcess.endTime = Date.now();
           global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
         }
