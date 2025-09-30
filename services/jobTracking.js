@@ -103,7 +103,7 @@ class JobTracking {
         [JOB_TRACKING_FIELDS.RUN_ID]: normalizedRunId, // Always use normalized ID
         [JOB_TRACKING_FIELDS.STATUS]: STATUS_VALUES.RUNNING,
         [JOB_TRACKING_FIELDS.START_TIME]: startTime,
-        // JOB_TYPE field removed - doesn't exist in Airtable schema
+        // Use proper field name from constants - ensure it exists in Airtable
         [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: initialData[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || ''
       };
       
@@ -247,12 +247,13 @@ class JobTracking {
     
     try {
       // First, normalize the run ID to prevent duplicates
-      const runIdService = require('../services/unifiedRunIdService');
-      const normalizedRunId = runIdService.normalizeRunId(runId);
+      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      log.debug(`Creating client run with normalized runId: ${normalizedRunId} (original: ${runId})`);
       
-      // Create client-specific run ID from both original and normalized
-      const clientRunId = JobTracking.addClientSuffix(runId, clientId);
-      const normalizedClientRunId = JobTracking.addClientSuffix(normalizedRunId, clientId);
+      // Create client-specific run ID from the normalized run ID for consistency
+      const clientRunId = JobTracking.addClientSuffix(normalizedRunId, clientId);
+      // No need to create a separate normalized version since clientRunId is already normalized
+      const normalizedClientRunId = clientRunId;
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();

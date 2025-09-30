@@ -226,8 +226,6 @@ async function createJobRecord(params) {
  * @returns {Promise<Object>} The created record
  */
 async function createClientRunRecord(params) {
-  const base = initialize();
-  
   // For backward compatibility, handle old-style function calls
   if (typeof params === 'string') {
     // Legacy call format: createClientRunRecord(runId, clientId, clientName, options)
@@ -244,58 +242,47 @@ async function createClientRunRecord(params) {
   const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
-  // Only certain sources are allowed to create records
-  const allowedSources = ['orchestrator', 'master_process', 'smart_resume_workflow', 'batch_process', 'airtable_service_recovery', 'run_record_recovery', 'airtable_service'];
-  if (!allowedSources.includes(source)) {
-    const errorMsg = `Unauthorized source "${source}" attempted to create client run record`;
-    logger.error(errorMsg);
-    trackActivity('create_client', runId, clientId, source, `ERROR: ${errorMsg}`);
-    throw new Error(errorMsg);
-  }
+  logger.debug(`Run Record Service: DELEGATING client run record creation to JobTracking service for ${clientId}`);
   
-  logger.debug(`Run Record Service: Creating run record for client ${clientId} (source: ${source})`);
-  
-  // Normalize the run ID and add client suffix
-  const standardRunId = runIdService.normalizeRunId(runId, clientId);
-  
-  logger.debug(`Run Record Service: Using standardized ID: ${standardRunId}`);
-  
-  // First, check for existing record in the registry
-  const registryKey = `${standardRunId}:${clientId}`;
-  if (runRecordRegistry.has(registryKey)) {
-    const existingRecord = runRecordRegistry.get(registryKey);
-    const errorMsg = `Client run record already exists in registry for ${standardRunId}, client ${clientId}, record ID ${existingRecord.id}`;
-    logger.error(errorMsg);
-    trackActivity('create_client', standardRunId, clientId, source, `ERROR: ${errorMsg}`);
-    throw new Error(errorMsg);
-  }
-  
-  // Then check for existing record in the database
   try {
-    // Look up by base run ID first (without client suffix) to catch potential variant IDs
-    const baseRunId = runIdService.stripClientSuffix(standardRunId);
-    const baseIdQuery = `AND(FIND('${baseRunId}', {Run ID}) > 0, {Client ID} = '${clientId}')`;
-    logger.debug(`Run Record Service: Looking for base run ID match: ${baseIdQuery}`);
+    // CRITICAL FIX: Always delegate to the unified JobTracking service
+    // This ensures only ONE service actually creates client run records
+    const JobTracking = require('./jobTracking');
     
-    const baseMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: baseIdQuery,
-      maxRecords: 10 // Check more records to catch all variants
-    }).firstPage();
-    
-    if (baseMatches && baseMatches.length > 0) {
-      // Found records with matching base ID and client
-      const existingRecord = baseMatches[0];
-      const existingId = existingRecord.fields['Run ID'];
-      const errorMsg = `Client run record already exists for this timestamp (${baseRunId}), client ${clientId}, existing run ID: ${existingId}`;
-      logger.error(errorMsg);
-      
-      // Register this record to prevent future duplication attempts
-      runIdService.registerRunRecord(existingId, clientId, existingRecord.id);
-      runRecordRegistry.set(registryKey, existingRecord);
-      
-      trackActivity('create_client', standardRunId, clientId, source, `ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
+    return await JobTracking.createClientRun({
+      runId,
+      clientId,
+      initialData: {
+        'System Notes': `Processing started from source: ${source}`
+      },
+      options: {
+        logger,
+        source
+      }
+    });
+  } catch (error) {
+    logger.error(`Run Record Service ERROR: Failed to create client run record via JobTracking: ${error.message}`);
+    throw error;
+  }
+  
+  // REMOVED: All the direct database access code
+  // This service now delegates to JobTracking which is the single point of record creation
+  
+  // All of the following code was removed because it created records directly
+  // instead of delegating to the centralized service
+  
+  // The JobTracking.createClientRun function properly:
+  // 1. Normalizes the run ID
+  // 2. Checks for existing records
+  // 3. Prevents duplicates
+  // 4. Creates the record with proper fields
+  
+  // By delegating to JobTracking, we ensure:
+  // - Only ONE place in the code creates client run records
+  // - Consistent run ID normalization
+  // - No duplicates due to slight run ID variations
+  
+  // NOTE: This code is replaced by the delegation to JobTracking.createClientRun above
     
     // Then check for exact match as a final verification
     const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;

@@ -478,9 +478,8 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       return false;
     }
     
-    // CIRCULAR DEPENDENCY FIX: Import client base module at the top level
-    // Import airtableClient once at the beginning of execution 
-    const airtableClient = require('../config/airtableClient');
+    // CIRCULAR DEPENDENCY FIX: Remove redundant import - already imported at top level
+    // The airtableClient is already imported at the module level
     
     // Try with the exact run ID first using MASTER base - not the client's specific base
     try {
@@ -513,13 +512,16 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
       
       // Skip if it's the same as what we just tried
       if (standardRunId !== runId) {
-      // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
-      // The "Client Run Results" table exists in the Master Clients Base, not in client bases
-      const masterBase = airtableServiceSimple.initialize(); // Get the Master base
-      const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{Run ID} = '${standardRunId}'`,
-        maxRecords: 1
-      }).firstPage();        if (records && records.length > 0) {
+        // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
+        // The "Client Run Results" table exists in the Master Clients Base, not in client bases
+        const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+        
+        const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+          filterByFormula: `{Run ID} = '${standardRunId}'`,
+          maxRecords: 1
+        }).firstPage();
+        
+        if (records && records.length > 0) {
           logger.debug(`[RunRecordAdapterSimple] Found record with standardized ID match: ${standardRunId}`);
           return true;
         }
