@@ -488,17 +488,18 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 logger.debug(`Updating run record for client ${client.clientId} with run ID ${standardizedRunId}`);
                 
                 try {
-                    await JobTracking.updateClientRun({
+                    await JobTracking.updateClientMetrics({
                         runId: standardizedRunId,
                         clientId: client.clientId,
-                        updates: {
+                        metrics: {
                             'Posts Examined for Scoring': clientResult.postsProcessed,
                             'Posts Successfully Scored': clientResult.postsScored,
                             'Post Scoring Tokens': postScoringTokens,
-                            'Status': clientResult.status,
                             'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped. Total tokens: ${postScoringTokens}.`
                         },
-                        createIfMissing: true
+                        options: {
+                            source: 'postBatchScorer'
+                        }
                     });
                     logger.debug(`Successfully updated run record for client ${client.clientId}`);
                 } catch (error) {
@@ -528,28 +529,36 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     // Calculate duration
     clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
     
-    // Update job status in client service
+    // Complete client processing after post scoring
     try {
         if (process.env.VERBOSE_POST_SCORING === "true") {
-            console.log(`[POST_DEBUG] Setting job status to COMPLETED for client ${client.clientId}`);
+            console.log(`[POST_DEBUG] Completing processing for client ${client.clientId}`);
+        }
+        
+        // Determine if this is a standalone run by checking for parentRunId in options
+        const isStandalone = !options.parentRunId;
+        
+        if (process.env.VERBOSE_POST_SCORING === "true") {
+            console.log(`[POST_DEBUG] Processing mode: ${isStandalone ? 'STANDALONE' : 'PART OF WORKFLOW'}`);
         }
         
         // Use the passed runId - no need to generate a new one
-        // Update the client run record using the unified job tracking service
-        await JobTracking.updateClientRun({
+        // Complete all processing for this client
+        await JobTracking.completeClientProcessing({
             runId: runId,
             clientId: client.clientId,
-            updates: {
-                status: 'Completed',
+            finalMetrics: {
                 'Posts Processed': clientResult.postsProcessed,
                 'Posts Successfully Scored': clientResult.postsScored,
-                'System Notes': `Post scoring completed in ${clientResult.duration}s with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored`,
-                'End Time': new Date().toISOString()
+                'errors': clientResult.errors
             },
-            createIfMissing: true
+            options: {
+                source: 'postBatchScorer_completion',
+                isStandalone: isStandalone
+            }
         });
         
-        logger.summary(`Updated client run record with duration=${clientResult.duration}s, posts scored=${clientResult.postsScored}`);
+        logger.summary(`Completed all processing for client ${client.clientId} with duration=${clientResult.duration}s, posts scored=${clientResult.postsScored}`);
         
         // Also update the main job tracking record to show progress
         await JobTracking.updateJob({

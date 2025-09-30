@@ -320,14 +320,22 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         if (!posts || posts.length === 0) {
             clientLogger.warn(`No posts found in payload for Apify run ${apifyRunId}`);
             
-            // Update client run record
-            await JobTracking.updateClientRun({
+            // Check if this is a standalone run
+            const isStandalone = !jobRunId.includes('-');
+            
+            // Complete client processing with no posts found
+            await JobTracking.completeClientProcessing({
                 runId: jobRunId,
                 clientId,
-                updates: {
-                    status: 'Completed',
-                    endTime: new Date().toISOString(),
+                finalMetrics: {
+                    'Total Posts Harvested': 0,
+                    'Apify Run ID': apifyRunId || '',
+                    'Profiles Submitted for Post Harvesting': payload.targetUrls ? payload.targetUrls.length : 0,
                     'System Notes': 'Completed with no posts found'
+                },
+                options: {
+                    source: 'apify_webhook_handler_no_posts',
+                    isStandalone: isStandalone
                 }
             });
             
@@ -349,16 +357,23 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         // Save posts to Airtable
         const result = await syncPBPostsToAirtable(posts, clientBase, clientId, clientLogger);
         
-        // Update client run record with results
-        await JobTracking.updateClientRun({
+        // Check if this is a standalone run or part of a workflow
+        const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
+        
+        // Use completeClientProcessing which will handle both metrics and completion based on isStandalone flag
+        await JobTracking.completeClientProcessing({
             runId: jobRunId,
             clientId,
-            updates: {
-                status: 'Completed',
-                endTime: new Date().toISOString(),
-                postsProcessed: posts.length,
+            finalMetrics: {
+                'Total Posts Harvested': posts.length,
                 'Apify API Costs': posts.length * 0.02, // Estimated cost: $0.02 per post
+                'Apify Run ID': apifyRunId || '',
+                'Profiles Submitted for Post Harvesting': payload.targetUrls ? payload.targetUrls.length : 0,
                 'System Notes': `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors)`
+            },
+            options: {
+                source: 'apify_webhook_handler',
+                isStandalone: isStandalone
             }
         });
         
@@ -377,17 +392,25 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
     } catch (error) {
         clientLogger.error(`Error processing webhook: ${error.message}`, { error });
         
-        // Update client run record with error
-        await JobTracking.updateClientRun({
+        // Check if this is a standalone run or part of a workflow
+        const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
+        
+        // Complete client processing with failure status
+        await JobTracking.completeClientProcessing({
             runId: jobRunId,
             clientId,
-            updates: {
-                status: 'Failed',
-                endTime: new Date().toISOString(),
-                'System Notes': `Error: ${error.message}`
+            finalMetrics: {
+                failed: true,
+                errors: 1,
+                'System Notes': `Failed: ${error.message}`,
+                'Apify Run ID': apifyRunId || ''
+            },
+            options: {
+                source: 'apify_webhook_handler_error',
+                isStandalone: isStandalone
             }
         }).catch(updateError => {
-            clientLogger.error(`Failed to update client run record: ${updateError.message}`);
+            clientLogger.error(`Failed to complete client processing: ${updateError.message}`);
         });
         
         // Update job tracking record with error
