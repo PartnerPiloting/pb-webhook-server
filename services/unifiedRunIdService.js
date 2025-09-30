@@ -383,6 +383,16 @@ function getRunRecordId(runId, clientId) {
   return getCachedRecordId(normalizedRunId) || null;
 }
 
+/**
+ * Register an Apify run ID with optional client association
+ * @param {string} apifyRunId - Apify run ID to register
+ * @param {string} clientId - Client ID to associate with the run
+ * @returns {string} Normalized run ID
+ */
+function registerApifyRunId(apifyRunId, clientId) {
+  return normalizeRunId(apifyRunId, clientId);
+}
+
 module.exports = {
   // Core functions
   generateTimestampRunId,
@@ -406,6 +416,7 @@ module.exports = {
   // Legacy compatibility methods
   generateRunId,
   getRunRecordId,
+  registerApifyRunId,
   
   // Format constants
   RUN_ID_FORMATS

@@ -103,7 +103,7 @@ class JobTracking {
         [JOB_TRACKING_FIELDS.RUN_ID]: normalizedRunId, // Always use normalized ID
         [JOB_TRACKING_FIELDS.STATUS]: STATUS_VALUES.RUNNING,
         [JOB_TRACKING_FIELDS.START_TIME]: startTime,
-        [JOB_TRACKING_FIELDS.JOB_TYPE]: jobType,
+        // JOB_TYPE field removed - doesn't exist in Airtable schema
         [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: initialData[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || ''
       };
       
