@@ -1103,8 +1103,17 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     
     // Create a job tracking record to prevent errors when updating later
     try {
-      const airtableServiceSimple = require('../services/airtableServiceSimple');
-      await airtableServiceSimple.createJobTrackingRecord(jobId, stream);
+      // Use JobTracking service for consistent job record creation
+      await JobTracking.createJob({
+        runId: jobId,
+        jobType: 'post_scoring',
+        initialData: {
+          'Stream': stream // Ensure stream is included
+        },
+        options: {
+          logger: console
+        }
+      });
       console.log(`✅ Job tracking record created for ${jobId}`);
     } catch (trackingError) {
       // Continue even if tracking record creation fails (may already exist)
