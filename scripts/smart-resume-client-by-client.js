@@ -67,10 +67,9 @@ console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date()
 
 console.log(`🔍 TRACE: About to load run ID generator`);
 const { generateRunId, createLogger } = require('../utils/runIdGenerator');
-// Using the new architecture
+// Using the unified job tracking system
 const airtableService = require('../services/airtable/airtableService');
-const runIdService = require('../services/airtable/runIdService');
-const runRecordRepository = require('../services/airtable/runRecordRepository');
+const JobTracking = require('../services/jobTracking');
 let runId = 'INITIALIZING';
 let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();

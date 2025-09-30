@@ -15,9 +15,7 @@ const clientService = require('./services/clientService');
 const { getClientBase } = require('./config/airtableClient');
 
 // --- Repository Layer Dependencies ---
-const unifiedJobTrackingRepository = require('./services/unifiedJobTrackingRepository');
-const unifiedRunIdService = require('./services/unifiedRunIdService');
-const jobMetricsService = require('./services/jobMetricsService');
+const JobTracking = require('./services/jobTracking');
 
 // --- Post Scoring Dependencies ---
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
@@ -47,11 +45,16 @@ const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS
  * Main multi-tenant post scoring function
  * @param {Object} geminiClient - Initialized Vertex AI client
  * @param {string} geminiModelId - Gemini model ID to use
+ * @param {string} runId - The run ID for job tracking (REQUIRED)
  * @param {string} clientId - Optional specific client ID to process
  * @param {number} limit - Optional limit on posts to process per client
  * @returns {Object} - Summary of execution across all clients
  */
-async function runMultiTenantPostScoring(geminiClient, geminiModelId, clientId = null, limit = null, options = {}) {
+async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, clientId = null, limit = null, options = {}) {
+    // Validate required runId
+    if (!runId) {
+        throw new Error('Run ID is required for post scoring operations');
+    }
     // Create system-level logger for multi-tenant operations
     const systemLogger = new StructuredLogger('SYSTEM');
     
@@ -234,11 +237,20 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     }
     
     try {
-        // Force job status to RUNNING without checking if it's already running
-        const jobId = options.jobId || `job_post_scoring_bypass_${Date.now()}`;
+        // Generate a timestamp-based run ID using unified service
+        const timestamp = new Date();
+        const datePart = `${timestamp.getFullYear().toString().slice(2)}${(timestamp.getMonth() + 1).toString().padStart(2, '0')}${timestamp.getDate().toString().padStart(2, '0')}`;
+        const timePart = `${timestamp.getHours().toString().padStart(2, '0')}${timestamp.getMinutes().toString().padStart(2, '0')}${timestamp.getSeconds().toString().padStart(2, '0')}`;
+        const standardizedRunId = `${datePart}-${timePart}`;
+        
+        // Use provided jobId or the standardized run ID
+        const jobId = options.jobId || standardizedRunId;
+        
+        // Store the standardized run ID for later use
+        options.standardizedRunId = standardizedRunId;
         
         if (process.env.VERBOSE_POST_SCORING === "true") {
-            console.log(`[POST_DEBUG] Setting job status to RUNNING with ID: ${jobId}`);
+            console.log(`[POST_DEBUG] Setting job status to RUNNING with ID: ${jobId} (standardized: ${standardizedRunId})`);
         }
         
         try {
@@ -435,23 +447,24 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         
         clientResult.status = clientResult.errors === 0 ? 'success' : 'completed_with_errors';
         
-        // Update client metrics for post scoring in the Client Run Results table - BUT ONLY if parentRunId is provided
-        // This ensures we only try to update metrics in production flows (via Smart Resume) and skip for standalone debugging runs
-        if (options.parentRunId) {
-            try {
-                // Use the provided parent run ID or generate one based on current date
-                const timestamp = new Date();
-                const datePart = `${timestamp.getFullYear().toString().slice(2)}${(timestamp.getMonth() + 1).toString().padStart(2, '0')}${timestamp.getDate().toString().padStart(2, '0')}`;
-                const timePart = `${timestamp.getHours().toString().padStart(2, '0')}${timestamp.getMinutes().toString().padStart(2, '0')}${timestamp.getSeconds().toString().padStart(2, '0')}`;
-                const runId = options.parentRunId || options.jobId || `${datePart}-${timePart}`;
-                
-                logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
-                
-                // Get standardized run ID with client info
-                const standardizedRunId = unifiedRunIdService.addClientSuffix(
-                    unifiedRunIdService.stripClientSuffix(runId),
-                    client.clientId
-                );
+        // Always update metrics in Client Run Results table using our standardized run ID
+        try {
+            // Use the standardized run ID we created at the beginning
+            const runId = options.parentRunId || options.standardizedRunId || options.jobId;
+            
+            // If we don't have any valid ID, don't try to update metrics
+            if (!runId) {
+                logger.warn(`No valid run ID available for client ${client.clientId}, skipping metrics update`);
+                return clientResult;
+            }
+            
+            logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
+            
+            // Get standardized run ID with client info
+            const standardizedRunId = unifiedRunIdService.addClientSuffix(
+                unifiedRunIdService.stripClientSuffix(runId),
+                client.clientId
+            );
                 
                 // Update metrics in the Client Run Results table
                 console.log(`[DEBUG-METRICS] PREPARING TO UPDATE POST METRICS for ${client.clientId}`);
@@ -475,7 +488,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 logger.debug(`Updating run record for client ${client.clientId} with run ID ${standardizedRunId}`);
                 
                 try {
-                    await unifiedJobTrackingRepository.updateClientRunRecord({
+                    await JobTracking.updateClientRun({
                         runId: standardizedRunId,
                         clientId: client.clientId,
                         updates: {
@@ -504,9 +517,6 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 console.error(`[POST_METRICS_ERROR] Failed to update metrics for ${client.clientId}: ${metricsError.message}`);
                 // Continue execution even if metrics update fails
             }
-        } else {
-            logger.info(`Skipping metrics update for standalone run (no parentRunId provided)`);
-        }
         
     } catch (error) {
         clientResult.status = 'failed';
@@ -523,46 +533,32 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         if (process.env.VERBOSE_POST_SCORING === "true") {
             console.log(`[POST_DEBUG] Setting job status to COMPLETED for client ${client.clientId}`);
         }
-        // Use the jobId from options or the one created earlier in the function
-        const jobId = options.jobId || `job_post_scoring_bypass_${Date.now()}`;
         
-        // Update job status with metrics
-        await clientService.setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', jobId, {
-            duration: clientResult.duration,
-            count: clientResult.postsScored
+        // Use the passed runId - no need to generate a new one
+        // Update the client run record using the unified job tracking service
+        await JobTracking.updateClientRun({
+            runId: runId,
+            clientId: client.clientId,
+            updates: {
+                status: 'Completed',
+                'Posts Processed': clientResult.postsProcessed,
+                'Posts Successfully Scored': clientResult.postsScored,
+                'System Notes': `Post scoring completed in ${clientResult.duration}s with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored`,
+                'End Time': new Date().toISOString()
+            },
+            createIfMissing: true
         });
         
-        logger.summary(`Set job status to COMPLETED with duration=${clientResult.duration}s, count=${clientResult.postsScored}`);
+        logger.summary(`Updated client run record with duration=${clientResult.duration}s, posts scored=${clientResult.postsScored}`);
         
-        // Now also update aggregate metrics
-        try {
-            // Get base run ID without client suffix
-            const baseRunId = unifiedRunIdService.stripClientSuffix(jobId);
-            
-            logger.debug(`Updating job tracking record for base run ID ${baseRunId}`);
-            
-            // Validate base run ID format to prevent errors
-            if (!baseRunId || baseRunId.trim() === '') {
-                throw new Error('Invalid base run ID after stripping client suffix');
+        // Also update the main job tracking record to show progress
+        await JobTracking.updateJob({
+            runId: runId,
+            updates: {
+                'Last Client': client.clientId,
+                'Progress': `Processed client ${client.clientId}: ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored`
             }
-            
-            // Update aggregate metrics across all clients for this job
-            await unifiedJobTrackingRepository.updateJobTrackingRecord({
-                runId: baseRunId,
-                updates: {
-                    'Last Updated': new Date().toISOString(),
-                    'Status': 'Completed'  // Explicitly update status
-                }
-            });
-            
-            logger.summary(`Successfully updated aggregate metrics for post scoring job ${jobId}`);
-        } catch (aggregateError) {
-            logger.warn(`Could not update aggregate metrics: ${aggregateError.message}`);
-            console.error(`[POST_METRICS_ERROR] Failed to update aggregate metrics: ${aggregateError.message}`, {
-                baseRunId: unifiedRunIdService.stripClientSuffix(jobId),
-                errorDetails: aggregateError.stack?.split('\n')[0] || 'No stack trace'
-            });
-        }
+        });
     } catch (jobError) {
         logger.warn(`Could not update job status: ${jobError.message}`);
         console.error(`Error updating job status: ${jobError.message}`);
