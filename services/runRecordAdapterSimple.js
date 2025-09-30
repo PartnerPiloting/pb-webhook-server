@@ -17,6 +17,8 @@ const runIdUtils = require('../utils/runIdUtils');
 const { StructuredLogger } = require('../utils/structuredLogger');
 // CIRCULAR DEPENDENCY FIX: Import airtableClient once at module level
 const airtableClient = require('../config/airtableClient');
+// Import the unified run ID service for normalization
+const unifiedRunIdService = require('./unifiedRunIdService');
 
 /**
  * @typedef {Object} RunRecordParams
@@ -62,8 +64,9 @@ async function createRunRecord(params) {
   logger.debug(`[RunRecordAdapterSimple] Creating run record for client ${clientId} from source ${source}`);
   
   try {
-    // Clean/standardize the run ID (strip any client suffix)
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    // Clean/standardize the run ID with normalization first
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     // Add client suffix for client-specific run ID
     const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
@@ -107,8 +110,9 @@ async function updateRunRecord(params) {
   logger.debug(`[RunRecordAdapterSimple] Updating run record for client ${clientId} from source ${source}`);
   
   try {
-    // Clean/standardize the run ID
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    // Clean/standardize the run ID with normalization
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     // Add client suffix for client-specific run ID
     const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
@@ -157,8 +161,9 @@ async function completeRunRecord(params) {
     // Handle status as string or boolean
     const success = typeof status === 'boolean' ? status : (status === 'Completed' || status === 'Success');
     
-    // Clean/standardize the run ID
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    // Clean/standardize the run ID with normalization first
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     // Add client suffix for client-specific run ID
     const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
@@ -196,8 +201,9 @@ async function createJobRecord(params) {
   const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
   
   try {
-    // Clean/standardize the run ID (strip any client suffix)
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    // Clean/standardize the run ID with normalization first
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     logger.debug(`[RunRecordAdapterSimple] Creating job tracking record with ID: ${baseRunId}`);
     
@@ -234,8 +240,9 @@ async function completeJobRecord(params) {
   const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
   
   try {
-    // Clean/standardize the run ID (strip any client suffix)
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    // Clean/standardize the run ID with normalization first
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     logger.debug(`[RunRecordAdapterSimple] Completing job tracking record with ID: ${baseRunId}`);
     
@@ -372,7 +379,8 @@ async function completeClientProcessing(params) {
   logger.debug(`[RunRecordAdapterSimple] Completing all processing for client ${clientId}`);
   
   try {
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
     
     // Determine final status based on metrics

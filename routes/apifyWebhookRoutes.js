@@ -10,6 +10,7 @@ const JobTracking = require('../services/jobTracking');
 const { createPost } = require('../services/postService');
 const { handleClientError } = require('../utils/errorHandler');
 const clientService = require('../services/clientService');
+const unifiedRunIdService = require('../services/unifiedRunIdService');
 
 // Constants
 const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
@@ -323,9 +324,10 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             // Check if this is a standalone run
             const isStandalone = !jobRunId.includes('-');
             
-            // Complete client processing with no posts found
+            // Complete client processing with no posts found - normalize the run ID first
+            const normalizedRunId = unifiedRunIdService.normalizeRunId(jobRunId);
             await JobTracking.completeClientProcessing({
-                runId: jobRunId,
+                runId: normalizedRunId,
                 clientId,
                 finalMetrics: {
                     'Total Posts Harvested': 0,
@@ -361,8 +363,9 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
         
         // Use completeClientProcessing which will handle both metrics and completion based on isStandalone flag
+        const normalizedRunId = unifiedRunIdService.normalizeRunId(jobRunId);
         await JobTracking.completeClientProcessing({
-            runId: jobRunId,
+            runId: normalizedRunId,
             clientId,
             finalMetrics: {
                 'Total Posts Harvested': posts.length,
@@ -396,8 +399,9 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
         
         // Complete client processing with failure status
+        const normalizedRunId = unifiedRunIdService.normalizeRunId(jobRunId);
         await JobTracking.completeClientProcessing({
-            runId: jobRunId,
+            runId: normalizedRunId,
             clientId,
             finalMetrics: {
                 failed: true,
