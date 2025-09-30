@@ -468,7 +468,8 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     setProcessingStream,
     formatDuration
   } = require('../services/clientService');
-  const { generateRunId } = require('../utils/runIdGenerator');
+  // REMOVE direct dependency on runIdGenerator and use JobTracking.generateRunId consistently
+  // const { generateRunId } = require('../utils/runIdGenerator');
 
   const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
   const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
@@ -492,14 +493,20 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       runId = parentRunId;
       console.log(`Using parent run ID: ${runId} for lead scoring job ${jobId}`);
     } else {
-      // Generate a new run ID if no parent is provided
-      runId = await generateRunId();
+      // Generate a new run ID if no parent is provided - use JobTracking service
+      runId = JobTracking.generateRunId();
       console.log(`Generated base run ID: ${runId} for lead scoring job ${jobId}`);
     }
   } catch (err) {
-    // Set a default runId value if generation fails
-    runId = `fallback_job_lead_scoring_stream${stream}_${new Date().toISOString().replace(/[-:T.Z]/g, '')}`;
-    console.error(`Failed to generate run ID: ${err.message}. Using fallback runId: ${runId}`);
+    // Use the normalized standard format even for fallbacks
+    try {
+      runId = JobTracking.generateRunId();
+      console.error(`Failed to generate run ID: ${err.message}. Generated new runId: ${runId}`);
+    } catch (innerError) {
+      // Ultimate fallback if JobTracking is completely unavailable
+      runId = new Date().toISOString().replace(/[-:T.Z]/g, '');
+      console.error(`Critical error generating run ID: ${innerError.message}. Using emergency timestamp: ${runId}`);
+    }
   }
 
   try {
