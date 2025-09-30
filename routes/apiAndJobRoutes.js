@@ -14,11 +14,8 @@ const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
 const runIdUtils = require('../utils/runIdUtils.js');
-// Use the unified job tracking architecture
-const unifiedJobTrackingRepository = require('../services/unifiedJobTrackingRepository.js');
-const unifiedRunIdService = require('../services/unifiedRunIdService.js');
-const jobMetricsService = require('../services/jobMetricsService.js');
-const jobTrackingErrorHandling = require('../services/jobTrackingErrorHandling.js');
+// Use the unified job tracking service
+const JobTracking = require('../services/jobTracking.js');
 const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
@@ -954,10 +951,32 @@ router.post("/run-post-batch-score", async (req, res) => {
     if (singleClientId) {
       console.log(`Restricting run to single clientId=${singleClientId}`);
     }
-    // Start the multi-tenant post scoring process for ALL clients
-  const results = await postBatchScorer.runMultiTenantPostScoring(
+    // Generate a run ID for this job
+    const runId = JobTracking.generateRunId();
+    console.log(`Generated run ID for post scoring: ${runId}`);
+    
+    // Create the main job tracking record
+    try {
+      await JobTracking.createJob({
+        runId,
+        jobType: 'post_scoring',
+        initialData: {
+          'Status': 'Running',
+          'Start Time': new Date().toISOString(),
+          'System Notes': `Post scoring initiated for ${singleClientId || 'all clients'}`
+        }
+      });
+      console.log(`Created job tracking record with ID ${runId}`);
+    } catch (err) {
+      console.error(`Failed to create job tracking record: ${err.message}`);
+      // Continue anyway as we want the job to run
+    }
+    
+    // Start the multi-tenant post scoring process
+    const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
+      runId, // Pass the run ID as the third parameter
       singleClientId || null, // specific client if provided
       limit,
       {
@@ -965,14 +984,32 @@ router.post("/run-post-batch-score", async (req, res) => {
         leadsTableName: tableOverride || undefined,
         markSkips,
         verboseErrors,
-    maxVerboseErrors,
-    targetIds: targetIds && targetIds.length ? targetIds : undefined
+        maxVerboseErrors,
+        targetIds: targetIds && targetIds.length ? targetIds : undefined
       }
     );
+    // Update the job tracking record with completion status
+    try {
+      await JobTracking.completeJob({
+        runId,
+        status: results.totalErrors > 0 ? 'Completed with Errors' : 'Completed',
+        updates: {
+          'System Notes': `Multi-tenant post scoring completed: ${results.successfulClients}/${results.totalClients} clients successful, ${results.totalPostsScored}/${results.totalPostsProcessed} posts scored`,
+          'Items Processed': results.totalPostsProcessed,
+          'Posts Successfully Scored': results.totalPostsScored,
+          'Errors': results.totalErrors
+        }
+      });
+      console.log(`Updated job tracking record ${runId} with completion status`);
+    } catch (err) {
+      console.error(`Failed to update job tracking record: ${err.message}`);
+    }
+    
     // Return results immediately
     res.status(200).json({
       status: 'completed',
       message: 'Multi-tenant post scoring completed',
+      runId, // Include the run ID in the response
       summary: {
         totalClients: results.totalClients,
         successfulClients: results.successfulClients,
@@ -981,9 +1018,9 @@ router.post("/run-post-batch-score", async (req, res) => {
         totalPostsScored: results.totalPostsScored,
         totalLeadsSkipped: results.totalLeadsSkipped,
         skipCounts: results.skipCounts,
-  totalErrors: results.totalErrors,
-  errorReasonCounts: results.errorReasonCounts,
-      duration: results.duration
+        totalErrors: results.totalErrors,
+        errorReasonCounts: results.errorReasonCounts,
+        duration: results.duration
       },
   clientResults: results.clientResults,
       mode: dryRun ? 'dryRun' : 'live',
@@ -1149,18 +1186,19 @@ async function processPostScoringInBackground(jobId, stream, options) {
       const clientStartTime = Date.now();
       
       try {
+        // Generate a run ID for this client process
+        const clientRunId = options.parentRunId || JobTracking.generateRunId();
         
         // Run post scoring for this client with timeout
         const clientResult = await Promise.race([
           postBatchScorer.runMultiTenantPostScoring(
             vertexAIClient,
             geminiModelId,
+            clientRunId, // Pass the run ID
             client.clientId,
             options.limit,
             {
-              dryRun: options.dryRun,
-              parentRunId: options.parentRunId, // Pass the parentRunId to control metrics recording
-              jobId: jobId // Pass the jobId for reference
+              dryRun: options.dryRun
             }
           ),
           // Client timeout
@@ -1287,12 +1325,26 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
   const idsFromBody = Array.isArray(req.body?.ids) ? req.body.ids.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim()) : [];
   const targetIds = (idsFromQuery.length ? idsFromQuery : idsFromBody);
   try {
+    // Generate a new run ID for this scoring operation
+    const runId = JobTracking.generateRunId();
+    
+    // Create job tracking record
+    await JobTracking.createJob({
+      runId,
+      jobType: 'post_scoring',
+      initialData: {
+        'Status': 'Running',
+        'Client ID': clientId
+      }
+    });
+
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
+      runId, // Pass the run ID
       clientId,
       limit,
-  { dryRun, verboseErrors, maxVerboseErrors, targetIds: targetIds && targetIds.length ? targetIds : undefined }
+      { dryRun, verboseErrors, maxVerboseErrors, targetIds: targetIds && targetIds.length ? targetIds : undefined }
     );
     const first = results.clientResults[0] || {};
     res.json({
@@ -1361,11 +1413,25 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
 
     const startedAt = Date.now();
 
+    // Generate a single run ID for all candidates
+    const runId = JobTracking.generateRunId();
+    
+    // Create job tracking record
+    await JobTracking.createJob({
+      runId,
+      jobType: 'post_scoring_multi',
+      initialData: {
+        'Status': 'Running',
+        'Client Count': candidates.length
+      }
+    });
+
     for (const c of candidates) {
       try {
         const results = await postBatchScorer.runMultiTenantPostScoring(
           vertexAIClient,
           geminiModelId,
+          runId, // Pass the run ID
           c.clientId,
           limit,
           {
