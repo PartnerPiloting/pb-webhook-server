@@ -245,7 +245,7 @@ async function createClientRunRecord(params) {
   const source = options.source || 'unknown';
   
   // Only certain sources are allowed to create records
-  const allowedSources = ['orchestrator', 'master_process', 'smart_resume_workflow', 'batch_process', 'airtable_service_recovery', 'run_record_recovery'];
+  const allowedSources = ['orchestrator', 'master_process', 'smart_resume_workflow', 'batch_process', 'airtable_service_recovery', 'run_record_recovery', 'airtable_service'];
   if (!allowedSources.includes(source)) {
     const errorMsg = `Unauthorized source "${source}" attempted to create client run record`;
     logger.error(errorMsg);
