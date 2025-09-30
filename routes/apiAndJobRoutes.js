@@ -468,8 +468,8 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     setProcessingStream,
     formatDuration
   } = require('../services/clientService');
-  // REMOVE direct dependency on runIdGenerator and use JobTracking.generateRunId consistently
-  // const { generateRunId } = require('../utils/runIdGenerator');
+  // Import unified run ID service for consistent ID generation and normalization
+  const unifiedRunIdService = require('../services/unifiedRunIdService');
 
   const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
   const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
@@ -489,21 +489,22 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     const { parentRunId } = aiDependencies;
     
     if (parentRunId) {
-      // Use the parent run ID to maintain connection to the Smart Resume process
-      runId = parentRunId;
-      console.log(`Using parent run ID: ${runId} for lead scoring job ${jobId}`);
+      // Use the parent run ID but normalize it to ensure consistent format
+      runId = unifiedRunIdService.normalizeRunId(parentRunId);
+      console.log(`Using normalized parent run ID: ${runId} for lead scoring job ${jobId}`);
     } else {
-      // Generate a new run ID if no parent is provided - use JobTracking service
-      runId = JobTracking.generateRunId();
-      console.log(`Generated base run ID: ${runId} for lead scoring job ${jobId}`);
+      // Generate a new run ID using the unified service
+      runId = unifiedRunIdService.generateTimestampRunId();
+      console.log(`Generated run ID: ${runId} for lead scoring job ${jobId}`);
     }
   } catch (err) {
-    // Use the normalized standard format even for fallbacks
+    // Use unified service for fallback
     try {
-      runId = JobTracking.generateRunId();
+      runId = unifiedRunIdService.generateTimestampRunId();
       console.error(`Failed to generate run ID: ${err.message}. Generated new runId: ${runId}`);
     } catch (innerError) {
-      // Ultimate fallback if JobTracking is completely unavailable
+      // Ultimate fallback if unified service is completely unavailable
+      // This should rarely happen as the unified service has its own fallbacks
       runId = new Date().toISOString().replace(/[-:T.Z]/g, '');
       console.error(`Critical error generating run ID: ${innerError.message}. Using emergency timestamp: ${runId}`);
     }

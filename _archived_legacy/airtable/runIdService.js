@@ -1,6 +1,13 @@
 /**
- * services/airtable/runIdService.js
+ * _archived_legacy/airtable/runIdService.js
  * 
+ * ARCHIVED: This file has been archived and replaced by services/simpleJobTracking.js
+ * 
+ * This file is kept for reference but should not be used in new code.
+ * Please use simpleJobTracking.js which provides a single source of truth
+ * for run ID generation and management.
+ * 
+ * Original description:
  * Centralizes run ID generation and management for multi-tenant operations.
  * This service ensures consistent run ID usage across different components
  * to prevent the issue where different timestamps are generated independently.

@@ -1,31 +1,53 @@
 /**
- * Simple Run ID Generator
+ * DEPRECATED - Simple Run ID Generator
  * 
- * Creates timestamp-based run IDs that are unique and sortable.
+ * This utility is DEPRECATED and will be removed in a future version.
+ * Please use services/unifiedRunIdService.js instead, which provides more
+ * robust run ID handling with format detection and normalization.
+ * 
  * Format: YYMMDD-HHMMSS
  */
 
+// Log deprecation warning when this module is required
+console.warn(`
+  =======================================================================
+  DEPRECATION WARNING: utils/runIdGenerator.js is deprecated.
+  Please use services/unifiedRunIdService.js for all run ID operations.
+  This utility will be removed in a future version.
+  =======================================================================
+`);
+
 /**
  * Generates a timestamp-based run ID
+ * Now delegates to unifiedRunIdService for consistent ID generation
  * @returns {string} The timestamp run ID
  */
 function generateRunId() {
-  const now = new Date();
-  
-  // Format: YYMMDD-HHMMSS
-  const datePart = [
-    now.getFullYear().toString().slice(2),
-    (now.getMonth() + 1).toString().padStart(2, '0'),
-    now.getDate().toString().padStart(2, '0')
-  ].join('');
-  
-  const timePart = [
-    now.getHours().toString().padStart(2, '0'),
-    now.getMinutes().toString().padStart(2, '0'),
-    now.getSeconds().toString().padStart(2, '0')
-  ].join('');
-  
-  return `${datePart}-${timePart}`;
+  try {
+    // Use the unified service if available
+    const unifiedRunIdService = require('../services/unifiedRunIdService');
+    return unifiedRunIdService.generateTimestampRunId();
+  } catch (error) {
+    // Fallback to original implementation if unified service isn't available
+    console.warn(`Failed to use unifiedRunIdService, falling back to legacy implementation: ${error.message}`);
+    
+    const now = new Date();
+    
+    // Format: YYMMDD-HHMMSS
+    const datePart = [
+      now.getFullYear().toString().slice(2),
+      (now.getMonth() + 1).toString().padStart(2, '0'),
+      now.getDate().toString().padStart(2, '0')
+    ].join('');
+    
+    const timePart = [
+      now.getHours().toString().padStart(2, '0'),
+      now.getMinutes().toString().padStart(2, '0'),
+      now.getSeconds().toString().padStart(2, '0')
+    ].join('');
+    
+    return `${datePart}-${timePart}`;
+  }
 }
 
 /**

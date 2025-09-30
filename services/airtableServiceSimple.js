@@ -4,13 +4,41 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { 
+  MASTER_TABLES, 
+  CLIENT_RUN_FIELDS,
+  FORMULA_FIELDS 
+} = require('../constants/airtableConstants');
 
-// Constants for table names
-const JOB_TRACKING_TABLE = 'Job Tracking';
-const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
+// Constants for table names - Use centralized constants
+const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Initialize client base connection
 let clientsBase = null;
+
+/**
+ * Utility function to filter out formula fields from updates
+ * @param {Object} updates - The updates to apply
+ * @returns {Object} - Sanitized updates with formula fields removed
+ */
+function validateUpdates(updates) {
+  if (!updates || typeof updates !== 'object') {
+    return updates;
+  }
+  
+  const validatedUpdates = {...updates};
+  
+  // Check for and remove any formula fields
+  for (const key of Object.keys(validatedUpdates)) {
+    if (FORMULA_FIELDS.includes(key)) {
+      console.warn(`⚠️ Attempted to update formula field "${key}" which cannot be directly updated. Removing from updates.`);
+      delete validatedUpdates[key];
+    }
+  }
+  
+  return validatedUpdates;
+}
 
 /**
  * Initialize connection to the Clients base
@@ -73,24 +101,30 @@ async function createJobTrackingRecord(runId, stream) {
     // Convert stream to a number if it's a string
     const streamNumber = typeof stream === 'string' ? parseInt(stream, 10) : stream;
 
+    // Create complete record data
+    const recordData = {
+      'Run ID': runId,
+      'Start Time': startTimestamp,
+      'Status': 'Running',
+      'Stream': streamNumber,
+      'Clients Processed': 0,
+      'Clients With Errors': 0,
+      'Total Profiles Examined': 0,
+      'Successful Profiles': 0,
+      'Total Posts Harvested': 0,
+      'Posts Examined for Scoring': 0, 
+      'Posts Successfully Scored': 0,
+      'Profile Scoring Tokens': 0,
+      'Post Scoring Tokens': 0,
+      'System Notes': `Run initiated at ${startTimestamp}`
+    };
+    
+    // Validate to remove any formula fields
+    const safeData = validateUpdates(recordData);
+    
     const records = await base(JOB_TRACKING_TABLE).create([
       {
-        fields: {
-          'Run ID': runId,
-          'Start Time': startTimestamp,
-          'Status': 'Running',
-          'Stream': streamNumber, // Ensure stream is a number for Airtable's number field
-          'Clients Processed': 0,
-          'Clients With Errors': 0,
-          'Total Profiles Examined': 0,
-          'Successful Profiles': 0,
-          'Total Posts Harvested': 0,
-          'Posts Examined for Scoring': 0, 
-          'Posts Successfully Scored': 0,
-          'Profile Scoring Tokens': 0,
-          'Post Scoring Tokens': 0,
-          'System Notes': `Run initiated at ${startTimestamp}`
-        }
+        fields: safeData
       }
     ]);
 
@@ -128,21 +162,27 @@ async function createClientRunRecord(runId, clientId, clientName) {
     
     const startTimestamp = new Date().toISOString();
     
+    // Create record data using field constants
+    const recordData = {
+      'Run ID': runId,
+      'Client ID': clientId,  // Fixed from 'Client' to 'Client ID' to match Airtable schema
+      'Client Name': clientName,
+      'Start Time': startTimestamp,
+      'Status': 'Running',
+      'Profiles Examined for Scoring': 0,
+      'Profiles Successfully Scored': 0,
+      'Total Posts Harvested': 0,
+      'Profile Scoring Tokens': 0,
+      'Post Scoring Tokens': 0,
+      'System Notes': `Processing started at ${startTimestamp}`
+    };
+    
+    // Validate to remove any formula fields
+    const safeData = validateUpdates(recordData);
+    
     const records = await base(CLIENT_RUN_RESULTS_TABLE).create([
       {
-        fields: {
-          'Run ID': runId,
-          'Client ID': clientId,  // Fixed from 'Client' to 'Client ID' to match Airtable schema
-          'Client Name': clientName,
-          'Start Time': startTimestamp,
-          'Status': 'Running',
-          'Profiles Examined for Scoring': 0,
-          'Profiles Successfully Scored': 0,
-          'Total Posts Harvested': 0,
-          'Profile Scoring Tokens': 0,
-          'Post Scoring Tokens': 0,
-          'System Notes': `Processing started at ${startTimestamp}`
-        }
+        fields: safeData
       }
     ]);
     
@@ -177,7 +217,9 @@ async function updateJobTracking(runId, updates) {
       return { error: true, message: error };
     }
     
-    const updated = await base(JOB_TRACKING_TABLE).update(records[0].id, updates);
+    // Validate updates to prevent formula field errors
+    const safeUpdates = validateUpdates(updates);
+    const updated = await base(JOB_TRACKING_TABLE).update(records[0].id, safeUpdates);
     console.log(`✅ Updated job tracking record`);
     return updated;
     
@@ -211,7 +253,9 @@ async function updateClientRun(runId, clientId, updates) {
       return { error: true, message: error };
     }
     
-    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(records[0].id, updates);
+    // Validate updates to prevent formula field errors
+    const safeUpdates = validateUpdates(updates);
+    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(records[0].id, safeUpdates);
     console.log(`✅ Updated client run record`);
     return updated;
     

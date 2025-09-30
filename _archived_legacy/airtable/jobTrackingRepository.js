@@ -1,6 +1,13 @@
 /**
- * services/airtable/jobTrackingRepository.js
+ * _archived_legacy/airtable/jobTrackingRepository.js
  * 
+ * ARCHIVED: This file has been archived and replaced by services/simpleJobTracking.js
+ * 
+ * This file is kept for reference but should not be used in new code.
+ * Please use simpleJobTracking.js which provides a single source of truth
+ * for run ID generation and management.
+ * 
+ * Original description:
  * Repository for job tracking operations in the Master Clients base.
  * Handles CRUD operations for job tracking records.
  */
