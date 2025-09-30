@@ -7,7 +7,8 @@
 
 const { StructuredLogger } = require('../../utils/structuredLogger');
 const baseManager = require('./baseManager');
-const runIdService = require('./runIdService');
+// Updated to use unified run ID service
+const runIdService = require('../../services/unifiedRunIdService');
 
 // Default logger
 const logger = new StructuredLogger('SYSTEM', null, 'client_repository');

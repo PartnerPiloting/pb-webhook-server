@@ -15,7 +15,8 @@ require('dotenv').config();
 // Import dependencies
 const Airtable = require('airtable');
 const clientService = require('./clientService');
-const runIdService = require('./runIdService');
+// Updated to use unified run ID service
+const runIdService = require('./unifiedRunIdService');
 const { StructuredLogger } = require('../utils/structuredLogger');
 
 // Constants for table names

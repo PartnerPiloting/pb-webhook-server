@@ -11,9 +11,10 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const runIdUtils = require('../utils/runIdUtils');
-const runIdService = require('../services/runIdService');
+// Updated to use unified run ID service
+const runIdService = require('../services/unifiedRunIdService');
 // Import run ID generator
-const { generateRunId } = runIdService;
+const { generateTimestampRunId: generateRunId } = runIdService;
 // SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
 const runRecordService = require('../services/runRecordAdapterSimple');
 // Import airtableServiceSimple for direct access to the Master base

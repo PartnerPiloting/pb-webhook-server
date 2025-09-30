@@ -4,7 +4,8 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
-const runIdService = require('./runIdService');
+// Updated to use unified run ID service
+const runIdService = require('./unifiedRunIdService');
 
 // Cache for performance (short-lived since runs are typically short)
 let runsCache = new Map();

@@ -19,8 +19,8 @@ try {
     console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
 }
 
-// Import run ID service for centralized run ID management
-const runIdService = require('./runIdService');
+// Import unified run ID service for centralized run ID management
+const runIdService = require('./unifiedRunIdService');
 
 // Import record caching service
 const recordCache = require('./recordCache');
