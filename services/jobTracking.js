@@ -11,22 +11,21 @@
 
 const { StructuredLogger } = require('../utils/structuredLogger');
 const baseManager = require('./airtable/baseManager');
+const { 
+  MASTER_TABLES, 
+  JOB_TRACKING_FIELDS, 
+  CLIENT_RUN_FIELDS,
+  FORMULA_FIELDS,
+  STATUS_VALUES 
+} = require('../constants/airtableConstants');
+const unifiedRunIdService = require('./unifiedRunIdService');
 
-// Table constants
-const JOB_TRACKING_TABLE = 'Job Tracking';
-const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
+// Table constants - Using constants from centralized file
+const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Default logger
 const logger = new StructuredLogger('SYSTEM', null, 'job_tracking');
-
-// Formula fields that should not be directly updated in Airtable
-const FORMULA_FIELDS = [
-  'Success Rate',
-  'Profile Scoring Success Rate',
-  'Post Scoring Success Rate',
-  'Duration',
-  'Progress Percentage'
-];
 
 /**
  * JobTracking class - single source of truth for job tracking operations
@@ -34,34 +33,22 @@ const FORMULA_FIELDS = [
 class JobTracking {
   /**
    * Generate a standardized run ID in YYMMDD-HHMMSS format
+   * Delegates to unifiedRunIdService for consistent ID generation
    * @returns {string} A timestamp-based run ID
    */
   static generateRunId() {
-    const now = new Date();
-    const year = String(now.getFullYear()).slice(-2);
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    
-    return `${year}${month}${day}-${hours}${minutes}${seconds}`;
+    return unifiedRunIdService.generateTimestampRunId();
   }
 
   /**
    * Add client suffix to a base run ID
+   * Delegates to unifiedRunIdService for consistent ID formatting
    * @param {string} baseRunId - Base run ID (YYMMDD-HHMMSS)
    * @param {string} clientId - Client ID to add as suffix
    * @returns {string} Run ID with client suffix
    */
   static addClientSuffix(baseRunId, clientId) {
-    if (!baseRunId || !clientId) {
-      logger.warn(`Cannot add client suffix with missing values. baseRunId: ${baseRunId}, clientId: ${clientId}`);
-      return baseRunId;
-    }
-    
-    // Format: YYMMDD-HHMMSS-ClientName
-    return `${baseRunId}-${clientId}`;
+    return unifiedRunIdService.addClientSuffix(baseRunId, clientId);
   }
 
   /**
@@ -83,15 +70,16 @@ class JobTracking {
     }
     
     try {
-      // First, normalize the run ID to prevent duplicates
-      const runIdService = require('../services/unifiedRunIdService');
-      const normalizedRunId = runIdService.normalizeRunId(runId);
+      // First, normalize the run ID to prevent duplicates - use imported service
+      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      log.debug(`Creating job with normalized runId: ${normalizedRunId} (original: ${runId})`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Check if record already exists using BOTH the original and normalized run IDs
-      const formula = `OR({Run ID} = '${runId}', {Run ID} = '${normalizedRunId}')`;
+      // Enhanced deduplication: Check for existing records with any variant of this run ID
+      // This prevents duplicates even if different formats of the same logical ID are used
+      const formula = `OR({${JOB_TRACKING_FIELDS.RUN_ID}} = '${runId}', {${JOB_TRACKING_FIELDS.RUN_ID}} = '${normalizedRunId}')`;
       
       const existingRecords = await masterBase(JOB_TRACKING_TABLE).select({
         filterByFormula: formula,
@@ -102,7 +90,7 @@ class JobTracking {
         log.warn(`Job tracking record already exists for run ID ${runId}. Not creating duplicate.`);
         return {
           id: existingRecords[0].id,
-          runId,
+          runId: normalizedRunId, // Return the normalized ID for consistency
           alreadyExists: true
         };
       }
@@ -110,19 +98,28 @@ class JobTracking {
       // Default values
       const startTime = new Date().toISOString();
       
-      // Prepare record data - only use fields that actually exist
+      // Prepare record data using constants - improves maintainability
       const recordData = {
-        'Run ID': runId,
-        'Status': 'Running',
-        'Start Time': startTime,
-        'Job Type': jobType,
-        'System Notes': initialData['System Notes'] || ''
+        [JOB_TRACKING_FIELDS.RUN_ID]: normalizedRunId, // Always use normalized ID
+        [JOB_TRACKING_FIELDS.STATUS]: STATUS_VALUES.RUNNING,
+        [JOB_TRACKING_FIELDS.START_TIME]: startTime,
+        [JOB_TRACKING_FIELDS.JOB_TYPE]: jobType,
+        [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: initialData[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || ''
       };
       
-      // Add any other verified fields from initialData
-      if (initialData['Items Processed']) recordData['Items Processed'] = initialData['Items Processed'];
-      if (initialData['Apify Run ID']) recordData['Apify Run ID'] = initialData['Apify Run ID'];
-      if (initialData['Error']) recordData['Error'] = initialData['Error'];
+      // Add any other data from initialData with formula field validation
+      for (const [key, value] of Object.entries(initialData)) {
+        if (FORMULA_FIELDS.includes(key)) {
+          // Skip formula fields to prevent errors
+          log.warn(`Skipping formula field "${key}" which cannot be directly updated`);
+          continue;
+        }
+        
+        // Only add if not already set and has a value
+        if (!recordData[key] && value !== undefined && value !== null) {
+          recordData[key] = value;
+        }
+      }
       
       // Create the record
       const record = await masterBase(JOB_TRACKING_TABLE).create(recordData);
@@ -158,51 +155,61 @@ class JobTracking {
     }
     
     try {
+      // First normalize the run ID to handle different formats consistently
+      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Find the record
+      // Find the record - check both original and normalized run IDs
+      const formula = `OR({${JOB_TRACKING_FIELDS.RUN_ID}} = '${runId}', {${JOB_TRACKING_FIELDS.RUN_ID}} = '${normalizedRunId}')`;
+      
       const records = await masterBase(JOB_TRACKING_TABLE).select({
-        filterByFormula: `{Run ID} = '${runId}'`,
+        filterByFormula: formula,
         maxRecords: 1
       }).firstPage();
       
       if (!records || records.length === 0) {
-        log.error(`Job tracking record not found for run ID ${runId}`);
-        throw new Error(`Job tracking record not found for run ID ${runId}`);
+        log.error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
+        throw new Error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
       }
       
       const record = records[0];
       
-      // Prepare update fields - only use fields that actually exist
+      // Prepare update fields - only use fields that exist
       const updateFields = {};
       
-      // Map common update fields to Airtable field names (only those that exist)
-      if (updates.status) updateFields['Status'] = updates.status;
-      if (updates.endTime) updateFields['End Time'] = updates.endTime;
+      // Map common update fields using constants
+      if (updates.status) updateFields[JOB_TRACKING_FIELDS.STATUS] = updates.status;
+      if (updates.endTime) updateFields[JOB_TRACKING_FIELDS.END_TIME] = updates.endTime;
       if (updates.error) updateFields['Error'] = updates.error;
-      if (updates.itemsProcessed) updateFields['Items Processed'] = updates.itemsProcessed;
+      if (updates.progress) updateFields[JOB_TRACKING_FIELDS.PROGRESS] = updates.progress;
+      if (updates.lastClient) updateFields[JOB_TRACKING_FIELDS.LAST_CLIENT] = updates.lastClient;
       
       // Handle System Notes field properly
-      if (updates['System Notes']) {
-        updateFields['System Notes'] = updates['System Notes'];
+      if (updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
+        updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES];
       } else if (updates.notes) {
-        updateFields['System Notes'] = updates.notes;
+        updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates.notes;
       }
       
-      // Add any other custom fields from updates, except formula fields
-      // Careful with field names to ensure they exist
-      const safeFields = [
-        'Apify Run ID', 'Items Processed', 'Error',
-        'Status', 'Start Time', 'End Time', 'Job Type', 'System Notes'
-      ];
-      
-      Object.keys(updates).forEach(key => {
-        // Only include safe fields that aren't formula fields
-        if (safeFields.includes(key) && !FORMULA_FIELDS.includes(key)) {
-          updateFields[key] = updates[key];
+      // Process each update field with formula field validation
+      for (const [key, value] of Object.entries(updates)) {
+        // Skip fields we've already processed
+        if (updateFields[key] !== undefined) continue;
+        
+        // Skip null/undefined values
+        if (value === null || value === undefined) continue;
+        
+        // Skip formula fields to prevent errors
+        if (FORMULA_FIELDS.includes(key)) {
+          log.warn(`Skipping formula field "${key}" which cannot be directly updated`);
+          continue;
         }
-      });
+        
+        // Add all other fields (will be validated by Airtable)
+        updateFields[key] = value;
+      }
       
       // Update the record
       await masterBase(JOB_TRACKING_TABLE).update(record.id, updateFields);

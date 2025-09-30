@@ -1,8 +1,18 @@
-// services/runIdService.js
-// Simple service for managing run IDs
+/**
+ * services/runIdService.js
+ * 
+ * DEPRECATED SERVICE - This service is being replaced by unifiedRunIdService.js
+ * This file remains for backward compatibility during the transition.
+ * 
+ * For new code, use unifiedRunIdService.js which provides improved run ID
+ * handling with more robust format detection and normalization.
+ */
 
-const runIdUtils = require('../utils/runIdUtils');
-const { generateRunId: createRunId } = require('../utils/runIdGenerator');
+// Use the unified run ID service for all operations
+const unifiedRunIdService = require('./unifiedRunIdService');
+
+// Log a warning when this service is used
+console.warn(`[DEPRECATION WARNING] runIdService.js is deprecated. Use unifiedRunIdService.js instead.`);
 
 /**
  * In-memory cache for run records
@@ -21,11 +31,11 @@ function generateRunId(clientId) {
     return null;
   }
   
-  // Get base timestamp ID
-  const baseId = createRunId();
+  // Get base timestamp ID from unified service
+  const baseId = unifiedRunIdService.generateTimestampRunId();
   
-  // Add client ID - use exact client ID as provided with no modifications
-  return `${baseId}-${clientId}`;
+  // Add client ID using unified service
+  return unifiedRunIdService.addClientSuffix(baseId, clientId);
 }
 
 /**
@@ -47,40 +57,35 @@ function normalizeRunId(runId, clientId, forceNew = false) {
   
   // If force new is true, always generate a new ID
   if (forceNew) {
-    const baseId = createRunId();
-    const standardId = `${baseId}-${clientId}`;
+    // Use unified service for consistent ID generation
+    const baseId = unifiedRunIdService.generateTimestampRunId();
+    const standardId = unifiedRunIdService.addClientSuffix(baseId, clientId);
     console.log(`[METDEBUG] Force-created new run ID: ${standardId}`);
     return standardId;
   }
   
-  // Check if runId matches our standard format already
-  if (runId && typeof runId === 'string') {
-    // Check exact match for our format: YYMMDD-HHMMSS-ClientID
-    const match = runId.match(/^(\d{6}-\d{6})-(.+)$/);
-    if (match && match[2] === clientId) {
-      console.log(`[METDEBUG] Run ID already in standard format: ${runId}`);
-      return runId;
-    }
-    
-    // If we have a timestamp prefix but wrong client ID, extract the timestamp and add the correct client ID
-    if (match) {
-      const baseId = match[1];
-      const standardId = `${baseId}-${clientId}`;
-      console.log(`[METDEBUG] Standardized run ID from partial match: ${standardId}`);
-      return standardId;
-    }
+  // First, normalize the run ID using unified service
+  const normalizedId = unifiedRunIdService.normalizeRunId(runId);
+  
+  // If it doesn't have a client suffix, add it
+  const hasClientId = unifiedRunIdService.extractClientId(normalizedId);
+  
+  if (hasClientId === clientId) {
+    // Already has the correct client ID
+    console.log(`[METDEBUG] Run ID already has correct client ID: ${normalizedId}`);
+    return normalizedId;
+  } else if (hasClientId) {
+    // Has a client ID but not the right one - strip it and add the correct one
+    const baseId = unifiedRunIdService.stripClientSuffix(normalizedId);
+    const standardId = unifiedRunIdService.addClientSuffix(baseId, clientId);
+    console.log(`[METDEBUG] Replaced client ID in run ID: ${standardId}`);
+    return standardId;
+  } else {
+    // No client ID - add one
+    const standardId = unifiedRunIdService.addClientSuffix(normalizedId, clientId);
+    console.log(`[METDEBUG] Added client ID to run ID: ${standardId}`);
+    return standardId;
   }
-  
-  // If we get here, either runId is not a string or doesn't match our format
-  // Generate a new timestamp and create a standard ID
-  const baseId = createRunId();
-  const standardId = `${baseId}-${clientId}`;
-  console.log(`[METDEBUG] Created new run ID: ${standardId}`);
-  return standardId;
-  
-  // This section has been replaced by the simplified logic above
-  console.log(`[METDEBUG] Using simplified standardized ID format`);
-  return null; // This line should never be reached, it's replaced by the above return statements
 }
 
 /**
@@ -240,9 +245,8 @@ function stripClientSuffix(runId) {
     return runId;
   }
   
-  // Use the runIdUtils implementation which is more robust
-  const utils = require('../utils/runIdUtils');
-  const baseRunId = utils.stripClientSuffix(runId);
+  // Use the unified service which is more robust
+  const baseRunId = unifiedRunIdService.stripClientSuffix(runId);
   
   // If the baseRunId is empty but runId isn't, something went wrong
   // Return the original to prevent data loss
