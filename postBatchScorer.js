@@ -564,13 +564,18 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         logger.summary(`Completed all processing for client ${client.clientId} with duration=${clientResult.duration}s, posts scored=${clientResult.postsScored}`);
         
         // Also update the main job tracking record to show progress
-        await JobTracking.updateJob({
-            runId: runId,
-            updates: {
-                'Last Client': client.clientId,
-                'Progress': `Processed client ${client.clientId}: ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored`
-            }
-        });
+        // Check if runId is defined before attempting to update job status
+        if (!runId) {
+            logger.warn(`No valid run ID available for client ${client.clientId}, skipping job status update`);
+        } else {
+            await JobTracking.updateJob({
+                runId: runId,
+                updates: {
+                    'Last Client': client.clientId,
+                    'Progress': `Processed client ${client.clientId}: ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored`
+                }
+            });
+        }
     } catch (jobError) {
         logger.warn(`Could not update job status: ${jobError.message}`);
         console.error(`Error updating job status: ${jobError.message}`);
