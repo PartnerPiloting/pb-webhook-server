@@ -363,6 +363,26 @@ function normalizeRunId(runId) {
   return runId;
 }
 
+/**
+ * Compatibility method for legacy code - aliases generateTimestampRunId
+ * @returns {string} Generated run ID in timestamp format
+ */
+function generateRunId() {
+  return generateTimestampRunId();
+}
+
+/**
+ * Compatibility method for legacy code - aliases getCachedRecordId with client support
+ * @param {string} runId - Run ID to get record for
+ * @param {string} clientId - Client ID
+ * @returns {string|null} Record ID if found, null otherwise
+ */
+function getRunRecordId(runId, clientId) {
+  // First normalize the run ID to standard format
+  const normalizedRunId = normalizeRunId(runId);
+  return getCachedRecordId(normalizedRunId) || null;
+}
+
 module.exports = {
   // Core functions
   generateTimestampRunId,
@@ -382,6 +402,10 @@ module.exports = {
   // Record ID caching
   cacheRecordId,
   getCachedRecordId,
+  
+  // Legacy compatibility methods
+  generateRunId,
+  getRunRecordId,
   
   // Format constants
   RUN_ID_FORMATS
