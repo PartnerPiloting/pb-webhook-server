@@ -134,13 +134,19 @@ async function createRunRecord(params) {
     const client = await getClient(clientId);
     const clientName = client ? client.clientName : clientId;
     
-    // Create the run record using the runRecordService
+    // Create the run record using the runRecordService with proper source
+    // Ensure options includes source parameter to pass authorization check
+    const enhancedOptions = {
+      ...options,
+      source: options.source || 'airtable_service' // Add default source if not provided
+    };
+    
     return await runRecordService.createClientRunRecord({
       clientId,
       runId,
       clientName,
       initialData,
-      options
+      options: enhancedOptions
     });
   } catch (error) {
     logger.error(`Error creating run record for client ${clientId}: ${error.message}`);

@@ -94,7 +94,7 @@ const CLIENT_RUN_FIELDS = {
 // Field names for Job Tracking table
 const JOB_TRACKING_FIELDS = {
   RUN_ID: 'Run ID',
-  JOB_TYPE: 'Job Type',
+  // JOB_TYPE field removed - doesn't exist in Airtable schema
   STREAM: 'Stream',
   START_TIME: 'Start Time',
   END_TIME: 'End Time',
