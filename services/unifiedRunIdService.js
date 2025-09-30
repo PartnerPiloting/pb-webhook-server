@@ -79,6 +79,33 @@ const RUN_ID_FORMATS = {
       const second = timestamp.substring(12, 14);
       return `${year}${month}${day}-${hour}${minute}${second}`;
     }
+  },
+  
+  // Job bypass format: "job_post_scoring_bypass_1717146242405" (uses Date.now())
+  JOB_BYPASS: {
+    name: 'JOB_BYPASS',
+    regex: /^job_\w+_bypass_(\d{13})$/,
+    extractTimestamp: (match) => {
+      const timestamp = new Date(parseInt(match[1]));
+      return {
+        year: timestamp.getFullYear().toString().slice(2),
+        month: (timestamp.getMonth() + 1).toString().padStart(2, '0'),
+        day: timestamp.getDate().toString().padStart(2, '0'),
+        hour: timestamp.getHours().toString().padStart(2, '0'),
+        minute: timestamp.getMinutes().toString().padStart(2, '0'),
+        second: timestamp.getSeconds().toString().padStart(2, '0')
+      };
+    },
+    toStandardFormat: (match) => {
+      const timestamp = new Date(parseInt(match[1]));
+      const year = timestamp.getFullYear().toString().slice(2);
+      const month = (timestamp.getMonth() + 1).toString().padStart(2, '0');
+      const day = timestamp.getDate().toString().padStart(2, '0');
+      const hour = timestamp.getHours().toString().padStart(2, '0');
+      const minute = timestamp.getMinutes().toString().padStart(2, '0');
+      const second = timestamp.getSeconds().toString().padStart(2, '0');
+      return `${year}${month}${day}-${hour}${minute}${second}`;
+    }
   }
 };
 
@@ -310,6 +337,32 @@ function jobIdToTimestamp(jobId) {
   return null;
 }
 
+/**
+ * Normalize any run ID format to standard YYMMDD-HHMMSS format
+ * This is critical for preventing duplicate job records
+ * 
+ * @param {string} runId - Run ID in any supported format
+ * @returns {string} - Normalized run ID in YYMMDD-HHMMSS format
+ */
+function normalizeRunId(runId) {
+  if (!runId) return null;
+  
+  // If it's already in standard format, return it
+  if (RUN_ID_FORMATS.STANDARD.regex.test(runId)) {
+    return runId;
+  }
+  
+  // Try each format to see if it matches
+  const formatInfo = detectRunIdFormat(runId);
+  if (formatInfo) {
+    return formatInfo.format.toStandardFormat(formatInfo.match);
+  }
+  
+  // If no format matched, return the original
+  logger.warn(`Could not normalize run ID: ${runId}`);
+  return runId;
+}
+
 module.exports = {
   // Core functions
   generateTimestampRunId,
@@ -324,6 +377,7 @@ module.exports = {
   detectRunIdFormat,
   convertToStandardFormat,
   jobIdToTimestamp,
+  normalizeRunId,
   
   // Record ID caching
   cacheRecordId,

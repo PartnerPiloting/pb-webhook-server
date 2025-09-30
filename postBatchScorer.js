@@ -16,6 +16,7 @@ const { getClientBase } = require('./config/airtableClient');
 
 // --- Repository Layer Dependencies ---
 const JobTracking = require('./services/jobTracking');
+const unifiedRunIdService = require('./services/unifiedRunIdService');
 
 // --- Post Scoring Dependencies ---
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
@@ -460,9 +461,10 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             
             logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
             
-            // Get standardized run ID with client info
+            // Get standardized run ID with client info - normalize first to ensure consistent format
+            const normalizedBaseRunId = unifiedRunIdService.normalizeRunId(runId);
             const standardizedRunId = unifiedRunIdService.addClientSuffix(
-                unifiedRunIdService.stripClientSuffix(runId),
+                unifiedRunIdService.stripClientSuffix(normalizedBaseRunId),
                 client.clientId
             );
                 
@@ -542,10 +544,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             console.log(`[POST_DEBUG] Processing mode: ${isStandalone ? 'STANDALONE' : 'PART OF WORKFLOW'}`);
         }
         
-        // Use the passed runId - no need to generate a new one
+        // Use normalized runId to prevent duplicate records
         // Complete all processing for this client
+        const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
         await JobTracking.completeClientProcessing({
-            runId: runId,
+            runId: normalizedRunId,
             clientId: client.clientId,
             finalMetrics: {
                 'Posts Processed': clientResult.postsProcessed,
