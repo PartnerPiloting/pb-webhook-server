@@ -61,6 +61,12 @@ async function createRunRecord(params) {
   const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, 'run_record');
   const source = options.source || 'unknown';
   
+  // STANDALONE CHECK: Don't create records in standalone mode
+  if (options.isStandalone === true) {
+    logger.info(`[RunRecordAdapterSimple] Skipping client run record creation for standalone run: ${runId}, ${clientId}`);
+    return { skipped: true, reason: 'standalone_run' };
+  }
+  
   logger.debug(`[RunRecordAdapterSimple] Creating run record for client ${clientId} from source ${source}`);
   
   try {
@@ -73,7 +79,29 @@ async function createRunRecord(params) {
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
-    // Direct call to the simple service
+    // CRITICAL: Check if client run record already exists first to prevent duplicates
+    // This uses the MASTER base directly, not client-specific bases
+    const masterBase = airtableClient.getMasterBase();
+    
+    if (!masterBase) {
+      throw new Error("Failed to get master base connection. This is required for client run records.");
+    }
+    
+    logger.debug(`[RunRecordAdapterSimple] Checking for existing client run record in MASTER base: ${standardRunId}, ${clientId}`);
+    
+    const existingRecords = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (existingRecords && existingRecords.length > 0) {
+      logger.info(`[RunRecordAdapterSimple] Client run record already exists for ${standardRunId}, ${clientId}, using existing record`);
+      return existingRecords[0];
+    }
+    
+    logger.debug(`[RunRecordAdapterSimple] No existing client run record found, creating new: ${standardRunId}, ${clientId}`);
+    
+    // Direct call to the simple service - only creates if doesn't exist
     return await airtableServiceSimple.createClientRunRecord(standardRunId, clientId, providedClientName);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating run record: ${error.message}`);
@@ -110,6 +138,12 @@ async function updateRunRecord(params) {
   logger.debug(`[RunRecordAdapterSimple] Updating run record for client ${clientId} from source ${source}`);
   
   try {
+    // STANDALONE CHECK: Don't update records in standalone mode
+    if (options.isStandalone === true) {
+      logger.info(`[RunRecordAdapterSimple] Skipping record update for standalone run: ${runId}, ${clientId}`);
+      return { skipped: true, reason: 'standalone_run' };
+    }
+    
     // Clean/standardize the run ID with normalization
     const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
@@ -119,7 +153,20 @@ async function updateRunRecord(params) {
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
-    // Direct call to the simple service
+    // CRITICAL: First check if the record exists
+    const recordExists = await checkRunRecordExists({ 
+      runId: standardRunId, 
+      clientId,
+      options: { source, logger }
+    });
+    
+    if (!recordExists) {
+      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot update non-existent record for ${standardRunId}, ${clientId}`;
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    // Direct call to the simple service - will only be called if record exists
     return await airtableServiceSimple.updateClientRun(standardRunId, clientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error updating run record: ${error.message}`);
@@ -158,6 +205,12 @@ async function completeRunRecord(params) {
   logger.debug(`[RunRecordAdapterSimple] Completing run record for client ${clientId} from source ${source}`);
   
   try {
+    // STANDALONE CHECK: Don't update records in standalone mode
+    if (options.isStandalone === true) {
+      logger.info(`[RunRecordAdapterSimple] Skipping record completion for standalone run: ${runId}, ${clientId}`);
+      return { skipped: true, reason: 'standalone_run' };
+    }
+    
     // Handle status as string or boolean
     const success = typeof status === 'boolean' ? status : (status === 'Completed' || status === 'Success');
     
@@ -170,7 +223,20 @@ async function completeRunRecord(params) {
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
-    // Direct call to the simple service
+    // CRITICAL: First check if the record exists
+    const recordExists = await checkRunRecordExists({ 
+      runId: standardRunId, 
+      clientId,
+      options: { source, logger }
+    });
+    
+    if (!recordExists) {
+      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot complete non-existent record for ${standardRunId}, ${clientId}`;
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    // Direct call to the simple service - will only be called if record exists
     return await airtableServiceSimple.completeClientRun(standardRunId, clientId, success, notes);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error completing run record: ${error.message}`);
@@ -199,15 +265,37 @@ async function createJobRecord(params) {
   
   const { runId, stream = 1, options = {} } = params;
   const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  const source = options.source || 'job_tracking';
+  
+  // STANDALONE CHECK: Don't create records in standalone mode
+  if (options.isStandalone === true) {
+    logger.info(`[RunRecordAdapterSimple] Skipping job record creation for standalone run: ${runId}`);
+    return { skipped: true, reason: 'standalone_run' };
+  }
   
   try {
     // Clean/standardize the run ID with normalization first
     const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
-    logger.debug(`[RunRecordAdapterSimple] Creating job tracking record with ID: ${baseRunId}`);
+    logger.debug(`[RunRecordAdapterSimple] Checking for existing job tracking record with ID: ${baseRunId}`);
     
-    // Direct call to the simple service
+    // CRITICAL: Check if job record already exists first
+    // This prevents duplicate job tracking records
+    const masterBase = airtableClient.getMasterBase();
+    const existingRecords = await masterBase(airtableServiceSimple.JOB_TRACKING_TABLE).select({
+      filterByFormula: `{Run ID} = '${baseRunId}'`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (existingRecords && existingRecords.length > 0) {
+      logger.info(`[RunRecordAdapterSimple] Job tracking record already exists for ${baseRunId}, using existing record`);
+      return existingRecords[0];
+    }
+    
+    logger.debug(`[RunRecordAdapterSimple] No existing job record found, creating new with ID: ${baseRunId}`);
+    
+    // Direct call to the simple service - only creates if doesn't exist
     return await airtableServiceSimple.createJobTrackingRecord(baseRunId, stream);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating job record: ${error.message}`);
@@ -238,15 +326,37 @@ async function completeJobRecord(params) {
   
   const { runId, success = true, notes = '', options = {} } = params;
   const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  const source = options.source || 'job_tracking';
+  
+  // STANDALONE CHECK: Don't update records in standalone mode
+  if (options.isStandalone === true) {
+    logger.info(`[RunRecordAdapterSimple] Skipping job record completion for standalone run: ${runId}`);
+    return { skipped: true, reason: 'standalone_run' };
+  }
   
   try {
     // Clean/standardize the run ID with normalization first
     const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
-    logger.debug(`[RunRecordAdapterSimple] Completing job tracking record with ID: ${baseRunId}`);
+    logger.debug(`[RunRecordAdapterSimple] Checking for job record before completing: ${baseRunId}`);
     
-    // Direct call to the simple service
+    // CRITICAL: Check if job record exists first
+    const masterBase = airtableClient.getMasterBase();
+    const existingRecords = await masterBase(airtableServiceSimple.JOB_TRACKING_TABLE).select({
+      filterByFormula: `{Run ID} = '${baseRunId}'`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (!existingRecords || existingRecords.length === 0) {
+      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot complete non-existent job record for ${baseRunId}`;
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    logger.debug(`[RunRecordAdapterSimple] Found job record, completing with ID: ${baseRunId}`);
+    
+    // Direct call to the simple service - only updates if exists
     return await airtableServiceSimple.completeJobRun(baseRunId, success, notes);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error completing job record: ${error.message}`);
@@ -594,8 +704,9 @@ async function safeUpdateMetrics(params) {
   const logger = options.logger || new StructuredLogger(clientId, null, processType);
   const source = options.source || processType;
   
-  // If this is a standalone run, don't update metrics
-  if (isStandalone) {
+  // CRITICAL CHECK: Early exit for standalone runs
+  // No records should be created or updated in standalone mode
+  if (isStandalone === true) {
     logger.info(`[${processType}] Skipping metrics update for standalone run ${runId}`);
     return {
       success: true,
@@ -608,7 +719,8 @@ async function safeUpdateMetrics(params) {
   try {
     logger.debug(`[${processType}] Checking if run record exists for ${runId} (${clientId})`);
     
-    // First check if the run record exists using our robust function
+    // CRITICAL: First check if the run record exists using our robust function
+    // This prevents any attempt to create records during an update operation
     const recordExists = await checkRunRecordExists({ 
       runId, 
       clientId,
@@ -619,8 +731,9 @@ async function safeUpdateMetrics(params) {
     });
     
     if (!recordExists) {
-      // Record doesn't exist - log warning but don't throw error
-      logger.warn(`[${processType}] Run record not found for ${runId} (${clientId}). Metrics update skipped.`);
+      // Record doesn't exist - log error and do NOT attempt to create it
+      // This is critical to prevent duplicate records
+      logger.error(`[${processType}] CRITICAL: Run record not found for ${runId} (${clientId}). Metrics update SKIPPED. Check that record creation happened at workflow start.`);
       return {
         success: false,
         skipped: true,
