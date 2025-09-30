@@ -885,8 +885,8 @@ async function main() {
                 jobType: 'smart_resume',
                 runId,
                 finalMetrics: {
-                    'Clients Processed': clientsNeedingWork.length, 
-                    'Total Operations': totalJobsStarted,
+                    // Use only fields that exist in the Airtable schema
+                    'System Notes': notes,
                     'Success Rate': successRate,
                     'System Notes': notes
                 }

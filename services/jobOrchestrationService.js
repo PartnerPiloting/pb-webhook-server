@@ -48,13 +48,12 @@ async function startJob(params) {
     const runId = JobTracking.generateRunId();
     log.info(`Generated run ID ${runId} for job type ${jobType}`);
     
-    // Enhanced initial data with job type and timestamp
+    // Enhanced initial data with timestamp - don't use 'Job Type' field as it doesn't exist
     const enhancedInitialData = {
         ...initialData,
-        'Job Type': jobType,
         'System Notes': initialData['System Notes'] 
-            ? `${initialData['System Notes']}\nJob started by orchestration service.` 
-            : `Job started by orchestration service.`
+            ? `${initialData['System Notes']}\nJob started by orchestration service for ${jobType}.` 
+            : `Job started by orchestration service for ${jobType}.`
     };
     
     // Create the job tracking record - the ONLY place this should happen
@@ -71,7 +70,7 @@ async function startJob(params) {
             runId,
             clientId,
             initialData: {
-                'Job Type': jobType,
+                // Remove Job Type field that doesn't exist
                 'System Notes': `Processing ${jobType} for client ${clientId}`
             },
             options
