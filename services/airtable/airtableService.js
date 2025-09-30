@@ -135,7 +135,7 @@ async function createRunRecord(params) {
     const clientName = client ? client.clientName : clientId;
     
     // Create the run record using the runRecordService
-    return await runRecordService.createRunRecord({
+    return await runRecordService.createClientRunRecord({
       clientId,
       runId,
       clientName,
@@ -162,11 +162,11 @@ async function updateRunRecord(params) {
   const { clientId, runId, updates, createIfMissing = true, options = {} } = params;
   
   try {
-    // Use the runRecordService
-    return await runRecordService.updateRunRecord({
+    // Use the correct method in runRecordService
+    return await runRecordService.updateClientMetrics({
       clientId,
       runId,
-      updates,
+      metrics: updates,
       createIfMissing,
       options
     });
