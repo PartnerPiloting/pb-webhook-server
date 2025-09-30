@@ -98,7 +98,12 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
             clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
             
             try {
-                const clientResult = await processClientPostScoring(client, limit, clientLogger, { ...options, diagnosticsCollector });
+                // Explicitly pass the normalized runId to ensure consistency
+                const clientResult = await processClientPostScoring(client, limit, clientLogger, { 
+                    ...options, 
+                    diagnosticsCollector,
+                    runId: normalizedRunId  // Ensure consistent runId usage
+                });
                 results.clientResults.push(clientResult);
                 
                 // We now treat both success and completed_with_errors/failed similarly for aggregation,
@@ -238,20 +243,18 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     }
     
     try {
-        // Generate a timestamp-based run ID using unified service
-        const timestamp = new Date();
-        const datePart = `${timestamp.getFullYear().toString().slice(2)}${(timestamp.getMonth() + 1).toString().padStart(2, '0')}${timestamp.getDate().toString().padStart(2, '0')}`;
-        const timePart = `${timestamp.getHours().toString().padStart(2, '0')}${timestamp.getMinutes().toString().padStart(2, '0')}${timestamp.getSeconds().toString().padStart(2, '0')}`;
-        const standardizedRunId = `${datePart}-${timePart}`;
+        // Use the runId passed from the parent function to ensure consistency
+        // This ensures we use the same runId throughout the system
+        const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
         
-        // Use provided jobId or the standardized run ID
-        const jobId = options.jobId || standardizedRunId;
+        // Pass the normalized runId to child operations
+        options.runId = normalizedRunId;
         
-        // Store the standardized run ID for later use
-        options.standardizedRunId = standardizedRunId;
+        // For backward compatibility during transition
+        options.standardizedRunId = normalizedRunId;
         
         if (process.env.VERBOSE_POST_SCORING === "true") {
-            console.log(`[POST_DEBUG] Setting job status to RUNNING with ID: ${jobId} (standardized: ${standardizedRunId})`);
+            console.log(`[POST_DEBUG] Setting job status to RUNNING with normalized ID: ${normalizedRunId}`);
         }
         
         try {
@@ -448,29 +451,29 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         
         clientResult.status = clientResult.errors === 0 ? 'success' : 'completed_with_errors';
         
-        // Always update metrics in Client Run Results table using our standardized run ID
+        // Always update metrics in Client Run Results table using the normalized runId
         try {
-            // Use the standardized run ID we created at the beginning
-            const runId = options.parentRunId || options.standardizedRunId || options.jobId;
+            // Use the normalized runId consistently that was passed from the parent function
+            // This ensures we're updating the same record that was created in apiAndJobRoutes.js
+            const processRunId = options.runId;
             
             // If we don't have any valid ID, don't try to update metrics
-            if (!runId) {
+            if (!processRunId) {
                 logger.warn(`No valid run ID available for client ${client.clientId}, skipping metrics update`);
                 return clientResult;
             }
             
-            logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${runId}`);
+            logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${processRunId}`);
             
-            // Get standardized run ID with client info - normalize first to ensure consistent format
-            const normalizedBaseRunId = unifiedRunIdService.normalizeRunId(runId);
-            const standardizedRunId = unifiedRunIdService.addClientSuffix(
-                unifiedRunIdService.stripClientSuffix(normalizedBaseRunId),
+            // Add client suffix to the normalized runId for client-specific records
+            const clientSpecificRunId = unifiedRunIdService.addClientSuffix(
+                unifiedRunIdService.stripClientSuffix(processRunId),
                 client.clientId
             );
                 
                 // Update metrics in the Client Run Results table
                 console.log(`[DEBUG-METRICS] PREPARING TO UPDATE POST METRICS for ${client.clientId}`);
-                console.log(`[DEBUG-METRICS] - Run ID: ${standardizedRunId}`);
+                console.log(`[DEBUG-METRICS] - Run ID: ${clientSpecificRunId}`);
                 console.log(`[DEBUG-METRICS] - Posts Examined for Scoring: ${clientResult.postsProcessed}`);
                 console.log(`[DEBUG-METRICS] - Posts Successfully Scored: ${clientResult.postsScored}`);
                 console.log(`[DEBUG-METRICS] - Status: ${clientResult.status}`);
@@ -487,11 +490,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                     console.log(`[DEBUG-METRICS] - clientResult.totalTokensUsed: ${clientResult.totalTokensUsed}`);
                 }
                 
-                logger.debug(`Updating run record for client ${client.clientId} with run ID ${standardizedRunId}`);
+                logger.debug(`Updating run record for client ${client.clientId} with run ID ${clientSpecificRunId}`);
                 
                 try {
                     await JobTracking.updateClientMetrics({
-                        runId: standardizedRunId,
+                        runId: clientSpecificRunId,
                         clientId: client.clientId,
                         metrics: {
                             'Posts Examined for Scoring': clientResult.postsProcessed,
@@ -544,11 +547,10 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             console.log(`[POST_DEBUG] Processing mode: ${isStandalone ? 'STANDALONE' : 'PART OF WORKFLOW'}`);
         }
         
-        // Use normalized runId to prevent duplicate records
+        // Use the normalized runId from options that was passed from the parent function
         // Complete all processing for this client
-        const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
         await JobTracking.completeClientProcessing({
-            runId: normalizedRunId,
+            runId: options.runId, // Use the consistent runId from options
             clientId: client.clientId,
             finalMetrics: {
                 'Posts Processed': clientResult.postsProcessed,
@@ -564,12 +566,12 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         logger.summary(`Completed all processing for client ${client.clientId} with duration=${clientResult.duration}s, posts scored=${clientResult.postsScored}`);
         
         // Also update the main job tracking record to show progress
-        // Check if runId is defined before attempting to update job status
-        if (!runId) {
+        // Check if options.runId is defined before attempting to update job status
+        if (!options.runId) {
             logger.warn(`No valid run ID available for client ${client.clientId}, skipping job status update`);
         } else {
             await JobTracking.updateJob({
-                runId: runId,
+                runId: options.runId, // Use consistent runId from options
                 updates: {
                     'Last Client': client.clientId,
                     'Progress': `Processed client ${client.clientId}: ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored`
