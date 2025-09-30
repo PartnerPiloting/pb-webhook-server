@@ -70,12 +70,16 @@ const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 // Using the unified job tracking system
 const airtableService = require('../services/airtable/airtableService');
 const JobTracking = require('../services/jobTracking');
+// Add the missing unifiedRunIdService import
+const unifiedRunIdService = require('../services/unifiedRunIdService');
+// Define runIdService for backward compatibility
+const runIdService = unifiedRunIdService;
 let runId = 'INITIALIZING';
 let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();
     console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
 };
-console.log(`🔍 TRACE: Run ID generator loaded`);
+console.log(`🔍 TRACE: Run ID generator and services loaded`);
 
 console.log(`🔍 TRACE: About to define checkOperationStatus function`);
 async function checkOperationStatus(clientId, operation) {
