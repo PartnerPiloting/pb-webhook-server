@@ -9,7 +9,8 @@ const { StructuredLogger } = require('../../utils/structuredLogger');
 const baseManager = require('./baseManager');
 const leadRepository = require('./leadRepository');
 const clientRepository = require('./clientRepository');
-const runIdService = require('./runIdService');
+// Fix import path to use unifiedRunIdService
+const runIdService = require('../../services/unifiedRunIdService');
 const jobTrackingRepository = require('./jobTrackingRepository');
 const runRecordRepository = require('./runRecordRepository');
 
