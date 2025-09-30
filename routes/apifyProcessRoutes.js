@@ -666,18 +666,40 @@ async function processClientHandler(req, res) {
     } else {
       console.log(`[DEBUG-RUN-ID-FLOW] Using provided parent run ID: ${parentRunId}`);
       
-      // We have a parent run ID from a parent process (likely Smart Resume) - create a record
+      // ARCHITECTURAL FIX: We should ONLY check for existing records, never create them in this route
       try {
-        console.log(`[DEBUG-RUN-ID-FLOW] Attempting to create run record with runId=${parentRunId}, clientId=${clientId}, source=post_harvesting_parent`);
-        await runRecordService.createClientRunRecord({
+        console.log(`[DEBUG-RUN-ID-FLOW] Checking for existing run record with runId=${parentRunId}, clientId=${clientId}`);
+        
+        // Check if record exists first
+        const recordExists = await runRecordService.checkRunRecordExists({
           runId: parentRunId,
           clientId,
-          clientName: clientId, // Add client name for better tracking
           options: {
-            source: 'batch_process', // Use an allowed source from the allowlist
+            source: 'post_harvesting_check',
+          }
+        });
+        
+        if (!recordExists) {
+          console.error(`[CRITICAL ERROR] No run record exists for ${parentRunId}/${clientId} - cannot process webhook without an existing run record`);
+          return res.status(400).json({
+            error: 'No active run found for this client',
+            message: 'Post harvesting webhooks must be part of an active run with an existing record',
+            runId: parentRunId,
+            clientId
+          });
+        }
+        
+        // Record exists, update it with webhook received status
+        await runRecordService.updateRunRecord({
+          runId: parentRunId,
+          clientId,
+          updates: {
+            'System Notes': `Apify webhook received at ${new Date().toISOString()}`,
+            'Status': 'Running',
           },
-          operation: 'post_harvesting',
-          status: 'running',
+          options: {
+            source: 'post_harvesting_webhook',
+          },
           date: new Date().toISOString()
         });
         console.log(`[DEBUG-RUN-ID-FLOW] Successfully created new run record for ${parentRunId}`);

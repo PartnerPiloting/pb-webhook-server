@@ -380,7 +380,7 @@ async function updateClientRunMetrics(runId, clientId, data) {
             console.log(`[APIFY_METRICS] Creating new run record for ${standardizedRunId} because it doesn't exist`);
             try {
                 // Create the run record if it doesn't exist
-                await airtableService.createClientRunRecord(standardizedRunId, clientId, {
+                throw new Error(`[APIFY_METRICS] CRITICAL ERROR: No run record exists - cannot update metrics`); // ARCHITECTURAL FIX: Removed record creation(standardizedRunId, clientId, {
                     'Status': 'RUNNING',
                     'Client ID': clientId,
                     'System Notes': `Created during Apify webhook processing for run ${runId}`
