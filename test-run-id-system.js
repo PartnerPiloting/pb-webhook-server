@@ -3,7 +3,8 @@
  * This script tests all the key components and integration points
  */
 
-const runIdService = require('./services/runIdService');
+// Updated to use unified run ID service
+const runIdService = require('./services/unifiedRunIdService');
 const recordCache = require('./services/recordCache');
 
 // Colors for console output

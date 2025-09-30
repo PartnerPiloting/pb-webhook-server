@@ -1,9 +1,10 @@
 // services/recordCache.js
 // A module to cache and retrieve Airtable record IDs
 
-const runIdService = require('./runIdService');
+// Updated to use unified run ID service
+const runIdService = require('./unifiedRunIdService');
 
-// DEPRECATED: This module is being replaced by runIdService
+// DEPRECATED: This module is being replaced by unifiedRunIdService
 // Keeping for backwards compatibility during migration
 // New code should use runIdService directly
 

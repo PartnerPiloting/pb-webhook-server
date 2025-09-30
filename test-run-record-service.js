@@ -5,7 +5,8 @@ require('dotenv').config();
 const { StructuredLogger } = require('./utils/structuredLogger');
 const runRecordServiceV2 = require('./services/runRecordServiceV2');
 const runRecordAdapter = require('./services/runRecordAdapter');
-const runIdService = require('./services/runIdService');
+// Updated to use unified run ID service
+const runIdService = require('./services/unifiedRunIdService');
 
 // Create a test logger
 const logger = new StructuredLogger('TEST', 'test_session', 'run_record_test');

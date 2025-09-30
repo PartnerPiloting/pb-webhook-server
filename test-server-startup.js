@@ -41,7 +41,8 @@ console.log(`\n${colors.blue}Testing circular dependencies...${colors.reset}`);
 
 // Test for circular dependencies
 try {
-  const runIdService = require('./services/runIdService');
+  // Updated to use unified run ID service
+  const runIdService = require('./services/unifiedRunIdService');
   const recordCache = require('./services/recordCache');
   
   // Test basic interaction

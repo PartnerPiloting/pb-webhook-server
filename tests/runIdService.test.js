@@ -1,7 +1,8 @@
 // tests/runIdService.test.js
 // Tests for the Run ID Service
 
-const runIdService = require('../services/runIdService');
+// Updated to use unified run ID service
+const runIdService = require('../services/unifiedRunIdService');
 
 // Helper to mock console.log to avoid cluttering test output
 const originalConsoleLog = console.log;

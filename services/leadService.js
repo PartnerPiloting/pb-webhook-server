@@ -7,7 +7,8 @@ const base = require('../config/airtableClient.js');
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
 const { slimLead } = require('../promptBuilder.js');
 const airtableService = require('./airtableService');
-const runIdService = require('./runIdService');
+// Updated to use unified run ID service
+const runIdService = require('./unifiedRunIdService');
 const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 
 async function upsertLead(
