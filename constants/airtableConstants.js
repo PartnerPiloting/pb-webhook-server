@@ -103,7 +103,9 @@ const JOB_TRACKING_FIELDS = {
   LAST_CLIENT: 'Last Client',
   
   // Aggregate metrics
-  TOTAL_CLIENTS_PROCESSED: 'Total Clients Processed',
+  CLIENTS_PROCESSED: 'Clients Processed', // Corrected field name
+  CLIENTS_SUCCEEDED: 'Clients Succeeded', // Added for consistency with airtableFields.js
+  CLIENTS_FAILED: 'Clients Failed', // Added for consistency with airtableFields.js
   TOTAL_PROFILES_EXAMINED: 'Total Profiles Examined',
   TOTAL_PROFILES_SCORED: 'Total Profiles Scored',
   SUCCESS_RATE: 'Success Rate', // Formula field

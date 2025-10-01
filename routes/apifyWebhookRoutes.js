@@ -141,8 +141,12 @@ async function apifyWebhookHandler(req, res) {
             logger.info(`Using newly created job run ID: ${jobRunId} from orchestration service`);
         }
         
-        // Process the webhook in background
-        processWebhook(payload, apifyRunId, clientId, jobRunId).catch(error => {
+        // CRITICAL FIX: Ensure jobRunId is properly validated before passing to background process
+        const validatedJobRunId = typeof jobRunId === 'string' ? jobRunId : 
+                                 (jobRunId && jobRunId.runId ? jobRunId.runId : String(jobRunId));
+        
+        // Process the webhook in background with validated runId
+        processWebhook(payload, apifyRunId, clientId, validatedJobRunId).catch(error => {
             logger.error(`Background processing failed: ${error.message}`, { error });
         });
         
@@ -346,7 +350,11 @@ function extractPostsFromPayload(payload) {
  * @returns {Promise<void>} - Processing promise
  */
 async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
-    const clientLogger = new StructuredLogger(clientId, null, 'apify_webhook');
+    // CRITICAL FIX: Ensure jobRunId is properly validated and used as a string in the logger
+    const validJobRunId = typeof jobRunId === 'string' ? jobRunId : 
+                         (jobRunId && jobRunId.runId ? jobRunId.runId : String(jobRunId));
+    
+    const clientLogger = new StructuredLogger(clientId, validJobRunId, 'apify_webhook');
     
     try {
         clientLogger.info(`Starting background processing for Apify run ${apifyRunId}`);
@@ -387,7 +395,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             
             // Still update client-specific metrics
             await JobTracking.completeClientProcessing({
-                runId: jobRunId,
+                runId: validJobRunId, // CRITICAL FIX: Use validated ID
                 clientId,
                 finalMetrics: {
                     'Total Posts Harvested': 0,
