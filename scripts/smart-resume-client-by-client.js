@@ -72,8 +72,8 @@ const airtableService = require('../services/airtable/airtableService');
 const JobTracking = require('../services/jobTracking');
 // Add the missing unifiedRunIdService import
 const unifiedRunIdService = require('../services/unifiedRunIdService');
-// Import status constants
-const { STATUS_VALUES } = require('../constants/airtableConstants');
+// Import status constants from the unified constants
+const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 // Import job orchestration service
 const jobOrchestrationService = require('../services/jobOrchestrationService');
 // Import the ParameterValidator utility

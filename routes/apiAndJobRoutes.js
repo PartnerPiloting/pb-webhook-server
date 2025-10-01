@@ -13,7 +13,14 @@ const geminiConfig = require("../config/geminiClient.js");
 const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
-const { STATUS_VALUES } = require("../constants/airtableConstants.js");
+const { 
+  CLIENT_TABLES, 
+  LEAD_FIELDS, 
+  CLIENT_RUN_RESULTS_FIELDS,
+  JOB_TRACKING_FIELDS, 
+  STATUS_VALUES 
+} = require("../constants/airtableUnifiedConstants.js");
+const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 const runIdUtils = require('../utils/runIdUtils.js');
 // Use the unified services
 const unifiedRunIdService = require('../services/unifiedRunIdService.js');
@@ -1355,7 +1362,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
       jobType: 'post_scoring',
       clientId: clientId,
       initialData: {
-        'Client ID': clientId
+        [CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID]: clientId
       }
     });
     

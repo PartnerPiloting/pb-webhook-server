@@ -28,7 +28,9 @@ const airtableClient = require('../config/airtableClient');
 // Import the unified run ID service for normalization
 const unifiedRunIdService = require('./unifiedRunIdService');
 // Import field validator for consistent field naming
-const { FIELD_NAMES, STATUS_VALUES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
+// Removed duplicate STATUS_VALUES import, using the unified constants directly 
+const { FIELD_NAMES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
+const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 const { CLIENT_RUN_RESULTS_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
 
 /**

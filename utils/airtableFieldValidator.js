@@ -83,15 +83,9 @@ const FIELD_NAMES = {
 
 /**
  * Status value constants to ensure consistency
+ * NOTE: This was causing a duplicate declaration conflict. 
+ * Now using STATUS_VALUES imported from constants/airtableUnifiedConstants.js instead of declaring it here
  */
-const STATUS_VALUES = {
-  RUNNING: 'Running',
-  COMPLETED: 'Completed successfully',
-  FAILED: 'Failed',
-  SKIPPED: 'Skipped',
-  ERROR: 'Error',
-  NO_LEADS: 'No leads to process'
-};
 
 /**
  * Validates if an object has valid Airtable field names
