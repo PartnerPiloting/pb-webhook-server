@@ -732,7 +732,7 @@ async function run(req, res, dependencies) {
                                 await runRecordService.completeRunRecord({
                                     runId, 
                                     clientId, 
-                                    status: 'Skipped', 
+                                    Status: 'Skipped', 
                                     notes: `No action taken: ${reason}`,
                                     options: {
                                         logger: clientLogger,
@@ -828,9 +828,9 @@ async function run(req, res, dependencies) {
                         if (runId) {
                             try {
                                 const metrics = {
-                                    'Profiles Examined for Scoring': chunkResult.processed,
-                                    'Profiles Successfully Scored': chunkResult.successful,
-                                    'Profile Scoring Tokens': chunkResult.tokensUsed
+                                    'Profiles Examined for Scoring': chunkResult.processed || 0,
+                                    'Profiles Successfully Scored': chunkResult.successful || 0,
+                                    'Profile Scoring Tokens': chunkResult.tokensUsed || 0
                                 };
                                 await trackLeadProcessingMetrics(runId, clientId, metrics);
                             } catch (metricError) {

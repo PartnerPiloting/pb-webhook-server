@@ -511,10 +511,10 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                         runId: clientSpecificRunId,
                         clientId: client.clientId,
                         metrics: {
-                            postsExamined: clientResult.postsProcessed,
-                            postsScored: clientResult.postsScored,
-                            tokensUsed: postScoringTokens,
-                            errors: clientResult.errors,
+                            postsExamined: clientResult.postsProcessed || 0,
+                            postsScored: clientResult.postsScored || 0,
+                            tokensUsed: postScoringTokens || 0,
+                            errors: clientResult.errors || 0,
                             errorDetails: clientResult.errorDetails || [],
                             leadsSkipped: clientResult.leadsSkipped || 0
                         },
@@ -580,10 +580,10 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             runId: safeRunId, // Use the consistent runId from options
             clientId: safeClientId,
             finalMetrics: {
-                'Posts Examined for Scoring': clientResult.postsProcessed,
-                'Posts Successfully Scored': clientResult.postsScored,
+                'Posts Examined for Scoring': clientResult.postsProcessed || 0,
+                'Posts Successfully Scored': clientResult.postsScored || 0,
                 'Post Scoring Tokens': clientResult.totalTokensUsed || 0,
-                'errors': clientResult.errors
+                'errors': clientResult.errors || 0
             },
             options: {
                 source: 'postBatchScorer_completion',
