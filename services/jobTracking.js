@@ -12,6 +12,8 @@
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
+// FIXED: Import our new validator utility for more robust ID validation
+const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
 
 // Database access
 const baseManager = require('./airtable/baseManager');
@@ -701,17 +703,28 @@ class JobTracking {
     
     const { runId, clientId, finalMetrics = {}, options = {} } = params;
     
-    // Validate required parameters
+    // FIXED: More robust validation that can handle objects being passed as IDs
     try {
+      // This will throw if parameters are missing
       validateRequiredParams(params, ['runId', 'clientId'], 'completeClientProcessing');
+      
+      // Use our new validators that can extract IDs from objects
+      const safeRunId = validateAndNormalizeRunId(runId) || 
+                        validateString(runId, 'runId', 'completeClientProcessing');
+      const safeClientId = validateAndNormalizeClientId(clientId) || 
+                          validateString(clientId, 'clientId', 'completeClientProcessing');
+      
+      // Override the original parameters with safe versions
+      params.runId = safeRunId;
+      params.clientId = safeClientId;
     } catch (error) {
       logger.error(`Parameter validation failed: ${error.message}`);
       throw error;
     }
     
-    // Simple string validation for critical parameters
-    const safeRunId = validateString(runId, 'runId', 'completeClientProcessing');
-    const safeClientId = validateString(clientId, 'clientId', 'completeClientProcessing');
+    // Use the validated parameters
+    const safeRunId = params.runId;
+    const safeClientId = params.clientId;
     
     // Use existing logger or create a safe one
     const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
