@@ -265,106 +265,20 @@ async function createClientRunRecord(params) {
     throw error;
   }
   
-  // REMOVED: All the direct database access code
-  // This service now delegates to JobTracking which is the single point of record creation
-  
-  // All of the following code was removed because it created records directly
-  // instead of delegating to the centralized service
-  
-  // The JobTracking.createClientRun function properly:
-  // 1. Normalizes the run ID
-  // 2. Checks for existing records
-  // 3. Prevents duplicates
-  // 4. Creates the record with proper fields
-  
-  // By delegating to JobTracking, we ensure:
-  // - Only ONE place in the code creates client run records
-  // - Consistent run ID normalization
-  // - No duplicates due to slight run ID variations
-  
-  // NOTE: This code is replaced by the delegation to JobTracking.createClientRun above
-    
-    // Then check for exact match as a final verification
-    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
-    logger.debug(`Run Record Service: Looking for exact Run ID match: ${exactIdQuery}`);
-    
-    const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: exactIdQuery,
-      maxRecords: 1
-    }).firstPage();
-    
-    if (exactMatches && exactMatches.length > 0) {
-      const existingRecord = exactMatches[0];
-      const errorMsg = `Client run record already exists for ${standardRunId}, client ${clientId}, record ID ${existingRecord.id}`;
-      logger.error(errorMsg);
-      
-      // Register this record to prevent future duplication attempts
-      runIdService.registerRunRecord(standardRunId, clientId, existingRecord.id);
-      runRecordRegistry.set(registryKey, existingRecord);
-      
-      trackActivity('create_client', standardRunId, clientId, source, `ERROR: ${errorMsg}`);
-      throw new Error(errorMsg);
-    }
-    
-    logger.debug(`Run Record Service: No existing record found, will create new one`);
-  } catch (error) {
-    if (error.message.includes('already exists')) {
-      throw error;
-    }
-    logger.error(`Run Record Service ERROR during record check: ${error.message}`);
-    // Continue to create a new record if the error was just in checking
-  }
-  
-  // Create a new record with our standardized ID
-  logger.debug(`Run Record Service: Creating new client run record for ${clientId} with standardized ID ${standardRunId}`);
-  
-  // Use current time for Start Time
-  const startTimestamp = new Date().toISOString();
-  
-  try {
-    // Create new record without the problematic Source field
-    const recordFields = {
-      'Run ID': standardRunId,
-      'Client ID': clientId,
-      'Client Name': clientName,
-      'Start Time': startTimestamp,
-      'Status': 'Running',
-      'Profiles Examined for Scoring': 0,
-      'Profiles Successfully Scored': 0,
-      'Total Posts Harvested': 0,
-      'Profile Scoring Tokens': 0,
-      'Post Scoring Tokens': 0,
-      'System Notes': `Processing started at ${startTimestamp} from ${source}`
-    };
-    
-    const recordData = {
-      fields: recordFields
-    };
-    
-    logger.debug(`Run Record Service: Record data: ${JSON.stringify(recordData)}`);
-    
-    const records = await base(CLIENT_RUN_RESULTS_TABLE).create([recordData]);
-
-    // Register the new record ID with runIdService
-    const recordId = records[0].id;
-    runIdService.registerRunRecord(standardRunId, clientId, recordId);
-    
-    // Generate a registry key for this run+client combination
-    const registryKey = `${standardRunId}:${clientId}`;
-    
-    // Add to runtime registry
-    runRecordRegistry.set(registryKey, records[0]);
-    
-    // Track this activity
-    trackActivity('create_client', standardRunId, clientId, source, `SUCCESS: Created record ID ${recordId}`);
-    
-    logger.debug(`Run Record Service: Created client run record ID: ${recordId}`);
-    return records[0];
-  } catch (error) {
-    logger.error(`Run Record Service ERROR: Failed to create client run record: ${error.message}`);
-    trackActivity('create_client', standardRunId, clientId, source, `ERROR: ${error.message}`);
-    throw error;
-  }
+  /* REMOVED: All direct database access code was removed during refactoring.
+   * This service now delegates to JobTracking which is the single point of record creation.
+   * 
+   * The JobTracking.createClientRun function properly:
+   * 1. Normalizes the run ID
+   * 2. Checks for existing records
+   * 3. Prevents duplicates
+   * 4. Creates the record with proper fields
+   * 
+   * By delegating to JobTracking, we ensure:
+   * - Only ONE place in the code creates client run records
+   * - Consistent run ID normalization
+   * - No duplicates due to slight run ID variations
+   */
 }
 
 /**
