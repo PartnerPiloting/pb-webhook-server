@@ -194,7 +194,7 @@ async function apifyWebhookHandler(req, res) {
         // Update job tracking record if it was created
         if (jobRunId) {
             // Additional validation to ensure the jobRunId is properly defined
-            const normalizedRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+            const normalizedRunId = jobRunId ? unifiedRunIdService.normalizeRunId(jobRunId) : null;
             if (!normalizedRunId) {
                 logger.error("Cannot update job status: normalized runId is not valid");
             } else {
