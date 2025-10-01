@@ -120,12 +120,14 @@ async function updatePostScoringMetrics(params) {
     
     return {
       success: true,
+      Status: 'success',
       result
     };
   } catch (error) {
     logger.error(`Failed to update post scoring metrics: ${error.message}`);
     return {
       success: false,
+      Status: 'error',
       error: error.message
     };
   }

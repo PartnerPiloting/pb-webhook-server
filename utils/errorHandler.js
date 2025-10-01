@@ -177,7 +177,7 @@ function handleClientError(clientId, operation, error, options = {}) {
  * @returns {Promise<Object>} Object with validation results
  */
 async function validateFields(base, tableName, requiredFields, options = {}) {
-  const logger = options.logger || new StructuredLogger('SYSTEM', null, 'field_validation');
+  const logger = options.logger || createSafeLogger('SYSTEM', null, 'field_validation');
   const results = {
     valid: true,
     missingFields: [],
@@ -249,7 +249,7 @@ async function validateFields(base, tableName, requiredFields, options = {}) {
  */
 async function safeOperation(clientId, operationFn, fallbackFn = null, options = {}) {
   const operationName = options.operation || 'unknown';
-  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, operationName);
+  const logger = options.logger || createSafeLogger(clientId || 'SYSTEM', null, operationName);
   
   try {
     // Log operation start with context
@@ -323,7 +323,7 @@ async function safeOperation(clientId, operationFn, fallbackFn = null, options =
  */
 async function safeFieldUpdate(base, tableName, recordId, updates, options = {}) {
   const clientId = options.clientId || 'SYSTEM';
-  const logger = options.logger || new StructuredLogger(clientId, null, 'field_update');
+  const logger = options.logger || createSafeLogger(clientId, null, 'field_update');
   const skipMissing = options.skipMissing !== false; // Default to true
   const convertTypes = options.convertTypes !== false; // Default to true
   

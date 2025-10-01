@@ -246,7 +246,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     try {
         // Use the runId passed from the parent function to ensure consistency
         // This ensures we use the same runId throughout the system
-        const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+        const normalizedRunId = runId ? unifiedRunIdService.normalizeRunId(runId) : `post_batch_${Date.now()}`;
         
         // Pass the normalized runId to child operations
         options.runId = normalizedRunId;
