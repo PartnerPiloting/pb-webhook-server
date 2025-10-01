@@ -18,6 +18,17 @@ const { createSafeLogger } = require('./loggerHelper');
 // Import specialized error classes
 const { FieldNameError } = require('./airtableErrors');
 
+// Import unified constants
+const { 
+  MASTER_TABLES,
+  CLIENT_TABLES,
+  LEAD_FIELDS,
+  CLIENT_RUN_RESULTS_FIELDS, 
+  JOB_TRACKING_FIELDS,
+  STATUS_VALUES,
+  SCORING_STATUS_VALUES
+} = require('../constants/airtableUnifiedConstants');
+
 // Base logger for this module
 const logger = createSafeLogger('SYSTEM', 'field-validator', 'airtable');
 
@@ -25,26 +36,32 @@ const logger = createSafeLogger('SYSTEM', 'field-validator', 'airtable');
  * Consolidated constants for Airtable field names
  * These are the EXACT field names as they appear in Airtable
  * Case sensitivity matters - Airtable will reject incorrect case
+ * 
+ * NOTE: This is now using the consolidated constants from airtableUnifiedConstants.js
  */
+// Merge all field constants for easy access
 const FIELD_NAMES = {
-  // Common status fields
-  STATUS: 'Status',
-  SYSTEM_NOTES: 'System Notes',
+  // Client Run Results Fields
+  ...CLIENT_RUN_RESULTS_FIELDS,
   
-  // Time tracking fields
-  START_TIME: 'Start Time',
-  END_TIME: 'End Time',
-  DURATION: 'Duration',
+  // Job Tracking Fields
+  ...JOB_TRACKING_FIELDS,
   
-  // Run identification fields
-  RUN_ID: 'Run ID',
-  CLIENT_ID: 'Client ID',
-  CLIENT_NAME: 'Client Name',
+  // Lead Fields
+  ...LEAD_FIELDS,
   
-  // Lead scoring metrics
-  PROFILES_EXAMINED: 'Profiles Examined for Scoring',
-  PROFILES_SCORED: 'Profiles Successfully Scored',
-  PROFILE_SCORING_TOKENS: 'Profile Scoring Tokens',
+  // Common fields (duplicated for backward compatibility)
+  STATUS: CLIENT_RUN_RESULTS_FIELDS.STATUS,
+  SYSTEM_NOTES: CLIENT_RUN_RESULTS_FIELDS.SYSTEM_NOTES,
+  START_TIME: CLIENT_RUN_RESULTS_FIELDS.START_TIME,
+  END_TIME: CLIENT_RUN_RESULTS_FIELDS.END_TIME,
+  DURATION: CLIENT_RUN_RESULTS_FIELDS.DURATION,
+  RUN_ID: CLIENT_RUN_RESULTS_FIELDS.RUN_ID,
+  CLIENT_ID: CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID,
+  CLIENT_NAME: CLIENT_RUN_RESULTS_FIELDS.CLIENT_NAME,
+  PROFILES_EXAMINED: CLIENT_RUN_RESULTS_FIELDS.PROFILES_EXAMINED,
+  PROFILES_SCORED: CLIENT_RUN_RESULTS_FIELDS.PROFILES_SUCCESSFULLY_SCORED,
+  PROFILE_SCORING_TOKENS: CLIENT_RUN_RESULTS_FIELDS.PROFILE_SCORING_TOKENS,
   
   // Post scoring metrics
   POSTS_EXAMINED: 'Posts Examined for Scoring',
