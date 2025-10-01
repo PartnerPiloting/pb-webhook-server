@@ -2,6 +2,7 @@
 // UPDATED to better handle Scoring Status on updates and Date Connected
 // MODIFIED: To include "View In Sales Navigator" field
 // ENHANCED: To support run tracking metrics
+// MIGRATED: To use unified constants
 
 const base = require('../config/airtableClient.js'); 
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
@@ -10,6 +11,10 @@ const airtableService = require('./airtableService');
 // Updated to use unified run ID service
 const runIdService = require('./unifiedRunIdService');
 const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
+
+// Import unified constants
+const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 async function upsertLead(
     lead, 
@@ -114,18 +119,21 @@ async function upsertLead(
 
     // --- MODIFIED Scoring Status Handling ---
     if (scoringStatus !== undefined) { // Only include if explicitly passed (e.g., "To Be Scored" for new leads)
-        fields["Scoring Status"] = scoringStatus;
+        fields[LEAD_FIELDS.SCORING_STATUS] = scoringStatus;
     }
     // --- END MODIFIED Scoring Status Handling ---
 
-    if (finalScore !== null) fields["AI Score"] = Math.round(finalScore * 100) / 100;
-    if (aiProfileAssessment !== null) fields["AI Profile Assessment"] = String(aiProfileAssessment || "");
-    if (attributeBreakdown !== null) fields["AI Attribute Breakdown"] = attributeBreakdown;
-    if (auFlag !== null) fields["AU"] = !!auFlag; 
+    if (finalScore !== null) fields[LEAD_FIELDS.AI_SCORE] = Math.round(finalScore * 100) / 100;
+    if (aiProfileAssessment !== null) fields[LEAD_FIELDS.AI_PROFILE_ASSESSMENT] = String(aiProfileAssessment || "");
+    if (attributeBreakdown !== null) fields[LEAD_FIELDS.AI_ATTRIBUTE_BREAKDOWN] = attributeBreakdown;
+    if (auFlag !== null) fields["AU"] = !!auFlag; // Keep as is until we add to constants
     if (ai_excluded_val !== null) fields["AI_Excluded"] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
     if (exclude_details_val !== null) fields["Exclude Details"] = exclude_details_val;
 
-    const existing = await airtableBase("Leads").select({ filterByFormula: `{Profile Key} = "${profileKey}"`, maxRecords: 1 }).firstPage();
+    const existing = await airtableBase(CLIENT_TABLES.LEADS).select({ 
+        filterByFormula: `{Profile Key} = "${profileKey}"`, 
+        maxRecords: 1 
+    }).firstPage();
 
     let recordId;
     
@@ -133,17 +141,20 @@ async function upsertLead(
         isNewLead = false;
         console.log(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
         // For "Date Connected", if it's now "Connected" and didn't have a date before, or if a new date is provided
-        if (currentConnectionStatus === "Connected" && !existing[0].fields["Date Connected"] && !fields["Date Connected"]) {
-            fields["Date Connected"] = new Date().toISOString();
+        if (currentConnectionStatus === "Connected" && !existing[0].fields[LEAD_FIELDS.DATE_CONNECTED] && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
+            fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
         }
-        await airtableBase("Leads").update(existing[0].id, fields);
+        
+        // Validate field names before sending to Airtable
+        const validatedFields = createValidatedObject(fields);
+        await airtableBase(CLIENT_TABLES.LEADS).update(existing[0].id, validatedFields);
         recordId = existing[0].id; 
     } else {
         isNewLead = true;
         // If it's a new record, and scoringStatus wasn't explicitly set to "To Be Scored" (e.g. it was undefined)
         // default it to "To Be Scored".
-        if (fields["Scoring Status"] === undefined) {
-            fields["Scoring Status"] = "To Be Scored";
+        if (fields[LEAD_FIELDS.SCORING_STATUS] === undefined) {
+            fields[LEAD_FIELDS.SCORING_STATUS] = SCORING_STATUS_VALUES.NOT_SCORED;
         }
         if (currentConnectionStatus === "Connected" && !fields["Date Connected"]) {
             fields["Date Connected"] = new Date().toISOString();
