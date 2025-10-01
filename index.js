@@ -1905,7 +1905,11 @@ function parseMarkdownTables(markdown) {
 app.use((req, res, next) => {
     const clientParam = req.query.testClient || req.query.clientId || req.headers['x-client-id'];
     const PROD_BASE_ID = 'appXySOLo6V9PfMfa';
-    if (!clientParam && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
+    
+    // Skip warning for Apify webhooks - we now handle client resolution there separately
+    const isApifyWebhook = req.path.includes('/api/apify-webhook');
+    
+    if (!clientParam && !isApifyWebhook && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
         console.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?testClient=CLIENT_ID to target that client base.`);
     }
     next();
