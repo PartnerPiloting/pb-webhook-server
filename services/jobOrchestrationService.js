@@ -9,7 +9,11 @@
 const JobTracking = require('./jobTracking');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
-const { STATUS_VALUES } = require('../constants/airtableConstants');
+const { 
+  JOB_TRACKING_FIELDS, 
+  STATUS_VALUES 
+} = require('../constants/airtableUnifiedConstants');
+const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 const unifiedRunIdService = require('./unifiedRunIdService');
 
 // Default logger with safe creation
@@ -52,8 +56,8 @@ async function startJob(params) {
     // Enhanced initial data with timestamp - don't use 'Job Type' field as it doesn't exist
     const enhancedInitialData = {
         ...initialData,
-        'System Notes': initialData['System Notes'] 
-            ? `${initialData['System Notes']}\nJob started by orchestration service for ${jobType}.` 
+        [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: initialData[JOB_TRACKING_FIELDS.SYSTEM_NOTES] 
+            ? `${initialData[JOB_TRACKING_FIELDS.SYSTEM_NOTES]}\nJob started by orchestration service for ${jobType}.` 
             : `Job started by orchestration service for ${jobType}.`
     };
     
@@ -64,20 +68,25 @@ async function startJob(params) {
         runId,
         initialData: {
             ...enhancedInitialData,
-            'System Notes': `${enhancedInitialData['System Notes'] || ''}\nJob Type: ${jobType}`
+            [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `${enhancedInitialData[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || ''}\nJob Type: ${jobType}`
         },
         options
     });
     
     // If this is for a specific client, create client run record
     if (clientId) {
+        const clientInitialData = {
+            // Remove Job Type field that doesn't exist
+            [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Processing ${jobType} for client ${clientId}`
+        };
+        
+        // Validate field names before passing to createClientRun
+        const validatedClientInitialData = createValidatedObject(clientInitialData);
+        
         await JobTracking.createClientRun({
             runId,
             clientId,
-            initialData: {
-                // Remove Job Type field that doesn't exist
-                'System Notes': `Processing ${jobType} for client ${clientId}`
-            },
+            initialData: validatedClientInitialData,
             options
         });
     }
@@ -149,19 +158,25 @@ async function completeJob(params) {
     
     // Standard system notes for job completion
     const endTime = new Date().toISOString();
-    const systemNotes = finalMetrics['System Notes'] 
-        ? `${finalMetrics['System Notes']}\nJob completed at ${endTime}` 
+    const systemNotes = finalMetrics[JOB_TRACKING_FIELDS.SYSTEM_NOTES] 
+        ? `${finalMetrics[JOB_TRACKING_FIELDS.SYSTEM_NOTES]}\nJob completed at ${endTime}` 
         : `Job completed at ${endTime}`;
+    
+    // Prepare updates with validated field names
+    const updates = {
+        status,
+        endTime,
+        [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: systemNotes,
+        ...finalMetrics
+    };
+    
+    // Validate field names before sending to Airtable
+    const validatedUpdates = createValidatedObject(updates);
     
     // Update the job tracking record
     await JobTracking.updateJob({
         runId,
-        updates: {
-            status,
-            endTime,
-            'System Notes': systemNotes,
-            ...finalMetrics
-        },
+        updates: validatedUpdates,
         options
     });
     
