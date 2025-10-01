@@ -89,9 +89,52 @@ function createLogPrefix(clientId, sessionId, type) {
  */
 class StructuredLogger {
     constructor(clientId, sessionId = null, processType = null) {
-        this.clientId = clientId;
-        this.sessionId = sessionId || generateSessionId();
-        this.processType = processType; // lead_scoring, post_harvesting, post_scoring
+        // ROOT CAUSE FIX: Validate parameters to prevent [object Object] issues
+        
+        // Handle clientId
+        if (typeof clientId === 'object') {
+            console.error('CRITICAL ERROR: Object passed as clientId to StructuredLogger constructor:', 
+                JSON.stringify(clientId));
+            
+            // Try to extract a usable clientId from the object
+            if (clientId && clientId.clientId) {
+                clientId = clientId.clientId;
+            } else if (clientId && clientId.id) {
+                clientId = clientId.id;
+            } else {
+                clientId = 'INVALID_OBJECT_CLIENT_ID';
+            }
+        }
+        
+        // Handle sessionId
+        if (typeof sessionId === 'object') {
+            console.error('CRITICAL ERROR: Object passed as sessionId to StructuredLogger constructor:', 
+                JSON.stringify(sessionId));
+            
+            // Try to extract a usable sessionId from the object
+            if (sessionId && sessionId.runId) {
+                sessionId = sessionId.runId;
+            } else if (sessionId && sessionId.id) {
+                sessionId = sessionId.id;
+            } else {
+                sessionId = 'INVALID_OBJECT_SESSION_ID';
+            }
+        }
+        
+        // Ensure clientId is a string
+        this.clientId = (clientId !== null && clientId !== undefined) ? String(clientId) : 'SYSTEM';
+        
+        // Ensure sessionId is a string or generate one
+        this.sessionId = (sessionId !== null && sessionId !== undefined) ? String(sessionId) : generateSessionId();
+        
+        // Ensure processType is a string
+        this.processType = processType ? String(processType) : null; // lead_scoring, post_harvesting, post_scoring
+        
+        // Log a warning if we had to fix any parameters
+        if (typeof clientId === 'object' || typeof sessionId === 'object') {
+            console.warn(`[StructuredLogger] Created logger with fixed parameters: clientId=${this.clientId}, sessionId=${this.sessionId}`);
+            console.trace(); // Add stack trace to see where the invalid object was passed
+        }
     }
 
     setup(message, ...args) {
