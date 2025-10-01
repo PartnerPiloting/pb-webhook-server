@@ -7,9 +7,10 @@
  */
 
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'unified_run_id_service');
+// Default logger - using safe creation
+const logger = createSafeLogger('SYSTEM', null, 'unified_run_id_service');
 
 // In-memory store of active run IDs per client
 const activeRunIds = new Map();
@@ -342,25 +343,45 @@ function jobIdToTimestamp(jobId) {
  * This is critical for preventing duplicate job records
  * 
  * @param {string} runId - Run ID in any supported format
- * @returns {string} - Normalized run ID in YYMMDD-HHMMSS format
+ * @returns {string|null} - Normalized run ID in YYMMDD-HHMMSS format, or null if invalid
  */
 function normalizeRunId(runId) {
+  // Handle null/undefined
   if (!runId) return null;
   
+  // Handle objects incorrectly passed as runId
+  if (typeof runId === 'object') {
+    logger.error(`Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
+    
+    // Try to extract a usable ID
+    if (runId.runId) {
+      runId = runId.runId;
+    } else if (runId.id) {
+      runId = runId.id;
+    } else {
+      logger.error('Could not extract valid ID from object passed to normalizeRunId');
+      return null;
+    }
+  }
+  
+  // Ensure we have a string
+  const safeRunId = String(runId);
+  
   // If it's already in standard format, return it
-  if (RUN_ID_FORMATS.STANDARD.regex.test(runId)) {
-    return runId;
+  if (RUN_ID_FORMATS.STANDARD.regex.test(safeRunId)) {
+    return safeRunId;
   }
   
   // Try each format to see if it matches
-  const formatInfo = detectRunIdFormat(runId);
+  const formatInfo = detectRunIdFormat(safeRunId);
   if (formatInfo) {
-    return formatInfo.format.toStandardFormat(formatInfo.match);
+    const result = formatInfo.format.toStandardFormat(formatInfo.match);
+    return typeof result === 'string' ? result : null;
   }
   
   // If no format matched, return the original
-  logger.warn(`Could not normalize run ID: ${runId}`);
-  return runId;
+  logger.warn(`Could not normalize run ID: ${safeRunId}`);
+  return safeRunId;
 }
 
 /**
@@ -387,10 +408,10 @@ function getRunRecordId(runId, clientId) {
  * Register an Apify run ID with optional client association
  * @param {string} apifyRunId - Apify run ID to register
  * @param {string} clientId - Client ID to associate with the run
- * @returns {string} Normalized run ID
+ * @returns {string|null} Normalized run ID or null if invalid
  */
 function registerApifyRunId(apifyRunId, clientId) {
-  return normalizeRunId(apifyRunId, clientId);
+  return normalizeRunId(apifyRunId);
 }
 
 /**
@@ -398,25 +419,31 @@ function registerApifyRunId(apifyRunId, clientId) {
  * @param {string} runId - Run ID to register
  * @param {string} clientId - Client ID associated with the run
  * @param {string} recordId - Airtable record ID to associate with the run
- * @returns {string} Normalized run ID
+ * @returns {string|null} Normalized run ID or null if invalid
  */
 function registerRunRecord(runId, clientId, recordId) {
   try {
     // Handle edge cases
     if (!runId) {
-      console.error(`[runIdService] ERROR: Received null/undefined runId in registerRunRecord for client ${clientId}`);
+      logger.error(`Received null/undefined runId in registerRunRecord for client ${clientId}`);
       return null;
     }
     
     // Normalize the run ID first
-    const standardizedRunId = normalizeRunId(runId, clientId);
+    const standardizedRunId = normalizeRunId(runId);
+    
+    // Handle invalid normalized run ID
+    if (!standardizedRunId) {
+      logger.error(`Failed to normalize run ID ${runId} for client ${clientId}`);
+      return null;
+    }
     
     // Cache the record ID
     cacheRecordId(standardizedRunId, recordId);
     
     return standardizedRunId;
   } catch (error) {
-    console.error(`[runIdService] ERROR in registerRunRecord: ${error.message}`);
+    logger.error(`Error in registerRunRecord: ${error.message}`);
     return null;
   }
 }

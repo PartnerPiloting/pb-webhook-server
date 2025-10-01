@@ -7,6 +7,7 @@
  */
 
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 
 class RunIdValidator {
   /**
@@ -18,7 +19,7 @@ class RunIdValidator {
    * @returns {string|null} - Normalized run ID or null if invalid
    */
   static validateAndNormalize(runIdParam, source = 'unknown') {
-    const logger = new StructuredLogger('SYSTEM', null, 'run_id_validator');
+    const logger = createSafeLogger('SYSTEM', null, 'run_id_validator');
     
     // Check if it's null or undefined
     if (runIdParam === null || runIdParam === undefined) {
@@ -86,7 +87,7 @@ class RunIdValidator {
    * @returns {string|null} - Validated client ID or null if invalid
    */
   static validateClientId(clientIdParam, source = 'unknown') {
-    const logger = new StructuredLogger('SYSTEM', null, 'run_id_validator');
+    const logger = createSafeLogger('SYSTEM', null, 'run_id_validator');
     
     if (clientIdParam === null || clientIdParam === undefined) {
       logger.error(`[${source}] Client ID is null or undefined`);

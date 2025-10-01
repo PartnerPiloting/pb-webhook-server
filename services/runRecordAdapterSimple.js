@@ -29,6 +29,13 @@ const airtableClient = require('../config/airtableClient');
 const unifiedRunIdService = require('./unifiedRunIdService');
 // Import field name constants for consistency
 const { CLIENT_RUN_RESULTS_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+
+// CRITICAL: Verify constants are properly imported
+if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_RESULTS_FIELDS || !TABLES) {
+  console.error('CRITICAL: Constants not properly imported from airtableFields.js');
+  throw new Error('Missing required constants');
+}
+
 // Import run ID validator for input validation
 const RunIdValidator = require('./runIdValidator');
 // Import safe access utilities for defensive programming
@@ -806,7 +813,9 @@ async function checkRunRecordExists(params) {
 
   // Create a safe version of the runId for logging
   const safeRunId = String(runId);
-  const logger = optionsParam.logger || new StructuredLogger(providedClientId || 'SYSTEM', safeRunId, 'run_record');
+  
+  // Use createSafeLogger to ensure proper parameter validation
+  const logger = optionsParam.logger || createSafeLogger(providedClientId || 'SYSTEM', safeRunId, 'run_record');
   const source = optionsParam.source || 'unknown';
   
   logger.debug(`[RunRecordAdapterSimple] Checking if run record exists: ${safeRunId}, client: ${providedClientId || 'any'}`);
