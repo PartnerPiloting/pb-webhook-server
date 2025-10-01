@@ -10,7 +10,9 @@
 // For backward compatibility, all functions still accept old-style positional parameters
 // but new code should use the object parameter style exclusively.
 //
-// CRITICAL - DEBUG MODE ENABLED: Extensive logging added to troubleshoot Airtable auth issues
+// CRITICAL - ROOT CAUSE FIX: Added extensive validation to prevent [object Object] and
+// undefined property errors. This catches errors at the source instead of allowing
+// them to propagate through the system.
 
 const airtableServiceSimple = require('./airtableServiceSimple');
 const runIdUtils = require('../utils/runIdUtils');
@@ -19,6 +21,12 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const airtableClient = require('../config/airtableClient');
 // Import the unified run ID service for normalization
 const unifiedRunIdService = require('./unifiedRunIdService');
+// Import field name constants for consistency
+const { CLIENT_RUN_RESULTS_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+// Import run ID validator for input validation
+const RunIdValidator = require('./runIdValidator');
+// Import safe access utilities for defensive programming
+const { safeGet, safeSet } = require('../utils/safeAccess');
 
 /**
  * @typedef {Object} RunRecordParams
@@ -57,25 +65,44 @@ async function createRunRecord(params) {
     return createRunRecord({ runId, clientId, clientName, options });
   }
   
+  // CRITICAL FIX: Validate params is an object before destructuring
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    throw new Error(errMsg);
+  }
+  
   const { runId, clientId, clientName: providedClientName, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, 'run_record');
+  
+  // ROOT CAUSE FIX: Validate runId and clientId before proceeding
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'createRunRecord');
+  const validatedClientId = RunIdValidator.validateClientId(clientId, 'createRunRecord');
+  
+  if (!validatedRunId || !validatedClientId) {
+    const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
+    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'run_record');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
   const source = options.source || 'unknown';
   
   // STANDALONE CHECK: Don't create records in standalone mode
   if (options.isStandalone === true) {
-    logger.info(`[RunRecordAdapterSimple] Skipping client run record creation for standalone run: ${runId}, ${clientId}`);
+    logger.info(`[RunRecordAdapterSimple] Skipping client run record creation for standalone run: ${validatedRunId}, ${validatedClientId}`);
     return { skipped: true, reason: 'standalone_run' };
   }
   
-  logger.debug(`[RunRecordAdapterSimple] Creating run record for client ${clientId} from source ${source}`);
+  logger.debug(`[RunRecordAdapterSimple] Creating run record for client ${validatedClientId} from source ${source}`);
   
   try {
     // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     // Add client suffix for client-specific run ID
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+    const standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
@@ -87,22 +114,23 @@ async function createRunRecord(params) {
       throw new Error("Failed to get master base connection. This is required for client run records.");
     }
     
-    logger.debug(`[RunRecordAdapterSimple] Checking for existing client run record in MASTER base: ${standardRunId}, ${clientId}`);
+    logger.debug(`[RunRecordAdapterSimple] Checking for existing client run record in MASTER base: ${standardRunId}, ${validatedClientId}`);
     
-    const existingRecords = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`,
+    // ROOT CAUSE FIX: Use field name constants to prevent errors
+    const existingRecords = await masterBase(TABLES.CLIENT_RUN_RESULTS).select({
+      filterByFormula: `AND({${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID}} = '${validatedClientId}')`,
       maxRecords: 1
     }).firstPage();
     
     if (existingRecords && existingRecords.length > 0) {
-      logger.info(`[RunRecordAdapterSimple] Client run record already exists for ${standardRunId}, ${clientId}, using existing record`);
+      logger.info(`[RunRecordAdapterSimple] Client run record already exists for ${standardRunId}, ${validatedClientId}, using existing record`);
       return existingRecords[0];
     }
     
-    logger.debug(`[RunRecordAdapterSimple] No existing client run record found, creating new: ${standardRunId}, ${clientId}`);
+    logger.debug(`[RunRecordAdapterSimple] No existing client run record found, creating new: ${standardRunId}, ${validatedClientId}`);
     
     // Direct call to the simple service - only creates if doesn't exist
-    return await airtableServiceSimple.createClientRunRecord(standardRunId, clientId, providedClientName);
+    return await airtableServiceSimple.createClientRunRecord(standardRunId, validatedClientId, providedClientName);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating run record: ${error.message}`);
     throw error;
@@ -131,43 +159,69 @@ async function updateRunRecord(params) {
     return updateRunRecord({ runId, clientId, updates, options });
   }
   
+  // ROOT CAUSE FIX: Validate params is an object
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    throw new Error(errMsg);
+  }
+  
   const { runId, clientId, updates, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, 'run_record');
+  
+  // ROOT CAUSE FIX: Validate runId and clientId
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'updateRunRecord');
+  const validatedClientId = RunIdValidator.validateClientId(clientId, 'updateRunRecord');
+  
+  if (!validatedRunId || !validatedClientId) {
+    const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
+    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'run_record');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
   const source = options.source || 'unknown';
   
-  logger.debug(`[RunRecordAdapterSimple] Updating run record for client ${clientId} from source ${source}`);
+  logger.debug(`[RunRecordAdapterSimple] Updating run record for client ${validatedClientId} from source ${source}`);
   
   try {
     // STANDALONE CHECK: Don't update records in standalone mode
     if (options.isStandalone === true) {
-      logger.info(`[RunRecordAdapterSimple] Skipping record update for standalone run: ${runId}, ${clientId}`);
+      logger.info(`[RunRecordAdapterSimple] Skipping record update for standalone run: ${validatedRunId}, ${validatedClientId}`);
       return { skipped: true, reason: 'standalone_run' };
     }
     
     // Clean/standardize the run ID with normalization
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     // Add client suffix for client-specific run ID
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+    const standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
     // CRITICAL: First check if the record exists
     const recordExists = await checkRunRecordExists({ 
       runId: standardRunId, 
-      clientId,
+      clientId: validatedClientId,
       options: { source, logger }
     });
     
     if (!recordExists) {
-      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot update non-existent record for ${standardRunId}, ${clientId}`;
+      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot update non-existent record for ${standardRunId}, ${validatedClientId}`;
       logger.error(errorMsg);
+      throw new Error(`Cannot update non-existent record for ${validatedClientId} (${standardRunId}). Record must exist before updates.`);
+    }
+    
+    // ROOT CAUSE FIX: Validate updates is an object
+    if (!updates || typeof updates !== 'object') {
+      const errorMsg = `Invalid updates object: ${JSON.stringify(updates)}`;
+      logger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
       throw new Error(errorMsg);
     }
     
     // Direct call to the simple service - will only be called if record exists
-    return await airtableServiceSimple.updateClientRun(standardRunId, clientId, updates);
+    return await airtableServiceSimple.updateClientRun(standardRunId, validatedClientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error updating run record: ${error.message}`);
     throw error;
@@ -198,46 +252,71 @@ async function completeRunRecord(params) {
     return completeRunRecord({ runId, clientId, status, notes, options });
   }
   
+  // ROOT CAUSE FIX: Validate params is an object
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    throw new Error(errMsg);
+  }
+  
   const { runId, clientId, status, notes = '', options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, 'run_record');
+  
+  // ROOT CAUSE FIX: Validate runId and clientId
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'completeRunRecord');
+  const validatedClientId = RunIdValidator.validateClientId(clientId, 'completeRunRecord');
+  
+  if (!validatedRunId || !validatedClientId) {
+    const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
+    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'run_record');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
   const source = options.source || 'unknown';
   
-  logger.debug(`[RunRecordAdapterSimple] Completing run record for client ${clientId} from source ${source}`);
+  logger.debug(`[RunRecordAdapterSimple] Completing run record for client ${validatedClientId} from source ${source}`);
   
   try {
     // STANDALONE CHECK: Don't update records in standalone mode
     if (options.isStandalone === true) {
-      logger.info(`[RunRecordAdapterSimple] Skipping record completion for standalone run: ${runId}, ${clientId}`);
+      logger.info(`[RunRecordAdapterSimple] Skipping record completion for standalone run: ${validatedRunId}, ${validatedClientId}`);
       return { skipped: true, reason: 'standalone_run' };
+    }
+    
+    // ROOT CAUSE FIX: Handle null or undefined status
+    if (status === null || status === undefined) {
+      logger.error(`[RunRecordAdapterSimple] Invalid status: ${status}`);
+      throw new Error(`Cannot complete run record with invalid status: ${status}`);
     }
     
     // Handle status as string or boolean
     const success = typeof status === 'boolean' ? status : (status === 'Completed' || status === 'Success');
     
     // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     // Add client suffix for client-specific run ID
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+    const standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
     // CRITICAL: First check if the record exists
     const recordExists = await checkRunRecordExists({ 
       runId: standardRunId, 
-      clientId,
+      clientId: validatedClientId,
       options: { source, logger }
     });
     
     if (!recordExists) {
-      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot complete non-existent record for ${standardRunId}, ${clientId}`;
+      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot complete non-existent record for ${standardRunId}, ${validatedClientId}`;
       logger.error(errorMsg);
-      throw new Error(errorMsg);
+      throw new Error(`Cannot complete non-existent run record for ${validatedClientId} (${standardRunId}). Record must exist before completion.`);
     }
     
     // Direct call to the simple service - will only be called if record exists
-    return await airtableServiceSimple.completeClientRun(standardRunId, clientId, success, notes);
+    return await airtableServiceSimple.completeClientRun(standardRunId, validatedClientId, success, notes);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error completing run record: ${error.message}`);
     throw error;
@@ -263,19 +342,37 @@ async function createJobRecord(params) {
     return createJobRecord({ runId, stream });
   }
   
+  // ROOT CAUSE FIX: Validate params is an object
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    throw new Error(errMsg);
+  }
+  
   const { runId, stream = 1, options = {} } = params;
-  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  
+  // ROOT CAUSE FIX: Validate runId
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'createJobRecord');
+  
+  if (!validatedRunId) {
+    const errorMsg = `Invalid runId parameter: ${JSON.stringify(runId)}`;
+    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'job_tracking');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
   const source = options.source || 'job_tracking';
   
   // STANDALONE CHECK: Don't create records in standalone mode
   if (options.isStandalone === true) {
-    logger.info(`[RunRecordAdapterSimple] Skipping job record creation for standalone run: ${runId}`);
+    logger.info(`[RunRecordAdapterSimple] Skipping job record creation for standalone run: ${validatedRunId}`);
     return { skipped: true, reason: 'standalone_run' };
   }
   
   try {
     // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     logger.debug(`[RunRecordAdapterSimple] Checking for existing job tracking record with ID: ${baseRunId}`);
@@ -283,8 +380,10 @@ async function createJobRecord(params) {
     // CRITICAL: Check if job record already exists first
     // This prevents duplicate job tracking records
     const masterBase = airtableClient.getMasterBase();
-    const existingRecords = await masterBase(airtableServiceSimple.JOB_TRACKING_TABLE).select({
-      filterByFormula: `{Run ID} = '${baseRunId}'`,
+    
+    // ROOT CAUSE FIX: Use field name constants
+    const existingRecords = await masterBase(TABLES.JOB_TRACKING).select({
+      filterByFormula: `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${baseRunId}'`,
       maxRecords: 1
     }).firstPage();
     
@@ -324,19 +423,37 @@ async function completeJobRecord(params) {
     return completeJobRecord({ runId, success, notes });
   }
   
+  // ROOT CAUSE FIX: Validate params is an object
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    throw new Error(errMsg);
+  }
+  
   const { runId, success = true, notes = '', options = {} } = params;
-  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  
+  // ROOT CAUSE FIX: Validate runId
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'completeJobRecord');
+  
+  if (!validatedRunId) {
+    const errorMsg = `Invalid runId parameter: ${JSON.stringify(runId)}`;
+    const sysLogger = new StructuredLogger('SYSTEM', String(runId), 'job_tracking');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
   const source = options.source || 'job_tracking';
   
   // STANDALONE CHECK: Don't update records in standalone mode
   if (options.isStandalone === true) {
-    logger.info(`[RunRecordAdapterSimple] Skipping job record completion for standalone run: ${runId}`);
+    logger.info(`[RunRecordAdapterSimple] Skipping job record completion for standalone run: ${validatedRunId}`);
     return { skipped: true, reason: 'standalone_run' };
   }
   
   try {
     // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     
     logger.debug(`[RunRecordAdapterSimple] Checking for job record before completing: ${baseRunId}`);
@@ -365,11 +482,11 @@ async function completeJobRecord(params) {
 }
 
 /**
- * Update aggregate metrics for a job run
- * @param {Object} params - Parameters for updating job aggregates
- * @param {string} params.runId - Run ID for the job
+ * Calculate and update aggregate metrics for a job based on its client runs
+ * @param {Object} params - Parameters for job aggregation
+ * @param {string} params.runId - Run ID for the job 
  * @param {Object} [params.options] - Additional options
- * @returns {Promise<Object>} - The updated record
+ * @returns {Promise<Object>} - The updated record with aggregated metrics
  */
 async function updateJobAggregates(params) {
   // For backward compatibility, handle old-style function calls
@@ -381,8 +498,26 @@ async function updateJobAggregates(params) {
     return updateJobAggregates({ runId });
   }
   
+  // ROOT CAUSE FIX: Validate params is an object
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    throw new Error(errMsg);
+  }
+  
   const { runId, options = {} } = params;
-  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  
+  // ROOT CAUSE FIX: Validate runId
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'updateJobAggregates');
+  
+  if (!validatedRunId) {
+    const errorMsg = `Invalid runId parameter: ${JSON.stringify(runId)}`;
+    const sysLogger = new StructuredLogger('SYSTEM', String(runId), 'job_tracking');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
   
   try {
     // Clean/standardize the run ID (strip any client suffix)
@@ -545,28 +680,48 @@ async function completeClientProcessing(params) {
 }
 
 /**
- * Check if a run record exists without attempting to create it
+ * Check if a run record exists (useful before attempting to update/complete)
  * This function is designed to be very robust and handle variations in run ID format
- * @param {string|Object} runIdOrParams - Run ID or parameter object
- * @param {string} [clientId] - Optional client ID when using positional parameters
- * @param {Object} [options] - Optional options when using positional parameters
- * @returns {Promise<boolean>} True if record exists, false otherwise
+ * @param {Object} params - Parameters for checking existence
+ * @param {string} params.runId - Run ID to check
+ * @param {string} params.clientId - Client ID
+ * @param {Object} [params.options] - Additional options
+ * @returns {Promise<boolean>} - Whether the record exists
  */
-async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
+async function checkRunRecordExists(params) {
   // For backward compatibility, handle old-style function calls
-  if (typeof runIdOrParams === 'string') {
+  if (typeof params === 'string') {
+    // Legacy call format: checkRunRecordExists(runId, clientId, options)
+    const runId = arguments[0];
+    const clientId = arguments[1];
+    const options = arguments[2] || {};
+    
     // Convert to new format
-    return checkRunRecordExists({ runId: runIdOrParams, clientId, options });
+    return checkRunRecordExists({ runId, clientId, options });
+  }
+  
+  // ROOT CAUSE FIX: Validate params is an object
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    return false; // Fail safe - return false on validation errors
+  }
+  
+  const { runId, clientId: providedClientId, options: optionsParam = {} } = params;
+  
+  // ROOT CAUSE FIX: Validate runId
+  if (!runId) {
+    const errorMsg = `Missing runId parameter in checkRunRecordExists`;
+    console.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    return false; // Fail safe - return false on missing runId
   }
 
-  const { runId, clientId: providedClientId, options: optionsParam = {} } = runIdOrParams;
-  const logger = optionsParam.logger || new StructuredLogger(providedClientId || 'SYSTEM', runId, 'run_record');
+  // Create a safe version of the runId for logging
+  const safeRunId = String(runId);
+  const logger = optionsParam.logger || new StructuredLogger(providedClientId || 'SYSTEM', safeRunId, 'run_record');
   const source = optionsParam.source || 'unknown';
   
-  if (!runId) {
-    logger.error(`[RunRecordAdapterSimple] Missing runId in checkRunRecordExists call`);
-    return false;
-  }
+  logger.debug(`[RunRecordAdapterSimple] Checking if run record exists: ${safeRunId}, client: ${providedClientId || 'any'}`);
   
   logger.debug(`[RunRecordAdapterSimple] Checking if run record exists: ${runId}, client: ${providedClientId || 'any'}`);
   
@@ -675,23 +830,24 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
 }
 
 /**
- * Safely update metrics in a run record - checking if the record exists first
- * and handling various error conditions gracefully
+ * Safe method to update metrics for a client run record
+ * - Creates the record if it doesn't exist (if createIfMissing=true)
+ * - Updates existing record if it exists
+ * - Uses standardized run ID format
+ * - Handles standalone mode
+ * - Validates all inputs thoroughly
  * 
- * This is a common function that can be called from:
- * - Lead scoring process
- * - Post harvesting process
- * - Post scoring process
+ * This is the preferred method to use for updating metrics to avoid
+ * errors when records don't exist.
  * 
- * It ensures consistency in how we handle metrics updates across all processes.
- * 
- * @param {Object} params - Parameters for metrics update
- * @param {string} params.runId - The run ID to update metrics for
+ * @param {Object} params - Parameters object
+ * @param {string} params.runId - The job run ID
  * @param {string} params.clientId - The client ID
- * @param {string} params.processType - Type of process ('lead_scoring', 'post_harvesting', 'post_scoring')
- * @param {Object} params.metrics - The metrics to update
- * @param {Object} [params.options] - Additional options
- * @param {boolean} [params.options.isStandalone=false] - Whether this is a standalone run (will skip metrics)
+ * @param {string} [params.processType] - Type of process (lead_scoring, post_harvesting, post_scoring)
+ * @param {Object} params.metrics - Metrics to update
+ * @param {boolean} [params.createIfMissing=false] - Create record if missing
+ * @param {Object} [params.options] - Options object
+ * @param {boolean} [params.options.isStandalone] - Whether this is a standalone run
  * @param {Object} [params.options.logger] - Logger instance
  * @param {string} [params.options.source] - Source of the operation
  * @returns {Promise<Object>} Result object with success status and details
@@ -699,10 +855,65 @@ async function checkRunRecordExists(runIdOrParams, clientId, options = {}) {
  * @see {docs/METRICS-UPDATE-SYSTEM.md} For detailed documentation on this metrics system
  */
 async function safeUpdateMetrics(params) {
-  const { runId, clientId, processType, metrics = {}, options = {} } = params;
+  // For backward compatibility, handle old-style function calls
+  if (typeof params === 'string') {
+    // Legacy call format: safeUpdateMetrics(runId, clientId, processType, metrics, createIfMissing, options)
+    const runId = arguments[0];
+    const clientId = arguments[1];
+    const processType = arguments[2];
+    const metrics = arguments[3] || {};
+    const createIfMissing = arguments[4] !== undefined ? arguments[4] : false;
+    const options = arguments[5] || {};
+    
+    // Convert to new format
+    return safeUpdateMetrics({
+      runId,
+      clientId,
+      processType,
+      metrics,
+      createIfMissing,
+      options
+    });
+  }
+  
+  // ROOT CAUSE FIX: Validate params is an object
+  if (!params || typeof params !== 'object') {
+    const errMsg = `Invalid params: ${JSON.stringify(params)}`;
+    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    throw new Error(errMsg);
+  }
+  
+  const {
+    runId,
+    clientId,
+    processType,
+    metrics = {},
+    createIfMissing = false,
+    options = {}
+  } = params;
+  
+  // ROOT CAUSE FIX: Validate critical parameters
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'safeUpdateMetrics');
+  const validatedClientId = RunIdValidator.validateClientId(clientId, 'safeUpdateMetrics');
+  
+  if (!validatedRunId || !validatedClientId) {
+    const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
+    const sysLogger = new StructuredLogger('SYSTEM', String(runId), 'metrics');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  // ROOT CAUSE FIX: Validate metrics is an object
+  if (metrics && typeof metrics !== 'object') {
+    const errorMsg = `Invalid metrics parameter: ${JSON.stringify(metrics)}`;
+    const sysLogger = new StructuredLogger(validatedClientId, validatedRunId, processType || 'metrics');
+    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
   const { isStandalone = false } = options;
-  const logger = options.logger || new StructuredLogger(clientId, null, processType);
-  const source = options.source || processType;
+  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, processType || 'metrics');
+  const source = options.source || processType || 'metrics';
   
   // CRITICAL CHECK: Early exit for standalone runs
   // No records should be created or updated in standalone mode
