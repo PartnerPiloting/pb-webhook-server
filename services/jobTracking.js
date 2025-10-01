@@ -10,30 +10,28 @@
  */
 
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
+const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
+
+// Database access
 const baseManager = require('./airtable/baseManager');
-// Import constants from both sources to ensure field name consistency
+const unifiedRunIdService = require('./unifiedRunIdService');
+
+// Import simplified constants
 const { 
-  MASTER_TABLES, 
-  JOB_TRACKING_FIELDS, 
+  TABLES, 
+  JOB_FIELDS, 
   CLIENT_RUN_FIELDS,
   FORMULA_FIELDS,
   STATUS_VALUES 
-} = require('../constants/airtableConstants');
+} = require('../constants/airtableSimpleConstants');
 
-// CRITICAL FIX: Also import the newer field name constants for consistency
-const {
-  CLIENT_RUN_RESULTS_FIELDS,
-  JOB_TRACKING_FIELDS: JOB_TRACKING_FIELD_NAMES,
-  TABLES
-} = require('../constants/airtableFields');
-const unifiedRunIdService = require('./unifiedRunIdService');
+// Table constants - Using simplified constants from unified file
+const JOB_TRACKING_TABLE = TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
 
-// Table constants - Using constants from centralized file
-const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
-const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
-
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'job_tracking');
+// Default logger - using safe creation to ensure valid parameters
+const logger = createSafeLogger('SYSTEM', null, 'job_tracking');
 
 /**
  * JobTracking class - single source of truth for job tracking operations
@@ -330,20 +328,31 @@ class JobTracking {
    * @returns {Promise<Object>} Updated record info
    */
   static async updateClientRun(params) {
-    const { runId, clientId, updates = {}, options = {} } = params;
-    // CRITICAL FIX: Remove createIfMissing option to enforce single creation point pattern
-    // Removed the parameter and all related functionality to prevent creation in update paths
-    
-    const log = options.logger || logger;
-    
-    if (!runId || !clientId) {
-      log.error("Run ID and Client ID are required to update client run record");
-      throw new Error("Run ID and Client ID are required to update client run record");
+    // Simple parameter validation
+    if (!params || typeof params !== 'object') {
+      throw new Error("updateClientRun: Missing parameters object");
     }
     
+    const { runId, clientId, updates = {}, options = {} } = params;
+    
+    // Validate required parameters
     try {
-      // Create client-specific run ID
-      const clientRunId = JobTracking.addClientSuffix(runId, clientId);
+      validateRequiredParams(params, ['runId', 'clientId'], 'updateClientRun');
+    } catch (error) {
+      logger.error(`Parameter validation failed: ${error.message}`);
+      throw error;
+    }
+    
+    // Simple string validation for critical parameters
+    const safeRunId = validateString(runId, 'runId', 'updateClientRun');
+    const safeClientId = validateString(clientId, 'clientId', 'updateClientRun');
+    
+    // Use existing logger or create a safe one
+    const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
+    
+    try {
+      // Get standardized run ID with client suffix
+      const clientRunId = JobTracking.addClientSuffix(safeRunId, safeClientId);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
@@ -547,23 +556,33 @@ class JobTracking {
    * @returns {Promise<Object>} Updated record info
    */
   static async updateClientMetrics(params) {
-    const { runId, clientId, metrics = {}, options = {} } = params;
-    const log = options.logger || logger;
-    const source = options.source || 'unknown';
-    
-    if (!runId || !clientId) {
-      log.error("Run ID and Client ID are required to update client metrics");
-      throw new Error("Run ID and Client ID are required to update client metrics");
+    // Simple parameter validation
+    if (!params || typeof params !== 'object') {
+      throw new Error("updateClientMetrics: Missing parameters object");
     }
     
-      // CRITICAL FIX: First check if record exists before attempting any updates
-    // ADDITIONAL FIX: Ensure we pass simple strings not objects to functions that create loggers
-    const safeCheckRunId = typeof runId === 'string' ? runId : String(runId); 
-    const safeCheckClientId = typeof clientId === 'string' ? clientId : String(clientId);
+    const { runId, clientId, metrics = {}, options = {} } = params;
     
+    // Validate required parameters
+    try {
+      validateRequiredParams(params, ['runId', 'clientId'], 'updateClientMetrics');
+    } catch (error) {
+      logger.error(`Parameter validation failed: ${error.message}`);
+      throw error;
+    }
+    
+    // Simple string validation for critical parameters
+    const safeRunId = validateString(runId, 'runId', 'updateClientMetrics');
+    const safeClientId = validateString(clientId, 'clientId', 'updateClientMetrics');
+    
+    // Use existing logger or create a safe one
+    const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
+    const source = options.source || 'unknown';
+    
+    // Simple existence check with validated parameters
     const recordExists = await JobTracking.checkClientRunExists({
-      runId: safeCheckRunId,
-      clientId: safeCheckClientId,
+      runId: safeRunId,
+      clientId: safeClientId,
       options: {
         logger: log,
         source: `${source}_metrics_existence_check`
@@ -592,11 +611,7 @@ class JobTracking {
       });
       
       // Log the metrics update
-      log.debug(`Updating metrics for client ${clientId} with run ID ${runId}`, { metrics: filteredMetrics });
-      
-      // CRITICAL FIX: Ensure we pass simple strings not objects to functions that create loggers
-      const safeRunId = typeof runId === 'string' ? runId : String(runId); 
-      const safeClientId = typeof clientId === 'string' ? clientId : String(clientId);
+      log.debug(`Updating metrics for client ${safeClientId} with run ID ${safeRunId}`, { metrics: filteredMetrics });
       
       // Use the standard updateClientRun method but with filtered metrics
       return await JobTracking.updateClientRun({
@@ -604,10 +619,11 @@ class JobTracking {
         clientId: safeClientId,
         updates: {
           ...filteredMetrics
-          // Note: 'Metrics Updated' field removed - not present in Airtable schema
         },
-        createIfMissing: false,
-        options
+        options: {
+          ...options,
+          logger: log // Pass existing logger to prevent new logger creation
+        }
       });
     } catch (error) {
       log.error(`Error updating client metrics: ${error.message}`);
@@ -633,25 +649,37 @@ class JobTracking {
    * @returns {Promise<boolean>} True if record exists
    */
   static async checkClientRunExists(params) {
-    const { runId, clientId, options = {} } = params;
-    const log = options.logger || logger;
-    
-    if (!runId || !clientId) {
-      log.error("Run ID and Client ID are required to check if client run record exists");
+    // Simple parameter validation
+    if (!params || typeof params !== 'object') {
+      logger.error("checkClientRunExists: Missing parameters object");
       return false;
     }
     
+    const { runId, clientId, options = {} } = params;
+    
+    // Validate required parameters
+    if (!runId || !clientId) {
+      logger.error("Run ID and Client ID are required to check if client run record exists");
+      return false;
+    }
+    
+    // Simple string validation
+    const safeRunId = String(runId).trim();
+    const safeClientId = String(clientId).trim();
+    
+    // Use existing logger or default
+    const log = options.logger || logger;
+    
     try {
       // Create client-specific run ID
-      const clientRunId = JobTracking.addClientSuffix(runId, clientId);
+      const clientRunId = JobTracking.addClientSuffix(safeRunId, safeClientId);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Find the record
-      // CRITICAL FIX: Use field name constants instead of hardcoded strings
+      // Find the record using constants
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
         maxRecords: 1
       }).firstPage();
       
@@ -663,20 +691,35 @@ class JobTracking {
   }
 
   static async completeClientProcessing(params) {
+    // Simple parameter handling - no complex validation
+    if (!params || typeof params !== 'object') {
+      throw new Error("completeClientProcessing: Missing parameters object");
+    }
+    
     const { runId, clientId, finalMetrics = {}, options = {} } = params;
-    const log = options.logger || logger;
+    
+    // Validate required parameters
+    try {
+      validateRequiredParams(params, ['runId', 'clientId'], 'completeClientProcessing');
+    } catch (error) {
+      logger.error(`Parameter validation failed: ${error.message}`);
+      throw error;
+    }
+    
+    // Simple string validation for critical parameters
+    const safeRunId = validateString(runId, 'runId', 'completeClientProcessing');
+    const safeClientId = validateString(clientId, 'clientId', 'completeClientProcessing');
+    
+    // Use existing logger or create a safe one
+    const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
+    
     const isStandalone = options.isStandalone === true;
     const source = options.source || 'unknown';
     
-    if (!runId || !clientId) {
-      log.error("Run ID and Client ID are required to complete client processing");
-      throw new Error("Run ID and Client ID are required to complete client processing");
-    }
-    
-    // CRITICAL FIX: First check if record exists before attempting any updates
+    // Simple existence check with validated parameters
     const recordExists = await JobTracking.checkClientRunExists({
-      runId,
-      clientId,
+      runId: safeRunId,
+      clientId: safeClientId,
       options: {
         logger: log,
         source: `${source}_existence_check`
@@ -700,11 +743,7 @@ class JobTracking {
     if (!isStandalone && !options.force) {
       log.info(`Not completing client processing for ${clientId} - not a standalone run (source: ${source})`);
       
-      // CRITICAL FIX: Ensure we pass simple strings not objects to functions that create loggers
-      const safeRunId = typeof runId === 'string' ? runId : String(runId); 
-      const safeClientId = typeof clientId === 'string' ? clientId : String(clientId);
-      
-      // Just update metrics without End Time or Status
+      // Just update metrics without End Time or Status - pass the validated parameters
       return await JobTracking.updateClientMetrics({
         runId: safeRunId,
         clientId: safeClientId,
@@ -762,18 +801,13 @@ class JobTracking {
         }
       }
       
-      log.info(`Completing all processing for client ${clientId} with status: ${status} (standalone=${isStandalone}, source=${source})`);
+      log.info(`Completing all processing for client ${safeClientId} with status: ${status} (standalone=${isStandalone}, source=${source})`);
       
-      // CRITICAL FIX: Ensure we pass simple strings not objects to functions that create loggers
-      const safeRunId = typeof runId === 'string' ? runId : String(runId); 
-      const safeClientId = typeof clientId === 'string' ? clientId : String(clientId);
-      
-      // Use the standard updateClientRun method
+      // Use the standard updateClientRun method with validated parameters
       return await JobTracking.updateClientRun({
         runId: safeRunId,
         clientId: safeClientId,
         updates,
-        createIfMissing: false,
         options: {
           ...options,
           logger: log // Pass existing logger to prevent new logger creation
