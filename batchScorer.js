@@ -934,7 +934,15 @@ async function run(req, res, dependencies) {
                 if (runId) {
                     try {
                         console.log(`Completing failed client run record for ${clientId}...`);
-                        await runRecordService.completeRunRecord(runId, clientId, 'Error', errorReason, {
+                        // FIXED: Use proper field name capitalization and validate IDs
+                        const safeRunId = typeof runId === 'object' ? (runId.runId || runId.id || String(runId)) : String(runId);
+                        const safeClientId = typeof clientId === 'object' ? (clientId.clientId || clientId.id || String(clientId)) : String(clientId);
+                        
+                        await runRecordService.completeRunRecord(safeRunId, safeClientId, 'Error', {
+                            'Status': 'Error',  // Use properly capitalized field name
+                            'System Notes': errorReason,
+                            'Error Summary': errorReason
+                        }, {
                             source: 'batchScorer_error'
                         });
                     } catch (error) {

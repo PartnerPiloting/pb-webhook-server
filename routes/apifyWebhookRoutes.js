@@ -14,6 +14,8 @@ const { createPost } = require('../services/postService');
 const { handleClientError } = require('../utils/errorHandler');
 const clientService = require('../services/clientService');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
+// Import the validator utility
+const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
 
 // Constants
 const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
@@ -220,7 +222,7 @@ async function apifyWebhookHandler(req, res) {
                 await JobTracking.updateJob({
                     runId: normalizedRunId,
                     updates: {
-                        status: 'Failed',
+                        Status: 'Failed',  // FIXED: Capitalized Status field name
                         endTime: new Date().toISOString(),
                         error: error.message
                     }
@@ -494,7 +496,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
                 await JobTracking.updateJob({
                     runId: normalizedMainRunId,
                     updates: {
-                        status: 'Completed',
+                        Status: 'Completed',  // FIXED: Capitalized Status field name
                         endTime: new Date().toISOString(),
                         'System Notes': 'Completed with no posts found'
                     }
@@ -561,7 +563,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             await JobTracking.updateJob({
                 runId: normalizedMainRunId,
                 updates: {
-                    status: 'Completed',
+                    Status: 'Completed',  // FIXED: Capitalized Status field name
                     endTime: new Date().toISOString(),
                     'Items Processed': posts.length,
                     'System Notes': `Successfully processed ${posts.length} posts for client ${clientId}`
@@ -577,12 +579,22 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
         
         // Complete client processing with failure status
-        const normalizedRunId = unifiedRunIdService.normalizeRunId(jobRunId);
-        if (!normalizedRunId) {
-            clientLogger.error(`Unable to normalize run ID: ${jobRunId}. Using original run ID.`);
+        // FIXED: Validate and normalize the jobRunId using our utility
+        const safeRunId = validateAndNormalizeRunId(jobRunId);
+        
+        // Now use our utility to ensure we have a valid string
+        let normalizedRunId;
+        try {
+            normalizedRunId = unifiedRunIdService.normalizeRunId(safeRunId);
+            if (!normalizedRunId) {
+                clientLogger.error(`Unable to normalize run ID: ${safeRunId}. Using original run ID.`);
+            }
+        } catch (normError) {
+            clientLogger.error(`Error normalizing run ID: ${normError.message}. Using original run ID.`);
         }
+        
         await JobTracking.completeClientProcessing({
-            runId: normalizedRunId || jobRunId, // Use original ID as fallback
+            runId: normalizedRunId || safeRunId || jobRunId, // Use best available ID
             clientId,
             finalMetrics: {
                 failed: true,
@@ -607,7 +619,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             await JobTracking.updateJob({
                 runId: normalizedMainRunId,
                 updates: {
-                    status: 'Failed',
+                    Status: 'Failed',  // FIXED: Capitalized Status field name
                     endTime: new Date().toISOString(),
                     'System Notes': `Error: ${error.message}`
                 }
