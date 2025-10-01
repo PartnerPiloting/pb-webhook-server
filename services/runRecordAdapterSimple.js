@@ -27,7 +27,8 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const airtableClient = require('../config/airtableClient');
 // Import the unified run ID service for normalization
 const unifiedRunIdService = require('./unifiedRunIdService');
-// Import field name constants for consistency
+// Import field validator for consistent field naming
+const { FIELD_NAMES, STATUS_VALUES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
 const { CLIENT_RUN_RESULTS_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
 
 /**
@@ -1176,11 +1177,20 @@ async function safeUpdateMetrics(params) {
     // Record exists, proceed with update
     logger.debug(`[${processType}] Updating metrics for run ${runId} (${clientId})`);
     
+    // Validate and correct field names before sending to Airtable
+    const validatedMetrics = createValidatedObject(metrics);
+    
+    // Check if any field names were invalid
+    const validationResult = validateFieldNames(metrics, true);
+    if (!validationResult.success) {
+      logger.warn(`[${processType}] Field name validation warnings: ${validationResult.errors.join(', ')}`);
+    }
+    
     // Use the standard updateRunRecord function to apply the updates
     const updateResult = await updateRunRecord({
       runId,
       clientId,
-      updates: metrics,
+      updates: validatedMetrics,
       options: {
         source: `${source}_metrics`,
         logger

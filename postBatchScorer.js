@@ -28,6 +28,9 @@ const { alertAdmin } = require('./utils/appHelpers.js');
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
+
+// --- Field Validation ---
+const { FIELD_NAMES, STATUS_VALUES, createValidatedObject } = require('./utils/airtableFieldValidator');
 const { createSafeLogger } = require('./utils/loggerHelper');
 // FIXED: Import our runIdValidator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('./utils/runIdValidator');
@@ -576,15 +579,21 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             logger.error(`Missing required parameters for job completion: runId=${safeRunId}, clientId=${safeClientId}`);
         }
         
+        // Create metrics object with proper field names from constants
+        const finalMetrics = {
+            [FIELD_NAMES.POSTS_EXAMINED]: clientResult.postsProcessed || 0,
+            [FIELD_NAMES.POSTS_SCORED]: clientResult.postsScored || 0,
+            [FIELD_NAMES.POST_SCORING_TOKENS]: clientResult.totalTokensUsed || 0,
+            [FIELD_NAMES.ERRORS]: clientResult.errors || 0
+        };
+        
+        // Use the validator to ensure all field names are correct
+        const validatedMetrics = createValidatedObject(finalMetrics);
+        
         await JobTracking.completeClientProcessing({
             runId: safeRunId, // Use the consistent runId from options
             clientId: safeClientId,
-            finalMetrics: {
-                'Posts Examined for Scoring': clientResult.postsProcessed || 0,
-                'Posts Successfully Scored': clientResult.postsScored || 0,
-                'Post Scoring Tokens': clientResult.totalTokensUsed || 0,
-                'errors': clientResult.errors || 0
-            },
+            finalMetrics: validatedMetrics,
             options: {
                 source: 'postBatchScorer_completion',
                 isStandalone: isStandalone,

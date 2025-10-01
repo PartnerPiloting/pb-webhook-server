@@ -22,6 +22,9 @@ const runIdService = require('./services/runIdService');
 // Using the adapter that enforces the Single Creation Point pattern
 const runRecordService = require('./services/runRecordAdapterSimple');
 
+// --- Field Validation ---
+const { FIELD_NAMES, STATUS_VALUES, createValidatedObject } = require('./utils/airtableFieldValidator');
+
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
 const { createSafeLogger, getLoggerFromOptions } = require('./utils/loggerHelper');
@@ -732,7 +735,7 @@ async function run(req, res, dependencies) {
                                 await runRecordService.completeRunRecord({
                                     runId, 
                                     clientId, 
-                                    Status: 'Skipped', 
+                                    [FIELD_NAMES.STATUS]: STATUS_VALUES.SKIPPED, 
                                     notes: `No action taken: ${reason}`,
                                     options: {
                                         logger: clientLogger,
