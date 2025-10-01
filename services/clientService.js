@@ -4,8 +4,19 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 const { parseServiceLevel } = require('../utils/serviceLevel');
 const { safeFieldUpdate } = require('../utils/errorHandler');
+
+// Constants for fields - import from unified constants
+const CLIENT_FIELDS = {
+    CLIENT_ID: 'Client ID',
+    NAME: 'Name',
+    STATUS: 'Status',
+    BASE_ID: 'Base ID', 
+    SERVICE_LEVEL: 'Service Level',
+    ACTIVE: 'Active'
+};
 
 // Cache for client data to avoid repeated API calls
 let clientsCache = null;
@@ -71,17 +82,17 @@ async function getAllClients() {
 
         console.log("Fetching all clients from Clients base...");
 
-        await base('Clients').select({
+        await base(MASTER_TABLES.CLIENTS).select({
             // No filter - get all clients
         }).eachPage((records, fetchNextPage) => {
             records.forEach(record => {
-                const clientId = record.get('Client ID');
-                const clientName = record.get('Client Name');
-                const status = record.get('Status');
+                const clientId = record.get(CLIENT_FIELDS.CLIENT_ID);
+                const clientName = record.get('Client Name'); 
+                const status = record.get(CLIENT_FIELDS.STATUS);
                 const airtableBaseId = record.get('Airtable Base ID');
                 const executionLog = record.get('Execution Log') || '';
                 const wpUserId = record.get('WordPress User ID');
-                const serviceLevelRaw = record.get('Service Level') || 1;
+                const serviceLevelRaw = record.get(CLIENT_FIELDS.SERVICE_LEVEL) || 1;
                 const serviceLevel = parseServiceLevel(serviceLevelRaw); // Parse "2-Lead Scoring + Post Scoring" → 2
                 const comment = record.get('Comment') || '';
                 // Email notification fields
