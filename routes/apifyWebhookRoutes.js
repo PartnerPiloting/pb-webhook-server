@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { getClientBase } = require('../config/airtableClient');
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 const JobTracking = require('../services/jobTracking');
 const jobOrchestrationService = require('../services/jobOrchestrationService');
 const { createPost } = require('../services/postService');
@@ -17,8 +18,8 @@ const unifiedRunIdService = require('../services/unifiedRunIdService');
 // Constants
 const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
 
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'apify_webhook');
+// Default logger - using safe logger creation
+const logger = createSafeLogger('SYSTEM', null, 'apify_webhook');
 
 /**
  * Webhook authentication middleware
@@ -350,11 +351,8 @@ function extractPostsFromPayload(payload) {
  * @returns {Promise<void>} - Processing promise
  */
 async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
-    // CRITICAL FIX: Ensure jobRunId is properly validated and used as a string in the logger
-    const validJobRunId = typeof jobRunId === 'string' ? jobRunId : 
-                         (jobRunId && jobRunId.runId ? jobRunId.runId : String(jobRunId));
-    
-    const clientLogger = new StructuredLogger(clientId, validJobRunId, 'apify_webhook');
+    // Use the safe logger helper to avoid object-as-string errors
+    const clientLogger = createSafeLogger(clientId, jobRunId, 'apify_webhook');
     
     try {
         clientLogger.info(`Starting background processing for Apify run ${apifyRunId}`);
@@ -538,7 +536,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
  * @returns {Promise<Object>} - Result statistics
  */
 async function syncPBPostsToAirtable(posts, clientBase, clientId, logger = null) {
-    const log = logger || new StructuredLogger(clientId, null, 'sync_posts');
+    const log = logger || createSafeLogger(clientId, null, 'sync_posts');
     
     if (!posts || posts.length === 0) {
         log.warn('No posts to sync');

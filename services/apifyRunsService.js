@@ -4,6 +4,8 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 // Updated to use unified run ID service
 const runIdService = require('./unifiedRunIdService');
 
@@ -447,7 +449,7 @@ async function processApifyWebhook(webhookData, clientId, runId) {
         throw new Error(errorMsg);
     }
     
-    const logger = new StructuredLogger(validatedClientId, validatedRunId, 'apify_webhook');
+    const logger = createSafeLogger(validatedClientId, validatedRunId, 'apify_webhook');
     
     try {
         logger.debug(`Processing Apify webhook for ${validatedClientId} with run ID ${validatedRunId}`);

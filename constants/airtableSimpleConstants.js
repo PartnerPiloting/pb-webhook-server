@@ -82,10 +82,14 @@ const FORMULA_FIELDS = [
   CLIENT_RUN_FIELDS.POST_SCORING_SUCCESS_RATE
 ];
 
+// Export with both the new names and the old names for backward compatibility
 module.exports = {
   TABLES,
+  MASTER_TABLES: TABLES, // For backward compatibility
   JOB_FIELDS,
+  JOB_TRACKING_FIELDS: JOB_FIELDS, // For backward compatibility
   CLIENT_RUN_FIELDS,
+  CLIENT_RUN_RESULTS_FIELDS: CLIENT_RUN_FIELDS, // For backward compatibility
   STATUS_VALUES,
   FORMULA_FIELDS
 };
