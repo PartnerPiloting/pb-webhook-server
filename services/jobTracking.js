@@ -28,9 +28,8 @@ const {
   JOB_FIELDS,
   JOB_TRACKING_FIELDS, // Legacy name 
   CLIENT_RUN_FIELDS,
-  CLIENT_RUN_RESULTS_FIELDS, // Legacy name
-  FORMULA_FIELDS,
-  STATUS_VALUES 
+  CLIENT_RUN_RESULTS_FIELDS // Legacy name
+  // Removed duplicate STATUS_VALUES import that was causing conflicts
 } = require('../constants/airtableSimpleConstants');
 
 // Table constants - Using simplified constants from unified file

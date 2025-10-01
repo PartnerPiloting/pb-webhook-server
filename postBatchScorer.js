@@ -30,7 +30,9 @@ const { alertAdmin } = require('./utils/appHelpers.js');
 const { StructuredLogger } = require('./utils/structuredLogger');
 
 // --- Field Validation ---
-const { FIELD_NAMES, STATUS_VALUES, createValidatedObject } = require('./utils/airtableFieldValidator');
+const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
+// Import STATUS_VALUES from the unified constants to avoid duplication
+const { STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
 const { createSafeLogger } = require('./utils/loggerHelper');
 // FIXED: Import our runIdValidator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('./utils/runIdValidator');
