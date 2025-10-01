@@ -16,6 +16,7 @@ const { getClientBase, getClientById } = require('../services/clientService.js')
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID – Linked Helper Webhook
@@ -31,8 +32,8 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         // Extract and validate client parameter
         const clientId = req.query.client;
         
-        // Create client-specific logger
-        log = new StructuredLogger(clientId || 'UNKNOWN');
+        // Create client-specific logger using safe creation
+        log = createSafeLogger(clientId || 'UNKNOWN', null, 'webhook');
         log.setup("=== WEBHOOK REQUEST: /lh-webhook/upsertLeadOnly ===");
         
         if (!clientId) {
