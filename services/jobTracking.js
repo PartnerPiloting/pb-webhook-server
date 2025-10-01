@@ -556,17 +556,19 @@ class JobTracking {
       throw new Error("Run ID and Client ID are required to update client metrics");
     }
     
-    // CRITICAL FIX: First check if record exists before attempting any updates
+      // CRITICAL FIX: First check if record exists before attempting any updates
+    // ADDITIONAL FIX: Ensure we pass simple strings not objects to functions that create loggers
+    const safeCheckRunId = typeof runId === 'string' ? runId : String(runId); 
+    const safeCheckClientId = typeof clientId === 'string' ? clientId : String(clientId);
+    
     const recordExists = await JobTracking.checkClientRunExists({
-      runId,
-      clientId,
+      runId: safeCheckRunId,
+      clientId: safeCheckClientId,
       options: {
         logger: log,
         source: `${source}_metrics_existence_check`
       }
-    });
-    
-    if (!recordExists) {
+    });    if (!recordExists) {
       log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${runId}/${clientId}. Cannot update metrics.`);
       return {
         success: false,
@@ -592,10 +594,14 @@ class JobTracking {
       // Log the metrics update
       log.debug(`Updating metrics for client ${clientId} with run ID ${runId}`, { metrics: filteredMetrics });
       
+      // CRITICAL FIX: Ensure we pass simple strings not objects to functions that create loggers
+      const safeRunId = typeof runId === 'string' ? runId : String(runId); 
+      const safeClientId = typeof clientId === 'string' ? clientId : String(clientId);
+      
       // Use the standard updateClientRun method but with filtered metrics
       return await JobTracking.updateClientRun({
-        runId,
-        clientId,
+        runId: safeRunId,
+        clientId: safeClientId,
         updates: {
           ...filteredMetrics
           // Note: 'Metrics Updated' field removed - not present in Airtable schema
@@ -694,13 +700,18 @@ class JobTracking {
     if (!isStandalone && !options.force) {
       log.info(`Not completing client processing for ${clientId} - not a standalone run (source: ${source})`);
       
+      // CRITICAL FIX: Ensure we pass simple strings not objects to functions that create loggers
+      const safeRunId = typeof runId === 'string' ? runId : String(runId); 
+      const safeClientId = typeof clientId === 'string' ? clientId : String(clientId);
+      
       // Just update metrics without End Time or Status
       return await JobTracking.updateClientMetrics({
-        runId,
-        clientId,
+        runId: safeRunId,
+        clientId: safeClientId,
         metrics: finalMetrics,
         options: {
           ...options,
+          logger: log, // Pass existing logger to prevent new logger creation
           source: `${source}_metrics_only`
         }
       });
@@ -753,13 +764,20 @@ class JobTracking {
       
       log.info(`Completing all processing for client ${clientId} with status: ${status} (standalone=${isStandalone}, source=${source})`);
       
+      // CRITICAL FIX: Ensure we pass simple strings not objects to functions that create loggers
+      const safeRunId = typeof runId === 'string' ? runId : String(runId); 
+      const safeClientId = typeof clientId === 'string' ? clientId : String(clientId);
+      
       // Use the standard updateClientRun method
       return await JobTracking.updateClientRun({
-        runId,
-        clientId,
+        runId: safeRunId,
+        clientId: safeClientId,
         updates,
         createIfMissing: false,
-        options
+        options: {
+          ...options,
+          logger: log // Pass existing logger to prevent new logger creation
+        }
       });
     } catch (error) {
       log.error(`Error completing client processing: ${error.message}`);
