@@ -14,6 +14,8 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
 // FIXED: Import our new validator utility for more robust ID validation
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
+// Import field validator for consistent field naming
+const { FIELD_NAMES, STATUS_VALUES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
 
 // Database access
 const baseManager = require('./airtable/baseManager');
@@ -785,13 +787,22 @@ class JobTracking {
         status = 'Failed';
       }
       
-      // Create updates object with End Time and Status
-      const updates = {
+      // Create updates object with End Time and Status using field name constants
+      const rawUpdates = {
         ...finalMetrics,
-        'End Time': new Date().toISOString(),
-        'Status': status,
-        'Processing Completed': true
+        [FIELD_NAMES.END_TIME]: new Date().toISOString(),
+        [FIELD_NAMES.STATUS]: status,
+        [FIELD_NAMES.PROCESSING_COMPLETED]: true
       };
+      
+      // Validate field names before sending to Airtable
+      const updates = createValidatedObject(rawUpdates);
+      
+      // Check if any field names were invalid (just for logging/debugging)
+      const validationResult = validateFieldNames(rawUpdates, true);
+      if (!validationResult.success) {
+        log.warn(`Field name validation warnings: ${validationResult.errors.join(', ')}`);
+      }
       
       // Build comprehensive system notes
       const notes = [];
@@ -810,10 +821,10 @@ class JobTracking {
       
       if (notes.length > 0) {
         const notesStr = `Final: ${notes.join(', ')}`;
-        if (updates['System Notes']) {
-          updates['System Notes'] += ` | ${notesStr}`;
+        if (updates[FIELD_NAMES.SYSTEM_NOTES]) {
+          updates[FIELD_NAMES.SYSTEM_NOTES] += ` | ${notesStr}`;
         } else {
-          updates['System Notes'] = notesStr;
+          updates[FIELD_NAMES.SYSTEM_NOTES] = notesStr;
         }
       }
       
