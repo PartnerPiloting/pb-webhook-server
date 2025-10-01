@@ -7,12 +7,13 @@
  */
 
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 const unifiedJobTrackingRepository = require('./unifiedJobTrackingRepository');
 const unifiedRunIdService = require('./unifiedRunIdService');
 const errorHandling = require('./jobTrackingErrorHandling');
 
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'job_metrics_service');
+// Default logger - using safe creation
+const logger = createSafeLogger('SYSTEM', null, 'job_metrics_service');
 
 /**
  * Field definitions for metrics

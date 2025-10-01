@@ -7,10 +7,11 @@
  */
 
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 const unifiedRunIdService = require('./unifiedRunIdService');
 
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'job_tracking_errors');
+// Default logger - using safe creation
+const logger = createSafeLogger('SYSTEM', null, 'job_tracking_errors');
 
 /**
  * Error types that can occur in job tracking

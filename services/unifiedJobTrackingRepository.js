@@ -7,6 +7,7 @@
  */
 
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 const baseManager = require('./airtable/baseManager');
 const unifiedRunIdService = require('./unifiedRunIdService');
 
@@ -14,8 +15,8 @@ const unifiedRunIdService = require('./unifiedRunIdService');
 const JOB_TRACKING_TABLE = 'Job Tracking';
 const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
 
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'unified_job_tracking');
+// Default logger - using safe creation
+const logger = createSafeLogger('SYSTEM', null, 'unified_job_tracking');
 
 /**
  * Get the job tracking record by run ID with robust format handling

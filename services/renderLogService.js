@@ -3,12 +3,13 @@
 
 const axios = require('axios');
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 
 class RenderLogService {
     constructor() {
         this.apiKey = process.env.RENDER_API_KEY;
         this.baseUrl = 'https://api.render.com/v1';
-        this.logger = new StructuredLogger('RENDER-API', 'LOG-SERVICE');
+        this.logger = createSafeLogger('RENDER-API', 'LOG-SERVICE');
         
         if (!this.apiKey) {
             throw new Error('RENDER_API_KEY environment variable is required');

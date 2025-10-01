@@ -28,6 +28,7 @@ const { alertAdmin } = require('./utils/appHelpers.js');
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
+const { createSafeLogger } = require('./utils/loggerHelper');
 
 // --- Centralized Dependencies (will be passed into 'run' function) ---
 let POST_BATCH_SCORER_VERTEX_AI_CLIENT;
@@ -56,8 +57,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
     if (!runId) {
         throw new Error('Run ID is required for post scoring operations');
     }
-    // Create system-level logger for multi-tenant operations
-    const systemLogger = new StructuredLogger('SYSTEM');
+    // Create system-level logger for multi-tenant operations using safe creation
+    const systemLogger = createSafeLogger('SYSTEM', null, 'post_batch_scorer');
     
     systemLogger.setup("=== STARTING MULTI-TENANT POST SCORING ===");
     systemLogger.setup(`Parameters: clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${!!options.dryRun}, tableOverride=${options.leadsTableName || 'DEFAULT'}, markSkips=${options.markSkips !== false}`);
@@ -93,8 +94,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
         
         // Process each client sequentially
         for (const client of clientsToProcess) {
-            // Create client-specific logger with shared session ID
-            const clientLogger = new StructuredLogger(client.clientId, systemLogger.getSessionId());
+            // Create client-specific logger with shared session ID using safe creation
+            const clientLogger = createSafeLogger(client.clientId, systemLogger.getSessionId(), 'post_batch_scorer');
             clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
             
             try {
@@ -143,7 +144,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
                 });
                 
             } catch (clientError) {
-                const clientLogger = new StructuredLogger(client.clientId, systemLogger.getSessionId());
+                const clientLogger = createSafeLogger(client.clientId, systemLogger.getSessionId(), 'post_batch_scorer');
                 clientLogger.error(`Failed to process client ${client.clientId}: ${clientError.message}`);
                 
                 const failedResult = {
