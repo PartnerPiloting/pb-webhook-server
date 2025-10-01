@@ -873,9 +873,10 @@ async function main() {
             await airtableService.updateJobTrackingRecord({
                 runId,
                 updates: {
-                    'Clients Processed': clientsNeedingWork.length,
+                    // CRITICAL FIX: Use correct field name from constants
+                    'Total Clients Processed': clientsNeedingWork.length, // Fixed field name
                     'Success Rate': successRate,
-                    'System Notes': `Total jobs started: ${totalJobsStarted}` // Fixed to use existing field
+                    'System Notes': `Total jobs started: ${totalJobsStarted}. Processed ${clientsNeedingWork.length} clients.` // Fixed to use existing field
                 }
             });
             
@@ -887,8 +888,7 @@ async function main() {
                 finalMetrics: {
                     // Use only fields that exist in the Airtable schema
                     'System Notes': notes,
-                    'Success Rate': successRate,
-                    'System Notes': notes
+                    'Success Rate': successRate
                 }
             });
             log(`✅ Job tracking metrics updated and job marked complete`);
