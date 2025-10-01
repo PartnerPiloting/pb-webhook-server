@@ -8,11 +8,12 @@
 
 const JobTracking = require('./jobTracking');
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 const { STATUS_VALUES } = require('../constants/airtableConstants');
 const unifiedRunIdService = require('./unifiedRunIdService');
 
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'job_orchestration_service');
+// Default logger with safe creation
+const logger = createSafeLogger('SYSTEM', null, 'job_orchestration_service');
 
 // In-memory store to track active jobs by type
 const activeJobs = new Map();

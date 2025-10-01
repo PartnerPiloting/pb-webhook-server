@@ -22,6 +22,7 @@ const CREATION_ATTEMPT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const airtableServiceSimple = require('./airtableServiceSimple');
 const runIdUtils = require('../utils/runIdUtils');
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 // CIRCULAR DEPENDENCY FIX: Import airtableClient once at module level
 const airtableClient = require('../config/airtableClient');
 // Import the unified run ID service for normalization
@@ -85,7 +86,7 @@ async function createRunRecord(params) {
   
   if (!validatedRunId || !validatedClientId) {
     const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
-    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'run_record');
+    const sysLogger = createSafeLogger('SYSTEM', validatedRunId || runId, 'run_record');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
@@ -96,7 +97,7 @@ async function createRunRecord(params) {
   // Check if we're already creating this record (prevents race conditions)
   if (creationAttempts.has(recordKey)) {
     const attemptInfo = creationAttempts.get(recordKey);
-    const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
+    const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
     logger.warn(`[DUPLICATE_PREVENTION] Already attempted to create record ${recordKey} at ${attemptInfo.timestamp} from ${attemptInfo.source}`);
     return { 
       skipped: true, 
@@ -116,7 +117,7 @@ async function createRunRecord(params) {
     creationAttempts.delete(recordKey);
   }, CREATION_ATTEMPT_TTL_MS);
   
-  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
+  const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
   const source = options.source || 'unknown';
   
   // STANDALONE CHECK: Don't create records in standalone mode
@@ -205,12 +206,12 @@ async function updateRunRecord(params) {
   
   if (!validatedRunId || !validatedClientId) {
     const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
-    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'run_record');
+    const sysLogger = createSafeLogger('SYSTEM', validatedRunId || runId, 'run_record');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
   
-  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
+  const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`[RunRecordAdapterSimple] Updating run record for client ${validatedClientId} from source ${source}`);
@@ -298,12 +299,12 @@ async function completeRunRecord(params) {
   
   if (!validatedRunId || !validatedClientId) {
     const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
-    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'run_record');
+    const sysLogger = createSafeLogger('SYSTEM', validatedRunId || runId, 'run_record');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
   
-  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
+  const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`[RunRecordAdapterSimple] Completing run record for client ${validatedClientId} from source ${source}`);
@@ -387,7 +388,7 @@ async function createJobRecord(params) {
   
   if (!validatedRunId) {
     const errorMsg = `Invalid runId parameter: ${JSON.stringify(runId)}`;
-    const sysLogger = new StructuredLogger('SYSTEM', validatedRunId || String(runId), 'job_tracking');
+    const sysLogger = createSafeLogger('SYSTEM', validatedRunId || runId, 'job_tracking');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
@@ -398,7 +399,7 @@ async function createJobRecord(params) {
   // Check if we're already creating this job record (prevents race conditions)
   if (creationAttempts.has(jobRecordKey)) {
     const attemptInfo = creationAttempts.get(jobRecordKey);
-    const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
+    const logger = getLoggerFromOptions(options, 'SYSTEM', validatedRunId, 'job_tracking');
     logger.warn(`[DUPLICATE_PREVENTION] Already attempted to create job record ${jobRecordKey} at ${attemptInfo.timestamp} from ${attemptInfo.source}`);
     return { 
       skipped: true, 
@@ -419,7 +420,7 @@ async function createJobRecord(params) {
     creationAttempts.delete(jobRecordKey);
   }, CREATION_ATTEMPT_TTL_MS);
   
-  const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
+  const logger = getLoggerFromOptions(options, 'SYSTEM', validatedRunId, 'job_tracking');
   const source = options.source || 'job_tracking';
   
   // STANDALONE CHECK: Don't create records in standalone mode
@@ -524,12 +525,12 @@ async function completeJobRecord(params) {
   
   if (!validatedRunId) {
     const errorMsg = `Invalid runId parameter: ${JSON.stringify(runId)}`;
-    const sysLogger = new StructuredLogger('SYSTEM', String(runId), 'job_tracking');
+    const sysLogger = createSafeLogger('SYSTEM', runId, 'job_tracking');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
   
-  const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
+  const logger = getLoggerFromOptions(options, 'SYSTEM', validatedRunId, 'job_tracking');
   const source = options.source || 'job_tracking';
   
   // STANDALONE CHECK: Don't update records in standalone mode
@@ -599,12 +600,12 @@ async function updateJobAggregates(params) {
   
   if (!validatedRunId) {
     const errorMsg = `Invalid runId parameter: ${JSON.stringify(runId)}`;
-    const sysLogger = new StructuredLogger('SYSTEM', String(runId), 'job_tracking');
+    const sysLogger = createSafeLogger('SYSTEM', runId, 'job_tracking');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
   
-  const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
+  const logger = getLoggerFromOptions(options, 'SYSTEM', validatedRunId, 'job_tracking');
   
   try {
     // Clean/standardize the run ID (strip any client suffix)
@@ -643,7 +644,7 @@ async function updateClientMetrics(params) {
   }
   
   const { runId, clientId, metrics, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', runId, 'run_record');
+  const logger = getLoggerFromOptions(options, clientId || 'SYSTEM', runId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`[RunRecordAdapterSimple] Updating client metrics for ${runId} and client ${clientId}`);
@@ -706,7 +707,7 @@ async function completeClientProcessing(params) {
   }
   
   const { runId, clientId, finalMetrics = {}, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', runId, 'run_record');
+  const logger = getLoggerFromOptions(options, clientId || 'SYSTEM', runId, 'run_record');
   
   logger.debug(`[RunRecordAdapterSimple] Completing all processing for client ${clientId}`);
   
@@ -985,7 +986,7 @@ async function safeUpdateMetrics(params) {
   
   if (!validatedRunId || !validatedClientId) {
     const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
-    const sysLogger = new StructuredLogger('SYSTEM', String(runId), 'metrics');
+    const sysLogger = createSafeLogger('SYSTEM', runId, 'metrics');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
@@ -993,13 +994,13 @@ async function safeUpdateMetrics(params) {
   // ROOT CAUSE FIX: Validate metrics is an object
   if (metrics && typeof metrics !== 'object') {
     const errorMsg = `Invalid metrics parameter: ${JSON.stringify(metrics)}`;
-    const sysLogger = new StructuredLogger(validatedClientId, validatedRunId, processType || 'metrics');
+    const sysLogger = createSafeLogger(validatedClientId, validatedRunId, processType || 'metrics');
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
   
   const { isStandalone = false } = options;
-  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, processType || 'metrics');
+  const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, processType || 'metrics');
   const source = options.source || processType || 'metrics';
   
   // CRITICAL CHECK: Early exit for standalone runs

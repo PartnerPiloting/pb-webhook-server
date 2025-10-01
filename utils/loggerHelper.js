@@ -40,6 +40,25 @@ function createSafeLogger(clientId, sessionId, processType) {
   return new StructuredLogger(safeClientId, safeSessionId, processType);
 }
 
+/**
+ * Create a logger if options.logger doesn't exist
+ * Common pattern replacement: options.logger || new StructuredLogger(...)
+ * 
+ * @param {Object} options - Options object that may contain logger
+ * @param {string|Object} clientId - Client ID or object with clientId property
+ * @param {string|Object} sessionId - Session ID or object with runId/id property
+ * @param {string} processType - Process type for filtering logs
+ * @returns {Object} - Either options.logger or a newly created safe logger
+ */
+function getLoggerFromOptions(options = {}, clientId, sessionId, processType) {
+  if (options.logger) {
+    return options.logger;
+  }
+  
+  return createSafeLogger(clientId, sessionId, processType);
+}
+
 module.exports = {
-  createSafeLogger
+  createSafeLogger,
+  getLoggerFromOptions
 };

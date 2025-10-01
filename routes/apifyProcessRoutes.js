@@ -8,6 +8,7 @@ const { getClientBase, createBaseInstance } = require('../config/airtableClient'
 const clientService = require('../services/clientService');
 const { getClientById } = clientService;
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const runIdUtils = require('../utils/runIdUtils');
@@ -788,7 +789,7 @@ async function processClientHandler(req, res) {
         
         // Use our enhanced checkRunRecordExists function from runRecordAdapterSimple
         console.log(`[DEBUG-EXTREME] About to check if run record exists for runId=${runIdToUse}, clientId=${clientId}`);
-        const debugLogger = new StructuredLogger(clientId, runIdToUse, 'apify_process');
+        const debugLogger = createSafeLogger(clientId, runIdToUse, 'apify_process');
         debugLogger.debug(`Starting run record check for ${runIdToUse}`);
         
         const recordExists = await runRecordService.checkRunRecordExists({ 

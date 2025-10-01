@@ -18,6 +18,7 @@ const clientService = require('./clientService');
 // Updated to use unified run ID service
 const runIdService = require('./unifiedRunIdService');
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
 
 // Constants for table names
 const JOB_TRACKING_TABLE = 'Job Tracking';
@@ -130,7 +131,7 @@ async function createJobRecord(params) {
   }
   
   const { runId, stream = 1, options = {} } = params;
-  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  const logger = getLoggerFromOptions(options, 'SYSTEM', runId, 'job_tracking');
   const source = (isLegacyCall ? legacyOptions.source : params.source) || 'unknown';
   
   logger.debug(`Run Record Service: Creating job tracking record for ${runId}`);
@@ -239,7 +240,7 @@ async function createClientRunRecord(params) {
   }
   
   const { runId, clientId, clientName, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
+  const logger = getLoggerFromOptions(options, clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`Run Record Service: DELEGATING client run record creation to JobTracking service for ${clientId}`);
@@ -312,7 +313,7 @@ async function getRunRecord(params) {
   
   const { runId, clientId, options = {} } = params;
   const base = initialize();
-  const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
+  const logger = getLoggerFromOptions(options, clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
   // Normalize the run ID
@@ -421,7 +422,7 @@ async function updateRunRecord(params) {
   }
   
   const { runId, clientId, updates, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
+  const logger = getLoggerFromOptions(options, clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`Run Record Service: Updating run record for ${runId}, client ${clientId} (source: ${source})`);
@@ -500,7 +501,7 @@ async function updateRunRecord(params) {
  * @returns {Promise<Object>} The updated record
  */
 async function updateClientMetrics(runId, clientId, metrics, options = {}) {
-  const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
+  const logger = getLoggerFromOptions(options, clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`Run Record Service: Updating client metrics for ${runId}, client ${clientId} (source: ${source})`);
@@ -571,7 +572,7 @@ async function updateClientMetrics(runId, clientId, metrics, options = {}) {
  * @returns {Promise<Object>} The updated record
  */
 async function completeRunRecord(runId, clientId, status, notes = '', options = {}) {
-  const logger = options.logger || new StructuredLogger(clientId, runId, 'run_record');
+  const logger = getLoggerFromOptions(options, clientId, runId, 'run_record');
   const source = options.source || 'unknown';
   
   logger.debug(`Run Record Service: Completing run record for ${runId}, client ${clientId} with status ${status} (source: ${source})`);
@@ -638,7 +639,7 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
  */
 async function updateJobRecord(runId, updates, options = {}) {
   const base = initialize();
-  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  const logger = getLoggerFromOptions(options, 'SYSTEM', runId, 'job_tracking');
   const source = options.source || 'unknown';
   
   // Strip client suffix if present
@@ -711,7 +712,7 @@ async function updateJobRecord(runId, updates, options = {}) {
  * @returns {Promise<Object>} The updated record
  */
 async function completeJobRecord(runId, success, notes = '', options = {}) {
-  const logger = options.logger || new StructuredLogger('SYSTEM', runId, 'job_tracking');
+  const logger = getLoggerFromOptions(options, 'SYSTEM', runId, 'job_tracking');
   const source = options.source || 'unknown';
   
   // Strip client suffix if present

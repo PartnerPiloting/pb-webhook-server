@@ -24,6 +24,7 @@ const runRecordService = require('./services/runRecordAdapterSimple');
 
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
+const { createSafeLogger, getLoggerFromOptions } = require('./utils/loggerHelper');
 
 // --- Centralized Dependencies (will be passed into 'run' function) ---
 let BATCH_SCORER_VERTEX_AI_CLIENT;
@@ -54,7 +55,7 @@ async function enqueue(recs, clientId, clientBase, log = console) {
     queue.push({ records: recs, clientId, clientBase });
     if (running) return;
     running = true;
-    const logger = (log === console) ? new StructuredLogger('SYSTEM', null, 'lead_scoring') : log;
+    const logger = (log === console) ? createSafeLogger('SYSTEM', null, 'lead_scoring') : log;
     logger.debug(`batchScorer.enqueue: Queue started. ${queue.length} chunk(s) to process.`);
     while (queue.length) {
         const { records: chunk, clientId: chunkClientId, clientBase: chunkClientBase } = queue.shift();
@@ -72,7 +73,7 @@ async function enqueue(recs, clientId, clientBase, log = console) {
 
 /* ---------- FETCH LEADS FROM AIRTABLE (Client-Specific) --------- */
 async function fetchLeads(limit, clientBase, clientId, logger = null) {
-    const log = logger || new StructuredLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
+    const log = logger || createSafeLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
     
     if (!clientBase) {
         throw new Error(`Airtable base not provided for client ${clientId || 'unknown'}.`);
@@ -202,7 +203,7 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     scoreChunk - Processes a chunk of leads with Gemini (Client-Aware)
 =================================================================== */
 async function scoreChunk(records, clientId, clientBase, logger = null) {
-    const log = logger || new StructuredLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
+    const log = logger || createSafeLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
     
     if (!BATCH_SCORER_VERTEX_AI_CLIENT || !BATCH_SCORER_GEMINI_MODEL_ID) {
         const errorMsg = `Aborting. Gemini AI Client or Model ID not initialized/provided`;
@@ -583,7 +584,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
 /* ---------- MULTI-TENANT PUBLIC EXPORTED FUNCTION ---------------------- */
 async function run(req, res, dependencies) { 
     // Create system-level logger for multi-tenant lead scoring operations
-    const systemLogger = new StructuredLogger('SYSTEM', null, 'lead_scoring');
+    const systemLogger = createSafeLogger('SYSTEM', null, 'lead_scoring');
     
     systemLogger.setup("=== STARTING MULTI-TENANT LEAD SCORING ===");
 
@@ -660,7 +661,7 @@ async function run(req, res, dependencies) {
             const clientStartTime = Date.now();
             
             // Create client-specific logger with shared session ID
-            const clientLogger = new StructuredLogger(clientId, systemLogger.getSessionId(), 'lead_scoring');
+            const clientLogger = createSafeLogger(clientId, systemLogger.getSessionId(), 'lead_scoring');
             clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${clientId}) ---`);
             
             // Initialize client variables early
