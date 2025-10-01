@@ -92,6 +92,25 @@ async function apifyWebhookHandler(req, res) {
             clientId = extractClientIdFromPayload(payload);
         }
         
+        // CRITICAL FIX: If still no client ID, try to resolve it from the Apify run record
+        if (!clientId && apifyRunId) {
+            try {
+                logger.info(`Attempting to resolve client ID from Apify run: ${apifyRunId}`);
+                // Import the apifyRunsService to look up the client ID
+                const apifyRunsService = require('../services/apifyRunsService');
+                
+                // Get the run record which contains clientId
+                const runRecord = await apifyRunsService.getApifyRun(apifyRunId);
+                
+                if (runRecord && runRecord.clientId) {
+                    clientId = runRecord.clientId;
+                    logger.info(`Successfully resolved client ID ${clientId} from Apify run ${apifyRunId}`);
+                }
+            } catch (err) {
+                logger.error(`Failed to resolve client ID from Apify run: ${err.message}`);
+            }
+        }
+        
         if (!clientId) {
             logger.error(`No client ID found for Apify run ${apifyRunId}`);
             return res.status(400).json({ success: false, error: 'Client ID is required' });

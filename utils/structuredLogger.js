@@ -106,8 +106,11 @@ class StructuredLogger {
             }
         }
         
-        // Handle sessionId
-        if (typeof sessionId === 'object') {
+        // Handle sessionId - FIXED for null, undefined, and object values
+        if (sessionId === null || sessionId === undefined) {
+            // Handle null/undefined case silently
+            sessionId = 'unknown';
+        } else if (typeof sessionId === 'object') {
             console.error('CRITICAL ERROR: Object passed as sessionId to StructuredLogger constructor:', 
                 JSON.stringify(sessionId));
             
