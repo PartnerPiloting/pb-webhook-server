@@ -6,9 +6,13 @@ require('dotenv').config();
 const Airtable = require('airtable');
 const { 
   MASTER_TABLES, 
-  CLIENT_RUN_FIELDS,
+  CLIENT_RUN_RESULTS_FIELDS,
+  JOB_TRACKING_FIELDS,
   FORMULA_FIELDS 
-} = require('../constants/airtableConstants');
+} = require('../constants/airtableUnifiedConstants');
+
+// Import validation utilities
+const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 // Constants for table names - Use centralized constants
 const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
@@ -151,7 +155,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
   try {
     // Check if record already exists to prevent duplicates
     const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${runId}', {Client ID} = '${clientId}')`, // Fixed from 'Client' to 'Client ID' to match Airtable schema
+      filterByFormula: `AND({${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${runId}', {${CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID}} = '${clientId}')`,
       maxRecords: 1
     }).firstPage();
     
@@ -164,16 +168,16 @@ async function createClientRunRecord(runId, clientId, clientName) {
     
     // Create record data using field constants
     const recordData = {
-      'Run ID': runId,
-      'Client ID': clientId,  // Fixed from 'Client' to 'Client ID' to match Airtable schema
-      'Client Name': clientName,
-      'Start Time': startTimestamp,
-      'Status': 'Running',
-      'Profiles Examined for Scoring': 0,
-      'Profiles Successfully Scored': 0,
-      'Total Posts Harvested': 0,
-      'Profile Scoring Tokens': 0,
-      'Post Scoring Tokens': 0,
+      [CLIENT_RUN_RESULTS_FIELDS.RUN_ID]: runId,
+      [CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID]: clientId,
+      [CLIENT_RUN_RESULTS_FIELDS.CLIENT_NAME]: clientName,
+      [CLIENT_RUN_RESULTS_FIELDS.START_TIME]: startTimestamp,
+      [CLIENT_RUN_RESULTS_FIELDS.STATUS]: 'Running',
+      [CLIENT_RUN_RESULTS_FIELDS.PROFILES_EXAMINED]: 0,
+      [CLIENT_RUN_RESULTS_FIELDS.PROFILES_SUCCESSFULLY_SCORED]: 0,
+      [CLIENT_RUN_RESULTS_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+      [CLIENT_RUN_RESULTS_FIELDS.PROFILE_SCORING_TOKENS]: 0,
+      [CLIENT_RUN_RESULTS_FIELDS.POST_SCORING_TOKENS]: 0,
       'System Notes': `Processing started at ${startTimestamp}`
     };
     
@@ -274,15 +278,18 @@ async function updateClientRun(runId, clientId, updates) {
  */
 async function completeJobRun(runId, success = true, notes = '') {
   const updates = {
-    'End Time': new Date().toISOString(),
-    'Status': success ? 'Completed' : 'Failed'
+    [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
+    [JOB_TRACKING_FIELDS.STATUS]: success ? 'Completed' : 'Failed'
   };
   
   if (notes) {
-    updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+    updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   }
   
-  return await updateJobTracking(runId, updates);
+  // Validate field names before sending to Airtable
+  const validatedUpdates = createValidatedObject(updates);
+  
+  return await updateJobTracking(runId, validatedUpdates);
 }
 
 /**
@@ -318,17 +325,20 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
   const safeNotes = (typeof notes === 'string') ? notes : String(notes || '');
   
   const updates = {
-    'End Time': new Date().toISOString(),
-    'Status': successBoolean ? 'Completed' : 'Failed'
+    [CLIENT_RUN_RESULTS_FIELDS.END_TIME]: new Date().toISOString(),
+    [CLIENT_RUN_RESULTS_FIELDS.STATUS]: successBoolean ? 'Completed' : 'Failed'
   };
   
   // CRITICAL FIX: Handle notes properly, avoiding undefined errors
   // Always set System Notes field, even when notes is empty
-  updates['System Notes'] = safeNotes 
+  updates[CLIENT_RUN_RESULTS_FIELDS.SYSTEM_NOTES] = safeNotes 
     ? `${safeNotes}\nRun ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`
     : `Run ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   
-  return await updateClientRun(validatedRunId, validatedClientId, updates);
+  // Validate field names before sending to Airtable
+  const validatedUpdates = createValidatedObject(updates);
+  
+  return await updateClientRun(validatedRunId, validatedClientId, validatedUpdates);
 }
 
 /**
@@ -344,7 +354,7 @@ async function updateAggregateMetrics(runId) {
   try {
     // Get client run records for this job
     const clientRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `FIND('${runId}', {Run ID}) > 0`
+      filterByFormula: `FIND('${runId}', {${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}}) > 0`
     }).all();
     
     if (!clientRecords || clientRecords.length === 0) {
@@ -354,15 +364,17 @@ async function updateAggregateMetrics(runId) {
     
     // Calculate aggregates
     const aggregates = {
-      'Clients Processed': clientRecords.length,
-      'Clients With Errors': clientRecords.filter(r => r.fields['Status'] === 'Failed').length,
-      'Total Profiles Examined': 0,
-      'Successful Profiles': 0,
-      'Total Posts Harvested': 0,
-      'Posts Examined for Scoring': 0,
-      'Posts Successfully Scored': 0,
-      'Profile Scoring Tokens': 0,
-      'Post Scoring Tokens': 0
+      [JOB_TRACKING_FIELDS.CLIENTS_PROCESSED]: clientRecords.length,
+      [JOB_TRACKING_FIELDS.CLIENTS_FAILED]: clientRecords.filter(r => 
+        r.fields[CLIENT_RUN_RESULTS_FIELDS.STATUS] === 'Failed'
+      ).length,
+      [JOB_TRACKING_FIELDS.TOTAL_PROFILES_EXAMINED]: 0,
+      [JOB_TRACKING_FIELDS.TOTAL_PROFILES_SCORED]: 0,
+      [JOB_TRACKING_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+      [JOB_TRACKING_FIELDS.POSTS_EXAMINED]: 0,
+      [JOB_TRACKING_FIELDS.POSTS_SCORED]: 0,
+      [JOB_TRACKING_FIELDS.PROFILE_SCORING_TOKENS]: 0,
+      [JOB_TRACKING_FIELDS.POST_SCORING_TOKENS]: 0
     };
     
     // Sum up metrics from all client records
