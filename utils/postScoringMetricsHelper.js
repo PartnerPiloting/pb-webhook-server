@@ -66,53 +66,68 @@ async function trackPostScoringMetrics(posts, scoringFunction, options) {
 
 /**
  * Update Airtable client run record with post scoring metrics
- * @param {Object} metrics - Metrics object from trackPostScoringMetrics
- * @param {Object} options - Options object
- * @param {string} options.clientId - Client ID
- * @param {string} options.runId - Run ID
- * @param {string} options.source - Source of the update
- * @returns {Promise<Object>} - Result from JobTracking.updateClientMetrics
+ * @param {Object} params - Update parameters
+ * @returns {Promise<Object>} - Update result
  */
-async function updatePostScoringMetrics(metrics, options) {
-  const { clientId, runId, source = 'post_scoring' } = options;
-  const logger = createSafeLogger(clientId, runId, 'post_scoring_metrics');
+async function updatePostScoringMetrics(params) {
+  const { runId, clientId, metrics, logger: customLogger } = params;
+  const logger = customLogger || createSafeLogger(clientId, runId, 'post_scoring_metrics');
   
   try {
-    // Format metrics for Airtable update
+    // Format metrics for Airtable update using direct field names
+    // This is safer than using constants since it matches exactly what's in Airtable
     const airtableMetrics = {
-      [CLIENT_RUN_RESULTS_FIELDS.POSTS_EXAMINED]: metrics.postsExamined,
-      [CLIENT_RUN_RESULTS_FIELDS.POSTS_SCORED]: metrics.postsScored,
-      [CLIENT_RUN_RESULTS_FIELDS.POST_SCORING_TOKENS]: metrics.tokensUsed,
+      'Posts Examined for Scoring': metrics.postsExamined || 0,
+      'Posts Successfully Scored': metrics.postsScored || 0,
+      'Post Scoring Tokens': metrics.tokensUsed || 0
     };
     
     // Add system notes
-    const systemNotes = `Post scoring completed with ${metrics.postsScored}/${metrics.postsExamined} posts scored, ${metrics.errors} errors. Total tokens: ${metrics.tokensUsed}.`;
-    airtableMetrics[CLIENT_RUN_RESULTS_FIELDS.SYSTEM_NOTES] = systemNotes;
+    const systemNotes = `Post scoring completed with ${metrics.postsScored || 0}/${metrics.postsExamined || 0} posts scored, ${metrics.errors || 0} errors. Total tokens: ${metrics.tokensUsed || 0}.`;
     
-    // If there are errors, add error details
-    if (metrics.errors > 0 && metrics.errorDetails.length > 0) {
-      const errorSummary = metrics.errorDetails
-        .map(err => `Post ${err.postId}: ${err.error}`)
-        .join('; ');
-        
-      airtableMetrics[CLIENT_RUN_RESULTS_FIELDS.POST_SCORING_ERRORS] = errorSummary;
+    if (metrics.errors && metrics.errors > 0) {
+      // Add error details if any
+      const errorDetails = metrics.errorDetails && metrics.errorDetails.length > 0 
+        ? metrics.errorDetails.slice(0, 3).map(e => e.error || e.message || 'Unknown error').join(', ')
+        : 'No error details available';
+      
+      airtableMetrics['System Notes'] = `${systemNotes} Errors: ${errorDetails}${metrics.errorDetails && metrics.errorDetails.length > 3 ? ' (and more)' : ''}`;
+      
+      // Add specific error field if available
+      if (metrics.errorDetails && metrics.errorDetails.length > 0) {
+        airtableMetrics['Post Scoring Errors'] = metrics.errorDetails
+          .slice(0, 10)
+          .map(err => `Post ${err.postId || 'unknown'}: ${err.error || err.message || 'Unknown error'}`)
+          .join('; ');
+      }
+    } else {
+      airtableMetrics['System Notes'] = systemNotes;
     }
     
-    logger.debug(`Updating run record with post scoring metrics`);
+    logger.info(`Updating post scoring metrics - Examined: ${airtableMetrics['Posts Examined for Scoring']}, Scored: ${airtableMetrics['Posts Successfully Scored']}, Tokens: ${airtableMetrics['Post Scoring Tokens']}`);
     
-    // Update client metrics using JobTracking service
-    return await JobTracking.updateClientMetrics({
+    // Update using JobTracking service
+    const JobTracking = require('../services/jobTracking');
+    const result = await JobTracking.updateClientMetrics({
       runId,
       clientId,
       metrics: airtableMetrics,
       options: {
-        source,
+        source: 'post_scoring',
         logger
       }
     });
+    
+    return {
+      success: true,
+      result
+    };
   } catch (error) {
     logger.error(`Failed to update post scoring metrics: ${error.message}`);
-    throw error;
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 
