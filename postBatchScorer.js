@@ -29,6 +29,8 @@ const { alertAdmin } = require('./utils/appHelpers.js');
 // --- Structured Logging ---
 const { StructuredLogger } = require('./utils/structuredLogger');
 const { createSafeLogger } = require('./utils/loggerHelper');
+// FIXED: Import our runIdValidator utility
+const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('./utils/runIdValidator');
 
 // --- Centralized Dependencies (will be passed into 'run' function) ---
 let POST_BATCH_SCORER_VERTEX_AI_CLIENT;
@@ -244,9 +246,18 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     }
     
     try {
-        // Use the runId passed from the parent function to ensure consistency
+        // FIXED: Safely validate and normalize runId using our utility
+        const safeRunId = validateAndNormalizeRunId(runId);
+        
+        // Use the validated runId passed from the parent function to ensure consistency
         // This ensures we use the same runId throughout the system
-        const normalizedRunId = runId ? unifiedRunIdService.normalizeRunId(runId) : `post_batch_${Date.now()}`;
+        let normalizedRunId;
+        try {
+            normalizedRunId = safeRunId ? unifiedRunIdService.normalizeRunId(safeRunId) : `post_batch_${Date.now()}`;
+        } catch (error) {
+            logger.error(`Error normalizing runId: ${error.message}. Using fallback.`);
+            normalizedRunId = `post_batch_${Date.now()}`;
+        }
         
         // Pass the normalized runId to child operations
         options.runId = normalizedRunId;
@@ -557,9 +568,17 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         
         // Use the normalized runId from options that was passed from the parent function
         // Complete all processing for this client
+        // FIXED: Validate client ID and run ID before passing to JobTracking
+        const safeRunId = validateAndNormalizeRunId(options.runId);
+        const safeClientId = validateAndNormalizeClientId(client.clientId);
+        
+        if (!safeRunId || !safeClientId) {
+            logger.error(`Missing required parameters for job completion: runId=${safeRunId}, clientId=${safeClientId}`);
+        }
+        
         await JobTracking.completeClientProcessing({
-            runId: options.runId, // Use the consistent runId from options
-            clientId: client.clientId,
+            runId: safeRunId, // Use the consistent runId from options
+            clientId: safeClientId,
             finalMetrics: {
                 'Posts Examined for Scoring': clientResult.postsProcessed,
                 'Posts Successfully Scored': clientResult.postsScored,
