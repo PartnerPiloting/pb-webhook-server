@@ -1025,7 +1025,7 @@ router.post("/run-post-batch-score", async (req, res) => {
     
     // Return results immediately
     res.status(200).json({
-      status: STATUS_VALUES.COMPLETED.toLowerCase(),
+      status: STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed',
       message: 'Multi-tenant post scoring completed',
       runId, // Include the run ID in the response
       summary: {
@@ -1379,7 +1379,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
     );
     const first = results.clientResults[0] || {};
     res.json({
-      status: STATUS_VALUES.COMPLETED.toLowerCase(),
+      status: STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed',
       mode: dryRun ? 'dryRun' : 'live',
       clientId,
       limit: limit || 'UNLIMITED',
@@ -1509,7 +1509,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
     aggregate.duration = Math.round((Date.now() - startedAt) / 1000);
 
     return res.status(200).json({
-      status: STATUS_VALUES.COMPLETED.toLowerCase(),
+      status: STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed',
       message: `Post scoring completed for service level >= ${minServiceLevel}`,
       summary: aggregate,
       clientResults: summaries,
@@ -4623,7 +4623,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         
         // Update global process tracking
         if (global.smartResumeActiveProcess) {
-          global.smartResumeActiveProcess.status = STATUS_VALUES.COMPLETED.toLowerCase();
+          global.smartResumeActiveProcess.status = STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed';
           global.smartResumeActiveProcess.endTime = Date.now();
           global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
         }
