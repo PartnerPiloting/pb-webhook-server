@@ -494,23 +494,30 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 logger.debug(`Updating run record for client ${client.clientId} with run ID ${clientSpecificRunId}`);
                 
                 try {
-                    await JobTracking.updateClientMetrics({
+                    // Use the new metrics helper for more consistent updates
+                    const { updatePostScoringMetrics } = require('./utils/postScoringMetricsHelper');
+                    const updateResult = await updatePostScoringMetrics({
                         runId: clientSpecificRunId,
                         clientId: client.clientId,
                         metrics: {
-                            'Posts Examined for Scoring': clientResult.postsProcessed,
-                            'Posts Successfully Scored': clientResult.postsScored,
-                            'Post Scoring Tokens': postScoringTokens,
-                            'System Notes': `Post scoring completed with ${clientResult.postsScored}/${clientResult.postsProcessed} posts scored, ${clientResult.errors} errors, ${clientResult.leadsSkipped} leads skipped. Total tokens: ${postScoringTokens}.`
+                            postsExamined: clientResult.postsProcessed,
+                            postsScored: clientResult.postsScored,
+                            tokensUsed: postScoringTokens,
+                            errors: clientResult.errors,
+                            errorDetails: clientResult.errorDetails || [],
+                            leadsSkipped: clientResult.leadsSkipped || 0
                         },
-                        options: {
-                            source: 'postBatchScorer'
-                        }
+                        logger
                     });
-                    logger.debug(`Successfully updated run record for client ${client.clientId}`);
+                    
+                    if (updateResult.success) {
+                        logger.debug(`Successfully updated run record for client ${client.clientId}`);
+                    } else {
+                        logger.warn(`Partial update of metrics for client ${client.clientId}: ${updateResult.error}`);
+                    }
                 } catch (error) {
                     logger.error(`Failed to update run record for client ${client.clientId}: ${error.message}`, { 
-                        runId: standardizedRunId,
+                        runId: standardizedRunId || clientSpecificRunId,
                         errorMessage: error.message
                     });
                     // Don't fail the entire process just because metrics couldn't be updated
@@ -554,13 +561,15 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             runId: options.runId, // Use the consistent runId from options
             clientId: client.clientId,
             finalMetrics: {
-                'Posts Processed': clientResult.postsProcessed,
+                'Posts Examined for Scoring': clientResult.postsProcessed,
                 'Posts Successfully Scored': clientResult.postsScored,
+                'Post Scoring Tokens': clientResult.totalTokensUsed || 0,
                 'errors': clientResult.errors
             },
             options: {
                 source: 'postBatchScorer_completion',
-                isStandalone: isStandalone
+                isStandalone: isStandalone,
+                logger
             }
         });
         

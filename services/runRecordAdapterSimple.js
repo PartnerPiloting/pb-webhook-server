@@ -739,10 +739,14 @@ async function completeClientProcessing(params) {
       
       const currentRecord = records[0].fields;
       
-      // Check if the required processes have completed
-      const hasLeadScoring = currentRecord[CLIENT_RUN_RESULTS_FIELDS.PROFILES_SCORED] !== undefined;
-      const hasPostHarvesting = currentRecord[CLIENT_RUN_RESULTS_FIELDS.TOTAL_POSTS_HARVESTED] !== undefined;
-      const hasPostScoring = currentRecord[CLIENT_RUN_RESULTS_FIELDS.POSTS_SCORED] !== undefined;
+      // Check if the required processes have completed - use actual Airtable field names
+      // and check for null values as well as undefined
+      const hasLeadScoring = currentRecord['Profiles Successfully Scored'] !== undefined && 
+                             currentRecord['Profiles Successfully Scored'] !== null;
+      const hasPostHarvesting = currentRecord['Total Posts Harvested'] !== undefined && 
+                               currentRecord['Total Posts Harvested'] !== null;
+      const hasPostScoring = currentRecord['Posts Successfully Scored'] !== undefined && 
+                            currentRecord['Posts Successfully Scored'] !== null;
       
       // Get client service level to determine what processes should run
       const clientInfo = await require('../services/clientService').getClientById(clientId);
@@ -762,7 +766,7 @@ async function completeClientProcessing(params) {
       }
       
       if (!allProcessesComplete) {
-        logger.info(`Not all processes complete for ${clientId}. Lead: ${hasLeadScoring}, Harvest: ${hasPostHarvesting}, PostScore: ${hasPostScoring}`);
+        logger.info(`Not all processes complete for ${clientId}. Lead: ${hasLeadScoring}, Harvest: ${hasPostHarvesting}, PostScore: ${hasPostScoring}, Service Level: ${serviceLevel}`);
         logger.info(`Skipping End Time/Status update until all processes complete.`);
         
         // Only update metrics, not End Time or Status
@@ -770,11 +774,22 @@ async function completeClientProcessing(params) {
         delete filteredUpdates['End Time'];
         delete filteredUpdates['Status'];
         
-        // Add note about waiting for processes
+        // Add detailed note about which specific processes are pending
+        const processStatus = [];
+        if (!hasLeadScoring) processStatus.push('Lead Scoring pending');
+        if (serviceLevel >= 2 && !hasPostHarvesting) processStatus.push('Post Harvesting pending');
+        if (serviceLevel >= 2 && hasPostHarvesting && currentRecord['Total Posts Harvested'] > 0 && !hasPostScoring) {
+          processStatus.push('Post Scoring pending');
+        }
+        
+        const statusNote = processStatus.length > 0 ? 
+                        `Waiting for: ${processStatus.join(', ')}` : 
+                        `Waiting for processes to complete`;
+                        
         if (filteredUpdates['System Notes']) {
-          filteredUpdates['System Notes'] += `. Waiting for all processes to complete.`;
+          filteredUpdates['System Notes'] += `. ${statusNote}`;
         } else {
-          filteredUpdates['System Notes'] = `Waiting for all processes to complete.`;
+          filteredUpdates['System Notes'] = statusNote;
         }
         
         // Update with filtered updates
@@ -789,19 +804,23 @@ async function completeClientProcessing(params) {
     // Determine final status based on metrics
     let status = 'Completed';
     const hasErrors = finalMetrics.errors && finalMetrics.errors > 0;
-    const noLeadsProcessed = (!finalMetrics[CLIENT_RUN_RESULTS_FIELDS.PROFILES_EXAMINED] || finalMetrics[CLIENT_RUN_RESULTS_FIELDS.PROFILES_EXAMINED] === 0) &&
-                             (!finalMetrics[CLIENT_RUN_RESULTS_FIELDS.POSTS_EXAMINED] || finalMetrics[CLIENT_RUN_RESULTS_FIELDS.POSTS_EXAMINED] === 0);
+    const noLeadsProcessed = (!finalMetrics['Profiles Examined for Scoring'] || finalMetrics['Profiles Examined for Scoring'] === 0) &&
+                             (!finalMetrics['Posts Examined for Scoring'] || finalMetrics['Posts Examined for Scoring'] === 0);
     
     if (noLeadsProcessed) {
       status = 'No Leads To Score';
     } else if (finalMetrics.failed) {
       status = 'Failed';
+    } else if (hasErrors) {
+      // If there are errors but process completed, still mark as Completed
+      // but note the errors in System Notes
+      status = 'Completed';
     }
     
     const updates = {
       ...finalMetrics,
-      [CLIENT_RUN_RESULTS_FIELDS.END_TIME]: new Date().toISOString(),
-      [CLIENT_RUN_RESULTS_FIELDS.STATUS]: status
+      'End Time': new Date().toISOString(),
+      'Status': status
       // Note: 'Metrics Updated' field removed - not present in Airtable schema
     };
     
