@@ -294,16 +294,41 @@ async function completeJobRun(runId, success = true, notes = '') {
  * @returns {Promise<Object>} The updated record or error object
  */
 async function completeClientRun(runId, clientId, success = true, notes = '') {
-  const updates = {
-    'End Time': new Date().toISOString(),
-    'Status': success ? 'Completed' : 'Failed'
-  };
+  // ROOT CAUSE FIX: Validate parameters to prevent [object Object] errors
+  const ParameterValidator = require('../utils/parameterValidator');
   
-  if (notes) {
-    updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+  // Validate runId
+  const validatedRunId = ParameterValidator.validateRunId(runId, 'completeClientRun');
+  if (!validatedRunId) {
+    console.error(`[AirtableServiceSimple] Invalid runId parameter: ${JSON.stringify(runId)}`);
+    throw new Error(`Invalid runId parameter: ${JSON.stringify(runId)}`);
   }
   
-  return await updateClientRun(runId, clientId, updates);
+  // Validate clientId
+  const validatedClientId = ParameterValidator.validateClientId(clientId, 'completeClientRun');
+  if (!validatedClientId) {
+    console.error(`[AirtableServiceSimple] Invalid clientId parameter: ${JSON.stringify(clientId)}`);
+    throw new Error(`Invalid clientId parameter: ${JSON.stringify(clientId)}`);
+  }
+  
+  // Ensure success is a boolean
+  const successBoolean = (typeof success === 'boolean') ? success : Boolean(success);
+  
+  // Ensure notes is a string
+  const safeNotes = (typeof notes === 'string') ? notes : String(notes || '');
+  
+  const updates = {
+    'End Time': new Date().toISOString(),
+    'Status': successBoolean ? 'Completed' : 'Failed'
+  };
+  
+  // CRITICAL FIX: Handle notes properly, avoiding undefined errors
+  // Always set System Notes field, even when notes is empty
+  updates['System Notes'] = safeNotes 
+    ? `${safeNotes}\nRun ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`
+    : `Run ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+  
+  return await updateClientRun(validatedRunId, validatedClientId, updates);
 }
 
 /**

@@ -372,24 +372,34 @@ async function updateClientRunMetrics(runId, clientId, data) {
         // Calculate estimated API costs (based on LinkedIn post queries)
         const estimatedCost = data.postsCount * 0.02; // $0.02 per post as estimate
         
-        // First check if the run record exists
-        const recordExists = await airtableService.checkRunRecordExists(standardizedRunId, clientId);
-        console.log(`[APIFY_METRICS] Run record exists check for ${standardizedRunId}: ${recordExists ? 'YES' : 'NO'}`);
+        // Import the new ParameterValidator utility
+        const ParameterValidator = require('../utils/parameterValidator');
+        const { StructuredLogger } = require('../utils/structuredLogger');
+        
+        // First validate the parameters to prevent [object Object] issues
+        const validatedRunId = ParameterValidator.validateRunId(standardizedRunId, 'updateClientRunMetrics');
+        const validatedClientId = ParameterValidator.validateClientId(clientId, 'updateClientRunMetrics');
+        
+        if (!validatedRunId || !validatedClientId) {
+            const errorMsg = `Invalid parameters: runId=${JSON.stringify(standardizedRunId)}, clientId=${JSON.stringify(clientId)}`;
+            console.error(`[APIFY_METRICS] ${errorMsg}`);
+            throw new Error(errorMsg);
+        }
+        
+        // First check if the run record exists using the runRecordAdapter for consistency
+        const runRecordAdapter = require('./runRecordAdapterSimple');
+        const recordExists = await runRecordAdapter.checkRunRecordExists({
+            runId: validatedRunId,
+            clientId: validatedClientId,
+            options: { source: 'apify_metrics' }
+        });
+        
+        console.log(`[APIFY_METRICS] Run record exists check for ${validatedRunId}: ${recordExists ? 'YES' : 'NO'}`);
         
         if (!recordExists) {
-            console.log(`[APIFY_METRICS] Creating new run record for ${standardizedRunId} because it doesn't exist`);
-            try {
-                // Create the run record if it doesn't exist
-                throw new Error(`[APIFY_METRICS] CRITICAL ERROR: No run record exists - cannot update metrics`); // ARCHITECTURAL FIX: Removed record creation(standardizedRunId, clientId, {
-                    'Status': 'RUNNING',
-                    'Client ID': clientId,
-                    'System Notes': `Created during Apify webhook processing for run ${runId}`
-                });
-                console.log(`[APIFY_METRICS] Successfully created new run record for ${standardizedRunId}`);
-            } catch (createError) {
-                console.error(`[APIFY_METRICS] Error creating run record: ${createError.message}`);
-                throw new Error(`Failed to create run record for ${clientId}: ${createError.message}`);
-            }
+            const errorMsg = `No run record exists for ${validatedRunId}/${validatedClientId} - cannot update metrics`;
+            console.error(`[APIFY_METRICS] CRITICAL ERROR: ${errorMsg}`);
+            throw new Error(errorMsg);
         }
         
         // Update the client run record with all metrics
@@ -412,6 +422,84 @@ async function updateClientRunMetrics(runId, clientId, data) {
     }
 }
 
+/**
+ * Process an Apify webhook payload and update the appropriate client run record
+ * This is a clean implementation that properly validates all inputs
+ * 
+ * @param {Object} webhookData - The webhook payload data
+ * @param {string} clientId - The client ID
+ * @param {string} runId - The run ID
+ * @returns {Promise<Object>} - Result of the operation
+ */
+async function processApifyWebhook(webhookData, clientId, runId) {
+    // Import required dependencies
+    const { StructuredLogger } = require('../utils/structuredLogger');
+    const ParameterValidator = require('../utils/parameterValidator');
+    const runRecordAdapter = require('./runRecordAdapterSimple');
+    
+    // Validate parameters to prevent [object Object] errors
+    const validatedRunId = ParameterValidator.validateRunId(runId, 'processApifyWebhook');
+    const validatedClientId = ParameterValidator.validateClientId(clientId, 'processApifyWebhook');
+    
+    if (!validatedRunId || !validatedClientId) {
+        const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
+        console.error(`[APIFY_WEBHOOK] ${errorMsg}`);
+        throw new Error(errorMsg);
+    }
+    
+    const logger = new StructuredLogger(validatedClientId, validatedRunId, 'apify_webhook');
+    
+    try {
+        logger.debug(`Processing Apify webhook for ${validatedClientId} with run ID ${validatedRunId}`);
+        
+        // Validate webhook data
+        if (!webhookData || typeof webhookData !== 'object') {
+            logger.error(`Invalid webhook data: ${JSON.stringify(webhookData)}`);
+            throw new Error(`Invalid webhook data`);
+        }
+        
+        // First check if record exists
+        const recordExists = await runRecordAdapter.checkRunRecordExists({
+            runId: validatedRunId,
+            clientId: validatedClientId,
+            options: { source: 'apify_webhook', logger }
+        });
+        
+        if (!recordExists) {
+            const errorMsg = `No run record exists for ${validatedRunId}/${validatedClientId}`;
+            logger.error(`Webhook received but ${errorMsg}`);
+            throw new Error(errorMsg);
+        }
+        
+        // Extract the metrics from the webhook data
+        const metrics = {
+            'Apify Status': webhookData.status || 'UNKNOWN',
+            'System Notes': `Webhook received at ${new Date().toISOString()}`,
+            'Last Updated': new Date().toISOString()
+        };
+        
+        // Add the Apify run ID if available
+        if (webhookData.defaultDatasetId) {
+            metrics['Apify Run ID'] = webhookData.defaultDatasetId;
+        }
+        
+        // Update the run record with webhook data
+        await runRecordAdapter.updateRunRecord({
+            runId: validatedRunId,
+            clientId: validatedClientId,
+            updates: metrics,
+            options: { source: 'apify_webhook', logger }
+        });
+        
+        logger.info(`Successfully processed Apify webhook for ${validatedClientId}`);
+        return { success: true };
+        
+    } catch (error) {
+        logger.error(`Error processing Apify webhook: ${error.message}`);
+        throw error;
+    }
+}
+
 module.exports = {
     createApifyRun,
     updateClientRunMetrics,
@@ -420,5 +508,6 @@ module.exports = {
     getClientIdForRun,
     getClientRuns,
     extractRunIdFromPayload,
-    clearRunsCache
+    clearRunsCache,
+    processApifyWebhook // Export the new function
 };

@@ -57,10 +57,14 @@ async function startJob(params) {
     };
     
     // Create the job tracking record - the ONLY place this should happen
+    // CRITICAL FIX: Store jobType in System Notes, not as a field
+    // The Job Type field doesn't exist in Airtable schema
     const jobRecord = await JobTracking.createJob({
         runId,
-        jobType,
-        initialData: enhancedInitialData,
+        initialData: {
+            ...enhancedInitialData,
+            'System Notes': `${enhancedInitialData['System Notes'] || ''}\nJob Type: ${jobType}`
+        },
         options
     });
     

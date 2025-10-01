@@ -76,9 +76,26 @@ const unifiedRunIdService = require('../services/unifiedRunIdService');
 const { STATUS_VALUES } = require('../constants/airtableConstants');
 // Import job orchestration service
 const jobOrchestrationService = require('../services/jobOrchestrationService');
+// Import the ParameterValidator utility
+const ParameterValidator = require('../utils/parameterValidator');
 // Define runIdService for backward compatibility
 const runIdService = unifiedRunIdService;
 let runId = 'INITIALIZING';
+
+// ROOT CAUSE FIX: Create a function to ensure normalizedRunId is always defined
+function getNormalizedRunId(originalRunId) {
+  // If originalRunId is null, undefined, or not a string, use the global runId
+  const runIdToNormalize = (typeof originalRunId === 'string') ? originalRunId : runId;
+  
+  try {
+    // Use the unifiedRunIdService to normalize the run ID
+    return unifiedRunIdService.normalizeRunId(runIdToNormalize);
+  } catch (error) {
+    console.error(`Error normalizing runId ${runIdToNormalize}: ${error.message}`);
+    // Return the original as fallback
+    return runIdToNormalize;
+  }
+}
 let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();
     console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
@@ -445,10 +462,14 @@ async function main() {
     // Note: generateRunId is actually synchronous, no need to await
     runId = generateRunId();
     
+    // ROOT CAUSE FIX: Create a normalized version of the run ID 
+    // This ensures normalizedRunId is always defined when needed
+    const normalizedRunId = getNormalizedRunId(runId);
+    
     // Create a logger that uses this run ID
     log = createLogger(runId);
     
-    log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId})`, 'INFO');
+    log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId}, Normalized: ${normalizedRunId})`, 'INFO');
     // Initialization complete
     
     // Use external URL for Render, localhost for local development
@@ -869,14 +890,18 @@ async function main() {
         try {
             log(`📊 Updating job tracking metrics...`);
             
+            // Import field name constants to ensure correctness
+            const { JOB_TRACKING_FIELDS } = require('../constants/airtableFields');
+            
             // Update job tracking record with metrics
             await airtableService.updateJobTrackingRecord({
                 runId,
                 updates: {
-                    // CRITICAL FIX: Use correct field name from constants
-                    'Total Clients Processed': clientsNeedingWork.length, // Fixed field name
-                    'Success Rate': successRate,
-                    'System Notes': `Total jobs started: ${totalJobsStarted}. Processed ${clientsNeedingWork.length} clients.` // Fixed to use existing field
+                    // ROOT CAUSE FIX: Use correct field name from constants
+                    // The field is 'Clients Processed', not 'Total Clients Processed'
+                    [JOB_TRACKING_FIELDS.CLIENTS_PROCESSED]: clientsNeedingWork.length,
+                    [JOB_TRACKING_FIELDS.SUCCESS_RATE]: successRate,
+                    [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Total jobs started: ${totalJobsStarted}. Processed ${clientsNeedingWork.length} clients.`
                 }
             });
             
