@@ -7,6 +7,7 @@
  */
 
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 const baseManager = require('./airtable/baseManager');
 const { STATUS_VALUES } = require('../constants/airtableConstants');
 
@@ -14,8 +15,8 @@ const { STATUS_VALUES } = require('../constants/airtableConstants');
 const JOB_TRACKING_TABLE = 'Job Tracking';
 const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
 
-// Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'simple_job_tracking');
+// Default logger - using safe creation
+const logger = createSafeLogger('SYSTEM', null, 'simple_job_tracking');
 
 /**
  * Generate a standardized run ID in YYMMDD-HHMMSS format

@@ -7,6 +7,7 @@
 const { CLIENT_RUN_RESULTS_FIELDS } = require('../constants/airtableFields');
 const runRecordAdapter = require('./runRecordAdapterSimple');
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 const { safeGet } = require('../utils/safeAccess');
 const RunIdValidator = require('./runIdValidator');
 
@@ -38,13 +39,13 @@ async function updatePostScoringMetrics(params) {
   
   if (!validatedRunId || !validatedClientId) {
     const error = new Error(`Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`);
-    const logger = new StructuredLogger('SYSTEM', String(runId), 'post_scoring');
+    const logger = createSafeLogger('SYSTEM', String(runId), 'post_scoring');
     logger.error(`[PostScoringMetricsHandler] ${error.message}`);
     return { success: false, error: error.message };
   }
   
   // Create logger
-  const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'post_scoring');
+  const logger = options.logger || createSafeLogger(validatedClientId, validatedRunId, 'post_scoring');
   
   try {
     // Validate metrics
