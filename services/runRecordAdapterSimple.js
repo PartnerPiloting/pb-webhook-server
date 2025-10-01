@@ -14,6 +14,11 @@
 // undefined property errors. This catches errors at the source instead of allowing
 // them to propagate through the system.
 
+// Create a Map to track creation attempts and prevent duplicates
+const creationAttempts = new Map();
+// Set a TTL for creation attempt records to prevent memory leaks
+const CREATION_ATTEMPT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 const airtableServiceSimple = require('./airtableServiceSimple');
 const runIdUtils = require('../utils/runIdUtils');
 const { StructuredLogger } = require('../utils/structuredLogger');
@@ -84,6 +89,32 @@ async function createRunRecord(params) {
     sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     throw new Error(errorMsg);
   }
+  
+  // CRITICAL FIX: Create unique key and check if we already attempted creation
+  const recordKey = `${validatedRunId}-${validatedClientId}`;
+  
+  // Check if we're already creating this record (prevents race conditions)
+  if (creationAttempts.has(recordKey)) {
+    const attemptInfo = creationAttempts.get(recordKey);
+    const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
+    logger.warn(`[DUPLICATE_PREVENTION] Already attempted to create record ${recordKey} at ${attemptInfo.timestamp} from ${attemptInfo.source}`);
+    return { 
+      skipped: true, 
+      reason: 'duplicate_creation_attempt',
+      originalSource: attemptInfo.source 
+    };
+  }
+  
+  // Mark that we're attempting to create this record
+  creationAttempts.set(recordKey, {
+    timestamp: new Date().toISOString(),
+    source: options.source || 'unknown'
+  });
+  
+  // Clean up old entries after TTL to prevent memory leak
+  setTimeout(() => {
+    creationAttempts.delete(recordKey);
+  }, CREATION_ATTEMPT_TTL_MS);
   
   const logger = options.logger || new StructuredLogger(validatedClientId, validatedRunId, 'run_record');
   const source = options.source || 'unknown';
@@ -361,13 +392,40 @@ async function createJobRecord(params) {
     throw new Error(errorMsg);
   }
   
+  // CRITICAL FIX: Create unique key and check if we already attempted job creation
+  const jobRecordKey = `job-${validatedRunId}`;
+  
+  // Check if we're already creating this job record (prevents race conditions)
+  if (creationAttempts.has(jobRecordKey)) {
+    const attemptInfo = creationAttempts.get(jobRecordKey);
+    const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
+    logger.warn(`[DUPLICATE_PREVENTION] Already attempted to create job record ${jobRecordKey} at ${attemptInfo.timestamp} from ${attemptInfo.source}`);
+    return { 
+      skipped: true, 
+      reason: 'duplicate_job_creation_attempt',
+      originalSource: attemptInfo.source,
+      success: true // Indicate creation was likely successful in previous attempt
+    };
+  }
+  
+  // Mark that we're attempting to create this record
+  creationAttempts.set(jobRecordKey, {
+    timestamp: new Date().toISOString(),
+    source: options.source || 'job_tracking'
+  });
+  
+  // Clean up old entries after TTL to prevent memory leak
+  setTimeout(() => {
+    creationAttempts.delete(jobRecordKey);
+  }, CREATION_ATTEMPT_TTL_MS);
+  
   const logger = options.logger || new StructuredLogger('SYSTEM', validatedRunId, 'job_tracking');
   const source = options.source || 'job_tracking';
   
   // STANDALONE CHECK: Don't create records in standalone mode
   if (options.isStandalone === true) {
     logger.info(`[RunRecordAdapterSimple] Skipping job record creation for standalone run: ${validatedRunId}`);
-    return { skipped: true, reason: 'standalone_run' };
+    return { skipped: true, reason: 'standalone_run', success: true };
   }
   
   try {
@@ -389,16 +447,45 @@ async function createJobRecord(params) {
     
     if (existingRecords && existingRecords.length > 0) {
       logger.info(`[RunRecordAdapterSimple] Job tracking record already exists for ${baseRunId}, using existing record`);
-      return existingRecords[0];
+      return {
+        ...existingRecords[0],
+        success: true,
+        created: false,
+        existed: true
+      };
     }
     
     logger.debug(`[RunRecordAdapterSimple] No existing job record found, creating new with ID: ${baseRunId}`);
     
     // Direct call to the simple service - only creates if doesn't exist
-    return await airtableServiceSimple.createJobTrackingRecord(baseRunId, stream);
+    const newRecord = await airtableServiceSimple.createJobTrackingRecord(baseRunId, stream);
+    
+    // CRITICAL FIX: Validate successful creation
+    if (!newRecord || !newRecord.id) {
+      logger.error(`[RunRecordAdapterSimple] Failed to create job tracking record for ${baseRunId}`);
+      return {
+        success: false,
+        reason: 'creation_failed',
+        runId: baseRunId
+      };
+    }
+    
+    logger.info(`[RunRecordAdapterSimple] Successfully created job tracking record: ${baseRunId}`);
+    return {
+      ...newRecord,
+      success: true,
+      created: true,
+      existed: false
+    };
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating job record: ${error.message}`);
-    throw error;
+    // Return error information instead of throwing
+    return {
+      success: false,
+      error: error.message,
+      runId: validatedRunId,
+      reason: 'exception'
+    };
   }
 }
 

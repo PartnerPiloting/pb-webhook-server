@@ -11,6 +11,7 @@
 
 const { StructuredLogger } = require('../utils/structuredLogger');
 const baseManager = require('./airtable/baseManager');
+// Import constants from both sources to ensure field name consistency
 const { 
   MASTER_TABLES, 
   JOB_TRACKING_FIELDS, 
@@ -18,6 +19,13 @@ const {
   FORMULA_FIELDS,
   STATUS_VALUES 
 } = require('../constants/airtableConstants');
+
+// CRITICAL FIX: Also import the newer field name constants for consistency
+const {
+  CLIENT_RUN_RESULTS_FIELDS,
+  JOB_TRACKING_FIELDS: JOB_TRACKING_FIELD_NAMES,
+  TABLES
+} = require('../constants/airtableFields');
 const unifiedRunIdService = require('./unifiedRunIdService');
 
 // Table constants - Using constants from centralized file
@@ -259,7 +267,8 @@ class JobTracking {
       const masterBase = baseManager.getMasterClientsBase();
       
       // Check if record already exists using BOTH the original and normalized run IDs
-      const formula = `OR({Run ID} = '${clientRunId}', {Run ID} = '${normalizedClientRunId}')`;
+      // CRITICAL FIX: Use field name constants instead of hardcoded strings
+      const formula = `OR({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.RUN_ID}} = '${normalizedClientRunId}')`;
       
       const existingRecords = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: formula,
@@ -321,7 +330,10 @@ class JobTracking {
    * @returns {Promise<Object>} Updated record info
    */
   static async updateClientRun(params) {
-    const { runId, clientId, updates = {}, createIfMissing = false, options = {} } = params;
+    const { runId, clientId, updates = {}, options = {} } = params;
+    // CRITICAL FIX: Remove createIfMissing option to enforce single creation point pattern
+    // Removed the parameter and all related functionality to prevent creation in update paths
+    
     const log = options.logger || logger;
     
     if (!runId || !clientId) {
@@ -337,23 +349,24 @@ class JobTracking {
       const masterBase = baseManager.getMasterClientsBase();
       
       // Find the record
+      // CRITICAL FIX: Use field name constants instead of hardcoded strings
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{Run ID} = '${clientRunId}'`,
+        filterByFormula: `{${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${clientRunId}'`,
         maxRecords: 1
       }).firstPage();
       
-      // If record not found and createIfMissing is true, create it
-      if ((!records || records.length === 0) && createIfMissing) {
-        log.warn(`Client run record for ${clientRunId} not found, creating it...`);
-        return await JobTracking.createClientRun({
-          runId,
+      // CRITICAL FIX: Never create records in update paths
+      // Removed the createIfMissing option entirely to enforce the pattern
+      if (!records || records.length === 0) {
+        // Record not found - log error but don't throw to prevent breaking flows
+        log.error(`Client run record not found for ${clientRunId} - cannot update non-existent record`);
+        return {
+          success: false,
+          error: 'record_not_found',
+          runId: clientRunId,
           clientId,
-          initialData: updates,
-          options
-        });
-      } else if (!records || records.length === 0) {
-        log.error(`Client run record not found for ${clientRunId} and createIfMissing is false`);
-        throw new Error(`Client run record not found for ${clientRunId}`);
+          message: `Run record not found for ${clientRunId}`
+        };
       }
       
       const record = records[0];
@@ -507,8 +520,9 @@ class JobTracking {
       const clientRunId = JobTracking.addClientSuffix(runId, clientId);
       const masterBase = baseManager.getMasterClientsBase();
       
+      // CRITICAL FIX: Use field name constants instead of hardcoded strings
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{Run ID} = '${clientRunId}'`,
+        filterByFormula: `{${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${clientRunId}'`,
         maxRecords: 1
       }).firstPage();
       
@@ -535,10 +549,33 @@ class JobTracking {
   static async updateClientMetrics(params) {
     const { runId, clientId, metrics = {}, options = {} } = params;
     const log = options.logger || logger;
+    const source = options.source || 'unknown';
     
     if (!runId || !clientId) {
       log.error("Run ID and Client ID are required to update client metrics");
       throw new Error("Run ID and Client ID are required to update client metrics");
+    }
+    
+    // CRITICAL FIX: First check if record exists before attempting any updates
+    const recordExists = await JobTracking.checkClientRunExists({
+      runId,
+      clientId,
+      options: {
+        logger: log,
+        source: `${source}_metrics_existence_check`
+      }
+    });
+    
+    if (!recordExists) {
+      log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${runId}/${clientId}. Cannot update metrics.`);
+      return {
+        success: false,
+        error: 'record_not_found',
+        message: `No run record found for ${clientId} with run ID ${runId}`,
+        source,
+        runId,
+        clientId
+      };
     }
     
     try {
@@ -581,6 +618,44 @@ class JobTracking {
    * @param {Object} [params.options] - Additional options including isStandalone flag
    * @returns {Promise<Object>} Updated record info
    */
+  /**
+   * Check if a client run record exists
+   * @param {Object} params - Parameters
+   * @param {string} params.runId - Run ID
+   * @param {string} params.clientId - Client ID
+   * @param {Object} [params.options={}] - Options
+   * @returns {Promise<boolean>} True if record exists
+   */
+  static async checkClientRunExists(params) {
+    const { runId, clientId, options = {} } = params;
+    const log = options.logger || logger;
+    
+    if (!runId || !clientId) {
+      log.error("Run ID and Client ID are required to check if client run record exists");
+      return false;
+    }
+    
+    try {
+      // Create client-specific run ID
+      const clientRunId = JobTracking.addClientSuffix(runId, clientId);
+      
+      // Get the master base
+      const masterBase = baseManager.getMasterClientsBase();
+      
+      // Find the record
+      // CRITICAL FIX: Use field name constants instead of hardcoded strings
+      const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
+        filterByFormula: `{${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        maxRecords: 1
+      }).firstPage();
+      
+      return !!(records && records.length > 0);
+    } catch (error) {
+      log.error(`Error checking client run record existence: ${error.message}`);
+      return false;
+    }
+  }
+
   static async completeClientProcessing(params) {
     const { runId, clientId, finalMetrics = {}, options = {} } = params;
     const log = options.logger || logger;
@@ -590,6 +665,28 @@ class JobTracking {
     if (!runId || !clientId) {
       log.error("Run ID and Client ID are required to complete client processing");
       throw new Error("Run ID and Client ID are required to complete client processing");
+    }
+    
+    // CRITICAL FIX: First check if record exists before attempting any updates
+    const recordExists = await JobTracking.checkClientRunExists({
+      runId,
+      clientId,
+      options: {
+        logger: log,
+        source: `${source}_existence_check`
+      }
+    });
+    
+    if (!recordExists) {
+      log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${runId}/${clientId}. Cannot complete client processing.`);
+      return {
+        success: false,
+        error: 'record_not_found',
+        message: `No run record found for ${clientId} with run ID ${runId}`,
+        source,
+        runId,
+        clientId
+      };
     }
     
     // For non-standalone runs, we should only update metrics, not complete the process
