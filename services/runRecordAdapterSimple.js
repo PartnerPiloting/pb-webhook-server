@@ -30,6 +30,24 @@ const unifiedRunIdService = require('./unifiedRunIdService');
 // Import field name constants for consistency
 const { CLIENT_RUN_RESULTS_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
 
+/**
+ * Helper function to get a logger from options or create a new one
+ * @param {Object} options - Options object that may contain a logger
+ * @param {string} clientId - Client ID for logger creation
+ * @param {string} runId - Run ID for logger creation  
+ * @param {string} context - Context for logger creation
+ * @returns {Object} - Logger instance
+ */
+function getLoggerFromOptions(options, clientId, runId, context = 'general') {
+  // If logger is provided in options, use it
+  if (options && options.logger && typeof options.logger.info === 'function') {
+    return options.logger;
+  }
+  
+  // Otherwise create a safe logger
+  return createSafeLogger(clientId || 'SYSTEM', runId || 'unknown', context);
+}
+
 // CRITICAL: Verify constants are properly imported
 if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_RESULTS_FIELDS || !TABLES) {
   console.error('CRITICAL: Constants not properly imported from airtableFields.js');
@@ -719,6 +737,29 @@ async function completeClientProcessing(params) {
   logger.debug(`[RunRecordAdapterSimple] Completing all processing for client ${clientId}`);
   
   try {
+    // FIXED: Validate runId and clientId parameters
+    if (!runId) {
+      logger.error(`[STRICT ENFORCEMENT] Missing runId parameter - cannot complete client processing`);
+      throw new Error(`Missing required runId parameter for completing client processing`);
+    }
+    
+    if (typeof runId === 'object') {
+      logger.error(`[STRICT ENFORCEMENT] Object passed as runId: ${JSON.stringify(runId)}`);
+      // Try to extract a usable runId
+      if (runId.runId) runId = runId.runId;
+      else if (runId.id) runId = runId.id;
+      else {
+        logger.error(`[STRICT ENFORCEMENT] Cannot extract valid runId from object`);
+        throw new Error(`Invalid runId object: ${JSON.stringify(runId)}`);
+      }
+    }
+    
+    if (!clientId) {
+      logger.error(`[STRICT ENFORCEMENT] Missing clientId parameter - cannot complete client processing`);
+      throw new Error(`Missing required clientId parameter for completing client processing`);
+    }
+    
+    // Now normalize the run ID
     const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
     const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
     const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
@@ -1183,6 +1224,7 @@ module.exports = {
   completeClientProcessing,
   checkRunRecordExists,
   safeUpdateMetrics,
+  getLoggerFromOptions,
   
   // For backward compatibility, alias createRunRecord to createClientRunRecord
   // This makes the transition seamless for existing code
