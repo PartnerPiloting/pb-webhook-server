@@ -5,6 +5,7 @@
  */
 
 const { StructuredLogger } = require('./structuredLogger');
+const { createSafeLogger, getLoggerFromOptions } = require('./loggerHelper');
 
 /**
  * Get the field types for a table
@@ -135,7 +136,7 @@ function convertValueToType(value, fieldName, targetType, options = {}) {
  * @returns {Object} Error information object
  */
 function handleClientError(clientId, operation, error, options = {}) {
-  const logger = options.logger || new StructuredLogger(clientId || 'SYSTEM', null, operation);
+  const logger = options.logger || createSafeLogger(clientId || 'SYSTEM', null, operation);
   
   // Create a structured error object with context
   const errorInfo = {

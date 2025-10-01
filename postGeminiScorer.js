@@ -1,5 +1,6 @@
 // File: services/postGeminiScorer.js
 const { StructuredLogger } = require('./utils/structuredLogger');
+const { createSafeLogger } = require('./utils/loggerHelper');
 const MAX_OUTPUT_TOKENS_FOR_POST_SCORING = 16384;
 const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10);
 
@@ -7,7 +8,7 @@ async function scorePostsWithGemini(geminiInputObject, configuredGeminiModelInst
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
         const clientId = geminiInputObject?.lead_id?.substring(0, 8) || 'UNKNOWN';
-        logger = new StructuredLogger(clientId, 'GEMINI');
+        logger = createSafeLogger(clientId, 'GEMINI', 'post_scoring');
     }
 
     logger.setup('scorePostsWithGemini', `Starting Gemini post scoring for ${geminiInputObject?.posts?.length || 0} posts`);

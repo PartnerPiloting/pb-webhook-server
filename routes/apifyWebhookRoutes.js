@@ -146,6 +146,38 @@ async function apifyWebhookHandler(req, res) {
         const validatedJobRunId = typeof jobRunId === 'string' ? jobRunId : 
                                  (jobRunId && jobRunId.runId ? jobRunId.runId : String(jobRunId));
         
+        // Track profiles submitted for harvesting
+        try {
+            // Update client metrics for Apify run initialization
+            const profilesSubmitted = payload.targetUrls ? payload.targetUrls.length : 
+                                      (payload.data?.targetUrls ? payload.data.targetUrls.length : 0);
+            
+            // Get specific logger for this operation
+            const metricsLogger = createSafeLogger(clientId, validatedJobRunId, 'apify_metrics');
+            
+            metricsLogger.info(`Updating metrics for ${profilesSubmitted} profiles submitted to Apify run ${apifyRunId}`);
+            
+            // Use JobTracking service to update client metrics
+            await JobTracking.updateClientMetrics({
+                runId: validatedJobRunId,
+                clientId,
+                metrics: {
+                    'Profiles Submitted for Post Harvesting': profilesSubmitted,
+                    'Apify Run ID': apifyRunId,
+                    'System Notes': `Apify run ${apifyRunId} started for ${profilesSubmitted} profiles at ${new Date().toISOString()}`
+                },
+                options: {
+                    source: 'apify_webhook_start',
+                    logger: metricsLogger
+                }
+            });
+            
+            metricsLogger.info(`Successfully updated metrics for Apify run initialization`);
+        } catch (metricsError) {
+            logger.error(`Failed to update initial Apify metrics: ${metricsError.message}`);
+            // Continue processing even if metrics update fails
+        }
+
         // Process the webhook in background with validated runId
         processWebhook(payload, apifyRunId, clientId, validatedJobRunId).catch(error => {
             logger.error(`Background processing failed: ${error.message}`, { error });
@@ -372,6 +404,10 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         const posts = extractPostsFromPayload(payload);
         clientLogger.info(`Extracted ${posts.length} posts from payload`);
         
+        // Determine profiles submitted count from payload
+        const profilesSubmitted = payload.targetUrls ? payload.targetUrls.length : 
+                               (payload.data?.targetUrls ? payload.data.targetUrls.length : 0);
+        
         // If no posts found, update tracking and exit
         if (!posts || posts.length === 0) {
             clientLogger.warn(`No posts found in payload for Apify run ${apifyRunId}`);
@@ -379,21 +415,44 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             // Check if this is a standalone run
             const isStandalone = !jobRunId.includes('-');
             
+            // Prepare metrics
+            const harvestMetrics = {
+                'Total Posts Harvested': 0,
+                'Apify Run ID': apifyRunId || '',
+                'Profiles Submitted for Post Harvesting': profilesSubmitted,
+                'System Notes': `Completed Apify run ${apifyRunId} with no posts found at ${new Date().toISOString()}`
+            };
+            
+            // Update client metrics with harvest results
+            clientLogger.info(`Updating client metrics with harvest results: 0 posts harvested from ${profilesSubmitted} profiles`);
+            
+            try {
+                // Update client metrics with standardized field names from constants
+                await JobTracking.updateClientMetrics({
+                    runId: jobRunId,
+                    clientId,
+                    metrics: harvestMetrics,
+                    options: {
+                        source: 'apify_webhook_complete',
+                        logger: clientLogger
+                    }
+                });
+                clientLogger.info(`Successfully updated client metrics for harvest results`);
+            } catch (metricsError) {
+                clientLogger.error(`Failed to update harvest metrics: ${metricsError.message}`);
+                // Continue processing even if metrics update fails
+            }
+            
             // Use job orchestration service to handle completion
             await jobOrchestrationService.completeJob({
                 jobType: 'apify_post_harvesting',
                 runId: jobRunId,
-                finalMetrics: {
-                    'Total Posts Harvested': 0,
-                    'Apify Run ID': apifyRunId || '',
-                    'Profiles Submitted for Post Harvesting': payload.targetUrls ? payload.targetUrls.length : 0,
-                    'System Notes': 'Completed with no posts found'
-                }
+                finalMetrics: harvestMetrics
             });
             
             // Still update client-specific metrics
             await JobTracking.completeClientProcessing({
-                runId: validJobRunId, // CRITICAL FIX: Use validated ID
+                runId: jobRunId,
                 clientId,
                 finalMetrics: {
                     'Total Posts Harvested': 0,
@@ -430,33 +489,48 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         
         // Save posts to Airtable
         const result = await syncPBPostsToAirtable(posts, clientBase, clientId, clientLogger);
+                               
+        // Prepare harvest metrics
+        const harvestMetrics = {
+            'Total Posts Harvested': posts.length,
+            'Apify API Costs': posts.length * 0.02, // Estimated cost: $0.02 per post
+            'Apify Run ID': apifyRunId || '',
+            'Profiles Submitted for Post Harvesting': profilesSubmitted,
+            'System Notes': `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors) at ${new Date().toISOString()}`
+        };
         
-        // Check if this is a standalone run or part of a workflow
-        const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
+        // Update client metrics with harvest results
+        clientLogger.info(`Updating client metrics with harvest results: ${posts.length} posts harvested from ${profilesSubmitted} profiles`);
+        
+        try {
+            // Update client metrics with standardized field names
+            await JobTracking.updateClientMetrics({
+                runId: jobRunId,
+                clientId,
+                metrics: harvestMetrics,
+                options: {
+                    source: 'apify_webhook_complete',
+                    logger: clientLogger
+                }
+            });
+            clientLogger.info(`Successfully updated client metrics for harvest results`);
+        } catch (metricsError) {
+            clientLogger.error(`Failed to update harvest metrics: ${metricsError.message}`);
+            // Continue processing even if metrics update fails
+        }
         
         // Use job orchestration service to handle completion
         await jobOrchestrationService.completeJob({
             jobType: 'apify_post_harvesting',
             runId: jobRunId,
-            finalMetrics: {
-                'Total Posts Harvested': posts.length,
-                'Apify API Costs': posts.length * 0.02, // Estimated cost: $0.02 per post
-                'Apify Run ID': apifyRunId || '',
-                'Profiles Submitted for Post Harvesting': payload.targetUrls ? payload.targetUrls.length : 0,
-                'System Notes': `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors)`
-            }
+            finalMetrics: harvestMetrics
         });
         
-        // Still update client-specific metrics
+        // Complete client processing
         await JobTracking.completeClientProcessing({
             runId: jobRunId,
             clientId,
-            finalMetrics: {
-                'Total Posts Harvested': posts.length,
-                'Apify API Costs': posts.length * 0.02,
-                'Apify Run ID': apifyRunId || '',
-                'System Notes': `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors)`
-            }
+            finalMetrics: harvestMetrics
         });
         
         // Update job tracking record
