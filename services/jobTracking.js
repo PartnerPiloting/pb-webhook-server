@@ -13,7 +13,7 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
 // Import field validator for consistent field naming
-const { FIELD_NAMES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
+const { FIELD_NAMES, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 // Database access
 const baseManager = require('./airtable/baseManager');
@@ -41,7 +41,7 @@ const logger = createSafeLogger('SYSTEM', null, 'job_tracking');
  * @param {Object} fieldData - Object with field names as keys
  * @returns {boolean} True if all fields are valid, false otherwise
  */
-function validateFieldNames(tableName, fieldData) {
+function validateJobTrackingFields(tableName, fieldData) {
   const fieldNames = Object.keys(fieldData);
   
   // Skip validation if no fields
@@ -198,7 +198,7 @@ class JobTracking {
       }
       
       // Validate field names before sending to Airtable
-      validateFieldNames(JOB_TRACKING_TABLE, recordData);
+      validateJobTrackingFields(JOB_TRACKING_TABLE, recordData);
       
       // Create the record
       const record = await masterBase(JOB_TRACKING_TABLE).create(recordData);
@@ -290,7 +290,7 @@ class JobTracking {
       }
       
       // Validate field names before sending to Airtable
-      validateFieldNames(JOB_TRACKING_TABLE, updateFields);
+      validateJobTrackingFields(JOB_TRACKING_TABLE, updateFields);
       
       // Update the record
       await masterBase(JOB_TRACKING_TABLE).update(record.id, updateFields);
@@ -377,7 +377,7 @@ class JobTracking {
       }
       
       // Validate field names before sending to Airtable
-      validateFieldNames(CLIENT_RUN_RESULTS_TABLE, recordData);
+      validateJobTrackingFields(CLIENT_RUN_RESULTS_TABLE, recordData);
       
       // Create the record
       const record = await masterBase(CLIENT_RUN_RESULTS_TABLE).create(recordData);
@@ -498,7 +498,7 @@ class JobTracking {
       });
       
       // Validate field names before sending to Airtable
-      validateFieldNames(CLIENT_RUN_RESULTS_TABLE, updateFields);
+      validateJobTrackingFields(CLIENT_RUN_RESULTS_TABLE, updateFields);
       
       // Update the record
       await masterBase(CLIENT_RUN_RESULTS_TABLE).update(record.id, updateFields);
