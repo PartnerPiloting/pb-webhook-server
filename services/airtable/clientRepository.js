@@ -7,6 +7,12 @@
 
 const { StructuredLogger } = require('../../utils/structuredLogger');
 const baseManager = require('./baseManager');
+const { 
+  CLIENT_EXECUTION_LOG_FIELDS,
+  CLIENT_RUN_FIELDS,
+  MASTER_TABLES,
+  CLIENT_FIELDS
+} = require('../../constants/airtableUnifiedConstants');
 // Updated to use unified run ID service
 const runIdService = require('../../services/unifiedRunIdService');
 
@@ -42,30 +48,30 @@ async function getAllClients() {
     const masterBase = baseManager.getMasterClientsBase();
     const clients = [];
 
-    await masterBase('Clients').select({
+    await masterBase(MASTER_TABLES.CLIENTS).select({
       // No filter - get all clients
     }).eachPage((records, fetchNextPage) => {
       records.forEach(record => {
-        const clientId = record.get('Client ID');
-        const clientName = record.get('Client Name');
-        const status = record.get('Status');
-        const airtableBaseId = record.get('Airtable Base ID');
-        const executionLog = record.get('Execution Log') || '';
-        const wpUserId = record.get('WordPress User ID');
-        const serviceLevelRaw = record.get('Service Level') || 1;
+        const clientId = record.get(CLIENT_FIELDS.CLIENT_ID);
+        const clientName = record.get(CLIENT_FIELDS.CLIENT_NAME);
+        const status = record.get(CLIENT_FIELDS.STATUS);
+        const airtableBaseId = record.get(CLIENT_FIELDS.AIRTABLE_BASE_ID);
+        const executionLog = record.get(CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG) || '';
+        const wpUserId = record.get(CLIENT_FIELDS.WORDPRESS_USER_ID);
+        const serviceLevelRaw = record.get(CLIENT_FIELDS.SERVICE_LEVEL) || 1;
         // Parse service level from string (e.g., "2-Lead Scoring + Post Scoring" → 2)
         const serviceLevel = parseInt(String(serviceLevelRaw).split('-')[0], 10) || 1;
-        const comment = record.get('Comment') || '';
-        const clientFirstName = record.get('Client First Name') || '';
-        const clientEmailAddress = record.get('Client Email Address') || '';
-        const profileScoringTokenLimit = record.get('Profile Scoring Token Limit') || 5000;
-        const postScoringTokenLimit = record.get('Post Scoring Token Limit') || 3000;
-        const postsDailyTarget = record.get('Posts Daily Target') || 0;
-        const leadsBatchSizeForPostCollection = record.get('Leads Batch Size for Post Collection') || 20;
-        const maxPostBatchesPerDayGuardrail = record.get('Max Post Batches Per Day Guardrail') || 10;
-        const primaryFloor = record.get('Primary Floor') || 70;
-        const secondaryFloor = record.get('Secondary Floor') || 50;
-        const minimumFloor = record.get('Minimum Floor') || 30;
+        const comment = record.get(CLIENT_FIELDS.COMMENT) || '';
+        const clientFirstName = record.get(CLIENT_FIELDS.CLIENT_FIRST_NAME) || '';
+        const clientEmailAddress = record.get(CLIENT_FIELDS.CLIENT_EMAIL_ADDRESS) || '';
+        const profileScoringTokenLimit = record.get(CLIENT_FIELDS.PROFILE_SCORING_TOKEN_LIMIT) || 5000;
+        const postScoringTokenLimit = record.get(CLIENT_FIELDS.POST_SCORING_TOKEN_LIMIT) || 3000;
+        const postsDailyTarget = record.get(CLIENT_FIELDS.POSTS_DAILY_TARGET) || 0;
+        const leadsBatchSizeForPostCollection = record.get(CLIENT_FIELDS.LEADS_BATCH_SIZE_FOR_POST_COLLECTION) || 20;
+        const maxPostBatchesPerDayGuardrail = record.get(CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL) || 10;
+        const primaryFloor = record.get(CLIENT_FIELDS.PRIMARY_FLOOR) || 70;
+        const secondaryFloor = record.get(CLIENT_FIELDS.SECONDARY_FLOOR) || 50;
+        const minimumFloor = record.get(CLIENT_FIELDS.MINIMUM_FLOOR) || 30;
 
         clients.push({
           id: record.id,
@@ -171,13 +177,12 @@ async function createClientRunRecord(runId, clientId, clientName) {
     const startTime = new Date().toISOString();
     const baseRunId = runIdService.stripClientSuffix(standardRunId);
     
-    const record = await masterBase('Client Run Results').create({
-      'Run ID': standardRunId,
-      // 'Base Run ID' field removed - doesn't exist in the Airtable schema
-      'Client ID': clientId, // Using 'Client ID' to match the field name in Airtable
-      'Client Name': resolvedClientName,
-      'Start Time': startTime,
-      'Status': 'Running'
+    const record = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).create({
+      [CLIENT_RUN_FIELDS.RUN_ID]: standardRunId,
+      [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
+      [CLIENT_RUN_FIELDS.CLIENT_NAME]: resolvedClientName,
+      [CLIENT_RUN_FIELDS.START_TIME]: startTime,
+      [CLIENT_RUN_FIELDS.STATUS]: 'Running'
     });
     
     logger.debug(`Created client run record for ${clientId}: ${standardRunId}`);
@@ -222,7 +227,7 @@ async function updateClientRunRecord(runId, clientId, updates) {
     
     // Find the record by Run ID and Client
     let recordId = null;
-    const records = await masterBase('Client Run Results').select({
+    const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
       filterByFormula: `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')` // Fixed from 'Client' to 'Client ID' to match Airtable schema
     }).firstPage();
     
@@ -238,20 +243,22 @@ async function updateClientRunRecord(runId, clientId, updates) {
     // Prepare update fields
     const updateFields = {};
     
-    // Map update keys to Airtable field names
-    if (updates.status) updateFields['Status'] = updates.status;
-    if (updates.endTime) updateFields['End Time'] = updates.endTime;
-    if (updates.leadsProcessed) updateFields['Leads Processed'] = updates.leadsProcessed;
-    if (updates.postsProcessed) updateFields['Posts Processed'] = updates.postsProcessed;
-    if (updates.errors) updateFields['Errors'] = updates.errors;
-    if (updates.notes) updateFields['System Notes'] = updates.notes; // Changed from 'Notes' to 'System Notes' to match the Airtable schema
-    if (updates.tokenUsage) updateFields['Token Usage'] = updates.tokenUsage;
-    if (updates.promptTokens) updateFields['Prompt Tokens'] = updates.promptTokens;
+    // Map update keys to Airtable field names using constants
+    // Check if properties exist (not undefined) rather than if they're truthy
+
+    if ('status' in updates || CLIENT_RUN_FIELDS.STATUS in updates) updateFields[CLIENT_RUN_FIELDS.STATUS] = 'status' in updates ? updates.status : updates[CLIENT_RUN_FIELDS.STATUS];
+    if ('endTime' in updates || CLIENT_RUN_FIELDS.END_TIME in updates) updateFields[CLIENT_RUN_FIELDS.END_TIME] = 'endTime' in updates ? updates.endTime : updates[CLIENT_RUN_FIELDS.END_TIME];
+    if ('leadsProcessed' in updates || CLIENT_RUN_FIELDS.PROFILES_EXAMINED in updates) updateFields[CLIENT_RUN_FIELDS.PROFILES_EXAMINED] = 'leadsProcessed' in updates ? updates.leadsProcessed : updates[CLIENT_RUN_FIELDS.PROFILES_EXAMINED];
+    if ('postsProcessed' in updates || CLIENT_RUN_FIELDS.POSTS_EXAMINED in updates) updateFields[CLIENT_RUN_FIELDS.POSTS_EXAMINED] = 'postsProcessed' in updates ? updates.postsProcessed : updates[CLIENT_RUN_FIELDS.POSTS_EXAMINED];
+    if ('errors' in updates || CLIENT_RUN_FIELDS.ERRORS in updates) updateFields[CLIENT_RUN_FIELDS.ERRORS] = 'errors' in updates ? updates.errors : updates[CLIENT_RUN_FIELDS.ERRORS];
+    if ('notes' in updates || CLIENT_RUN_FIELDS.SYSTEM_NOTES in updates) updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = 'notes' in updates ? updates.notes : updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES];
+    if ('tokenUsage' in updates || CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED in updates) updateFields[CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED] = 'tokenUsage' in updates ? updates.tokenUsage : updates[CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED];
+    if ('promptTokens' in updates || CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS in updates) updateFields[CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS] = 'promptTokens' in updates ? updates.promptTokens : updates[CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS]; // Using the same field for now
     if (updates.completionTokens) updateFields['Completion Tokens'] = updates.completionTokens;
     if (updates.totalTokens) updateFields['Total Tokens'] = updates.totalTokens;
     
     // Update the record
-    const record = await masterBase('Client Run Results').update(recordId, updateFields);
+    const record = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).update(recordId, updateFields);
     
     logger.debug(`Updated client run record for ${clientId}: ${standardRunId}`);
     
