@@ -19,16 +19,13 @@ const { FIELD_NAMES, STATUS_VALUES, createValidatedObject, validateFieldNames } 
 const baseManager = require('./airtable/baseManager');
 const unifiedRunIdService = require('./unifiedRunIdService');
 
-// Import constants with both new and legacy names
+// Import constants - using standardized names only
 const { 
   TABLES,
-  MASTER_TABLES,
-  JOB_FIELDS,
-  JOB_TRACKING_FIELDS, // Legacy name 
-  CLIENT_RUN_FIELDS,
-  CLIENT_RUN_RESULTS_FIELDS, // Legacy name
+  JOB_TRACKING_FIELDS,  // Primary constant for job fields
+  CLIENT_RUN_FIELDS,    // Primary constant for client run fields
+  STATUS_VALUES,
   FORMULA_FIELDS
-  // Removed duplicate STATUS_VALUES import that was causing conflicts
 } = require('../constants/airtableSimpleConstants');
 
 // Table constants - Using simplified constants from unified file

@@ -43,7 +43,7 @@ const { JobTracking } = require('../services/jobTracking');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
 const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 const { 
-  JOB_FIELDS,
+  JOB_TRACKING_FIELDS, // Updated to use standardized constant name
   CLIENT_RUN_FIELDS
 } = require('../constants/airtableSimpleConstants');
 const jobOrchestrationService = require('../services/jobOrchestrationService');
@@ -366,7 +366,7 @@ async function main() {
         const jobRecord = await JobTracking.createJob({
             runId: normalizedRunId, 
             jobType: 'smart_resume', 
-            initialData: { [JOB_FIELDS.STREAM]: stream }
+            initialData: { [JOB_TRACKING_FIELDS.STREAM]: stream }
         });
         log(`✅ Job tracking record created successfully (ID: ${jobRecord?.recordId || 'unknown'})`, 'INFO');
     } catch (error) {
@@ -705,7 +705,7 @@ async function main() {
             await JobTracking.completeJob({
                 runId: normalizedRunId,
                 status: STATUS_VALUES.COMPLETED,
-                updates: { [JOB_FIELDS.SYSTEM_NOTES]: notes }
+                updates: { [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: notes }
             });
             log(`✅ Job tracking metrics updated`);
         } catch (error) {
@@ -729,7 +729,7 @@ async function main() {
             await JobTracking.completeJob({
                 runId: normalizedRunId,
                 status: STATUS_VALUES.ERROR,
-                updates: { [JOB_FIELDS.SYSTEM_NOTES]: notes }
+                updates: { [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: notes }
             });
             log(`✅ Job tracking updated for failure`);
         } catch (trackingError) {

@@ -2,6 +2,14 @@
  * constants/airtableSimpleConstants.js
  * 
  * Unified constants for Airtable field names - single source of truth
+ * 
+ * FIELD NAME STANDARDIZATION:
+ * - JOB_TRACKING_FIELDS: Use for all Job Tracking table field references
+ * - CLIENT_RUN_FIELDS: Use for all Client Run Results table field references
+ * - Always use constants rather than string literals for field names
+ * - Never use deprecated constants (JOB_FIELDS, CLIENT_RUN_RESULTS_FIELDS)
+ * 
+ * IMPORTANT: Constants match EXACT field names in Airtable (case-sensitive)
  */
 
 // Table names in Master Clients Base
@@ -13,7 +21,7 @@ const TABLES = {
 };
 
 // Field names for Job Tracking table
-const JOB_FIELDS = {
+const JOB_TRACKING_FIELDS = {
   RUN_ID: 'Run ID',
   STATUS: 'Status',
   STREAM: 'Stream',
@@ -28,6 +36,9 @@ const JOB_FIELDS = {
   // System fields
   SYSTEM_NOTES: 'System Notes',
   ERROR_SUMMARY: 'Error Summary',
+  ERROR: 'Error', // Added this field since we reference it in jobTracking.js
+  PROGRESS: 'Progress', // Added this field since we reference it in jobTracking.js
+  LAST_CLIENT: 'Last Client Processed', // Added this field since we reference it in jobTracking.js
   
   // Formula fields - never update directly
   DURATION: 'Duration',
@@ -75,8 +86,8 @@ const STATUS_VALUES = {
 
 // Formula fields that should never be updated directly
 const FORMULA_FIELDS = [
-  JOB_FIELDS.DURATION,
-  JOB_FIELDS.SUCCESS_RATE,
+  JOB_TRACKING_FIELDS.DURATION,
+  JOB_TRACKING_FIELDS.SUCCESS_RATE,
   CLIENT_RUN_FIELDS.DURATION,
   CLIENT_RUN_FIELDS.PROFILE_SCORING_SUCCESS_RATE,
   CLIENT_RUN_FIELDS.POST_SCORING_SUCCESS_RATE
@@ -86,10 +97,15 @@ const FORMULA_FIELDS = [
 module.exports = {
   TABLES,
   MASTER_TABLES: TABLES, // For backward compatibility
-  JOB_FIELDS,
-  JOB_TRACKING_FIELDS: JOB_FIELDS, // For backward compatibility
+  
+  // STANDARD: Use JOB_TRACKING_FIELDS going forward
+  JOB_TRACKING_FIELDS,
+  JOB_FIELDS: JOB_TRACKING_FIELDS, // DEPRECATED: Use JOB_TRACKING_FIELDS instead
+  
+  // STANDARD: Use CLIENT_RUN_FIELDS going forward
   CLIENT_RUN_FIELDS,
-  CLIENT_RUN_RESULTS_FIELDS: CLIENT_RUN_FIELDS, // For backward compatibility
+  CLIENT_RUN_RESULTS_FIELDS: CLIENT_RUN_FIELDS, // DEPRECATED: Use CLIENT_RUN_FIELDS instead
+  
   STATUS_VALUES,
   FORMULA_FIELDS
 };
