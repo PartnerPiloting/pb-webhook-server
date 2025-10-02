@@ -56,9 +56,17 @@ async function validateRunRecordExists(runId, clientId) {
             return false;
         }
         
-        // Check if a corresponding job record exists in the tracking system
+        // First standardize the run ID using JobTracking's standardization function
+        const standardizedRunId = JobTracking.standardizeRunId(runId);
+        
+        if (!standardizedRunId) {
+            logger.error(`Failed to standardize run ID: ${runId}`);
+            return false;
+        }
+        
+        // Check if a corresponding job record exists in the tracking system using standardized run ID
         return await JobTracking.checkClientRunExists({
-            runId,
+            runId: standardizedRunId,
             clientId,
             options: {
                 source: 'apify_webhook_validation'
