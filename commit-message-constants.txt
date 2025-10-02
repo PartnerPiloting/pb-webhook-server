@@ -1,0 +1,14 @@
+refactor: standardize field constant naming
+
+This commit standardizes field constant naming throughout the codebase:
+
+- Change JOB_FIELDS to JOB_TRACKING_FIELDS as the primary constant
+- Add missing fields to JOB_TRACKING_FIELDS (ERROR, PROGRESS, LAST_CLIENT)
+- Update references in scripts/smart-resume-client-by-client.js
+- Remove unnecessary legacy imports in jobTracking.js
+- Add clear deprecation comments and documentation
+- Update FORMULA_FIELDS to use the primary constants
+
+This is part of the comprehensive field standardization effort and helps
+prevent inconsistencies in field references that were causing methods
+to appear "missing" when they actually existed.

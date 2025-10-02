@@ -7,9 +7,11 @@
  * - JOB_TRACKING_FIELDS: Use for all Job Tracking table field references
  * - CLIENT_RUN_FIELDS: Use for all Client Run Results table field references
  * - Always use constants rather than string literals for field names
- * - Never use deprecated constants (JOB_FIELDS, CLIENT_RUN_RESULTS_FIELDS)
  * 
  * IMPORTANT: Constants match EXACT field names in Airtable (case-sensitive)
+ * 
+ * NOTE: Deprecated aliases (JOB_FIELDS, CLIENT_RUN_RESULTS_FIELDS) have been removed.
+ * All code should use the standardized constant names.
  */
 
 // Table names in Master Clients Base
@@ -93,18 +95,14 @@ const FORMULA_FIELDS = [
   CLIENT_RUN_FIELDS.POST_SCORING_SUCCESS_RATE
 ];
 
-// Export with both the new names and the old names for backward compatibility
+// Export standardized constants only - deprecated aliases removed
 module.exports = {
   TABLES,
   MASTER_TABLES: TABLES, // For backward compatibility
   
-  // STANDARD: Use JOB_TRACKING_FIELDS going forward
+  // Primary field constants
   JOB_TRACKING_FIELDS,
-  JOB_FIELDS: JOB_TRACKING_FIELDS, // DEPRECATED: Use JOB_TRACKING_FIELDS instead
-  
-  // STANDARD: Use CLIENT_RUN_FIELDS going forward
   CLIENT_RUN_FIELDS,
-  CLIENT_RUN_RESULTS_FIELDS: CLIENT_RUN_FIELDS, // DEPRECATED: Use CLIENT_RUN_FIELDS instead
   
   STATUS_VALUES,
   FORMULA_FIELDS

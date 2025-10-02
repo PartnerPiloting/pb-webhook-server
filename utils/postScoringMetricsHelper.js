@@ -6,7 +6,7 @@
  */
 
 const { createSafeLogger } = require('./loggerHelper');
-const { CLIENT_RUN_RESULTS_FIELDS } = require('../constants/airtableFields');
+const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
 const JobTracking = require('../services/jobTracking');
 
 /**

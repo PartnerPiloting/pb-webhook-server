@@ -4,7 +4,7 @@
  * Dedicated handler for post scoring metrics with proper error handling
  */
 
-const { CLIENT_RUN_RESULTS_FIELDS } = require('../constants/airtableFields');
+const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
 const runRecordAdapter = require('./runRecordAdapterSimple');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -57,16 +57,16 @@ async function updatePostScoringMetrics(params) {
     // Create a clean metrics object with only valid fields
     const validMetrics = {
       // Always use field constants from the centralized fields file
-      [CLIENT_RUN_RESULTS_FIELDS.POSTS_EXAMINED]: safeGet(metrics, 'postsExamined', 0),
-      [CLIENT_RUN_RESULTS_FIELDS.POSTS_SCORED]: safeGet(metrics, 'postsScored', 0),
-      [CLIENT_RUN_RESULTS_FIELDS.POST_SCORE_SUCCESS_RATE]: safeGet(metrics, 'successRate', 0),
-      [CLIENT_RUN_RESULTS_FIELDS.POST_SCORING_TOKENS]: safeGet(metrics, 'tokensUsed', 0),
-      [CLIENT_RUN_RESULTS_FIELDS.POST_SCORING_ERROR_COUNT]: safeGet(metrics, 'errorCount', 0)
+      [CLIENT_RUN_FIELDS.POSTS_EXAMINED]: safeGet(metrics, 'postsExamined', 0),
+      [CLIENT_RUN_FIELDS.POSTS_SCORED]: safeGet(metrics, 'postsScored', 0),
+      [CLIENT_RUN_FIELDS.POST_SCORE_SUCCESS_RATE]: safeGet(metrics, 'successRate', 0),
+      [CLIENT_RUN_FIELDS.POST_SCORING_TOKENS]: safeGet(metrics, 'tokensUsed', 0),
+      [CLIENT_RUN_FIELDS.POST_SCORING_ERROR_COUNT]: safeGet(metrics, 'errorCount', 0)
     };
     
     // Only include system notes if they exist
     if (metrics.notes) {
-      validMetrics[CLIENT_RUN_RESULTS_FIELDS.SYSTEM_NOTES] = String(metrics.notes);
+      validMetrics[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = String(metrics.notes);
     }
     
     logger.debug(`[PostScoringMetricsHandler] Updating post scoring metrics for run ${validatedRunId}, client ${validatedClientId}`);

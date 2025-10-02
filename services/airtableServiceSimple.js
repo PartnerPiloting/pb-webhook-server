@@ -6,7 +6,7 @@ require('dotenv').config();
 const Airtable = require('airtable');
 const { 
   MASTER_TABLES, 
-  CLIENT_RUN_RESULTS_FIELDS,
+  CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS,
   FORMULA_FIELDS 
 } = require('../constants/airtableUnifiedConstants');
@@ -155,7 +155,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
   try {
     // Check if record already exists to prevent duplicates
     const existingRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${runId}', {${CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID}} = '${clientId}')`,
+      filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${runId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`,
       maxRecords: 1
     }).firstPage();
     
@@ -168,16 +168,16 @@ async function createClientRunRecord(runId, clientId, clientName) {
     
     // Create record data using field constants
     const recordData = {
-      [CLIENT_RUN_RESULTS_FIELDS.RUN_ID]: runId,
-      [CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID]: clientId,
-      [CLIENT_RUN_RESULTS_FIELDS.CLIENT_NAME]: clientName,
-      [CLIENT_RUN_RESULTS_FIELDS.START_TIME]: startTimestamp,
-      [CLIENT_RUN_RESULTS_FIELDS.STATUS]: 'Running',
-      [CLIENT_RUN_RESULTS_FIELDS.PROFILES_EXAMINED]: 0,
-      [CLIENT_RUN_RESULTS_FIELDS.PROFILES_SUCCESSFULLY_SCORED]: 0,
-      [CLIENT_RUN_RESULTS_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
-      [CLIENT_RUN_RESULTS_FIELDS.PROFILE_SCORING_TOKENS]: 0,
-      [CLIENT_RUN_RESULTS_FIELDS.POST_SCORING_TOKENS]: 0,
+      [CLIENT_RUN_FIELDS.RUN_ID]: runId,
+      [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
+      [CLIENT_RUN_FIELDS.CLIENT_NAME]: clientName,
+      [CLIENT_RUN_FIELDS.START_TIME]: startTimestamp,
+      [CLIENT_RUN_FIELDS.STATUS]: 'Running',
+      [CLIENT_RUN_FIELDS.PROFILES_EXAMINED]: 0,
+      [CLIENT_RUN_FIELDS.PROFILES_SUCCESSFULLY_SCORED]: 0,
+      [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+      [CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS]: 0,
+      [CLIENT_RUN_FIELDS.POST_SCORING_TOKENS]: 0,
       'System Notes': `Processing started at ${startTimestamp}`
     };
     
@@ -325,13 +325,13 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
   const safeNotes = (typeof notes === 'string') ? notes : String(notes || '');
   
   const updates = {
-    [CLIENT_RUN_RESULTS_FIELDS.END_TIME]: new Date().toISOString(),
-    [CLIENT_RUN_RESULTS_FIELDS.STATUS]: successBoolean ? 'Completed' : 'Failed'
+    [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
+    [CLIENT_RUN_FIELDS.STATUS]: successBoolean ? 'Completed' : 'Failed'
   };
   
   // CRITICAL FIX: Handle notes properly, avoiding undefined errors
   // Always set System Notes field, even when notes is empty
-  updates[CLIENT_RUN_RESULTS_FIELDS.SYSTEM_NOTES] = safeNotes 
+  updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = safeNotes 
     ? `${safeNotes}\nRun ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`
     : `Run ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   
@@ -354,7 +354,7 @@ async function updateAggregateMetrics(runId) {
   try {
     // Get client run records for this job
     const clientRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `FIND('${runId}', {${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}}) > 0`
+      filterByFormula: `FIND('${runId}', {${CLIENT_RUN_FIELDS.RUN_ID}}) > 0`
     }).all();
     
     if (!clientRecords || clientRecords.length === 0) {
@@ -366,7 +366,7 @@ async function updateAggregateMetrics(runId) {
     const aggregates = {
       [JOB_TRACKING_FIELDS.CLIENTS_PROCESSED]: clientRecords.length,
       [JOB_TRACKING_FIELDS.CLIENTS_FAILED]: clientRecords.filter(r => 
-        r.fields[CLIENT_RUN_RESULTS_FIELDS.STATUS] === 'Failed'
+        r.fields[CLIENT_RUN_FIELDS.STATUS] === 'Failed'
       ).length,
       [JOB_TRACKING_FIELDS.TOTAL_PROFILES_EXAMINED]: 0,
       [JOB_TRACKING_FIELDS.TOTAL_PROFILES_SCORED]: 0,

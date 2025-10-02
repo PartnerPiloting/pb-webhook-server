@@ -437,7 +437,7 @@ class JobTracking {
       // Find the record
       // CRITICAL FIX: Use field name constants instead of hardcoded strings
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
         maxRecords: 1
       }).firstPage();
       
@@ -613,7 +613,7 @@ class JobTracking {
       
       // CRITICAL FIX: Use field name constants instead of hardcoded strings
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
         maxRecords: 1
       }).firstPage();
       
@@ -756,7 +756,7 @@ class JobTracking {
       
       // Find the record using constants
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
         maxRecords: 1
       }).firstPage();
       
