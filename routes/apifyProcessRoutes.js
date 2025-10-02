@@ -130,8 +130,9 @@ async function pickLeadBatch(base, batchSize) {
     fields: [LINKEDIN_URL_FIELD, STATUS_FIELD, CREATED_TIME_FIELD],
     sort: [{ field: CREATED_TIME_FIELD, direction: 'desc' }]
   };
+  let records;
   try {
-    const records = await base(LEADS_TABLE).select(selectOptions).firstPage();
+    records = await base(LEADS_TABLE).select(selectOptions).firstPage();
     return records;
   } catch (e) {
     // Fallback without sort (e.g., if Created Time field is missing)
@@ -140,7 +141,7 @@ async function pickLeadBatch(base, batchSize) {
       maxRecords: batchSize,
       fields: [LINKEDIN_URL_FIELD, STATUS_FIELD]
     };
-    const records = await base(LEADS_TABLE).select(fallbackOptions).firstPage();
+    records = await base(LEADS_TABLE).select(fallbackOptions).firstPage();
     return records;
   }
 }
@@ -392,7 +393,7 @@ async function processClientHandler(req, res) {
       console.log(`[${endpoint}/process-client] Processing all clients`);
       
       // Get all active clients
-      const clients = await getAllClients();
+      let clients = await getAllClients();
       if (!clients || !clients.length) {
         console.error(`[${endpoint}/process-client] No clients found`);
         if (res) return res.status(404).json({ ok: false, error: 'No clients found' });
@@ -421,7 +422,7 @@ async function processClientHandler(req, res) {
     }
 
     // Single client processing
-    const client = await getClientById(clientId);
+    let client = await getClientById(clientId);
     console.log(`[${endpoint}/process-client] Processing client: ${clientId}`);
     if (!client) {
       console.log(`[${endpoint}/process-client] Client not found: ${clientId}`);
@@ -466,7 +467,7 @@ async function processClientHandler(req, res) {
       }
     }
 
-    const base = await getClientBase(clientId);
+    let base = await getClientBase(clientId);
 
     // running tally
     postsToday = await computeTodaysPosts(base);
@@ -491,12 +492,12 @@ async function processClientHandler(req, res) {
         - Posts Actioned is 0, blank, or null
         - Date Posts Scored is blank`);
       
-      const pick = await pickLeadBatch(base, batchSize);
+      let pick = await pickLeadBatch(base, batchSize);
       console.log(`[apify/process-client] Client ${clientId} picked ${pick.length} leads`);
       
       // Detailed inspection of the client's base
       try {
-        const clientInfo = await getClientById(clientId);
+        let clientInfo = await getClientById(clientId);
         console.log(`🔍 CLIENT_DEBUG: Client ${clientId} info found: ${!!clientInfo}`);
         if (clientInfo) {
           console.log(`🔍 CLIENT_DEBUG: Client ${clientId} service level: ${clientInfo.serviceLevel}`);
@@ -584,7 +585,7 @@ async function processClientHandler(req, res) {
         || `http://localhost:${process.env.PORT || 3001}`;
       console.log(`[apify/process-client] Client ${clientId} calling Apify run at ${baseUrl}/api/apify/run`);
       
-      const startResp = await fetch(`${baseUrl}/api/apify/run`, {
+      let startResp = await fetch(`${baseUrl}/api/apify/run`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${secret}`,
@@ -812,11 +813,11 @@ async function processClientHandler(req, res) {
           console.log(`[DEBUG-RUN-ID-FLOW] Run record exists for ${runIdToUse}, fetching details`);
           
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
-          const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+          let masterBase = airtableServiceSimple.initialize(); // Get the Master base
           console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for Client Run Results table query`);
           
           // Query for the run record now that we know it exists
-          const runRecords = await masterBase('Client Run Results').select({
+          let runRecords = await masterBase('Client Run Results').select({
             filterByFormula: `{Run ID} = '${runIdToUse}'`,
             maxRecords: 1
           }).firstPage();
@@ -900,10 +901,10 @@ async function processClientHandler(req, res) {
             console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching with partialRunId=${partialRunId}`);
             
             // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
-            const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+            let masterBase = airtableServiceSimple.initialize(); // Get the Master base
             console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for recovery search`);
             
-            const similarRecords = await masterBase('Client Run Results').select({
+            let similarRecords = await masterBase('Client Run Results').select({
               filterByFormula: `AND(FIND('${partialRunId}', {Run ID}) > 0, {Client ID} = '${clientId}')`,
               maxRecords: 5
             }).firstPage();
@@ -1001,7 +1002,7 @@ async function processClientHandler(req, res) {
     }
     
   } catch (e) {
-    const endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    let endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
     console.error(`[${endpoint}/process-client] error:`, e.message);
     
     // Check if response object exists (will be null in fire-and-forget mode)
@@ -1105,7 +1106,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
     const masterRunId = generateRunId('batch-all-clients');
     console.log(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
     
-    const endpoint = path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    let endpoint = path.includes('smart-resume') ? 'smart-resume' : 'apify';
     const results = {
       masterRunId,
       successful: 0,
