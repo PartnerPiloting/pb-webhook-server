@@ -21,6 +21,30 @@ const {
   STATUS_VALUES 
 } = require("../constants/airtableUnifiedConstants.js");
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
+
+// ARCHITECTURAL FIX: Helper function to ensure status values are always available
+// This prevents "toLowerCase of undefined" errors and ensures consistent status values
+function getStatusString(statusType = 'COMPLETED') {
+  // Always fallback to safe defaults if STATUS_VALUES is not properly initialized
+  const statusMap = {
+    'COMPLETED': 'completed',
+    'FAILED': 'failed',
+    'RUNNING': 'running',
+    'COMPLETED_WITH_ERRORS': 'completed_with_errors',
+    'NO_LEADS': 'no_leads_to_score'
+  };
+  
+  // Use STATUS_VALUES if available, otherwise use our fallback map
+  if (STATUS_VALUES && 
+      typeof STATUS_VALUES === 'object' && 
+      statusType in STATUS_VALUES && 
+      typeof STATUS_VALUES[statusType] === 'string') {
+    return STATUS_VALUES[statusType].toLowerCase();
+  }
+  
+  // Fallback to our safe defaults
+  return statusMap[statusType] || 'unknown';
+}
 const runIdUtils = require('../utils/runIdUtils.js');
 // Use the unified services
 const unifiedRunIdService = require('../services/unifiedRunIdService.js');
@@ -1025,7 +1049,8 @@ router.post("/run-post-batch-score", async (req, res) => {
     
     // Return results immediately
     res.status(200).json({
-      status: STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed',
+      // ARCHITECTURAL FIX: Use getStatusString helper for consistent status handling
+      status: getStatusString('COMPLETED'),
       message: 'Multi-tenant post scoring completed',
       runId, // Include the run ID in the response
       summary: {
@@ -1056,7 +1081,7 @@ router.post("/run-post-batch-score", async (req, res) => {
     }
     if (!res.headersSent) {
       return res.status(500).json({
-        status: 'error',
+        status: getStatusString('ERROR'),
         message: errorMessage,
         errorDetails: error.toString()
       });
@@ -1262,13 +1287,12 @@ async function processPostScoringInBackground(jobId, stream, options) {
             // Calculate duration as human-readable text
             const duration = formatDuration(Date.now() - (options.startTime || Date.now()));
             
-            // Prepare metrics updates - removed Post Scoring Last Run Time field as it doesn't exist in Airtable
+            // Prepare metrics updates
             const metricsUpdates = {
-              'Posts Examined for Scoring': postsExamined,
-              'Posts Successfully Scored': postsScored,
-              'Post Scoring Tokens': clientResult.totalTokensUsed || 0,
-              // 'Post Scoring Last Run Time' field removed - not present in Airtable schema
-              'System Notes': `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
+              [CLIENT_RUN_FIELDS.POSTS_EXAMINED]: postsExamined,
+              [CLIENT_RUN_FIELDS.POSTS_SUCCESSFULLY_SCORED]: postsScored,
+              [CLIENT_RUN_FIELDS.POST_SCORING_TOKENS]: clientResult.totalTokensUsed || 0,
+              [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
             };
             
             // Use the unified job tracking repository
@@ -1343,11 +1367,11 @@ async function processPostScoringInBackground(jobId, stream, options) {
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score-simple", async (req, res) => {
   if (!vertexAIClient || !geminiModelId) {
-    return res.status(503).json({ status: 'error', message: 'Post scoring unavailable' });
+    return res.status(503).json({ status: getStatusString('ERROR'), message: 'Post scoring unavailable' });
   }
   const clientId = req.query.clientId || req.query.client || null;
   if (!clientId) {
-    return res.status(400).json({ status: 'error', message: 'clientId required' });
+    return res.status(400).json({ status: getStatusString('ERROR'), message: 'clientId required' });
   }
   const dryRun = req.query.dryRun === 'true';
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
@@ -1379,7 +1403,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
     );
     const first = results.clientResults[0] || {};
     res.json({
-      status: STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed',
+      status: getStatusString('COMPLETED'),
       mode: dryRun ? 'dryRun' : 'live',
       clientId,
       limit: limit || 'UNLIMITED',
@@ -1394,7 +1418,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
   diagnostics: results.diagnostics || null
     });
   } catch (e) {
-    res.status(500).json({ status: 'error', message: e.message });
+    res.status(500).json({ status: getStatusString('ERROR'), message: e.message });
   }
 });
 
@@ -1410,7 +1434,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
 router.post("/run-post-batch-score-level2", async (req, res) => {
   // Require Gemini to be configured server-side
   if (!vertexAIClient || !geminiModelId) {
-    return res.status(503).json({ status: 'error', message: 'Post scoring unavailable (Gemini config missing).' });
+    return res.status(503).json({ status: getStatusString('ERROR'), message: 'Post scoring unavailable (Gemini config missing).' });
   }
 
   try {
@@ -1500,7 +1524,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
           aggregate.failedClients++;
         }
       } catch (e) {
-        summaries.push({ clientId: c.clientId, status: 'failed', error: e.message });
+        summaries.push({ clientId: c.clientId, status: getStatusString('FAILED'), error: e.message });
         aggregate.failedClients++;
         aggregate.totalErrors++;
       }
@@ -1509,7 +1533,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
     aggregate.duration = Math.round((Date.now() - startedAt) / 1000);
 
     return res.status(200).json({
-      status: STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed',
+      status: getStatusString('COMPLETED'),
       message: `Post scoring completed for service level >= ${minServiceLevel}`,
       summary: aggregate,
       clientResults: summaries,
@@ -1520,7 +1544,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
     });
   } catch (error) {
     console.error("/run-post-batch-score-level2 error:", error.message);
-    return res.status(500).json({ status: 'error', message: error.message });
+    return res.status(500).json({ status: getStatusString('ERROR'), message: error.message });
   }
 });
 
@@ -4542,7 +4566,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     jobId,
     stream,
     startTime: Date.now(),
-    status: 'running'
+    status: getStatusString('RUNNING')
   };
   
   // Reset any previous termination signal
@@ -4623,7 +4647,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         
         // Update global process tracking
         if (global.smartResumeActiveProcess) {
-          global.smartResumeActiveProcess.status = STATUS_VALUES && STATUS_VALUES.COMPLETED ? STATUS_VALUES.COMPLETED.toLowerCase() : 'completed';
+          global.smartResumeActiveProcess.status = getStatusString('COMPLETED');
           global.smartResumeActiveProcess.endTime = Date.now();
           global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
         }
@@ -4838,7 +4862,7 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
       console.log(`⏳ Smart resume already running (job: ${currentSmartResumeJobId}), returning status`);
       return res.json({
         success: true,
-        status: 'running',
+        status: getStatusString('RUNNING'),
         jobId: currentSmartResumeJobId,
         message: `Smart resume already running (started ${new Date(smartResumeLockTime).toISOString()})`
       });
