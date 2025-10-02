@@ -39,6 +39,50 @@ const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
 const logger = createSafeLogger('SYSTEM', null, 'job_tracking');
 
 /**
+ * Validate field names against the appropriate constants
+ * @param {string} tableName - Table name (e.g., JOB_TRACKING_TABLE, CLIENT_RUN_RESULTS_TABLE)
+ * @param {Object} fieldData - Object with field names as keys
+ * @returns {boolean} True if all fields are valid, false otherwise
+ */
+function validateFieldNames(tableName, fieldData) {
+  const fieldNames = Object.keys(fieldData);
+  
+  // Skip validation if no fields
+  if (!fieldNames.length) return true;
+  
+  let validFields;
+  let tableDisplayName;
+  
+  // Determine which field constants to use based on table name
+  switch (tableName) {
+    case TABLES.JOB_TRACKING:
+      validFields = Object.values(JOB_TRACKING_FIELDS);
+      tableDisplayName = 'Job Tracking';
+      break;
+    case TABLES.CLIENT_RUN_RESULTS:
+      validFields = Object.values(CLIENT_RUN_FIELDS);
+      tableDisplayName = 'Client Run Results';
+      break;
+    default:
+      logger.warn(`No validation defined for table ${tableName}`);
+      return true; // Skip validation for unknown tables
+  }
+  
+  // Add formula fields to valid fields
+  const allValidFields = [...validFields, ...FORMULA_FIELDS];
+  
+  // Check each field name
+  const invalidFields = fieldNames.filter(field => !allValidFields.includes(field));
+  
+  if (invalidFields.length) {
+    logger.warn(`Invalid field names for ${tableDisplayName}: ${invalidFields.join(', ')}`);
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * JobTracking class - single source of truth for job tracking operations
  */
 class JobTracking {
@@ -156,6 +200,9 @@ class JobTracking {
         }
       }
       
+      // Validate field names before sending to Airtable
+      validateFieldNames(JOB_TRACKING_TABLE, recordData);
+      
       // Create the record
       const record = await masterBase(JOB_TRACKING_TABLE).create(recordData);
       
@@ -217,7 +264,7 @@ class JobTracking {
       // Map common update fields using constants
       if (updates.status) updateFields[JOB_TRACKING_FIELDS.STATUS] = updates.status;
       if (updates.endTime) updateFields[JOB_TRACKING_FIELDS.END_TIME] = updates.endTime;
-      if (updates.error) updateFields['Error'] = updates.error;
+      if (updates.error) updateFields[JOB_TRACKING_FIELDS.ERROR] = updates.error;
       if (updates.progress) updateFields[JOB_TRACKING_FIELDS.PROGRESS] = updates.progress;
       if (updates.lastClient) updateFields[JOB_TRACKING_FIELDS.LAST_CLIENT] = updates.lastClient;
       
@@ -245,6 +292,9 @@ class JobTracking {
         // Add all other fields (will be validated by Airtable)
         updateFields[key] = value;
       }
+      
+      // Validate field names before sending to Airtable
+      validateFieldNames(JOB_TRACKING_TABLE, updateFields);
       
       // Update the record
       await masterBase(JOB_TRACKING_TABLE).update(record.id, updateFields);
@@ -316,17 +366,22 @@ class JobTracking {
       // Default values
       const startTime = new Date().toISOString();
       
-      // Prepare record data - only use fields that actually exist
+      // Prepare record data using constants
       const recordData = {
-        'Run ID': clientRunId,
-        'Client ID': clientId,
-        'Status': 'Running',
-        'Start Time': startTime,
-        'System Notes': initialData['System Notes'] || ''
+        [CLIENT_RUN_FIELDS.RUN_ID]: clientRunId,
+        [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
+        [CLIENT_RUN_FIELDS.STATUS]: STATUS_VALUES.RUNNING,
+        [CLIENT_RUN_FIELDS.START_TIME]: startTime,
+        [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: initialData[CLIENT_RUN_FIELDS.SYSTEM_NOTES] || ''
       };
       
-      // Add other verified fields that exist
-      if (initialData['Apify Run ID']) recordData['Apify Run ID'] = initialData['Apify Run ID'];
+      // Add other verified fields using constants
+      if (initialData[CLIENT_RUN_FIELDS.APIFY_RUN_ID]) {
+        recordData[CLIENT_RUN_FIELDS.APIFY_RUN_ID] = initialData[CLIENT_RUN_FIELDS.APIFY_RUN_ID];
+      }
+      
+      // Validate field names before sending to Airtable
+      validateFieldNames(CLIENT_RUN_RESULTS_TABLE, recordData);
       
       // Create the record
       const record = await masterBase(CLIENT_RUN_RESULTS_TABLE).create(recordData);
@@ -405,33 +460,35 @@ class JobTracking {
       
       const record = records[0];
       
-      // Prepare update fields - only use fields that actually exist
+      // Prepare update fields using constants
       const updateFields = {};
       
       // Use the globally defined list of formula fields
       
-      // Map common update fields to Airtable field names (only those that exist)
-      if (updates.status) updateFields['Status'] = updates.status;
-      if (updates.endTime) updateFields['End Time'] = updates.endTime;
-      if (updates.leadsProcessed) updateFields['Leads Processed'] = updates.leadsProcessed;
-      if (updates.postsProcessed) updateFields['Posts Processed'] = updates.postsProcessed;
-      if (updates.errors) updateFields['Errors'] = updates.errors;
+      // Map common update fields using constants
+      if (updates.status) updateFields[CLIENT_RUN_FIELDS.STATUS] = updates.status;
+      if (updates.endTime) updateFields[CLIENT_RUN_FIELDS.END_TIME] = updates.endTime;
+      if (updates.leadsProcessed) updateFields[CLIENT_RUN_FIELDS.LEADS_PROCESSED] = updates.leadsProcessed;
+      if (updates.postsProcessed) updateFields[CLIENT_RUN_FIELDS.POSTS_PROCESSED] = updates.postsProcessed;
+      if (updates.errors) updateFields[CLIENT_RUN_FIELDS.ERRORS] = updates.errors;
       
-      // Handle System Notes properly
-      if (updates['System Notes']) {
-        updateFields['System Notes'] = updates['System Notes'];
+      // Handle System Notes properly using constants
+      if (updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
+        updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES];
       } else if (updates.notes) {
-        updateFields['System Notes'] = updates.notes;
+        updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = updates.notes;
       }
       
-      // Add token usage fields if they exist
-      if (updates.tokenUsage) updateFields['Token Usage'] = updates.tokenUsage;
-      if (updates.promptTokens) updateFields['Prompt Tokens'] = updates.promptTokens;
-      if (updates.completionTokens) updateFields['Completion Tokens'] = updates.completionTokens;
-      if (updates.totalTokens) updateFields['Total Tokens'] = updates.totalTokens;
+      // Add token usage fields using constants
+      if (updates.tokenUsage) updateFields[CLIENT_RUN_FIELDS.TOKEN_USAGE] = updates.tokenUsage;
+      if (updates.promptTokens) updateFields[CLIENT_RUN_FIELDS.PROMPT_TOKENS] = updates.promptTokens;
+      if (updates.completionTokens) updateFields[CLIENT_RUN_FIELDS.COMPLETION_TOKENS] = updates.completionTokens;
+      if (updates.totalTokens) updateFields[CLIENT_RUN_FIELDS.TOTAL_TOKENS] = updates.totalTokens;
       
-      // Add API costs if they exist
-      if (updates['Apify API Costs']) updateFields['Apify API Costs'] = updates['Apify API Costs'];
+      // Add API costs using constants
+      if (updates[CLIENT_RUN_FIELDS.APIFY_API_COSTS]) {
+        updateFields[CLIENT_RUN_FIELDS.APIFY_API_COSTS] = updates[CLIENT_RUN_FIELDS.APIFY_API_COSTS];
+      };
       
       // Process all other direct field mappings, filtering out formula fields
       
@@ -443,6 +500,9 @@ class JobTracking {
           updateFields[key] = updates[key];
         }
       });
+      
+      // Validate field names before sending to Airtable
+      validateFieldNames(CLIENT_RUN_RESULTS_TABLE, updateFields);
       
       // Update the record
       await masterBase(CLIENT_RUN_RESULTS_TABLE).update(record.id, updateFields);
@@ -623,8 +683,8 @@ class JobTracking {
     try {
       // Make a copy of metrics to ensure we don't modify End Time, Status, or formula fields
       const filteredMetrics = { ...metrics };
-      delete filteredMetrics['End Time'];
-      delete filteredMetrics['Status'];
+      delete filteredMetrics[CLIENT_RUN_FIELDS.END_TIME];
+      delete filteredMetrics[CLIENT_RUN_FIELDS.STATUS];
       
       // Also filter out any formula fields
       FORMULA_FIELDS.forEach(field => {
@@ -885,47 +945,49 @@ class JobTracking {
     }
     
     try {
-      // Determine final status based on metrics
-      let status = 'Completed';
-      const hasErrors = finalMetrics.errors && finalMetrics.errors > 0;
-      const noLeadsProcessed = (!finalMetrics['Profiles Examined for Scoring'] || finalMetrics['Profiles Examined for Scoring'] === 0) &&
-                              (!finalMetrics['Posts Examined for Scoring'] || finalMetrics['Posts Examined for Scoring'] === 0);
+      // Determine final status based on metrics using constants
+      let status = STATUS_VALUES.COMPLETED;
+      const hasErrors = finalMetrics[CLIENT_RUN_FIELDS.ERRORS] && finalMetrics[CLIENT_RUN_FIELDS.ERRORS] > 0;
+      const noLeadsProcessed = (!finalMetrics[CLIENT_RUN_FIELDS.PROFILES_EXAMINED_FOR_SCORING] || 
+                                finalMetrics[CLIENT_RUN_FIELDS.PROFILES_EXAMINED_FOR_SCORING] === 0) &&
+                              (!finalMetrics[CLIENT_RUN_FIELDS.POSTS_EXAMINED_FOR_SCORING] || 
+                                finalMetrics[CLIENT_RUN_FIELDS.POSTS_EXAMINED_FOR_SCORING] === 0);
       
       if (noLeadsProcessed) {
-        status = 'No Leads To Score';
+        status = STATUS_VALUES.NO_LEADS_TO_SCORE;
       } else if (finalMetrics.failed) {
-        status = 'Failed';
+        status = STATUS_VALUES.FAILED;
       }
       
-      // Create updates object with direct field names that match Airtable
+      // Create updates object using constants
       const updates = {
         ...finalMetrics,
-        'End Time': new Date().toISOString(),
-        'Status': status,
-        'Processing Completed': true
+        [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
+        [CLIENT_RUN_FIELDS.STATUS]: status,
+        [CLIENT_RUN_FIELDS.PROCESSING_COMPLETED]: true
       };
       
       // Build comprehensive system notes
       const notes = [];
       if (hasErrors) {
-        notes.push(`Completed with ${finalMetrics.errors} errors`);
+        notes.push(`Completed with ${finalMetrics[CLIENT_RUN_FIELDS.ERRORS]} errors`);
       }
-      if (finalMetrics['Profiles Successfully Scored']) {
-        notes.push(`Scored ${finalMetrics['Profiles Successfully Scored']} profiles`);
+      if (finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SUCCESSFULLY_SCORED]) {
+        notes.push(`Scored ${finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SUCCESSFULLY_SCORED]} profiles`);
       }
-      if (finalMetrics['Posts Successfully Scored']) {
-        notes.push(`Scored ${finalMetrics['Posts Successfully Scored']} posts`);
+      if (finalMetrics[CLIENT_RUN_FIELDS.POSTS_SUCCESSFULLY_SCORED]) {
+        notes.push(`Scored ${finalMetrics[CLIENT_RUN_FIELDS.POSTS_SUCCESSFULLY_SCORED]} posts`);
       }
-      if (finalMetrics['Total Posts Harvested']) {
-        notes.push(`Harvested ${finalMetrics['Total Posts Harvested']} posts`);
+      if (finalMetrics[CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]) {
+        notes.push(`Harvested ${finalMetrics[CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]} posts`);
       }
       
       if (notes.length > 0) {
         const notesStr = `Final: ${notes.join(', ')}`;
-        if (updates[FIELD_NAMES.SYSTEM_NOTES]) {
-          updates[FIELD_NAMES.SYSTEM_NOTES] += ` | ${notesStr}`;
+        if (updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
+          updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] += ` | ${notesStr}`;
         } else {
-          updates[FIELD_NAMES.SYSTEM_NOTES] = notesStr;
+          updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = notesStr;
         }
       }
       
