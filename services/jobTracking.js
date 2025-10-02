@@ -609,14 +609,14 @@ class JobTracking {
         source: `${source}_metrics_existence_check`
       }
     });    if (!recordExists) {
-      log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${runId}/${clientId}. Cannot update metrics.`);
+      log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${safeRunId}/${safeClientId}. Cannot update metrics.`);
       return {
         success: false,
         error: 'record_not_found',
-        message: `No run record found for ${clientId} with run ID ${runId}`,
+        message: `No run record found for ${safeClientId} with run ID ${safeRunId}`,
         source,
-        runId,
-        clientId
+        runId: safeRunId,
+        clientId: safeClientId
       };
     }
     
@@ -747,14 +747,14 @@ class JobTracking {
     });
     
     if (!recordExists) {
-      log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${runId}/${clientId}. Cannot complete client processing.`);
+      log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${safeRunId}/${safeClientId}. Cannot complete client processing.`);
       return {
         success: false,
         error: 'record_not_found',
-        message: `No run record found for ${clientId} with run ID ${runId}`,
+        message: `No run record found for ${safeClientId} with run ID ${safeRunId}`,
         source,
-        runId,
-        clientId
+        runId: safeRunId,
+        clientId: safeClientId
       };
     }
     
@@ -789,22 +789,13 @@ class JobTracking {
         status = 'Failed';
       }
       
-      // Create updates object with End Time and Status using field name constants
-      const rawUpdates = {
+      // Create updates object with direct field names that match Airtable
+      const updates = {
         ...finalMetrics,
-        [FIELD_NAMES.END_TIME]: new Date().toISOString(),
-        [FIELD_NAMES.STATUS]: status,
-        [FIELD_NAMES.PROCESSING_COMPLETED]: true
+        'End Time': new Date().toISOString(),
+        'Status': status,
+        'Processing Completed': true
       };
-      
-      // Validate field names before sending to Airtable
-      const updates = createValidatedObject(rawUpdates);
-      
-      // Check if any field names were invalid (just for logging/debugging)
-      const validationResult = validateFieldNames(rawUpdates, true);
-      if (!validationResult.success) {
-        log.warn(`Field name validation warnings: ${validationResult.errors.join(', ')}`);
-      }
       
       // Build comprehensive system notes
       const notes = [];
@@ -849,5 +840,8 @@ class JobTracking {
   }
 }
 
-// Export as an object to avoid circular dependency issues with runIdValidator
-module.exports = { JobTracking };
+// Export directly to support both import styles
+// This allows both require('../jobTracking') and const { JobTracking } = require('../jobTracking')
+module.exports = JobTracking;
+// Also export as a property for destructured imports
+module.exports.JobTracking = JobTracking;
