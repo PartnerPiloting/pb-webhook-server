@@ -295,10 +295,25 @@ class JobTracking {
       // Prepare update fields - only use fields that exist
       const updateFields = {};
       
-      // Map common update fields using constants
-      if (updates.status) updateFields[JOB_TRACKING_FIELDS.STATUS] = updates.status;
-      if (updates.endTime) updateFields[JOB_TRACKING_FIELDS.END_TIME] = updates.endTime;
-      if (updates.error) updateFields[JOB_TRACKING_FIELDS.ERROR] = updates.error;
+      // CRITICAL: Handle status update with special logic - check both legacy and standardized field names
+      const statusValue = 'status' in updates ? updates.status : (JOB_TRACKING_FIELDS.STATUS in updates ? updates[JOB_TRACKING_FIELDS.STATUS] : null);
+      if (statusValue !== null) {
+        updateFields[JOB_TRACKING_FIELDS.STATUS] = statusValue;
+        
+        // Always validate status values are uppercase and match constants
+        const safeStatusValue = getStatusString(statusValue);
+        log.debug(`Status update ${statusValue} -> ${safeStatusValue}`);
+        
+        // If status is transitioning to a completed state, set end time if not provided
+        const isCompletedState = ['completed', 'failed', 'completed with errors', 'no leads to score'].includes(safeStatusValue);
+        const hasEndTime = 'endTime' in updates || JOB_TRACKING_FIELDS.END_TIME in updates;
+        if (isCompletedState && !hasEndTime) {
+          const endTime = new Date().toISOString();
+          updateFields[JOB_TRACKING_FIELDS.END_TIME] = endTime;
+          log.debug(`Auto-setting end time to ${endTime}`);
+        }
+      }
+      if ('error' in updates) updateFields[JOB_TRACKING_FIELDS.ERROR] = updates.error;
       // Progress and LastClient fields removed to simplify codebase
       
       // Handle System Notes field properly
@@ -529,12 +544,27 @@ class JobTracking {
       
       // Use the globally defined list of formula fields
       
-      // Map common update fields using constants
-      if (updates.status) updateFields[CLIENT_RUN_FIELDS.STATUS] = updates.status;
-      if (updates.endTime) updateFields[CLIENT_RUN_FIELDS.END_TIME] = updates.endTime;
-      if (updates.leadsProcessed) updateFields[CLIENT_RUN_FIELDS.LEADS_PROCESSED] = updates.leadsProcessed;
-      if (updates.postsProcessed) updateFields[CLIENT_RUN_FIELDS.POSTS_PROCESSED] = updates.postsProcessed;
-      if (updates.errors) updateFields[CLIENT_RUN_FIELDS.ERRORS] = updates.errors;
+      // CRITICAL: Handle status update with special logic - check both legacy and standardized field names
+      const statusValue = 'status' in updates ? updates.status : (CLIENT_RUN_FIELDS.STATUS in updates ? updates[CLIENT_RUN_FIELDS.STATUS] : null);
+      if (statusValue !== null) {
+        updateFields[CLIENT_RUN_FIELDS.STATUS] = statusValue;
+        
+        // Always validate status values are uppercase and match constants
+        const safeStatusValue = getStatusString(statusValue);
+        log.debug(`Status update ${statusValue} -> ${safeStatusValue}`);
+        
+        // If status is transitioning to a completed state, set end time if not provided
+        const isCompletedState = ['completed', 'failed', 'completed with errors', 'no leads to score'].includes(safeStatusValue);
+        const hasEndTime = 'endTime' in updates || CLIENT_RUN_FIELDS.END_TIME in updates;
+        if (isCompletedState && !hasEndTime) {
+          const endTime = new Date().toISOString();
+          updateFields[CLIENT_RUN_FIELDS.END_TIME] = endTime;
+          log.debug(`Auto-setting end time to ${endTime}`);
+        }
+      }
+      if ('leadsProcessed' in updates) updateFields[CLIENT_RUN_FIELDS.LEADS_PROCESSED] = updates.leadsProcessed;
+      if ('postsProcessed' in updates) updateFields[CLIENT_RUN_FIELDS.POSTS_PROCESSED] = updates.postsProcessed;
+      if ('errors' in updates) updateFields[CLIENT_RUN_FIELDS.ERRORS] = updates.errors;
       
       // Handle System Notes properly using constants
       if (updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
@@ -1008,6 +1038,7 @@ class JobTracking {
     }
     
     try {
+      // CRITICAL FIX: Check for existing status in finalMetrics using both legacy and standardized field names
       // Determine final status based on metrics using constants
       let status = STATUS_VALUES.COMPLETED;
       const hasErrors = finalMetrics[CLIENT_RUN_FIELDS.ERRORS] && finalMetrics[CLIENT_RUN_FIELDS.ERRORS] > 0;
@@ -1016,10 +1047,19 @@ class JobTracking {
                               (!finalMetrics[CLIENT_RUN_FIELDS.POSTS_EXAMINED_FOR_SCORING] || 
                                 finalMetrics[CLIENT_RUN_FIELDS.POSTS_EXAMINED_FOR_SCORING] === 0);
       
-      if (noLeadsProcessed) {
-        status = STATUS_VALUES.NO_LEADS_TO_SCORE;
-      } else if (finalMetrics.failed) {
-        status = STATUS_VALUES.FAILED;
+      // Check both legacy and standardized field names for status
+      const explicitStatus = finalMetrics && ('status' in finalMetrics ? finalMetrics.status : 
+                          (CLIENT_RUN_FIELDS.STATUS in finalMetrics ? finalMetrics[CLIENT_RUN_FIELDS.STATUS] : null));
+      if (explicitStatus !== null) {
+        // If status is explicitly provided, use that
+        status = explicitStatus;
+      } else {
+        // Otherwise determine based on metrics
+        if (noLeadsProcessed) {
+          status = STATUS_VALUES.NO_LEADS_TO_SCORE;
+        } else if (finalMetrics.failed) {
+          status = STATUS_VALUES.FAILED;
+        }
       }
       
       // Create updates object using constants
