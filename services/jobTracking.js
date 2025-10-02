@@ -726,17 +726,9 @@ class JobTracking {
       throw new Error("Run ID and Client ID are required to complete client processing");
     }
       
-      // Override the original parameters with safe versions
-      params.runId = safeRunId;
-      params.clientId = safeClientId;
-    } catch (error) {
-      logger.error(`Parameter validation failed: ${error.message}`);
-      throw error;
-    }
-    
-    // Use the validated parameters
-    const safeRunId = params.runId;
-    const safeClientId = params.clientId;
+    // Override the original parameters with safe versions
+    params.runId = safeRunId;
+    params.clientId = safeClientId;
     
     // Use existing logger or create a safe one
     const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
