@@ -1,15 +1,17 @@
 /**
  * constants/airtableConstants.js
  * 
- * Centralized Airtable constants for the backend
- * This ensures consistency across all services and prevents typos
+ * ⚠️ DEPRECATED ⚠️
+ * This file is deprecated and maintained only for backward compatibility.
+ * Please use constants/airtableUnifiedConstants.js for all new code.
  * 
- * BENEFITS:
- * - Prevents typos in field/table names
- * - Makes refactoring easier (change in one place)
- * - Documents the schema clearly
- * - Prevents formula field update errors
- * - Enforces consistency across all services
+ * DO NOT ADD NEW CONSTANTS TO THIS FILE.
+ * DO NOT MODIFY CONSTANTS IN THIS FILE.
+ * 
+ * This file will eventually be removed once all code has been migrated
+ * to use airtableUnifiedConstants.js instead.
+ * 
+ * For more information, see CONSTANTS-MIGRATION-GUIDE.md
  */
 
 // Table names in Master Clients Base

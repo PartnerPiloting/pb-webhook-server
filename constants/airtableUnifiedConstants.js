@@ -28,22 +28,46 @@ const CLIENT_TABLES = {
 const LEAD_FIELDS = {
   // Identity fields
   LINKEDIN_URL: 'LinkedIn URL',
+  LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL', // Added from leadService.js
   LEAD_NAME: 'Lead Name',
   COMPANY: 'Company',
+  COMPANY_NAME: 'Company Name', // Added from leadService.js
+  FIRST_NAME: 'First Name', // Added from leadService.js
+  LAST_NAME: 'Last Name', // Added from leadService.js
+  HEADLINE: 'Headline', // Added from leadService.js
+  JOB_TITLE: 'Job Title', // Added from leadService.js
+  ABOUT: 'About', // Added from leadService.js
+  JOB_HISTORY: 'Job History', // Added from leadService.js
+  LOCATION: 'Location', // Added from leadService.js
+  EMAIL: 'Email', // Added from leadService.js
+  PHONE: 'Phone', // Added from leadService.js
+  
+  // Status and connection fields
+  STATUS: 'Status', // Added from leadService.js
+  LINKEDIN_CONNECTION_STATUS: 'LinkedIn Connection Status', // Added from leadService.js
+  DATE_CONNECTED: 'Date Connected',
+  CONVERSATION_STAGE: 'Conversation Stage',
   
   // Scoring fields
-  AI_SCORE: 'AI Score',
-  AI_PROFILE_ASSESSMENT: 'AI Profile Assessment',
-  SCORING_STATUS: 'Scoring Status',
-  DATE_SCORED: 'Date Scored',
+  AI_SCORE: 'AI Score', // Verified against Airtable
+  AI_PROFILE_ASSESSMENT: 'AI Profile Assessment', // Verified against Airtable
+  AI_ATTRIBUTES_DETAIL: 'AI Attributes Detail', // Corrected to match Airtable exactly
+  SCORING_STATUS: 'Scoring Status', // Need to verify - might be "Status" in Airtable
+  DATE_SCORED: 'Date Scored', // Need to verify in Airtable
   
   // Post scoring fields
   POSTS_AI_EVALUATION: 'Posts AI Evaluation',
   DATE_POSTS_SCORED: 'Date Posts Scored',
   
-  // Connection fields
-  DATE_CONNECTED: 'Date Connected',
-  CONVERSATION_STAGE: 'Conversation Stage',
+  // System fields
+  SYSTEM_NOTES: 'System Notes',
+  AU: 'AU',
+  AI_EXCLUDED: 'AI_Excluded',
+  EXCLUDE_DETAILS: 'Exclude Details',
+  REFRESHED_AT: 'Refreshed At', // Added from leadService.js
+  PROFILE_FULL_JSON: 'Profile Full JSON', // Added from leadService.js
+  RAW_PROFILE_DATA: 'Raw Profile Data', // Added from leadService.js
+  VIEW_IN_SALES_NAVIGATOR: 'View In Sales Navigator', // Added from leadService.js
   
   // Formula fields (read-only)
   DAYS_SINCE_CONNECTED: 'Days Since Connected',

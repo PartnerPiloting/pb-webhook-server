@@ -94,27 +94,26 @@ async function upsertLead(
     const profileForJsonField = slimLead(originalLeadData);
 
     const fields = {
-        "LinkedIn Profile URL": finalUrl,
-        "First Name": firstName,
-        "Last Name": lastName,
-        "Headline": linkedinHeadline || lhHeadline || originalLeadData.headline || "",
-        "Job Title": linkedinJobTitle || originalLeadData.occupation || originalLeadData.position || "",
-        "Company Name": linkedinCompanyName || (originalLeadData.company ? originalLeadData.company.name : "") || originalLeadData.organization_1 || "",
-        "About": linkedinDescription || originalLeadData.summary || originalLeadData.bio || "",
-        "Job History": jobHistory,
-        "LinkedIn Connection Status": currentConnectionStatus,
-        "Status": "In Process", 
-        "Location": locationName || originalLeadData.location || "",
-        "Date Connected": safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === "Connected" && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
-        "Email": emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
-        "Phone": phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
-        "Refreshed At": refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
-        "Profile Full JSON": JSON.stringify(profileForJsonField),
-        "Raw Profile Data": JSON.stringify(originalLeadData),
+        [LEAD_FIELDS.LINKEDIN_PROFILE_URL]: finalUrl,
+        [LEAD_FIELDS.FIRST_NAME]: firstName,
+        [LEAD_FIELDS.LAST_NAME]: lastName,
+        [LEAD_FIELDS.HEADLINE]: linkedinHeadline || lhHeadline || originalLeadData.headline || "",
+        [LEAD_FIELDS.JOB_TITLE]: linkedinJobTitle || originalLeadData.occupation || originalLeadData.position || "",
+        [LEAD_FIELDS.COMPANY_NAME]: linkedinCompanyName || (originalLeadData.company ? originalLeadData.company.name : "") || originalLeadData.organization_1 || "",
+        [LEAD_FIELDS.ABOUT]: linkedinDescription || originalLeadData.summary || originalLeadData.bio || "",
+        [LEAD_FIELDS.JOB_HISTORY]: jobHistory,
+        [LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS]: currentConnectionStatus,
+        [LEAD_FIELDS.STATUS]: "In Process", 
+        [LEAD_FIELDS.LOCATION]: locationName || originalLeadData.location || "",
+        [LEAD_FIELDS.DATE_CONNECTED]: safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === "Connected" && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
+        [LEAD_FIELDS.EMAIL]: emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
+        [LEAD_FIELDS.PHONE]: phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
+        [LEAD_FIELDS.REFRESHED_AT]: refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
+        [LEAD_FIELDS.PROFILE_FULL_JSON]: JSON.stringify(profileForJsonField),
+        [LEAD_FIELDS.RAW_PROFILE_DATA]: JSON.stringify(originalLeadData),
 
-        // ***** ADDED THE NEW FIELD HERE TO BE SAVED TO AIRTABLE *****
-        "View In Sales Navigator": viewInSalesNavigatorUrl || null 
-        // Ensure "View In Sales Navigator" exactly matches your Airtable field name
+        // Use constant for Sales Navigator field
+        [LEAD_FIELDS.VIEW_IN_SALES_NAVIGATOR]: viewInSalesNavigatorUrl || null
     };
 
     // --- MODIFIED Scoring Status Handling ---
@@ -125,10 +124,10 @@ async function upsertLead(
 
     if (finalScore !== null) fields[LEAD_FIELDS.AI_SCORE] = Math.round(finalScore * 100) / 100;
     if (aiProfileAssessment !== null) fields[LEAD_FIELDS.AI_PROFILE_ASSESSMENT] = String(aiProfileAssessment || "");
-    if (attributeBreakdown !== null) fields[LEAD_FIELDS.AI_ATTRIBUTE_BREAKDOWN] = attributeBreakdown;
-    if (auFlag !== null) fields["AU"] = !!auFlag; // Keep as is until we add to constants
-    if (ai_excluded_val !== null) fields["AI_Excluded"] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
-    if (exclude_details_val !== null) fields["Exclude Details"] = exclude_details_val;
+    if (attributeBreakdown !== null) fields[LEAD_FIELDS.AI_ATTRIBUTES_DETAIL] = attributeBreakdown;
+    if (auFlag !== null) fields[LEAD_FIELDS.AU] = !!auFlag;
+    if (ai_excluded_val !== null) fields[LEAD_FIELDS.AI_EXCLUDED] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
+    if (exclude_details_val !== null) fields[LEAD_FIELDS.EXCLUDE_DETAILS] = exclude_details_val;
 
     const existing = await airtableBase(CLIENT_TABLES.LEADS).select({ 
         filterByFormula: `{Profile Key} = "${profileKey}"`, 
@@ -156,14 +155,14 @@ async function upsertLead(
         if (fields[LEAD_FIELDS.SCORING_STATUS] === undefined) {
             fields[LEAD_FIELDS.SCORING_STATUS] = SCORING_STATUS_VALUES.NOT_SCORED;
         }
-        if (currentConnectionStatus === "Connected" && !fields["Date Connected"]) {
-            fields["Date Connected"] = new Date().toISOString();
+        if (currentConnectionStatus === "Connected" && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
+            fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
         }
-        if (!fields["System Notes"]) { 
-            fields["System Notes"] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
+        if (!fields[LEAD_FIELDS.SYSTEM_NOTES]) { 
+            fields[LEAD_FIELDS.SYSTEM_NOTES] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
         }
         console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
-        const createdRecords = await airtableBase("Leads").create([{ fields }]);
+        const createdRecords = await airtableBase(CLIENT_TABLES.LEADS).create([{ fields }]);
         recordId = createdRecords[0].id; 
     }
     
