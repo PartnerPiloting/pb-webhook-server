@@ -94,34 +94,48 @@ const CLIENT_RUN_FIELDS = {
 };
 
 // Field names for Job Tracking table
+// NOTE: Some fields may need verification against the current Airtable schema
 const JOB_TRACKING_FIELDS = {
-  // Core fields
+  // Core fields - Verified against Airtable schema (Oct 2025)
   RUN_ID: 'Run ID',
   STATUS: 'Status',
   STREAM: 'Stream',
   START_TIME: 'Start Time',
   END_TIME: 'End Time',
   DURATION: 'Duration', // Formula field
-  PROGRESS: 'Progress',
-  LAST_CLIENT: 'Last Client',
   
-  // Client metrics
-  CLIENTS_PROCESSED: 'Clients Processed', // Corrected field name
-  CLIENTS_SUCCEEDED: 'Clients Succeeded',
-  CLIENTS_FAILED: 'Clients Failed',
+  // Fields intentionally removed to simplify the codebase
+  // PROGRESS: 'Progress', - Removed 2025-10-02
+  // LAST_CLIENT: 'Last Client', - Removed 2025-10-02
   
-  // Aggregate metrics
-  TOTAL_PROFILES_EXAMINED: 'Total Profiles Examined',
-  TOTAL_PROFILES_SCORED: 'Total Profiles Scored',
-  TOTAL_POSTS_HARVESTED: 'Total Posts Harvested',
-  TOTAL_POSTS_SCORED: 'Total Posts Scored',
-  TOTAL_TOKENS_USED: 'Total Tokens Used',
-  TOTAL_API_COST: 'Total API Cost',
+  // Client metrics - Now calculated on-the-fly instead of stored
+  // These fields are being removed from the Job Tracking table as they can be
+  // calculated when needed by summing the values from Client Run Results
+  // CLIENTS_PROCESSED: 'Clients Processed', - Removed 2025-10-02 (now calculated on-the-fly)
+  // CLIENTS_WITH_ERRORS: 'Clients With Errors', - Removed 2025-10-02 (now calculated on-the-fly)
+  
+  // Fields intentionally removed to simplify the codebase
+  // CLIENTS_SUCCEEDED: 'Clients Succeeded', - Removed 2025-10-02
+  // CLIENTS_FAILED: 'Clients Failed', - Removed 2025-10-02
+  
+  // Aggregate metrics - Now calculated on-the-fly instead of stored
+  // These fields are being removed from the Job Tracking table as they can be
+  // calculated when needed by summing the values from Client Run Results
+  // TOTAL_PROFILES_EXAMINED: 'Total Profiles Examined', - Removed 2025-10-02 (now calculated on-the-fly)
+  // TOTAL_POSTS_HARVESTED: 'Total Posts Harvested', - Removed 2025-10-02 (now calculated on-the-fly)
+  // TOTAL_TOKENS_USED: 'Total Tokens Used', - Removed 2025-10-02 (now calculated on-the-fly)
+  // SUCCESSFUL_PROFILES: 'Successful Profiles', - Removed 2025-10-02 (now calculated on-the-fly)
+  // TOTAL_PROFILES_SCORED: 'Total Profiles Scored', - Removed 2025-10-02 (now calculated on-the-fly)
+  // TOTAL_POSTS_SCORED: 'Total Posts Scored', - Removed 2025-10-02 (now calculated on-the-fly)
+  // TOTAL_API_COST: 'Total API Cost', - Removed 2025-10-02 (now calculated on-the-fly)
   
   // System fields
-  SYSTEM_NOTES: 'System Notes',
-  ERROR_SUMMARY: 'Error Summary',
-  SUCCESS_RATE: 'Success Rate' // Formula field
+  SYSTEM_NOTES: 'System Notes' // Verified against schema
+  
+  // Formula fields removed as they depend on the removed aggregate fields
+  // POST_SCORING_SUCCESS_RATE: 'Post Scoring Success Rate', - Removed 2025-10-02 (now calculated on-the-fly)
+  // ERROR_SUMMARY: 'Error Summary', - Removed 2025-10-02 (now calculated on-the-fly)
+  // SUCCESS_RATE: 'Success Rate' - Removed 2025-10-02 (now calculated on-the-fly)
 };
 
 // List of formula fields that should NEVER be updated directly
@@ -134,7 +148,9 @@ const FORMULA_FIELDS = [
   
   // Job Tracking formula fields
   JOB_TRACKING_FIELDS.DURATION,
-  JOB_TRACKING_FIELDS.SUCCESS_RATE,
+  // Removed formula fields that depended on the removed aggregate fields
+  // JOB_TRACKING_FIELDS.SUCCESS_RATE, - Removed 2025-10-02
+  // JOB_TRACKING_FIELDS.POST_SCORING_SUCCESS_RATE, - Removed 2025-10-02
   
   // Lead formula fields
   LEAD_FIELDS.DAYS_SINCE_CONNECTED,
