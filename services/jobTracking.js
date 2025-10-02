@@ -13,7 +13,7 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
 // Import field validator for consistent field naming
-const { FIELD_NAMES, STATUS_VALUES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
+const { FIELD_NAMES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
 
 // Database access
 const baseManager = require('./airtable/baseManager');
@@ -24,7 +24,7 @@ const {
   TABLES,
   JOB_TRACKING_FIELDS,  // Primary constant for job fields
   CLIENT_RUN_FIELDS,    // Primary constant for client run fields
-  STATUS_VALUES,
+  STATUS_VALUES,        // Get STATUS_VALUES from here only
   FORMULA_FIELDS
 } = require('../constants/airtableSimpleConstants');
 
@@ -262,8 +262,7 @@ class JobTracking {
       if (updates.status) updateFields[JOB_TRACKING_FIELDS.STATUS] = updates.status;
       if (updates.endTime) updateFields[JOB_TRACKING_FIELDS.END_TIME] = updates.endTime;
       if (updates.error) updateFields[JOB_TRACKING_FIELDS.ERROR] = updates.error;
-      if (updates.progress) updateFields[JOB_TRACKING_FIELDS.PROGRESS] = updates.progress;
-      if (updates.lastClient) updateFields[JOB_TRACKING_FIELDS.LAST_CLIENT] = updates.lastClient;
+      // Progress and LastClient fields removed to simplify codebase
       
       // Handle System Notes field properly
       if (updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
@@ -829,8 +828,7 @@ class JobTracking {
       });
       
       // Non-numeric fields to update (replace existing values)
-      if (metrics.progress) updateFields[JOB_TRACKING_FIELDS.PROGRESS] = metrics.progress;
-      if (metrics.lastClientProcessed) updateFields[JOB_TRACKING_FIELDS.LAST_CLIENT] = metrics.lastClientProcessed;
+      // Progress and LastClient fields removed to simplify codebase
       
       // Handle System Notes field - append rather than replace
       if (metrics.notes || metrics[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
