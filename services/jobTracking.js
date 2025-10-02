@@ -12,8 +12,6 @@
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
-// FIXED: Import our new validator utility for more robust ID validation
-const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
 // Import field validator for consistent field naming
 const { FIELD_NAMES, STATUS_VALUES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
 
@@ -62,6 +60,30 @@ class JobTracking {
    */
   static addClientSuffix(baseRunId, clientId) {
     return unifiedRunIdService.addClientSuffix(baseRunId, clientId);
+  }
+  
+  /**
+   * Simple helper to extract string ID from various input types
+   * Fixes the "[object Object]" errors in logs
+   * @param {*} value - The value to extract an ID from
+   * @param {string} [fieldName='id'] - The field name to check if value is an object
+   * @returns {string|null} - The extracted ID as a string, or null if no valid ID found
+   */
+  static extractId(value, fieldName = 'id') {
+    if (!value) return null;
+    
+    // If already a string, return it
+    if (typeof value === 'string') return value.trim();
+    
+    // If object, try to extract ID fields
+    if (typeof value === 'object') {
+      if (value.runId) return String(value.runId).trim();
+      if (value.clientId) return String(value.clientId).trim();
+      if (value.id) return String(value.id).trim();
+    }
+    
+    // Fallback to string conversion
+    return String(value).trim();
   }
 
   /**
@@ -342,10 +364,13 @@ class JobTracking {
     
     const { runId, clientId, updates = {}, options = {} } = params;
     
-    // Validate required parameters
-    try {
-      validateRequiredParams(params, ['runId', 'clientId'], 'updateClientRun');
-    } catch (error) {
+    // Use the simple extractId helper to handle objects
+    const safeRunId = JobTracking.extractId(runId);
+    const safeClientId = JobTracking.extractId(clientId);
+    
+    if (!safeRunId || !safeClientId) {
+      throw new Error("Run ID and Client ID are required to update client run record");
+    }
       logger.error(`Parameter validation failed: ${error.message}`);
       throw error;
     }
@@ -434,8 +459,8 @@ class JobTracking {
       return {
         id: record.id,
         runId: clientRunId,
-        baseRunId: runId,
-        clientId,
+        baseRunId: safeRunId,
+        clientId: safeClientId,
         ...updates
       };
     } catch (error) {
@@ -570,17 +595,13 @@ class JobTracking {
     
     const { runId, clientId, metrics = {}, options = {} } = params;
     
-    // Validate required parameters
-    try {
-      validateRequiredParams(params, ['runId', 'clientId'], 'updateClientMetrics');
-    } catch (error) {
-      logger.error(`Parameter validation failed: ${error.message}`);
-      throw error;
-    }
+    // Use the simple extractId helper to handle objects
+    const safeRunId = JobTracking.extractId(runId);
+    const safeClientId = JobTracking.extractId(clientId);
     
-    // Simple string validation for critical parameters
-    const safeRunId = validateString(runId, 'runId', 'updateClientMetrics');
-    const safeClientId = validateString(clientId, 'clientId', 'updateClientMetrics');
+    if (!safeRunId || !safeClientId) {
+      throw new Error("Run ID and Client ID are required to update client metrics");
+    }
     
     // Use existing logger or create a safe one
     const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
@@ -664,15 +685,14 @@ class JobTracking {
     
     const { runId, clientId, options = {} } = params;
     
-    // Validate required parameters
-    if (!runId || !clientId) {
+    // Use the simple extractId helper to handle objects
+    const safeRunId = JobTracking.extractId(runId);
+    const safeClientId = JobTracking.extractId(clientId);
+    
+    if (!safeRunId || !safeClientId) {
       logger.error("Run ID and Client ID are required to check if client run record exists");
       return false;
     }
-    
-    // Simple string validation
-    const safeRunId = String(runId).trim();
-    const safeClientId = String(clientId).trim();
     
     // Use existing logger or default
     const log = options.logger || logger;
@@ -705,16 +725,13 @@ class JobTracking {
     
     const { runId, clientId, finalMetrics = {}, options = {} } = params;
     
-    // FIXED: More robust validation that can handle objects being passed as IDs
-    try {
-      // This will throw if parameters are missing
-      validateRequiredParams(params, ['runId', 'clientId'], 'completeClientProcessing');
-      
-      // Use our new validators that can extract IDs from objects
-      const safeRunId = validateAndNormalizeRunId(runId) || 
-                        validateString(runId, 'runId', 'completeClientProcessing');
-      const safeClientId = validateAndNormalizeClientId(clientId) || 
-                          validateString(clientId, 'clientId', 'completeClientProcessing');
+    // FIXED: Use the simple extractId helper that's already defined in the class
+    const safeRunId = JobTracking.extractId(runId);
+    const safeClientId = JobTracking.extractId(clientId);
+    
+    if (!safeRunId || !safeClientId) {
+      throw new Error("Run ID and Client ID are required to complete client processing");
+    }
       
       // Override the original parameters with safe versions
       params.runId = safeRunId;
@@ -847,4 +864,5 @@ class JobTracking {
   }
 }
 
-module.exports = JobTracking;
+// Export as an object to avoid circular dependency issues with runIdValidator
+module.exports = { JobTracking };
