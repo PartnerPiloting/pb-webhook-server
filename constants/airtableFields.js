@@ -6,7 +6,9 @@
  */
 
 // Field names for Client Run Results table
-const CLIENT_RUN_RESULTS_FIELDS = {
+// IMPORTANT: Primary constant is now CLIENT_RUN_FIELDS 
+// This remains for backward compatibility but should be updated
+const CLIENT_RUN_FIELDS = {
   // Core fields
   RUN_ID: 'Run ID',
   CLIENT_ID: 'Client ID',
@@ -80,7 +82,7 @@ const TABLES = {
 };
 
 module.exports = {
-  CLIENT_RUN_RESULTS_FIELDS,
+  CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS,
   TABLES
 };

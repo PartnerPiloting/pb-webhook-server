@@ -31,7 +31,7 @@ const unifiedRunIdService = require('./unifiedRunIdService');
 // Removed duplicate STATUS_VALUES import, using the unified constants directly 
 const { FIELD_NAMES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
 const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
-const { CLIENT_RUN_RESULTS_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+const { CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
 
 /**
  * Helper function to get a logger from options or create a new one
@@ -52,7 +52,7 @@ function getLoggerFromOptions(options, clientId, runId, context = 'general') {
 }
 
 // CRITICAL: Verify constants are properly imported
-if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_RESULTS_FIELDS || !TABLES) {
+if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_FIELDS || !TABLES) {
   console.error('CRITICAL: Constants not properly imported from airtableFields.js');
   throw new Error('Missing required constants');
 }
@@ -178,7 +178,7 @@ async function createRunRecord(params) {
     
     // ROOT CAUSE FIX: Use field name constants to prevent errors
     const existingRecords = await masterBase(TABLES.CLIENT_RUN_RESULTS).select({
-      filterByFormula: `AND({${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID}} = '${validatedClientId}')`,
+      filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${validatedClientId}')`,
       maxRecords: 1
     }).firstPage();
     
@@ -772,7 +772,7 @@ async function completeClientProcessing(params) {
       // Get the current record to check what processes have completed
       const masterBase = airtableClient.getMasterBase();
       const records = await masterBase(TABLES.CLIENT_RUN_RESULTS).select({
-        filterByFormula: `AND({${CLIENT_RUN_RESULTS_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_RESULTS_FIELDS.CLIENT_ID}} = '${clientId}')`,
+        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`,
         maxRecords: 1
       }).firstPage();
       
@@ -804,7 +804,7 @@ async function completeClientProcessing(params) {
         allProcessesComplete = allProcessesComplete && hasPostHarvesting;
         
         // Only check post scoring if posts were harvested
-        if (hasPostHarvesting && currentRecord[CLIENT_RUN_RESULTS_FIELDS.TOTAL_POSTS_HARVESTED] > 0) {
+        if (hasPostHarvesting && currentRecord[CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED] > 0) {
           allProcessesComplete = allProcessesComplete && hasPostScoring;
         }
       }
