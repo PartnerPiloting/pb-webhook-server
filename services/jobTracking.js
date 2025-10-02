@@ -36,6 +36,27 @@ const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
 const logger = createSafeLogger('SYSTEM', null, 'job_tracking');
 
 /**
+ * Helper function to ensure consistent status values
+ * Prevents "toLowerCase of undefined" errors and ensures consistent status values
+ * @param {string|*} statusValue - The status value to sanitize
+ * @returns {string} A lowercase consistent status value
+ */
+function getStatusString(statusValue = 'completed') {
+  // Handle null/undefined
+  if (statusValue === null || statusValue === undefined) {
+    return 'completed';
+  }
+  
+  // Handle different types
+  const statusStr = String(statusValue).trim();
+  
+  // Normalize to lowercase for consistency
+  return statusStr.toLowerCase();
+}
+
+// This function has been moved to a static method in the JobTracking class
+
+/**
  * Validate field names against the appropriate constants
  * @param {string} tableName - Table name (e.g., JOB_TRACKING_TABLE, CLIENT_RUN_RESULTS_TABLE)
  * @param {Object} fieldData - Object with field names as keys
@@ -104,6 +125,61 @@ class JobTracking {
   }
   
   /**
+   * Standard method for run ID handling
+   * This function ensures all run IDs are consistently formatted when they enter the system
+   * Format: YYMMDD-HHMMSS (standard timestamp format)
+   * @param {string|Object} runIdInput - Run ID string or object containing a runId property
+   * @param {Object} [options={}] - Additional options
+   * @param {boolean} [options.enforceStandard=true] - Whether to enforce the standard format
+   * @param {boolean} [options.logErrors=true] - Whether to log errors
+   * @returns {string|null} Standardized run ID or null if invalid
+   */
+  static standardizeRunId(runIdInput, options = {}) {
+    const { enforceStandard = true, logErrors = true } = options;
+    const log = logErrors ? logger : { error: () => {}, warn: () => {}, debug: () => {} };
+
+    try {
+      // Handle null/undefined
+      if (!runIdInput) {
+        log.error('Null or undefined run ID received');
+        return null;
+      }
+      
+      // Extract run ID from object if needed
+      let runId = runIdInput;
+      if (typeof runIdInput === 'object') {
+        // Extract from object properties
+        if (runIdInput.runId) {
+          runId = runIdInput.runId;
+        } else if (runIdInput.id) {
+          runId = runIdInput.id;
+        } else {
+          log.error(`Could not extract run ID from object: ${JSON.stringify(runIdInput)}`);
+          return null;
+        }
+      }
+      
+      // Ensure string format
+      if (typeof runId !== 'string') {
+        runId = String(runId);
+      }
+      
+      // Normalize using the unified service
+      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      
+      // Enforce standard if required
+      if (enforceStandard && normalizedRunId && normalizedRunId !== runId) {
+        log.debug(`Run ID standardized: ${runId} → ${normalizedRunId}`);
+      }
+      
+      return normalizedRunId;
+    } catch (error) {
+      log.error(`Error standardizing run ID: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Simple helper to extract string ID from various input types
    * Fixes the "[object Object]" errors in logs
    * @param {*} value - The value to extract an ID from
@@ -147,33 +223,25 @@ class JobTracking {
     }
     
     try {
-      // Validate runId properly at entry point
-      if (typeof runId !== 'string') {
-        log.error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
-        throw new Error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
-      }
-
-      // Normalize with proper error handling
-      let normalizedRunId;
-      try {
-        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
-        if (!normalizedRunId) {
-          log.error(`Failed to normalize run ID: ${runId}`);
-          throw new Error(`Failed to normalize run ID: ${runId}`);
-        }
-      } catch (error) {
-        log.error(`Error normalizing run ID: ${error.message}`);
-        throw new Error(`Error normalizing run ID: ${error.message}`);
+      // Use standardizeRunId helper to ensure consistent format
+      const standardRunId = standardizeRunId(runId, { 
+        enforceStandard: true,
+        logErrors: true
+      });
+      
+      // Exit early if we couldn't get a valid run ID
+      if (!standardRunId) {
+        log.error(`Invalid run ID provided: ${runId}`);
+        throw new Error(`Invalid run ID provided: ${runId}`);
       }
       
-      log.debug(`Creating job with normalized runId: ${normalizedRunId} (original: ${runId})`);
+      log.debug(`Creating job with standardized run ID: ${standardRunId}`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Enhanced deduplication: Check for existing records with any variant of this run ID
-      // This prevents duplicates even if different formats of the same logical ID are used
-      const formula = `OR({${JOB_TRACKING_FIELDS.RUN_ID}} = '${runId}', {${JOB_TRACKING_FIELDS.RUN_ID}} = '${normalizedRunId}')`;
+      // Only check for the standardized run ID to prevent duplicates
+      const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
       
       const existingRecords = await masterBase(JOB_TRACKING_TABLE).select({
         filterByFormula: formula,
@@ -181,10 +249,10 @@ class JobTracking {
       }).firstPage();
       
       if (existingRecords && existingRecords.length > 0) {
-        log.warn(`Job tracking record already exists for run ID ${runId}. Not creating duplicate.`);
+        log.warn(`Job tracking record already exists for standardized run ID ${standardRunId}. Not creating duplicate.`);
         return {
           id: existingRecords[0].id,
-          runId: normalizedRunId, // Return the normalized ID for consistency
+          runId: standardRunId, // Return the standardized ID
           alreadyExists: true
         };
       }
@@ -194,7 +262,7 @@ class JobTracking {
       
       // Prepare record data using constants - improves maintainability
       const recordData = {
-        [JOB_TRACKING_FIELDS.RUN_ID]: normalizedRunId, // Always use normalized ID
+        [JOB_TRACKING_FIELDS.RUN_ID]: standardRunId, // Always use standardized ID
         [JOB_TRACKING_FIELDS.STATUS]: STATUS_VALUES.RUNNING,
         [JOB_TRACKING_FIELDS.START_TIME]: startTime,
         // Use proper field name from constants - ensure it exists in Airtable
@@ -253,32 +321,25 @@ class JobTracking {
     }
     
     try {
-      // Validate runId properly at entry point
-      if (typeof runId !== 'string') {
-        log.error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
-        throw new Error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
-      }
-
-      // Normalize with proper error handling
-      let normalizedRunId;
-      try {
-        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
-        if (!normalizedRunId) {
-          log.error(`Failed to normalize run ID: ${runId}`);
-          throw new Error(`Failed to normalize run ID: ${runId}`);
-        }
-      } catch (error) {
-        log.error(`Error normalizing run ID: ${error.message}`);
-        throw new Error(`Error normalizing run ID: ${error.message}`);
+      // Use standardizeRunId helper to ensure consistent format
+      const standardRunId = standardizeRunId(runId, { 
+        enforceStandard: true,
+        logErrors: true
+      });
+      
+      // Exit early if we couldn't get a valid run ID
+      if (!standardRunId) {
+        log.error(`Invalid run ID provided for update: ${runId}`);
+        throw new Error(`Invalid run ID provided for update: ${runId}`);
       }
       
-      log.debug(`Updating job with normalized runId: ${normalizedRunId} (original: ${runId})`);
+      log.debug(`Updating job with standardized run ID: ${standardRunId}`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Find the record - check both original and normalized run IDs
-      const formula = `OR({${JOB_TRACKING_FIELDS.RUN_ID}} = '${runId}', {${JOB_TRACKING_FIELDS.RUN_ID}} = '${normalizedRunId}')`;
+      // Only check for the standardized run ID
+      const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
       
       const records = await masterBase(JOB_TRACKING_TABLE).select({
         filterByFormula: formula,
@@ -286,8 +347,8 @@ class JobTracking {
       }).firstPage();
       
       if (!records || records.length === 0) {
-        log.error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
-        throw new Error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
+        log.error(`Job tracking record not found for standardized run ID: ${standardRunId}`);
+        throw new Error(`Job tracking record not found for standardized run ID: ${standardRunId}`);
       }
       
       const record = records[0];
@@ -380,51 +441,35 @@ class JobTracking {
     }
     
     try {
-      // Validate runId properly at entry point
-      if (typeof runId !== 'string') {
-        log.error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
-        throw new Error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
-      }
-
-      // Normalize run ID properly with error handling
-      let normalizedRunId;
-      try {
-        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
-        if (!normalizedRunId) {
-          log.error(`Failed to normalize run ID: ${runId}`);
-          throw new Error(`Failed to normalize run ID: ${runId}`);
-        }
-      } catch (error) {
-        log.error(`Error normalizing run ID: ${error.message}`);
-        throw new Error(`Error normalizing run ID: ${error.message}`);
+      // Use standardizeRunId helper to ensure consistent format
+      const standardRunId = standardizeRunId(runId, { 
+        enforceStandard: true,
+        logErrors: true
+      });
+      
+      // Exit early if we couldn't get a valid run ID
+      if (!standardRunId) {
+        log.error(`Invalid run ID provided for client run creation: ${runId}`);
+        throw new Error(`Invalid run ID provided for client run creation: ${runId}`);
       }
       
-      log.debug(`Creating client run with normalized runId: ${normalizedRunId} (original: ${runId})`);
+      log.debug(`Creating client run with standardized run ID: ${standardRunId}`);
       
-      // Create client-specific run ID with explicit error handling
-      let clientRunId;
-      try {
-        clientRunId = JobTracking.addClientSuffix(normalizedRunId, clientId);
-        if (!clientRunId) {
-          log.error(`Failed to add client suffix to run ID: ${normalizedRunId}, ${clientId}`);
-          throw new Error(`Failed to add client suffix to run ID: ${normalizedRunId}, ${clientId}`);
-        }
-      } catch (error) {
-        log.error(`Error adding client suffix: ${error.message}`);
-        throw new Error(`Error adding client suffix: ${error.message}`);
+      // Create client-specific run ID with standard format
+      const clientRunId = JobTracking.addClientSuffix(standardRunId, clientId);
+      
+      if (!clientRunId) {
+        log.error(`Failed to create client run ID for ${standardRunId} and ${clientId}`);
+        throw new Error(`Failed to create client run ID for ${standardRunId} and ${clientId}`);
       }
       
-      // CRITICAL FIX: Always ensure normalizedClientRunId is defined
-      const normalizedClientRunId = clientRunId;
-      
-      log.debug(`Using normalized client run ID: ${normalizedClientRunId}`);
+      log.debug(`Using standardized client run ID: ${clientRunId}`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Check if record already exists using BOTH the original and normalized run IDs
-      // CRITICAL FIX: Use field name constants instead of hardcoded strings
-      const formula = `OR({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.RUN_ID}} = '${normalizedClientRunId}')`;
+      // Only check for the standardized client run ID
+      const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
       
       const existingRecords = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: formula,
@@ -432,11 +477,11 @@ class JobTracking {
       }).firstPage();
       
       if (existingRecords && existingRecords.length > 0) {
-        log.warn(`Client run record already exists for ${clientRunId}. Not creating duplicate.`);
+        log.warn(`Client run record already exists for standardized client run ID: ${clientRunId}. Not creating duplicate.`);
         return {
           id: existingRecords[0].id,
           runId: clientRunId,
-          baseRunId: runId,
+          baseRunId: standardRunId,
           clientId,
           alreadyExists: true
         };
@@ -470,7 +515,7 @@ class JobTracking {
       return {
         id: record.id,
         runId: clientRunId,
-        baseRunId: runId,
+        baseRunId: standardRunId,
         clientId,
         startTime
       };
@@ -510,14 +555,40 @@ class JobTracking {
     const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
     
     try {
-      // Get standardized run ID with client suffix
-      const clientRunId = JobTracking.addClientSuffix(safeRunId, safeClientId);
+      // Use standardizeRunId helper to ensure consistent format
+      const standardRunId = standardizeRunId(safeRunId, { 
+        enforceStandard: true,
+        logErrors: true
+      });
+      
+      // Exit early if we couldn't get a valid run ID
+      if (!standardRunId) {
+        log.error(`Invalid run ID provided for client run update: ${safeRunId}`);
+        return {
+          success: false,
+          error: 'invalid_run_id',
+          message: `Invalid run ID format: ${safeRunId}`
+        };
+      }
+      
+      // Create client-specific run ID with standard format
+      const clientRunId = JobTracking.addClientSuffix(standardRunId, safeClientId);
+      
+      if (!clientRunId) {
+        log.error(`Failed to create client run ID for ${standardRunId} and ${safeClientId}`);
+        return {
+          success: false,
+          error: 'client_run_id_creation_failed',
+          message: `Failed to create client run ID for ${standardRunId} and ${safeClientId}`
+        };
+      }
+      
+      log.debug(`Updating client run with standardized ID: ${clientRunId}`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Find the record
-      // CRITICAL FIX: Use field name constants instead of hardcoded strings
+      // Only check for the standardized client run ID using constants
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
         maxRecords: 1
@@ -674,50 +745,110 @@ class JobTracking {
 
   /**
    * Get job tracking record by run ID
-   * @param {string} runId - Run ID to find
+   * @param {string|Object} runId - Run ID to find or object containing runId property
+   * @param {Object} [options={}] - Additional options
    * @returns {Promise<Object|null>} Job tracking record or null if not found
    */
-  static async getJobById(runId) {
+  static async getJobById(runId, options = {}) {
+    const log = options.logger || logger;
+    
     try {
+      // Use standardizeRunId helper to ensure consistent format
+      const standardRunId = standardizeRunId(runId, { 
+        enforceStandard: true,
+        logErrors: true
+      });
+      
+      // Exit early if we couldn't get a valid run ID
+      if (!standardRunId) {
+        log.error(`Invalid run ID provided for lookup: ${runId}`);
+        return null;
+      }
+      
       const masterBase = baseManager.getMasterClientsBase();
       
+      // Use only the standardized run ID with constant for field name
+      const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
+      
+      log.debug(`Looking up job record with standardized run ID: ${standardRunId}`);
+      
       const records = await masterBase(JOB_TRACKING_TABLE).select({
-        filterByFormula: `{Run ID} = '${runId}'`,
+        filterByFormula: formula,
         maxRecords: 1
       }).firstPage();
       
       if (!records || records.length === 0) {
+        log.debug(`Job tracking record not found for standardized run ID: ${standardRunId}`);
         return null;
       }
       
+      log.debug(`Found job tracking record for run ID: ${standardRunId}`);
       return records[0];
     } catch (error) {
-      logger.error(`Error getting job by ID: ${error.message}`);
+      log.error(`Error getting job by ID: ${error.message}`);
       return null;
     }
   }
 
   /**
    * Get client run record by client run ID
-   * @param {string} runId - Base run ID
-   * @param {string} clientId - Client ID
+   * @param {string|Object} runId - Base run ID or object containing runId property
+   * @param {string|Object} clientId - Client ID or object containing clientId property
+   * @param {Object} [options={}] - Additional options
    * @returns {Promise<Object|null>} Client run record or null if not found
    */
-  static async getClientRun(runId, clientId) {
+  static async getClientRun(runId, clientId, options = {}) {
     try {
-      const clientRunId = JobTracking.addClientSuffix(runId, clientId);
+      // Use the simple extractId helper to handle objects
+      const safeRunId = JobTracking.extractId(runId);
+      const safeClientId = JobTracking.extractId(clientId);
+      
+      if (!safeRunId || !safeClientId) {
+        logger.error("Run ID and Client ID are required to get client run record");
+        return null;
+      }
+      
+      // Use existing logger or default
+      const log = options.logger || logger;
+      
+      // Use standardizeRunId helper to ensure consistent format
+      const standardRunId = standardizeRunId(safeRunId, { 
+        enforceStandard: true,
+        logErrors: true
+      });
+      
+      // Exit early if we couldn't get a valid run ID
+      if (!standardRunId) {
+        log.error(`Invalid run ID provided for client run lookup: ${safeRunId}`);
+        return null;
+      }
+      
+      // Create client-specific run ID with standard format
+      const clientRunId = JobTracking.addClientSuffix(standardRunId, safeClientId);
+      
+      if (!clientRunId) {
+        log.error(`Failed to create client run ID for ${standardRunId} and ${safeClientId}`);
+        return null;
+      }
+      
       const masterBase = baseManager.getMasterClientsBase();
       
-      // CRITICAL FIX: Use field name constants instead of hardcoded strings
+      // Only check for the standardized client run ID using constants
+      const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
+      
+      log.debug(`Looking up client run record with standardized ID: ${clientRunId}`);
+      
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        filterByFormula: formula,
         maxRecords: 1
       }).firstPage();
       
       if (!records || records.length === 0) {
+        log.debug(`Client run record not found for standardized client run ID: ${clientRunId}`);
         return null;
       }
       
+      log.debug(`Found client run record for standardized client run ID: ${clientRunId}`);
       return records[0];
     } catch (error) {
       logger.error(`Error getting client run: ${error.message}`);
@@ -845,19 +976,45 @@ class JobTracking {
     const log = options.logger || logger;
     
     try {
-      // Create client-specific run ID
-      const clientRunId = JobTracking.addClientSuffix(safeRunId, safeClientId);
+      // Use standardizeRunId helper to ensure consistent format
+      const standardRunId = standardizeRunId(safeRunId, { 
+        enforceStandard: true,
+        logErrors: true
+      });
+      
+      // Exit early if we couldn't get a valid run ID
+      if (!standardRunId) {
+        log.error(`Invalid run ID provided for client run check: ${safeRunId}`);
+        return false;
+      }
+      
+      // Create client-specific run ID with standard format
+      const clientRunId = JobTracking.addClientSuffix(standardRunId, safeClientId);
+      
+      if (!clientRunId) {
+        log.error(`Failed to create client run ID for ${standardRunId} and ${safeClientId}`);
+        return false;
+      }
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
       
-      // Find the record using constants
+      // Only check for the standardized client run ID
+      const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
+      
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        filterByFormula: formula,
         maxRecords: 1
       }).firstPage();
       
-      return !!(records && records.length > 0);
+      const exists = !!(records && records.length > 0);
+      if (!exists) {
+        log.debug(`Client run record not found for standardized client run ID ${clientRunId}`);
+      } else {
+        log.debug(`Found client run record for standardized client run ID ${clientRunId}`);
+      }
+      
+      return exists;
     } catch (error) {
       log.error(`Error checking client run record existence: ${error.message}`);
       return false;
