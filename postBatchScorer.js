@@ -251,14 +251,16 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
     }
     
     try {
-        // FIXED: Safely validate and normalize runId using our utility
-        const safeRunId = validateAndNormalizeRunId(runId);
+        // ROOT CAUSE FIX: Extract runId from options - it was previously undefined
+        const inputRunId = options.runId || null;
+        logger.debug(`Received runId from options: ${inputRunId}`);
         
         // Use the validated runId passed from the parent function to ensure consistency
         // This ensures we use the same runId throughout the system
         let normalizedRunId;
         try {
-            normalizedRunId = safeRunId ? unifiedRunIdService.normalizeRunId(safeRunId) : `post_batch_${Date.now()}`;
+            normalizedRunId = inputRunId ? unifiedRunIdService.normalizeRunId(inputRunId) : `post_batch_${Date.now()}`;
+            logger.info(`Using normalized runId: ${normalizedRunId} (original: ${inputRunId || 'not provided'})`);
         } catch (error) {
             logger.error(`Error normalizing runId: ${error.message}. Using fallback.`);
             normalizedRunId = `post_batch_${Date.now()}`;

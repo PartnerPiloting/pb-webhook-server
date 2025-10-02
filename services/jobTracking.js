@@ -139,6 +139,7 @@ class JobTracking {
   static async createJob(params) {
     const { runId, jobType = 'job', initialData = {}, options = {} } = params;
     const log = options.logger || logger;
+    const source = 'JobTracking.createJob';
     
     if (!runId) {
       log.error("Run ID is required to create job tracking record");
@@ -146,8 +147,25 @@ class JobTracking {
     }
     
     try {
-      // First, normalize the run ID to prevent duplicates - use imported service
-      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      // Validate runId properly at entry point
+      if (typeof runId !== 'string') {
+        log.error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
+        throw new Error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
+      }
+
+      // Normalize with proper error handling
+      let normalizedRunId;
+      try {
+        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+        if (!normalizedRunId) {
+          log.error(`Failed to normalize run ID: ${runId}`);
+          throw new Error(`Failed to normalize run ID: ${runId}`);
+        }
+      } catch (error) {
+        log.error(`Error normalizing run ID: ${error.message}`);
+        throw new Error(`Error normalizing run ID: ${error.message}`);
+      }
+      
       log.debug(`Creating job with normalized runId: ${normalizedRunId} (original: ${runId})`);
       
       // Get the master base
@@ -227,6 +245,7 @@ class JobTracking {
   static async updateJob(params) {
     const { runId, updates = {}, options = {} } = params;
     const log = options.logger || logger;
+    const source = 'JobTracking.updateJob';
     
     if (!runId) {
       log.error("Run ID is required to update job tracking record");
@@ -234,8 +253,26 @@ class JobTracking {
     }
     
     try {
-      // First normalize the run ID to handle different formats consistently
-      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      // Validate runId properly at entry point
+      if (typeof runId !== 'string') {
+        log.error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
+        throw new Error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
+      }
+
+      // Normalize with proper error handling
+      let normalizedRunId;
+      try {
+        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+        if (!normalizedRunId) {
+          log.error(`Failed to normalize run ID: ${runId}`);
+          throw new Error(`Failed to normalize run ID: ${runId}`);
+        }
+      } catch (error) {
+        log.error(`Error normalizing run ID: ${error.message}`);
+        throw new Error(`Error normalizing run ID: ${error.message}`);
+      }
+      
+      log.debug(`Updating job with normalized runId: ${normalizedRunId} (original: ${runId})`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
@@ -320,6 +357,7 @@ class JobTracking {
   static async createClientRun(params) {
     const { runId, clientId, initialData = {}, options = {} } = params;
     const log = options.logger || logger;
+    const source = 'JobTracking.createClientRun';
     
     if (!runId || !clientId) {
       log.error("Run ID and Client ID are required to create client run record");
@@ -327,14 +365,44 @@ class JobTracking {
     }
     
     try {
-      // First, normalize the run ID to prevent duplicates
-      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      // Validate runId properly at entry point
+      if (typeof runId !== 'string') {
+        log.error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
+        throw new Error(`Invalid run ID format: ${typeof runId}. Must be a string.`);
+      }
+
+      // Normalize run ID properly with error handling
+      let normalizedRunId;
+      try {
+        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+        if (!normalizedRunId) {
+          log.error(`Failed to normalize run ID: ${runId}`);
+          throw new Error(`Failed to normalize run ID: ${runId}`);
+        }
+      } catch (error) {
+        log.error(`Error normalizing run ID: ${error.message}`);
+        throw new Error(`Error normalizing run ID: ${error.message}`);
+      }
+      
       log.debug(`Creating client run with normalized runId: ${normalizedRunId} (original: ${runId})`);
       
-      // Create client-specific run ID from the normalized run ID for consistency
-      const clientRunId = JobTracking.addClientSuffix(normalizedRunId, clientId);
-      // No need to create a separate normalized version since clientRunId is already normalized
+      // Create client-specific run ID with explicit error handling
+      let clientRunId;
+      try {
+        clientRunId = JobTracking.addClientSuffix(normalizedRunId, clientId);
+        if (!clientRunId) {
+          log.error(`Failed to add client suffix to run ID: ${normalizedRunId}, ${clientId}`);
+          throw new Error(`Failed to add client suffix to run ID: ${normalizedRunId}, ${clientId}`);
+        }
+      } catch (error) {
+        log.error(`Error adding client suffix: ${error.message}`);
+        throw new Error(`Error adding client suffix: ${error.message}`);
+      }
+      
+      // CRITICAL FIX: Always ensure normalizedClientRunId is defined
       const normalizedClientRunId = clientRunId;
+      
+      log.debug(`Using normalized client run ID: ${normalizedClientRunId}`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
