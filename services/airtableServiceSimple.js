@@ -324,10 +324,10 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
   // Ensure notes is a string
   const safeNotes = (typeof notes === 'string') ? notes : String(notes || '');
   
-  const updates = {
-    [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
-    [CLIENT_RUN_FIELDS.STATUS]: successBoolean ? 'Completed' : 'Failed'
-  };
+  // FIXED: Use proper field constants consistently (no lowercase 'status')
+  const updates = {};
+  updates[CLIENT_RUN_FIELDS.END_TIME] = new Date().toISOString();
+  updates[CLIENT_RUN_FIELDS.STATUS] = successBoolean ? 'Completed' : 'Failed';
   
   // CRITICAL FIX: Handle notes properly, avoiding undefined errors
   // Always set System Notes field, even when notes is empty
@@ -342,12 +342,15 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
 }
 
 /**
- * Update aggregate metrics for a run by combining client results - MUST exist
+ * Calculate aggregate metrics from Client Run Results records without storing them in Job Tracking
+ * Following the Single Source of Truth principle - data is only stored in Client Run Results
+ * and aggregated on-the-fly when needed
+ * 
  * @param {string} runId - The run ID
- * @returns {Promise<Object>} The updated record or error object
+ * @returns {Promise<Object>} The calculated metrics
  */
-async function updateAggregateMetrics(runId) {
-  console.log(`Updating aggregate metrics for: ${runId}`);
+async function getAggregateMetrics(runId) {
+  console.log(`Calculating aggregate metrics for run: ${runId}`);
   
   const base = initialize();
   
@@ -359,41 +362,75 @@ async function updateAggregateMetrics(runId) {
     
     if (!clientRecords || clientRecords.length === 0) {
       console.warn(`No client records found for run ID: ${runId}`);
-      return { warning: `No client records found for run ID: ${runId}` };
+      return { 
+        warning: `No client records found for run ID: ${runId}`,
+        metrics: {}
+      };
     }
     
-    // Calculate aggregates
-    const aggregates = {
-      [JOB_TRACKING_FIELDS.CLIENTS_PROCESSED]: clientRecords.length,
-      [JOB_TRACKING_FIELDS.CLIENTS_FAILED]: clientRecords.filter(r => 
-        r.fields[CLIENT_RUN_FIELDS.STATUS] === 'Failed'
-      ).length,
-      [JOB_TRACKING_FIELDS.TOTAL_PROFILES_EXAMINED]: 0,
-      [JOB_TRACKING_FIELDS.TOTAL_PROFILES_SCORED]: 0,
-      [JOB_TRACKING_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
-      [JOB_TRACKING_FIELDS.POSTS_EXAMINED]: 0,
-      [JOB_TRACKING_FIELDS.POSTS_SCORED]: 0,
-      [JOB_TRACKING_FIELDS.PROFILE_SCORING_TOKENS]: 0,
-      [JOB_TRACKING_FIELDS.POST_SCORING_TOKENS]: 0
+    // Calculate metrics on-the-fly (not stored in Airtable)
+    const metrics = {
+      // Client metrics
+      clientsProcessed: clientRecords.length,
+      clientsWithErrors: clientRecords.filter(r => r.fields[CLIENT_RUN_FIELDS.STATUS] === 'Failed').length,
+      
+      // Initialize aggregation counters
+      totalProfilesExamined: 0,
+      successfulProfiles: 0,
+      totalPostsHarvested: 0,
+      postsExamined: 0,
+      postsScored: 0,
+      profileScoringTokens: 0,
+      postScoringTokens: 0,
+      totalTokensUsed: 0
     };
     
     // Sum up metrics from all client records
     clientRecords.forEach(record => {
-      aggregates['Total Profiles Examined'] += Number(record.fields['Profiles Examined for Scoring'] || 0);
-      aggregates['Successful Profiles'] += Number(record.fields['Profiles Successfully Scored'] || 0);
-      aggregates['Total Posts Harvested'] += Number(record.fields['Total Posts Harvested'] || 0);
-      aggregates['Posts Examined for Scoring'] += Number(record.fields['Posts Examined for Scoring'] || 0);
-      aggregates['Posts Successfully Scored'] += Number(record.fields['Posts Successfully Scored'] || 0);
-      aggregates['Profile Scoring Tokens'] += Number(record.fields['Profile Scoring Tokens'] || 0);
-      aggregates['Post Scoring Tokens'] += Number(record.fields['Post Scoring Tokens'] || 0);
+      metrics.totalProfilesExamined += Number(record.fields[CLIENT_RUN_FIELDS.PROFILES_EXAMINED] || 0);
+      metrics.successfulProfiles += Number(record.fields[CLIENT_RUN_FIELDS.PROFILES_SUCCESSFULLY_SCORED] || 0);
+      metrics.totalPostsHarvested += Number(record.fields[CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED] || 0);
+      metrics.postsExamined += Number(record.fields[CLIENT_RUN_FIELDS.POSTS_EXAMINED] || 0);
+      metrics.postsScored += Number(record.fields[CLIENT_RUN_FIELDS.POSTS_SUCCESSFULLY_SCORED] || 0);
+      metrics.profileScoringTokens += Number(record.fields[CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS] || 0);
+      metrics.postScoringTokens += Number(record.fields[CLIENT_RUN_FIELDS.POST_SCORING_TOKENS] || 0);
     });
     
-    // Update the job tracking record
-    return await updateJobTracking(runId, aggregates);
+    // Calculate derived metrics
+    metrics.totalTokensUsed = metrics.profileScoringTokens + metrics.postScoringTokens;
+    
+    // Calculate success rates
+    metrics.profileSuccessRate = metrics.totalProfilesExamined > 0 
+      ? (metrics.successfulProfiles / metrics.totalProfilesExamined * 100).toFixed(1) + '%'
+      : '0%';
+      
+    metrics.postSuccessRate = metrics.postsExamined > 0
+      ? (metrics.postsScored / metrics.postsExamined * 100).toFixed(1) + '%'
+      : '0%';
+      
+    // Add any other calculated metrics here
+    
+    return { metrics };
   } catch (error) {
-    console.error(`❌ [ERROR] Failed to update aggregate metrics: ${error.message}`);
-    return { error: true, message: error.message };
+    console.error(`❌ [ERROR] Failed to calculate aggregate metrics: ${error.message}`);
+    return { 
+      error: true, 
+      message: error.message,
+      metrics: {} 
+    };
   }
+}
+
+/**
+ * Legacy function kept for backwards compatibility
+ * Now just returns the calculated metrics without updating anything in Airtable
+ * 
+ * @param {string} runId - The run ID
+ * @returns {Promise<Object>} The calculated metrics
+ */
+async function updateAggregateMetrics(runId) {
+  console.log(`[DEPRECATED] Using on-the-fly calculation for metrics instead of storing in Job Tracking`);
+  return await getAggregateMetrics(runId);
 }
 
 /**
@@ -412,7 +449,8 @@ module.exports = {
   updateClientRun,
   completeJobRun,
   completeClientRun,
-  updateAggregateMetrics,
+  getAggregateMetrics, // New function for on-the-fly calculation
+  updateAggregateMetrics, // Legacy function now using on-the-fly calculation
   getBase,
   JOB_TRACKING_TABLE,
   CLIENT_RUN_RESULTS_TABLE
