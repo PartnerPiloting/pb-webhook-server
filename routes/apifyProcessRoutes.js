@@ -383,7 +383,8 @@ async function processClientHandler(req, res) {
     console.log(`[processClientHandler] DEBUG: req.url = ${req.url}`);
     
     // Fix: Add null check before calling includes
-    const endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
+    // FIXED: Changed const to let to prevent "Assignment to constant variable" errors
+    let endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
     console.log(`[processClientHandler] DEBUG: Using endpoint = ${endpoint}`);
 
     // Process all clients if requested
