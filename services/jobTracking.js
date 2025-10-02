@@ -710,6 +710,114 @@ class JobTracking {
     }
   }
 
+  /**
+   * Update aggregate metrics for a job tracking record
+   * @param {Object} params - Parameters
+   * @param {string} params.runId - Run ID for the job
+   * @param {Object} params.metrics - Metrics to update/aggregate
+   * @param {Object} [params.options={}] - Additional options
+   * @returns {Promise<Object>} Updated record info
+   */
+  static async updateAggregateMetrics(params) {
+    const { runId, metrics = {}, options = {} } = params;
+    const log = options.logger || logger;
+    
+    if (!runId) {
+      log.error("Run ID is required to update aggregate metrics");
+      throw new Error("Run ID is required to update aggregate metrics");
+    }
+    
+    try {
+      // First normalize the run ID to handle different formats consistently
+      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      
+      // Get the master base
+      const masterBase = baseManager.getMasterClientsBase();
+      
+      // Find the record - check both original and normalized run IDs
+      const formula = `OR({${JOB_TRACKING_FIELDS.RUN_ID}} = '${runId}', {${JOB_TRACKING_FIELDS.RUN_ID}} = '${normalizedRunId}')`;
+      
+      const records = await masterBase(JOB_TRACKING_TABLE).select({
+        filterByFormula: formula,
+        maxRecords: 1
+      }).firstPage();
+      
+      if (!records || records.length === 0) {
+        log.error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
+        throw new Error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
+      }
+      
+      const record = records[0];
+      const currentFields = record.fields || {};
+      
+      // Prepare update fields for aggregation
+      const updateFields = {};
+      
+      // Numerical fields to aggregate (add to existing values)
+      const numericFields = [
+        'Profiles Processed', 'Profiles Successfully Scored', 'Posts Processed', 
+        'Posts Successfully Scored', 'Errors', 'Total Tokens', 'Prompt Tokens', 
+        'Completion Tokens', 'Total Posts Harvested'
+      ];
+      
+      // Process each numeric metric for aggregation
+      numericFields.forEach(field => {
+        if (metrics[field] !== undefined) {
+          // Get current value, default to 0 if not present
+          const currentValue = currentFields[field] || 0;
+          // Add new value (ensure numeric conversion)
+          const newValue = currentValue + Number(metrics[field]);
+          updateFields[field] = newValue;
+        }
+      });
+      
+      // Non-numeric fields to update (replace existing values)
+      if (metrics.progress) updateFields[JOB_TRACKING_FIELDS.PROGRESS] = metrics.progress;
+      if (metrics.lastClientProcessed) updateFields[JOB_TRACKING_FIELDS.LAST_CLIENT] = metrics.lastClientProcessed;
+      
+      // Handle System Notes field - append rather than replace
+      if (metrics.notes || metrics[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
+        const newNote = metrics.notes || metrics[JOB_TRACKING_FIELDS.SYSTEM_NOTES];
+        const currentNotes = currentFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || '';
+        
+        if (newNote) {
+          // Append the new note to existing notes
+          updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = currentNotes 
+            ? `${currentNotes}\n${newNote}` 
+            : newNote;
+        }
+      }
+      
+      // Skip formula fields to prevent errors
+      Object.keys(metrics).forEach(key => {
+        if (metrics[key] !== undefined && 
+            !updateFields.hasOwnProperty(key) && 
+            !FORMULA_FIELDS.includes(key) &&
+            !numericFields.includes(key)) {
+          updateFields[key] = metrics[key];
+        }
+      });
+      
+      // Only update if we have fields to update
+      if (Object.keys(updateFields).length > 0) {
+        // Update the record
+        await masterBase(JOB_TRACKING_TABLE).update(record.id, updateFields);
+        log.debug(`Updated aggregate metrics for ${runId}`, { updateFields });
+      } else {
+        log.debug(`No metrics to update for ${runId}`);
+      }
+      
+      return {
+        id: record.id,
+        runId,
+        updated: Object.keys(updateFields)
+      };
+    } catch (error) {
+      log.error(`Error updating aggregate metrics: ${error.message}`);
+      throw error;
+    }
+  }
+
   static async completeClientProcessing(params) {
     // Simple parameter handling - no complex validation
     if (!params || typeof params !== 'object') {
