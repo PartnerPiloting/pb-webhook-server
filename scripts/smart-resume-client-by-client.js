@@ -4,37 +4,7 @@
  * Smart Resume Client-by-Client Processing Pipeline with Email Reporting
  * 
  * Checks each client's last execution status and resumes from where it left off:
- * - Skips clients where all operations completed succes    // Get clients for this stream
-    log(`🚀        // Step 1: Analyze what needs to be done
-        log(`🚀 PROGRESS: [4/6] Analyzing client status and requirements...`);
-        const workflows = [];
-        
-        for (let i = 0; i < clients.length; i++) {
-            const client = clients[i];
-            log(`\n🚀 PROGRESS: Analyzing client [${i+1}/${clients.length}] ${client.clientName} (${client.clientId}):`);
-            
-            const workflow = await determineClien                    notes,
-                    metrics: {
-                        'System Notes': 'smart_resume_workflow_complete' // Changed from 'Source' to 'System Notes' to match the Airtable schema
-                        // 'Parent Run ID' field removed - might not exist in the Airtable schemakflow(client);
-            workflows.push(workflow);
-            
-            // Report status for each operation
-            Object.entries(workflow.statusSummary).forEach(([op, status]) => {
-                const icon = status.completed ? '✅' : '❌';
-                log(`   ${icon} ${op}: ${status.reason}`);
-            }); Loading client service...`, 'INFO');
-    const { getActiveClientsByStream } = require('../services/clientService');
-    log(`🚀 PROGRESS: [2/6] Client service loaded, fetching clients for stream ${stream}...`, 'INFO');
-    
-    try {
-        log(`🔍 Calling getActiveClientsByStream(${stream})...`, 'INFO');
-        const clients = await getActiveClientsByStream(stream);
-        log(`✅ Found ${clients ? clients.length : 0} clients on stream ${stream}`, 'INFO');
-        log(`🚀 PROGRESS: [3/6] Client Discovery Complete: ${clients.length} clients available for processing`);
-        
-        if (clients.length === 0) {
-            log(`⚠️  No clients found on stream ${stream} - sending empty report`, 'WARN');t 24 hours
+ * - Skips clients where all operations completed successfully in the past 24 hours
  * - Resumes incomplete workflows from the failed/missing operation
  * - Sends comprehensive email reports with execution summary and data impact
  * - Reports what was skipped vs. what was processed
@@ -67,19 +37,38 @@ console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date()
 
 console.log(`🔍 TRACE: About to load run ID generator`);
 const { generateRunId, createLogger } = require('../utils/runIdGenerator');
-// Using the unified job tracking system
+// Updated imports based on newer versions
 const airtableService = require('../services/airtable/airtableService');
-const JobTracking = require('../services/jobTracking');
-// Add the missing unifiedRunIdService import
+const { JobTracking } = require('../services/jobTracking');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
-// Import status constants from the unified constants
 const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
-// Import job orchestration service
+const { 
+  JOB_FIELDS,
+  CLIENT_RUN_FIELDS
+} = require('../constants/airtableSimpleConstants');
 const jobOrchestrationService = require('../services/jobOrchestrationService');
-// Import the ParameterValidator utility
 const ParameterValidator = require('../utils/parameterValidator');
 // Define runIdService for backward compatibility
 const runIdService = unifiedRunIdService;
+
+// Add defensive checks for required JobTracking methods
+function validateJobTrackingMethods() {
+  const requiredMethods = ['createJob', 'createClientRun', 'completeClientRun', 'completeJob', 'updateAggregateMetrics'];
+  const missingMethods = [];
+  
+  requiredMethods.forEach(method => {
+    if (typeof JobTracking[method] !== 'function') {
+      missingMethods.push(method);
+    }
+  });
+  
+  if (missingMethods.length > 0) {
+    throw new Error(`Required JobTracking methods not found: ${missingMethods.join(', ')}`);
+  }
+}
+
+// Validate JobTracking methods are available
+validateJobTrackingMethods();
 let runId = 'INITIALIZING';
 
 // ROOT CAUSE FIX: Create a function to ensure normalizedRunId is always defined
@@ -100,7 +89,7 @@ let log = (message, level = 'INFO') => {
     const timestamp = new Date().toISOString();
     console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
 };
-console.log(`🔍 TRACE: Run ID generator and services loaded`);
+console.log(`🔍 TRACE: Run ID generator loaded`);
 
 console.log(`🔍 TRACE: About to define checkOperationStatus function`);
 async function checkOperationStatus(clientId, operation) {
@@ -148,14 +137,7 @@ console.log(`🔍 TRACE: checkOperationStatus function defined`);
 console.log(`🔍 TRACE: About to define checkUnscoredPostsCount function`);
 async function checkUnscoredPostsCount(clientId) {
     try {
-        console.log(`🔍 UNSCORED CHECK: Starting check for unscored posts for client ${clientId}`);
-        console.log(`🔍 UNSCORED CHECK DEBUG: Getting client details for ${clientId}`);
-        
-        // Get client service level for debugging
-        const clientService = require('../services/clientService');
-        const clientDetails = await clientService.getClientById(clientId);
-        console.log(`🔍 UNSCORED CHECK DEBUG: Client ${clientId} details - Service Level: ${clientDetails?.serviceLevel || 'unknown'}`);
-        
+        console.log(`� UNSCORED CHECK: Starting check for unscored posts for client ${clientId}`);
         const { getClientBase } = require('../config/airtableClient');
         const clientBase = await getClientBase(clientId);
         
@@ -196,13 +178,8 @@ async function checkUnscoredPostsCount(clientId) {
             
             // Fallback - use formula to check for unscored posts
             console.log(`🚨 UNSCORED CHECK: Falling back to formula method for ${clientId}`);
-            
-            // FIXED: Using single quotes for Airtable formula compatibility
-            const formula = "AND({Posts Content} != '', {Date Posts Scored} = BLANK())";
-            console.log(`🚨 UNSCORED CHECK: Using formula: ${formula}`);
-            
             const formulaRecords = await clientBase('Leads').select({
-                filterByFormula: formula,
+                filterByFormula: "AND({Posts Content} != '', {Date Posts Scored} = BLANK())",
                 maxRecords: 100 // Increase to get actual count up to 100
             }).firstPage();
             
@@ -232,14 +209,6 @@ console.log(`🔍 TRACE: checkUnscoredPostsCount function defined`);
 
 console.log(`🔍 TRACE: About to define determineClientWorkflow function`);
 async function determineClientWorkflow(client) {
-    console.log(`🔍 WORKFLOW DEBUG: Determining workflow for client ${client.clientName} (${client.clientId}), Service Level: ${client.serviceLevel}`);
-    
-    // Force service level to be numeric
-    if (typeof client.serviceLevel === 'string') {
-        client.serviceLevel = Number(client.serviceLevel) || 0;
-        console.log(`🔍 WORKFLOW DEBUG: Converted service level from string to number: ${client.serviceLevel}`);
-    }
-    
     const operations = ['lead_scoring', 'post_harvesting', 'post_scoring'];
     const workflow = {
         clientId: client.clientId,
@@ -250,14 +219,10 @@ async function determineClientWorkflow(client) {
         statusSummary: {}
     };
     
-    console.log(`🔍 WORKFLOW DEBUG: Operations to check: ${operations.join(', ')}`);
-    
     // Check each operation status
     for (const operation of operations) {
-        // Skip post_harvesting and post_scoring for service level < 2
-        if ((operation === 'post_harvesting' || operation === 'post_scoring') && Number(client.serviceLevel) < 2) {
-            log(`ℹ️ Service level check: Client ${client.clientName} (${client.clientId}) has service level ${client.serviceLevel} < 2, skipping ${operation}`);
-            
+        // Skip post_harvesting for service level < 2
+        if (operation === 'post_harvesting' && Number(client.serviceLevel) < 2) {
             workflow.statusSummary[operation] = { 
                 completed: true, 
                 reason: `Skipped (service level ${client.serviceLevel} < 2)` 
@@ -294,23 +259,6 @@ async function determineClientWorkflow(client) {
         if (!status.completed) {
             workflow.needsProcessing = true;
             workflow.operationsToRun.push(operation);
-            console.log(`🔍 WORKFLOW DEBUG: Added operation ${operation} for client ${client.clientName}`);
-        } else {
-            console.log(`🔍 WORKFLOW DEBUG: Skipping operation ${operation} for client ${client.clientName}, reason: ${status.reason || 'Already completed'}`);
-        }
-    }
-    
-    // Log detailed workflow decision for debugging
-    if (workflow.operationsToRun.length > 0) {
-        log(`ℹ️ Workflow decision: Client ${client.clientName} (${client.clientId}) with service level ${client.serviceLevel}`);
-        log(`ℹ️ Operations to run: ${workflow.operationsToRun.join(', ')}`);
-        
-        // Log detailed status for key operations
-        for (const op of ['lead_scoring', 'post_harvesting', 'post_scoring']) {
-            const status = workflow.statusSummary[op];
-            if (status) {
-                log(`ℹ️ ${op} status: ${status.completed ? 'COMPLETED' : 'NEEDS PROCESSING'} - ${status.reason || status.overrideReason || 'No reason provided'}`);
-            }
         }
     }
     
@@ -320,33 +268,22 @@ console.log(`🔍 TRACE: determineClientWorkflow function defined`);
 
 console.log(`🔍 TRACE: About to define triggerOperation function`);
 async function triggerOperation(baseUrl, clientId, operation, params = {}, authHeaders = {}) {
-    log(`� OPERATION: Starting ${operation} for client ${clientId}`);
-    
     const operationMap = {
         'lead_scoring': {
-            url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}&parentRunId=${runId}`,
+            url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}`,
             method: 'GET',
             headers: { 'x-webhook-secret': params.secret }
         },
         'post_harvesting': {
-            url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}&parentRunId=${runId}`,
+            url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}`,
             method: 'POST',
-            headers: { 
-                'Authorization': `Bearer ${params.secret}`,
-                'x-client-id': clientId  // Add client ID in header as well
-            },
-            // Add body for post_harvesting to ensure it doesn't come back undefined
-            body: { 
-                clientId: clientId, 
-                parentRunId: runId,
-                stream: params.stream 
-            }
+            headers: { 'Authorization': `Bearer ${params.secret}` }
         },
         'post_scoring': {
             url: `/run-post-batch-score-v2`,
             method: 'POST',
             headers: { 'x-webhook-secret': params.secret },
-            body: { stream: params.stream, limit: params.limit, clientId: clientId, parentRunId: runId }
+            body: { stream: params.stream, limit: params.limit, clientId: clientId }
         }
     };
     
@@ -364,20 +301,6 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         log(`🔍 AUTH_DEBUG: ${operation} - Headers: ${JSON.stringify(config.headers)}`);
         log(`🔍 AUTH_DEBUG: ${operation} - Secret length: ${params.secret ? params.secret.length : 'MISSING'}`);
         
-        // Enhanced debugging for post harvesting operation
-        if (operation === 'post_harvesting') {
-            log(`🔥 POST_HARVESTING_DEBUG: Executing post harvesting operation`);
-            log(`🔥 POST_HARVESTING_DEBUG: Full URL: ${baseUrl}${config.url}`);
-            log(`🔥 POST_HARVESTING_DEBUG: Full headers: ${JSON.stringify({
-                'Content-Type': 'application/json',
-                ...config.headers,
-                ...authHeaders
-            })}`);
-            log(`🔥 POST_HARVESTING_DEBUG: PB_WEBHOOK_SECRET available: ${!!process.env.PB_WEBHOOK_SECRET}`);
-            log(`🔥 POST_HARVESTING_DEBUG: Client ID: ${clientId}`);
-            log(`🔥 POST_HARVESTING_DEBUG: Query params: stream=${params.stream}, parentRunId=${runId}`);
-        }
-        
         const fetchOptions = {
             method: config.method,
             headers: {
@@ -388,21 +311,7 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         };
         
         // Add body for POST requests
-        if (operation === 'post_harvesting') {
-            // For post_harvesting, always include clientId in the body as well
-            fetchOptions.body = JSON.stringify({
-                clientId: clientId,
-                parentRunId: params.parentRunId || runId,
-                stream: params.stream
-            });
-            log(`🔍 AUTH_DEBUG: ${operation} - Body added with clientId=${clientId}`);
-            log(`🔍 REQUEST_DEBUG: ${operation} - URL=${baseUrl}${config.url}, method=${fetchOptions.method}`);
-            
-            if (process.env.DEBUG_LEVEL === 'verbose') {
-                log(`� VERBOSE_DEBUG: ${operation} - Request body: ${fetchOptions.body}`);
-                log(`� VERBOSE_DEBUG: ${operation} - Request headers: ${JSON.stringify(fetchOptions.headers)}`);
-            }
-        } else if (config.body) {
+        if (config.body) {
             fetchOptions.body = JSON.stringify(config.body);
             log(`🔍 AUTH_DEBUG: ${operation} - Body: ${JSON.stringify(config.body)}`);
         }
@@ -410,38 +319,15 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
         const response = await fetch(`${baseUrl}${config.url}`, fetchOptions);
         
         const responseTime = Date.now() - startTime;
-        let responseData;
-        try {
-            responseData = await response.json();
-        } catch (jsonError) {
-            log(`🔥 RESPONSE_DEBUG: Failed to parse JSON response: ${jsonError.message}`, 'ERROR');
-            log(`🔥 RESPONSE_DEBUG: Response status: ${response.status}`);
-            log(`🔥 RESPONSE_DEBUG: Response text: ${await response.text()}`);
-            throw new Error(`Invalid JSON response: ${jsonError.message}`);
-        }
+        const responseData = await response.json();
         
         log(`🔍 AUTH_DEBUG: ${operation} - Response status: ${response.status}`);
         log(`🔍 AUTH_DEBUG: ${operation} - Response data: ${JSON.stringify(responseData).substring(0, 200)}`);
         
-        // Handle special case for post_harvesting 202 response, which might not have jobId
-        if (response.status === 202 && operation === 'post_harvesting') {
-            // For post_harvesting, we may not have a jobId directly in the response
-            const jobId = responseData.jobId || `job_post_harvesting_${clientId}_${Date.now()}`;
-            log(`✅ ${operation} triggered for ${clientId}: 202 Accepted in ${responseTime}ms (Generated Job: ${jobId})`);
-            // Log detailed response for post_harvesting operations
-            if (process.env.DEBUG_LEVEL === 'verbose') {
-                log(`� VERBOSE_DEBUG: ${operation} - Response status: ${response.status}`);
-                log(`� VERBOSE_DEBUG: ${operation} - Response data: ${JSON.stringify(responseData)}`);
-                log(`� VERBOSE_DEBUG: ${operation} - Generated job ID: ${jobId}`);
-            }
-            
-            return { success: true, jobId };
-        } 
-        else if (response.status === 202 || response.status === 200) {
-            log(`✅ ${operation} triggered for ${clientId}: ${response.status} in ${responseTime}ms (Job: ${responseData.jobId})`);
+        if (response.status === 202) {
+            log(`✅ ${operation} triggered for ${clientId}: 202 Accepted in ${responseTime}ms (Job: ${responseData.jobId})`);
             return { success: true, jobId: responseData.jobId };
-        } 
-        else {
+        } else {
             log(`❌ ${operation} failed for ${clientId}: ${response.status} ${response.statusText}`, 'ERROR');
             log(`🔍 AUTH_DEBUG: ${operation} - Full response: ${JSON.stringify(responseData)}`, 'ERROR');
             return { success: false, error: `${response.status} ${response.statusText}` };
@@ -459,18 +345,13 @@ async function main() {
     console.log(`🔍 TRACE: Generating structured run ID...`);
     
     // Generate a structured, filterable run ID
-    // Note: generateRunId is actually synchronous, no need to await
-    runId = generateRunId();
+    runId = await generateRunId();
     
-    // ROOT CAUSE FIX: Create a normalized version of the run ID 
-    // This ensures normalizedRunId is always defined when needed
+    // Create a normalized run ID
     const normalizedRunId = getNormalizedRunId(runId);
-    
-    // Create a logger that uses this run ID
     log = createLogger(runId);
     
     log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId}, Normalized: ${normalizedRunId})`, 'INFO');
-    // Initialization complete
     
     // Use external URL for Render, localhost for local development
     const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
@@ -479,24 +360,18 @@ async function main() {
     const leadScoringLimit = parseInt(process.env.LEAD_SCORING_LIMIT) || 100;
     const postScoringLimit = parseInt(process.env.POST_SCORING_LIMIT) || 100;
     
-    // Initialize run tracking in Airtable using the orchestration service
+    // Initialize run tracking in Airtable
     try {
-        log(`🚀 PROGRESS: Creating job tracking record using orchestration service...`, 'INFO');
-        // Use the job orchestration service to enforce proper service boundaries
-        const jobInfo = await jobOrchestrationService.startJob({
-            jobType: 'smart_resume',
-            initialData: {
-                'Stream': Number(stream), // Ensure stream is a number for Airtable's number field
-                'System Notes': 'Smart Resume process started with client-by-client approach'
-            }
+        log(`🚀 PROGRESS: Creating job tracking record for run ${runId}...`, 'INFO');
+        const jobRecord = await JobTracking.createJob({
+            runId: normalizedRunId, 
+            jobType: 'smart_resume', 
+            initialData: { [JOB_FIELDS.STREAM]: stream }
         });
-        
-        // Use the run ID assigned by the orchestration service
-        runId = jobInfo.runId;
-        log(`🚀 PROGRESS: Created job with run ID ${runId}`, 'INFO');
-        log(`✅ Job tracking record created successfully`, 'INFO');
+        log(`✅ Job tracking record created successfully (ID: ${jobRecord?.recordId || 'unknown'})`, 'INFO');
     } catch (error) {
         log(`⚠️ Failed to create job tracking record: ${error.message}. Continuing execution.`, 'WARN');
+        log(`🔍 Error details: ${error.stack || 'No stack trace'}`, 'DEBUG');
     }
     
     log(`🚀 PROGRESS: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
@@ -516,6 +391,7 @@ async function main() {
         // Send failure alert
         await emailService.sendExecutionReport({
             runId,
+            normalizedRunId,
             stream,
             error: errorMsg,
             duration: Date.now() - runStartTime,
@@ -553,6 +429,7 @@ async function main() {
             // Send empty stream report
             await emailService.sendExecutionReport({
                 runId,
+                normalizedRunId,
                 stream,
                 startTime: runStartTime,
                 endTime: Date.now(),
@@ -577,13 +454,7 @@ async function main() {
         
         for (let i = 0; i < clients.length; i++) {
             const client = clients[i];
-            log(`\n📋 [${i+1}/${clients.length}] Analyzing ${client.clientName} (${client.clientId}), Service Level: ${client.serviceLevel}:`);
-            
-            // Log client processing
-            log(`� Processing client: ${client.clientName} (${client.clientId})`);
-            log(`� Service Level: ${client.serviceLevel}`);
-            
-            // Note: No more service level overrides
+            log(`\n📋 [${i+1}/${clients.length}] Analyzing ${client.clientName} (${client.clientId}):`);
             
             const workflow = await determineClientWorkflow(client);
             workflows.push(workflow);
@@ -617,6 +488,7 @@ async function main() {
             // Send success report for no-work scenario
             await emailService.sendExecutionReport({
                 runId,
+                normalizedRunId,
                 stream,
                 startTime: runStartTime,
                 endTime: Date.now(),
@@ -652,28 +524,23 @@ async function main() {
             log(`\n🚀 PROGRESS: Processing client [${i + 1}/${clientsNeedingWork.length}] ${workflow.clientName}:`);
             log(`   Operations needed: ${workflow.operationsToRun.join(', ')}`);
             
-            // Create client run record in Airtable using new architecture
+            // Create client run record in Airtable
             try {
                 log(`   📊 Creating run tracking record for ${workflow.clientName}...`);
-                
-                // Create a client-specific run ID with the new service
-                const clientRunId = runIdService.addClientSuffix(runId, workflow.clientId);
-                log(`   📝 Creating client run with ID: ${clientRunId} (from base: ${runId})`);
-                
-                // Create run record with airtableService directly - fixed to avoid runRecordRepository
-                await airtableService.createRunRecord({
+                const clientRunRecord = await JobTracking.createClientRun({
+                    runId: normalizedRunId,
                     clientId: workflow.clientId,
-                    runId: clientRunId,
-                    clientName: workflow.clientName,
-                    initialData: {
-                        'Source': 'smart_resume_workflow',
-                        'Parent Run ID': runId,  // Add parent run ID reference
-                        'Client ID': workflow.clientId // Store client ID explicitly
+                    initialData: { 
+                        [CLIENT_RUN_FIELDS.CLIENT_NAME]: workflow.clientName 
                     }
                 });
-                log(`   ✅ Run tracking record created with ID: ${clientRunId}`);
+                log(`   ✅ Run tracking record created (ID: ${clientRunRecord?.recordId || 'unknown'})`);
+                
+                // Store record ID for later use
+                workflow.trackingRecordId = clientRunRecord?.recordId;
             } catch (error) {
                 log(`   ⚠️ Failed to create run tracking record: ${error.message}. Continuing execution.`, 'WARN');
+                log(`   🔍 Error details: ${error.stack || 'No stack trace'}`, 'DEBUG');
             }
             
             // Log more details about post_scoring status if it's going to be executed
@@ -693,19 +560,9 @@ async function main() {
             for (let opIndex = 0; opIndex < workflow.operationsToRun.length; opIndex++) {
                 const operation = workflow.operationsToRun[opIndex];
                 log(`   🚀 Starting operation [${opIndex + 1}/${workflow.operationsToRun.length}] ${operation}...`);
-                // Pass the parent run ID (our current run ID) to maintain consistent tracking
                 const operationParams = operation === 'post_scoring' 
-                    ? { stream, limit: postScoringLimit, secret, parentRunId: runId }
-                    : { stream, limit: leadScoringLimit, secret, parentRunId: runId };
-                
-                // Enhanced debugging for post harvesting operations
-                if (operation === 'post_harvesting') {
-                    log(`🔥 POST_HARVESTING_DEBUG: Client ${workflow.clientName} (${workflow.clientId})`);
-                    log(`🔥 POST_HARVESTING_DEBUG: Operation params: ${JSON.stringify(operationParams)}`);
-                    log(`🔥 POST_HARVESTING_DEBUG: Parent run ID: ${runId}`);
-                    log(`🔥 POST_HARVESTING_DEBUG: Secret available: ${!!operationParams.secret}`);
-                    log(`🔥 POST_HARVESTING_DEBUG: Secret length: ${operationParams.secret ? operationParams.secret.length : 'MISSING'}`);
-                }
+                    ? { stream, limit: postScoringLimit, secret }
+                    : { stream, limit: leadScoringLimit, secret };
                     
                 const authRequired = ['post_harvesting', 'post_scoring'].includes(operation);
                 const headers = authRequired ? authHeaders : {};
@@ -715,26 +572,9 @@ async function main() {
                 
                 if (result.success) {
                     log(`   ✅ ${operation} triggered successfully`);
-                    log(`   🔍 Job ID: ${result.jobId || 'undefined'}`);
-                    
-                    // Enhanced debugging for post harvesting success
-                    if (operation === 'post_harvesting') {
-                        log(`🔥 POST_HARVESTING_SUCCESS: ${workflow.clientName} operation triggered`);
-                        log(`🔥 POST_HARVESTING_SUCCESS: Full result: ${JSON.stringify(result)}`);
-                        log(`🔥 POST_HARVESTING_ANALYSIS: Job ID: ${result.jobId || 'undefined'}`);
-                        log(`🔥 POST_HARVESTING_ANALYSIS: Request was successful but there may be no posts to harvest`);
-                        log(`🔥 POST_HARVESTING_ANALYSIS: Check Airtable for posts count before this job started`);
-                    }
-                    
                     totalJobsStarted++;
                 } else {
                     log(`   ❌ ${operation} failed: ${result.error}`);
-                    
-                    // Enhanced debugging for post harvesting failures
-                    if (operation === 'post_harvesting') {
-                        log(`🔥 POST_HARVESTING_FAILURE: ${workflow.clientName} operation failed`);
-                        log(`🔥 POST_HARVESTING_FAILURE: Error details: ${result.error}`);
-                    }
                 }
                 
                 if (result.success) {
@@ -755,29 +595,18 @@ async function main() {
                 jobs: clientJobs
             });
             
-            // Update client run record on completion using new architecture
+            // Update client run record on completion
             try {
                 log(`   📊 Updating run tracking for ${workflow.clientName}...`);
                 const success = clientJobs.length === workflow.operationsToRun.length;
-                const status = success ? 'Success' : 'Partial';
                 const notes = `Executed operations: ${workflow.operationsToRun.join(', ')}\nJobs started: ${clientJobs.length}/${workflow.operationsToRun.length}`;
-                
-                // Get client-specific run ID with the new service
-                const clientRunId = runIdService.addClientSuffix(runId, workflow.clientId);
-                log(`   📝 Generated client-specific run ID: ${clientRunId} (from base: ${runId})`);
-                
-                // Complete run record with airtableService directly - fixed to avoid runRecordRepository
-                await airtableService.completeRunRecord({
+                await JobTracking.completeClientRun({
+                    runId: normalizedRunId,
                     clientId: workflow.clientId,
-                    runId: clientRunId,
-                    status,
-                    notes,
-                    updates: {
-                        'Source': 'smart_resume_workflow_complete',
-                        'Parent Run ID': runId // Link to parent run ID
-                    }
+                    status: success ? STATUS_VALUES.COMPLETED : STATUS_VALUES.ERROR,
+                    updates: { [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: notes }
                 });
-                log(`   ✅ Run tracking updated with status: ${status}`);
+                log(`   ✅ Run tracking updated`);
             } catch (error) {
                 log(`   ⚠️ Failed to update run tracking: ${error.message}.`, 'WARN');
             }
@@ -796,24 +625,7 @@ async function main() {
         const runEndTime = Date.now();
         const totalDuration = runEndTime - runStartTime;
         const clientsSkipped = workflows.filter(w => !w.needsProcessing);
-        
-        // Fix success rate calculation - cap at 100% and handle edge cases
-        let successRate = 100; // Default if no operations triggered
-        if (totalTriggered > 0) {
-            // Calculate success rate and cap at 100%
-            const uncappedRate = Math.round((totalJobsStarted / (totalTriggered || 1)) * 100);
-            successRate = Math.min(uncappedRate, 100);
-            
-            // Log the actual calculation for debugging
-            log(`🔍 SUCCESS RATE DEBUG: Calculation ${totalJobsStarted}/${totalTriggered} = ${uncappedRate}%, capped to ${successRate}%`, 'INFO');
-            
-            // Force cap the totalJobsStarted to match totalTriggered for reporting consistency
-            if (totalJobsStarted > totalTriggered) {
-                log(`⚠️ WARNING: More jobs started (${totalJobsStarted}) than operations triggered (${totalTriggered}). Capping job count.`, 'WARN');
-                totalJobsStarted = totalTriggered;
-            }
-        }
-        
+        const successRate = totalTriggered > 0 ? Math.round((totalJobsStarted / totalTriggered) * 100) : 100;
         const errors = [];
         
         // Collect any errors from failed job starts
@@ -849,6 +661,7 @@ async function main() {
         // Send comprehensive email report
         const reportData = {
             runId,
+            normalizedRunId,
             stream,
             startTime: runStartTime,
             endTime: runEndTime,
@@ -878,45 +691,23 @@ async function main() {
         }
         
         const emailResult = await emailService.sendExecutionReport(reportData);
-        if (emailResult.success) {
+        if (emailResult.sent) {
             log(`📧 ✅ Completion report sent successfully`);
         } else {
-            // Use error if available, otherwise fall back to reason
-            const errorMessage = emailResult.error || emailResult.reason || 'Unknown error';
-            log(`📧 ❌ Email report failed: ${errorMessage}`, 'WARN');
+            log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
         }
         
-        // Update aggregate metrics and complete job tracking with new architecture
+        // Update aggregate metrics and complete job tracking
         try {
             log(`📊 Updating job tracking metrics...`);
-            
-            // Import field name constants to ensure correctness
-            const { JOB_TRACKING_FIELDS } = require('../constants/airtableFields');
-            
-            // Update job tracking record with metrics
-            await airtableService.updateJobTrackingRecord({
-                runId,
-                updates: {
-                    // ROOT CAUSE FIX: Use correct field name from constants
-                    // The field is 'Clients Processed', not 'Total Clients Processed'
-                    [JOB_TRACKING_FIELDS.CLIENTS_PROCESSED]: clientsNeedingWork.length,
-                    [JOB_TRACKING_FIELDS.SUCCESS_RATE]: successRate,
-                    [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Total jobs started: ${totalJobsStarted}. Processed ${clientsNeedingWork.length} clients.`
-                }
-            });
-            
-            // Complete the job using orchestration service
+            await JobTracking.updateAggregateMetrics({ runId: normalizedRunId });
             const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
-            await jobOrchestrationService.completeJob({
-                jobType: 'smart_resume',
-                runId,
-                finalMetrics: {
-                    // Use only fields that exist in the Airtable schema
-                    'System Notes': notes,
-                    'Success Rate': successRate
-                }
+            await JobTracking.completeJob({
+                runId: normalizedRunId,
+                status: STATUS_VALUES.COMPLETED,
+                updates: { [JOB_FIELDS.SYSTEM_NOTES]: notes }
             });
-            log(`✅ Job tracking metrics updated and job marked complete`);
+            log(`✅ Job tracking metrics updated`);
         } catch (error) {
             log(`⚠️ Failed to update job tracking metrics: ${error.message}.`, 'WARN');
         }
@@ -931,18 +722,14 @@ async function main() {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
         log(`🔍 SCRIPT_DEBUG: Full error stack: ${error.stack}`, 'ERROR');
         
-        // Update job tracking to reflect failure using orchestration service
+        // Update job tracking to reflect failure
         try {
             log(`📊 Updating job tracking for failure...`);
             const notes = `Run failed with error: ${error.message}`;
-            
-            await jobOrchestrationService.completeJob({
-                jobType: 'smart_resume',
-                runId,
-                status: STATUS_VALUES.FAILED,
-                finalMetrics: {
-                    'System Notes': notes
-                }
+            await JobTracking.completeJob({
+                runId: normalizedRunId,
+                status: STATUS_VALUES.ERROR,
+                updates: { [JOB_FIELDS.SYSTEM_NOTES]: notes }
             });
             log(`✅ Job tracking updated for failure`);
         } catch (trackingError) {
@@ -952,6 +739,7 @@ async function main() {
         // Send failure alert email
         const errorReportData = {
             runId,
+            normalizedRunId,
             stream,
             error: error.message,
             duration: Date.now() - runStartTime,
@@ -959,12 +747,10 @@ async function main() {
         };
         
         const emailResult = await emailService.sendExecutionReport(errorReportData);
-        if (emailResult.success) {
+        if (emailResult.sent) {
             log(`📧 Failure alert sent successfully`);
         } else {
-            // Use error if available, otherwise fall back to reason
-            const errorMessage = emailResult.error || emailResult.reason || 'Unknown error';
-            log(`📧 Failure alert failed: ${errorMessage}`, 'WARN');
+            log(`📧 Failure alert failed: ${emailResult.reason}`, 'WARN');
         }
         
         process.exit(1);
