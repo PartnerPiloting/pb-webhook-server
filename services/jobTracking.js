@@ -371,13 +371,6 @@ class JobTracking {
     if (!safeRunId || !safeClientId) {
       throw new Error("Run ID and Client ID are required to update client run record");
     }
-      logger.error(`Parameter validation failed: ${error.message}`);
-      throw error;
-    }
-    
-    // Simple string validation for critical parameters
-    const safeRunId = validateString(runId, 'runId', 'updateClientRun');
-    const safeClientId = validateString(clientId, 'clientId', 'updateClientRun');
     
     // Use existing logger or create a safe one
     const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
