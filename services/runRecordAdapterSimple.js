@@ -299,6 +299,8 @@ async function updateRunRecord(params) {
  * @returns {Promise<Object>} - The updated record
  */
 async function completeRunRecord(params) {
+  const source = 'RunRecordAdapterSimple.completeRunRecord';
+  
   // For backward compatibility, handle old-style function calls
   if (typeof params === 'string') {
     // Legacy call format: completeRunRecord(runId, clientId, status, notes, options)
@@ -315,62 +317,106 @@ async function completeRunRecord(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    console.error(`[${source}] ${errMsg}`);
     throw new Error(errMsg);
   }
   
   const { runId, clientId, status, notes = '', options = {} } = params;
   
   // ROOT CAUSE FIX: Validate runId and clientId
-  const validatedRunId = RunIdValidator.validateAndNormalize(runId, 'completeRunRecord');
-  const validatedClientId = RunIdValidator.validateClientId(clientId, 'completeRunRecord');
+  const validatedRunId = RunIdValidator.validateAndNormalize(runId, source);
+  const validatedClientId = RunIdValidator.validateClientId(clientId, source);
   
   if (!validatedRunId || !validatedClientId) {
     const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
-    const sysLogger = createSafeLogger('SYSTEM', validatedRunId || runId, 'run_record');
-    sysLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    const sysLogger = createSafeLogger('SYSTEM', validatedRunId || String(runId) || 'invalid', 'run_record');
+    sysLogger.error(`[${source}] ${errorMsg}`);
     throw new Error(errorMsg);
   }
   
   const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
-  const source = options.source || 'unknown';
+  const sourceContext = options.source || 'unknown';
   
-  logger.debug(`[RunRecordAdapterSimple] Completing run record for client ${validatedClientId} from source ${source}`);
+  logger.debug(`[${source}] Completing run record for client ${validatedClientId} from source ${sourceContext}`);
   
   try {
     // STANDALONE CHECK: Don't update records in standalone mode
     if (options.isStandalone === true) {
-      logger.info(`[RunRecordAdapterSimple] Skipping record completion for standalone run: ${validatedRunId}, ${validatedClientId}`);
+      logger.info(`[${source}] Skipping record completion for standalone run: ${validatedRunId}, ${validatedClientId}`);
       return { skipped: true, reason: 'standalone_run' };
     }
     
     // ROOT CAUSE FIX: Handle null or undefined status
     if (status === null || status === undefined) {
-      logger.error(`[RunRecordAdapterSimple] Invalid status: ${status}`);
+      logger.error(`[${source}] Invalid status: ${status}`);
       throw new Error(`Cannot complete run record with invalid status: ${status}`);
     }
     
-    // Handle status as string or boolean
-    const success = typeof status === 'boolean' ? status : (status === 'Completed' || status === 'Success');
+    // Handle status as string or boolean - safely
+    let success = false;
+    if (typeof status === 'boolean') {
+      success = status;
+    } else if (typeof status === 'string') {
+      // CRITICAL FIX: This is where the toLowerCase() error happens
+      // Check if status is a valid string before calling toLowerCase()
+      const statusStr = String(status).toLowerCase();
+      success = statusStr === 'completed' || statusStr === 'success';
+    } else {
+      // Default to false for other types
+      logger.warn(`[${source}] Unexpected status type: ${typeof status}, defaulting to false`);
+      success = false;
+    }
     
-    // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
-    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+    // Clean/standardize the run ID with proper error handling
+    let normalizedRunId;
+    try {
+      normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
+      if (!normalizedRunId) {
+        logger.error(`[${source}] Failed to normalize run ID: ${validatedRunId}`);
+        throw new Error(`Failed to normalize run ID: ${validatedRunId}`);
+      }
+    } catch (error) {
+      logger.error(`[${source}] Error normalizing run ID: ${error.message}`);
+      throw new Error(`Error normalizing run ID: ${error.message}`);
+    }
     
-    // Add client suffix for client-specific run ID
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
+    // Get base run ID with error handling
+    let baseRunId;
+    try {
+      baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+      if (!baseRunId) {
+        logger.warn(`[${source}] Failed to strip client suffix, using normalized ID as fallback`);
+        baseRunId = normalizedRunId;
+      }
+    } catch (error) {
+      logger.warn(`[${source}] Error stripping client suffix: ${error.message}, using normalized ID as fallback`);
+      baseRunId = normalizedRunId;
+    }
     
-    logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
+    // Add client suffix with proper error handling
+    let standardRunId;
+    try {
+      standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
+      if (!standardRunId) {
+        logger.error(`[${source}] Failed to add client suffix: ${baseRunId}, ${validatedClientId}`);
+        throw new Error(`Failed to add client suffix: ${baseRunId}, ${validatedClientId}`);
+      }
+    } catch (error) {
+      logger.error(`[${source}] Error adding client suffix: ${error.message}`);
+      throw new Error(`Error adding client suffix: ${error.message}`);
+    }
+    
+    logger.debug(`[${source}] Using standardized run ID: ${standardRunId}`);
     
     // CRITICAL: First check if the record exists
     const recordExists = await checkRunRecordExists({ 
       runId: standardRunId, 
       clientId: validatedClientId,
-      options: { source, logger }
+      options: { source: sourceContext, logger }
     });
     
     if (!recordExists) {
-      const errorMsg = `[RunRecordAdapterSimple] CRITICAL: Cannot complete non-existent record for ${standardRunId}, ${validatedClientId}`;
+      const errorMsg = `[${source}] CRITICAL: Cannot complete non-existent record for ${standardRunId}, ${validatedClientId}`;
       logger.error(errorMsg);
       throw new Error(`Cannot complete non-existent run record for ${validatedClientId} (${standardRunId}). Record must exist before completion.`);
     }
@@ -378,7 +424,7 @@ async function completeRunRecord(params) {
     // Direct call to the simple service - will only be called if record exists
     return await airtableServiceSimple.completeClientRun(standardRunId, validatedClientId, success, notes);
   } catch (error) {
-    logger.error(`[RunRecordAdapterSimple] Error completing run record: ${error.message}`);
+    logger.error(`[${source}] Error completing run record: ${error.message}`);
     throw error;
   }
 }
