@@ -621,8 +621,10 @@ async function main() {
                 await JobTracking.completeClientRun({
                     runId: normalizedRunId,
                     clientId: workflow.clientId,
-                    status: success ? STATUS_VALUES.COMPLETED : STATUS_VALUES.ERROR,
-                    updates: { [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: notes }
+                    updates: { 
+                        [CLIENT_RUN_FIELDS.STATUS]: success ? STATUS_VALUES.COMPLETED : STATUS_VALUES.ERROR,
+                        [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: notes 
+                    }
                 });
                 log(`   ✅ Run tracking updated`);
             } catch (error) {
