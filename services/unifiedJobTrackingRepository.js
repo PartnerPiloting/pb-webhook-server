@@ -276,7 +276,7 @@ async function completeJobTrackingRecord(params) {
     return await updateJobTrackingRecord({
       runId,
       updates: {
-        status,
+        [JOB_TRACKING_FIELDS.STATUS]: status,  // Use constant for field name
         endTime,
         ...metrics
       },
