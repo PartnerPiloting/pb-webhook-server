@@ -522,15 +522,19 @@ async function updateClientRunRecord(params) {
     
     // Also update the corresponding job tracking record
     try {
+      // STANDARDIZATION FIX: Use proper constants for all field names
       await updateJobTrackingRecord({
         runId: baseStandardRunId,
         updates: {
           clientId,
-          status: updates.status,
-          endTime: updates.endTime,
-          progress: updates.progress || `${updates.leadsProcessed || 0} leads processed`,
-          itemsProcessed: updates.leadsProcessed || updates.postsProcessed,
-          error: updates.errors
+          // Use proper field constants for job tracking
+          [JOB_TRACKING_FIELDS.STATUS]: updates[CLIENT_RUN_FIELDS.STATUS], // Map client status to job status
+          [JOB_TRACKING_FIELDS.END_TIME]: updates[CLIENT_RUN_FIELDS.END_TIME],
+          [JOB_TRACKING_FIELDS.PROGRESS]: updates[JOB_TRACKING_FIELDS.PROGRESS] || 
+                                     `${updates[CLIENT_RUN_FIELDS.PROFILES_EXAMINED] || 0} leads processed`,
+          [JOB_TRACKING_FIELDS.ITEMS_PROCESSED]: updates[CLIENT_RUN_FIELDS.PROFILES_EXAMINED] || 
+                                            updates[CLIENT_RUN_FIELDS.POSTS_EXAMINED],
+          [JOB_TRACKING_FIELDS.ERROR]: updates[CLIENT_RUN_FIELDS.ERRORS]
         },
         options: { 
           logger: log 
