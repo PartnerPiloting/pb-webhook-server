@@ -24,6 +24,30 @@ const CLIENT_TABLES = {
   CONNECTIONS: 'Connections'
 };
 
+// Field names for Clients table in Master Clients Base
+const CLIENT_FIELDS = {
+  CLIENT_ID: 'Client ID',
+  CLIENT_NAME: 'Client Name',
+  STATUS: 'Status',
+  AIRTABLE_BASE_ID: 'Airtable Base ID',
+  WORDPRESS_USER_ID: 'WordPress User ID',
+  SERVICE_LEVEL: 'Service Level',
+  COMMENT: 'Comment',
+  CLIENT_FIRST_NAME: 'Client First Name',
+  CLIENT_EMAIL_ADDRESS: 'Client Email Address',
+  PROFILE_SCORING_TOKEN_LIMIT: 'Profile Scoring Token Limit',
+  POST_SCORING_TOKEN_LIMIT: 'Post Scoring Token Limit',
+  POSTS_DAILY_TARGET: 'Posts Daily Target',
+  LEADS_BATCH_SIZE_FOR_POST_COLLECTION: 'Leads Batch Size for Post Collection',
+  MAX_POST_BATCHES_PER_DAY_GUARDRAIL: 'Max Post Batches Per Day Guardrail',
+  PRIMARY_FLOOR: 'Primary Floor',
+  SECONDARY_FLOOR: 'Secondary Floor',
+  MINIMUM_FLOOR: 'Minimum Floor',
+  FLOOR_STRATEGY: 'Floor Strategy',
+  AUTO_ADJUST_FLOORS: 'Auto Adjust Floors',
+  ACTIVE: 'Active'
+};
+
 // Field names for Leads table
 const LEAD_FIELDS = {
   // Identity fields
@@ -199,13 +223,28 @@ const SCORING_STATUS_VALUES = {
   EXCLUDED: 'Excluded'
 };
 
+// Client execution log fields
+const CLIENT_EXECUTION_LOG_FIELDS = {
+  EXECUTION_LOG: 'Execution Log',
+  STATUS: 'Status',
+  LEADS_PROCESSED: 'Leads Processed',
+  POSTS_SCORED: 'Posts Scored',
+  DURATION: 'Duration',
+  TOKENS_USED: 'Tokens Used',
+  ERRORS: 'Errors',
+  PERFORMANCE: 'Performance',
+  NEXT_ACTION: 'Next Action'
+};
+
 module.exports = {
   MASTER_TABLES,
   CLIENT_TABLES,
+  CLIENT_FIELDS,
   LEAD_FIELDS,
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS,
   FORMULA_FIELDS,
   STATUS_VALUES,
-  SCORING_STATUS_VALUES
+  SCORING_STATUS_VALUES,
+  CLIENT_EXECUTION_LOG_FIELDS
 };

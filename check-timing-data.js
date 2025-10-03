@@ -2,6 +2,7 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { CLIENT_EXECUTION_LOG_FIELDS } = require('./constants/airtableUnifiedConstants');
 
 async function checkExecutionTiming() {
     console.log('⏱️ CHECKING EXECUTION TIMING FROM AIRTABLE LOGS');
@@ -28,8 +29,8 @@ async function checkExecutionTiming() {
         
         // Now get execution logs with correct field names
         const allExecutions = await masterBase('Clients').select({
-            fields: ['Client Name', 'Execution Log'],
-            filterByFormula: 'NOT({Execution Log} = "")',
+            fields: ['Client Name', CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG],
+            filterByFormula: `NOT({${CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG}} = "")`,
             maxRecords: 20
         }).firstPage();
         
@@ -37,7 +38,7 @@ async function checkExecutionTiming() {
         
         allExecutions.forEach((record, index) => {
             const clientName = record.get('Client Name') || 'Unknown';
-            const executionLog = record.get('Execution Log');
+            const executionLog = record.get(CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG);
             
             console.log(`${index + 1}. 🏢 ${clientName}`);
             
@@ -93,7 +94,7 @@ async function checkExecutionTiming() {
         console.log('='.repeat(40));
         
         const longExecutions = allExecutions.filter(record => {
-            const log = record.get('Execution Log');
+            const log = record.get(CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG);
             if (!log) return false;
             
             const durationMatch = log.match(/DURATION:\s*(\d+(\.\d+)?)\s*seconds?/i);

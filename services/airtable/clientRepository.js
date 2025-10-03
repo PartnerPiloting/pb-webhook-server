@@ -243,16 +243,23 @@ async function updateClientRunRecord(runId, clientId, updates) {
     // Prepare update fields
     const updateFields = {};
     
-    // Map update keys to Airtable field names using constants
-    // Check if properties exist (not undefined) rather than if they're truthy
-
-    if ('status' in updates || CLIENT_RUN_FIELDS.STATUS in updates) updateFields[CLIENT_RUN_FIELDS.STATUS] = 'status' in updates ? updates.status : updates[CLIENT_RUN_FIELDS.STATUS];
-    if ('endTime' in updates || CLIENT_RUN_FIELDS.END_TIME in updates) updateFields[CLIENT_RUN_FIELDS.END_TIME] = 'endTime' in updates ? updates.endTime : updates[CLIENT_RUN_FIELDS.END_TIME];
-    if ('leadsProcessed' in updates || CLIENT_RUN_FIELDS.PROFILES_EXAMINED in updates) updateFields[CLIENT_RUN_FIELDS.PROFILES_EXAMINED] = 'leadsProcessed' in updates ? updates.leadsProcessed : updates[CLIENT_RUN_FIELDS.PROFILES_EXAMINED];
-    if ('postsProcessed' in updates || CLIENT_RUN_FIELDS.POSTS_EXAMINED in updates) updateFields[CLIENT_RUN_FIELDS.POSTS_EXAMINED] = 'postsProcessed' in updates ? updates.postsProcessed : updates[CLIENT_RUN_FIELDS.POSTS_EXAMINED];
-    if ('errors' in updates || CLIENT_RUN_FIELDS.ERRORS in updates) updateFields[CLIENT_RUN_FIELDS.ERRORS] = 'errors' in updates ? updates.errors : updates[CLIENT_RUN_FIELDS.ERRORS];
-    if ('notes' in updates || CLIENT_RUN_FIELDS.SYSTEM_NOTES in updates) updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = 'notes' in updates ? updates.notes : updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES];
-    if ('tokenUsage' in updates || CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED in updates) updateFields[CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED] = 'tokenUsage' in updates ? updates.tokenUsage : updates[CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED];
+    // STANDARDIZATION FIX: Only use constant field names for all Airtable fields
+    // Eliminate all legacy lowercase field name checks to prevent Airtable field name errors
+    
+    // Process status update with proper constant
+    if (CLIENT_RUN_FIELDS.STATUS in updates) updateFields[CLIENT_RUN_FIELDS.STATUS] = updates[CLIENT_RUN_FIELDS.STATUS];
+    
+    // Process time fields with proper constants
+    if (CLIENT_RUN_FIELDS.END_TIME in updates) updateFields[CLIENT_RUN_FIELDS.END_TIME] = updates[CLIENT_RUN_FIELDS.END_TIME];
+    
+    // Process metrics fields with proper constants
+    if (CLIENT_RUN_FIELDS.PROFILES_EXAMINED in updates) updateFields[CLIENT_RUN_FIELDS.PROFILES_EXAMINED] = updates[CLIENT_RUN_FIELDS.PROFILES_EXAMINED];
+    if (CLIENT_RUN_FIELDS.POSTS_EXAMINED in updates) updateFields[CLIENT_RUN_FIELDS.POSTS_EXAMINED] = updates[CLIENT_RUN_FIELDS.POSTS_EXAMINED];
+    if (CLIENT_RUN_FIELDS.ERRORS in updates) updateFields[CLIENT_RUN_FIELDS.ERRORS] = updates[CLIENT_RUN_FIELDS.ERRORS];
+    
+    // Process notes and token usage with proper constants
+    if (CLIENT_RUN_FIELDS.SYSTEM_NOTES in updates) updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES];
+    if (CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED in updates) updateFields[CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED] = updates[CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED];
     if ('promptTokens' in updates || CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS in updates) updateFields[CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS] = 'promptTokens' in updates ? updates.promptTokens : updates[CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS]; // Using the same field for now
     if (updates.completionTokens) updateFields['Completion Tokens'] = updates.completionTokens;
     if (updates.totalTokens) updateFields['Total Tokens'] = updates.totalTokens;
