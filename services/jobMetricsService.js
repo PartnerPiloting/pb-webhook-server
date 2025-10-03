@@ -325,7 +325,10 @@ async function updateClientMetrics(params) {
       runId,
       clientId,
       updates: validMetrics,
-      options: { logger: log }
+      options: { 
+        logger: log,
+        source: 'job_metrics_service' 
+      }
     });
   } catch (error) {
     // Handle different types of errors
@@ -338,7 +341,10 @@ async function updateClientMetrics(params) {
           runId,
           clientId,
           initialData: metrics,
-          options: { logger: log }
+          options: { 
+            logger: log,
+            source: 'job_metrics_service' 
+          }
         });
       }
     }
@@ -385,7 +391,10 @@ async function completeClientMetrics(params) {
       runId,
       clientId,
       metrics: finalMetrics,
-      options: { logger: log }
+      options: { 
+        logger: log,
+        source: 'job_metrics_service' 
+      }
     });
   } catch (error) {
     log.error(`Error completing client metrics: ${error.message}`);
@@ -424,7 +433,10 @@ async function updateJobAggregateMetrics(params) {
     // Use the unified job tracking repository to aggregate and update metrics
     return await unifiedJobTrackingRepository.updateAggregateMetrics({
       runId: standardizedRunId,
-      options: { logger: log }
+      options: { 
+        logger: log,
+        source: 'job_metrics_service' 
+      }
     });
   } catch (error) {
     log.error(`Error updating aggregate metrics: ${error.message}`);
@@ -461,7 +473,10 @@ async function completeJobMetrics(params) {
       metrics: {
         'System Notes': notes
       },
-      options: { logger: log }
+      options: { 
+        logger: log,
+        source: 'job_metrics_service' 
+      }
     });
   } catch (error) {
     log.error(`Error completing job metrics: ${error.message}`);
