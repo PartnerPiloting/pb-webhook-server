@@ -230,24 +230,33 @@ class JobTracking {
     const source = 'JobTracking.createJob';
     
     if (!runId) {
-      log.error("Run ID is required to create job tracking record");
-      throw new Error("Run ID is required to create job tracking record");
+      log.error(`[${source}] Run ID is required to create job tracking record`);
+      throw new Error(`[${source}] Run ID is required to create job tracking record`);
     }
     
     try {
-      // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = JobTracking.standardizeRunId(runId, { 
-        enforceStandard: true,
-        logErrors: true
-      });
+      // Extract ID safely if an object was passed
+      const safeRunId = JobTracking.extractId(runId);
       
-      // Exit early if we couldn't get a valid run ID
-      if (!standardRunId) {
-        log.error(`Invalid run ID provided: ${runId}`);
-        throw new Error(`Invalid run ID provided: ${runId}`);
+      // Use enhanced run ID service with source tracking for better diagnostics
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        throw validationError;
       }
       
-      log.debug(`Creating job with standardized run ID: ${standardRunId}`);
+      // Use enhanced normalizeRunId with source tracking
+      const standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      
+      // This should never happen in strict mode (would throw instead), but as extra protection:
+      if (!standardRunId) {
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+        throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+      }
+      
+      log.debug(`[${source}] Creating job with standardized run ID: ${standardRunId}`);
       
       // Get the master base
       const masterBase = baseManager.getMasterClientsBase();
@@ -765,18 +774,28 @@ class JobTracking {
    */
   static async getJobById(runId, options = {}) {
     const log = options.logger || logger;
+    const source = 'JobTracking.getJobById';
     
     try {
-      // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = JobTracking.standardizeRunId(runId, { 
-        enforceStandard: true,
-        logErrors: true
-      });
+      // Extract ID safely if an object was passed
+      const safeRunId = JobTracking.extractId(runId);
       
-      // Exit early if we couldn't get a valid run ID
+      // Use enhanced run ID service with source tracking for better diagnostics
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        throw validationError;
+      }
+      
+      // Use standardizeRunId helper with source tracking
+      const standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      
+      // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        log.error(`Invalid run ID provided for lookup: ${runId}`);
-        return null;
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+        throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
       }
       
       const masterBase = baseManager.getMasterClientsBase();
@@ -784,7 +803,7 @@ class JobTracking {
       // Use only the standardized run ID with constant for field name
       const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
       
-      log.debug(`Looking up job record with standardized run ID: ${standardRunId}`);
+      log.debug(`[${source}] Looking up job record with standardized run ID: ${standardRunId}`);
       
       const records = await masterBase(JOB_TRACKING_TABLE).select({
         filterByFormula: formula,
@@ -793,18 +812,21 @@ class JobTracking {
       
       if (!records || records.length === 0) {
         // Enhanced diagnostic logging for the "record not found" case
-        const originalIdDiffers = runId !== standardRunId;
         const errorDetails = {
-          originalRunId: runId,
+          originalRunId: safeRunId !== standardRunId ? safeRunId : undefined,
           standardizedRunId: standardRunId, 
-          wasNormalized: originalIdDiffers,
+          wasNormalized: safeRunId !== standardRunId,
           searchFormula: formula,
           table: JOB_TRACKING_TABLE,
           timestamp: new Date().toISOString(),
+          source: source,
           stack: new Error().stack
         };
         
-        log.error(`Job tracking record not found`, errorDetails);
+        log.error(`[${source}] Job tracking record not found`, errorDetails);
+        
+        // Throw an error in strict mode instead of silently returning null
+        throw new Error(`[${source}] Job tracking record not found for run ID: ${standardRunId}`);
         
         // For debugging purposes - log recent records to help troubleshoot
         try {
@@ -1078,34 +1100,42 @@ class JobTracking {
   static async updateAggregateMetrics(params) {
     const { runId, metrics = {}, options = {} } = params;
     const log = options.logger || logger;
+    const source = 'JobTracking.updateAggregateMetrics';
     
     if (!runId) {
-      log.error("Run ID is required to update aggregate metrics");
-      throw new Error("Run ID is required to update aggregate metrics");
+      log.error(`[${source}] Run ID is required to update aggregate metrics`);
+      throw new Error(`[${source}] Run ID is required to update aggregate metrics`);
     }
     
     try {
-      // First normalize the run ID to handle different formats consistently
-      const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+      // Extract ID safely if an object was passed
+      const safeRunId = JobTracking.extractId(runId);
       
-      // Get the master base
-      const masterBase = baseManager.getMasterClientsBase();
-      
-      // Find the record - check both original and normalized run IDs
-      const formula = `OR({${JOB_TRACKING_FIELDS.RUN_ID}} = '${runId}', {${JOB_TRACKING_FIELDS.RUN_ID}} = '${normalizedRunId}')`;
-      
-      const records = await masterBase(JOB_TRACKING_TABLE).select({
-        filterByFormula: formula,
-        maxRecords: 1
-      }).firstPage();
-      
-      if (!records || records.length === 0) {
-        log.error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
-        throw new Error(`Job tracking record not found for run ID ${runId} or ${normalizedRunId}`);
+      // Use enhanced run ID service with source tracking for better diagnostics
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        throw validationError;
       }
       
-      const record = records[0];
-      const currentFields = record.fields || {};
+      // Use standardizeRunId helper with source tracking
+      const standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      
+      // This should never happen in strict mode (would throw instead), but as extra protection:
+      if (!standardRunId) {
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+        throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+      }
+      
+      // Get the job record directly using our already-enhanced getJobById method
+      // which has proper error handling and diagnostics
+      // Get the job record using our enhanced getJobById method
+      const jobRecord = await JobTracking.getJobById(standardRunId, { logger: log });
+      
+      // Get record fields safely
+      const currentFields = jobRecord.fields || {};
       
       // Prepare update fields for aggregation
       const updateFields = {};
@@ -1157,15 +1187,15 @@ class JobTracking {
       // Only update if we have fields to update
       if (Object.keys(updateFields).length > 0) {
         // Update the record
-        await masterBase(JOB_TRACKING_TABLE).update(record.id, updateFields);
-        log.debug(`Updated aggregate metrics for ${runId}`, { updateFields });
+        await masterBase(JOB_TRACKING_TABLE).update(jobRecord.id, updateFields);
+        log.debug(`[${source}] Updated aggregate metrics for ${standardRunId}`, { updateFields });
       } else {
-        log.debug(`No metrics to update for ${runId}`);
+        log.debug(`[${source}] No metrics to update for ${standardRunId}`);
       }
       
       return {
-        id: record.id,
-        runId,
+        id: jobRecord.id,
+        runId: standardRunId,
         updated: Object.keys(updateFields)
       };
     } catch (error) {

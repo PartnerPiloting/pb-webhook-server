@@ -374,6 +374,15 @@ try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/ap
 // Debug routes for JSON serialization issues
 try { const debugRoutes = require('./routes/debugRoutes.js'); app.use('/api/debug', debugRoutes); console.log("index.js: Debug routes mounted at /api/debug"); } catch(e) { console.error("index.js: Error mounting debug routes", e.message, e.stack); }
 
+// Diagnostic routes for development and testing
+try { 
+    const diagnosticRoutes = require('./routes/diagnosticRoutes.js'); 
+    app.use('/api/diagnostic', diagnosticRoutes); 
+    console.log("index.js: Diagnostic routes mounted at /api/diagnostic"); 
+} catch(e) { 
+    console.error("index.js: Error mounting diagnostic routes", e.message, e.stack); 
+}
+
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
