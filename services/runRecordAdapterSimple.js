@@ -295,26 +295,13 @@ async function updateRunRecord(params) {
  * @param {Object} params - Parameters for run record completion
  * @param {string} params.runId - Run ID for the job
  * @param {string} params.clientId - Client ID
- * @param {string|boolean} params.status - Status or success boolean
- * @param {string} [params.notes=''] - Notes to append
+ * @param {string|boolean} params[FIELD_NAMES.STATUS] - Status value using standardized field name
+ * @param {string} [params[FIELD_NAMES.SYSTEM_NOTES]] - Notes to append using standardized field name
  * @param {Object} [params.options] - Options including logger and source
  * @returns {Promise<Object>} - The updated record
  */
 async function completeRunRecord(params) {
   const source = 'RunRecordAdapterSimple.completeRunRecord';
-  
-  // For backward compatibility, handle old-style function calls
-  if (typeof params === 'string') {
-    // Legacy call format: completeRunRecord(runId, clientId, status, notes, options)
-    const runId = arguments[0];
-    const clientId = arguments[1];
-    const status = arguments[2];
-    const notes = arguments[3] || '';
-    const options = arguments[4] || {};
-    
-    // Convert to new format
-    return completeRunRecord({ runId, clientId, status, notes, options });
-  }
   
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
@@ -323,7 +310,12 @@ async function completeRunRecord(params) {
     throw new Error(errMsg);
   }
   
-  const { runId, clientId, status, notes = '', options = {} } = params;
+  // Extract values using standardized field names
+  const runId = params.runId;
+  const clientId = params.clientId;
+  const status = params[FIELD_NAMES.STATUS]; // Get status using standardized field name
+  const notes = params[FIELD_NAMES.SYSTEM_NOTES] || ''; // Get notes using standardized field name
+  const options = params.options || {};
   
   // ROOT CAUSE FIX: Validate runId and clientId
   const validatedRunId = RunIdValidator.validateAndNormalize(runId, source);
@@ -437,8 +429,16 @@ async function completeRunRecord(params) {
       throw new Error(`Cannot complete non-existent run record for ${validatedClientId} (${standardRunId}). Record must exist before completion.`);
     }
     
-    // Direct call to the simple service - will only be called if record exists
-    return await airtableServiceSimple.completeClientRun(standardRunId, validatedClientId, success, notes);
+    // Create a properly structured object with standardized field names for update
+    const updateData = {
+      [FIELD_NAMES.RUN_ID]: standardRunId,
+      [FIELD_NAMES.CLIENT_ID]: validatedClientId,
+      [FIELD_NAMES.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
+      [FIELD_NAMES.SYSTEM_NOTES]: notes
+    };
+    
+    // Direct call to the simple service using standardized field names
+    return await airtableServiceSimple.completeClientRun(standardRunId, validatedClientId, updateData);
   } catch (error) {
     logger.error(`[${source}] Error completing run record: ${error.message}`);
     throw error;

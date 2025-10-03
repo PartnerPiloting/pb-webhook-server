@@ -297,11 +297,11 @@ async function completeJobRun(runId, success = true, notes = '') {
  * Complete a client run - MUST exist
  * @param {string} runId - The run ID
  * @param {string} clientId - The client ID
- * @param {boolean} success - Whether the client run succeeded
- * @param {string} notes - Notes to append
+ * @param {Object|boolean} updateData - Either standardized field object or legacy success boolean
+ * @param {string} [notes] - Legacy notes parameter (only used if updateData is boolean)
  * @returns {Promise<Object>} The updated record or error object
  */
-async function completeClientRun(runId, clientId, success = true, notes = '') {
+async function completeClientRun(runId, clientId, updateData, notes = '') {
   // ROOT CAUSE FIX: Validate parameters to prevent [object Object] errors
   const ParameterValidator = require('../utils/parameterValidator');
   
@@ -319,23 +319,40 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
     throw new Error(`Invalid clientId parameter: ${JSON.stringify(clientId)}`);
   }
   
-  // Ensure success is a boolean
-  const successBoolean = (typeof success === 'boolean') ? success : Boolean(success);
-  
-  // Ensure notes is a string
-  const safeNotes = (typeof notes === 'string') ? notes : String(notes || '');
-  
-  // FIXED: Use proper field constants consistently (no lowercase 'status')
-  // FIXED: Use STATUS_VALUES constant instead of string literals
+  // Initialize updates object with end time
   const updates = {};
   updates[CLIENT_RUN_FIELDS.END_TIME] = new Date().toISOString();
-  updates[CLIENT_RUN_FIELDS.STATUS] = successBoolean ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED;
   
-  // CRITICAL FIX: Handle notes properly, avoiding undefined errors
-  // Always set System Notes field, even when notes is empty
-  updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = safeNotes 
-    ? `${safeNotes}\nRun ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`
-    : `Run ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+  // Handle both standardized field object and legacy parameters
+  if (typeof updateData === 'object' && updateData !== null) {
+    // Using standardized field object - copy all provided fields to updates
+    Object.keys(updateData).forEach(key => {
+      updates[key] = updateData[key];
+    });
+    
+    // Make sure status is set
+    if (!updates[CLIENT_RUN_FIELDS.STATUS]) {
+      console.warn(`[AirtableServiceSimple] Status not provided in updateData, defaulting to COMPLETED`);
+      updates[CLIENT_RUN_FIELDS.STATUS] = CLIENT_RUN_STATUS_VALUES.COMPLETED;
+    }
+    
+    // Add timestamp to notes if provided
+    if (updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
+      updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = 
+        `${updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]}\nRun completed at ${new Date().toISOString()}`;
+    } else {
+      updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = `Run completed at ${new Date().toISOString()}`;
+    }
+  } else {
+    // Legacy boolean success parameter
+    const successBoolean = (typeof updateData === 'boolean') ? updateData : Boolean(updateData);
+    const safeNotes = (typeof notes === 'string') ? notes : String(notes || '');
+    
+    updates[CLIENT_RUN_FIELDS.STATUS] = successBoolean ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED;
+    updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = safeNotes 
+      ? `${safeNotes}\nRun ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`
+      : `Run ${successBoolean ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+  }
   
   // Validate field names before sending to Airtable
   const validatedUpdates = createValidatedObject(updates);

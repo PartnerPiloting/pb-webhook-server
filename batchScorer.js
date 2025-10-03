@@ -869,9 +869,15 @@ async function run(req, res, dependencies) {
                         
                         clientLogger.setup(`Completing client run record for ${clientId}...`);
                         const status = success ? 'Success' : 'Error';
-                        await runRecordService.completeRunRecord(runId, clientId, status, reason, {
-                            logger: clientLogger,
-                            source: 'batchScorer_complete'
+                        await runRecordService.completeRunRecord({
+                            runId,
+                            clientId,
+                            [FIELD_NAMES.STATUS]: status === 'Success' ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
+                            [FIELD_NAMES.SYSTEM_NOTES]: reason,
+                            options: {
+                                logger: clientLogger,
+                                source: 'batchScorer_complete'
+                            }
                         });
                     } catch (error) {
                         clientLogger.warn(`Failed to complete client run record: ${error.message}`);
@@ -941,12 +947,15 @@ async function run(req, res, dependencies) {
                         const safeRunId = typeof runId === 'object' ? (runId.runId || runId.id || String(runId)) : String(runId);
                         const safeClientId = typeof clientId === 'object' ? (clientId.clientId || clientId.id || String(clientId)) : String(clientId);
                         
-                        await runRecordService.completeRunRecord(safeRunId, safeClientId, 'Error', {
-                            'Status': 'Error',  // Use properly capitalized field name
-                            'System Notes': errorReason,
-                            'Error Summary': errorReason
-                        }, {
-                            source: 'batchScorer_error'
+                        await runRecordService.completeRunRecord({
+                            runId: safeRunId,
+                            clientId: safeClientId,
+                            [FIELD_NAMES.STATUS]: CLIENT_RUN_STATUS_VALUES.FAILED,
+                            [FIELD_NAMES.SYSTEM_NOTES]: errorReason,
+                            [FIELD_NAMES.ERROR_DETAILS]: errorReason,
+                            options: {
+                                source: 'batchScorer_error'
+                            }
                         });
                     } catch (error) {
                         console.warn(`Failed to complete client run record: ${error.message}`);

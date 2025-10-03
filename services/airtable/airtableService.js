@@ -14,6 +14,10 @@ const runIdService = require('../../services/unifiedRunIdService');
 const unifiedJobTrackingRepository = require('../../services/unifiedJobTrackingRepository');
 const runRecordService = require('../../services/runRecordServiceV2');
 
+// Import constants for standardized field names
+const { FIELD_NAMES } = require('../../utils/airtableFieldValidator');
+const { CLIENT_RUN_STATUS_VALUES } = require('../../constants/airtableUnifiedConstants');
+
 // Default logger
 const logger = createSystemLogger(null, 'airtable_service');
 
@@ -192,16 +196,16 @@ async function updateRunRecord(params) {
  * @returns {Promise<Object>} Completed run record
  */
 async function completeRunRecord(params) {
-  const { clientId, runId, metrics = {}, options = {} } = params;
+  const { clientId, runId, metrics = {}, options = {}, status } = params;
   
   try {
-    // Use the runRecordService
+    // Use the runRecordService with standardized field names
     return await runRecordService.completeRunRecord({
       clientId,
       runId,
-      metrics,
-      options
-    });
+      [FIELD_NAMES.STATUS]: status || CLIENT_RUN_STATUS_VALUES.COMPLETED,
+      ...metrics, // Include any metrics as fields
+      options: options
   } catch (error) {
     logger.error(`Error completing run record for client ${clientId}: ${error.message}`);
     throw error;
