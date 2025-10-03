@@ -350,33 +350,57 @@ function jobIdToTimestamp(jobId) {
 }
 
 /**
+ * Validate a run ID with detailed source tracking for diagnostics
+ * @param {string} runId - Run ID to validate
+ * @param {string} source - Source identifier for error tracking (e.g. method name)
+ * @returns {boolean} - True if valid, throws error if invalid
+ */
+function validateRunId(runId, source = 'unknown') {
+  if (!runId) {
+    logger.error(`[${source}] Run ID cannot be null or undefined`);
+    throw new Error(`[${source}] Run ID cannot be null or undefined`);
+  }
+  
+  if (typeof runId === 'object') {
+    logger.error(`[${source}] Run ID must be a string, received object: ${JSON.stringify(runId)}`);
+    throw new Error(`[${source}] Run ID must be a string, received object: ${JSON.stringify(runId)}`);
+  }
+  
+  if (typeof runId !== 'string') {
+    logger.error(`[${source}] Run ID must be a string, received ${typeof runId}: ${runId}`);
+    throw new Error(`[${source}] Run ID must be a string, received ${typeof runId}: ${runId}`);
+  }
+  
+  return true;
+}
+
+/**
  * Normalize any run ID format to standard YYMMDD-HHMMSS format
  * This is critical for preventing duplicate job records
  * 
  * @param {string} runId - Run ID in any supported format
+ * @param {string} source - Source identifier for error tracking (e.g. method name)
  * @returns {string|null} - Normalized run ID in YYMMDD-HHMMSS format, or null if invalid
  */
-function normalizeRunId(runId) {
+function normalizeRunId(runId, source = 'unknown') {
   // Track the original value for diagnostic purposes
   const originalRunId = runId;
 
   // Handle null/undefined
   if (!runId) {
-    if (DEBUG_RUN_ID) {
-      logger.warn(`Null or undefined run ID passed to normalizeRunId`);
-    }
-    return null;
+    logger.error(`[${source}] Null or undefined run ID passed to normalizeRunId`);
+    throw new Error(`[${source}] Null or undefined run ID passed to normalizeRunId`);
   }
   
   // Handle objects incorrectly passed as runId
   if (typeof runId === 'object') {
     if (STRICT_RUN_ID_MODE) {
-      logger.error(`STRICT MODE: Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
+      logger.error(`[${source}] STRICT MODE: Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
       logger.error(`Stack trace: ${new Error().stack}`);
-      throw new Error(`STRICT RUN ID ERROR: Object passed to normalizeRunId instead of string`);
+      throw new Error(`[${source}] STRICT RUN ID ERROR: Object passed to normalizeRunId instead of string`);
     }
     
-    logger.error(`Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
+    logger.error(`[${source}] Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
     
     // Try to extract a usable ID
     if (runId.runId) {
@@ -384,7 +408,7 @@ function normalizeRunId(runId) {
     } else if (runId.id) {
       runId = runId.id;
     } else {
-      logger.error('Could not extract valid ID from object passed to normalizeRunId');
+      logger.error(`[${source}] Could not extract valid ID from object passed to normalizeRunId`);
       return null;
     }
   }
@@ -394,7 +418,7 @@ function normalizeRunId(runId) {
   // we should NOT attempt to normalize it further as that would break the client-specific part
   if (typeof runId === 'string' && runId.match(/^[\w\d]+-[\w\d]+$/)) {
     if (DEBUG_RUN_ID) {
-      logger.debug(`Detected compound run ID pattern: "${runId}" - preserving as is`);
+      logger.debug(`[${source}] Detected compound run ID pattern: "${runId}" - preserving as is`);
     }
     return runId;
   }
@@ -410,20 +434,33 @@ function normalizeRunId(runId) {
   // In strict mode, we don't allow normalization of non-standard run IDs
   // This forces callers to use proper run IDs from the start
   if (STRICT_RUN_ID_MODE && originalRunId !== null && originalRunId !== undefined) {
-    logger.error(`STRICT MODE: Attempted to normalize non-standard run ID: "${safeRunId}"`);
+    logger.error(`[${source}] STRICT MODE: Attempted to normalize non-standard run ID: "${safeRunId}"`);
     logger.error(`Stack trace: ${new Error().stack}`);
-    throw new Error(`STRICT RUN ID ERROR: Non-standard run ID format encountered: "${safeRunId}"`);
+    throw new Error(`[${source}] STRICT RUN ID ERROR: Non-standard run ID format encountered: "${safeRunId}"`);
   }
   
   // Try each format to see if it matches
   const formatInfo = detectRunIdFormat(safeRunId);
   if (formatInfo) {
     const result = formatInfo.format.toStandardFormat(formatInfo.match);
+    
+    // Log the transformation for tracking
+    if (result && result !== safeRunId) {
+      logger.info(`[${source}] Normalized run ID: ${safeRunId} → ${result}`);
+    }
+    
     return typeof result === 'string' ? result : null;
   }
   
-  // If no format matched, return the original
-  logger.warn(`Could not normalize run ID: ${safeRunId}`);
+  // If no format matched, fail explicitly in strict mode
+  if (STRICT_RUN_ID_MODE) {
+    logger.error(`[${source}] Could not normalize non-standard run ID: ${safeRunId}`);
+    logger.error(`Stack trace: ${new Error().stack}`);
+    throw new Error(`[${source}] Non-standard run ID format encountered: "${safeRunId}"`);
+  }
+  
+  // Only reach here in non-strict mode
+  logger.warn(`[${source}] Could not normalize run ID: ${safeRunId}`);
   return safeRunId;
 }
 
@@ -518,6 +555,7 @@ module.exports = {
   convertToStandardFormat,
   jobIdToTimestamp,
   normalizeRunId,
+  validateRunId,
   
   // Record ID caching
   cacheRecordId,
