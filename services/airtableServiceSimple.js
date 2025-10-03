@@ -210,14 +210,20 @@ async function updateJobTracking(runId, updates) {
   
   const base = initialize();
   
+  // Import the unified run ID service
+  const unifiedRunIdService = require('./unifiedRunIdService');
+  
+  // Use the unified service to standardize the run ID
+  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+  
   try {
     const records = await base(JOB_TRACKING_TABLE).select({
-      filterByFormula: `{Run ID} = '${runId}'`,
+      filterByFormula: `{Run ID} = '${standardizedRunId}'`,
       maxRecords: 1
     }).firstPage();
     
     if (!records || records.length === 0) {
-      const error = `❌ Job tracking record not found for ${runId}. Record was not created at job start!`;
+      const error = `❌ Job tracking record not found for ${runId} (standardized: ${standardizedRunId}). Record was not created at job start!`;
       console.error(error);
       return { error: true, message: error };
     }
