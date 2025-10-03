@@ -10,8 +10,10 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const runIdService = require('./unifiedRunIdService');
 // Import field constants
 const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
-// Import status constants
-const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+// Import status constants and field names
+const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+// Import Apify-specific field names
+const { APIFY_RUN_ID } = require('../constants/airtableUnifiedConstants');
 
 // Cache for performance (short-lived since runs are typically short)
 let runsCache = new Map();
@@ -82,14 +84,14 @@ async function createApifyRun(runId, clientId, options = {}) {
         const recordData = {
             'Run ID': normalizedRunId,
             'Client ID': clientId,
-            'Status': STATUS_VALUES.RUNNING,
+            'Status': CLIENT_RUN_STATUS_VALUES.RUNNING,
             'Created At': new Date().toISOString(),
             'Actor ID': options.actorId || '',
             'Target URLs': Array.isArray(options.targetUrls) ? options.targetUrls.join('\n') : '',
             // Mode field might not exist in the Apify table, remove if it causes issues
             'Mode': options.mode || 'webhook',
             // Store the original Apify run ID to maintain the mapping
-            'Apify Run ID': runId,
+            [APIFY_RUN_ID]: runId, // Using constant to ensure correct field name
             // Last Updated field might not exist in the Apify table, remove if it causes issues
             'Last Updated': new Date().toISOString()
         };
@@ -182,7 +184,7 @@ async function getApifyRun(runId, options = {}) {
             actorId: record.fields['Actor ID'] ? record.get('Actor ID') : null,
             targetUrls: record.fields['Target URLs'] ? record.get('Target URLs') : '',
             // Include Apify run ID if available
-            apifyRunId: record.fields['Apify Run ID'] ? record.get('Apify Run ID') : null,
+            apifyRunId: record.fields[APIFY_RUN_ID] ? record.get(APIFY_RUN_ID) : null,
             // Handle potentially missing fields
             mode: record.fields['Mode'] ? record.get('Mode') : 'webhook',
             lastUpdated: record.fields['Last Updated'] ? record.get('Last Updated') : new Date().toISOString(),
@@ -449,7 +451,7 @@ async function updateClientRunMetrics(runId, clientId, data) {
         const updated = await airtableService.updateClientRun(standardizedRunId, clientId, {
             'Total Posts Harvested': data.postsCount,
             'Apify API Costs': estimatedCost,
-            'Apify Run ID': runId,
+            [APIFY_RUN_ID]: runId,
             'Profiles Submitted for Post Harvesting': data.profilesCount
         });
         
@@ -523,7 +525,7 @@ async function processApifyWebhook(webhookData, clientId, runId) {
         
         // Add the Apify run ID if available
         if (webhookData.defaultDatasetId) {
-            metrics['Apify Run ID'] = webhookData.defaultDatasetId;
+            metrics[APIFY_RUN_ID] = webhookData.defaultDatasetId;
         }
         
         // Update the run record with webhook data

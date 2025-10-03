@@ -11,6 +11,8 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
+// Import field constants
+const { APIFY_RUN_ID } = require('../constants/airtableUnifiedConstants');
 const runIdUtils = require('../utils/runIdUtils');
 // Updated to use unified run ID service
 const runIdService = require('../services/unifiedRunIdService');
@@ -868,7 +870,7 @@ async function processClientHandler(req, res) {
           const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
           const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
           const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
-          const currentApifyRunId = currentRecord.get('Apify Run ID');
+          const currentApifyRunId = currentRecord.get(APIFY_RUN_ID);
           
           console.log(`[DEBUG-RUN-ID-FLOW] RECORD VALUES: Found existing record for ${runIdToUse}:`);
           console.log(`[DEBUG-RUN-ID-FLOW] - Current Posts Harvested: ${currentPostCount}`);
@@ -903,7 +905,7 @@ async function processClientHandler(req, res) {
                 metrics: {
                   'Total Posts Harvested': updatedCount,
                   'Apify API Costs': updatedCosts,
-                  'Apify Run ID': apifyRunId,
+                  [APIFY_RUN_ID]: apifyRunId,
                   'Profiles Submitted for Post Harvesting': updatedProfilesSubmitted
                 },
                 options: { source: 'apifyProcessRoutes' }
@@ -970,7 +972,7 @@ async function processClientHandler(req, res) {
                 metrics: {
                   'Total Posts Harvested': postsToday,
                   'Apify API Costs': estimatedCost,
-                  'Apify Run ID': apifyRunId,
+                  [APIFY_RUN_ID]: apifyRunId,
                   'Profiles Submitted for Post Harvesting': profilesSubmitted
                 },
                 options: { source: 'apifyProcessRoutes_fallback' }
@@ -1002,7 +1004,7 @@ async function processClientHandler(req, res) {
               clientId: clientId,
               metrics: {
                 'Total Posts Harvested': postsToday,
-                'Apify Run ID': apifyRunId,
+                [APIFY_RUN_ID]: apifyRunId,
                 'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
               },
               options: { source: 'apifyProcessRoutes_emergency' }

@@ -17,7 +17,7 @@ const unifiedRunIdService = require('../services/unifiedRunIdService');
 // Import the validator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
 // Import Airtable field constants
-const { JOB_TRACKING_FIELDS, CLIENT_RUN_FIELDS, CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+const { JOB_TRACKING_FIELDS, CLIENT_RUN_FIELDS, CLIENT_RUN_STATUS_VALUES, APIFY_RUN_ID } = require('../constants/airtableUnifiedConstants');
 
 // Constants
 const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
@@ -211,7 +211,7 @@ async function apifyWebhookHandler(req, res) {
                 clientId,
                 initialData: {
                     'System Notes': `Processing Apify webhook for run ${apifyRunId}, client ${clientId}`,
-                    'Apify Run ID': apifyRunId
+                    [APIFY_RUN_ID]: apifyRunId
                 }
             });
             
@@ -257,7 +257,7 @@ async function apifyWebhookHandler(req, res) {
                 clientId,
                 metrics: {
                     'Profiles Submitted for Post Harvesting': profilesSubmitted,
-                    'Apify Run ID': apifyRunId,
+                    [APIFY_RUN_ID]: apifyRunId,
                     'System Notes': `Apify run ${apifyRunId} started for ${profilesSubmitted} profiles at ${new Date().toISOString()}`
                 },
                 options: {
@@ -512,7 +512,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             // Prepare metrics
             const harvestMetrics = {
                 'Total Posts Harvested': 0,
-                'Apify Run ID': apifyRunId || '',
+                [APIFY_RUN_ID]: apifyRunId || '',
                 'Profiles Submitted for Post Harvesting': profilesSubmitted,
                 'System Notes': `Completed Apify run ${apifyRunId} with no posts found at ${new Date().toISOString()}`
             };
@@ -550,7 +550,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
                 clientId,
                 finalMetrics: {
                     'Total Posts Harvested': 0,
-                    'Apify Run ID': apifyRunId || '',
+                    [APIFY_RUN_ID]: apifyRunId || '',
                     'Profiles Submitted for Post Harvesting': payload.targetUrls ? payload.targetUrls.length : 0,
                     'System Notes': 'Completed with no posts found'
                 },
@@ -588,7 +588,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         const harvestMetrics = {
             'Total Posts Harvested': posts.length,
             'Apify API Costs': posts.length * 0.02, // Estimated cost: $0.02 per post
-            'Apify Run ID': apifyRunId || '',
+            [APIFY_RUN_ID]: apifyRunId || '',
             'Profiles Submitted for Post Harvesting': profilesSubmitted,
             'System Notes': `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors) at ${new Date().toISOString()}`
         };
@@ -673,7 +673,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
                 failed: true,
                 errors: 1,
                 'System Notes': `Failed: ${error.message}`,
-                'Apify Run ID': apifyRunId || ''
+                [APIFY_RUN_ID]: apifyRunId || ''
             },
             options: {
                 source: 'apify_webhook_handler_error',
