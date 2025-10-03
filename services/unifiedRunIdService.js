@@ -10,7 +10,8 @@
  */
 
 const { format } = require('date-fns');
-const logger = require('../utils/structuredLogger').getLogger('UnifiedRunIdService');
+const { createLogger } = require('../utils/unifiedLoggerFactory');
+const logger = createLogger('SYSTEM', null, 'unified_run_id_service');
 
 // In-memory cache for run IDs to record IDs mapping
 const recordIdCache = new Map();
