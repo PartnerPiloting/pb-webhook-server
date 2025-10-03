@@ -76,9 +76,27 @@ function getNormalizedRunId(originalRunId) {
   // If originalRunId is null, undefined, or not a string, use the global runId
   const runIdToNormalize = (typeof originalRunId === 'string') ? originalRunId : runId;
   
+  // CRITICAL FIX: Under the strict run ID handling pattern, we NEVER normalize
+  // existing run IDs as that would break the single-source-of-truth principle
+  // We return the original run ID unchanged to maintain consistency
+  
   try {
-    // Use the unifiedRunIdService to normalize the run ID
-    return unifiedRunIdService.normalizeRunId(runIdToNormalize);
+    // Check if it's a compound run ID (master-client format)
+    if (typeof runIdToNormalize === 'string' && runIdToNormalize.match(/^[\w\d]+-[\w\d]+$/)) {
+      console.log(`Detected compound run ID "${runIdToNormalize}" - preserving as is`);
+      return runIdToNormalize;
+    }
+    
+    // Only normalize if it's a non-standard format that needs standardization
+    // Otherwise return the original to maintain the single source of truth
+    if (typeof runIdToNormalize === 'string' && 
+        !runIdToNormalize.match(/^\d{6}-\d{6}$/)) {  // Standard YYMMDD-HHMMSS format
+      // Only in this case do we normalize
+      return unifiedRunIdService.normalizeRunId(runIdToNormalize);
+    }
+    
+    // In all other cases, return the original unchanged
+    return runIdToNormalize;
   } catch (error) {
     console.error(`Error normalizing runId ${runIdToNormalize}: ${error.message}`);
     // Return the original as fallback

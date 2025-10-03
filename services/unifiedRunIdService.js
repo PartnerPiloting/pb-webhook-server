@@ -18,6 +18,17 @@ const activeRunIds = new Map();
 // Cache for record IDs to prevent redundant lookups
 const recordIdCache = new Map();
 
+// Default run ID prefix for generating new IDs
+const DEFAULT_RUN_ID_PREFIX = 'auto_gen';
+
+// STRICT MODE: When enabled, the service will throw errors for any
+// attempt to normalize or modify run IDs after their initial generation.
+// This enforces a single-source-of-truth pattern for run ID management.
+const STRICT_RUN_ID_MODE = true; 
+
+// Enable detailed logging for run ID operations
+const DEBUG_RUN_ID = true;
+
 /**
  * Run ID formats supported by the system
  * Each format has:
@@ -346,11 +357,25 @@ function jobIdToTimestamp(jobId) {
  * @returns {string|null} - Normalized run ID in YYMMDD-HHMMSS format, or null if invalid
  */
 function normalizeRunId(runId) {
+  // Track the original value for diagnostic purposes
+  const originalRunId = runId;
+
   // Handle null/undefined
-  if (!runId) return null;
+  if (!runId) {
+    if (DEBUG_RUN_ID) {
+      logger.warn(`Null or undefined run ID passed to normalizeRunId`);
+    }
+    return null;
+  }
   
   // Handle objects incorrectly passed as runId
   if (typeof runId === 'object') {
+    if (STRICT_RUN_ID_MODE) {
+      logger.error(`STRICT MODE: Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
+      logger.error(`Stack trace: ${new Error().stack}`);
+      throw new Error(`STRICT RUN ID ERROR: Object passed to normalizeRunId instead of string`);
+    }
+    
     logger.error(`Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
     
     // Try to extract a usable ID
@@ -364,12 +389,30 @@ function normalizeRunId(runId) {
     }
   }
   
+  // CRITICAL FIX: Special handling for compound run IDs like "masterRunId-clientId"
+  // If it's already in our compound format (contains a dash followed by alphanumeric clientId),
+  // we should NOT attempt to normalize it further as that would break the client-specific part
+  if (typeof runId === 'string' && runId.match(/^[\w\d]+-[\w\d]+$/)) {
+    if (DEBUG_RUN_ID) {
+      logger.debug(`Detected compound run ID pattern: "${runId}" - preserving as is`);
+    }
+    return runId;
+  }
+  
   // Ensure we have a string
   const safeRunId = String(runId);
   
   // If it's already in standard format, return it
   if (RUN_ID_FORMATS.STANDARD.regex.test(safeRunId)) {
     return safeRunId;
+  }
+  
+  // In strict mode, we don't allow normalization of non-standard run IDs
+  // This forces callers to use proper run IDs from the start
+  if (STRICT_RUN_ID_MODE && originalRunId !== null && originalRunId !== undefined) {
+    logger.error(`STRICT MODE: Attempted to normalize non-standard run ID: "${safeRunId}"`);
+    logger.error(`Stack trace: ${new Error().stack}`);
+    throw new Error(`STRICT RUN ID ERROR: Non-standard run ID format encountered: "${safeRunId}"`);
   }
   
   // Try each format to see if it matches
@@ -385,11 +428,23 @@ function normalizeRunId(runId) {
 }
 
 /**
- * Compatibility method for legacy code - aliases generateTimestampRunId
+ * Compatibility method for legacy code - now throws an error to identify remaining usage
  * @returns {string} Generated run ID in timestamp format
+ * @throws {Error} Always throws an error to identify legacy code that should be updated
  */
-function generateRunId() {
-  return generateTimestampRunId();
+function generateRunId(clientId) {
+  const error = new Error(
+    'DEPRECATED: generateRunId() has been removed. ' +
+    'Use generateTimestampRunId() directly instead. ' +
+    'See RUN-ID-SINGLE-SOURCE-OF-TRUTH.md for migration guide.'
+  );
+  
+  // Log detailed information about the call
+  logger.error(`Legacy generateRunId called${clientId ? ` for client ${clientId}` : ''}`);
+  logger.error(`Stack trace: ${error.stack}`);
+  
+  // Throw the error to force updating the code
+  throw error;
 }
 
 /**

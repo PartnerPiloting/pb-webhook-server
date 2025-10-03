@@ -523,9 +523,10 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     const { parentRunId } = aiDependencies;
     
     if (parentRunId) {
-      // Use the parent run ID but normalize it to ensure consistent format
-      runId = unifiedRunIdService.normalizeRunId(parentRunId);
-      console.log(`Using normalized parent run ID: ${runId} for lead scoring job ${jobId}`);
+      // CRITICAL FIX: If we have a parent run ID, use it directly without normalization
+      // to maintain consistent identifier throughout the process chain
+      runId = parentRunId;
+      console.log(`Using parent run ID as-is: ${runId} for lead scoring job ${jobId}`);
     } else {
       // Generate a new run ID using the unified service
       runId = unifiedRunIdService.generateTimestampRunId();
@@ -1243,7 +1244,8 @@ async function processPostScoringInBackground(jobId, stream, options) {
       
       try {
         // Generate a run ID for this client process
-        const clientRunId = options.parentRunId || JobTracking.generateRunId();
+        // UPDATED: Now using unifiedRunIdService directly for better consistency
+        const clientRunId = options.parentRunId || unifiedRunIdService.generateTimestampRunId();
         
         // Run post scoring for this client with timeout
         const clientResult = await Promise.race([
