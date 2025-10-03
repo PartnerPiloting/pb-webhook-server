@@ -64,6 +64,17 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
     if (!runId) {
         throw new Error('Run ID is required for post scoring operations');
     }
+    
+    // FIX: Initialize normalizedRunId at the beginning of the function
+    // This ensures it's available throughout the entire function scope
+    let normalizedRunId;
+    try {
+        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+    } catch (error) {
+        // Fallback to original runId if normalization fails
+        normalizedRunId = runId;
+    }
+    
     // Create system-level logger for multi-tenant operations using safe creation
     const systemLogger = createSafeLogger('SYSTEM', null, 'post_batch_scorer');
     
@@ -107,6 +118,12 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
             
             try {
                 // Explicitly pass the normalized runId to ensure consistency
+                // FIX: Added defensive check to ensure normalizedRunId is always defined
+                if (!normalizedRunId) {
+                    clientLogger.warn(`normalizedRunId was undefined, using fallback runId: ${runId}`);
+                    normalizedRunId = runId;
+                }
+                
                 const clientResult = await processClientPostScoring(client, limit, clientLogger, { 
                     ...options, 
                     diagnosticsCollector,
