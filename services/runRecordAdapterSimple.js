@@ -30,8 +30,10 @@ const unifiedRunIdService = require('./unifiedRunIdService');
 // Import field validator for consistent field naming
 // Removed duplicate STATUS_VALUES import, using the unified constants directly 
 const { FIELD_NAMES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
-const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 const { CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+// Import status utility functions for safe status handling
+const { getStatusString } = require('../utils/statusUtils');
 
 /**
  * Helper function to get a logger from options or create a new one
@@ -357,11 +359,15 @@ async function completeRunRecord(params) {
     if (typeof status === 'boolean') {
       success = status;
     } else if (typeof status === 'string' && status) {
-      // CRITICAL FIX: Double protection against toLowerCase() errors
-      // 1. Check if status is a valid string AND not empty
-      // 2. Use a try-catch to handle any remaining edge cases
+      // IMPROVEMENT: Use centralized statusUtils to safely handle toLowerCase conversion
+      // This maintains the defensive programming approach while using standardized utilities
       try {
-        const statusStr = String(status).toLowerCase();
+        // Use existing getStatusString utility if status resembles a status key
+        // Otherwise just use safe toLowerCase with proper type checking
+        const statusStr = status.toUpperCase() === status && status in CLIENT_RUN_STATUS_VALUES 
+          ? getStatusString(status)
+          : String(status).toLowerCase();
+          
         success = statusStr === 'completed' || statusStr === 'success';
       } catch (error) {
         logger.warn(`[${source}] Error converting status to lowercase: ${error.message}`);
