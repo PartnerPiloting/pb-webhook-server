@@ -47,11 +47,17 @@ function getStatusString(statusValue = 'completed') {
     return 'completed';
   }
   
-  // Handle different types
-  const statusStr = String(statusValue).trim();
-  
-  // Normalize to lowercase for consistency
-  return statusStr.toLowerCase();
+  try {
+    // Handle different types
+    const statusStr = String(statusValue).trim();
+    
+    // Normalize to lowercase for consistency
+    return statusStr.toLowerCase();
+  } catch (error) {
+    // Handle any unexpected errors when converting to string or calling toLowerCase
+    console.error(`Error in getStatusString: ${error.message}`);
+    return 'completed'; // Return default value on error
+  }
 }
 
 // This function has been moved to a static method in the JobTracking class
@@ -164,7 +170,14 @@ class JobTracking {
         runId = String(runId);
       }
       
-      // Normalize using the unified service
+      // CRITICAL FIX: Check if run ID contains a client-specific component (format: baseId-clientId)
+      // If it does, we should preserve it exactly as is to maintain the client-specific connection
+      if (typeof runId === 'string' && runId.match(/^[\w\d]+-[\w\d]+$/)) {
+        log.debug(`Run ID contains client-specific component, preserving as-is: ${runId}`);
+        return runId;
+      }
+      
+      // For other cases, normalize using the unified service
       const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
       
       // Enforce standard if required
@@ -356,8 +369,9 @@ class JobTracking {
       // Prepare update fields - only use fields that exist
       const updateFields = {};
       
-      // CRITICAL: Handle status update with special logic - check both legacy and standardized field names
-      const statusValue = 'status' in updates ? updates.status : (JOB_TRACKING_FIELDS.STATUS in updates ? updates[JOB_TRACKING_FIELDS.STATUS] : null);
+      // CRITICAL: Handle status update with special logic - always use constants for field names
+      // Remove legacy lowercase 'status' check to prevent field name errors
+      const statusValue = JOB_TRACKING_FIELDS.STATUS in updates ? updates[JOB_TRACKING_FIELDS.STATUS] : null;
       if (statusValue !== null) {
         updateFields[JOB_TRACKING_FIELDS.STATUS] = statusValue;
         
@@ -367,7 +381,7 @@ class JobTracking {
         
         // If status is transitioning to a completed state, set end time if not provided
         const isCompletedState = ['completed', 'failed', 'completed with errors', 'no leads to score'].includes(safeStatusValue);
-        const hasEndTime = 'endTime' in updates || JOB_TRACKING_FIELDS.END_TIME in updates;
+        const hasEndTime = JOB_TRACKING_FIELDS.END_TIME in updates;
         if (isCompletedState && !hasEndTime) {
           const endTime = new Date().toISOString();
           updateFields[JOB_TRACKING_FIELDS.END_TIME] = endTime;
@@ -615,8 +629,9 @@ class JobTracking {
       
       // Use the globally defined list of formula fields
       
-      // CRITICAL: Handle status update with special logic - check both legacy and standardized field names
-      const statusValue = 'status' in updates ? updates.status : (CLIENT_RUN_FIELDS.STATUS in updates ? updates[CLIENT_RUN_FIELDS.STATUS] : null);
+      // CRITICAL: Handle status update with special logic - always use constants for field names
+      // Remove legacy lowercase 'status' check to prevent field name errors
+      const statusValue = CLIENT_RUN_FIELDS.STATUS in updates ? updates[CLIENT_RUN_FIELDS.STATUS] : null;
       if (statusValue !== null) {
         updateFields[CLIENT_RUN_FIELDS.STATUS] = statusValue;
         
@@ -626,7 +641,7 @@ class JobTracking {
         
         // If status is transitioning to a completed state, set end time if not provided
         const isCompletedState = ['completed', 'failed', 'completed with errors', 'no leads to score'].includes(safeStatusValue);
-        const hasEndTime = 'endTime' in updates || CLIENT_RUN_FIELDS.END_TIME in updates;
+        const hasEndTime = CLIENT_RUN_FIELDS.END_TIME in updates;
         if (isCompletedState && !hasEndTime) {
           const endTime = new Date().toISOString();
           updateFields[CLIENT_RUN_FIELDS.END_TIME] = endTime;
@@ -778,7 +793,39 @@ class JobTracking {
       }).firstPage();
       
       if (!records || records.length === 0) {
-        log.debug(`Job tracking record not found for standardized run ID: ${standardRunId}`);
+        // Enhanced diagnostic logging for the "record not found" case
+        const originalIdDiffers = runId !== standardRunId;
+        const errorDetails = {
+          originalRunId: runId,
+          standardizedRunId: standardRunId, 
+          wasNormalized: originalIdDiffers,
+          searchFormula: formula,
+          table: JOB_TRACKING_TABLE,
+          timestamp: new Date().toISOString(),
+          stack: new Error().stack
+        };
+        
+        log.error(`Job tracking record not found`, errorDetails);
+        
+        // For debugging purposes - log recent records to help troubleshoot
+        try {
+          const recentRecords = await masterBase(JOB_TRACKING_TABLE).select({
+            maxRecords: 5,
+            sort: [{field: JOB_TRACKING_FIELDS.START_TIME, direction: 'desc'}]
+          }).firstPage();
+          
+          if (recentRecords && recentRecords.length > 0) {
+            const recentIds = recentRecords.map(r => ({
+              id: r.id,
+              runId: r.fields[JOB_TRACKING_FIELDS.RUN_ID],
+              startTime: r.fields[JOB_TRACKING_FIELDS.START_TIME]
+            }));
+            log.debug(`Recent job tracking records for comparison:`, {recentIds});
+          }
+        } catch (lookupError) {
+          log.error(`Failed to look up recent records: ${lookupError.message}`);
+        }
+        
         return null;
       }
       
@@ -1204,9 +1251,9 @@ class JobTracking {
                               (!finalMetrics[CLIENT_RUN_FIELDS.POSTS_EXAMINED_FOR_SCORING] || 
                                 finalMetrics[CLIENT_RUN_FIELDS.POSTS_EXAMINED_FOR_SCORING] === 0);
       
-      // Check both legacy and standardized field names for status
-      const explicitStatus = finalMetrics && ('status' in finalMetrics ? finalMetrics.status : 
-                          (CLIENT_RUN_FIELDS.STATUS in finalMetrics ? finalMetrics[CLIENT_RUN_FIELDS.STATUS] : null));
+      // STANDARDIZATION FIX: Only use constant field names, eliminate legacy lowercase checks
+      const explicitStatus = finalMetrics && CLIENT_RUN_FIELDS.STATUS in finalMetrics ? 
+                          finalMetrics[CLIENT_RUN_FIELDS.STATUS] : null;
       if (explicitStatus !== null) {
         // If status is explicitly provided, use that
         status = explicitStatus;

@@ -171,9 +171,25 @@ async function apifyWebhookHandler(req, res) {
             logger.info(`Using newly created job run ID: ${jobRunId} from orchestration service`);
         }
         
-        // CRITICAL FIX: Ensure jobRunId is properly validated before passing to background process
-        const validatedJobRunId = typeof jobRunId === 'string' ? jobRunId : 
-                                 (jobRunId && jobRunId.runId ? jobRunId.runId : String(jobRunId));
+        // CRITICAL FIX: Enforce strict run ID handling - no normalization, preserve exact format
+        // This maintains the single-source-of-truth principle for run IDs
+        let validatedJobRunId;
+        
+        if (typeof jobRunId === 'string') {
+            // Use string value directly without any transformation
+            validatedJobRunId = jobRunId;
+            logger.info(`Using string job run ID as-is: ${validatedJobRunId}`);
+        } else if (jobRunId && jobRunId.runId) {
+            // Extract runId property
+            validatedJobRunId = jobRunId.runId;
+            logger.info(`Extracted job run ID from object: ${validatedJobRunId}`);
+        } else {
+            // Convert to string but log a warning about non-standard input
+            validatedJobRunId = String(jobRunId);
+            logger.warn(`Converted non-standard job run ID to string: ${validatedJobRunId} (original type: ${typeof jobRunId})`);
+        }
+        
+        logger.info(`Using validated job run ID: ${validatedJobRunId} for webhook processing`);
         
         // Track profiles submitted for harvesting
         try {

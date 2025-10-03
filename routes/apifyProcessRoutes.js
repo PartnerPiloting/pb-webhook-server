@@ -564,7 +564,8 @@ async function processClientHandler(req, res) {
       }
 
       // Generate a proper run ID using runIdService
-      const placeholderRunId = runIdService.generateRunId(clientId);
+      // UPDATED: Using generateTimestampRunId directly for consistency
+      const placeholderRunId = runIdService.generateTimestampRunId(clientId);
       console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: Generated run ID: ${placeholderRunId}`);
       await base(LEADS_TABLE).update(pick.map(r => ({
         id: r.id,
@@ -664,7 +665,8 @@ async function processClientHandler(req, res) {
     
     if (isStandaloneRun) {
       // Generate a parent run ID just for tracking purposes, but don't create a record
-      parentRunId = generateRunId(clientId);
+      // UPDATED: Using generateTimestampRunId directly for consistency
+      parentRunId = runIdService.generateTimestampRunId(clientId);
       console.log(`[DEBUG-RUN-ID-FLOW] Running in standalone mode (no metrics recording) with tracking ID: ${parentRunId}`);
     } else {
       console.log(`[DEBUG-RUN-ID-FLOW] Using provided parent run ID: ${parentRunId}`);
@@ -720,10 +722,39 @@ async function processClientHandler(req, res) {
     console.log(`[DEBUG-RUN-ID-FLOW] runIdService type: ${typeof runIdService}`);
     console.log(`[DEBUG-RUN-ID-FLOW] runIdService.normalizeRunId type: ${typeof runIdService.normalizeRunId}`);
     
-    // Normalize the run ID
-    runIdToUse = runIdService.normalizeRunId(parentRunId, clientId);
+    // CRITICAL FIX: STRICT RUN ID HANDLING
+    // This implements a true single-source-of-truth pattern for run IDs
+    // No more implicit conversions or normalizations - explicit control only
     
-    console.log(`[DEBUG-RUN-ID-FLOW] After normalization: ${runIdToUse} (original: ${parentRunId}, clientId: ${clientId})`);
+    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 STRICT RUN ID CHECK - Available sources:`);
+    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - req.specificRunId: ${req.specificRunId || 'not provided'}`);
+    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - req.query.runId: ${req.query?.runId || 'not provided'}`);
+    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - req.body.runId: ${req.body?.runId || 'not provided'}`);
+    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - parentRunId: ${parentRunId || 'not provided'}`);
+    
+    // Priority order for run ID sources:
+    if (req.specificRunId) {
+      runIdToUse = req.specificRunId;
+      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using provided specific run ID: ${runIdToUse}`);
+    } else if (req.query?.runId) {
+      runIdToUse = req.query.runId;
+      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using run ID from query: ${runIdToUse}`);
+    } else if (req.body?.runId) {
+      runIdToUse = req.body.runId;
+      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using run ID from body: ${runIdToUse}`);
+    } else if (parentRunId) {
+      // Use parent run ID directly without normalization
+      runIdToUse = parentRunId;
+      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using parent run ID directly: ${runIdToUse}`);
+    } else {
+      // Only if we have no other source, generate a new ID
+      // This should be rare as most calls should have a runId from upstream
+      console.log(`[DEBUG-RUN-ID-FLOW] ⚠️ WARNING: No run ID provided, generating new one`);
+      runIdToUse = runIdService.generateTimestampRunId(clientId);
+      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Generated new run ID: ${runIdToUse}`);
+    }
+    
+    console.log(`[DEBUG-RUN-ID-FLOW] Using run ID: ${runIdToUse} (clientId: ${clientId})`);
     
     // Verify that we have a runIdToUse (from parent) - it should always be provided
     if (!runIdToUse) {
@@ -1102,8 +1133,10 @@ async function getAllClients() {
  */
 async function processAllClientsInBackground(clients, path, parentRunId) {
   try {
-    // Generate master run ID with a generic client ID prefix for batch processing
-    const masterRunId = generateRunId('batch-all-clients');
+    // Use the parentRunId if provided, otherwise generate a new master run ID
+    // This maintains the connection with the parent process that initiated this batch
+    // UPDATED: Using generateTimestampRunId directly for consistency
+    const masterRunId = parentRunId || runIdService.generateTimestampRunId('batch-all-clients');
     console.log(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
     
     let endpoint = path.includes('smart-resume') ? 'smart-resume' : 'apify';
@@ -1138,16 +1171,27 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
           continue;
         }
         
-        // Create a client-specific run ID
+        // Create a consistent client-specific run ID that maintains the connection to the master run
+        // This ensures job tracking records can be found consistently
         const clientRunId = `${masterRunId}-${client.clientId}`;
+        console.log(`[${endpoint}/batch] Using consistent clientRunId: ${clientRunId} for client ${client.clientId}`);
         
         // Call the process-client handler directly with a mock request/response
+        // IMPORTANT: We use the exact same runId throughout the chain to maintain consistency
         const mockReq = {
           headers: { 'x-client-id': client.clientId, 'authorization': `Bearer ${process.env.PB_WEBHOOK_SECRET}` },
-          query: { parentRunId: masterRunId },
-          body: { parentRunId: masterRunId },  // Add parentRunId in both query and body for redundancy
-          path
+          query: { parentRunId: masterRunId, runId: clientRunId },
+          body: { parentRunId: masterRunId, runId: clientRunId },  // Add runId in both query and body for redundancy
+          path,
+          // Store the specific clientRunId to prevent regeneration - this is the SINGLE SOURCE OF TRUTH
+          specificRunId: clientRunId
         };
+        
+        console.log(`[${endpoint}/batch] 🔍 STRICT RUN ID FLOW: For client ${client.clientId}:`);
+        console.log(`[${endpoint}/batch] 🔍 - Source masterRunId: ${masterRunId}`);
+        console.log(`[${endpoint}/batch] 🔍 - Client-specific runId: ${clientRunId}`);
+        console.log(`[${endpoint}/batch] 🔍 - This specific runId will be preserved throughout the entire chain`);
+        
         
         // Use a promise to capture the response
         const responsePromise = new Promise(resolve => {

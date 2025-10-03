@@ -50,7 +50,8 @@ async function startJob(params) {
     }
     
     // Generate a new run ID - this is the ONLY place run IDs should be generated for jobs
-    const runId = JobTracking.generateRunId();
+    // UPDATED: Now using unifiedRunIdService directly for better consistency
+    const runId = unifiedRunIdService.generateTimestampRunId();
     log.info(`Generated run ID ${runId} for job type ${jobType}`);
     
     // Enhanced initial data with timestamp - don't use 'Job Type' field as it doesn't exist
