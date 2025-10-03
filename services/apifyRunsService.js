@@ -10,6 +10,8 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const runIdService = require('./unifiedRunIdService');
 // Import field constants
 const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
+// Import status constants
+const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 // Cache for performance (short-lived since runs are typically short)
 let runsCache = new Map();
@@ -70,7 +72,7 @@ async function createApifyRun(runId, clientId, options = {}) {
         const recordData = {
             'Run ID': normalizedRunId,
             'Client ID': clientId,
-            'Status': 'RUNNING',
+            'Status': STATUS_VALUES.RUNNING,
             'Created At': new Date().toISOString(),
             'Actor ID': options.actorId || '',
             'Target URLs': Array.isArray(options.targetUrls) ? options.targetUrls.join('\n') : '',
@@ -196,7 +198,15 @@ async function updateApifyRun(runId, updateData) {
         };
 
         if (updateData.status) {
-            updateFields[CLIENT_RUN_FIELDS.STATUS] = updateData.status;
+            // Map Apify status values to our standardized status values
+            let normalizedStatus = updateData.status;
+            if (updateData.status === 'FAILED') {
+                normalizedStatus = STATUS_VALUES.FAILED;
+            } else if (updateData.status === 'SUCCEEDED') {
+                normalizedStatus = STATUS_VALUES.COMPLETED;
+            }
+            
+            updateFields[CLIENT_RUN_FIELDS.STATUS] = normalizedStatus;
             if (updateData.status === 'SUCCEEDED' || updateData.status === 'FAILED') {
                 updateFields['Completed At'] = new Date().toISOString();
             }
