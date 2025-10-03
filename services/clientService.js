@@ -4,19 +4,12 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
-const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
+const { MASTER_TABLES, CLIENT_EXECUTION_LOG_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { parseServiceLevel } = require('../utils/serviceLevel');
 const { safeFieldUpdate } = require('../utils/errorHandler');
 
 // Constants for fields - import from unified constants
-const CLIENT_FIELDS = {
-    CLIENT_ID: 'Client ID',
-    NAME: 'Name',
-    STATUS: 'Status',
-    BASE_ID: 'Base ID', 
-    SERVICE_LEVEL: 'Service Level',
-    ACTIVE: 'Active'
-};
+const { CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
 
 // Cache for client data to avoid repeated API calls
 let clientsCache = null;
@@ -90,7 +83,7 @@ async function getAllClients() {
                 const clientName = record.get('Client Name'); 
                 const status = record.get(CLIENT_FIELDS.STATUS);
                 const airtableBaseId = record.get('Airtable Base ID');
-                const executionLog = record.get('Execution Log') || '';
+                const executionLog = record.get(CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG) || '';
                 const wpUserId = record.get('WordPress User ID');
                 const serviceLevelRaw = record.get(CLIENT_FIELDS.SERVICE_LEVEL) || 1;
                 const serviceLevel = parseServiceLevel(serviceLevelRaw); // Parse "2-Lead Scoring + Post Scoring" → 2
@@ -274,7 +267,7 @@ async function updateExecutionLog(clientId, logEntry) {
             {
                 id: client.id,
                 fields: {
-                    'Execution Log': updatedLog
+                    [CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG]: updatedLog
                 }
             }
         ]);
@@ -300,7 +293,7 @@ async function updateExecutionLog(clientId, logEntry) {
  */
 function formatExecutionLog(executionData) {
     const {
-        status = 'Unknown',
+        [CLIENT_EXECUTION_LOG_FIELDS.STATUS]: status = 'Unknown',
         leadsProcessed = { successful: 0, failed: 0, total: 0 },
         postScoring = { successful: 0, failed: 0, total: 0 },
         duration = 'Unknown',
@@ -313,32 +306,32 @@ function formatExecutionLog(executionData) {
     const timestamp = new Date().toISOString();
     
     let logEntry = `=== EXECUTION: ${timestamp} ===\n`;
-    logEntry += `STATUS: ${status}\n`;
-    logEntry += `LEADS PROCESSED: ${leadsProcessed.successful}/${leadsProcessed.total} successful\n`;
+    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.STATUS}: ${status}\n`;
+    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.LEADS_PROCESSED}: ${leadsProcessed.successful}/${leadsProcessed.total} successful\n`;
     
     if (postScoring.total > 0) {
-        logEntry += `POST SCORING: ${postScoring.successful}/${postScoring.total} successful\n`;
+        logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.POSTS_SCORED}: ${postScoring.successful}/${postScoring.total} successful\n`;
     }
     
-    logEntry += `DURATION: ${duration}\n`;
-    logEntry += `TOKENS USED: ${tokensUsed}\n`;
+    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.DURATION}: ${duration}\n`;
+    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.TOKENS_USED}: ${tokensUsed}\n`;
 
     if (errors.length > 0) {
-        logEntry += `\nERRORS:\n`;
+        logEntry += `\n${CLIENT_EXECUTION_LOG_FIELDS.ERRORS}:\n`;
         errors.forEach(error => {
             logEntry += `- ${error}\n`;
         });
     }
 
     if (Object.keys(performance).length > 0) {
-        logEntry += `\nPERFORMANCE:\n`;
+        logEntry += `\n${CLIENT_EXECUTION_LOG_FIELDS.PERFORMANCE}:\n`;
         Object.entries(performance).forEach(([key, value]) => {
             logEntry += `- ${key}: ${value}\n`;
         });
     }
 
     if (nextAction) {
-        logEntry += `\nNEXT ACTION: ${nextAction}`;
+        logEntry += `\n${CLIENT_EXECUTION_LOG_FIELDS.NEXT_ACTION}: ${nextAction}`;
     }
 
     return logEntry;
@@ -357,7 +350,7 @@ async function logExecution(clientId, executionData) {
         if (executionData.type === 'POST_SCORING') {
             // For post scoring, format the log appropriately
             const formattedData = {
-                status: executionData.status || 'Unknown',
+                [CLIENT_EXECUTION_LOG_FIELDS.STATUS]: executionData.status || 'Unknown',
                 leadsProcessed: { successful: 0, failed: 0, total: 0 }, // No leads processed in post scoring
                 postScoring: { 
                     successful: executionData.postsScored || 0, 
