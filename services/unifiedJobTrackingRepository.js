@@ -11,9 +11,12 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const baseManager = require('./airtable/baseManager');
 const unifiedRunIdService = require('./unifiedRunIdService');
 
+// Import field name constants
+const { CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+
 // Table names
-const JOB_TRACKING_TABLE = 'Job Tracking';
-const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
+const JOB_TRACKING_TABLE = TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
 
 // Default logger - using safe creation
 const logger = createSafeLogger('SYSTEM', null, 'unified_job_tracking');
@@ -222,13 +225,13 @@ async function updateJobTrackingRecord(params) {
     // Prepare update fields
     const updateFields = {};
     
-    // Map common update fields to Airtable field names
-    if (updates.status) updateFields['Status'] = updates.status;
-    if (updates.endTime) updateFields['End Time'] = updates.endTime;
-    if (updates.error) updateFields['Error'] = updates.error;
-    if (updates.progress) updateFields['Progress'] = updates.progress;
-    if (updates.itemsProcessed) updateFields['Items Processed'] = updates.itemsProcessed;
-    if (updates.notes) updateFields['System Notes'] = updates.notes;
+    // Map common update fields to Airtable field names using constants
+    if (updates.status) updateFields[JOB_TRACKING_FIELDS.STATUS] = updates.status;
+    if (updates.endTime) updateFields[JOB_TRACKING_FIELDS.END_TIME] = updates.endTime;
+    if (updates.error) updateFields['Error'] = updates.error; // Keep as is if no constant available
+    if (updates.progress) updateFields['Progress'] = updates.progress; // Keep as is if no constant available
+    if (updates.itemsProcessed) updateFields['Items Processed'] = updates.itemsProcessed; // Keep as is if no constant available
+    if (updates.notes) updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates.notes;
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
@@ -495,22 +498,23 @@ async function updateClientRunRecord(params) {
     // Prepare update fields
     const updateFields = {};
     
-    // Map common update fields to Airtable field names
-    if (updates.status) updateFields['Status'] = updates.status;
-    if (updates.endTime) updateFields['End Time'] = updates.endTime;
-    if (updates.leadsProcessed) updateFields['Leads Processed'] = updates.leadsProcessed;
-    if (updates.postsProcessed) updateFields['Posts Processed'] = updates.postsProcessed;
-    if (updates.errors) updateFields['Errors'] = updates.errors;
-    if (updates.notes) updateFields['System Notes'] = updates.notes;
-    if (updates.tokenUsage) updateFields['Token Usage'] = updates.tokenUsage;
-    if (updates.promptTokens) updateFields['Prompt Tokens'] = updates.promptTokens;
-    if (updates.completionTokens) updateFields['Completion Tokens'] = updates.completionTokens;
-    if (updates.totalTokens) updateFields['Total Tokens'] = updates.totalTokens;
+    // Map common update fields to Airtable field names using constants
+    if (updates.status) updateFields[CLIENT_RUN_FIELDS.STATUS] = updates.status;
+    if (updates.endTime) updateFields[CLIENT_RUN_FIELDS.END_TIME] = updates.endTime;
+    if (updates.leadsProcessed) updateFields[CLIENT_RUN_FIELDS.PROFILES_EXAMINED] = updates.leadsProcessed;
+    if (updates.postsProcessed) updateFields[CLIENT_RUN_FIELDS.POSTS_EXAMINED] = updates.postsProcessed;
+    if (updates.errors) updateFields[CLIENT_RUN_FIELDS.LEAD_SCORING_ERRORS] = updates.errors;
+    if (updates.notes) updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = updates.notes;
+    if (updates.tokenUsage) updateFields[CLIENT_RUN_FIELDS.LEAD_SCORING_TOKENS] = updates.tokenUsage;
+    if (updates.promptTokens) updateFields['Prompt Tokens'] = updates.promptTokens; // Keep as is if not in constants
+    if (updates.completionTokens) updateFields['Completion Tokens'] = updates.completionTokens; // Keep as is if not in constants
+    if (updates.totalTokens) updateFields[CLIENT_RUN_FIELDS.TOTAL_TOKENS_USED] = updates.totalTokens;
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
       if (!['status', 'endTime', 'leadsProcessed', 'postsProcessed', 'errors', 'notes', 
           'tokenUsage', 'promptTokens', 'completionTokens', 'totalTokens', 'Success Rate'].includes(key)) {
+        // For any other fields, use the constant if available or fallback to the key itself
         updateFields[key] = updates[key];
       }
     });

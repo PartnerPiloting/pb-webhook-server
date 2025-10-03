@@ -8,6 +8,8 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 // Updated to use unified run ID service
 const runIdService = require('./unifiedRunIdService');
+// Import field constants
+const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
 
 // Cache for performance (short-lived since runs are typically short)
 let runsCache = new Map();
@@ -194,7 +196,7 @@ async function updateApifyRun(runId, updateData) {
         };
 
         if (updateData.status) {
-            updateFields['Status'] = updateData.status;
+            updateFields[CLIENT_RUN_FIELDS.STATUS] = updateData.status;
             if (updateData.status === 'SUCCEEDED' || updateData.status === 'FAILED') {
                 updateFields['Completed At'] = new Date().toISOString();
             }
