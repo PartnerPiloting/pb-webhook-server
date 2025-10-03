@@ -26,7 +26,7 @@ const runRecordService = require('./services/runRecordAdapterSimple');
 const { FIELD_NAMES, STATUS_VALUES, createValidatedObject } = require('./utils/airtableFieldValidator');
 
 // --- Structured Logging ---
-const { createLogger, getOrCreateLogger } = require('./utils/unifiedLoggerFactory');
+const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');
 
 // --- Centralized Dependencies (will be passed into 'run' function) ---
 let BATCH_SCORER_VERTEX_AI_CLIENT;
