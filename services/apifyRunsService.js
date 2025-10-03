@@ -59,15 +59,25 @@ function initializeMasterClientsBase() {
  * @param {string} options.actorId - Apify Actor ID
  * @param {Array<string>} options.targetUrls - Target URLs being scraped
  * @param {string} options.mode - Run mode ('webhook' or 'inline')
+ * @param {string} options.systemRunId - Our system-generated run ID to maintain mapping
  * @returns {Promise<Object>} Created record
  */
 async function createApifyRun(runId, clientId, options = {}) {
     try {
         const base = initializeMasterClientsBase();
         
-        // Normalize the Apify run ID with the client suffix for consistent format
-        const normalizedRunId = runIdService.registerApifyRunId(runId, clientId);
-        console.log(`[ApifyRuns] Normalizing Apify run ID: ${runId} -> ${normalizedRunId} for client ${clientId}`);
+        // Use systemRunId if provided, otherwise fall back to registerApifyRunId
+        // This prevents trying to normalize non-standard Apify run IDs
+        let normalizedRunId;
+        
+        if (options.systemRunId) {
+            normalizedRunId = options.systemRunId;
+            console.log(`[ApifyRuns] Using provided system run ID: ${normalizedRunId} for Apify run: ${runId} and client ${clientId}`);
+        } else {
+            // Only try to normalize if no systemRunId provided (backwards compatibility)
+            normalizedRunId = runIdService.registerApifyRunId(runId, clientId);
+            console.log(`[ApifyRuns] Normalizing Apify run ID: ${runId} -> ${normalizedRunId} for client ${clientId}`);
+        }
         
         const recordData = {
             'Run ID': normalizedRunId,
@@ -78,6 +88,8 @@ async function createApifyRun(runId, clientId, options = {}) {
             'Target URLs': Array.isArray(options.targetUrls) ? options.targetUrls.join('\n') : '',
             // Mode field might not exist in the Apify table, remove if it causes issues
             'Mode': options.mode || 'webhook',
+            // Store the original Apify run ID to maintain the mapping
+            'Apify Run ID': runId,
             // Last Updated field might not exist in the Apify table, remove if it causes issues
             'Last Updated': new Date().toISOString()
         };
@@ -118,11 +130,13 @@ async function createApifyRun(runId, clientId, options = {}) {
 }
 
 /**
- * Get Apify run by run ID
- * @param {string} runId - Apify run ID
+ * Get Apify run by run ID or Apify run ID
+ * @param {string} runId - Either system run ID or Apify run ID
+ * @param {Object} options - Options for retrieval
+ * @param {boolean} options.isApifyId - Whether the ID is an Apify run ID (defaults to checking both)
  * @returns {Promise<Object|null>} Run data or null if not found
  */
-async function getApifyRun(runId) {
+async function getApifyRun(runId, options = {}) {
     try {
         // Check cache first
         const cached = runsCache.get(runId);
@@ -135,8 +149,21 @@ async function getApifyRun(runId) {
         
         console.log(`[ApifyRuns] Fetching run data for: ${runId}`);
         
+        // Build the filter formula based on whether we're looking up by Apify run ID or system run ID
+        let filterFormula;
+        if (options.isApifyId === true) {
+            // Only check the Apify Run ID column
+            filterFormula = `{Apify Run ID} = '${runId}'`;
+        } else if (options.isApifyId === false) {
+            // Only check the system Run ID column
+            filterFormula = `{Run ID} = '${runId}'`;
+        } else {
+            // Check both columns (default behavior)
+            filterFormula = `OR({Run ID} = '${runId}', {Apify Run ID} = '${runId}')`;
+        }
+        
         const records = await base('Apify').select({
-            filterByFormula: `{Run ID} = '${runId}'`,
+            filterByFormula: filterFormula,
             maxRecords: 1
         }).firstPage();
 
@@ -154,6 +181,8 @@ async function getApifyRun(runId) {
             createdAt: record.get('Created At'),
             actorId: record.fields['Actor ID'] ? record.get('Actor ID') : null,
             targetUrls: record.fields['Target URLs'] ? record.get('Target URLs') : '',
+            // Include Apify run ID if available
+            apifyRunId: record.fields['Apify Run ID'] ? record.get('Apify Run ID') : null,
             // Handle potentially missing fields
             mode: record.fields['Mode'] ? record.get('Mode') : 'webhook',
             lastUpdated: record.fields['Last Updated'] ? record.get('Last Updated') : new Date().toISOString(),
