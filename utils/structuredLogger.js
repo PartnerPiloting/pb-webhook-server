@@ -93,13 +93,15 @@ function createLogPrefix(clientId, sessionId, type) {
  * Structured logger class for consistent multi-tenant logging
  */
 class StructuredLogger {
-    constructor(clientId, sessionId = null, processType = null) {
+    constructor(clientId, sessionId = null, processType = null, skipWarning = false) {
         // WARN ABOUT DIRECT INSTANTIATION - new in refactoring
-        console.warn('⚠️ DIRECT INSTANTIATION OF STRUCTURED LOGGER DETECTED ⚠️');
-        console.warn('Please use unifiedLoggerFactory.js instead of direct instantiation:');
-        console.warn('  const { createLogger } = require("./utils/unifiedLoggerFactory");');
-        console.warn('  const logger = createLogger(clientId, sessionId, processType);');
-        console.trace(); // Show stack trace to identify the source
+        if (!skipWarning) {
+            console.warn('⚠️ DIRECT INSTANTIATION OF STRUCTURED LOGGER DETECTED ⚠️');
+            console.warn('Please use unifiedLoggerFactory.js instead of direct instantiation:');
+            console.warn('  const { createLogger } = require("./utils/unifiedLoggerFactory");');
+            console.warn('  const logger = createLogger(clientId, sessionId, processType);');
+            console.trace(); // Show stack trace to identify the source
+        }
         
         // ROOT CAUSE FIX: Validate parameters to prevent [object Object] issues
         
@@ -208,7 +210,14 @@ class StructuredLogger {
 
     // Create child logger for sub-operations with same session and process type
     createChild(subClientId = null) {
-        return new StructuredLogger(subClientId || this.clientId, this.sessionId, this.processType);
+        return new StructuredLogger(subClientId || this.clientId, this.sessionId, this.processType, true);
+    }
+    
+    // Static factory method to create logger instances without triggering the warning
+    static createLogger(clientId, sessionId = null, processType = null) {
+        // Create a new instance and bypass the warning by setting skipWarning to true
+        const logger = new StructuredLogger(clientId, sessionId, processType, true);
+        return logger;
     }
 }
 

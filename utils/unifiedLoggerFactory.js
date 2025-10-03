@@ -55,8 +55,9 @@ function createLogger(clientId, sessionId, processType, options = {}) {
   // Handle processType - ensure string
   const safeProcessType = processType ? String(processType) : 'unknown';
   
-  // Create logger with safe values
-  return new StructuredLogger(safeClientId, safeSessionId, safeProcessType);
+  // Create logger with safe values - using the internal factory method
+  // to avoid the warning about direct instantiation
+  return StructuredLogger.createLogger(safeClientId, safeSessionId, safeProcessType);
 }
 
 /**
