@@ -1142,9 +1142,19 @@ class JobTracking {
       
       // Numerical fields to aggregate (add to existing values)
       const numericFields = [
-        'Profiles Processed', 'Profiles Successfully Scored', 'Posts Processed', 
-        'Posts Successfully Scored', 'Errors', 'Total Tokens', 'Prompt Tokens', 
-        'Completion Tokens', 'Total Posts Harvested'
+        // Using constants from JOB_TRACKING_FIELDS to ensure consistency
+        JOB_TRACKING_FIELDS.CLIENTS_PROCESSED,
+        JOB_TRACKING_FIELDS.CLIENTS_SUCCEEDED,
+        JOB_TRACKING_FIELDS.CLIENTS_FAILED,
+        JOB_TRACKING_FIELDS.PROFILES_PROCESSED, 
+        JOB_TRACKING_FIELDS.PROFILES_SCORED, 
+        JOB_TRACKING_FIELDS.POSTS_PROCESSED, 
+        JOB_TRACKING_FIELDS.POSTS_SCORED, 
+        JOB_TRACKING_FIELDS.ERRORS, 
+        JOB_TRACKING_FIELDS.TOTAL_TOKENS, 
+        JOB_TRACKING_FIELDS.PROMPT_TOKENS, 
+        JOB_TRACKING_FIELDS.COMPLETION_TOKENS, 
+        JOB_TRACKING_FIELDS.TOTAL_POSTS_HARVESTED
       ];
       
       // Process each numeric metric for aggregation

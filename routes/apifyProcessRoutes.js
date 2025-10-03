@@ -1139,6 +1139,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
     const masterRunId = parentRunId || runIdService.generateTimestampRunId('batch-all-clients');
     console.log(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
     
+    // Changed from const to let to prevent "Assignment to constant variable" errors
     let endpoint = path.includes('smart-resume') ? 'smart-resume' : 'apify';
     const results = {
       masterRunId,
