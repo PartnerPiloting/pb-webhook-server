@@ -19,6 +19,8 @@ const clientService = require('./clientService');
 const runIdService = require('./unifiedRunIdService');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
+// Import status utility functions for safe status handling
+const { getStatusString } = require('../utils/statusUtils');
 
 // Constants for table names
 const JOB_TRACKING_TABLE = 'Job Tracking';
@@ -767,7 +769,12 @@ function countRecordTypes() {
   const counts = { running: 0, completed: 0, error: 0, other: 0 };
   
   for (const [_, record] of runRecordRegistry.entries()) {
-    const status = record.fields?.Status?.toLowerCase() || '';
+    // Use the safe status utility function instead of directly calling toLowerCase()
+    // This prevents "Cannot read properties of undefined (reading 'toLowerCase')" errors
+    const rawStatus = record.fields?.Status || '';
+    // Default to empty string if status is undefined
+    const status = typeof rawStatus === 'string' ? rawStatus.toLowerCase() : '';
+    
     if (status === 'running') {
       counts.running++;
     } else if (status === 'success' || status === 'completed') {
