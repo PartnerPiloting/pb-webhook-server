@@ -1,272 +1,96 @@
 /**
- * services/unifiedRunIdService.js
+ * Unified Run ID Service - Simplified Version
  * 
- * A unified service for run ID generation, conversion and management.
- * This service consolidates all run ID functionality to ensure consistent
- * handling across the entire application.
+ * This service manages run IDs throughout the system in a simplified manner.
+ * Key principles:
+ * 1. Run IDs are created once and passed through unchanged
+ * 2. Clear distinction between base run IDs and client-specific run IDs
+ * 3. Simple string operations instead of complex regex
+ * 4. No format detection or conversion - consistent format throughout
  */
 
-const { StructuredLogger } = require('../utils/structuredLogger');
-const { createSafeLogger } = require('../utils/loggerHelper');
+const { format } = require('date-fns');
+const logger = require('../utils/structuredLogger').getLogger('UnifiedRunIdService');
 
-// Default logger - using safe creation
-const logger = createSafeLogger('SYSTEM', null, 'unified_run_id_service');
-
-// In-memory store of active run IDs per client
-const activeRunIds = new Map();
-
-// Cache for record IDs to prevent redundant lookups
+// In-memory cache for run IDs to record IDs mapping
 const recordIdCache = new Map();
 
-// Default run ID prefix for generating new IDs
-const DEFAULT_RUN_ID_PREFIX = 'auto_gen';
-
-// STRICT MODE: When enabled, the service will throw errors for any
-// attempt to normalize or modify run IDs after their initial generation.
-// This enforces a single-source-of-truth pattern for run ID management.
-const STRICT_RUN_ID_MODE = true; 
-
-// Enable detailed logging for run ID operations
-const DEBUG_RUN_ID = true;
-
-/**
- * Run ID formats supported by the system
- * Each format has:
- * - name: String identifier for the format
- * - regex: Regular expression that matches this format
- * - extractTimestamp: Function to extract timestamp parts from this format
- * - toStandardFormat: Function to convert to standard YYMMDD-HHMMSS format
- */
-const RUN_ID_FORMATS = {
-  // Standard timestamp format: "YYMMDD-HHMMSS"
-  STANDARD: {
-    name: 'STANDARD',
-    regex: /^(\d{6})-(\d{6})$/,
-    extractTimestamp: (match) => ({
-      year: match[1].substring(0, 2),
-      month: match[1].substring(2, 4),
-      day: match[1].substring(4, 6),
-      hour: match[2].substring(0, 2),
-      minute: match[2].substring(2, 4),
-      second: match[2].substring(4, 6)
-    }),
-    toStandardFormat: (match) => match[0] // Already in standard format
-  },
-  
-  // External Apify run ID format: "YYMMDD-HHMMSS-apify-originalRunId"
-  APIFY_EXTERNAL: {
-    name: 'APIFY_EXTERNAL',
-    regex: /^(\d{6})-(\d{6})-apify-(.+)$/,
-    extractTimestamp: (match) => ({
-      year: match[1].substring(0, 2),
-      month: match[1].substring(2, 4),
-      day: match[1].substring(4, 6),
-      hour: match[2].substring(0, 2),
-      minute: match[2].substring(2, 4),
-      second: match[2].substring(4, 6),
-      apifyId: match[3]
-    }),
-    toStandardFormat: (match) => `${match[1]}-${match[2]}` // Extract just the timestamp portion
-  },
-  
-  // Client-suffixed format: "YYMMDD-HHMMSS-ClientId"
-  CLIENT_SUFFIX: {
-    name: 'CLIENT_SUFFIX',
-    regex: /^(\d{6})-(\d{6})-(.+)$/,
-    extractTimestamp: (match) => ({
-      year: match[1].substring(0, 2),
-      month: match[1].substring(2, 4),
-      day: match[1].substring(4, 6),
-      hour: match[2].substring(0, 2),
-      minute: match[2].substring(2, 4),
-      second: match[2].substring(4, 6),
-      clientId: match[3]
-    }),
-    toStandardFormat: (match) => `${match[1]}-${match[2]}`
-  },
-  
-  // Job process format: "job_post_scoring_stream1_20250929094802"
-  JOB_PROCESS: {
-    name: 'JOB_PROCESS',
-    regex: /^job_\w+_stream\d+_(\d{8})(\d{6})$/,
-    extractTimestamp: (match) => ({
-      year: match[1].substring(2, 4),
-      month: match[1].substring(4, 6),
-      day: match[1].substring(6, 8),
-      hour: match[2].substring(0, 2),
-      minute: match[2].substring(2, 4),
-      second: match[2].substring(4, 6)
-    }),
-    toStandardFormat: (match) => {
-      const timestamp = match[1] + match[2];
-      const year = timestamp.substring(2, 4);
-      const month = timestamp.substring(4, 6);
-      const day = timestamp.substring(6, 8);
-      const hour = timestamp.substring(8, 10);
-      const minute = timestamp.substring(10, 12);
-      const second = timestamp.substring(12, 14);
-      return `${year}${month}${day}-${hour}${minute}${second}`;
-    }
-  },
-  
-  // Job bypass format: "job_post_scoring_bypass_1717146242405" (uses Date.now())
-  JOB_BYPASS: {
-    name: 'JOB_BYPASS',
-    regex: /^job_\w+_bypass_(\d{13})$/,
-    extractTimestamp: (match) => {
-      const timestamp = new Date(parseInt(match[1]));
-      return {
-        year: timestamp.getFullYear().toString().slice(2),
-        month: (timestamp.getMonth() + 1).toString().padStart(2, '0'),
-        day: timestamp.getDate().toString().padStart(2, '0'),
-        hour: timestamp.getHours().toString().padStart(2, '0'),
-        minute: timestamp.getMinutes().toString().padStart(2, '0'),
-        second: timestamp.getSeconds().toString().padStart(2, '0')
-      };
-    },
-    toStandardFormat: (match) => {
-      const timestamp = new Date(parseInt(match[1]));
-      const year = timestamp.getFullYear().toString().slice(2);
-      const month = (timestamp.getMonth() + 1).toString().padStart(2, '0');
-      const day = timestamp.getDate().toString().padStart(2, '0');
-      const hour = timestamp.getHours().toString().padStart(2, '0');
-      const minute = timestamp.getMinutes().toString().padStart(2, '0');
-      const second = timestamp.getSeconds().toString().padStart(2, '0');
-      return `${year}${month}${day}-${hour}${minute}${second}`;
-    }
-  }
-};
-
-/**
- * Detect the format of a run ID
- * @param {string} runId - Run ID to detect format for
- * @returns {Object|null} The detected format or null if no match
- */
-function detectRunIdFormat(runId) {
-  if (!runId || typeof runId !== 'string') {
-    return null;
-  }
-  
-  for (const formatKey in RUN_ID_FORMATS) {
-    const format = RUN_ID_FORMATS[formatKey];
-    const match = runId.match(format.regex);
-    if (match) {
-      return {
-        format,
-        match,
-        formatKey
-      };
-    }
-  }
-  
-  return null;
-}
-
-/**
- * Convert any run ID format to the standard YYMMDD-HHMMSS format
- * @param {string} runId - Run ID to convert
- * @returns {string|null} Standardized run ID or null if conversion fails
- */
-function convertToStandardFormat(runId) {
-  if (!runId || typeof runId !== 'string') {
-    logger.error(`Cannot convert null or non-string run ID to standard format: ${runId}`);
-    return null;
-  }
-  
-  const formatInfo = detectRunIdFormat(runId);
-  if (formatInfo) {
-    return formatInfo.format.toStandardFormat(formatInfo.match);
-  }
-  
-  logger.warn(`Couldn't detect format of run ID: ${runId}`);
-  return null;
-}
+// In-memory cache for active run IDs by client
+const activeRunIds = new Map();
 
 /**
  * Generate a timestamp-based run ID in the format YYMMDD-HHMMSS
- * @returns {string} Timestamp run ID
+ * This is the single source of truth for creating new run IDs
+ * @returns {string} New run ID in standard format
  */
-function generateTimestampRunId() {
+function generateRunId() {
   const now = new Date();
-  
-  // Format: YYMMDD-HHMMSS
-  const year = now.getFullYear().toString().slice(-2);
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const day = now.getDate().toString().padStart(2, '0');
-  const hours = now.getHours().toString().padStart(2, '0');
-  const minutes = now.getMinutes().toString().padStart(2, '0');
-  const seconds = now.getSeconds().toString().padStart(2, '0');
-  
-  const runId = `${year}${month}${day}-${hours}${minutes}${seconds}`;
-  logger.debug(`Generated timestamp run ID: ${runId}`);
-  
-  return runId;
+  return format(now, 'yyMMdd-HHmmss');
 }
 
 /**
- * Add client suffix to a base run ID
- * @param {string} baseRunId - Base run ID (YYMMDD-HHMMSS)
+ * Create a client-specific run ID by adding client suffix to base run ID
+ * @param {string} baseRunId - Base run ID in YYMMDD-HHMMSS format
  * @param {string} clientId - Client ID to add as suffix
- * @returns {string} Run ID with client suffix
- */
-function addClientSuffix(baseRunId, clientId) {
-  if (!baseRunId || !clientId) {
-    logger.warn(`Cannot add client suffix with missing values. baseRunId: ${baseRunId}, clientId: ${clientId}`);
-    return baseRunId;
-  }
-  
-  // Convert to standard format first if it's not already
-  const standardBaseRunId = convertToStandardFormat(baseRunId) || baseRunId;
-  
-  // Format: YYMMDD-HHMMSS-ClientName
-  const runId = `${standardBaseRunId}-${clientId}`;
-  logger.debug(`Added client suffix to run ID: ${runId}`);
-  
-  return runId;
-}
-
-/**
- * Strip client suffix from a run ID
- * @param {string} runId - Run ID which may contain client suffix
- * @returns {string} Base run ID without client suffix
- */
-function stripClientSuffix(runId) {
-  if (!runId) return '';
-  
-  const formatInfo = detectRunIdFormat(runId);
-  if (formatInfo) {
-    return formatInfo.format.toStandardFormat(formatInfo.match);
-  }
-  
-  // If not in any known format, log warning and return original
-  logger.warn(`Run ID ${runId} is not in a recognized format for stripping suffix`);
-  return runId;
-}
-
-/**
- * Extract client ID from a run ID if present
- * @param {string} runId - Run ID which may contain client suffix
- * @returns {string|null} Client ID or null if not present
- */
-function extractClientId(runId) {
-  if (!runId) return null;
-  
-  const formatInfo = detectRunIdFormat(runId);
-  if (formatInfo && formatInfo.formatKey === 'CLIENT_SUFFIX') {
-    return formatInfo.match[3];  // Third capture group in CLIENT_SUFFIX regex
-  }
-  
-  return null;
-}
-
-/**
- * Get or create a run ID for a client
- * @param {string} clientId - Client ID
- * @param {Object} [options] - Options
- * @param {boolean} [options.forceNew=false] - Force generation of a new run ID
  * @returns {string} Client-specific run ID
  */
-function getOrCreateRunId(clientId, options = {}) {
+function createClientRunId(baseRunId, clientId) {
+  if (!baseRunId || !clientId) {
+    logger.warn(`Cannot create client run ID with missing values. baseRunId: ${baseRunId}, clientId: ${clientId}`);
+    throw new Error('Both baseRunId and clientId are required to create a client run ID');
+  }
+  
+  // Format: YYMMDD-HHMMSS-ClientName
+  return `${baseRunId}-${clientId}`;
+}
+
+/**
+ * Extract the base run ID from a client-specific run ID
+ * @param {string} clientRunId - Client-specific run ID
+ * @returns {string} Base run ID
+ */
+function getBaseRunIdFromClientRunId(clientRunId) {
+  if (!clientRunId) {
+    return null;
+  }
+  
+  const parts = clientRunId.split('-');
+  if (parts.length < 2) {
+    return clientRunId; // Not a client-specific run ID
+  }
+  
+  return `${parts[0]}-${parts[1]}`; // Return YYMMDD-HHMMSS portion
+}
+
+/**
+ * Extract the client ID from a client-specific run ID
+ * @param {string} clientRunId - Client-specific run ID
+ * @returns {string|null} Client ID or null if not a client-specific run ID
+ */
+function getClientIdFromClientRunId(clientRunId) {
+  if (!clientRunId) {
+    return null;
+  }
+  
+  const parts = clientRunId.split('-');
+  if (parts.length < 3) {
+    return null; // Not a client-specific run ID
+  }
+  
+  // Everything after the timestamp parts is the client ID (supports multi-part client IDs with hyphens)
+  return parts.slice(2).join('-');
+}
+
+/**
+ * Get or create a client-specific run ID
+ * If a run ID already exists for the client, it will be returned
+ * Otherwise, a new run ID will be created
+ * @param {string} clientId - Client ID
+ * @param {Object} options - Options
+ * @param {boolean} options.forceNew - If true, always create a new run ID
+ * @returns {string} Client-specific run ID
+ */
+function getOrCreateClientRunId(clientId, options = {}) {
   if (!clientId) {
     logger.error("Client ID is required to get or create run ID");
     throw new Error("Client ID is required to get or create run ID");
@@ -279,11 +103,9 @@ function getOrCreateRunId(clientId, options = {}) {
     return existingRunId;
   }
   
-  // Generate a new base run ID
-  const baseRunId = generateTimestampRunId();
-  
-  // Add client suffix
-  const clientRunId = addClientSuffix(baseRunId, clientId);
+  // Generate a new base run ID and add client suffix
+  const baseRunId = generateRunId();
+  const clientRunId = createClientRunId(baseRunId, clientId);
   
   // Store for future use
   activeRunIds.set(clientId, clientRunId);
@@ -293,93 +115,68 @@ function getOrCreateRunId(clientId, options = {}) {
 }
 
 /**
- * Get the base run ID for a client-specific run ID
- * @param {string} clientRunId - Client-specific run ID
- * @returns {string} Base run ID
- */
-function getBaseRunId(clientRunId) {
-  return stripClientSuffix(clientRunId);
-}
-
-/**
- * Register a record ID for a run ID to avoid redundant lookups
- * @param {string} runId - Run ID
- * @param {string} recordId - Airtable record ID
- */
-function cacheRecordId(runId, recordId) {
-  // Standardize the runId first
-  const standardRunId = convertToStandardFormat(runId) || runId;
-  
-  if (standardRunId && recordId) {
-    recordIdCache.set(standardRunId, recordId);
-    logger.debug(`Cached record ID ${recordId} for run ID ${standardRunId}`);
-  }
-}
-
-/**
- * Get a cached record ID for a run ID
- * @param {string} runId - Run ID
- * @returns {string|undefined} Cached record ID or undefined if not found
- */
-function getCachedRecordId(runId) {
-  // Try direct lookup first
-  if (recordIdCache.has(runId)) {
-    return recordIdCache.get(runId);
-  }
-  
-  // Try standardized version
-  const standardRunId = convertToStandardFormat(runId);
-  if (standardRunId && recordIdCache.has(standardRunId)) {
-    return recordIdCache.get(standardRunId);
-  }
-  
-  return undefined;
-}
-
-/**
- * Clear a client's active run ID
- * @param {string} clientId - Client ID
+ * Clear the cached run ID for a client
+ * @param {string} clientId - Client ID to clear
  */
 function clearClientRunId(clientId) {
   if (activeRunIds.has(clientId)) {
-    const runId = activeRunIds.get(clientId);
     activeRunIds.delete(clientId);
-    logger.debug(`Cleared run ID for client ${clientId}: ${runId}`);
+    logger.debug(`Cleared run ID for client ${clientId}`);
   }
 }
 
 /**
- * Convert a job process ID to a standard timestamp format
- * Example: job_post_scoring_stream1_20250929094802 -> 250929-094802
- * 
- * @param {string} jobId - Job ID in process format
- * @returns {string|null} Timestamp format or null if conversion fails
+ * Store a record ID for a run ID
+ * @param {string} runId - Run ID
+ * @param {string} recordId - Record ID
  */
-function jobIdToTimestamp(jobId) {
-  const formatInfo = detectRunIdFormat(jobId);
-  if (formatInfo && formatInfo.formatKey === 'JOB_PROCESS') {
-    return formatInfo.format.toStandardFormat(formatInfo.match);
+function cacheRecordId(runId, recordId) {
+  if (!runId || !recordId) {
+    logger.warn(`Cannot cache record ID with missing values. runId: ${runId}, recordId: ${recordId}`);
+    return;
   }
   
-  logger.warn(`Could not convert job ID to timestamp: ${jobId}`);
-  return null;
+  // Always use the base run ID to avoid client-specific duplicates
+  const baseRunId = getBaseRunIdFromClientRunId(runId);
+  recordIdCache.set(baseRunId, recordId);
+  logger.debug(`Cached record ID for run ID ${baseRunId}: ${recordId}`);
 }
 
 /**
- * Validate a run ID with detailed source tracking for diagnostics
+ * Get the cached record ID for a run ID
+ * @param {string} runId - Run ID
+ * @returns {string|undefined} Record ID if found
+ */
+function getCachedRecordId(runId) {
+  if (!runId) {
+    return undefined;
+  }
+  
+  // Always use the base run ID to avoid client-specific duplicates
+  const baseRunId = getBaseRunIdFromClientRunId(runId);
+  return recordIdCache.get(baseRunId);
+}
+
+/**
+ * Legacy compatibility: aliases for renamed functions to maintain API compatibility
+ */
+const generateTimestampRunId = generateRunId;
+const addClientSuffix = createClientRunId;
+const stripClientSuffix = getBaseRunIdFromClientRunId;
+const extractClientId = getClientIdFromClientRunId;
+const getOrCreateRunId = getOrCreateClientRunId;
+const getBaseRunId = getBaseRunIdFromClientRunId;
+
+/**
+ * Simple validation that a run ID is a string and not empty
  * @param {string} runId - Run ID to validate
- * @param {string} source - Source identifier for error tracking (e.g. method name)
- * @returns {boolean} - True if valid, throws error if invalid
+ * @param {string} source - Source of the validation (for logging)
+ * @returns {boolean} True if valid
  */
 function validateRunId(runId, source = 'unknown') {
   if (!runId) {
     logger.error(`[${source}] Run ID cannot be null or undefined`);
     throw new Error(`[${source}] Run ID cannot be null or undefined`);
-  }
-  
-  if (typeof runId === 'object') {
-    logger.error(`[${source}] Run ID must be a string, received object: ${JSON.stringify(runId)}`);
-    throw new Error(`[${source}] Run ID must be a string, received object: ${JSON.stringify(runId)}`);
   }
   
   if (typeof runId !== 'string') {
@@ -391,237 +188,65 @@ function validateRunId(runId, source = 'unknown') {
 }
 
 /**
- * Normalize any run ID format to standard YYMMDD-HHMMSS format
- * This is critical for preventing duplicate job records
- * 
- * @param {string} runId - Run ID in any supported format
- * @param {string} source - Source identifier for error tracking (e.g. method name)
- * @returns {string|null} - Normalized run ID in YYMMDD-HHMMSS format, or null if invalid
+ * This function is kept for backward compatibility.
+ * In the simplified approach, we don't attempt to normalize - we just pass IDs through.
+ * @param {string} runId - Run ID 
+ * @returns {string} The same run ID
  */
-function normalizeRunId(runId, source = 'unknown') {
-  // Track the original value for diagnostic purposes
-  const originalRunId = runId;
-
-  // Handle null/undefined
-  if (!runId) {
-    logger.error(`[${source}] Null or undefined run ID passed to normalizeRunId`);
-    throw new Error(`[${source}] Null or undefined run ID passed to normalizeRunId`);
-  }
-  
-  // Handle objects incorrectly passed as runId
-  if (typeof runId === 'object') {
-    if (STRICT_RUN_ID_MODE) {
-      logger.error(`[${source}] STRICT MODE: Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
-      logger.error(`Stack trace: ${new Error().stack}`);
-      throw new Error(`[${source}] STRICT RUN ID ERROR: Object passed to normalizeRunId instead of string`);
-    }
-    
-    logger.error(`[${source}] Object passed to normalizeRunId instead of string: ${JSON.stringify(runId)}`);
-    
-    // Try to extract a usable ID
-    if (runId.runId) {
-      runId = runId.runId;
-    } else if (runId.id) {
-      runId = runId.id;
-    } else {
-      logger.error(`[${source}] Could not extract valid ID from object passed to normalizeRunId`);
-      return null;
-    }
-  }
-  
-  // Use the formal format detection system to check for recognized formats
-  // This properly respects our defined formats and avoids regex duplication
-  if (typeof runId === 'string') {
-    const formatInfo = detectRunIdFormat(runId);
-    
-    // If it's a recognized format, preserve it as-is (no normalization)
-    if (formatInfo) {
-      if (DEBUG_RUN_ID) {
-        logger.debug(`[${source}] Detected ${formatInfo.format.name} format for ID: "${runId}" - preserving as is`);
-      }
-      return runId;
-    }
-    
-    // Additional legacy pattern support
-    if (runId.match(/^[\w\d]+-[\w\d]+$/)) {
-      if (DEBUG_RUN_ID) {
-        logger.debug(`[${source}] Detected legacy compound ID pattern: "${runId}" - preserving as is`);
-      }
-      return runId;
-    }
-  }
-  
-  // Ensure we have a string
-  const safeRunId = String(runId);
-  
-  // If it's already in standard format, return it
-  if (RUN_ID_FORMATS.STANDARD.regex.test(safeRunId)) {
-    return safeRunId;
-  }
-  
-  // In strict mode, we don't allow normalization of non-standard run IDs
-  // This forces callers to use proper run IDs from the start
-  if (STRICT_RUN_ID_MODE && originalRunId !== null && originalRunId !== undefined) {
-    logger.error(`[${source}] STRICT MODE: Attempted to normalize non-standard run ID: "${safeRunId}"`);
-    logger.error(`Stack trace: ${new Error().stack}`);
-    throw new Error(`[${source}] STRICT RUN ID ERROR: Non-standard run ID format encountered: "${safeRunId}"`);
-  }
-  
-  // Try each format to see if it matches
-  const formatInfo = detectRunIdFormat(safeRunId);
-  if (formatInfo) {
-    const result = formatInfo.format.toStandardFormat(formatInfo.match);
-    
-    // Log the transformation for tracking
-    if (result && result !== safeRunId) {
-      logger.info(`[${source}] Normalized run ID: ${safeRunId} → ${result}`);
-    }
-    
-    return typeof result === 'string' ? result : null;
-  }
-  
-  // If no format matched, fail explicitly in strict mode
-  if (STRICT_RUN_ID_MODE) {
-    logger.error(`[${source}] Could not normalize non-standard run ID: ${safeRunId}`);
-    logger.error(`Stack trace: ${new Error().stack}`);
-    throw new Error(`[${source}] Non-standard run ID format encountered: "${safeRunId}"`);
-  }
-  
-  // Only reach here in non-strict mode
-  logger.warn(`[${source}] Could not normalize run ID: ${safeRunId}`);
-  return safeRunId;
+function normalizeRunId(runId) {
+  return runId;
 }
 
 /**
- * Compatibility method for legacy code - now throws an error to identify remaining usage
- * @returns {string} Generated run ID in timestamp format
- * @throws {Error} Always throws an error to identify legacy code that should be updated
+ * This function is kept for backward compatibility.
+ * @param {string} runId - Run ID 
+ * @returns {Object|null} Always null in simplified implementation
  */
-function generateRunId(clientId) {
-  const error = new Error(
-    'DEPRECATED: generateRunId() has been removed. ' +
-    'Use generateTimestampRunId() directly instead. ' +
-    'See RUN-ID-SINGLE-SOURCE-OF-TRUTH.md for migration guide.'
-  );
-  
-  // Log detailed information about the call
-  logger.error(`Legacy generateRunId called${clientId ? ` for client ${clientId}` : ''}`);
-  logger.error(`Stack trace: ${error.stack}`);
-  
-  // Throw the error to force updating the code
-  throw error;
+function detectRunIdFormat(runId) {
+  // In the simplified approach, we don't need to detect format
+  return null;
 }
 
 /**
- * Compatibility method for legacy code - aliases getCachedRecordId with client support
- * @param {string} runId - Run ID to get record for
- * @param {string} clientId - Client ID
- * @returns {string|null} Record ID if found, null otherwise
+ * This function is kept for backward compatibility.
+ * @param {string} runId - Run ID
+ * @returns {string} The same run ID
  */
-function getRunRecordId(runId, clientId) {
-  // First normalize the run ID to standard format
-  const normalizedRunId = normalizeRunId(runId);
-  return getCachedRecordId(normalizedRunId) || null;
-}
-
-/**
- * Register an Apify run ID with optional client association
- * @param {string} apifyRunId - Apify run ID to register
- * @param {string} clientId - Client ID to associate with the run
- * @returns {string|null} Normalized run ID or null if invalid
- */
-function registerApifyRunId(apifyRunId, clientId) {
-  // For Apify run IDs, we need to be more lenient because they come from
-  // an external system and won't match our standard format
-  
-  // Ensure we have a string
-  if (!apifyRunId) {
-    logger.error(`Null or undefined apifyRunId provided to registerApifyRunId for client ${clientId}`);
-    return null;
-  }
-  
-  const safeRunId = String(apifyRunId);
-  
-  // Special handling for external run IDs - convert to timestamp-based format
-  // Use the current timestamp as we don't know when the Apify run was created
-  const now = new Date();
-  const year = now.getFullYear().toString().slice(2);
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const day = now.getDate().toString().padStart(2, '0');
-  const hour = now.getHours().toString().padStart(2, '0');
-  const minute = now.getMinutes().toString().padStart(2, '0');
-  const second = now.getSeconds().toString().padStart(2, '0');
-  
-  // Generate a standard format ID with the original Apify ID as a suffix
-  const standardizedRunId = `${year}${month}${day}-${hour}${minute}${second}-apify-${safeRunId}`;
-  
-  // Log the transformation for tracking
-  logger.info(`Registered external Apify run ID: ${safeRunId} → ${standardizedRunId}`);
-  
-  return standardizedRunId;
-}
-
-/**
- * Register a run record ID to associate with a run ID
- * @param {string} runId - Run ID to register
- * @param {string} clientId - Client ID associated with the run
- * @param {string} recordId - Airtable record ID to associate with the run
- * @returns {string|null} Normalized run ID or null if invalid
- */
-function registerRunRecord(runId, clientId, recordId) {
-  try {
-    // Handle edge cases
-    if (!runId) {
-      logger.error(`Received null/undefined runId in registerRunRecord for client ${clientId}`);
-      return null;
-    }
-    
-    // Normalize the run ID first
-    const standardizedRunId = normalizeRunId(runId);
-    
-    // Handle invalid normalized run ID
-    if (!standardizedRunId) {
-      logger.error(`Failed to normalize run ID ${runId} for client ${clientId}`);
-      return null;
-    }
-    
-    // Cache the record ID
-    cacheRecordId(standardizedRunId, recordId);
-    
-    return standardizedRunId;
-  } catch (error) {
-    logger.error(`Error in registerRunRecord: ${error.message}`);
-    return null;
-  }
+function convertToStandardFormat(runId) {
+  // In the simplified approach, we don't convert formats
+  return runId;
 }
 
 module.exports = {
-  // Core functions
+  // Core functions (new names)
+  generateRunId,
+  createClientRunId,
+  getBaseRunIdFromClientRunId,
+  getClientIdFromClientRunId,
+  getOrCreateClientRunId,
+  clearClientRunId,
+  
+  // Record ID caching
+  cacheRecordId,
+  getCachedRecordId,
+  
+  // Legacy compatibility functions (old names)
   generateTimestampRunId,
   addClientSuffix,
   stripClientSuffix,
   extractClientId,
   getOrCreateRunId,
   getBaseRunId,
-  clearClientRunId,
   
-  // Format detection and conversion
-  detectRunIdFormat,
-  convertToStandardFormat,
-  jobIdToTimestamp,
+  // Legacy compatibility functions (simplified implementations)
   normalizeRunId,
   validateRunId,
+  detectRunIdFormat,
+  convertToStandardFormat,
   
-  // Record ID caching
-  cacheRecordId,
-  getCachedRecordId,
-  
-  // Legacy compatibility methods
-  generateRunId,
-  getRunRecordId,
-  registerApifyRunId,
-  registerRunRecord,
-  
-  // Format constants
-  RUN_ID_FORMATS
+  // Unused but exported for backward compatibility
+  jobIdToTimestamp: (jobId) => jobId,
+  getRunRecordId: getCachedRecordId,
+  registerApifyRunId: (apifyRunId) => apifyRunId,
+  registerRunRecord: (runId, recordId) => cacheRecordId(runId, recordId)
 };
