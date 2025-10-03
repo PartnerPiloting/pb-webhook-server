@@ -11,9 +11,9 @@ const runIdService = require('./unifiedRunIdService');
 // Import field constants
 const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
 // Import status constants and field names
-const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
-// Import Apify-specific field names
-const { APIFY_RUN_ID } = require('../constants/airtableUnifiedConstants');
+const { CLIENT_RUN_STATUS_VALUES, CLIENT_RUN_FIELDS: UNIFIED_CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
+// Use the properly exported constant for Apify Run ID
+const APIFY_RUN_ID = UNIFIED_CLIENT_RUN_FIELDS.APIFY_RUN_ID;
 
 // Cache for performance (short-lived since runs are typically short)
 let runsCache = new Map();
