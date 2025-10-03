@@ -429,15 +429,26 @@ function normalizeRunId(runId, source = 'unknown') {
     }
   }
   
-  // CRITICAL FIX: Special handling for compound run IDs like "masterRunId-clientId" 
-  // or "YYMMDD-HHMMSS-apify-originalRunId"
-  // If it's already in our compound format, we should NOT attempt to normalize it further
-  if (typeof runId === 'string' && 
-      (runId.match(/^[\w\d]+-[\w\d]+$/) || runId.match(/^(\d{6})-(\d{6})-apify-(.+)$/))) {
-    if (DEBUG_RUN_ID) {
-      logger.debug(`[${source}] Detected compound run ID pattern: "${runId}" - preserving as is`);
+  // Use the formal format detection system to check for recognized formats
+  // This properly respects our defined formats and avoids regex duplication
+  if (typeof runId === 'string') {
+    const formatInfo = detectRunIdFormat(runId);
+    
+    // If it's a recognized format, preserve it as-is (no normalization)
+    if (formatInfo) {
+      if (DEBUG_RUN_ID) {
+        logger.debug(`[${source}] Detected ${formatInfo.format.name} format for ID: "${runId}" - preserving as is`);
+      }
+      return runId;
     }
-    return runId;
+    
+    // Additional legacy pattern support
+    if (runId.match(/^[\w\d]+-[\w\d]+$/)) {
+      if (DEBUG_RUN_ID) {
+        logger.debug(`[${source}] Detected legacy compound ID pattern: "${runId}" - preserving as is`);
+      }
+      return runId;
+    }
   }
   
   // Ensure we have a string
