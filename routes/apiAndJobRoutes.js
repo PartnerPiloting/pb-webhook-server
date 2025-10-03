@@ -22,29 +22,8 @@ const {
 } = require("../constants/airtableUnifiedConstants.js");
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
-// ARCHITECTURAL FIX: Helper function to ensure status values are always available
-// This prevents "toLowerCase of undefined" errors and ensures consistent status values
-function getStatusString(statusType = 'COMPLETED') {
-  // Always fallback to safe defaults if CLIENT_RUN_STATUS_VALUES is not properly initialized
-  const statusMap = {
-    'COMPLETED': 'completed',
-    'FAILED': 'failed',
-    'RUNNING': 'running',
-    'COMPLETED_WITH_ERRORS': 'completed_with_errors',
-    'NO_LEADS': 'no_leads_to_score'
-  };
-  
-  // Use CLIENT_RUN_STATUS_VALUES if available, otherwise use our fallback map
-  if (CLIENT_RUN_STATUS_VALUES && 
-      typeof CLIENT_RUN_STATUS_VALUES === 'object' && 
-      statusType in CLIENT_RUN_STATUS_VALUES && 
-      typeof CLIENT_RUN_STATUS_VALUES[statusType] === 'string') {
-    return CLIENT_RUN_STATUS_VALUES[statusType].toLowerCase();
-  }
-  
-  // Fallback to our safe defaults
-  return statusMap[statusType] || 'unknown';
-}
+// Using centralized status utility functions for consistent behavior
+const { getStatusString } = require('../utils/statusUtils');
 const runIdUtils = require('../utils/runIdUtils.js');
 // Use the unified services
 const unifiedRunIdService = require('../services/unifiedRunIdService.js');
