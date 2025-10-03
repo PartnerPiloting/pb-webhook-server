@@ -20,7 +20,7 @@ const unifiedRunIdService = require('./unifiedRunIdService');
 
 // Import constants - using standardized names only
 const { 
-  TABLES,
+  MASTER_TABLES,
   JOB_TRACKING_FIELDS,  // Primary constant for job fields
   CLIENT_RUN_FIELDS,    // Primary constant for client run fields
   CLIENT_RUN_STATUS_VALUES, // Get CLIENT_RUN_STATUS_VALUES from here only
@@ -29,36 +29,15 @@ const {
 } = require('../constants/airtableUnifiedConstants');
 
 // Table constants - Using simplified constants from unified file
-const JOB_TRACKING_TABLE = TABLES.JOB_TRACKING;
-const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
+const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Default logger - using unified factory for consistent creation
 const logger = createLogger('SYSTEM', null, 'job_tracking');
 
-/**
- * Helper function to ensure consistent status values
- * Prevents "toLowerCase of undefined" errors and ensures consistent status values
- * @param {string|*} statusValue - The status value to sanitize
- * @returns {string} A lowercase consistent status value
- */
-function getStatusString(statusValue = 'completed') {
-  // Handle null/undefined
-  if (statusValue === null || statusValue === undefined) {
-    return 'completed';
-  }
-  
-  try {
-    // Handle different types
-    const statusStr = String(statusValue).trim();
-    
-    // Normalize to lowercase for consistency
-    return statusStr.toLowerCase();
-  } catch (error) {
-    // Handle any unexpected errors when converting to string or calling toLowerCase
-    console.error(`Error in getStatusString: ${error.message}`);
-    return 'completed'; // Return default value on error
-  }
-}
+// Using centralized status utility functions for consistent behavior
+// This import replaces the local getStatusString function
+const { getStatusString, getRawStatusValue } = require('../utils/statusUtils');
 
 // This function has been moved to a static method in the JobTracking class
 
@@ -79,11 +58,11 @@ function validateJobTrackingFields(tableName, fieldData) {
   
   // Determine which field constants to use based on table name
   switch (tableName) {
-    case TABLES.JOB_TRACKING:
+    case MASTER_TABLES.JOB_TRACKING:
       validFields = Object.values(JOB_TRACKING_FIELDS);
       tableDisplayName = 'Job Tracking';
       break;
-    case TABLES.CLIENT_RUN_RESULTS:
+    case MASTER_TABLES.CLIENT_RUN_RESULTS:
       validFields = Object.values(CLIENT_RUN_FIELDS);
       tableDisplayName = 'Client Run Results';
       break;
@@ -343,16 +322,26 @@ class JobTracking {
     }
     
     try {
-      // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = JobTracking.standardizeRunId(runId, { 
-        enforceStandard: true,
-        logErrors: true
-      });
+      // Extract ID safely if an object was passed
+      const safeRunId = JobTracking.extractId(runId);
       
-      // Exit early if we couldn't get a valid run ID
+      // CRITICAL FIX: Use the SAME normalization method as in createJob
+      // This ensures consistency between job creation and updates
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        throw validationError;
+      }
+      
+      // Use the SAME normalizeRunId method with source tracking
+      const standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      
+      // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        log.error(`Invalid run ID provided for update: ${runId}`);
-        throw new Error(`Invalid run ID provided for update: ${runId}`);
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+        throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
       }
       
       log.debug(`Updating job with standardized run ID: ${standardRunId}`);
@@ -464,16 +453,26 @@ class JobTracking {
     }
     
     try {
-      // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = JobTracking.standardizeRunId(runId, { 
-        enforceStandard: true,
-        logErrors: true
-      });
+      // Extract ID safely if an object was passed
+      const safeRunId = JobTracking.extractId(runId);
       
-      // Exit early if we couldn't get a valid run ID
+      // CRITICAL FIX: Use the SAME normalization method as in createJob
+      // This ensures consistency between job creation and client run creation
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        throw validationError;
+      }
+      
+      // Use the SAME normalizeRunId method with source tracking
+      const standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      
+      // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        log.error(`Invalid run ID provided for client run creation: ${runId}`);
-        throw new Error(`Invalid run ID provided for client run creation: ${runId}`);
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+        throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
       }
       
       log.debug(`Creating client run with standardized run ID: ${standardRunId}`);
@@ -578,15 +577,24 @@ class JobTracking {
     const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
     
     try {
-      // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = JobTracking.standardizeRunId(safeRunId, { 
-        enforceStandard: true,
-        logErrors: true
-      });
+      // CRITICAL FIX: Use the SAME normalization method as in createJob
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        return {
+          success: false,
+          error: validationError.message
+        };
+      }
       
-      // Exit early if we couldn't get a valid run ID
+      // Use the SAME normalizeRunId method with source tracking
+      const standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      
+      // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        log.error(`Invalid run ID provided for client run update: ${safeRunId}`);
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
         return {
           success: false,
           error: 'invalid_run_id',
@@ -879,16 +887,22 @@ class JobTracking {
       
       // Use existing logger or default
       const log = options.logger || logger;
+      const source = 'JobTracking.getClientRun';
       
-      // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = JobTracking.standardizeRunId(safeRunId, { 
-        enforceStandard: true,
-        logErrors: true
-      });
+      // CRITICAL FIX: Use the SAME normalization method as in createJob
+      let standardRunId;
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+        standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        return null;
+      }
       
-      // Exit early if we couldn't get a valid run ID
+      // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        log.error(`Invalid run ID provided for client run lookup: ${safeRunId}`);
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
         return null;
       }
       
@@ -1043,17 +1057,23 @@ class JobTracking {
     
     // Use existing logger or default
     const log = options.logger || logger;
+    const source = 'JobTracking.checkClientRunExists';
     
     try {
-      // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = JobTracking.standardizeRunId(safeRunId, { 
-        enforceStandard: true,
-        logErrors: true
-      });
+      // CRITICAL FIX: Use the SAME normalization method as in createJob
+      let standardRunId;
+      try {
+        // This will throw if validation fails in strict mode
+        unifiedRunIdService.validateRunId(safeRunId, source);
+        standardRunId = unifiedRunIdService.normalizeRunId(safeRunId, source);
+      } catch (validationError) {
+        log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        return false;
+      }
       
-      // Exit early if we couldn't get a valid run ID
+      // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        log.error(`Invalid run ID provided for client run check: ${safeRunId}`);
+        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
         return false;
       }
       
