@@ -60,7 +60,18 @@ function getBaseRunIdFromClientRunId(clientRunId) {
     return clientRunId; // Not a client-specific run ID
   }
   
-  return `${parts[0]}-${parts[1]}`; // Return YYMMDD-HHMMSS portion
+  // Ensure the first two parts look like a date and time
+  const datePart = parts[0];
+  const timePart = parts[1];
+  
+  if (datePart.length === 6 && /^\d{6}$/.test(datePart) && 
+      timePart.length === 6 && /^\d{6}$/.test(timePart)) {
+    return `${datePart}-${timePart}`;  // Return YYMMDD-HHMMSS portion
+  }
+  
+  // If it doesn't match our expected format, log a warning and return the original
+  logger.warn(`Could not extract base run ID from ${clientRunId} - format not recognized`);
+  return clientRunId;
 }
 
 /**
@@ -209,12 +220,32 @@ function detectRunIdFormat(runId) {
 }
 
 /**
- * This function is kept for backward compatibility.
- * @param {string} runId - Run ID
- * @returns {string} The same run ID
+ * Standardizes run IDs to the format YYMMDD-HHMMSS
+ * @param {string} runId - Run ID in any format
+ * @returns {string} Standardized run ID
  */
 function convertToStandardFormat(runId) {
-  // In the simplified approach, we don't convert formats
+  if (!runId) {
+    return null;
+  }
+  
+  // If the runId is already in the format YYMMDD-HHMMSS or YYMMDD-HHMMSS-ClientName
+  if (runId.includes('-')) {
+    const parts = runId.split('-');
+    if (parts.length >= 2) {
+      const datePart = parts[0];
+      const timePart = parts[1];
+      
+      // Check if first part looks like a date (YYMMDD) and second part looks like a time (HHMMSS)
+      if (datePart.length === 6 && /^\d{6}$/.test(datePart) && 
+          timePart.length === 6 && /^\d{6}$/.test(timePart)) {
+        return `${datePart}-${timePart}`;
+      }
+    }
+  }
+  
+  // For run IDs that don't match our format, log a warning but return the original
+  logger.warn(`Could not standardize run ID format: ${runId}`);
   return runId;
 }
 

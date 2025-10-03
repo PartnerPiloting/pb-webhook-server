@@ -279,31 +279,32 @@ async function createClientRunRecord(runId, clientId, clientName) {
 async function updateJobTracking(runId, updates) {
   const base = initialize();
   
-  // CLEAN SLATE APPROACH: Use timestamp format for consistency
-  // Strip client suffix to get the base run ID
-  let baseRunId = runIdUtils.stripClientSuffix(runId);
+  // Import the unified run ID service
+  const unifiedRunIdService = require('./unifiedRunIdService');
+  
+  // Use the unified service to standardize the run ID
+  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+  
+  // Extract the base run ID using the unified service
+  let baseRunId = unifiedRunIdService.getBaseRunIdFromClientRunId(standardizedRunId);
   
   // Ensure we have a valid run ID - if not, generate one as fallback
-  if (!baseRunId || baseRunId === runId) {
-    // If stripping didn't change anything and it's not a timestamp format, create a fallback
-    const timestampMatch = runId.match(/^\d{6}-\d{6}/);
-    if (!timestampMatch) {
-      const now = new Date();
-      const datePart = [
-        now.getFullYear().toString().slice(2),
-        (now.getMonth() + 1).toString().padStart(2, '0'),
-        now.getDate().toString().padStart(2, '0')
-      ].join('');
-      
-      const timePart = [
-        now.getHours().toString().padStart(2, '0'),
-        now.getMinutes().toString().padStart(2, '0'),
-        now.getSeconds().toString().padStart(2, '0')
-      ].join('');
-      
-      baseRunId = `${datePart}-${timePart}`;
-      console.log(`Airtable Service: Generated fallback timestamp ID ${baseRunId} for job tracking of unrecognized format ${runId}`);
-    }
+  if (!baseRunId) {
+    const now = new Date();
+    const datePart = [
+      now.getFullYear().toString().slice(2),
+      (now.getMonth() + 1).toString().padStart(2, '0'),
+      now.getDate().toString().padStart(2, '0')
+    ].join('');
+    
+    const timePart = [
+      now.getHours().toString().padStart(2, '0'),
+      now.getMinutes().toString().padStart(2, '0'),
+      now.getSeconds().toString().padStart(2, '0')
+    ].join('');
+    
+    baseRunId = `${datePart}-${timePart}`;
+    console.log(`Airtable Service: Generated fallback timestamp ID ${baseRunId} for job tracking of unrecognized format ${runId}`);
   }
   
   console.log(`Airtable Service: Updating job tracking for ${runId} (base run ID: ${baseRunId})`);
