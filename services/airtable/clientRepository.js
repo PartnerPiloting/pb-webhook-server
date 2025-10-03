@@ -5,7 +5,7 @@
  * Handles CRUD operations for client records and client run tracking.
  */
 
-const { StructuredLogger } = require('../../utils/structuredLogger');
+const { createSystemLogger } = require('../../utils/unifiedLoggerFactory');
 const baseManager = require('./baseManager');
 const { 
   CLIENT_EXECUTION_LOG_FIELDS,
@@ -17,7 +17,7 @@ const {
 const runIdService = require('../../services/unifiedRunIdService');
 
 // Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'client_repository');
+const logger = createSystemLogger(null, 'client_repository');
 
 // Cache for client data to avoid repeated API calls
 let clientsCache = null;

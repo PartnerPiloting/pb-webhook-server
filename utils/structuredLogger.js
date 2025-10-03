@@ -4,6 +4,11 @@
  * Structured logging utilities for multi-tenant client management
  * Provides consistent log formatting for easy filtering on Render
  * 
+ * IMPORTANT: DO NOT INSTANTIATE THIS CLASS DIRECTLY!
+ * Use the unifiedLoggerFactory.js to create loggers:
+ *   const { createLogger } = require('./utils/unifiedLoggerFactory');
+ *   const logger = createLogger(clientId, sessionId, processType);
+ * 
  * Supports process-specific logging levels via environment variables:
  * - DEBUG_LEAD_SCORING=debug|info|warn|error
  * - DEBUG_POST_HARVESTING=debug|info|warn|error
@@ -89,6 +94,13 @@ function createLogPrefix(clientId, sessionId, type) {
  */
 class StructuredLogger {
     constructor(clientId, sessionId = null, processType = null) {
+        // WARN ABOUT DIRECT INSTANTIATION - new in refactoring
+        console.warn('⚠️ DIRECT INSTANTIATION OF STRUCTURED LOGGER DETECTED ⚠️');
+        console.warn('Please use unifiedLoggerFactory.js instead of direct instantiation:');
+        console.warn('  const { createLogger } = require("./utils/unifiedLoggerFactory");');
+        console.warn('  const logger = createLogger(clientId, sessionId, processType);');
+        console.trace(); // Show stack trace to identify the source
+        
         // ROOT CAUSE FIX: Validate parameters to prevent [object Object] issues
         
         // Handle clientId

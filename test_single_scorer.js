@@ -4,9 +4,9 @@ require("dotenv").config();
 const { vertexAIClient, geminiModelId } = require('./config/geminiClient'); 
 const { getAirtableRecord } = require('./utils/airtableUtils'); 
 const { scoreLeadNow } = require('./singleScorer');
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 
-const logger = new StructuredLogger('TEST-SINGLE-SCORER');
+const logger = createLogger('SYSTEM', null, 'TEST-SINGLE-SCORER');
 
 async function testSingleLeadScoring() {
     const leadId = process.argv[2] || 'recHkqPSMfdQWyqus'; // Default to the problematic lead

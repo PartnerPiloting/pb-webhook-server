@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Airtable = require('airtable');
 const { VertexAI } = require('@google-cloud/vertexai');
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 const { buildPrompt, slimLead } = require('./promptBuilder');
 
 // Load environment variables
@@ -10,7 +10,7 @@ require('dotenv').config();
 
 class FailedLeadsDiagnostic {
     constructor() {
-        this.logger = new StructuredLogger('FailedLeadsDiagnostic');
+        this.logger = createLogger('SYSTEM', null, 'FailedLeadsDiagnostic');
         this.base = null;
         this.vertex = null;
         

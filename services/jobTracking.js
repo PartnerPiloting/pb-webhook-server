@@ -9,8 +9,7 @@
  * duplicate entries.
  */
 
-const { StructuredLogger } = require('../utils/structuredLogger');
-const { createSafeLogger } = require('../utils/loggerHelper');
+const { createLogger } = require('../utils/unifiedLoggerFactory');
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
 // Import field validator for consistent field naming
 const { FIELD_NAMES, createValidatedObject } = require('../utils/airtableFieldValidator');
@@ -32,8 +31,8 @@ const {
 const JOB_TRACKING_TABLE = TABLES.JOB_TRACKING;
 const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
 
-// Default logger - using safe creation to ensure valid parameters
-const logger = createSafeLogger('SYSTEM', null, 'job_tracking');
+// Default logger - using unified factory for consistent creation
+const logger = createLogger('SYSTEM', null, 'job_tracking');
 
 /**
  * Helper function to ensure consistent status values
@@ -565,8 +564,8 @@ class JobTracking {
       throw new Error("Run ID and Client ID are required to update client run record");
     }
     
-    // Use existing logger or create a safe one
-    const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
+    // Use existing logger or create a new one with unified factory
+    const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
     
     try {
       // Use standardizeRunId helper to ensure consistent format
@@ -928,8 +927,8 @@ class JobTracking {
       throw new Error("Run ID and Client ID are required to update client metrics");
     }
     
-    // Use existing logger or create a safe one
-    const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
+    // Use existing logger or create a new one with unified factory
+    const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
     const source = options.source || 'unknown';
     
     // Simple existence check with validated parameters
@@ -1195,8 +1194,8 @@ class JobTracking {
     params.runId = safeRunId;
     params.clientId = safeClientId;
     
-    // Use existing logger or create a safe one
-    const log = options.logger || createSafeLogger(safeClientId, safeRunId, 'job_tracking');
+    // Use existing logger or create a new one with unified factory
+    const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
     
     const isStandalone = options.isStandalone === true;
     const source = options.source || 'unknown';

@@ -5,7 +5,7 @@
  * Provides a unified interface to all Airtable operations through repositories.
  */
 
-const { StructuredLogger } = require('../../utils/structuredLogger');
+const { createSystemLogger } = require('../../utils/unifiedLoggerFactory');
 const baseManager = require('./baseManager');
 const leadRepository = require('./leadRepository');
 const clientRepository = require('./clientRepository');
@@ -15,7 +15,7 @@ const unifiedJobTrackingRepository = require('../../services/unifiedJobTrackingR
 const runRecordService = require('../../services/runRecordServiceV2');
 
 // Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'airtable_service');
+const logger = createSystemLogger(null, 'airtable_service');
 
 /**
  * Initialize the Airtable service

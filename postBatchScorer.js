@@ -27,13 +27,12 @@ const { repairAndParseJson } = require('./utils/jsonRepair');
 const { alertAdmin } = require('./utils/appHelpers.js');
 
 // --- Structured Logging ---
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
 // Import STATUS_VALUES from the unified constants to avoid duplication
 const { STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
-const { createSafeLogger } = require('./utils/loggerHelper');
 // FIXED: Import our runIdValidator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('./utils/runIdValidator');
 

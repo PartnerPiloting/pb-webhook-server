@@ -2,14 +2,14 @@
 // Test script to validate the Single Creation Point pattern in runRecordServiceV2
 
 require('dotenv').config();
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 const runRecordServiceV2 = require('./services/runRecordServiceV2');
 const runRecordAdapter = require('./services/runRecordAdapter');
 // Updated to use unified run ID service
 const runIdService = require('./services/unifiedRunIdService');
 
 // Create a test logger
-const logger = new StructuredLogger('TEST', 'test_session', 'run_record_test');
+const logger = createLogger('TEST', 'test_session', 'run_record_test');
 
 // Generate a test run ID
 const testRunId = `test-run-${Date.now()}`;

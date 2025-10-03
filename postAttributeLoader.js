@@ -1,6 +1,6 @@
 // File: postAttributeLoader.js
 
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 
 /**
  * Fetches and structures the post scoring configuration from Airtable.
@@ -21,7 +21,7 @@ async function loadPostScoringAirtableConfig(base, config, logger = null) {
     }
 
     // Create logger if not provided (fallback for direct calls)
-    const log = logger || new StructuredLogger('CONFIG');
+    const log = logger || createLogger('SYSTEM', null, 'CONFIG');
 
     const tableNames = {
         attributes: config.attributesTableName,

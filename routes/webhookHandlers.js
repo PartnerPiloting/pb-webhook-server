@@ -15,8 +15,8 @@ const dirtyJSON = require('dirty-json');
 const { getClientBase, getClientById } = require('../services/clientService.js');
 
 // --- Structured Logging ---
-const { StructuredLogger } = require('../utils/structuredLogger');
-const { createSafeLogger } = require('../utils/loggerHelper');
+// FIXED: Using unified logger factory to prevent "Object passed as sessionId" errors
+const { createLogger } = require('../utils/unifiedLoggerFactory');
 
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID – Linked Helper Webhook
@@ -240,7 +240,8 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         }
     } catch (err) {
         const finalClientId = req.query.client || 'unknown';
-        const finalLog = log || new StructuredLogger(finalClientId);
+        // FIXED: Using createLogger instead of direct StructuredLogger instantiation
+        const finalLog = log || createLogger(finalClientId);
         finalLog.error(`Critical error in /lh-webhook/upsertLeadOnly: ${err.message}`, err.stack);
         await alertAdmin("Critical Error in /lh-webhook/upsertLeadOnly", `Client: ${req.query.client || 'unknown'}\\nError: ${err.message}`);
         if (!res.headersSent) {

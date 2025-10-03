@@ -7,10 +7,10 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
-const { StructuredLogger } = require('../../utils/structuredLogger');
+const { createSystemLogger } = require('../../utils/unifiedLoggerFactory');
 
 // Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'airtable_base_manager');
+const logger = createSystemLogger(null, 'airtable_base_manager');
 
 // Cache for base instances to avoid repeated initialization
 const baseInstanceCache = new Map();

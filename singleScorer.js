@@ -1,7 +1,7 @@
 // singleScorer.js - Final Clean Version
 
 require("dotenv").config();
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 
 const { buildPrompt, slimLead } = require("./promptBuilder");
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
@@ -14,7 +14,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
         const leadId = fullLead?.id || fullLead?.public_id || 'UNKNOWN';
-        logger = new StructuredLogger(`SINGLE-${leadId.substring(0, 8)}`, 'SCORER');
+        logger = createLogger(`SINGLE-${leadId.substring(0, 8)}`, 'SCORER');
     }
 
     logger.setup('scoreLeadNow', `Starting single lead scoring for lead: ${fullLead?.id || fullLead?.public_id || 'N/A'}${clientId ? ` (client: ${clientId})` : ''}`);
