@@ -8,7 +8,8 @@ const {
   MASTER_TABLES, 
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS,
-  FORMULA_FIELDS 
+  FORMULA_FIELDS,
+  STATUS_VALUES
 } = require('../constants/airtableUnifiedConstants');
 
 // Import validation utilities
@@ -279,7 +280,7 @@ async function updateClientRun(runId, clientId, updates) {
 async function completeJobRun(runId, success = true, notes = '') {
   const updates = {
     [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
-    [JOB_TRACKING_FIELDS.STATUS]: success ? 'Completed' : 'Failed'
+    [JOB_TRACKING_FIELDS.STATUS]: success ? STATUS_VALUES.COMPLETED : STATUS_VALUES.FAILED
   };
   
   if (notes) {
@@ -325,9 +326,10 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
   const safeNotes = (typeof notes === 'string') ? notes : String(notes || '');
   
   // FIXED: Use proper field constants consistently (no lowercase 'status')
+  // FIXED: Use STATUS_VALUES constant instead of string literals
   const updates = {};
   updates[CLIENT_RUN_FIELDS.END_TIME] = new Date().toISOString();
-  updates[CLIENT_RUN_FIELDS.STATUS] = successBoolean ? 'Completed' : 'Failed';
+  updates[CLIENT_RUN_FIELDS.STATUS] = successBoolean ? STATUS_VALUES.COMPLETED : STATUS_VALUES.FAILED;
   
   // CRITICAL FIX: Handle notes properly, avoiding undefined errors
   // Always set System Notes field, even when notes is empty
@@ -372,7 +374,7 @@ async function getAggregateMetrics(runId) {
     const metrics = {
       // Client metrics
       clientsProcessed: clientRecords.length,
-      clientsWithErrors: clientRecords.filter(r => r.fields[CLIENT_RUN_FIELDS.STATUS] === 'Failed').length,
+      clientsWithErrors: clientRecords.filter(r => r.fields[CLIENT_RUN_FIELDS.STATUS] === STATUS_VALUES.FAILED).length,
       
       // Initialize aggregation counters
       totalProfilesExamined: 0,

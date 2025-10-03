@@ -16,6 +16,8 @@ const clientService = require('../services/clientService');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
 // Import the validator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
+// Import Airtable field constants
+const { JOB_TRACKING_FIELDS, CLIENT_RUN_FIELDS, STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 // Constants
 const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
@@ -293,7 +295,7 @@ async function apifyWebhookHandler(req, res) {
                 await JobTracking.updateJob({
                     runId: normalizedRunId,
                     updates: {
-                        Status: 'Failed',  // FIXED: Capitalized Status field name
+                        [JOB_TRACKING_FIELDS.STATUS]: STATUS_VALUES.FAILED,  // FIXED: Using field constant instead of hard-coded name
                         endTime: new Date().toISOString(),
                         error: error.message
                     }
@@ -690,9 +692,9 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             await JobTracking.updateJob({
                 runId: normalizedMainRunId,
                 updates: {
-                    Status: 'Failed',  // FIXED: Capitalized Status field name
+                    [JOB_TRACKING_FIELDS.STATUS]: STATUS_VALUES.FAILED,  // FIXED: Using field constant instead of hard-coded name
                     endTime: new Date().toISOString(),
-                    'System Notes': `Error: ${error.message}`
+                    [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Error: ${error.message}`
                 }
             }).catch(updateError => {
                 clientLogger.error(`Failed to update job tracking record: ${updateError.message}`);
