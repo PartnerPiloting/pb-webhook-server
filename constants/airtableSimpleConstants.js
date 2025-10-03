@@ -53,7 +53,7 @@ const JOB_TRACKING_FIELDS = {
   TOTAL_TOKENS: 'Total Tokens',
   PROMPT_TOKENS: 'Prompt Tokens',
   COMPLETION_TOKENS: 'Completion Tokens',
-  TOTAL_POSTS_HARVESTED: 'Total Posts Harvested'
+  TOTAL_POSTS_HARVESTED: 'Total Posts Harvested',
   
   // Formula fields - never update directly
   DURATION: 'Duration',
