@@ -205,14 +205,17 @@ const FORMULA_FIELDS = [
   LEAD_FIELDS.SCORE_CATEGORY
 ];
 
-// Status values
-const STATUS_VALUES = {
+// Client Run Result status values
+const CLIENT_RUN_STATUS_VALUES = {
   RUNNING: 'Running',
   COMPLETED: 'Completed',
   FAILED: 'Failed',
   NO_LEADS: 'No Leads To Score',
   COMPLETED_WITH_ERRORS: 'Completed with Errors'
 };
+
+// Alias for backward compatibility (will be removed in future)
+const STATUS_VALUES = CLIENT_RUN_STATUS_VALUES;
 
 // Scoring status values
 const SCORING_STATUS_VALUES = {
@@ -244,7 +247,8 @@ module.exports = {
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS,
   FORMULA_FIELDS,
-  STATUS_VALUES,
+  CLIENT_RUN_STATUS_VALUES,
+  STATUS_VALUES, // Deprecated alias - use CLIENT_RUN_STATUS_VALUES instead
   SCORING_STATUS_VALUES,
   CLIENT_EXECUTION_LOG_FIELDS
 };
