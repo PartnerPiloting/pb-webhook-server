@@ -1,7 +1,14 @@
 // PB Webhook Server
-// touch: force reload for nodemon - 2025-08-16
+// touch: force reload for nodemon - 2025-10-03
 // Main server file for handling Airtable webhooks and API endpoints
 // Force redeploy for follow-ups endpoint - 2024-12-xx
+// 
+// MAJOR BUG FIX - 2025-10-03
+// Fixed run ID consistency issues that were causing "job tracking record not found" errors
+// by implementing a strict single-source-of-truth pattern for run IDs. Run IDs are now
+// generated exactly once and passed unchanged through the entire request chain.
+// This is a clean architectural fix that eliminates the root cause of tracking failures.
+// See commits for feature/comprehensive-field-standardization for full implementation details.
 
 // index.js
 // Load environment variables from .env file

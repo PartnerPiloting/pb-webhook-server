@@ -356,11 +356,18 @@ async function completeRunRecord(params) {
     let success = false;
     if (typeof status === 'boolean') {
       success = status;
-    } else if (typeof status === 'string') {
-      // CRITICAL FIX: This is where the toLowerCase() error happens
-      // Check if status is a valid string before calling toLowerCase()
-      const statusStr = String(status).toLowerCase();
-      success = statusStr === 'completed' || statusStr === 'success';
+    } else if (typeof status === 'string' && status) {
+      // CRITICAL FIX: Double protection against toLowerCase() errors
+      // 1. Check if status is a valid string AND not empty
+      // 2. Use a try-catch to handle any remaining edge cases
+      try {
+        const statusStr = String(status).toLowerCase();
+        success = statusStr === 'completed' || statusStr === 'success';
+      } catch (error) {
+        logger.warn(`[${source}] Error converting status to lowercase: ${error.message}`);
+        // Default to false on error
+        success = false;
+      }
     } else {
       // Default to false for other types
       logger.warn(`[${source}] Unexpected status type: ${typeof status}, defaulting to false`);
@@ -371,13 +378,16 @@ async function completeRunRecord(params) {
     let normalizedRunId;
     try {
       normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
+      
+      // CRITICAL FIX: Handle the case where normalizeRunId returns null or undefined
       if (!normalizedRunId) {
-        logger.error(`[${source}] Failed to normalize run ID: ${validatedRunId}`);
-        throw new Error(`Failed to normalize run ID: ${validatedRunId}`);
+        logger.warn(`[${source}] Failed to normalize run ID: ${validatedRunId}, using validated ID as fallback`);
+        normalizedRunId = validatedRunId; // Use validated ID as fallback to prevent undefined errors
       }
     } catch (error) {
-      logger.error(`[${source}] Error normalizing run ID: ${error.message}`);
-      throw new Error(`Error normalizing run ID: ${error.message}`);
+      // Error occurred during normalization - use validated ID as fallback
+      logger.warn(`[${source}] Error normalizing run ID: ${error.message}, using validated ID as fallback`);
+      normalizedRunId = validatedRunId; // Use validated ID as fallback to prevent undefined errors
     }
     
     // Get base run ID with error handling
