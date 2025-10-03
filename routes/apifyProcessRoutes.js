@@ -262,7 +262,8 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
   }
 
   const stream = req.query.stream || 'default';
-  const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId) || '';
+  // Changed from const to let to allow reassignment if needed
+  let parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId) || '';
   
   console.log(`[process-level2-v2] Received post harvesting request for client ${clientId}, stream ${stream}, parentRunId: ${parentRunId || 'none'}`);
   
@@ -377,7 +378,8 @@ async function processClientHandler(req, res) {
     }
 
     // Get parent run ID from query params or body (if provided)
-    const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
+    // Changed from const to let to allow reassignment later
+    let parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
     
     // Add debug logs to identify the issue
     console.log(`[processClientHandler] DEBUG: req.path = ${req.path}`);
