@@ -206,6 +206,7 @@ async function completeRunRecord(params) {
       [FIELD_NAMES.STATUS]: status || CLIENT_RUN_STATUS_VALUES.COMPLETED,
       ...metrics, // Include any metrics as fields
       options: options
+    });
   } catch (error) {
     logger.error(`Error completing run record for client ${clientId}: ${error.message}`);
     throw error;
