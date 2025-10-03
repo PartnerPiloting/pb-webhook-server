@@ -8,11 +8,12 @@
  * and other data types with consistent error handling.
  */
 
-const { StructuredLogger } = require('./structuredLogger');
+// FIXED: Using unified logger factory instead of direct StructuredLogger instantiation
+const { createSystemLogger } = require('./unifiedLoggerFactory');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
 
-// Base logger for the validation system
-const logger = new StructuredLogger('SYSTEM', null, 'param_validator');
+// Base logger for the validation system - using factory pattern
+const logger = createSystemLogger(null, 'param_validator');
 
 /**
  * ValidationError class for parameter validation errors

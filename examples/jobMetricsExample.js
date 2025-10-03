@@ -5,11 +5,11 @@
  */
 
 const jobMetricsService = require('../services/jobMetricsService');
-const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSystemLogger } = require('../utils/unifiedLoggerFactory');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
 
 // Create system-level logger
-const logger = new StructuredLogger('SYSTEM', null, 'metrics_example');
+const logger = createSystemLogger(null, 'metrics_example');
 
 /**
  * Example function demonstrating how to use job metrics service
@@ -25,7 +25,7 @@ async function exampleBatchProcess() {
   
   // Simulate processing each client
   for (const clientId of clientIds) {
-    const clientLogger = new StructuredLogger('CLIENT', clientId, 'metrics_example');
+    const clientLogger = require('../utils/unifiedLoggerFactory').createLogger(clientId, null, 'metrics_example');
     clientLogger.info(`Processing client ${clientId}`);
     
     try {

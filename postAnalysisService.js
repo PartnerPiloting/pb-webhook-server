@@ -9,14 +9,14 @@ const { repairAndParseJson } = require('./utils/jsonRepair');
 const dirtyJSON = require('dirty-json');
 
 // --- Structured Logging ---
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 
 /**
  * Diagnostic helper for parsing the Posts Content field safely.
  * Logs type, length, head/tail, and prints raw value if parsing fails.
  */
 function diagnosePostsContent(rawField, recordId = '', logger = null) {
-    const log = logger || new StructuredLogger('DIAGNOSTICS', null, 'post_scoring');
+    const log = logger || createLogger('DIAGNOSTICS', null, 'post_scoring');
     
     log.debug('------------------------');
     log.debug(`Diagnosing Posts Content for record: ${recordId}`);
@@ -62,7 +62,7 @@ function normalizeUrl(url) {
  * the posts for a single lead record.
  */
 async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, logger = null) {
-    const log = logger || new StructuredLogger(`LEAD-${leadRecord.id}`, null, 'post_scoring');
+    const log = logger || createLogger(`LEAD-${leadRecord.id}`, null, 'post_scoring');
     
     log.setup(`Analyzing posts for lead: ${leadRecord.id}`);
 
@@ -274,7 +274,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
  * Processes posts for all leads in Airtable that haven't been scored yet.
  */
 async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, forceRescore, viewName, logger = null) {
-    const log = logger || new StructuredLogger('POST-BATCH-PROCESSOR', null, 'post_scoring');
+    const log = logger || createLogger('POST-BATCH-PROCESSOR', null, 'post_scoring');
     
     log.setup("=== STARTING POST BATCH PROCESSING ===");
     let processedCount = 0, errorCount = 0;
@@ -342,7 +342,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
  * and returns the scoring outcome.
  */
 async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config, logger = null) {
-    const log = logger || new StructuredLogger(`SPECIFIC-LEAD-${leadId}`, null, 'post_scoring');
+    const log = logger || createLogger(`SPECIFIC-LEAD-${leadId}`, null, 'post_scoring');
     
     log.setup(`Processing specific lead: ${leadId}`);
     try {

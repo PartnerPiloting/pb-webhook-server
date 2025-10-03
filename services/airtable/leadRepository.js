@@ -5,12 +5,12 @@
  * Handles CRUD operations for lead records.
  */
 
-const { StructuredLogger } = require('../../utils/structuredLogger');
+const { createSystemLogger } = require('../../utils/unifiedLoggerFactory');
 const baseManager = require('./baseManager');
 const clientRepository = require('./clientRepository');
 
 // Default logger
-const logger = new StructuredLogger('SYSTEM', null, 'lead_repository');
+const logger = createSystemLogger(null, 'lead_repository');
 
 /**
  * Get lead records for a client
@@ -25,7 +25,7 @@ const logger = new StructuredLogger('SYSTEM', null, 'lead_repository');
  */
 async function getLeads(params) {
   const { clientId, filter, view, maxRecords, fields, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId, null, 'lead_repository');
+  const logger = options.logger || require('../../utils/unifiedLoggerFactory').createLogger(clientId, null, 'lead_repository');
   
   if (!clientId) {
     logger.error("Client ID is required to get leads");
@@ -90,7 +90,7 @@ async function getLeads(params) {
  */
 async function getLeadById(params) {
   const { clientId, leadId, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId, null, 'lead_repository');
+  const logger = options.logger || require('../../utils/unifiedLoggerFactory').createLogger(clientId, null, 'lead_repository');
   
   if (!clientId || !leadId) {
     logger.error("Client ID and Lead ID are required");
@@ -141,7 +141,7 @@ async function getLeadById(params) {
  */
 async function updateLead(params) {
   const { clientId, leadId, updates, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId, null, 'lead_repository');
+  const logger = options.logger || require('../../utils/unifiedLoggerFactory').createLogger(clientId, null, 'lead_repository');
   
   if (!clientId || !leadId) {
     logger.error("Client ID and Lead ID are required to update lead");
@@ -191,7 +191,7 @@ async function updateLead(params) {
  */
 async function createLead(params) {
   const { clientId, leadData, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId, null, 'lead_repository');
+  const logger = options.logger || require('../../utils/unifiedLoggerFactory').createLogger(clientId, null, 'lead_repository');
   
   if (!clientId || !leadData) {
     logger.error("Client ID and lead data are required to create lead");
@@ -241,7 +241,7 @@ async function createLead(params) {
  */
 async function updateLeadsInBatch(params) {
   const { clientId, records, options = {} } = params;
-  const logger = options.logger || new StructuredLogger(clientId, null, 'lead_repository');
+  const logger = options.logger || require('../../utils/unifiedLoggerFactory').createLogger(clientId, null, 'lead_repository');
   
   if (!clientId || !records || !Array.isArray(records)) {
     logger.error("Client ID and array of records are required to update leads in batch");

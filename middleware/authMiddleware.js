@@ -1,7 +1,7 @@
 // middleware/authMiddleware.js
 // Simple authentication middleware for WordPress user validation and client lookup
 
-const { StructuredLogger } = require('../utils/structuredLogger');
+const { createLogger } = require('../utils/unifiedLoggerFactory');
 const clientService = require('../services/clientService');
 const { getCurrentWordPressUser } = require('../utils/wordpressAuth');
 const { parseServiceLevel, hasServiceLevelAccess } = require('../utils/serviceLevel');
@@ -24,7 +24,7 @@ const { parseServiceLevel, hasServiceLevelAccess } = require('../utils/serviceLe
  * @returns {Promise<number|null>} WordPress User ID or null if not logged in
  */
 async function getWordPressUserId(req) {
-    const logger = new StructuredLogger('AUTH');
+    const logger = createLogger('SYSTEM', null, 'AUTH');
     
     try {
         // For testing - check for test header or query parameter first

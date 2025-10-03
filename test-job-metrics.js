@@ -11,10 +11,10 @@
 const jobMetricsService = require('./services/jobMetricsService');
 const unifiedRunIdService = require('./services/unifiedRunIdService');
 const unifiedJobTrackingRepository = require('./services/unifiedJobTrackingRepository');
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createSystemLogger } = require('./utils/unifiedLoggerFactory');
 
 // Configure logger
-const logger = new StructuredLogger('SYSTEM', null, 'job_metrics_test');
+const logger = createSystemLogger(null, 'job_metrics_test');
 
 /**
  * Run a test of metric validation

@@ -1,6 +1,6 @@
 // File: postPromptBuilder.js
 
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/unifiedLoggerFactory');
 // We import the function to load all necessary data from Airtable
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 
@@ -16,7 +16,7 @@ const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
 async function buildPostScoringPrompt(base, config, logger = null) {
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
-        logger = new StructuredLogger('SYSTEM', 'PROMPT');
+        logger = createLogger('SYSTEM', 'PROMPT');
     }
 
     logger.setup('buildPostScoringPrompt', 'Starting post scoring prompt construction');
