@@ -150,11 +150,13 @@ async function processPostScoringInBackground(jobId, stream, options) {
       try {
         
         // Run post scoring for this client with timeout
+        // FIX: Corrected parameter order - jobId as runId, client.clientId as clientId, options.limit as limit
         const clientResult = await Promise.race([
           postBatchScorer.runMultiTenantPostScoring(
             vertexAIClient,
             geminiModelId,
-            client.clientId,
+            jobId, // FIXED: Using jobId as runId (was incorrectly passing client.clientId as runId)
+            client.clientId, // FIXED: Now correctly passed as clientId parameter
             options.limit,
             {
               dryRun: options.dryRun,
