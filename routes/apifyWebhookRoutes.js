@@ -87,11 +87,25 @@ async function apifyWebhookHandler(req, res) {
     try {
         const payload = req.body;
         
-        // Extract Apify run ID
+        // First, look for our system-generated jobRunId which is the most important identifier
+        // This is what our code should be using for processing
+        jobRunId = payload.jobRunId || payload.data?.jobRunId || null;
+        
+        if (jobRunId) {
+            logger.info(`Found system-generated job run ID in webhook payload: ${jobRunId}`);
+        }
+        
+        // Extract Apify run ID (only as a fallback or for logging)
         apifyRunId = extractRunIdFromPayload(payload);
         if (!apifyRunId) {
-            logger.error("No Apify run ID found in payload");
-            return res.status(400).json({ success: false, error: 'No Apify run ID found in payload' });
+            if (!jobRunId) {
+                // Only error if we don't have either ID
+                logger.error("No Apify run ID or job run ID found in payload");
+                return res.status(400).json({ success: false, error: 'No run ID found in payload' });
+            } else {
+                // Log but continue if we have jobRunId
+                logger.warn("No Apify run ID found in payload, but we have jobRunId so continuing");
+            }
         }
         
         // Determine client ID (from query param, header, or payload)
@@ -135,26 +149,59 @@ async function apifyWebhookHandler(req, res) {
             message: `Processing webhook for Apify run ${apifyRunId}, client ${clientId}` 
         });
         
-        // CRITICAL FIX: First check if a job record for this run already exists
-        // This prevents duplicate processing and ensures we're only updating existing records
-        const existingJobId = payload.jobRunId || payload.data?.jobRunId || null;
+        // We already extracted jobRunId at the beginning, now we just need to validate it exists
+        // and is properly formatted
         
-        if (existingJobId) {
+        if (jobRunId) {
             // Validate that the referenced job record actually exists
-            const recordExists = await validateRunRecordExists(existingJobId, clientId);
+            const recordExists = await validateRunRecordExists(jobRunId, clientId);
             
             if (!recordExists) {
-                logger.error(`Job run record referenced in webhook (${existingJobId}) does not exist for client ${clientId}`);
-                return res.status(404).json({ 
-                    success: false, 
-                    error: 'Job record not found',
-                    message: `No active run found for client ${clientId} with run ID ${existingJobId}`
-                });
+                logger.error(`Job run record referenced in webhook (${jobRunId}) does not exist for client ${clientId}`);
+                
+                // Instead of failing, try to find the record by Apify Run ID as a fallback
+                if (apifyRunId) {
+                    logger.info(`Attempting to find job run record by Apify run ID: ${apifyRunId}`);
+                    
+                    // Try to get system run ID from apifyRunsService by Apify run ID
+                    try {
+                        const apifyRunsService = require('../services/apifyRunsService');
+                        const apifyRecord = await apifyRunsService.getApifyRun(apifyRunId);
+                        
+                        if (apifyRecord && apifyRecord.runId) {
+                            // If we found the record, use its Run ID instead
+                            jobRunId = apifyRecord.runId;
+                            logger.info(`Found system run ID ${jobRunId} from Apify record for ${apifyRunId}`);
+                            
+                            // Re-validate with the found ID
+                            const refetchedRecordExists = await validateRunRecordExists(jobRunId, clientId);
+                            if (!refetchedRecordExists) {
+                                logger.error(`Found system run ID ${jobRunId} but it still doesn't exist in job tracking`);
+                                return res.status(404).json({ 
+                                    success: false, 
+                                    error: 'Job record not found even after Apify lookup',
+                                    message: `No active run found for client ${clientId} with any available run ID`
+                                });
+                            }
+                        } else {
+                            logger.error(`No Apify record found for Apify run ID: ${apifyRunId}`);
+                        }
+                    } catch (lookupError) {
+                        logger.error(`Error looking up Apify record: ${lookupError.message}`);
+                    }
+                }
+                
+                // If we still don't have a valid jobRunId, return error
+                if (!jobRunId || !(await validateRunRecordExists(jobRunId, clientId))) {
+                    return res.status(404).json({ 
+                        success: false, 
+                        error: 'Job record not found',
+                        message: `No active run found for client ${clientId} with run ID ${jobRunId}`
+                    });
+                }
             }
             
-            // Use the existing job ID
-            jobRunId = existingJobId;
-            logger.info(`Using existing job run ID from webhook: ${jobRunId}`);
+            logger.info(`Using validated job run ID from webhook: ${jobRunId}`);
         } else {
             // Start a new job using the orchestration service if no job ID was provided
             const jobInfo = await jobOrchestrationService.startJob({

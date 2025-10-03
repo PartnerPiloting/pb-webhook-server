@@ -53,6 +53,22 @@ const RUN_ID_FORMATS = {
     toStandardFormat: (match) => match[0] // Already in standard format
   },
   
+  // External Apify run ID format: "YYMMDD-HHMMSS-apify-originalRunId"
+  APIFY_EXTERNAL: {
+    name: 'APIFY_EXTERNAL',
+    regex: /^(\d{6})-(\d{6})-apify-(.+)$/,
+    extractTimestamp: (match) => ({
+      year: match[1].substring(0, 2),
+      month: match[1].substring(2, 4),
+      day: match[1].substring(4, 6),
+      hour: match[2].substring(0, 2),
+      minute: match[2].substring(2, 4),
+      second: match[2].substring(4, 6),
+      apifyId: match[3]
+    }),
+    toStandardFormat: (match) => `${match[1]}-${match[2]}` // Extract just the timestamp portion
+  },
+  
   // Client-suffixed format: "YYMMDD-HHMMSS-ClientId"
   CLIENT_SUFFIX: {
     name: 'CLIENT_SUFFIX',
@@ -413,10 +429,11 @@ function normalizeRunId(runId, source = 'unknown') {
     }
   }
   
-  // CRITICAL FIX: Special handling for compound run IDs like "masterRunId-clientId"
-  // If it's already in our compound format (contains a dash followed by alphanumeric clientId),
-  // we should NOT attempt to normalize it further as that would break the client-specific part
-  if (typeof runId === 'string' && runId.match(/^[\w\d]+-[\w\d]+$/)) {
+  // CRITICAL FIX: Special handling for compound run IDs like "masterRunId-clientId" 
+  // or "YYMMDD-HHMMSS-apify-originalRunId"
+  // If it's already in our compound format, we should NOT attempt to normalize it further
+  if (typeof runId === 'string' && 
+      (runId.match(/^[\w\d]+-[\w\d]+$/) || runId.match(/^(\d{6})-(\d{6})-apify-(.+)$/))) {
     if (DEBUG_RUN_ID) {
       logger.debug(`[${source}] Detected compound run ID pattern: "${runId}" - preserving as is`);
     }
@@ -503,7 +520,34 @@ function getRunRecordId(runId, clientId) {
  * @returns {string|null} Normalized run ID or null if invalid
  */
 function registerApifyRunId(apifyRunId, clientId) {
-  return normalizeRunId(apifyRunId);
+  // For Apify run IDs, we need to be more lenient because they come from
+  // an external system and won't match our standard format
+  
+  // Ensure we have a string
+  if (!apifyRunId) {
+    logger.error(`Null or undefined apifyRunId provided to registerApifyRunId for client ${clientId}`);
+    return null;
+  }
+  
+  const safeRunId = String(apifyRunId);
+  
+  // Special handling for external run IDs - convert to timestamp-based format
+  // Use the current timestamp as we don't know when the Apify run was created
+  const now = new Date();
+  const year = now.getFullYear().toString().slice(2);
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const day = now.getDate().toString().padStart(2, '0');
+  const hour = now.getHours().toString().padStart(2, '0');
+  const minute = now.getMinutes().toString().padStart(2, '0');
+  const second = now.getSeconds().toString().padStart(2, '0');
+  
+  // Generate a standard format ID with the original Apify ID as a suffix
+  const standardizedRunId = `${year}${month}${day}-${hour}${minute}${second}-apify-${safeRunId}`;
+  
+  // Log the transformation for tracking
+  logger.info(`Registered external Apify run ID: ${safeRunId} → ${standardizedRunId}`);
+  
+  return standardizedRunId;
 }
 
 /**

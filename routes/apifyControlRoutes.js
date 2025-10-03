@@ -359,6 +359,11 @@ router.post('/api/apify/run', async (req, res) => {
   const webhookParams = new URLSearchParams();
   if (opts.build) webhookParams.set('build', opts.build);
   const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs${webhookParams.toString() ? `?${webhookParams.toString()}` : ''}`;
+    
+    // Generate a standardized system run ID that will be consistent with our validation rules
+    const unifiedRunIdService = require('../services/unifiedRunIdService');
+    const systemRunId = unifiedRunIdService.generateTimestampRunId();
+    console.log(`[ApifyControl] Generated system run ID ${systemRunId} for client ${clientId}`);
 
     // Add webhook configuration for Actor runs
     const defaultWebhookUrl = 'https://pb-webhook-server.onrender.com/api/apify-webhook';
@@ -373,6 +378,9 @@ router.post('/api/apify/run', async (req, res) => {
             id: '{{resource.id}}',
             status: '{{resource.status}}'
           },
+          // Include our system-generated run ID in the payload
+          jobRunId: systemRunId,
+          clientId: clientId,
           eventType: '{{eventType}}',
           createdAt: '{{createdAt}}'
         }),
@@ -405,19 +413,21 @@ router.post('/api/apify/run', async (req, res) => {
     
     // Store run mapping for multi-tenant webhook handling
     try {
+      // Store both the Apify run ID and our system run ID in the record
       await createApifyRun(run.id, clientId, {
         actorId,
         build: opts.build,
         targetUrls,
-        mode: 'webhook'
+        mode: 'webhook',
+        systemRunId: systemRunId  // Include our system run ID
       });
-      console.log(`[ApifyControl] Created run tracking for ${run.id} -> ${clientId}`);
+      console.log(`[ApifyControl] Created run tracking for Apify ID ${run.id} -> System ID ${systemRunId} -> Client ${clientId}`);
     } catch (runTrackingError) {
       console.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
       // Continue execution - run tracking failure shouldn't break the flow
     }
     
-    return res.json({ ok: true, mode: 'webhook', runId: run.id, status: run.status, url: run.url || run.buildUrl || null });
+    return res.json({ ok: true, mode: 'webhook', runId: run.id, systemRunId: systemRunId, status: run.status, url: run.url || run.buildUrl || null });
   } catch (e) {
     console.error('[ApifyControl] run error:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
