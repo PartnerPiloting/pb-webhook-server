@@ -23,9 +23,10 @@ const {
   TABLES,
   JOB_TRACKING_FIELDS,  // Primary constant for job fields
   CLIENT_RUN_FIELDS,    // Primary constant for client run fields
-  STATUS_VALUES,        // Get STATUS_VALUES from here only
+  CLIENT_RUN_STATUS_VALUES, // Get CLIENT_RUN_STATUS_VALUES from here only
+  STATUS_VALUES,        // Deprecated alias - for backward compatibility
   FORMULA_FIELDS
-} = require('../constants/airtableSimpleConstants');
+} = require('../constants/airtableUnifiedConstants');
 
 // Table constants - Using simplified constants from unified file
 const JOB_TRACKING_TABLE = TABLES.JOB_TRACKING;
@@ -284,7 +285,7 @@ class JobTracking {
       // Prepare record data using constants - improves maintainability
       const recordData = {
         [JOB_TRACKING_FIELDS.RUN_ID]: standardRunId, // Always use standardized ID
-        [JOB_TRACKING_FIELDS.STATUS]: STATUS_VALUES.RUNNING,
+        [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
         [JOB_TRACKING_FIELDS.START_TIME]: startTime,
         // Use proper field name from constants - ensure it exists in Airtable
         [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: initialData[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || ''
@@ -516,7 +517,7 @@ class JobTracking {
       const recordData = {
         [CLIENT_RUN_FIELDS.RUN_ID]: clientRunId,
         [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
-        [CLIENT_RUN_FIELDS.STATUS]: STATUS_VALUES.RUNNING,
+        [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
         [CLIENT_RUN_FIELDS.START_TIME]: startTime,
         [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: initialData[CLIENT_RUN_FIELDS.SYSTEM_NOTES] || ''
       };
@@ -750,11 +751,11 @@ class JobTracking {
   static async completeClientRun(params) {
     const { runId, clientId, status = 'Completed', updates = {}, options = {} } = params;
     
-    // Add completion details to updates
+    // Add completion details to updates - use proper field constants
     const completeUpdates = {
       ...updates,
-      status,
-      endTime: updates.endTime || new Date().toISOString()
+      [CLIENT_RUN_FIELDS.STATUS]: status, // Using proper constant for Status field
+      [CLIENT_RUN_FIELDS.END_TIME]: updates[CLIENT_RUN_FIELDS.END_TIME] || new Date().toISOString()
     };
     
     // Update the record with completion details
@@ -1283,7 +1284,7 @@ class JobTracking {
     try {
       // CRITICAL FIX: Check for existing status in finalMetrics using both legacy and standardized field names
       // Determine final status based on metrics using constants
-      let status = STATUS_VALUES.COMPLETED;
+      let status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
       const hasErrors = finalMetrics[CLIENT_RUN_FIELDS.ERRORS] && finalMetrics[CLIENT_RUN_FIELDS.ERRORS] > 0;
       const noLeadsProcessed = (!finalMetrics[CLIENT_RUN_FIELDS.PROFILES_EXAMINED_FOR_SCORING] || 
                                 finalMetrics[CLIENT_RUN_FIELDS.PROFILES_EXAMINED_FOR_SCORING] === 0) &&
@@ -1299,9 +1300,9 @@ class JobTracking {
       } else {
         // Otherwise determine based on metrics
         if (noLeadsProcessed) {
-          status = STATUS_VALUES.NO_LEADS_TO_SCORE;
+          status = CLIENT_RUN_STATUS_VALUES.NO_LEADS_TO_SCORE;
         } else if (finalMetrics.failed) {
-          status = STATUS_VALUES.FAILED;
+          status = CLIENT_RUN_STATUS_VALUES.FAILED;
         }
       }
       

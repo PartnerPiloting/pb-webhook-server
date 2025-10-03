@@ -41,7 +41,7 @@ const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 const airtableService = require('../services/airtable/airtableService');
 const { JobTracking } = require('../services/jobTracking');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
-const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 const { 
   JOB_TRACKING_FIELDS, // Updated to use standardized constant name
   CLIENT_RUN_FIELDS
@@ -622,7 +622,7 @@ async function main() {
                     runId: normalizedRunId,
                     clientId: workflow.clientId,
                     updates: { 
-                        [CLIENT_RUN_FIELDS.STATUS]: success ? STATUS_VALUES.COMPLETED : STATUS_VALUES.ERROR,
+                        [CLIENT_RUN_FIELDS.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
                         [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: notes 
                     }
                 });
@@ -724,7 +724,7 @@ async function main() {
             const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
             await JobTracking.completeJob({
                 runId: normalizedRunId,
-                status: STATUS_VALUES.COMPLETED,
+                status: CLIENT_RUN_STATUS_VALUES.COMPLETED,
                 updates: { [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: notes }
             });
             log(`✅ Job tracking metrics updated`);
@@ -748,7 +748,7 @@ async function main() {
             const notes = `Run failed with error: ${error.message}`;
             await JobTracking.completeJob({
                 runId: normalizedRunId,
-                status: STATUS_VALUES.ERROR,
+                status: CLIENT_RUN_STATUS_VALUES.FAILED,
                 updates: { [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: notes }
             });
             log(`✅ Job tracking updated for failure`);

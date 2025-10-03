@@ -18,7 +18,8 @@ const {
   LEAD_FIELDS, 
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS, 
-  STATUS_VALUES 
+  CLIENT_RUN_STATUS_VALUES,
+  STATUS_VALUES // Deprecated alias
 } = require("../constants/airtableUnifiedConstants.js");
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
@@ -1035,7 +1036,7 @@ router.post("/run-post-batch-score", async (req, res) => {
     try {
       await JobTracking.completeJob({
         runId,
-        status: results.totalErrors > 0 ? STATUS_VALUES.COMPLETED_WITH_ERRORS : STATUS_VALUES.COMPLETED,
+        status: results.totalErrors > 0 ? CLIENT_RUN_STATUS_VALUES.COMPLETED_WITH_ERRORS : CLIENT_RUN_STATUS_VALUES.COMPLETED,
         updates: {
           'System Notes': `Multi-tenant post scoring completed: ${results.successfulClients}/${results.totalClients} clients successful, ${results.totalPostsScored}/${results.totalPostsProcessed} posts scored`,
           'Items Processed': results.totalPostsProcessed,
