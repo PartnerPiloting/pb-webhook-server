@@ -18,15 +18,14 @@ const {
   LEAD_FIELDS, 
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS, 
-  CLIENT_RUN_STATUS_VALUES,
-  STATUS_VALUES // Deprecated alias
+  CLIENT_RUN_STATUS_VALUES
 } = require("../constants/airtableUnifiedConstants.js");
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 // ARCHITECTURAL FIX: Helper function to ensure status values are always available
 // This prevents "toLowerCase of undefined" errors and ensures consistent status values
 function getStatusString(statusType = 'COMPLETED') {
-  // Always fallback to safe defaults if STATUS_VALUES is not properly initialized
+  // Always fallback to safe defaults if CLIENT_RUN_STATUS_VALUES is not properly initialized
   const statusMap = {
     'COMPLETED': 'completed',
     'FAILED': 'failed',
@@ -35,12 +34,12 @@ function getStatusString(statusType = 'COMPLETED') {
     'NO_LEADS': 'no_leads_to_score'
   };
   
-  // Use STATUS_VALUES if available, otherwise use our fallback map
-  if (STATUS_VALUES && 
-      typeof STATUS_VALUES === 'object' && 
-      statusType in STATUS_VALUES && 
-      typeof STATUS_VALUES[statusType] === 'string') {
-    return STATUS_VALUES[statusType].toLowerCase();
+  // Use CLIENT_RUN_STATUS_VALUES if available, otherwise use our fallback map
+  if (CLIENT_RUN_STATUS_VALUES && 
+      typeof CLIENT_RUN_STATUS_VALUES === 'object' && 
+      statusType in CLIENT_RUN_STATUS_VALUES && 
+      typeof CLIENT_RUN_STATUS_VALUES[statusType] === 'string') {
+    return CLIENT_RUN_STATUS_VALUES[statusType].toLowerCase();
   }
   
   // Fallback to our safe defaults

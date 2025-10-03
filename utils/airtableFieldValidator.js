@@ -254,7 +254,6 @@ function getFieldName(fieldName) {
 
 module.exports = {
   FIELD_NAMES,
-  STATUS_VALUES,
   validateFieldNames,
   createValidatedObject,
   getFieldName
