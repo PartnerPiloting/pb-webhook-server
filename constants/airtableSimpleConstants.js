@@ -39,12 +39,25 @@ const JOB_TRACKING_FIELDS = {
   SYSTEM_NOTES: 'System Notes',
   ERROR_SUMMARY: 'Error Summary',
   ERROR: 'Error', // Added this field since we reference it in jobTracking.js
+  ERRORS: 'Errors', // Added field for error count
   PROGRESS: 'Progress', // Added this field since we reference it in jobTracking.js
   LAST_CLIENT: 'Last Client Processed', // Added this field since we reference it in jobTracking.js
   
+  // Processing metrics
+  PROFILES_PROCESSED: 'Profiles Processed',
+  PROFILES_SCORED: 'Profiles Successfully Scored',
+  POSTS_PROCESSED: 'Posts Processed',
+  POSTS_SCORED: 'Posts Successfully Scored',
+  
+  // Token metrics
+  TOTAL_TOKENS: 'Total Tokens',
+  PROMPT_TOKENS: 'Prompt Tokens',
+  COMPLETION_TOKENS: 'Completion Tokens',
+  TOTAL_POSTS_HARVESTED: 'Total Posts Harvested'
+  
   // Formula fields - never update directly
   DURATION: 'Duration',
-  SUCCESS_RATE: 'Success Rate'
+  SUCCESS_RATE: 'Success Rate',
 };
 
 // Field names for Client Run Results table
