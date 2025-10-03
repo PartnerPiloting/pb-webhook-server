@@ -299,6 +299,8 @@ async function completeJobTrackingRecord(params) {
 async function getClientRunRecord(params) {
   const { runId, clientId, options = {} } = params;
   const log = options.logger || logger;
+  // Ensure source is always defined with a meaningful default
+  const source = options.source || 'unified_job_tracking_get';
   
   if (!runId || !clientId) {
     log.error("Run ID and Client ID are required to get client run record");
@@ -346,6 +348,8 @@ async function getClientRunRecord(params) {
 async function createClientRunRecord(params) {
   const { clientId, runId, clientName, initialData = {}, options = {} } = params;
   const log = options.logger || logger;
+  // Ensure source is always defined with a meaningful default
+  const source = options.source || 'unified_job_tracking_create';
   
   if (!clientId || !runId) {
     log.error("Client ID and Run ID are required to create run record");
@@ -446,6 +450,8 @@ async function createClientRunRecord(params) {
 async function updateClientRunRecord(params) {
   const { clientId, runId, updates, createIfMissing = true, options = {} } = params;
   const log = options.logger || logger;
+  // Ensure source is always defined with a meaningful default
+  const source = options.source || 'unified_job_tracking';
   
   if (!clientId || !runId) {
     log.error("Client ID and Run ID are required to update client run record");
@@ -482,7 +488,10 @@ async function updateClientRunRecord(params) {
           'Recovery Note': 'Created during update attempt - original record missing',
           ...updates
         },
-        options
+        options: {
+          ...options,
+          source: source // Explicitly pass source to ensure it's available
+        }
       });
       
       return createdRecord;
@@ -574,6 +583,8 @@ async function updateClientRunRecord(params) {
 async function completeClientRunRecord(params) {
   const { clientId, runId, metrics = {}, options = {} } = params;
   const log = options.logger || logger;
+  // Ensure source is always defined with a meaningful default
+  const source = options.source || 'unified_job_tracking_complete';
   
   try {
     const endTime = new Date().toISOString();
@@ -587,7 +598,10 @@ async function completeClientRunRecord(params) {
         endTime,
         ...metrics
       },
-      options
+      options: {
+        ...options,
+        source: source // Explicitly pass source to ensure it's available
+      }
     });
   } catch (error) {
     log.error(`Error completing client run record: ${error.message}`);
