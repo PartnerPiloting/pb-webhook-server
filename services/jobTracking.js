@@ -237,7 +237,7 @@ class JobTracking {
     
     try {
       // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = standardizeRunId(runId, { 
+      const standardRunId = JobTracking.standardizeRunId(runId, { 
         enforceStandard: true,
         logErrors: true
       });
@@ -335,7 +335,7 @@ class JobTracking {
     
     try {
       // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = standardizeRunId(runId, { 
+      const standardRunId = JobTracking.standardizeRunId(runId, { 
         enforceStandard: true,
         logErrors: true
       });
@@ -456,7 +456,7 @@ class JobTracking {
     
     try {
       // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = standardizeRunId(runId, { 
+      const standardRunId = JobTracking.standardizeRunId(runId, { 
         enforceStandard: true,
         logErrors: true
       });
@@ -570,7 +570,7 @@ class JobTracking {
     
     try {
       // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = standardizeRunId(safeRunId, { 
+      const standardRunId = JobTracking.standardizeRunId(safeRunId, { 
         enforceStandard: true,
         logErrors: true
       });
@@ -769,7 +769,7 @@ class JobTracking {
     
     try {
       // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = standardizeRunId(runId, { 
+      const standardRunId = JobTracking.standardizeRunId(runId, { 
         enforceStandard: true,
         logErrors: true
       });
@@ -859,7 +859,7 @@ class JobTracking {
       const log = options.logger || logger;
       
       // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = standardizeRunId(safeRunId, { 
+      const standardRunId = JobTracking.standardizeRunId(safeRunId, { 
         enforceStandard: true,
         logErrors: true
       });
@@ -1024,7 +1024,7 @@ class JobTracking {
     
     try {
       // Use standardizeRunId helper to ensure consistent format
-      const standardRunId = standardizeRunId(safeRunId, { 
+      const standardRunId = JobTracking.standardizeRunId(safeRunId, { 
         enforceStandard: true,
         logErrors: true
       });
