@@ -214,9 +214,6 @@ const CLIENT_RUN_STATUS_VALUES = {
   COMPLETED_WITH_ERRORS: 'Completed with Errors'
 };
 
-// Alias for backward compatibility (will be removed in future)
-const STATUS_VALUES = CLIENT_RUN_STATUS_VALUES;
-
 // Scoring status values
 const SCORING_STATUS_VALUES = {
   NOT_SCORED: 'Not Scored',
@@ -248,7 +245,6 @@ module.exports = {
   JOB_TRACKING_FIELDS,
   FORMULA_FIELDS,
   CLIENT_RUN_STATUS_VALUES,
-  STATUS_VALUES, // Deprecated alias - use CLIENT_RUN_STATUS_VALUES instead
   SCORING_STATUS_VALUES,
   CLIENT_EXECUTION_LOG_FIELDS
 };

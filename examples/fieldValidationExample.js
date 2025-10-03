@@ -8,10 +8,12 @@
 // Import the validation tools
 const { 
   FIELD_NAMES, 
-  STATUS_VALUES, 
   createValidatedObject, 
   validateFieldNames 
 } = require('../utils/airtableFieldValidator');
+
+// Import status constants
+const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 // Import error handling tools
 const { 
@@ -121,7 +123,7 @@ async function runExample() {
   const correctMetrics = {
     [FIELD_NAMES.PROFILES_EXAMINED]: 100,
     [FIELD_NAMES.PROFILES_SCORED]: 90,
-    [FIELD_NAMES.STATUS]: STATUS_VALUES.COMPLETED
+    [FIELD_NAMES.STATUS]: CLIENT_RUN_STATUS_VALUES.COMPLETED
   };
   
   console.log('\nExample 3: Correct field names');

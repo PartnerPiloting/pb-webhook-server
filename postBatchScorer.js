@@ -31,8 +31,8 @@ const { createLogger } = require('./utils/unifiedLoggerFactory');
 
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
-// Import STATUS_VALUES from the unified constants to avoid duplication
-const { STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
+// Import CLIENT_RUN_STATUS_VALUES from the unified constants for status handling
+const { CLIENT_RUN_STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
 // FIXED: Import our runIdValidator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('./utils/runIdValidator');
 

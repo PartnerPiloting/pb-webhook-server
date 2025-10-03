@@ -23,7 +23,8 @@ const runIdService = require('./services/runIdService');
 const runRecordService = require('./services/runRecordAdapterSimple');
 
 // --- Field Validation ---
-const { FIELD_NAMES, STATUS_VALUES, createValidatedObject } = require('./utils/airtableFieldValidator');
+const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
+const { CLIENT_RUN_STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
 
 // --- Structured Logging ---
 const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');
@@ -734,7 +735,7 @@ async function run(req, res, dependencies) {
                                 await runRecordService.completeRunRecord({
                                     runId, 
                                     clientId, 
-                                    [FIELD_NAMES.STATUS]: STATUS_VALUES.SKIPPED, 
+                                    [FIELD_NAMES.STATUS]: CLIENT_RUN_STATUS_VALUES.NO_LEADS, 
                                     notes: `No action taken: ${reason}`,
                                     options: {
                                         logger: clientLogger,
