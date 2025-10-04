@@ -575,6 +575,7 @@ class JobTracking {
     
     // Use existing logger or create a new one with unified factory
     const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
+    const source = options.source || 'JobTracking.updateClientRun';
     
     try {
       // CRITICAL FIX: Use the SAME normalization method as in createJob
