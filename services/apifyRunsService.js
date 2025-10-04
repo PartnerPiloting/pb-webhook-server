@@ -91,7 +91,7 @@ async function createApifyRun(runId, clientId, options = {}) {
             // Mode field might not exist in the Apify table, remove if it causes issues
             'Mode': options.mode || 'webhook',
             // Store the original Apify run ID to maintain the mapping
-            [APIFY_RUN_ID]: runId, // Using constant to ensure correct field name
+            [UNIFIED_CLIENT_RUN_FIELDS.APIFY_RUN_ID]: runId, // Using constant to ensure correct field name
             // Last Updated field might not exist in the Apify table, remove if it causes issues
             'Last Updated': new Date().toISOString()
         };
