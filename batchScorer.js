@@ -25,6 +25,8 @@ const runRecordService = require('./services/runRecordAdapterSimple');
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
 const { CLIENT_RUN_STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
+// Import the consistent field names for direct use when needed
+const { CLIENT_RUN_FIELDS } = require('./constants/airtableFields');
 
 // --- Structured Logging ---
 const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');
@@ -735,8 +737,10 @@ async function run(req, res, dependencies) {
                                 await runRecordService.completeRunRecord({
                                     runId, 
                                     clientId, 
-                                    [FIELD_NAMES.STATUS]: CLIENT_RUN_STATUS_VALUES.NO_LEADS, 
-                                    notes: `No action taken: ${reason}`,
+                                    // Use CLIENT_RUN_FIELDS directly to ensure consistent field naming
+                                    [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.NO_LEADS, 
+                                    // Also use proper field name for notes
+                                    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `No action taken: ${reason}`,
                                     options: {
                                         logger: clientLogger,
                                         source: 'batchScorer_skip'
@@ -872,8 +876,9 @@ async function run(req, res, dependencies) {
                         await runRecordService.completeRunRecord({
                             runId,
                             clientId,
-                            [FIELD_NAMES.STATUS]: status === 'Success' ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
-                            [FIELD_NAMES.SYSTEM_NOTES]: reason,
+                            // Use CLIENT_RUN_FIELDS directly to ensure consistent field naming
+                            [CLIENT_RUN_FIELDS.STATUS]: status === 'Success' ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
+                            [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: reason,
                             options: {
                                 logger: clientLogger,
                                 source: 'batchScorer_complete'
@@ -950,9 +955,10 @@ async function run(req, res, dependencies) {
                         await runRecordService.completeRunRecord({
                             runId: safeRunId,
                             clientId: safeClientId,
-                            [FIELD_NAMES.STATUS]: CLIENT_RUN_STATUS_VALUES.FAILED,
-                            [FIELD_NAMES.SYSTEM_NOTES]: errorReason,
-                            [FIELD_NAMES.ERROR_DETAILS]: errorReason,
+                            // Use CLIENT_RUN_FIELDS directly to ensure consistent field naming
+                            [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.FAILED,
+                            [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: errorReason,
+                            [CLIENT_RUN_FIELDS.ERROR_DETAILS]: errorReason,
                             options: {
                                 source: 'batchScorer_error'
                             }
