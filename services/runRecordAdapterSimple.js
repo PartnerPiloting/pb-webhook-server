@@ -329,7 +329,8 @@ async function completeRunRecord(params) {
   }
   
   const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
-  const sourceContext = options.source || 'unknown';
+  // Use our own source value if options.source is not provided
+  const sourceContext = options.source || source;
   
   logger.debug(`[${source}] Completing run record for client ${validatedClientId} from source ${sourceContext}`);
   
@@ -354,11 +355,16 @@ async function completeRunRecord(params) {
       // IMPROVEMENT: Use centralized statusUtils to safely handle toLowerCase conversion
       // This maintains the defensive programming approach while using standardized utilities
       try {
-        // Use existing getStatusString utility if status resembles a status key
-        // Otherwise just use safe toLowerCase with proper type checking
-        const statusStr = status.toUpperCase() === status && status in CLIENT_RUN_STATUS_VALUES 
+        // CRITICAL FIX: Add extra safety checks to prevent toLowerCase errors
+        // First ensure CLIENT_RUN_STATUS_VALUES is properly defined
+        const isValidStatusEnum = CLIENT_RUN_STATUS_VALUES && typeof CLIENT_RUN_STATUS_VALUES === 'object';
+        // Then check if status is in the enum (only if the enum is valid)
+        const isStatusKey = isValidStatusEnum && status && status.toUpperCase() === status && status in CLIENT_RUN_STATUS_VALUES;
+        
+        // Now use the appropriate method based on our safety checks
+        const statusStr = isStatusKey
           ? getStatusString(status)
-          : String(status).toLowerCase();
+          : (status ? String(status).toLowerCase() : 'unknown');
           
         success = statusStr === 'completed' || statusStr === 'success';
       } catch (error) {
