@@ -227,24 +227,42 @@ async function updateJobTrackingRecord(params) {
     // Get the master clients base
     const masterBase = baseManager.getMasterClientsBase();
     
+    // ROOT CAUSE FIX: Use field validator to normalize field names BEFORE building updates
+    // This prevents lowercase field names (status, endTime) from being passed through
+    const { createValidatedObject } = require('../utils/airtableFieldValidator');
+    const normalizedUpdates = createValidatedObject(updates, { log: false });
+    
     // Prepare update fields
     const updateFields = {};
     
     // Map common update fields to Airtable field names using constants
-    if (updates.status) updateFields[JOB_TRACKING_FIELDS.STATUS] = updates.status;
-    if (updates.endTime) updateFields[JOB_TRACKING_FIELDS.END_TIME] = updates.endTime;
-    if (updates.error) updateFields['Error'] = updates.error; // Keep as is if no constant available
-    if (updates.progress) updateFields['Progress'] = updates.progress; // Keep as is if no constant available
-    if (updates.itemsProcessed) updateFields['Items Processed'] = updates.itemsProcessed; // Keep as is if no constant available
-    if (updates.notes) updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates.notes;
+    // Now using normalized field names from validator
+    if (normalizedUpdates.status || normalizedUpdates[JOB_TRACKING_FIELDS.STATUS]) {
+      updateFields[JOB_TRACKING_FIELDS.STATUS] = normalizedUpdates[JOB_TRACKING_FIELDS.STATUS] || normalizedUpdates.status;
+    }
+    if (normalizedUpdates.endTime || normalizedUpdates[JOB_TRACKING_FIELDS.END_TIME]) {
+      updateFields[JOB_TRACKING_FIELDS.END_TIME] = normalizedUpdates[JOB_TRACKING_FIELDS.END_TIME] || normalizedUpdates.endTime;
+    }
+    if (normalizedUpdates.error || normalizedUpdates['Error']) {
+      updateFields['Error'] = normalizedUpdates['Error'] || normalizedUpdates.error;
+    }
+    if (normalizedUpdates.progress || normalizedUpdates['Progress']) {
+      updateFields['Progress'] = normalizedUpdates['Progress'] || normalizedUpdates.progress;
+    }
+    if (normalizedUpdates.itemsProcessed || normalizedUpdates['Items Processed']) {
+      updateFields['Items Processed'] = normalizedUpdates['Items Processed'] || normalizedUpdates.itemsProcessed;
+    }
+    if (normalizedUpdates.notes || normalizedUpdates[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
+      updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = normalizedUpdates[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || normalizedUpdates.notes;
+    }
     
-    // Add any other custom fields from updates
+    // Add any other custom fields from normalized updates
     // Use case-insensitive comparison to prevent duplicate fields when updates object has different casing
-    const excludedKeys = ['status', 'endtime', 'error', 'progress', 'itemsprocessed', 'notes', 'clientid', 'success rate'];
-    Object.keys(updates).forEach(key => {
+    const excludedKeys = ['status', 'end time', 'endtime', 'error', 'progress', 'items processed', 'itemsprocessed', 'notes', 'system notes', 'clientid', 'success rate'];
+    Object.keys(normalizedUpdates).forEach(key => {
       // Skip fields that are handled separately
       if (!excludedKeys.includes(key.toLowerCase())) {
-        updateFields[key] = updates[key];
+        updateFields[key] = normalizedUpdates[key];
       }
     });
     
