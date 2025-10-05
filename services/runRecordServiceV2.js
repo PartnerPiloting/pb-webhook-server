@@ -479,9 +479,14 @@ async function updateRunRecord(params) {
     updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = `${existingNotes}${existingNotes ? '. ' : ''}Updated at ${new Date().toISOString()} from ${source}`;
   }
   
+  // ROOT CAUSE FIX: Use field validator to normalize field names BEFORE Airtable update
+  // This prevents field name mismatches in Client Run Results updates
+  const { createValidatedObject } = require('../utils/airtableFieldValidator');
+  const normalizedUpdateFields = createValidatedObject(updateFields, { log: false });
+  
   const updateData = {
     id: record.id,
-    fields: updateFields
+    fields: normalizedUpdateFields
   };
   
   logger.debug(`Run Record Service: Updating record ${record.id} with data: ${JSON.stringify(updateData.fields)}`);

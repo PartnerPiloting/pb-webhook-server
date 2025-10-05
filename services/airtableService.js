@@ -464,7 +464,12 @@ async function updateClientRun(runId, clientId, updates) {
       }
     }
     
-    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(recordId, updates);
+    // ROOT CAUSE FIX: Use field validator to normalize field names BEFORE Airtable update
+    // This prevents field name mismatches in Client Run Results updates
+    const { createValidatedObject } = require('../utils/airtableFieldValidator');
+    const normalizedUpdates = createValidatedObject(updates, { log: false });
+    
+    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(recordId, normalizedUpdates);
     console.log(`[METDEBUG] Successfully updated client run record ${recordId}`);
     console.log(`[METDEBUG] Updated fields:`, JSON.stringify(Object.keys(updates)));
     

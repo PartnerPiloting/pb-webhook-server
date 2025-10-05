@@ -650,14 +650,19 @@ class JobTracking {
       
       const record = records[0];
       
+      // ROOT CAUSE FIX: Use field validator to normalize field names BEFORE building updates
+      // This prevents field name mismatches in Client Run Results updates
+      const { createValidatedObject } = require('../utils/airtableFieldValidator');
+      const normalizedUpdates = createValidatedObject(updates, { log: false });
+      
       // Prepare update fields using constants
       const updateFields = {};
       
       // Use the globally defined list of formula fields
       
       // CRITICAL: Handle status update with special logic - always use constants for field names
-      // Remove legacy lowercase 'status' check to prevent field name errors
-      const statusValue = CLIENT_RUN_FIELDS.STATUS in updates ? updates[CLIENT_RUN_FIELDS.STATUS] : null;
+      // Now using normalized field names from validator
+      const statusValue = CLIENT_RUN_FIELDS.STATUS in normalizedUpdates ? normalizedUpdates[CLIENT_RUN_FIELDS.STATUS] : null;
       if (statusValue !== null) {
         updateFields[CLIENT_RUN_FIELDS.STATUS] = statusValue;
         
@@ -667,43 +672,43 @@ class JobTracking {
         
         // If status is transitioning to a completed state, set end time if not provided
         const isCompletedState = ['completed', 'failed', 'completed with errors', 'no leads to score'].includes(safeStatusValue);
-        const hasEndTime = CLIENT_RUN_FIELDS.END_TIME in updates;
+        const hasEndTime = CLIENT_RUN_FIELDS.END_TIME in normalizedUpdates;
         if (isCompletedState && !hasEndTime) {
           const endTime = new Date().toISOString();
           updateFields[CLIENT_RUN_FIELDS.END_TIME] = endTime;
           log.debug(`Auto-setting end time to ${endTime}`);
         }
       }
-      if ('leadsProcessed' in updates) updateFields[CLIENT_RUN_FIELDS.LEADS_PROCESSED] = updates.leadsProcessed;
-      if ('postsProcessed' in updates) updateFields[CLIENT_RUN_FIELDS.POSTS_PROCESSED] = updates.postsProcessed;
-      if ('errors' in updates) updateFields[CLIENT_RUN_FIELDS.ERRORS] = updates.errors;
+      if ('leadsProcessed' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.LEADS_PROCESSED] = normalizedUpdates.leadsProcessed;
+      if ('postsProcessed' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.POSTS_PROCESSED] = normalizedUpdates.postsProcessed;
+      if ('errors' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.ERRORS] = normalizedUpdates.errors;
       
       // Handle System Notes properly using constants
-      if (updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
-        updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES];
-      } else if (updates.notes) {
-        updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = updates.notes;
+      if (normalizedUpdates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
+        updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = normalizedUpdates[CLIENT_RUN_FIELDS.SYSTEM_NOTES];
+      } else if (normalizedUpdates.notes) {
+        updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = normalizedUpdates.notes;
       }
       
       // Add token usage fields using constants
-      if (updates.tokenUsage) updateFields[CLIENT_RUN_FIELDS.TOKEN_USAGE] = updates.tokenUsage;
-      if (updates.promptTokens) updateFields[CLIENT_RUN_FIELDS.PROMPT_TOKENS] = updates.promptTokens;
-      if (updates.completionTokens) updateFields[CLIENT_RUN_FIELDS.COMPLETION_TOKENS] = updates.completionTokens;
-      if (updates.totalTokens) updateFields[CLIENT_RUN_FIELDS.TOTAL_TOKENS] = updates.totalTokens;
+      if (normalizedUpdates.tokenUsage) updateFields[CLIENT_RUN_FIELDS.TOKEN_USAGE] = normalizedUpdates.tokenUsage;
+      if (normalizedUpdates.promptTokens) updateFields[CLIENT_RUN_FIELDS.PROMPT_TOKENS] = normalizedUpdates.promptTokens;
+      if (normalizedUpdates.completionTokens) updateFields[CLIENT_RUN_FIELDS.COMPLETION_TOKENS] = normalizedUpdates.completionTokens;
+      if (normalizedUpdates.totalTokens) updateFields[CLIENT_RUN_FIELDS.TOTAL_TOKENS] = normalizedUpdates.totalTokens;
       
       // Add API costs using constants
-      if (updates[CLIENT_RUN_FIELDS.APIFY_API_COSTS]) {
-        updateFields[CLIENT_RUN_FIELDS.APIFY_API_COSTS] = updates[CLIENT_RUN_FIELDS.APIFY_API_COSTS];
+      if (normalizedUpdates[CLIENT_RUN_FIELDS.APIFY_API_COSTS]) {
+        updateFields[CLIENT_RUN_FIELDS.APIFY_API_COSTS] = normalizedUpdates[CLIENT_RUN_FIELDS.APIFY_API_COSTS];
       };
       
       // Process all other direct field mappings, filtering out formula fields
       
       // Add all remaining fields that aren't already processed and aren't formula fields
-      Object.keys(updates).forEach(key => {
-        if (updates[key] !== undefined &&
+      Object.keys(normalizedUpdates).forEach(key => {
+        if (normalizedUpdates[key] !== undefined &&
             !updateFields.hasOwnProperty(key) &&
             !FORMULA_FIELDS.includes(key)) {
-          updateFields[key] = updates[key];
+          updateFields[key] = normalizedUpdates[key];
         }
       });
       
