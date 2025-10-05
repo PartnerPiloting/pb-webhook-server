@@ -12,6 +12,14 @@ const unifiedJobTrackingRepository = require('./unifiedJobTrackingRepository');
 const runIdSystem = require('./runIdSystem');
 const errorHandling = require('./jobTrackingErrorHandling');
 
+// Import field name constants from unified constants file
+const { 
+  MASTER_TABLES,
+  CLIENT_RUN_FIELDS, 
+  JOB_TRACKING_FIELDS,
+  CLIENT_RUN_STATUS_VALUES
+} = require('../constants/airtableUnifiedConstants');
+
 // Default logger - using safe creation
 const logger = createSafeLogger('SYSTEM', null, 'job_metrics_service');
 
@@ -128,7 +136,12 @@ const METRIC_FIELDS = {
     type: 'string',
     aggregate: 'last',
     defaultValue: 'Unknown',
-    validate: value => typeof value === 'string' && ['Running', 'Completed', 'Failed', 'No Leads To Score'].includes(value)
+    validate: value => typeof value === 'string' && [
+      CLIENT_RUN_STATUS_VALUES.RUNNING, 
+      CLIENT_RUN_STATUS_VALUES.COMPLETED, 
+      CLIENT_RUN_STATUS_VALUES.FAILED, 
+      CLIENT_RUN_STATUS_VALUES.NO_LEADS
+    ].includes(value)
   }
 };
 
@@ -286,8 +299,8 @@ function aggregateMetrics(records, options = {}) {
   // Add derived metrics
   aggregated['Clients Processed'] = records.length;
   aggregated['Clients With Errors'] = records.filter(r => {
-    const status = typeof r.get === 'function' ? r.get('Status') : r.Status;
-    return status === 'Failed';
+    const status = typeof r.get === 'function' ? r.get(CLIENT_RUN_FIELDS.STATUS) : r.Status;
+    return status === CLIENT_RUN_STATUS_VALUES.FAILED;
   }).length;
   
   return aggregated;
@@ -373,11 +386,11 @@ async function completeClientMetrics(params) {
     const { validMetrics } = validateMetrics(metrics, { logger: log });
     
     // Add end time and status - ensure status is one of the allowed values
-    let status = 'Completed';
+    let status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
     if (!success) {
-      status = 'Failed';
+      status = CLIENT_RUN_STATUS_VALUES.FAILED;
     } else if (validMetrics['Leads Processed'] === 0 && validMetrics['Posts Processed'] === 0) {
-      status = 'No Leads To Score';
+      status = CLIENT_RUN_STATUS_VALUES.NO_LEADS;
     }
     
     const finalMetrics = {
@@ -469,7 +482,7 @@ async function completeJobMetrics(params) {
     // Then complete the job with final status
     return await unifiedJobTrackingRepository.completeJobTrackingRecord({
       runId,
-      status: success ? 'Completed' : 'Failed',
+      status: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
       metrics: {
         'System Notes': notes
       },

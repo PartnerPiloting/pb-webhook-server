@@ -11,12 +11,20 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const baseManager = require('./airtable/baseManager');
 const runIdSystem = require('./runIdSystem');
 
-// Import field name constants
-const { CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+// Import field name constants from unified constants file
+const { 
+  MASTER_TABLES,
+  CLIENT_RUN_FIELDS, 
+  JOB_TRACKING_FIELDS, 
+  CLIENT_RUN_STATUS_VALUES 
+} = require('../constants/airtableUnifiedConstants');
+
+// Import legacy constants for compatibility during transition
+const { TABLES } = require('../constants/airtableFields');
 
 // Table names
-const JOB_TRACKING_TABLE = TABLES.JOB_TRACKING;
-const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
+const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Default logger - using safe creation
 const logger = createSafeLogger('SYSTEM', null, 'unified_job_tracking');
@@ -67,7 +75,7 @@ async function getJobTrackingRecord(params) {
     
     // Find the record by Run ID
     const records = await masterBase(JOB_TRACKING_TABLE).select({
-      filterByFormula: `{Run ID} = '${standardizedRunId}'`
+      filterByFormula: `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardizedRunId}'`
     }).firstPage();
     
     if (!records || records.length === 0) {
@@ -128,8 +136,8 @@ async function createJobTrackingRecord(params) {
         id: existingRecord.id,
         runId: standardizedRunId,
         clientId,
-        startTime: existingRecord.get('Start Time'),
-        status: existingRecord.get('Status')
+        startTime: existingRecord.get(CLIENT_RUN_FIELDS.START_TIME),
+        status: existingRecord.get(CLIENT_RUN_FIELDS.STATUS)
       };
     }
     
@@ -138,10 +146,10 @@ async function createJobTrackingRecord(params) {
     
     // Create the record
     const record = await masterBase(JOB_TRACKING_TABLE).create({
-      'Run ID': standardizedRunId,
-      'Start Time': startTime,
-      'Status': 'Running',
-      'Stream': streamNumber,
+      [JOB_TRACKING_FIELDS.RUN_ID]: standardizedRunId,
+      [JOB_TRACKING_FIELDS.START_TIME]: startTime,
+      [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
+      [JOB_TRACKING_FIELDS.STREAM]: streamNumber,
       ...initialData
     });
     
@@ -155,7 +163,7 @@ async function createJobTrackingRecord(params) {
       runId: standardizedRunId,
       clientId,
       startTime,
-      status: 'Running'
+      status: CLIENT_RUN_STATUS_VALUES.RUNNING
     };
   } catch (error) {
     log.error(`Error creating job tracking record: ${error.message}`);
@@ -235,7 +243,9 @@ async function updateJobTrackingRecord(params) {
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
-      if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'clientId', 'Success Rate'].includes(key)) {
+      // Skip fields that are handled separately
+      const excludedKeys = ['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'clientId', 'Success Rate'];
+      if (!excludedKeys.includes(key)) {
         updateFields[key] = updates[key];
       }
     });
@@ -318,7 +328,7 @@ async function getClientRunRecord(params) {
     
     // Find the record by Run ID and Client ID
     const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `AND({Run ID} = '${standardizedRunId}', {Client ID} = '${clientId}')`
+      filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardizedRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`
     }).firstPage();
     
     if (!records || records.length === 0) {
@@ -386,19 +396,19 @@ async function createClientRunRecord(params) {
         runId: standardizedRunId,
         baseRunId: baseStandardRunId,
         clientId,
-        clientName: existingRecord.get('Client Name'),
-        startTime: existingRecord.get('Start Time'),
-        status: existingRecord.get('Status')
+        clientName: existingRecord.get(CLIENT_RUN_FIELDS.CLIENT_NAME),
+        startTime: existingRecord.get(CLIENT_RUN_FIELDS.START_TIME),
+        status: existingRecord.get(CLIENT_RUN_FIELDS.STATUS)
       };
     }
     
     // Prepare fields for the record
     const fields = {
-      'Run ID': standardizedRunId,
-      'Client ID': clientId,
-      'Client Name': clientName || clientId, // Use clientId as fallback
-      'Start Time': startTime,
-      'Status': 'Running',
+      [CLIENT_RUN_FIELDS.RUN_ID]: standardizedRunId,
+      [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
+      [CLIENT_RUN_FIELDS.CLIENT_NAME]: clientName || clientId, // Use clientId as fallback
+      [CLIENT_RUN_FIELDS.START_TIME]: startTime,
+      [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
       ...initialData
     };
     
@@ -428,7 +438,7 @@ async function createClientRunRecord(params) {
       clientId,
       clientName: clientName || clientId,
       startTime,
-      status: 'Running'
+      status: CLIENT_RUN_STATUS_VALUES.RUNNING
     };
   } catch (error) {
     log.error(`Error creating client run record: ${error.message}`);
@@ -520,8 +530,10 @@ async function updateClientRunRecord(params) {
     
     // Add any other custom fields from updates
     Object.keys(updates).forEach(key => {
-      if (!['status', 'endTime', 'leadsProcessed', 'postsProcessed', 'errors', 'notes', 
-          'tokenUsage', 'promptTokens', 'completionTokens', 'totalTokens', 'Success Rate'].includes(key)) {
+      // Skip fields that are handled separately
+      const excludedKeys = ['status', 'endTime', 'leadsProcessed', 'postsProcessed', 'errors', 'notes', 
+          'tokenUsage', 'promptTokens', 'completionTokens', 'totalTokens', 'Success Rate'];
+      if (!excludedKeys.includes(key)) {
         // For any other fields, use the constant if available or fallback to the key itself
         updateFields[key] = updates[key];
       }
@@ -634,7 +646,7 @@ async function updateAggregateMetrics(params) {
     
     // Get all client records for this run
     const clientRecords = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `FIND('${standardizedRunId}', {Run ID}) > 0`
+      filterByFormula: `FIND('${standardizedRunId}', {${CLIENT_RUN_FIELDS.RUN_ID}}) > 0`
     }).all();
     
     if (!clientRecords || clientRecords.length === 0) {
@@ -645,7 +657,7 @@ async function updateAggregateMetrics(params) {
     // Calculate aggregates
     const aggregates = {
       'Clients Processed': clientRecords.length,
-      'Clients With Errors': clientRecords.filter(r => r.get('Status') === 'Failed').length,
+      'Clients With Errors': clientRecords.filter(r => r.get(CLIENT_RUN_FIELDS.STATUS) === CLIENT_RUN_STATUS_VALUES.FAILED).length,
       'Total Profiles Examined': 0,
       'Successful Profiles': 0,
       'Total Posts Harvested': 0,
@@ -657,13 +669,13 @@ async function updateAggregateMetrics(params) {
     
     // Sum up metrics from all client records
     clientRecords.forEach(record => {
-      aggregates['Total Profiles Examined'] += Number(record.get('Profiles Examined for Scoring') || 0);
-      aggregates['Successful Profiles'] += Number(record.get('Profiles Successfully Scored') || 0);
-      aggregates['Total Posts Harvested'] += Number(record.get('Total Posts Harvested') || 0);
-      aggregates['Posts Examined for Scoring'] += Number(record.get('Posts Examined for Scoring') || 0);
-      aggregates['Posts Successfully Scored'] += Number(record.get('Posts Successfully Scored') || 0);
-      aggregates['Profile Scoring Tokens'] += Number(record.get('Profile Scoring Tokens') || 0);
-      aggregates['Post Scoring Tokens'] += Number(record.get('Post Scoring Tokens') || 0);
+      aggregates['Total Profiles Examined'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_EXAMINED) || 0);
+      aggregates['Successful Profiles'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_SCORED) || 0);
+      aggregates['Total Posts Harvested'] += Number(record.get(CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED) || 0);
+      aggregates['Posts Examined for Scoring'] += Number(record.get(CLIENT_RUN_FIELDS.POSTS_EXAMINED) || 0);
+      aggregates['Posts Successfully Scored'] += Number(record.get(CLIENT_RUN_FIELDS.POSTS_SCORED) || 0);
+      aggregates['Profile Scoring Tokens'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS) || 0);
+      aggregates['Post Scoring Tokens'] += Number(record.get(CLIENT_RUN_FIELDS.POST_SCORING_TOKENS) || 0);
     });
     
     // Update the job tracking record using the standardized run ID
