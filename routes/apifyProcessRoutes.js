@@ -850,11 +850,15 @@ async function processClientHandler(req, res) {
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
           let masterBase = airtableServiceSimple.initialize(); // Get the Master base
           console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for Client Run Results table query`);
-          console.log(`[DEBUG-RUN-ID-FLOW] Query filter: {Run ID} = '${runIdToUse}'`);
+          
+          // ROOT CAUSE FIX: Client Run Results records use client-suffixed Run IDs
+          // We need to add the client suffix before querying
+          const clientSpecificRunId = `${runIdToUse}-${clientId}`;
+          console.log(`[DEBUG-RUN-ID-FLOW] Query filter: {Run ID} = '${clientSpecificRunId}' (base: ${runIdToUse}, client: ${clientId})`);
           
           // Query for the run record now that we know it exists
           let runRecords = await masterBase('Client Run Results').select({
-            filterByFormula: `{Run ID} = '${runIdToUse}'`,
+            filterByFormula: `{Run ID} = '${clientSpecificRunId}'`,
             maxRecords: 1
           }).firstPage();
           
@@ -862,6 +866,7 @@ async function processClientHandler(req, res) {
           if (runRecords && runRecords.length === 0) {
             console.error(`[DEBUG-RUN-ID-FLOW] ❌ CRITICAL: checkRunRecordExists returned TRUE but SELECT returned ZERO records!`);
             console.error(`[DEBUG-RUN-ID-FLOW] This indicates a Run ID mismatch between check and select`);
+            console.error(`[DEBUG-RUN-ID-FLOW] Searched for: ${clientSpecificRunId}, but record may exist with different format`);
           }
           
           if (runRecords && runRecords.length > 0) {
