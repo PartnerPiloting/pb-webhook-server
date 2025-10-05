@@ -230,7 +230,12 @@ async function updateJobTracking(runId, updates) {
     
     // Validate updates to prevent formula field errors
     const safeUpdates = validateUpdates(updates);
-    const updated = await base(JOB_TRACKING_TABLE).update(records[0].id, safeUpdates);
+    
+    // ROOT CAUSE FIX: Normalize field names before updating (5th code path needing this fix!)
+    const { createValidatedObject } = require('../utils/airtableFieldValidator');
+    const normalizedUpdates = createValidatedObject(safeUpdates, { log: false });
+    
+    const updated = await base(JOB_TRACKING_TABLE).update(records[0].id, normalizedUpdates);
     console.log(`✅ Updated job tracking record`);
     return updated;
     

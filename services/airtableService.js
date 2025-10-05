@@ -334,8 +334,13 @@ async function updateJobTracking(runId, updates) {
     
     const recordId = records[0].id;
     
-    // Update the record
-    const updated = await base(JOB_TRACKING_TABLE).update(recordId, updates);
+    // ROOT CAUSE FIX: Normalize field names before updating
+    // This is the 4th code path that needed this fix (jobTracking.js, unifiedJobTrackingRepository.js, simpleJobTracking.js, now airtableService.js)
+    const { createValidatedObject } = require('../utils/airtableFieldValidator');
+    const normalizedUpdates = createValidatedObject(updates, { log: false });
+    
+    // Update the record with normalized field names
+    const updated = await base(JOB_TRACKING_TABLE).update(recordId, normalizedUpdates);
     console.log(`Airtable Service: Updated job tracking record ${recordId}`);
     
     return updated;
