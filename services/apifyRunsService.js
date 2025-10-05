@@ -10,7 +10,8 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 const runIdSystem = require('./runIdSystem');
 // Import unified constants for Apify table and Client Run Results table
 const { 
-    APIFY_FIELDS, 
+    APIFY_FIELDS,
+    APIFY_STATUS_VALUES,
     CLIENT_RUN_FIELDS, 
     CLIENT_RUN_STATUS_VALUES,
     MASTER_TABLES 
@@ -86,7 +87,7 @@ async function createApifyRun(runId, clientId, options = {}) {
         const recordData = {
             [APIFY_FIELDS.RUN_ID]: normalizedRunId,
             [APIFY_FIELDS.CLIENT_ID]: clientId,
-            [APIFY_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
+            [APIFY_FIELDS.STATUS]: APIFY_STATUS_VALUES.RUNNING,
             [APIFY_FIELDS.CREATED_AT]: new Date().toISOString(),
             [APIFY_FIELDS.ACTOR_ID]: options.actorId || '',
             [APIFY_FIELDS.TARGET_URLS]: Array.isArray(options.targetUrls) ? options.targetUrls.join('\n') : '',
@@ -227,15 +228,10 @@ async function updateApifyRun(runId, updateData) {
         };
 
         if (updateData.status) {
-            // Map Apify status values to our standardized status values
-            let normalizedStatus = updateData.status;
-            if (updateData.status === 'FAILED') {
-                normalizedStatus = CLIENT_RUN_STATUS_VALUES.FAILED;
-            } else if (updateData.status === 'SUCCEEDED') {
-                normalizedStatus = CLIENT_RUN_STATUS_VALUES.COMPLETED;
-            }
-            
-            updateFields[APIFY_FIELDS.STATUS] = normalizedStatus;
+            // Map Apify status values - keep them as-is since they match Airtable dropdown options
+            // Apify uses: RUNNING, SUCCEEDED, FAILED (all caps)
+            // No need to normalize - use Apify's values directly
+            updateFields[APIFY_FIELDS.STATUS] = updateData.status;
             if (updateData.status === 'SUCCEEDED' || updateData.status === 'FAILED') {
                 updateFields[APIFY_FIELDS.COMPLETED_AT] = new Date().toISOString();
             }

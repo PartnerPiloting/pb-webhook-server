@@ -290,6 +290,13 @@ const APIFY_FIELDS = {
   TARGET_URLS: 'Target URLs'
 };
 
+// Status values for Apify table (matches Airtable dropdown options - ALL CAPS)
+const APIFY_STATUS_VALUES = {
+  RUNNING: 'RUNNING',
+  SUCCEEDED: 'SUCCEEDED',
+  FAILED: 'FAILED'
+};
+
 // Field names for the LinkedIn Posts table
 const POST_FIELDS = {
   URL: 'URL',
@@ -326,6 +333,7 @@ module.exports = {
   LEAD_STATUS_VALUES,
   CLIENT_EXECUTION_LOG_FIELDS,
   APIFY_FIELDS,
+  APIFY_STATUS_VALUES,
   POST_FIELDS,
   CREDENTIAL_FIELDS,
   POST_MEDIA_TYPES,
