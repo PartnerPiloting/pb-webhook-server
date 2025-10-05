@@ -363,9 +363,10 @@ async function completeRunRecord(params) {
           : (status ? String(status).toLowerCase() : 'unknown');
           
         // Match against lowercase constants for case-insensitive comparison
-        // Double-check CLIENT_RUN_STATUS_VALUES to prevent toLowerCase errors
-        const completedStr = (isValidStatusEnum && CLIENT_RUN_STATUS_VALUES.COMPLETED) 
-          ? CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase() 
+        // Triple-check CLIENT_RUN_STATUS_VALUES.COMPLETED exists and is a string
+        const completedValue = CLIENT_RUN_STATUS_VALUES?.COMPLETED;
+        const completedStr = (isValidStatusEnum && completedValue && typeof completedValue === 'string') 
+          ? completedValue.toLowerCase() 
           : 'completed'; // Hardcoded fallback
         success = statusStr === completedStr || statusStr === 'success';
       } catch (error) {
