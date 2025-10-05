@@ -2,7 +2,7 @@
  * DEPRECATED - Simple Run ID Generator
  * 
  * This utility is DEPRECATED and will be removed in a future version.
- * Please use services/unifiedRunIdService.js instead, which provides more
+ * Please use services/runIdSystem.js instead, which provides more
  * robust run ID handling with format detection and normalization.
  * 
  * Format: YYMMDD-HHMMSS
@@ -12,21 +12,21 @@
 console.warn(`
   =======================================================================
   DEPRECATION WARNING: utils/runIdGenerator.js is deprecated.
-  Please use services/unifiedRunIdService.js for all run ID operations.
+  Please use services/runIdSystem.js for all run ID operations.
   This utility will be removed in a future version.
   =======================================================================
 `);
 
 /**
  * Generates a timestamp-based run ID
- * Now delegates to unifiedRunIdService for consistent ID generation
+ * Now delegates to runIdSystem for consistent ID generation
  * @returns {string} The timestamp run ID
  */
 function generateRunId() {
   try {
-    // Use the unified service if available
-    const unifiedRunIdService = require('../services/unifiedRunIdService');
-    return unifiedRunIdService.generateTimestampRunId();
+    // Use the unified system if available
+    const runIdSystem = require('../services/runIdSystem');
+    return runIdSystem.generateRunId();
   } catch (error) {
     // Fallback to original implementation if unified service isn't available
     console.warn(`Failed to use unifiedRunIdService, falling back to legacy implementation: ${error.message}`);

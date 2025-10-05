@@ -10,7 +10,7 @@
 
 // FIXED: Using unified logger factory instead of direct StructuredLogger instantiation
 const { createSystemLogger } = require('./unifiedLoggerFactory');
-const unifiedRunIdService = require('../services/unifiedRunIdService');
+const runIdSystem = require('../services/runIdSystem');
 
 // Base logger for the validation system - using factory pattern
 const logger = createSystemLogger(null, 'param_validator');
@@ -215,7 +215,7 @@ function validateRunId(runId, options = {}) {
     // Normalize run ID if requested
     if (normalize && validatedId) {
       try {
-        return unifiedRunIdService.normalizeRunId(validatedId);
+        return runIdSystem.validateAndStandardizeRunId(validatedId);
       } catch (error) {
         if (throwError) {
           throw new ValidationError(`Invalid run ID format: ${error.message}`, { 

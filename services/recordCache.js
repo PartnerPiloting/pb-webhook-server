@@ -1,12 +1,12 @@
 // services/recordCache.js
 // A module to cache and retrieve Airtable record IDs
 
-// Updated to use unified run ID service
-const runIdService = require('./unifiedRunIdService');
+// Updated to use new run ID system
+const runIdSystem = require('./runIdSystem');
 
-// DEPRECATED: This module is being replaced by unifiedRunIdService
+// DEPRECATED: This module is being replaced by runIdSystem
 // Keeping for backwards compatibility during migration
-// New code should use runIdService directly
+// New code should use runIdSystem directly
 
 /**
  * Store a client run record ID in the cache
@@ -15,9 +15,9 @@ const runIdService = require('./unifiedRunIdService');
  * @param {string} recordId - The Airtable record ID
  */
 function storeClientRunRecordId(runId, clientId, recordId) {
-  // Delegate to runIdService
-  const normalizedId = runIdService.registerRunRecord(runId, clientId, recordId);
-  console.log(`RecordCache: Stored record ID ${recordId} for run ${normalizedId} (delegated to runIdService)`);
+  // Delegate to runIdSystem
+  runIdSystem.registerRunRecord(runId, clientId, recordId);
+  console.log(`RecordCache: Stored record ID ${recordId} for run ${runId} (delegated to runIdSystem)`);
 }
 
 /**
@@ -27,10 +27,10 @@ function storeClientRunRecordId(runId, clientId, recordId) {
  * @returns {string|null} The Airtable record ID or null if not found
  */
 function getClientRunRecordId(runId, clientId) {
-  // Delegate to runIdService
-  const recordId = runIdService.getRunRecordId(runId, clientId);
+  // Delegate to runIdSystem
+  const recordId = runIdSystem.getRunRecordId(runId, clientId);
   if (recordId) {
-    console.log(`RecordCache: Found record ID ${recordId} for run ${runId} (delegated to runIdService)`);
+    console.log(`RecordCache: Found record ID ${recordId} for run ${runId} (delegated to runIdSystem)`);
   }
   return recordId;
 }
@@ -41,18 +41,18 @@ function getClientRunRecordId(runId, clientId) {
  * @param {string} clientId - The client ID
  */
 function clearClientRunCache(runId, clientId) {
-  // Delegate to runIdService
-  runIdService.clearCache(runId, clientId);
-  console.log(`RecordCache: Cleared cache for ${runId}-${clientId} (delegated to runIdService)`);
+  // Delegate to runIdSystem
+  runIdSystem.clearCache(runId);
+  console.log(`RecordCache: Cleared cache for ${runId}-${clientId} (delegated to runIdSystem)`);
 }
 
 /**
  * Clear the entire cache
  */
 function clearAllCache() {
-  // Delegate to runIdService
-  runIdService.clearCache();
-  console.log(`RecordCache: Cleared all cache entries (delegated to runIdService)`);
+  // Delegate to runIdSystem
+  runIdSystem.clearCache();
+  console.log(`RecordCache: Cleared all cache entries (delegated to runIdSystem)`);
 }
 
 module.exports = {

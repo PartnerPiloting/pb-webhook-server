@@ -9,7 +9,7 @@
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const baseManager = require('./airtable/baseManager');
-const unifiedRunIdService = require('./unifiedRunIdService');
+const runIdSystem = require('./runIdSystem');
 
 // Import field name constants
 const { CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
@@ -39,7 +39,7 @@ async function getJobTrackingRecord(params) {
   
   try {
     // Convert to standard format
-    const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+    const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
     if (!standardizedRunId) {
       log.error(`Could not convert run ID to standard format: ${runId}`);
       return null;
@@ -48,7 +48,7 @@ async function getJobTrackingRecord(params) {
     log.debug(`Looking up job tracking record with standardized Run ID: ${standardizedRunId}`);
     
     // Check for cached record ID first
-    const cachedRecordId = unifiedRunIdService.getCachedRecordId(standardizedRunId);
+    const cachedRecordId = runIdSystem.getRunRecordId(standardizedRunId);
     if (cachedRecordId) {
       log.debug(`Using cached record ID ${cachedRecordId} for run ID ${standardizedRunId}`);
       
@@ -76,7 +76,7 @@ async function getJobTrackingRecord(params) {
     }
     
     // Cache the record ID for future lookups
-    unifiedRunIdService.cacheRecordId(standardizedRunId, records[0].id);
+    runIdSystem.registerRunRecord(standardizedRunId, null, records[0].id);
     
     log.debug(`Found job tracking record with ID: ${records[0].id}`);
     return records[0];
@@ -107,7 +107,7 @@ async function createJobTrackingRecord(params) {
   
   try {
     // Convert to standard format
-    const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+    const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
     if (!standardizedRunId) {
       log.error(`Could not convert run ID to standard format: ${runId}`);
       throw new Error(`Could not convert run ID to standard format: ${runId}`);
@@ -146,7 +146,7 @@ async function createJobTrackingRecord(params) {
     });
     
     // Cache the record ID
-    unifiedRunIdService.cacheRecordId(standardizedRunId, record.id);
+    runIdSystem.registerRunRecord(standardizedRunId, null, record.id);
     
     log.debug(`Created job tracking record for ${standardizedRunId}`);
     
@@ -183,7 +183,7 @@ async function updateJobTrackingRecord(params) {
   
   try {
     // Convert to standard format
-    const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+    const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
     if (!standardizedRunId) {
       log.error(`Could not convert run ID to standard format: ${runId}`);
       throw new Error(`Could not convert run ID to standard format: ${runId}`);
@@ -309,9 +309,8 @@ async function getClientRunRecord(params) {
   
   try {
     // Ensure runId has client suffix
-    const standardizedRunId = unifiedRunIdService.addClientSuffix(
-      unifiedRunIdService.convertToStandardFormat(runId) || runId,
-      clientId
+    const standardizedRunId = runIdSystem.createClientRunId(
+      runIdSystem.validateAndStandardizeRunId(runId) || runId, clientId
     );
     
     // Get the master clients base
@@ -358,14 +357,14 @@ async function createClientRunRecord(params) {
   
   try {
     // Convert base run ID to standard format
-    const baseStandardRunId = unifiedRunIdService.convertToStandardFormat(runId);
+    const baseStandardRunId = runIdSystem.validateAndStandardizeRunId(runId);
     if (!baseStandardRunId) {
       log.error(`Could not convert run ID to standard format: ${runId}`);
       throw new Error(`Could not convert run ID to standard format: ${runId}`);
     }
     
     // Add client suffix to create the client-specific run ID
-    const standardizedRunId = unifiedRunIdService.addClientSuffix(baseStandardRunId, clientId);
+    const standardizedRunId = runIdSystem.createClientRunId(baseStandardRunId, clientId);
     
     // Start time for the run
     const startTime = new Date().toISOString();
@@ -460,14 +459,14 @@ async function updateClientRunRecord(params) {
   
   try {
     // Convert base run ID to standard format
-    const baseStandardRunId = unifiedRunIdService.convertToStandardFormat(runId);
+    const baseStandardRunId = runIdSystem.validateAndStandardizeRunId(runId);
     if (!baseStandardRunId) {
       log.error(`Could not convert run ID to standard format: ${runId}`);
       throw new Error(`Could not convert run ID to standard format: ${runId}`);
     }
     
     // Add client suffix to create the client-specific run ID
-    const standardizedRunId = unifiedRunIdService.addClientSuffix(baseStandardRunId, clientId);
+    const standardizedRunId = runIdSystem.createClientRunId(baseStandardRunId, clientId);
     
     // Get the client run record
     let record = await getClientRunRecord({ 
@@ -622,7 +621,7 @@ async function updateAggregateMetrics(params) {
   
   try {
     // Convert to standard format
-    const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+    const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
     if (!standardizedRunId) {
       log.error(`Could not convert run ID to standard format: ${runId}`);
       throw new Error(`Could not convert run ID to standard format: ${runId}`);

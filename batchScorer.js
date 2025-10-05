@@ -18,7 +18,8 @@ const { getClientBase } = require('./config/airtableClient');
 const { trackLeadProcessingMetrics } = require('./services/leadService');
 // Legacy import - only used for functions not related to run records
 const airtableService = require('./services/airtableService');
-const runIdService = require('./services/runIdService');
+// Using the new unified run ID system
+const runIdSystem = require('./services/runIdSystem');
 // Using the adapter that enforces the Single Creation Point pattern
 const runRecordService = require('./services/runRecordAdapterSimple');
 

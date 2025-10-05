@@ -14,7 +14,7 @@ const {
   STATUS_VALUES 
 } = require('../constants/airtableUnifiedConstants');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
-const unifiedRunIdService = require('./unifiedRunIdService');
+const runIdSystem = require('./runIdSystem');
 
 // Default logger with safe creation
 const logger = createSafeLogger('SYSTEM', null, 'job_orchestration_service');
@@ -50,8 +50,8 @@ async function startJob(params) {
     }
     
     // Generate a new run ID - this is the ONLY place run IDs should be generated for jobs
-    // UPDATED: Now using unifiedRunIdService directly for better consistency
-    const runId = unifiedRunIdService.generateTimestampRunId();
+    // UPDATED: Now using runIdSystem for better consistency
+    const runId = runIdSystem.generateRunId();
     log.info(`Generated run ID ${runId} for job type ${jobType}`);
     
     // Enhanced initial data with timestamp - don't use 'Job Type' field as it doesn't exist

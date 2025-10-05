@@ -8,7 +8,7 @@
 
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
-const unifiedRunIdService = require('./unifiedRunIdService');
+const runIdSystem = require('./runIdSystem');
 
 // Default logger - using safe creation
 const logger = createSafeLogger('SYSTEM', null, 'job_tracking_errors');
@@ -99,7 +99,7 @@ function handleRecordNotFound(runId, clientId = null, options = {}) {
   const recordType = clientId ? 'Client run' : 'Job tracking';
   
   // Standardize the runId for consistent logging
-  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId) || runId;
+  const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId) || runId;
   
   // Create error object
   const error = createErrorObject(
@@ -177,7 +177,7 @@ function handleAirtableError(apiError, runId, clientId = null, options = {}) {
   const recordType = clientId ? 'Client run' : 'Job tracking';
   
   // Standardize the runId for consistent logging
-  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId) || runId;
+  const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId) || runId;
   
   // Create error object
   const error = createErrorObject(
@@ -239,7 +239,7 @@ function handleInconsistentData(message, runId, context = {}, options = {}) {
   const log = options.logger || logger;
   
   // Standardize the runId for consistent logging
-  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId) || runId;
+  const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId) || runId;
   
   // Create error object
   const error = createErrorObject(
@@ -280,7 +280,7 @@ function handleInconsistentData(message, runId, context = {}, options = {}) {
  * @returns {Object} Recovery record data
  */
 function createRecoveryRecord(error, runId, clientId = null, baseRecord = {}) {
-  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId) || runId;
+  const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId) || runId;
   const timestamp = new Date().toISOString();
   
   const recoveryData = {

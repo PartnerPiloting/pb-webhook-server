@@ -10,8 +10,7 @@
  */
 
 const { format } = require('date-fns');
-const { createLogger } = require('../utils/unifiedLoggerFactory');
-const logger = createLogger('SYSTEM', null, 'unified_run_id_service');
+const logger = require('../utils/structuredLogger').getLogger('UnifiedRunIdService');
 
 // In-memory cache for run IDs to record IDs mapping
 const recordIdCache = new Map();
@@ -60,18 +59,7 @@ function getBaseRunIdFromClientRunId(clientRunId) {
     return clientRunId; // Not a client-specific run ID
   }
   
-  // Ensure the first two parts look like a date and time
-  const datePart = parts[0];
-  const timePart = parts[1];
-  
-  if (datePart.length === 6 && /^\d{6}$/.test(datePart) && 
-      timePart.length === 6 && /^\d{6}$/.test(timePart)) {
-    return `${datePart}-${timePart}`;  // Return YYMMDD-HHMMSS portion
-  }
-  
-  // If it doesn't match our expected format, log a warning and return the original
-  logger.warn(`Could not extract base run ID from ${clientRunId} - format not recognized`);
-  return clientRunId;
+  return `${parts[0]}-${parts[1]}`; // Return YYMMDD-HHMMSS portion
 }
 
 /**
@@ -200,50 +188,13 @@ function validateRunId(runId, source = 'unknown') {
 }
 
 /**
- * Normalize a run ID by ensuring it has a client ID suffix if required.
- * This is the single source of truth for run ID normalization across the system.
- * 
- * @param {string} runId - Run ID to normalize
- * @param {string} clientId - Client ID to use if missing from run ID
- * @param {string} [source='unifiedRunIdService'] - Source of the call for logging
- * @returns {string} Normalized run ID with client suffix
+ * This function is kept for backward compatibility.
+ * In the simplified approach, we don't attempt to normalize - we just pass IDs through.
+ * @param {string} runId - Run ID 
+ * @returns {string} The same run ID
  */
-function normalizeRunId(runId, clientId, source = 'unifiedRunIdService') {
-  // Handle null/undefined inputs
-  if (!runId) {
-    logger.error(`[${source}] Cannot normalize null/undefined run ID`);
-    return null;
-  }
-  
-  // If no client ID provided, just return the original run ID
-  if (!clientId) {
-    logger.debug(`[${source}] No client ID provided for normalization, returning original: ${runId}`);
-    return runId;
-  }
-  
-  // Extract existing client ID if present
-  const existingClientId = getClientIdFromClientRunId(runId);
-  
-  // If run ID already has the same client ID, return it unchanged
-  if (existingClientId && existingClientId === clientId) {
-    logger.debug(`[${source}] Run ID already has correct client ID: ${runId}`);
-    return runId;
-  }
-  
-  // If run ID has a different client ID than what was provided, log a warning but keep original
-  if (existingClientId && existingClientId !== clientId) {
-    logger.warn(`[${source}] Run ID ${runId} has different client ID (${existingClientId}) than provided (${clientId}). Keeping original.`);
-    return runId;
-  }
-  
-  // If run ID doesn't have a client suffix, add it
-  // Get base run ID (might be the full run ID if no client part exists)
-  const baseRunId = getBaseRunIdFromClientRunId(runId);
-  
-  // Add client suffix
-  const normalizedId = createClientRunId(baseRunId, clientId);
-  logger.debug(`[${source}] Normalized run ID: ${runId} -> ${normalizedId}`);
-  return normalizedId;
+function normalizeRunId(runId) {
+  return runId;
 }
 
 /**
@@ -257,32 +208,12 @@ function detectRunIdFormat(runId) {
 }
 
 /**
- * Standardizes run IDs to the format YYMMDD-HHMMSS
- * @param {string} runId - Run ID in any format
- * @returns {string} Standardized run ID
+ * This function is kept for backward compatibility.
+ * @param {string} runId - Run ID
+ * @returns {string} The same run ID
  */
 function convertToStandardFormat(runId) {
-  if (!runId) {
-    return null;
-  }
-  
-  // If the runId is already in the format YYMMDD-HHMMSS or YYMMDD-HHMMSS-ClientName
-  if (runId.includes('-')) {
-    const parts = runId.split('-');
-    if (parts.length >= 2) {
-      const datePart = parts[0];
-      const timePart = parts[1];
-      
-      // Check if first part looks like a date (YYMMDD) and second part looks like a time (HHMMSS)
-      if (datePart.length === 6 && /^\d{6}$/.test(datePart) && 
-          timePart.length === 6 && /^\d{6}$/.test(timePart)) {
-        return `${datePart}-${timePart}`;
-      }
-    }
-  }
-  
-  // For run IDs that don't match our format, log a warning but return the original
-  logger.warn(`Could not standardize run ID format: ${runId}`);
+  // In the simplified approach, we don't convert formats
   return runId;
 }
 

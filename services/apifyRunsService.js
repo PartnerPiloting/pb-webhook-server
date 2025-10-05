@@ -6,8 +6,8 @@ require('dotenv').config();
 const Airtable = require('airtable');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
-// Updated to use unified run ID service
-const runIdService = require('./unifiedRunIdService');
+// Using the new runIdSystem service as the single source of truth
+const runIdSystem = require('./runIdSystem');
 // Import field constants
 const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
 // Import status constants and field names
@@ -68,7 +68,7 @@ async function createApifyRun(runId, clientId, options = {}) {
     try {
         const base = initializeMasterClientsBase();
         
-        // Use systemRunId if provided, otherwise fall back to registerApifyRunId
+        // Use systemRunId if provided, otherwise create a client run ID
         // This prevents trying to normalize non-standard Apify run IDs
         let normalizedRunId;
         
@@ -76,9 +76,10 @@ async function createApifyRun(runId, clientId, options = {}) {
             normalizedRunId = options.systemRunId;
             console.log(`[ApifyRuns] Using provided system run ID: ${normalizedRunId} for Apify run: ${runId} and client ${clientId}`);
         } else {
-            // Only try to normalize if no systemRunId provided (backwards compatibility)
-            normalizedRunId = runIdService.registerApifyRunId(runId, clientId);
-            console.log(`[ApifyRuns] Normalizing Apify run ID: ${runId} -> ${normalizedRunId} for client ${clientId}`);
+            // Generate a new run ID and add client suffix
+            const baseRunId = runIdSystem.generateRunId();
+            normalizedRunId = runIdSystem.createClientRunId(baseRunId, clientId);
+            console.log(`[ApifyRuns] Created new run ID: ${normalizedRunId} for Apify run: ${runId} and client ${clientId}`);
         }
         
         const recordData = {
@@ -405,8 +406,19 @@ async function updateClientRunMetrics(runId, clientId, data) {
             airtableService = require('./airtable/airtableService');
         }
         
-        // Ensure we have a client-suffixed run ID in our standard format
-        const standardizedRunId = runIdService.normalizeRunId(runId, clientId);
+        // Check if runId already has client ID suffix, if not add it
+        let standardizedRunId;
+        if (runIdSystem.getClientId(runId) === clientId) {
+            // Already has correct client ID
+            standardizedRunId = runId;
+        } else if (runIdSystem.getClientId(runId)) {
+            // Has a different client ID, extract base and add correct one
+            const baseRunId = runIdSystem.getBaseRunId(runId);
+            standardizedRunId = runIdSystem.createClientRunId(baseRunId, clientId);
+        } else {
+            // No client ID, add it
+            standardizedRunId = runIdSystem.createClientRunId(runId, clientId);
+        }
         
         console.log(`[METDEBUG] updateClientRunMetrics called for ${standardizedRunId}`);
         console.log(`[METDEBUG] - Client: ${clientId}`);

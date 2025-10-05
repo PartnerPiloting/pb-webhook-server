@@ -46,9 +46,9 @@ function generateRunId(clientId) {
  * @returns {string} A normalized run ID with the timestamp-clientId format
  */
 function normalizeRunId(runId, clientId, forceNew = false) {
-  console.log(`[METDEBUG] normalizeRunId processing run ID: ${runId}`);
-  console.log(`[METDEBUG] normalizeRunId for client: ${clientId}`);
-  console.log(`[METDEBUG] normalizeRunId forceNew flag: ${forceNew}`);
+  console.log(`[METDEBUG] runIdService.normalizeRunId processing run ID: ${runId}`);
+  console.log(`[METDEBUG] runIdService.normalizeRunId for client: ${clientId}`);
+  console.log(`[METDEBUG] runIdService.normalizeRunId forceNew flag: ${forceNew}`);
   
   if (!clientId) {
     console.error(`[METDEBUG] ERROR: Missing clientId in normalizeRunId call`);
@@ -64,16 +64,10 @@ function normalizeRunId(runId, clientId, forceNew = false) {
     return standardId;
   }
   
-  // First, normalize the run ID using unified service
-  const normalizedId = unifiedRunIdService.normalizeRunId(runId);
-  
-  // If it doesn't have a client suffix, add it
-  const hasClientId = unifiedRunIdService.extractClientId(normalizedId);
-  
-  if (hasClientId === clientId) {
-    // Already has the correct client ID
-    console.log(`[METDEBUG] Run ID already has correct client ID: ${normalizedId}`);
-    return normalizedId;
+  // DELEGATE to unifiedRunIdService for consistent run ID normalization
+  const normalizedId = unifiedRunIdService.normalizeRunId(runId, clientId, 'runIdService');
+  console.log(`[METDEBUG] Delegated to unifiedRunIdService, result: ${normalizedId}`);
+  return normalizedId;
   } else if (hasClientId) {
     // Has a client ID but not the right one - strip it and add the correct one
     const baseId = unifiedRunIdService.stripClientSuffix(normalizedId);

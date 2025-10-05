@@ -9,7 +9,7 @@
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const unifiedJobTrackingRepository = require('./unifiedJobTrackingRepository');
-const unifiedRunIdService = require('./unifiedRunIdService');
+const runIdSystem = require('./runIdSystem');
 const errorHandling = require('./jobTrackingErrorHandling');
 
 // Default logger - using safe creation
@@ -420,7 +420,7 @@ async function updateJobAggregateMetrics(params) {
   
   try {
     // Convert to standard format
-    const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+    const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
     if (!standardizedRunId) {
       const result = errorHandling.handleInvalidRunId(runId, { logger: log });
       

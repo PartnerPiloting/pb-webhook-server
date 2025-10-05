@@ -2,8 +2,8 @@
 // Adapter to bridge from the old service to the new V2 service with Single Creation Point pattern
 
 const runRecordServiceV2 = require('./runRecordServiceV2');
-// Updated to use unified run ID service
-const runIdService = require('./unifiedRunIdService');
+// Updated to use the new runIdSystem service
+const runIdSystem = require('./runIdSystem');
 
 // We don't need to import the original service since we're implementing all functionality directly
 
@@ -25,14 +25,14 @@ async function adaptCreateRunRecord(runId, clientId, clientName, options = {}) {
     
     try {
         // Strip client suffix if present to get the base run ID
-        const baseRunId = runIdService.stripClientSuffix(runId);
+        const baseRunId = runIdSystem.getBaseRunId(runId);
         
         if (logger) {
             logger.debug(`[Adapter] Base run ID: ${baseRunId} from original: ${runId}`);
         }
         
         // Normalize the run ID with client suffix
-        const normalizedId = runIdService.normalizeRunId(baseRunId, clientId);
+        const normalizedId = runIdSystem.validateAndStandardizeRunId(runId);
         
         if (logger) {
             logger.debug(`[Adapter] Normalized run ID: ${normalizedId}`);

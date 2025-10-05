@@ -24,9 +24,8 @@ const { validateFieldNames, createValidatedObject } = require('../utils/airtable
 
 // Using centralized status utility functions for consistent behavior
 const { getStatusString } = require('../utils/statusUtils');
-const runIdUtils = require('../utils/runIdUtils.js');
-// Use the unified services
-const unifiedRunIdService = require('../services/unifiedRunIdService.js');
+// Use the new run ID system for all run ID operations
+const runIdSystem = require('../services/runIdSystem.js');
 const unifiedJobTrackingRepository = require('../services/unifiedJobTrackingRepository.js');
 const jobOrchestrationService = require('../services/jobOrchestrationService.js');
 const JobTracking = require('../services/jobTracking.js');
@@ -481,8 +480,8 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     setProcessingStream,
     formatDuration
   } = require('../services/clientService');
-  // Import unified run ID service for consistent ID generation and normalization
-  const unifiedRunIdService = require('../services/unifiedRunIdService');
+  // Import run ID system for consistent ID generation and management
+  const runIdSystem = require('../services/runIdSystem');
 
   const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
   const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
@@ -507,14 +506,14 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       runId = parentRunId;
       console.log(`Using parent run ID as-is: ${runId} for lead scoring job ${jobId}`);
     } else {
-      // Generate a new run ID using the unified service
-      runId = unifiedRunIdService.generateTimestampRunId();
+      // Generate a new run ID using the new system
+      runId = runIdSystem.generateRunId();
       console.log(`Generated run ID: ${runId} for lead scoring job ${jobId}`);
     }
   } catch (err) {
-    // Use unified service for fallback
+    // Use system for fallback
     try {
-      runId = unifiedRunIdService.generateTimestampRunId();
+      runId = runIdSystem.generateRunId();
       console.error(`Failed to generate run ID: ${err.message}. Generated new runId: ${runId}`);
     } catch (innerError) {
       // Ultimate fallback if unified service is completely unavailable
@@ -566,9 +565,9 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
         // Generate a unique client-specific run ID based on the parent run ID
         // This ensures each client gets its own unique run ID while maintaining the connection to the job
         
-        // Use the unified service architecture for run ID management
+        // Use the new runIdSystem for run ID management
         const baseRunId = runId; // Use the provided run ID as the base
-        const clientRunId = unifiedRunIdService.addClientSuffix(baseRunId, client.clientId);
+        const clientRunId = runIdSystem.createClientRunId(baseRunId, client.clientId);
         console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
         
         // Set up client timeout
@@ -1223,8 +1222,8 @@ async function processPostScoringInBackground(jobId, stream, options) {
       
       try {
         // Generate a run ID for this client process
-        // UPDATED: Now using unifiedRunIdService directly for better consistency
-        const clientRunId = options.parentRunId || unifiedRunIdService.generateTimestampRunId();
+        // UPDATED: Now using runIdSystem for better consistency
+        const clientRunId = options.parentRunId || runIdSystem.generateRunId();
         
         // Run post scoring for this client with timeout
         const clientResult = await Promise.race([
@@ -1259,9 +1258,9 @@ async function processPostScoringInBackground(jobId, stream, options) {
           try {
             console.log(`[POST-SCORING] Starting metrics update for ${client.clientName} (${client.clientId})`);
             
-            // Generate client-specific run ID using new service architecture
+            // Generate client-specific run ID using runIdSystem
             const baseRunId = options.parentRunId;
-            const clientRunId = unifiedRunIdService.addClientSuffix(baseRunId, client.clientId);
+            const clientRunId = runIdSystem.createClientRunId(baseRunId, client.clientId);
             
             console.log(`[POST-SCORING] Using standardized run ID: ${clientRunId} (from ${options.parentRunId})`);
             
