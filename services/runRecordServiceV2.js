@@ -28,6 +28,20 @@ const { MASTER_TABLES, CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, CLIENT_RUN_STATUS
 const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
 const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
+// Legacy field names - these fields have been removed from central constants
+// as they are calculated on-the-fly, but we still need to use them in this file
+const LEGACY_JOB_FIELDS = {
+  CLIENTS_PROCESSED: 'Clients Processed',
+  CLIENTS_WITH_ERRORS: 'Clients With Errors',
+  TOTAL_PROFILES_EXAMINED: 'Total Profiles Examined',
+  SUCCESSFUL_PROFILES: 'Successful Profiles',
+  TOTAL_POSTS_HARVESTED: 'Total Posts Harvested',
+  POSTS_EXAMINED: 'Posts Examined for Scoring',
+  POSTS_SUCCESSFULLY_SCORED: 'Posts Successfully Scored',
+  PROFILE_SCORING_TOKENS: 'Profile Scoring Tokens',
+  POST_SCORING_TOKENS: 'Post Scoring Tokens'
+};
+
 // Initialize clients base reference - will be set via initialize()
 let clientsBase = null;
 
@@ -177,15 +191,15 @@ async function createJobRecord(params) {
       [JOB_TRACKING_FIELDS.START_TIME]: new Date().toISOString(),
       [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
       [JOB_TRACKING_FIELDS.STREAM]: stream,
-      'Clients Processed': 0,  // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Clients With Errors': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Total Profiles Examined': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Successful Profiles': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Total Posts Harvested': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Posts Examined for Scoring': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Posts Successfully Scored': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Profile Scoring Tokens': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
-      'Post Scoring Tokens': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.CLIENTS_PROCESSED]: 0,  // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.CLIENTS_WITH_ERRORS]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.TOTAL_PROFILES_EXAMINED]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.SUCCESSFUL_PROFILES]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.TOTAL_POSTS_HARVESTED]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.POSTS_EXAMINED]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.POSTS_SUCCESSFULLY_SCORED]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.PROFILE_SCORING_TOKENS]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [LEGACY_JOB_FIELDS.POST_SCORING_TOKENS]: 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
       [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Run initiated at ${new Date().toISOString()} from ${source}`
     };
     
@@ -603,7 +617,7 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
   
   // Calculate duration if start time exists
   let duration = null;
-  const startTime = record.fields['Start Time'];
+  const startTime = record.fields[CLIENT_RUN_FIELDS.START_TIME];
   
   if (startTime) {
     const start = new Date(startTime);
@@ -669,7 +683,7 @@ async function updateJobRecord(runId, updates, options = {}) {
     // Update the record with all required fields, completely removing Source field
     const updateFields = {
       ...updates,
-      'Last Updated': new Date().toISOString()
+      [JOB_TRACKING_FIELDS.LAST_UPDATED]: new Date().toISOString()
     };
     
     // Add update source information to System Notes
@@ -821,7 +835,7 @@ async function checkRunRecordExists(runId, clientId = null) {
     console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] getRunRecord result: ${record ? "Found record" : "No record found"}`);
     
     if (record) {
-      console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Record details: ID=${record.id}, Run ID=${record.fields['Run ID']}`);
+      console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Record details: ID=${record.id}, Run ID=${record.fields[CLIENT_RUN_FIELDS.RUN_ID]}`);
     } else {
       // Try to find any similar records
       try {
@@ -836,7 +850,7 @@ async function checkRunRecordExists(runId, clientId = null) {
         if (records && records.length > 0) {
           console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Found ${records.length} recent records for client ${clientId}:`);
           records.forEach(rec => {
-            console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] - Run ID: ${rec.fields['Run ID']}, Start Time: ${rec.fields['Start Time']}`);
+            console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] - Run ID: ${rec.fields[CLIENT_RUN_FIELDS.RUN_ID]}, Start Time: ${rec.fields[CLIENT_RUN_FIELDS.START_TIME]}`);
           });
         } else {
           console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] No records found for client ${clientId}`);

@@ -151,6 +151,7 @@ const JOB_TRACKING_FIELDS = {
   START_TIME: 'Start Time',
   END_TIME: 'End Time',
   DURATION: 'Duration', // Formula field
+  LAST_UPDATED: 'Last Updated', // Added Oct 2025 for field name standardization
   
   // Fields intentionally removed to simplify the codebase
   // PROGRESS: 'Progress', - Removed 2025-10-02
