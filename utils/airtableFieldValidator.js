@@ -180,7 +180,18 @@ function createValidatedObject(data, options = {}) {
   const unknownFields = [];
   
   // Create lowercase mappings for all field names
+  // DIAGNOSTIC: Identify which constant is causing toLowerCase crash
   for (const [key, value] of Object.entries(FIELD_NAMES)) {
+    if (value === undefined || value === null) {
+      console.error(`[airtableFieldValidator] CRITICAL: Field constant "${key}" is undefined/null!`);
+      console.error(`[airtableFieldValidator] This constant is exported from CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, or LEAD_FIELDS`);
+      console.error(`[airtableFieldValidator] Check constants/airtableUnifiedConstants.js for missing or commented-out field definitions`);
+      throw new Error(`Field constant "${key}" is undefined. Fix the constant definition before proceeding.`);
+    }
+    if (typeof value !== 'string') {
+      console.error(`[airtableFieldValidator] CRITICAL: Field constant "${key}" is not a string! Type: ${typeof value}, Value: ${JSON.stringify(value)}`);
+      throw new Error(`Field constant "${key}" has wrong type: ${typeof value}. Must be a string.`);
+    }
     lowerCaseMappings[value.toLowerCase()] = value;
   }
   
