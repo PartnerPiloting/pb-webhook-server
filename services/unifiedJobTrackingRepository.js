@@ -20,7 +20,7 @@ const {
 } = require('../constants/airtableUnifiedConstants');
 
 // Import legacy constants for compatibility during transition
-const { TABLES } = require('../constants/airtableFields');
+const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 
 // Table names
 const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;

@@ -4,7 +4,7 @@
  * Dedicated handler for post scoring metrics with proper error handling
  */
 
-const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
+const { CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 const runRecordAdapter = require('./runRecordAdapterSimple');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');

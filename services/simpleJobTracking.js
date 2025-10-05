@@ -9,12 +9,11 @@
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const baseManager = require('./airtable/baseManager');
-const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
-const { CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+const { STATUS_VALUES, CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 
 // Table names
-const JOB_TRACKING_TABLE = TABLES.JOB_TRACKING;
-const CLIENT_RUN_RESULTS_TABLE = TABLES.CLIENT_RUN_RESULTS;
+const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Default logger - using safe creation
 const logger = createSafeLogger('SYSTEM', null, 'simple_job_tracking');
