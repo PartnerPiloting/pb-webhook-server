@@ -850,12 +850,19 @@ async function processClientHandler(req, res) {
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
           let masterBase = airtableServiceSimple.initialize(); // Get the Master base
           console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for Client Run Results table query`);
+          console.log(`[DEBUG-RUN-ID-FLOW] Query filter: {Run ID} = '${runIdToUse}'`);
           
           // Query for the run record now that we know it exists
           let runRecords = await masterBase('Client Run Results').select({
             filterByFormula: `{Run ID} = '${runIdToUse}'`,
             maxRecords: 1
           }).firstPage();
+          
+          console.log(`[DEBUG-RUN-ID-FLOW] Query completed. Records found: ${runRecords ? runRecords.length : 0}`);
+          if (runRecords && runRecords.length === 0) {
+            console.error(`[DEBUG-RUN-ID-FLOW] ❌ CRITICAL: checkRunRecordExists returned TRUE but SELECT returned ZERO records!`);
+            console.error(`[DEBUG-RUN-ID-FLOW] This indicates a Run ID mismatch between check and select`);
+          }
           
           if (runRecords && runRecords.length > 0) {
             // Get current values, default to 0 if not set
