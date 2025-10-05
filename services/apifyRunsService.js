@@ -9,7 +9,7 @@ const { createSafeLogger } = require('../utils/loggerHelper');
 // Using the new runIdSystem service as the single source of truth
 const runIdSystem = require('./runIdSystem');
 // Import field constants
-const { CLIENT_RUN_FIELDS } = require('../constants/airtableFields');
+const { CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 // Import status constants and field names
 const { CLIENT_RUN_STATUS_VALUES, CLIENT_RUN_FIELDS: UNIFIED_CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 // Use the properly exported constant for Apify Run ID

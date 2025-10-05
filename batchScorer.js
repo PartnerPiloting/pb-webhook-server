@@ -27,7 +27,7 @@ const runRecordService = require('./services/runRecordAdapterSimple');
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
 const { CLIENT_RUN_STATUS_VALUES, LEAD_FIELDS, SCORING_STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
 // Import the consistent field names for direct use when needed
-const { CLIENT_RUN_FIELDS } = require('./constants/airtableFields');
+const { CLIENT_RUN_FIELDS } = require('./constants/airtableUnifiedConstants');
 
 // --- Structured Logging ---
 const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');

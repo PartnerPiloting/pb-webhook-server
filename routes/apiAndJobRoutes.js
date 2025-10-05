@@ -18,7 +18,8 @@ const {
   LEAD_FIELDS, 
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS, 
-  CLIENT_RUN_STATUS_VALUES
+  CLIENT_RUN_STATUS_VALUES,
+  CREDENTIAL_FIELDS
 } = require("../constants/airtableUnifiedConstants.js");
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 

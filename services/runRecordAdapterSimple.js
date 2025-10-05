@@ -29,8 +29,7 @@ const runIdSystem = require('./runIdSystem');
 // Import field validator for consistent field naming
 // Removed duplicate STATUS_VALUES import, using the unified constants directly 
 const { FIELD_NAMES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
-const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
-const { CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, TABLES } = require('../constants/airtableFields');
+const { CLIENT_RUN_STATUS_VALUES, CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
 // Import status utility functions for safe status handling
 const { getStatusString } = require('../utils/statusUtils');
 
@@ -364,7 +363,10 @@ async function completeRunRecord(params) {
           : (status ? String(status).toLowerCase() : 'unknown');
           
         // Match against lowercase constants for case-insensitive comparison
-        const completedStr = CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase();
+        // Double-check CLIENT_RUN_STATUS_VALUES to prevent toLowerCase errors
+        const completedStr = (isValidStatusEnum && CLIENT_RUN_STATUS_VALUES.COMPLETED) 
+          ? CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase() 
+          : 'completed'; // Hardcoded fallback
         success = statusStr === completedStr || statusStr === 'success';
       } catch (error) {
         logger.warn(`[${source}] Error converting status to lowercase: ${error.message}`);
