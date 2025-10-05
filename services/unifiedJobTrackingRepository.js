@@ -19,9 +19,6 @@ const {
   CLIENT_RUN_STATUS_VALUES 
 } = require('../constants/airtableUnifiedConstants');
 
-// Import legacy constants for compatibility during transition
-const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
-
 // Table names
 const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
 const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;

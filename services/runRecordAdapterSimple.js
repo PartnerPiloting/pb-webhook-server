@@ -176,7 +176,7 @@ async function createRunRecord(params) {
     logger.debug(`[RunRecordAdapterSimple] Checking for existing client run record in MASTER base: ${standardRunId}, ${validatedClientId}`);
     
     // ROOT CAUSE FIX: Use field name constants to prevent errors
-    const existingRecords = await masterBase(TABLES.CLIENT_RUN_RESULTS).select({
+    const existingRecords = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
       filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${validatedClientId}')`,
       maxRecords: 1
     }).firstPage();
@@ -537,7 +537,7 @@ async function createJobRecord(params) {
     const masterBase = airtableClient.getMasterBase();
     
     // ROOT CAUSE FIX: Use field name constants
-    const existingRecords = await masterBase(TABLES.JOB_TRACKING).select({
+    const existingRecords = await masterBase(MASTER_TABLES.JOB_TRACKING).select({
       filterByFormula: `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${baseRunId}'`,
       maxRecords: 1
     }).firstPage();
@@ -837,7 +837,7 @@ async function completeClientProcessing(params) {
     try {
       // Get the current record to check what processes have completed
       const masterBase = airtableClient.getMasterBase();
-      const records = await masterBase(TABLES.CLIENT_RUN_RESULTS).select({
+      const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
         filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`,
         maxRecords: 1
       }).firstPage();
