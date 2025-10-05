@@ -154,13 +154,9 @@ async function createJobTrackingRecord(runId, stream) {
           [JOB_TRACKING_FIELDS.START_TIME]: new Date().toISOString(),
           [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
           [JOB_TRACKING_FIELDS.STREAM]: Number(stream), // Ensure stream is a number for Airtable's number field
-          // NOTE: 'Clients Processed', 'Clients With Errors', 'Total Profiles Examined', 'Successful Profiles',
-          // and 'Total Posts Harvested' fields removed from Job Tracking table (calculated on-the-fly)
-          // 'Total Profiles Examined': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
-          // 'Successful Profiles': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
-          // 'Total Posts Harvested': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
-          'Posts Examined for Scoring': 0, 
-          'Posts Successfully Scored': 0,
+          // NOTE: Job Tracking table stores minimal data. Most metrics are in Client Run Results table.
+          // Removed fields (2025-10-02): Total Profiles Examined, Successful Profiles, Total Posts Harvested,
+          // Posts Examined for Scoring, Posts Successfully Scored (all calculated on-the-fly from Client Run Results)
           'Profile Scoring Tokens': 0,
           'Post Scoring Tokens': 0,
           [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Run initiated at ${new Date().toISOString()}`
@@ -591,23 +587,18 @@ async function updateAggregateMetrics(runId) {
     // Calculate aggregates
     // NOTE: 'Clients Processed', 'Clients With Errors', 'Total Profiles Examined', 'Successful Profiles',
     // and 'Total Posts Harvested' removed from Job Tracking (calculated on-the-fly)
+    // Calculate aggregates from Client Run Results
+    // NOTE: Job Tracking table doesn't store these fields - they're calculated on-the-fly
+    // Removed 2025-10-02: Total Profiles Examined, Successful Profiles, Total Posts Harvested,
+    // Posts Examined for Scoring, Posts Successfully Scored (not in Job Tracking schema)
     const aggregates = {
-      // 'Total Profiles Examined': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
-      // 'Successful Profiles': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
-      // 'Total Posts Harvested': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
-      'Posts Examined for Scoring': 0,
-      'Posts Successfully Scored': 0,
       'Profile Scoring Tokens': 0,
       'Post Scoring Tokens': 0
     };
     
     // Sum up metrics from all client records
     clientRecords.forEach(record => {
-      // aggregates['Total Profiles Examined'] += Number(record.get('Profiles Examined for Scoring') || 0); - Removed 2025-10-02
-      // aggregates['Successful Profiles'] += Number(record.get('Profiles Successfully Scored') || 0); - Removed 2025-10-02
-      // aggregates['Total Posts Harvested'] += Number(record.get('Total Posts Harvested') || 0); - Removed 2025-10-02
-      aggregates['Posts Examined for Scoring'] += Number(record.get('Posts Examined for Scoring') || 0);
-      aggregates['Posts Successfully Scored'] += Number(record.get('Posts Successfully Scored') || 0);
+      // Only aggregate token usage - other metrics are calculated on-the-fly from Client Run Results
       aggregates['Profile Scoring Tokens'] += Number(record.get('Profile Scoring Tokens') || 0);
       aggregates['Post Scoring Tokens'] += Number(record.get('Post Scoring Tokens') || 0);
     });
