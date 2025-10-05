@@ -210,11 +210,11 @@ async function updateJobTracking(runId, updates) {
   
   const base = initialize();
   
-  // Import the unified run ID service
-  const unifiedRunIdService = require('./unifiedRunIdService');
+  // Import the new run ID system
+  const runIdSystem = require('./runIdSystem');
   
-  // Use the unified service to standardize the run ID
-  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+  // Use the new system to standardize the run ID
+  const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
   try {
     const records = await base(JOB_TRACKING_TABLE).select({

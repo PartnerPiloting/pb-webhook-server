@@ -15,8 +15,8 @@ require('dotenv').config();
 // Import dependencies
 const Airtable = require('airtable');
 const clientService = require('./clientService');
-// Updated to use unified run ID service
-const runIdService = require('./unifiedRunIdService');
+// Updated to use the new runIdSystem service
+const runIdSystem = require('./runIdSystem');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
 // Import status utility functions for safe status handling
@@ -161,7 +161,7 @@ async function createJobRecord(params) {
   
   try {
     // Ensure the run ID is properly formatted (should be just the base run ID without client suffix)
-    const baseRunId = runIdService.stripClientSuffix(runId);
+    const baseRunId = runIdSystem.getBaseRunId(runId);
     
     if (!baseRunId) {
       logger.error(`Run Record Service: Invalid run ID format: ${runId}`);
@@ -319,7 +319,7 @@ async function getRunRecord(params) {
   const source = options.source || 'unknown';
   
   // Normalize the run ID
-  const standardRunId = runIdService.normalizeRunId(runId, clientId);
+  const standardRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
   logger.debug(`Run Record Service: Getting run record for ${standardRunId}, client ${clientId}`);
   
@@ -331,8 +331,8 @@ async function getRunRecord(params) {
     return runRecordRegistry.get(registryKey);
   }
   
-  // Then check runIdService cache
-  const cachedRecordId = runIdService.getRunRecordId(standardRunId, clientId);
+  // Then check runIdSystem cache
+  const cachedRecordId = runIdSystem.getRunRecordId(standardRunId, clientId);
   if (cachedRecordId) {
     try {
       logger.debug(`Run Record Service: Trying cached record ID ${cachedRecordId}`);
@@ -375,7 +375,7 @@ async function getRunRecord(params) {
     if (exactMatches && exactMatches.length > 0) {
       // Register the record ID
       logger.debug(`Run Record Service: Found record by query`);
-      runIdService.registerRunRecord(standardRunId, clientId, exactMatches[0].id);
+      runIdSystem.registerRunRecord(standardRunId, clientId, exactMatches[0].id);
       runRecordRegistry.set(registryKey, exactMatches[0]);
       trackActivity('get', standardRunId, clientId, source, `SUCCESS: Found by query`);
       return exactMatches[0];
@@ -478,7 +478,7 @@ async function updateRunRecord(params) {
     }
     
     // Update registry
-    const registryKey = `${runIdService.normalizeRunId(runId, clientId, false)}:${clientId}`;
+    const registryKey = `${runIdSystem.validateAndStandardizeRunId(runId)}:${clientId}`;
     runRecordRegistry.set(registryKey, updatedRecord[0]);
     
     // Track this activity
@@ -645,7 +645,7 @@ async function updateJobRecord(runId, updates, options = {}) {
   const source = options.source || 'unknown';
   
   // Strip client suffix if present
-  const baseRunId = runIdService.stripClientSuffix(runId);
+  const baseRunId = runIdSystem.getBaseRunId(runId);
   
   logger.debug(`Run Record Service: Updating job tracking for ${runId} (base run ID: ${baseRunId})`);
   
@@ -718,7 +718,7 @@ async function completeJobRecord(runId, success, notes = '', options = {}) {
   const source = options.source || 'unknown';
   
   // Strip client suffix if present
-  const baseRunId = runIdService.stripClientSuffix(runId);
+  const baseRunId = runIdSystem.getBaseRunId(runId);
   
   logger.debug(`Run Record Service: Completing job record for ${runId} (base: ${baseRunId})`);
   

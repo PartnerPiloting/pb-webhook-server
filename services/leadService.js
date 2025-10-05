@@ -8,8 +8,8 @@ const base = require('../config/airtableClient.js');
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
 const { slimLead } = require('../promptBuilder.js');
 const airtableService = require('./airtableService');
-// Updated to use unified run ID service
-const runIdService = require('./unifiedRunIdService');
+// Updated to use new run ID system
+const runIdSystem = require('./runIdSystem');
 const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 
 // Import unified constants

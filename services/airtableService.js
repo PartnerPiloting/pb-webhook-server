@@ -19,8 +19,8 @@ try {
     console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
 }
 
-// Import unified run ID service for centralized run ID management
-const runIdService = require('./unifiedRunIdService');
+// Import new run ID system for centralized run ID management
+const runIdSystem = require('./runIdSystem');
 
 // Import record caching service
 const recordCache = require('./recordCache');
@@ -184,13 +184,13 @@ async function createClientRunRecord(runId, clientId, clientName) {
   const base = initialize();
   
   // SIMPLIFIED: Just normalize the run ID once to ensure consistency
-  const standardRunId = runIdService.normalizeRunId(runId, clientId, false);
+  const standardRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
   console.log(`Airtable Service: Creating run record for client ${clientId}`);
   console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
   
   // First check if we have a cached record ID
-  const cachedRecordId = runIdService.getRunRecordId(standardRunId, clientId);
+  const cachedRecordId = runIdSystem.getRunRecordId(standardRunId, clientId);
   
   if (cachedRecordId) {
     console.log(`Airtable Service: Using cached record ID ${cachedRecordId}`);
@@ -219,7 +219,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
       console.log(`Airtable Service: Found existing record ID: ${exactMatches[0].id}`);
       
       // Register the record ID for future lookups
-      runIdService.registerRunRecord(standardRunId, clientId, exactMatches[0].id);
+      runIdSystem.registerRunRecord(standardRunId, clientId, exactMatches[0].id);
       
       return exactMatches[0];
     }
@@ -259,8 +259,8 @@ async function createClientRunRecord(runId, clientId, clientName) {
     
     const records = await base(CLIENT_RUN_RESULTS_TABLE).create([recordData]);
 
-    // Register the new record ID with runIdService
-    runIdService.registerRunRecord(standardRunId, clientId, records[0].id);
+    // Register the new record ID with runIdSystem
+    runIdSystem.registerRunRecord(standardRunId, clientId, records[0].id);
     
     console.log(`Airtable Service: Created client run record ID: ${records[0].id}`);
     return records[0];
@@ -279,14 +279,14 @@ async function createClientRunRecord(runId, clientId, clientName) {
 async function updateJobTracking(runId, updates) {
   const base = initialize();
   
-  // Import the unified run ID service
-  const unifiedRunIdService = require('./unifiedRunIdService');
+  // Import the new run ID system
+  const runIdSystem = require('./runIdSystem');
   
-  // Use the unified service to standardize the run ID
-  const standardizedRunId = unifiedRunIdService.convertToStandardFormat(runId);
+  // Use the new system to standardize the run ID
+  const standardizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
-  // Extract the base run ID using the unified service
-  let baseRunId = unifiedRunIdService.getBaseRunIdFromClientRunId(standardizedRunId);
+  // Extract the base run ID using the new system
+  let baseRunId = runIdSystem.getBaseRunId(standardizedRunId);
   
   // Ensure we have a valid run ID - if not, generate one as fallback
   if (!baseRunId) {
@@ -358,7 +358,7 @@ async function updateClientRun(runId, clientId, updates) {
   const base = initialize();
   
   // Use the standardized run ID format
-  const standardRunId = runIdService.normalizeRunId(runId, clientId);
+  const standardRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
   console.log(`[METDEBUG] AirtableService updateClientRun called:`);
   console.log(`[METDEBUG] - Client: ${clientId}`);
@@ -371,7 +371,7 @@ async function updateClientRun(runId, clientId, updates) {
     let recordId = null;
     
     // First check if we have a cached record ID for this run
-    recordId = runIdService.getRunRecordId(standardRunId, clientId);
+    recordId = runIdSystem.getRunRecordId(standardRunId, clientId);
     
     if (recordId) {
       console.log(`[METDEBUG] Using cached record ID ${recordId} for run ${standardRunId}`);
@@ -401,7 +401,7 @@ async function updateClientRun(runId, clientId, updates) {
         console.log(`[METDEBUG] Found exact Run ID match ${recordId}`);
         
         // Register for future lookups
-        runIdService.registerRunRecord(standardRunId, clientId, recordId);
+        runIdSystem.registerRunRecord(standardRunId, clientId, recordId);
       } else {
         console.log(`[METDEBUG] No exact Run ID match found for ${standardRunId}`);
       }
@@ -513,7 +513,7 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
   }
   
   // Generate a standardized run ID - reuse timestamp if possible
-  const normalizedRunId = runIdService.normalizeRunId(runId, clientId, false);
+  const normalizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
   // Log what we're doing
   console.log(`Airtable Service: Completing client run for ${clientId}`);
@@ -627,13 +627,13 @@ async function checkRunRecordExists(runId, clientId) {
   const base = initialize();
   
   // Use the standardized run ID format
-  const standardRunId = runIdService.normalizeRunId(runId, clientId);
+  const standardRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
   console.log(`[RUNDEBUG] Checking if run record exists for ${standardRunId} (client ${clientId})`);
   
   try {
     // First check if we have a cached record ID for this run
-    let recordId = runIdService.getRunRecordId(standardRunId, clientId);
+    let recordId = runIdSystem.getRunRecordId(standardRunId, clientId);
     
     if (recordId) {
       console.log(`[RUNDEBUG] Found cached record ID ${recordId} for run ${standardRunId}`);
@@ -661,7 +661,7 @@ async function checkRunRecordExists(runId, clientId) {
       console.log(`[RUNDEBUG] Found exact Run ID match ${recordId}`);
       
       // Register for future lookups
-      runIdService.registerRunRecord(standardRunId, clientId, recordId);
+      runIdSystem.registerRunRecord(standardRunId, clientId, recordId);
       return true;
     } else {
       console.log(`[RUNDEBUG] No run record found for ${standardRunId} (client ${clientId})`);

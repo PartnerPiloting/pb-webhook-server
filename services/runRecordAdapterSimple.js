@@ -20,13 +20,12 @@ const creationAttempts = new Map();
 const CREATION_ATTEMPT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const airtableServiceSimple = require('./airtableServiceSimple');
-const runIdUtils = require('../utils/runIdUtils');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 // CIRCULAR DEPENDENCY FIX: Import airtableClient once at module level
 const airtableClient = require('../config/airtableClient');
-// Import the unified run ID service for normalization
-const unifiedRunIdService = require('./unifiedRunIdService');
+// Import the new run ID system for all run ID operations
+const runIdSystem = require('./runIdSystem');
 // Import field validator for consistent field naming
 // Removed duplicate STATUS_VALUES import, using the unified constants directly 
 const { FIELD_NAMES, createValidatedObject, validateFieldNames } = require('../utils/airtableFieldValidator');
@@ -159,12 +158,11 @@ async function createRunRecord(params) {
   logger.debug(`[RunRecordAdapterSimple] Creating run record for client ${validatedClientId} from source ${source}`);
   
   try {
-    // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
-    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+    // Get the base run ID without any client suffix
+    const baseRunId = runIdSystem.getBaseRunId(validatedRunId);
     
-    // Add client suffix for client-specific run ID
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
+    // Create a client-specific run ID using the base ID
+    const standardRunId = runIdSystem.createClientRunId(baseRunId, validatedClientId);
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
@@ -253,12 +251,11 @@ async function updateRunRecord(params) {
       return { skipped: true, reason: 'standalone_run' };
     }
     
-    // Clean/standardize the run ID with normalization
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
-    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+    // Get the base run ID without any client suffix
+    const baseRunId = runIdSystem.getBaseRunId(validatedRunId);
     
-    // Add client suffix for client-specific run ID
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
+    // Create a client-specific run ID using the base ID
+    const standardRunId = runIdSystem.createClientRunId(baseRunId, validatedClientId);
     
     logger.debug(`[RunRecordAdapterSimple] Using standardized run ID: ${standardRunId}`);
     
@@ -378,19 +375,19 @@ async function completeRunRecord(params) {
       success = false;
     }
     
-    // Clean/standardize the run ID with proper error handling
+    // Get the base run ID with proper error handling
     let normalizedRunId;
     try {
-      normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
+      normalizedRunId = runIdSystem.getBaseRunId(validatedRunId);
       
-      // CRITICAL FIX: Handle the case where normalizeRunId returns null or undefined
+      // CRITICAL FIX: Handle the case where getBaseRunId returns null or undefined
       if (!normalizedRunId) {
-        logger.warn(`[${source}] Failed to normalize run ID: ${validatedRunId}, using validated ID as fallback`);
+        logger.warn(`[${source}] Failed to get base run ID from: ${validatedRunId}, using validated ID as fallback`);
         normalizedRunId = validatedRunId; // Use validated ID as fallback to prevent undefined errors
       }
     } catch (error) {
-      // Error occurred during normalization - use validated ID as fallback
-      logger.warn(`[${source}] Error normalizing run ID: ${error.message}, using validated ID as fallback`);
+      // Error occurred during processing - use validated ID as fallback
+      logger.warn(`[${source}] Error getting base run ID: ${error.message}, using validated ID as fallback`);
       normalizedRunId = validatedRunId; // Use validated ID as fallback to prevent undefined errors
     }
     
@@ -526,9 +523,8 @@ async function createJobRecord(params) {
   }
   
   try {
-    // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
-    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+    // Get the base run ID (remove any client suffix)
+    const baseRunId = runIdSystem.getBaseRunId(validatedRunId);
     
     logger.debug(`[RunRecordAdapterSimple] Checking for existing job tracking record with ID: ${baseRunId}`);
     
@@ -636,9 +632,8 @@ async function completeJobRecord(params) {
   }
   
   try {
-    // Clean/standardize the run ID with normalization first
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(validatedRunId);
-    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+    // Get the base run ID (remove any client suffix)
+    const baseRunId = runIdSystem.getBaseRunId(validatedRunId);
     
     logger.debug(`[RunRecordAdapterSimple] Checking for job record before completing: ${baseRunId}`);
     
@@ -830,10 +825,9 @@ async function completeClientProcessing(params) {
       throw new Error(`Missing required clientId parameter for completing client processing`);
     }
     
-    // Now normalize the run ID
-    const normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
-    const baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+    // Get the base run ID and create a client-specific ID
+    const baseRunId = runIdSystem.getBaseRunId(runId);
+    const standardRunId = runIdSystem.createClientRunId(baseRunId, clientId);
     
     // First, check if all required processes have completed based on client's service level
     try {
