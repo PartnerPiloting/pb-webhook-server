@@ -533,6 +533,10 @@ async function updateClientRunRecord(params) {
     // Get the master clients base
     const masterBase = baseManager.getMasterClientsBase();
     
+    // ROOT CAUSE FIX: Use field validator to normalize field names BEFORE building updates
+    // This prevents field name mismatches in Client Run Results updates
+    const { createValidatedObject } = require('../utils/airtableFieldValidator');
+    
     // Prepare update fields
     const updateFields = {};
     
@@ -559,8 +563,11 @@ async function updateClientRunRecord(params) {
       }
     });
     
+    // Normalize all field names before sending to Airtable
+    const normalizedUpdateFields = createValidatedObject(updateFields, { log: false });
+    
     // Update the run record
-    await masterBase(CLIENT_RUN_RESULTS_TABLE).update(record.id, updateFields);
+    await masterBase(CLIENT_RUN_RESULTS_TABLE).update(record.id, normalizedUpdateFields);
     
     log.debug(`Updated client run record for ${clientId}: ${standardizedRunId}`);
     

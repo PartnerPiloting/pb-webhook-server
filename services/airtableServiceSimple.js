@@ -271,7 +271,13 @@ async function updateClientRun(runId, clientId, updates) {
     
     // Validate updates to prevent formula field errors
     const safeUpdates = validateUpdates(updates);
-    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(records[0].id, safeUpdates);
+    
+    // ROOT CAUSE FIX: Add field normalization for Client Run Results (same as Job Tracking fixes)
+    // This fixes Apify webhook data not being saved (Total Posts Harvested, Apify Run ID, etc.)
+    const { createValidatedObject } = require('../utils/airtableFieldValidator');
+    const normalizedUpdates = createValidatedObject(safeUpdates, { log: false });
+    
+    const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(records[0].id, normalizedUpdates);
     console.log(`✅ Updated client run record`);
     return updated;
     
