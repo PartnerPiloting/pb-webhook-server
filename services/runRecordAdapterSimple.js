@@ -394,7 +394,7 @@ async function completeRunRecord(params) {
     // Get base run ID with error handling
     let baseRunId;
     try {
-      baseRunId = runIdUtils.stripClientSuffix(normalizedRunId);
+  baseRunId = runIdSystem.getBaseRunId(normalizedRunId);
       if (!baseRunId) {
         logger.warn(`[${source}] Failed to strip client suffix, using normalized ID as fallback`);
         baseRunId = normalizedRunId;
@@ -407,7 +407,7 @@ async function completeRunRecord(params) {
     // Add client suffix with proper error handling
     let standardRunId;
     try {
-      standardRunId = runIdUtils.addClientSuffix(baseRunId, validatedClientId);
+  standardRunId = runIdSystem.createClientRunId(baseRunId, validatedClientId);
       if (!standardRunId) {
         logger.error(`[${source}] Failed to add client suffix: ${baseRunId}, ${validatedClientId}`);
         throw new Error(`Failed to add client suffix: ${baseRunId}, ${validatedClientId}`);
@@ -700,7 +700,7 @@ async function updateJobAggregates(params) {
   
   try {
     // Clean/standardize the run ID (strip any client suffix)
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+  const baseRunId = runIdSystem.getBaseRunId(runId);
     
     logger.debug(`[RunRecordAdapterSimple] Updating aggregate metrics for job: ${baseRunId}`);
     
@@ -742,10 +742,10 @@ async function updateClientMetrics(params) {
   
   try {
     // Clean/standardize the run ID (strip any client suffix)
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+  const baseRunId = runIdSystem.getBaseRunId(runId);
     
     // Add client suffix for client-specific run ID
-    const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientId);
+  const standardRunId = runIdSystem.createClientRunId(baseRunId, clientId);
     
     // DO NOT include End Time or Status in regular metric updates
     // These should only be set when the client processing is complete
@@ -1016,7 +1016,7 @@ async function checkRunRecordExists(params) {
     
     if (!clientIdToUse) {
       // Try to extract from run ID if it has a client suffix
-      const extractedClientId = runIdUtils.extractClientId(runId);
+  const extractedClientId = runIdSystem.getClientId(runId);
       if (extractedClientId) {
         clientIdToUse = extractedClientId;
         logger.debug(`[RunRecordAdapterSimple] Extracted clientId=${clientIdToUse} from runId`);
@@ -1054,11 +1054,11 @@ async function checkRunRecordExists(params) {
     }
     
     // Clean/standardize the run ID (strip any client suffix)
-    const baseRunId = runIdUtils.stripClientSuffix(runId);
+  const baseRunId = runIdSystem.getBaseRunId(runId);
     
     // Try with standardized ID format
     try {
-      const standardRunId = runIdUtils.addClientSuffix(baseRunId, clientIdToUse);
+  const standardRunId = runIdSystem.createClientRunId(baseRunId, clientIdToUse);
       
       // Skip if it's the same as what we just tried
       if (standardRunId !== runId) {
