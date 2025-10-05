@@ -367,12 +367,17 @@ class JobTracking {
       
       const record = records[0];
       
+      // ROOT CAUSE FIX: Use field validator to normalize field names BEFORE building updates
+      // This prevents lowercase field names (status, endTime) from being passed through
+      const { createValidatedObject } = require('../utils/airtableFieldValidator');
+      const normalizedUpdates = createValidatedObject(updates, { log: false });
+      
       // Prepare update fields - only use fields that exist
       const updateFields = {};
       
       // CRITICAL: Handle status update with special logic - always use constants for field names
-      // Remove legacy lowercase 'status' check to prevent field name errors
-      const statusValue = JOB_TRACKING_FIELDS.STATUS in updates ? updates[JOB_TRACKING_FIELDS.STATUS] : null;
+      // Now using normalized field names from validator
+      const statusValue = JOB_TRACKING_FIELDS.STATUS in normalizedUpdates ? normalizedUpdates[JOB_TRACKING_FIELDS.STATUS] : null;
       if (statusValue !== null) {
         updateFields[JOB_TRACKING_FIELDS.STATUS] = statusValue;
         
@@ -382,25 +387,25 @@ class JobTracking {
         
         // If status is transitioning to a completed state, set end time if not provided
         const isCompletedState = ['completed', 'failed', 'completed with errors', 'no leads to score'].includes(safeStatusValue);
-        const hasEndTime = JOB_TRACKING_FIELDS.END_TIME in updates;
+        const hasEndTime = JOB_TRACKING_FIELDS.END_TIME in normalizedUpdates;
         if (isCompletedState && !hasEndTime) {
           const endTime = new Date().toISOString();
           updateFields[JOB_TRACKING_FIELDS.END_TIME] = endTime;
           log.debug(`Auto-setting end time to ${endTime}`);
         }
       }
-      if ('error' in updates) updateFields[JOB_TRACKING_FIELDS.ERROR] = updates.error;
+      if ('error' in normalizedUpdates) updateFields[JOB_TRACKING_FIELDS.ERROR] = normalizedUpdates.error;
       // Progress and LastClient fields removed to simplify codebase
       
       // Handle System Notes field properly
-      if (updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
-        updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES];
-      } else if (updates.notes) {
-        updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates.notes;
+      if (normalizedUpdates[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
+        updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = normalizedUpdates[JOB_TRACKING_FIELDS.SYSTEM_NOTES];
+      } else if (normalizedUpdates.notes) {
+        updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = normalizedUpdates.notes;
       }
       
       // Process each update field with formula field validation
-      for (const [key, value] of Object.entries(updates)) {
+      for (const [key, value] of Object.entries(normalizedUpdates)) {
         // Skip fields we've already processed
         if (updateFields[key] !== undefined) continue;
         
