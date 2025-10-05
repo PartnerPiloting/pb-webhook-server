@@ -25,9 +25,12 @@ const runIdSystem = require('./runIdSystem');
 // Import record caching service
 const recordCache = require('./recordCache');
 
+// Import Airtable constants
+const { MASTER_TABLES, CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+
 // Constants for table names
-const JOB_TRACKING_TABLE = 'Job Tracking';
-const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
+const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Initialize clients base reference
 let clientsBase = null;
@@ -147,20 +150,20 @@ async function createJobTrackingRecord(runId, stream) {
     const records = await base(JOB_TRACKING_TABLE).create([
       {
         fields: {
-          'Run ID': baseRunId, // Use the base run ID without client suffix
-          'Start Time': new Date().toISOString(),
-          'Status': 'Running',
-          'Stream': Number(stream), // Ensure stream is a number for Airtable's number field
-          'Clients Processed': 0,
-          'Clients With Errors': 0,
-          'Total Profiles Examined': 0,
-          'Successful Profiles': 0,
+          [JOB_TRACKING_FIELDS.RUN_ID]: baseRunId, // Use the base run ID without client suffix
+          [JOB_TRACKING_FIELDS.START_TIME]: new Date().toISOString(),
+          [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
+          [JOB_TRACKING_FIELDS.STREAM]: Number(stream), // Ensure stream is a number for Airtable's number field
+          'Clients Processed': 0, // Note: These fields have been removed from constants as they're now calculated on-the-fly
+          'Clients With Errors': 0, // Note: These fields have been removed from constants as they're now calculated on-the-fly
+          'Total Profiles Examined': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+          'Successful Profiles': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
           'Total Posts Harvested': 0,
           'Posts Examined for Scoring': 0, 
           'Posts Successfully Scored': 0,
           'Profile Scoring Tokens': 0,
           'Post Scoring Tokens': 0,
-          'System Notes': `Run initiated at ${new Date().toISOString()}`
+          [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Run initiated at ${new Date().toISOString()}`
         }
       }
     ]);
@@ -207,7 +210,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
   
   // Check if a record already exists with this run ID
   try {
-    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
+    const exactIdQuery = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`;
     console.log(`Airtable Service: Looking for exact Run ID match: ${exactIdQuery}`);
     
     const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
@@ -242,17 +245,17 @@ async function createClientRunRecord(runId, clientId, clientName) {
     console.log(`Airtable Service: CREATE DEBUG - Full record creation request:`);
     const recordData = {
       fields: {
-        'Run ID': standardRunId, // Always use our standardized timestamp format
-        'Client ID': clientId,
-        'Client Name': clientName,
-        'Start Time': startTimestamp,
-        'Status': 'Running',
-        'Profiles Examined for Scoring': 0,
-        'Profiles Successfully Scored': 0,
-        'Total Posts Harvested': 0,
-        'Profile Scoring Tokens': 0,
-        'Post Scoring Tokens': 0,
-        'System Notes': `Processing started at ${startTimestamp}`
+        [CLIENT_RUN_FIELDS.RUN_ID]: standardRunId, // Always use our standardized timestamp format
+        [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
+        [CLIENT_RUN_FIELDS.CLIENT_NAME]: clientName,
+        [CLIENT_RUN_FIELDS.START_TIME]: startTimestamp,
+        [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
+        [CLIENT_RUN_FIELDS.PROFILES_EXAMINED]: 0,
+        [CLIENT_RUN_FIELDS.PROFILES_SCORED]: 0,
+        [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+        [CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS]: 0,
+        [CLIENT_RUN_FIELDS.POST_SCORING_TOKENS]: 0,
+        [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Processing started at ${startTimestamp}`
       }
     };
     console.log(`Airtable Service: CREATE DEBUG - Record data:`, JSON.stringify(recordData));
@@ -312,7 +315,7 @@ async function updateJobTracking(runId, updates) {
   try {
     // Find all records with the base run ID (without client suffix)
     const records = await base(JOB_TRACKING_TABLE).select({
-      filterByFormula: `{Run ID} = '${baseRunId}'`
+      filterByFormula: `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${baseRunId}'`
     }).firstPage();
     
     if (!records || records.length === 0) {
@@ -389,7 +392,7 @@ async function updateClientRun(runId, clientId, updates) {
     // If not found in cache, search by exact Run ID match
     if (!recordId) {
       console.log(`[METDEBUG] Looking for exact Run ID match`);
-      const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
+      const exactIdQuery = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`;
       
       const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: exactIdQuery,
@@ -481,12 +484,12 @@ async function updateClientRun(runId, clientId, updates) {
  */
 async function completeJobRun(runId, success = true, notes = '') {
   const updates = {
-    'End Time': new Date().toISOString(),
-    'Status': success ? 'Completed' : 'Failed'
+    [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
+    [JOB_TRACKING_FIELDS.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED
   };
   
   if (notes) {
-    updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+    updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   }
   
   return await updateJobTracking(runId, updates);
@@ -504,12 +507,12 @@ async function completeJobRun(runId, success = true, notes = '') {
  */
 async function completeClientRun(runId, clientId, success = true, notes = '') {
   const updates = {
-    'End Time': new Date().toISOString(),
-    'Status': success ? 'Completed' : 'Failed'
+    [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
+    [CLIENT_RUN_FIELDS.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED
   };
   
   if (notes) {
-    updates['System Notes'] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+    updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
   }
   
   // Generate a standardized run ID - reuse timestamp if possible
@@ -565,7 +568,7 @@ async function updateAggregateMetrics(runId) {
     // This should be more flexible and find all related records regardless of exact timestamp
     const datePartOnly = baseRunId.split('-')[0]; // Just get the YYMMDD part
     const clientRecords = await base(CLIENT_RUN_RESULTS_TABLE).select({
-      filterByFormula: `FIND('${datePartOnly}', {Run ID}) = 1`
+      filterByFormula: `FIND('${datePartOnly}', {${CLIENT_RUN_FIELDS.RUN_ID}}) = 1`
     }).all();
     
     // Log the records and their run IDs for debugging
@@ -588,7 +591,7 @@ async function updateAggregateMetrics(runId) {
     // Calculate aggregates
     const aggregates = {
       'Clients Processed': clientRecords.length,
-      'Clients With Errors': clientRecords.filter(r => r.get('Status') === 'Failed').length,
+      'Clients With Errors': clientRecords.filter(r => r.get(CLIENT_RUN_FIELDS.STATUS) === CLIENT_RUN_STATUS_VALUES.FAILED).length,
       'Total Profiles Examined': 0,
       'Successful Profiles': 0,
       'Total Posts Harvested': 0,
@@ -649,7 +652,7 @@ async function checkRunRecordExists(runId, clientId) {
     }
     
     // If not found in cache, search by exact Run ID match
-    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
+    const exactIdQuery = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`;
     
     const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
       filterByFormula: exactIdQuery,
