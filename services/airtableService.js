@@ -156,9 +156,8 @@ async function createJobTrackingRecord(runId, stream) {
           [JOB_TRACKING_FIELDS.STREAM]: Number(stream), // Ensure stream is a number for Airtable's number field
           // NOTE: Job Tracking table stores minimal data. Most metrics are in Client Run Results table.
           // Removed fields (2025-10-02): Total Profiles Examined, Successful Profiles, Total Posts Harvested,
-          // Posts Examined for Scoring, Posts Successfully Scored (all calculated on-the-fly from Client Run Results)
-          'Profile Scoring Tokens': 0,
-          'Post Scoring Tokens': 0,
+          // Posts Examined for Scoring, Posts Successfully Scored, Profile Scoring Tokens, Post Scoring Tokens
+          // (all calculated on-the-fly from Client Run Results)
           [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Run initiated at ${new Date().toISOString()}`
         }
       }
@@ -590,18 +589,14 @@ async function updateAggregateMetrics(runId) {
     // Calculate aggregates from Client Run Results
     // NOTE: Job Tracking table doesn't store these fields - they're calculated on-the-fly
     // Removed 2025-10-02: Total Profiles Examined, Successful Profiles, Total Posts Harvested,
-    // Posts Examined for Scoring, Posts Successfully Scored (not in Job Tracking schema)
-    const aggregates = {
-      'Profile Scoring Tokens': 0,
-      'Post Scoring Tokens': 0
-    };
+    // Posts Examined for Scoring, Posts Successfully Scored, Profile Scoring Tokens, Post Scoring Tokens
+    // (not in Job Tracking schema - only in Client Run Results)
     
-    // Sum up metrics from all client records
-    clientRecords.forEach(record => {
-      // Only aggregate token usage - other metrics are calculated on-the-fly from Client Run Results
-      aggregates['Profile Scoring Tokens'] += Number(record.get('Profile Scoring Tokens') || 0);
-      aggregates['Post Scoring Tokens'] += Number(record.get('Post Scoring Tokens') || 0);
-    });
+    // Job Tracking only stores: Status, Stream, Start Time, End Time, System Notes
+    // All metrics are calculated on-the-fly from Client Run Results when needed
+    const aggregates = {
+      [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.COMPLETED
+    };
     
     // Update the job tracking record using the base run ID (without client suffix)
     return await updateJobTracking(baseRunId, aggregates);
