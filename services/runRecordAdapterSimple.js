@@ -52,8 +52,8 @@ function getLoggerFromOptions(options, clientId, runId, context = 'general') {
 }
 
 // CRITICAL: Verify constants are properly imported
-if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_FIELDS || !TABLES) {
-  console.error('CRITICAL: Constants not properly imported from airtableFields.js');
+if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_FIELDS || !MASTER_TABLES) {
+  console.error('CRITICAL: Constants not properly imported from airtableUnifiedConstants.js');
   throw new Error('Missing required constants');
 }
 
