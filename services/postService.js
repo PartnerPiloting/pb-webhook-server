@@ -2,7 +2,7 @@
 // Service for managing LinkedIn posts in Airtable
 
 // Import unified constants for field names
-const { CLIENT_TABLES, POST_FIELDS } = require('../constants/airtableUnifiedConstants');
+const { CLIENT_TABLES, POST_FIELDS, POST_MEDIA_TYPES, POST_TYPES } = require('../constants/airtableUnifiedConstants');
 
 /**
  * Create a new post record in the Posts table
@@ -42,8 +42,8 @@ async function createPost(clientBase, post) {
       [POST_FIELDS.POSTED_AT]: post.timestamp || new Date().toISOString(),
       [POST_FIELDS.LIKE_COUNT]: post.likeCount || 0,
       [POST_FIELDS.COMMENT_COUNT]: post.commentCount || 0,
-      [POST_FIELDS.MEDIA_TYPE]: post.mediaType || 'text',
-      [POST_FIELDS.POST_TYPE]: post.postType || 'regular',
+      [POST_FIELDS.MEDIA_TYPE]: post.mediaType || POST_MEDIA_TYPES.TEXT,
+      [POST_FIELDS.POST_TYPE]: post.postType || POST_TYPES.REGULAR,
       [POST_FIELDS.RAW_DATA]: JSON.stringify(post.rawData || {})
     };
 

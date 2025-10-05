@@ -13,7 +13,7 @@ const runIdSystem = require('./runIdSystem');
 const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 
 // Import unified constants
-const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES, CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
+const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES, CONNECTION_STATUS_VALUES, LEAD_STATUS_VALUES, CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 async function upsertLead(
@@ -52,7 +52,7 @@ async function upsertLead(
         connectionSince, 
         scoringStatus, 
         raw, 
-        "View In Sales Navigator": viewInSalesNavigatorUrl, // ***** ADDED DESTRUCTURING for the new field *****
+        [LEAD_FIELDS.VIEW_IN_SALES_NAVIGATOR]: viewInSalesNavigatorUrl, // Using constant instead of string literal
         ...rest 
     } = lead;
 
@@ -85,9 +85,9 @@ async function upsertLead(
     }
     const profileKey = canonicalUrl(finalUrl); 
 
-    let currentConnectionStatus = "Candidate"; 
-    if (connectionDegree === "1st") currentConnectionStatus = "Connected";
-    else if (lead.linkedinConnectionStatus === "Pending") currentConnectionStatus = "Pending";
+    let currentConnectionStatus = CONNECTION_STATUS_VALUES.CANDIDATE; 
+    if (connectionDegree === "1st") currentConnectionStatus = CONNECTION_STATUS_VALUES.CONNECTED;
+    else if (lead.linkedinConnectionStatus === CONNECTION_STATUS_VALUES.PENDING) currentConnectionStatus = CONNECTION_STATUS_VALUES.PENDING;
     else if (originalLeadData.connectionStatus) currentConnectionStatus = originalLeadData.connectionStatus;
 
 
@@ -103,9 +103,9 @@ async function upsertLead(
         [LEAD_FIELDS.ABOUT]: linkedinDescription || originalLeadData.summary || originalLeadData.bio || "",
         [LEAD_FIELDS.JOB_HISTORY]: jobHistory,
         [LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS]: currentConnectionStatus,
-        [LEAD_FIELDS.STATUS]: "In Process", 
+        [LEAD_FIELDS.STATUS]: LEAD_STATUS_VALUES.IN_PROCESS, 
         [LEAD_FIELDS.LOCATION]: locationName || originalLeadData.location || "",
-        [LEAD_FIELDS.DATE_CONNECTED]: safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === "Connected" && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
+        [LEAD_FIELDS.DATE_CONNECTED]: safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
         [LEAD_FIELDS.EMAIL]: emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
         [LEAD_FIELDS.PHONE]: phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
         [LEAD_FIELDS.REFRESHED_AT]: refreshedAt ? new Date(refreshedAt) : (originalLeadData.lastRefreshed ? new Date(originalLeadData.lastRefreshed) : null),
@@ -126,6 +126,7 @@ async function upsertLead(
     if (aiProfileAssessment !== null) fields[LEAD_FIELDS.AI_PROFILE_ASSESSMENT] = String(aiProfileAssessment || "");
     if (attributeBreakdown !== null) fields[LEAD_FIELDS.AI_ATTRIBUTES_DETAIL] = attributeBreakdown;
     if (auFlag !== null) fields[LEAD_FIELDS.AU] = !!auFlag;
+    // Note: "Yes" is a legacy string value from Airtable, not a field constant we control
     if (ai_excluded_val !== null) fields[LEAD_FIELDS.AI_EXCLUDED] = (ai_excluded_val === "Yes" || ai_excluded_val === true);
     if (exclude_details_val !== null) fields[LEAD_FIELDS.EXCLUDE_DETAILS] = exclude_details_val;
 
@@ -140,7 +141,7 @@ async function upsertLead(
         isNewLead = false;
         console.log(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
         // For "Date Connected", if it's now "Connected" and didn't have a date before, or if a new date is provided
-        if (currentConnectionStatus === "Connected" && !existing[0].fields[LEAD_FIELDS.DATE_CONNECTED] && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
+        if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !existing[0].fields[LEAD_FIELDS.DATE_CONNECTED] && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
             fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
         }
         
@@ -155,10 +156,11 @@ async function upsertLead(
         if (fields[LEAD_FIELDS.SCORING_STATUS] === undefined) {
             fields[LEAD_FIELDS.SCORING_STATUS] = SCORING_STATUS_VALUES.NOT_SCORED;
         }
-        if (currentConnectionStatus === "Connected" && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
+        if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
             fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
         }
         if (!fields[LEAD_FIELDS.SYSTEM_NOTES]) { 
+            // Note: "1st" is from LinkedIn API, not a field constant we control
             fields[LEAD_FIELDS.SYSTEM_NOTES] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
         }
         console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
