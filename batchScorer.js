@@ -289,7 +289,8 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
             log.debug(`Lead ${rec.id} profile too thin (aboutText length: ${aboutText.length}), skipping AI call`);
             airtableUpdatesForSkipped.push({
                 id: rec.id,
-                fields: { [LEAD_FIELDS.AI_SCORE]: 0, [LEAD_FIELDS.SCORING_STATUS]: "Skipped – Profile Too Thin", [LEAD_FIELDS.AI_PROFILE_ASSESSMENT]: "", [LEAD_FIELDS.AI_ATTRIBUTES_DETAIL]: "", [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() }
+                // ROOT CAUSE FIX: Field name is "AI Attribute Breakdown" not "AI Attributes Detail"
+                fields: { [LEAD_FIELDS.AI_SCORE]: 0, [LEAD_FIELDS.SCORING_STATUS]: "Skipped – Profile Too Thin", [LEAD_FIELDS.AI_PROFILE_ASSESSMENT]: "", "AI Attribute Breakdown": "", [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() }
             });
             continue;
         }
