@@ -791,11 +791,16 @@ function countRecordTypes() {
     // Default to empty string if status is undefined
     const status = typeof rawStatus === 'string' ? rawStatus.toLowerCase() : '';
     
-    if (status === CLIENT_RUN_STATUS_VALUES.RUNNING.toLowerCase()) {
+    // Safety: Use fallback strings if constants are undefined
+    const runningStr = CLIENT_RUN_STATUS_VALUES.RUNNING ? CLIENT_RUN_STATUS_VALUES.RUNNING.toLowerCase() : 'running';
+    const completedStr = CLIENT_RUN_STATUS_VALUES.COMPLETED ? CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase() : 'completed';
+    const failedStr = CLIENT_RUN_STATUS_VALUES.FAILED ? CLIENT_RUN_STATUS_VALUES.FAILED.toLowerCase() : 'failed';
+    
+    if (status === runningStr) {
       counts.running++;
-    } else if (status === CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase()) {
+    } else if (status === completedStr) {
       counts.completed++;
-    } else if (status === CLIENT_RUN_STATUS_VALUES.FAILED.toLowerCase()) {
+    } else if (status === failedStr) {
       counts.error++;
     } else {
       counts.other++;
