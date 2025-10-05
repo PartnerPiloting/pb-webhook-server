@@ -154,8 +154,7 @@ async function createJobTrackingRecord(runId, stream) {
           [JOB_TRACKING_FIELDS.START_TIME]: new Date().toISOString(),
           [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
           [JOB_TRACKING_FIELDS.STREAM]: Number(stream), // Ensure stream is a number for Airtable's number field
-          'Clients Processed': 0, // Note: These fields have been removed from constants as they're now calculated on-the-fly
-          'Clients With Errors': 0, // Note: These fields have been removed from constants as they're now calculated on-the-fly
+          // NOTE: 'Clients Processed' and 'Clients With Errors' fields removed from Job Tracking table (calculated on-the-fly)
           'Total Profiles Examined': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
           'Successful Profiles': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
           'Total Posts Harvested': 0,
@@ -589,9 +588,8 @@ async function updateAggregateMetrics(runId) {
     }
     
     // Calculate aggregates
+    // NOTE: 'Clients Processed' and 'Clients With Errors' removed from Job Tracking (calculated on-the-fly)
     const aggregates = {
-      'Clients Processed': clientRecords.length,
-      'Clients With Errors': clientRecords.filter(r => r.get(CLIENT_RUN_FIELDS.STATUS) === CLIENT_RUN_STATUS_VALUES.FAILED).length,
       'Total Profiles Examined': 0,
       'Successful Profiles': 0,
       'Total Posts Harvested': 0,

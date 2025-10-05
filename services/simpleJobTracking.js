@@ -163,9 +163,10 @@ async function updateJobTrackingRecord(params) {
         if (updates.itemsProcessed) updateFields['Items Processed'] = updates.itemsProcessed; // Keep as is if no constant available
         if (updates.notes) updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates.notes;
         
-        // Add any other custom fields from updates, except formula fields
+        // Add any other custom fields from updates, except formula fields and mapped fields
+        // CRITICAL: Don't add fields that are already mapped above (status, endTime, etc.) to avoid duplicates with wrong casing
         Object.keys(updates).forEach(key => {
-            if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'Success Rate'].includes(key)) {
+            if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'Success Rate', 'Duration'].includes(key)) {
                 updateFields[key] = updates[key];
             }
         });
