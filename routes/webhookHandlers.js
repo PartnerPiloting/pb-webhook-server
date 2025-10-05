@@ -11,6 +11,9 @@ const { upsertLead } = require('../services/leadService.js');
 const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
 const dirtyJSON = require('dirty-json');
 
+// Import Airtable field constants for standardization
+const { LEAD_FIELDS } = require('../constants/airtableUnifiedConstants.js');
+
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
 
@@ -193,24 +196,24 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 log.debug(`All available fields:`, Object.keys(lh));
                 
                 const leadForUpsert = {
-                    "First Name": lh.firstName || lh.first_name || "", 
-                    "Last Name": lh.lastName || lh.last_name || "",
+                    [LEAD_FIELDS.FIRST_NAME]: lh.firstName || lh.first_name || "", 
+                    [LEAD_FIELDS.LAST_NAME]: lh.lastName || lh.last_name || "",
                     firstName: lh.firstName || lh.first_name || "",  // Add camelCase for upsertLead function
                     lastName: lh.lastName || lh.last_name || "",     // Add camelCase for upsertLead function
-                    "Headline": lh.headline || "", 
-                    "Location": lh.locationName || lh.location_name || lh.location || "",
-                    "Phone": (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
-                    "Email": lh.email || lh.workEmail || "",
-                    "LinkedIn Profile URL": rawUrl ? rawUrl.replace(/\/$/, "") : null, 
+                    [LEAD_FIELDS.HEADLINE]: lh.headline || "", 
+                    [LEAD_FIELDS.LOCATION]: lh.locationName || lh.location_name || lh.location || "",
+                    [LEAD_FIELDS.PHONE]: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
+                    [LEAD_FIELDS.EMAIL]: lh.email || lh.workEmail || "",
+                    [LEAD_FIELDS.LINKEDIN_PROFILE_URL]: rawUrl ? rawUrl.replace(/\/$/, "") : null, 
                     linkedinProfileUrl: rawUrl ? rawUrl.replace(/\/$/, "") : null,  // Property name the function expects
-                    "View In Sales Navigator": salesNavigatorUrl, 
-                    "Job Title": lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
-                    "Company Name": lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
-                    "About": lh.summary || lh.bio || "", 
-                    "Scoring Status": scoringStatusForThisLead, 
-                    "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || "Unknown",
-                    "Profile Full JSON": JSON.stringify(lh),
-                    "Raw Profile Data": JSON.stringify(lh),
+                    [LEAD_FIELDS.VIEW_IN_SALES_NAVIGATOR]: salesNavigatorUrl, 
+                    [LEAD_FIELDS.JOB_TITLE]: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
+                    [LEAD_FIELDS.COMPANY_NAME]: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
+                    [LEAD_FIELDS.ABOUT]: lh.summary || lh.bio || "", 
+                    [LEAD_FIELDS.SCORING_STATUS]: scoringStatusForThisLead, 
+                    [LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS]: lh.connectionStatus || lh.linkedinConnectionStatus || "Unknown",
+                    [LEAD_FIELDS.PROFILE_FULL_JSON]: JSON.stringify(lh),
+                    [LEAD_FIELDS.RAW_PROFILE_DATA]: JSON.stringify(lh),
                     raw: lh  // originalLeadData for fallback URL lookup
                 };
                 
