@@ -312,12 +312,18 @@ async function completeRunRecord(params) {
     throw new Error(errMsg);
   }
   
+  // DEBUG: Log params structure to diagnose undefined issues
+  logger.debug(`[${source}] Received params with keys: ${Object.keys(params).map(k => k === undefined ? 'UNDEFINED' : `"${k}"`).join(', ')}`);
+  
   // Extract values using standardized field names
   const runId = params.runId;
   const clientId = params.clientId;
   // CRITICAL FIX: Safely extract status - try multiple possible keys to handle different calling patterns
   const statusKey = FIELD_NAMES?.STATUS || 'Status';
   const status = params[statusKey] || params.status || params.Status;
+  
+  // DEBUG: Log what status value we extracted
+  logger.debug(`[${source}] Extracted status: ${status} (type: ${typeof status}), statusKey used: ${statusKey}`);
   const notesKey = FIELD_NAMES?.SYSTEM_NOTES || 'System Notes';
   const notes = params[notesKey] || params.systemNotes || params.notes || '';
   const options = params.options || {};
