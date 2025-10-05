@@ -13,7 +13,7 @@ const runIdSystem = require('./runIdSystem');
 const { safeUpdateMetrics } = require('./runRecordAdapterSimple');
 
 // Import unified constants
-const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
+const { CLIENT_TABLES, LEAD_FIELDS, SCORING_STATUS_VALUES, CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 async function upsertLead(
@@ -179,8 +179,8 @@ async function upsertLead(
             // Update run metrics with this lead's information
             if (trackingInfo.runId && trackingInfo.clientId) {
                 const updates = {
-                    'Profiles Successfully Scored': 1, // Increment by one for this lead
-                    'Profile Scoring Tokens': tokenUsage
+                    [CLIENT_RUN_FIELDS.PROFILES_SCORED]: 1, // Increment by one for this lead
+                    [CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS]: tokenUsage
                 };
                 
                 console.log(`leadService/upsertLead: Updating run metrics for client ${trackingInfo.clientId} - Lead ${finalUrl} scored (tokens: ${tokenUsage})`);
