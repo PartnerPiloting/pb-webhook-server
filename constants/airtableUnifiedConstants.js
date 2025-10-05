@@ -14,7 +14,8 @@ const MASTER_TABLES = {
   CLIENTS: 'Clients',
   CLIENT_RUN_RESULTS: 'Client Run Results',
   JOB_TRACKING: 'Job Tracking',
-  CLIENT_EXECUTION_LOG: 'Client Execution Log'
+  CLIENT_EXECUTION_LOG: 'Client Execution Log',
+  APIFY: 'Apify'
 };
 
 // Table names in individual client bases
@@ -273,6 +274,22 @@ const CLIENT_EXECUTION_LOG_FIELDS = {
   NEXT_ACTION: 'Next Action'
 };
 
+// Field names for the Apify table in Master Clients Base
+const APIFY_FIELDS = {
+  APIFY_RUN_ID: 'Apify Run ID', // Primary field - Apify run identifier
+  RUN_ID: 'Run ID', // Our system run ID (for linking to Client Run Results)
+  ACTOR_ID: 'Actor ID',
+  CLIENT_ID: 'Client ID',
+  COMPLETED_AT: 'Completed At',
+  CREATED_AT: 'Created At',
+  DATASET_ID: 'Dataset ID',
+  ERROR: 'Error',
+  LAST_UPDATED: 'Last Updated',
+  MODE: 'Mode',
+  STATUS: 'Status',
+  TARGET_URLS: 'Target URLs'
+};
+
 // Field names for the LinkedIn Posts table
 const POST_FIELDS = {
   URL: 'URL',
@@ -308,6 +325,7 @@ module.exports = {
   CONNECTION_STATUS_VALUES,
   LEAD_STATUS_VALUES,
   CLIENT_EXECUTION_LOG_FIELDS,
+  APIFY_FIELDS,
   POST_FIELDS,
   CREDENTIAL_FIELDS,
   POST_MEDIA_TYPES,
