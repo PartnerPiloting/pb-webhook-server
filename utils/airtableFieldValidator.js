@@ -186,6 +186,12 @@ function createValidatedObject(data, options = {}) {
   
   // Process each field in the data object
   for (const [key, value] of Object.entries(data)) {
+    // CRITICAL FIX: Skip undefined or null keys to prevent toLowerCase crash
+    if (key === undefined || key === null) {
+      console.warn(`[airtableFieldValidator] Skipping undefined/null key in data object. Value was: ${value}`);
+      continue;
+    }
+    
     // Skip fields that start with underscore (internal use)
     if (key.startsWith('_')) {
       validatedData[key] = value;

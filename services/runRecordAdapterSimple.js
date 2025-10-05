@@ -57,6 +57,12 @@ if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_FIELDS || !MASTER_TABLES) {
   throw new Error('Missing required constants');
 }
 
+// CRITICAL: Verify status values are properly imported
+if (!CLIENT_RUN_STATUS_VALUES || typeof CLIENT_RUN_STATUS_VALUES !== 'object') {
+  console.error('CRITICAL: CLIENT_RUN_STATUS_VALUES not properly imported from airtableUnifiedConstants.js');
+  throw new Error('Missing required status constants');
+}
+
 // Import run ID validator for input validation
 const RunIdValidator = require('./runIdValidator');
 // Import safe access utilities for defensive programming
@@ -309,8 +315,11 @@ async function completeRunRecord(params) {
   // Extract values using standardized field names
   const runId = params.runId;
   const clientId = params.clientId;
-  const status = params[FIELD_NAMES.STATUS]; // Get status using standardized field name
-  const notes = params[FIELD_NAMES.SYSTEM_NOTES] || ''; // Get notes using standardized field name
+  // CRITICAL FIX: Safely extract status - try multiple possible keys to handle different calling patterns
+  const statusKey = FIELD_NAMES?.STATUS || 'Status';
+  const status = params[statusKey] || params.status || params.Status;
+  const notesKey = FIELD_NAMES?.SYSTEM_NOTES || 'System Notes';
+  const notes = params[notesKey] || params.systemNotes || params.notes || '';
   const options = params.options || {};
   
   // ROOT CAUSE FIX: Validate runId and clientId
@@ -1245,6 +1254,10 @@ async function safeUpdateMetrics(params) {
     
     // Record exists, proceed with update
     logger.debug(`[${processType}] Updating metrics for run ${runId} (${clientId})`);
+    
+    // DEBUG: Log metrics object to diagnose undefined key issue
+    logger.debug(`[${processType}] Metrics object keys: ${Object.keys(metrics).map(k => k === undefined ? 'UNDEFINED_KEY' : `"${k}"`).join(', ')}`);
+    logger.debug(`[${processType}] Metrics object: ${JSON.stringify(metrics, null, 2)}`);
     
     // Validate and correct field names before sending to Airtable
     const validatedMetrics = createValidatedObject(metrics);

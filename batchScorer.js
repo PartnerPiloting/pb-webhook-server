@@ -29,6 +29,16 @@ const { CLIENT_RUN_STATUS_VALUES, LEAD_FIELDS, SCORING_STATUS_VALUES } = require
 // Import the consistent field names for direct use when needed
 const { CLIENT_RUN_FIELDS } = require('./constants/airtableUnifiedConstants');
 
+// CRITICAL: Validate that all CLIENT_RUN_FIELDS constants used in this file are defined
+// This catches import/typo errors early instead of causing undefined key crashes later
+const requiredFields = ['STATUS', 'SYSTEM_NOTES', 'ERROR_DETAILS'];
+const missingFields = requiredFields.filter(field => !CLIENT_RUN_FIELDS[field]);
+if (missingFields.length > 0) {
+  console.error('CRITICAL: Missing CLIENT_RUN_FIELDS constants:', missingFields);
+  console.error('Available CLIENT_RUN_FIELDS:', Object.keys(CLIENT_RUN_FIELDS));
+  throw new Error(`Missing required CLIENT_RUN_FIELDS: ${missingFields.join(', ')}`);
+}
+
 // --- Structured Logging ---
 const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');
 

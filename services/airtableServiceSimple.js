@@ -112,8 +112,8 @@ async function createJobTrackingRecord(runId, stream) {
       'Start Time': startTimestamp,
       'Status': 'Running',
       'Stream': streamNumber,
-      // NOTE: 'Clients Processed' and 'Clients With Errors' removed from Job Tracking (calculated on-the-fly)
-      'Total Profiles Examined': 0,
+      // NOTE: 'Clients Processed', 'Clients With Errors', and 'Total Profiles Examined' removed from Job Tracking (calculated on-the-fly)
+      // 'Total Profiles Examined': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
       'Successful Profiles': 0,
       'Total Posts Harvested': 0,
       'Posts Examined for Scoring': 0, 

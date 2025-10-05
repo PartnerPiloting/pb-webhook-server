@@ -165,8 +165,10 @@ async function updateJobTrackingRecord(params) {
         
         // Add any other custom fields from updates, except formula fields and mapped fields
         // CRITICAL: Don't add fields that are already mapped above (status, endTime, etc.) to avoid duplicates with wrong casing
+        // Use case-insensitive comparison to handle 'Status' vs 'status'
+        const excludedKeys = ['status', 'endtime', 'error', 'progress', 'itemsprocessed', 'notes', 'success rate', 'duration'];
         Object.keys(updates).forEach(key => {
-            if (!['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'Success Rate', 'Duration'].includes(key)) {
+            if (!excludedKeys.includes(key.toLowerCase())) {
                 updateFields[key] = updates[key];
             }
         });
@@ -323,9 +325,11 @@ async function updateClientRunRecord(params) {
         if (updates.totalTokens) updateFields['Total Tokens'] = updates.totalTokens;
         
         // Add any other custom fields from updates, except formula fields
+        // Use case-insensitive comparison to prevent duplicate fields when updates object has different casing
+        const excludedClientRunKeys = ['status', 'endtime', 'leadsprocessed', 'postsprocessed', 'errors', 'notes', 
+            'tokenusage', 'prompttokens', 'completiontokens', 'totaltokens', 'success rate'];
         Object.keys(updates).forEach(key => {
-            if (!['status', 'endTime', 'leadsProcessed', 'postsProcessed', 'errors', 'notes', 
-                'tokenUsage', 'promptTokens', 'completionTokens', 'totalTokens', 'Success Rate'].includes(key)) {
+            if (!excludedClientRunKeys.includes(key.toLowerCase())) {
                 updateFields[key] = updates[key];
             }
         });

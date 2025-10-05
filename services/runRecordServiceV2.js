@@ -33,7 +33,7 @@ const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 const LEGACY_JOB_FIELDS = {
   CLIENTS_PROCESSED: 'Clients Processed',
   CLIENTS_WITH_ERRORS: 'Clients With Errors',
-  TOTAL_PROFILES_EXAMINED: 'Total Profiles Examined',
+  // TOTAL_PROFILES_EXAMINED: 'Total Profiles Examined', - Removed 2025-10-02 (field deleted from Job Tracking table)
   SUCCESSFUL_PROFILES: 'Successful Profiles',
   TOTAL_POSTS_HARVESTED: 'Total Posts Harvested',
   POSTS_EXAMINED: 'Posts Examined for Scoring',
