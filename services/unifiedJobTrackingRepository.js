@@ -652,9 +652,9 @@ async function updateAggregateMetrics(params) {
     }
     
     // Calculate aggregates
+    // NOTE: 'Clients Processed' and 'Clients With Errors' fields were removed from Job Tracking table
+    // as they are now calculated on-the-fly. Only storing metrics that can't be easily calculated.
     const aggregates = {
-      'Clients Processed': clientRecords.length,
-      'Clients With Errors': clientRecords.filter(r => r.get(CLIENT_RUN_FIELDS.STATUS) === CLIENT_RUN_STATUS_VALUES.FAILED).length,
       'Total Profiles Examined': 0,
       'Successful Profiles': 0,
       'Total Posts Harvested': 0,
