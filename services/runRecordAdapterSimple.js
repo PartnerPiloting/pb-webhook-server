@@ -363,7 +363,9 @@ async function completeRunRecord(params) {
           ? getStatusString(status)
           : (status ? String(status).toLowerCase() : 'unknown');
           
-        success = statusStr === 'completed' || statusStr === 'success';
+        // Match against lowercase constants for case-insensitive comparison
+        const completedStr = CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase();
+        success = statusStr === completedStr || statusStr === 'success';
       } catch (error) {
         logger.warn(`[${source}] Error converting status to lowercase: ${error.message}`);
         // Default to false on error
@@ -908,25 +910,25 @@ async function completeClientProcessing(params) {
     
     // All processes are complete or check failed - proceed with completion
     // Determine final status based on metrics
-    let status = 'Completed';
+    let status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
     const hasErrors = finalMetrics.errors && finalMetrics.errors > 0;
     const noLeadsProcessed = (!finalMetrics['Profiles Examined for Scoring'] || finalMetrics['Profiles Examined for Scoring'] === 0) &&
                              (!finalMetrics['Posts Examined for Scoring'] || finalMetrics['Posts Examined for Scoring'] === 0);
     
     if (noLeadsProcessed) {
-      status = 'No Leads To Score';
+      status = CLIENT_RUN_STATUS_VALUES.NO_LEADS;
     } else if (finalMetrics.failed) {
-      status = 'Failed';
+      status = CLIENT_RUN_STATUS_VALUES.FAILED;
     } else if (hasErrors) {
       // If there are errors but process completed, still mark as Completed
       // but note the errors in System Notes
-      status = 'Completed';
+      status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
     }
     
     const updates = {
       ...finalMetrics,
-      'End Time': new Date().toISOString(),
-      'Status': status
+      [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
+      [CLIENT_RUN_FIELDS.STATUS]: status
       // Note: 'Metrics Updated' field removed - not present in Airtable schema
     };
     
