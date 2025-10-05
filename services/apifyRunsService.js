@@ -83,9 +83,9 @@ async function createApifyRun(runId, clientId, options = {}) {
         }
         
         const recordData = {
-            'Run ID': normalizedRunId,
-            'Client ID': clientId,
-            'Status': CLIENT_RUN_STATUS_VALUES.RUNNING,
+            [UNIFIED_CLIENT_RUN_FIELDS.RUN_ID]: normalizedRunId,
+            [UNIFIED_CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
+            [UNIFIED_CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
             'Created At': new Date().toISOString(),
             'Actor ID': options.actorId || '',
             'Target URLs': Array.isArray(options.targetUrls) ? options.targetUrls.join('\n') : '',
@@ -106,9 +106,9 @@ async function createApifyRun(runId, clientId, options = {}) {
         const record = createdRecords[0];
         const runData = {
             id: record.id,
-            runId: record.get('Run ID'),
-            clientId: record.get('Client ID'),
-            status: record.get('Status'),
+            runId: record.get(UNIFIED_CLIENT_RUN_FIELDS.RUN_ID),
+            clientId: record.get(UNIFIED_CLIENT_RUN_FIELDS.CLIENT_ID),
+            status: record.get(UNIFIED_CLIENT_RUN_FIELDS.STATUS),
             createdAt: record.get('Created At'),
             actorId: record.fields['Actor ID'] ? record.get('Actor ID') : null,
             targetUrls: record.fields['Target URLs'] ? record.get('Target URLs') : '',
@@ -459,17 +459,17 @@ async function updateClientRunMetrics(runId, clientId, data) {
             throw new Error(errorMsg);
         }
         
-        // Update the client run record with all metrics
+        // Update the client run record with all metrics - Use constants for field names to prevent errors
         const updated = await airtableService.updateClientRun(standardizedRunId, clientId, {
-            'Total Posts Harvested': data.postsCount,
-            'Apify API Costs': estimatedCost,
-            [APIFY_RUN_ID]: runId,
-            'Profiles Submitted for Post Harvesting': data.profilesCount
+            [UNIFIED_CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: data.postsCount,
+            [UNIFIED_CLIENT_RUN_FIELDS.APIFY_COST]: estimatedCost,
+            [UNIFIED_CLIENT_RUN_FIELDS.APIFY_RUN_ID]: runId,
+            [UNIFIED_CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: data.profilesCount
         });
         
         console.log(`[METDEBUG] Updated client run metrics for ${clientId}:`);
-        console.log(`[METDEBUG] - Total Posts Harvested: ${data.postsCount}`);
-        console.log(`[METDEBUG] - Apify Run ID: ${runId}`);
+        console.log(`[METDEBUG] - ${UNIFIED_CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED}: ${data.postsCount}`);
+        console.log(`[METDEBUG] - ${UNIFIED_CLIENT_RUN_FIELDS.APIFY_RUN_ID}: ${runId}`);
         console.log(`[METDEBUG] - Using standardized run ID: ${standardizedRunId}`);
         
         return updated;

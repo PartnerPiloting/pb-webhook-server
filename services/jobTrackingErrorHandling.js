@@ -9,6 +9,8 @@
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 const runIdSystem = require('./runIdSystem');
+// Import unified field name constants
+const { CLIENT_RUN_FIELDS, CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 // Default logger - using safe creation
 const logger = createSafeLogger('SYSTEM', null, 'job_tracking_errors');
@@ -284,17 +286,17 @@ function createRecoveryRecord(error, runId, clientId = null, baseRecord = {}) {
   const timestamp = new Date().toISOString();
   
   const recoveryData = {
-    'Run ID': standardizedRunId,
-    'Status': 'Recovery',
-    'Start Time': timestamp,
-    'Error': error.message,
-    'System Notes': `Recovery record created at ${timestamp} due to ${error.type} error`,
+    [CLIENT_RUN_FIELDS.RUN_ID]: standardizedRunId,
+    [CLIENT_RUN_FIELDS.STATUS]: 'Recovery',
+    [CLIENT_RUN_FIELDS.START_TIME]: timestamp,
+    [CLIENT_RUN_FIELDS.ERROR_DETAILS]: error.message,
+    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Recovery record created at ${timestamp} due to ${error.type} error`,
     'Recovery Source': error.type,
     'Original Run ID': runId
   };
   
   if (clientId) {
-    recoveryData['Client ID'] = clientId;
+    recoveryData[CLIENT_RUN_FIELDS.CLIENT_ID] = clientId;
   }
   
   return {
