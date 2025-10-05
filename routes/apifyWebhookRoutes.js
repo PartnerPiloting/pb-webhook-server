@@ -17,7 +17,7 @@ const unifiedRunIdService = require('../services/unifiedRunIdService');
 // Import the validator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
 // Import Airtable field constants
-const { JOB_TRACKING_FIELDS, CLIENT_RUN_FIELDS, CLIENT_RUN_STATUS_VALUES, APIFY_RUN_ID } = require('../constants/airtableUnifiedConstants');
+const { JOB_TRACKING_FIELDS, CLIENT_RUN_FIELDS, CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 // Constants
 const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
@@ -210,8 +210,8 @@ async function apifyWebhookHandler(req, res) {
                 jobType: 'apify_post_harvesting',
                 clientId,
                 initialData: {
-                    'System Notes': `Processing Apify webhook for run ${apifyRunId}, client ${clientId}`,
-                    [APIFY_RUN_ID]: apifyRunId
+                    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Processing Apify webhook for run ${apifyRunId}, client ${clientId}`,
+                    [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId
                 }
             });
             
@@ -256,9 +256,9 @@ async function apifyWebhookHandler(req, res) {
                 runId: validatedJobRunId,
                 clientId,
                 metrics: {
-                    'Profiles Submitted for Post Harvesting': profilesSubmitted,
-                    [APIFY_RUN_ID]: apifyRunId,
-                    'System Notes': `Apify run ${apifyRunId} started for ${profilesSubmitted} profiles at ${new Date().toISOString()}`
+                    [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted,
+                    [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId,
+                    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Apify run ${apifyRunId} started for ${profilesSubmitted} profiles at ${new Date().toISOString()}`
                 },
                 options: {
                     source: 'apify_webhook_start',
@@ -511,10 +511,10 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             
             // Prepare metrics
             const harvestMetrics = {
-                'Total Posts Harvested': 0,
-                [APIFY_RUN_ID]: apifyRunId || '',
-                'Profiles Submitted for Post Harvesting': profilesSubmitted,
-                'System Notes': `Completed Apify run ${apifyRunId} with no posts found at ${new Date().toISOString()}`
+                [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+                [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || '',
+                [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted,
+                [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Completed Apify run ${apifyRunId} with no posts found at ${new Date().toISOString()}`
             };
             
             // Update client metrics with harvest results
@@ -549,10 +549,10 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
                 runId: jobRunId,
                 clientId,
                 finalMetrics: {
-                    'Total Posts Harvested': 0,
-                    [APIFY_RUN_ID]: apifyRunId || '',
-                    'Profiles Submitted for Post Harvesting': payload.targetUrls ? payload.targetUrls.length : 0,
-                    'System Notes': 'Completed with no posts found'
+                    [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+                    [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || '',
+                    [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: payload.targetUrls ? payload.targetUrls.length : 0,
+                    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: 'Completed with no posts found'
                 },
                 options: {
                     source: 'apify_webhook_handler_no_posts',
@@ -569,9 +569,9 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
                 await JobTracking.updateJob({
                     runId: normalizedMainRunId,
                     updates: {
-                        Status: 'Completed',  // FIXED: Capitalized Status field name
-                        endTime: new Date().toISOString(),
-                        'System Notes': 'Completed with no posts found'
+                        [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.COMPLETED,
+                        [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
+                        [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: 'Completed with no posts found'
                     }
                 });
             }
@@ -586,11 +586,11 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
                                
         // Prepare harvest metrics
         const harvestMetrics = {
-            'Total Posts Harvested': posts.length,
-            'Apify API Costs': posts.length * 0.02, // Estimated cost: $0.02 per post
-            [APIFY_RUN_ID]: apifyRunId || '',
-            'Profiles Submitted for Post Harvesting': profilesSubmitted,
-            'System Notes': `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors) at ${new Date().toISOString()}`
+            [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: posts.length,
+            [CLIENT_RUN_FIELDS.APIFY_API_COSTS]: posts.length * 0.02, // Estimated cost: $0.02 per post
+            [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || '',
+            [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted,
+            [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors) at ${new Date().toISOString()}`
         };
         
         // Update client metrics with harvest results
@@ -636,10 +636,10 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             await JobTracking.updateJob({
                 runId: normalizedMainRunId,
                 updates: {
-                    Status: 'Completed',  // FIXED: Capitalized Status field name
-                    endTime: new Date().toISOString(),
-                    'Items Processed': posts.length,
-                    'System Notes': `Successfully processed ${posts.length} posts for client ${clientId}`
+                    [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.COMPLETED,
+                    [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
+                    'Items Processed': posts.length, // This field seems specific to this context
+                    [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Successfully processed ${posts.length} posts for client ${clientId}`
                 }
             });
         }
@@ -672,8 +672,8 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             finalMetrics: {
                 failed: true,
                 errors: 1,
-                'System Notes': `Failed: ${error.message}`,
-                [APIFY_RUN_ID]: apifyRunId || ''
+                [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Failed: ${error.message}`,
+                [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || ''
             },
             options: {
                 source: 'apify_webhook_handler_error',
@@ -755,7 +755,7 @@ async function syncPBPostsToAirtable(posts, clientBase, clientId, logger = null)
                 // Metadata
                 'Created At': new Date().toISOString(),
                 'Source': 'Apify API',
-                'System Notes': `Imported via Apify webhook`
+                [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Imported via Apify webhook`
             };
             
             // Create post in Airtable
