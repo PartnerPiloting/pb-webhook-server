@@ -21,7 +21,8 @@ const MASTER_TABLES = {
 const CLIENT_TABLES = {
   LEADS: 'Leads',
   LINKEDIN_POSTS: 'LinkedIn Posts',
-  CONNECTIONS: 'Connections'
+  CONNECTIONS: 'Connections',
+  CREDENTIALS: 'Credentials'
 };
 
 // Field names for Clients table in Master Clients Base
@@ -224,6 +225,41 @@ const SCORING_STATUS_VALUES = {
   EXCLUDED: 'Excluded'
 };
 
+// LinkedIn connection status values
+const CONNECTION_STATUS_VALUES = {
+  CANDIDATE: 'Candidate',
+  CONNECTED: 'Connected',
+  PENDING: 'Pending'
+};
+
+// Lead status values
+const LEAD_STATUS_VALUES = {
+  NEW: 'New',
+  IN_PROCESS: 'In Process',
+  CONTACTED: 'Contacted',
+  ENGAGED: 'Engaged',
+  QUALIFIED: 'Qualified',
+  CLOSED: 'Closed'
+};
+
+// LinkedIn post media types
+const POST_MEDIA_TYPES = {
+  TEXT: 'text',
+  IMAGE: 'image',
+  VIDEO: 'video',
+  DOCUMENT: 'document',
+  LINK: 'link',
+  POLL: 'poll'
+};
+
+// LinkedIn post types
+const POST_TYPES = {
+  REGULAR: 'regular',
+  ARTICLE: 'article',
+  SHARE: 'share',
+  JOB: 'job'
+};
+
 // Client execution log fields
 const CLIENT_EXECUTION_LOG_FIELDS = {
   EXECUTION_LOG: 'Execution Log',
@@ -251,6 +287,14 @@ const POST_FIELDS = {
   RAW_DATA: 'Raw Data'
 };
 
+// Field names for the Credentials table
+const CREDENTIAL_FIELDS = {
+  PB_MESSAGE_SENDER_ID: 'PB Message Sender ID',
+  PHANTOM_API_KEY: 'Phantom API Key',
+  LINKEDIN_COOKIE: 'LinkedIn Cookie',
+  USER_AGENT: 'User-Agent'
+};
+
 module.exports = {
   MASTER_TABLES,
   CLIENT_TABLES,
@@ -261,6 +305,11 @@ module.exports = {
   FORMULA_FIELDS,
   CLIENT_RUN_STATUS_VALUES,
   SCORING_STATUS_VALUES,
+  CONNECTION_STATUS_VALUES,
+  LEAD_STATUS_VALUES,
   CLIENT_EXECUTION_LOG_FIELDS,
-  POST_FIELDS
+  POST_FIELDS,
+  CREDENTIAL_FIELDS,
+  POST_MEDIA_TYPES,
+  POST_TYPES
 };

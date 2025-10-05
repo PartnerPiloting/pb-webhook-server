@@ -25,7 +25,7 @@ const runRecordService = require('./services/runRecordAdapterSimple');
 
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
-const { CLIENT_RUN_STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
+const { CLIENT_RUN_STATUS_VALUES, LEAD_FIELDS, SCORING_STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
 // Import the consistent field names for direct use when needed
 const { CLIENT_RUN_FIELDS } = require('./constants/airtableFields');
 
@@ -215,7 +215,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         const errorMsg = `Aborting. Gemini AI Client or Model ID not initialized/provided`;
         log.error(errorMsg);
         await alertAdmin("Aborted Chunk (batchScorer): Gemini Client/ModelID Not Provided", errorMsg);
-        const failedUpdates = records.map(rec => ({ id: rec.id, fields: { "Scoring Status": "Failed – Client Init Error", "Date Scored": new Date().toISOString() }}));
+        const failedUpdates = records.map(rec => ({ id: rec.id, fields: { [LEAD_FIELDS.SCORING_STATUS]: "Failed – Client Init Error", [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() }}));
         if (failedUpdates.length > 0 && clientBase) {
             for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for client init failed leads: ${e.message}`));
         }
@@ -228,7 +228,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
 
     log.process(`Starting pre-flight checks for ${records.length} records`);
     for (const rec of records) {
-        const profileJsonString = rec.get("Profile Full JSON") || "{}";
+        const profileJsonString = rec.get(LEAD_FIELDS.PROFILE_FULL_JSON) || "{}";
         let profile;
         try {
             profile = JSON.parse(profileJsonString);
@@ -279,7 +279,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
             log.debug(`Lead ${rec.id} profile too thin (aboutText length: ${aboutText.length}), skipping AI call`);
             airtableUpdatesForSkipped.push({
                 id: rec.id,
-                fields: { "AI Score": 0, "Scoring Status": "Skipped – Profile Too Thin", "AI Profile Assessment": "", "AI Attribute Breakdown": "", "Date Scored": new Date().toISOString() }
+                fields: { [LEAD_FIELDS.AI_SCORE]: 0, [LEAD_FIELDS.SCORING_STATUS]: "Skipped – Profile Too Thin", [LEAD_FIELDS.AI_PROFILE_ASSESSMENT]: "", [LEAD_FIELDS.AI_ATTRIBUTES_DETAIL]: "", [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() }
             });
             continue;
         }
@@ -536,7 +536,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
                     contact_readiness, unscored_attributes
                 );
 
-            updateFields["AI Score"] = Math.round(percentage * 100) / 100;
+            updateFields[LEAD_FIELDS.AI_SCORE] = Math.round(percentage * 100) / 100;
             updateFields["AI Profile Assessment"] = String(geminiOutputItem.aiProfileAssessment || "N/A");
             updateFields["AI Attribute Breakdown"] = buildAttributeBreakdown(
                 temp_positive_scores, positives,
