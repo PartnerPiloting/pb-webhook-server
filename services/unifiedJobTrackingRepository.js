@@ -653,11 +653,12 @@ async function updateAggregateMetrics(params) {
     }
     
     // Calculate aggregates
-    // NOTE: 'Clients Processed', 'Clients With Errors', and 'Total Profiles Examined' fields were removed from Job Tracking table
-    // as they are now calculated on-the-fly. Only storing metrics that can't be easily calculated.
+    // NOTE: 'Clients Processed', 'Clients With Errors', 'Total Profiles Examined', and 'Successful Profiles' 
+    // fields were removed from Job Tracking table as they are now calculated on-the-fly.
+    // Only storing metrics that can't be easily calculated.
     const aggregates = {
       // 'Total Profiles Examined': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
-      'Successful Profiles': 0,
+      // 'Successful Profiles': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
       'Total Posts Harvested': 0,
       'Posts Examined for Scoring': 0,
       'Posts Successfully Scored': 0,
@@ -668,7 +669,7 @@ async function updateAggregateMetrics(params) {
     // Sum up metrics from all client records
     clientRecords.forEach(record => {
       // aggregates['Total Profiles Examined'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_EXAMINED) || 0); - Removed 2025-10-02
-      aggregates['Successful Profiles'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_SCORED) || 0);
+      // aggregates['Successful Profiles'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_SCORED) || 0); - Removed 2025-10-02
       aggregates['Total Posts Harvested'] += Number(record.get(CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED) || 0);
       aggregates['Posts Examined for Scoring'] += Number(record.get(CLIENT_RUN_FIELDS.POSTS_EXAMINED) || 0);
       aggregates['Posts Successfully Scored'] += Number(record.get(CLIENT_RUN_FIELDS.POSTS_SCORED) || 0);
