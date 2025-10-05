@@ -21,10 +21,12 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
 // Import status utility functions for safe status handling
 const { getStatusString } = require('../utils/statusUtils');
+// Import Airtable constants
+const { MASTER_TABLES, CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 // Constants for table names
-const JOB_TRACKING_TABLE = 'Job Tracking';
-const CLIENT_RUN_RESULTS_TABLE = 'Client Run Results';
+const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
+const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Initialize clients base reference - will be set via initialize()
 let clientsBase = null;
@@ -141,7 +143,7 @@ async function createJobRecord(params) {
   // Check if a job record already exists with this ID
   try {
     const existingRecords = await base(JOB_TRACKING_TABLE).select({
-      filterByFormula: `{Run ID} = '${runId}'`,
+      filterByFormula: `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${runId}'`,
       maxRecords: 1
     }).firstPage();
     
@@ -171,20 +173,20 @@ async function createJobRecord(params) {
     
     // Create fields object without the problematic Source field
     const recordFields = {
-      'Run ID': baseRunId, // Ensure we're using the properly formatted run ID
-      'Start Time': new Date().toISOString(),
-      'Status': 'Running',
-      'Stream': stream,
-      'Clients Processed': 0,
-      'Clients With Errors': 0,
-      'Total Profiles Examined': 0,
-      'Successful Profiles': 0,
-      'Total Posts Harvested': 0,
-      'Posts Examined for Scoring': 0, 
-      'Posts Successfully Scored': 0,
-      'Profile Scoring Tokens': 0,
-      'Post Scoring Tokens': 0,
-      'System Notes': `Run initiated at ${new Date().toISOString()} from ${source}`
+      [JOB_TRACKING_FIELDS.RUN_ID]: baseRunId, // Ensure we're using the properly formatted run ID
+      [JOB_TRACKING_FIELDS.START_TIME]: new Date().toISOString(),
+      [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
+      [JOB_TRACKING_FIELDS.STREAM]: stream,
+      'Clients Processed': 0,  // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Clients With Errors': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Total Profiles Examined': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Successful Profiles': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Total Posts Harvested': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Posts Examined for Scoring': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Posts Successfully Scored': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Profile Scoring Tokens': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      'Post Scoring Tokens': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+      [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Run initiated at ${new Date().toISOString()} from ${source}`
     };
     
     logger.debug(`Run Record Service: Creating job tracking record with ID: ${baseRunId}`);
@@ -256,7 +258,7 @@ async function createClientRunRecord(params) {
       runId,
       clientId,
       initialData: {
-        'System Notes': `Processing started from source: ${source}`
+        [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Processing started from source: ${source}`
       },
       options: {
         logger,
@@ -364,7 +366,7 @@ async function getRunRecord(params) {
       throw tableError;
     }
     
-    const exactIdQuery = `AND({Run ID} = '${standardRunId}', {Client ID} = '${clientId}')`;
+    const exactIdQuery = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`;
     logger.debug(`Run Record Service: Querying for record: ${exactIdQuery}`);
     
     const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
@@ -456,11 +458,11 @@ async function updateRunRecord(params) {
   };
   
   // Add information about the update to System Notes field
-  if (updates['System Notes']) {
-    updateFields['System Notes'] = `${updates['System Notes']}. Updated from ${source}.`;
+  if (updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
+    updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = `${updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]}. Updated from ${source}.`;
   } else {
-    const existingNotes = record.fields['System Notes'] || '';
-    updateFields['System Notes'] = `${existingNotes}${existingNotes ? '. ' : ''}Updated at ${new Date().toISOString()} from ${source}`;
+    const existingNotes = record.fields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] || '';
+    updateFields[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = `${existingNotes}${existingNotes ? '. ' : ''}Updated at ${new Date().toISOString()} from ${source}`;
   }
   
   const updateData = {
@@ -524,14 +526,14 @@ async function updateClientMetrics(runId, clientId, metrics, options = {}) {
   
   // For numeric fields, use the higher value
   const numericFields = [
-    'Profiles Examined for Scoring',
-    'Profiles Successfully Scored',
-    'Total Posts Harvested',
-    'Posts Examined for Scoring',
-    'Posts Successfully Scored',
-    'Profile Scoring Tokens',
-    'Post Scoring Tokens',
-    'Apify API Costs'
+    CLIENT_RUN_FIELDS.PROFILES_EXAMINED,
+    CLIENT_RUN_FIELDS.PROFILES_SCORED,
+    CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED,
+    CLIENT_RUN_FIELDS.POSTS_EXAMINED,
+    CLIENT_RUN_FIELDS.POSTS_SCORED,
+    CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS,
+    CLIENT_RUN_FIELDS.POST_SCORING_TOKENS,
+    CLIENT_RUN_FIELDS.APIFY_API_COSTS
   ];
   
   const updatedMetrics = { ...metrics };
@@ -552,10 +554,10 @@ async function updateClientMetrics(runId, clientId, metrics, options = {}) {
   
   // Include update source in System Notes to ensure we don't lose tracking info
   const metricsUpdateNote = `Metrics updated at ${new Date().toISOString()} from ${source}`;
-  if (updatedMetrics['System Notes']) {
-    updatedMetrics['System Notes'] += `. ${metricsUpdateNote}`;
+  if (updatedMetrics[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
+    updatedMetrics[CLIENT_RUN_FIELDS.SYSTEM_NOTES] += `. ${metricsUpdateNote}`;
   } else {
-    updatedMetrics['System Notes'] = metricsUpdateNote;
+    updatedMetrics[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = metricsUpdateNote;
   }
   
   return await updateRunRecord(runId, clientId, updatedMetrics, { 
@@ -611,16 +613,16 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
   
   // Update with completion info, removing problematic fields
   const updates = {
-    'Status': status,
-    'End Time': endTimestamp,
+    [CLIENT_RUN_FIELDS.STATUS]: status,
+    [CLIENT_RUN_FIELDS.END_TIME]: endTimestamp,
     // Notes added directly to System Notes instead of using Completion Notes field
-    'System Notes': `Completed at ${endTimestamp} with status ${status} from ${source}. ${notes || ''}`
+    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Completed at ${endTimestamp} with status ${status} from ${source}. ${notes || ''}`
   };
   
   // Source info is already added to System Notes - don't try to use the Source field at all
   // Duration info added to System Notes instead of using Duration field
-  if (duration !== null && updates && updates['System Notes']) {
-    updates['System Notes'] += ` Duration: ${duration} seconds.`;
+  if (duration !== null && updates && updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {
+    updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] += ` Duration: ${duration} seconds.`;
   }
   
   // Track this activity
@@ -652,7 +654,7 @@ async function updateJobRecord(runId, updates, options = {}) {
   try {
     // Find the job tracking record
     const records = await base(JOB_TRACKING_TABLE).select({
-      filterByFormula: `{Run ID} = '${baseRunId}'`
+      filterByFormula: `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${baseRunId}'`
     }).firstPage();
     
     if (!records || records.length === 0) {
@@ -672,11 +674,11 @@ async function updateJobRecord(runId, updates, options = {}) {
     
     // Add update source information to System Notes
     const updateNote = `Job updated at ${new Date().toISOString()} from ${source}`;
-    if (updates['System Notes']) {
-      updateFields['System Notes'] = `${updates['System Notes']}. ${updateNote}`;
+    if (updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES]) {
+      updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = `${updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES]}. ${updateNote}`;
     } else {
-      const existingNotes = record.fields['System Notes'] || '';
-      updateFields['System Notes'] = `${existingNotes}${existingNotes ? '. ' : ''}${updateNote}`;
+      const existingNotes = record.fields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] || '';
+      updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = `${existingNotes}${existingNotes ? '. ' : ''}${updateNote}`;
     }
     
     const updateData = {
@@ -725,10 +727,10 @@ async function completeJobRecord(runId, success, notes = '', options = {}) {
   const endTimestamp = new Date().toISOString();
   
   const updates = {
-    'Status': success ? 'Success' : 'Error',
-    'End Time': endTimestamp,
+    [JOB_TRACKING_FIELDS.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
+    [JOB_TRACKING_FIELDS.END_TIME]: endTimestamp,
     // Notes added directly to System Notes instead of using Completion Notes field
-    'System Notes': `Job completed at ${endTimestamp} with status ${success ? 'Success' : 'Error'} from ${source}. ${notes || ''}`
+    [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Job completed at ${endTimestamp} with status ${success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED} from ${source}. ${notes || ''}`
   };
   
   // Track this activity
@@ -771,15 +773,15 @@ function countRecordTypes() {
   for (const [_, record] of runRecordRegistry.entries()) {
     // Use the safe status utility function instead of directly calling toLowerCase()
     // This prevents "Cannot read properties of undefined (reading 'toLowerCase')" errors
-    const rawStatus = record.fields?.Status || '';
+    const rawStatus = record.fields?.[CLIENT_RUN_FIELDS.STATUS] || '';
     // Default to empty string if status is undefined
     const status = typeof rawStatus === 'string' ? rawStatus.toLowerCase() : '';
     
-    if (status === 'running') {
+    if (status === CLIENT_RUN_STATUS_VALUES.RUNNING.toLowerCase()) {
       counts.running++;
-    } else if (status === 'success' || status === 'completed') {
+    } else if (status === CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase()) {
       counts.completed++;
-    } else if (status === 'error' || status === 'failed') {
+    } else if (status === CLIENT_RUN_STATUS_VALUES.FAILED.toLowerCase()) {
       counts.error++;
     } else {
       counts.other++;
@@ -826,9 +828,9 @@ async function checkRunRecordExists(runId, clientId = null) {
         console.log(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Searching for any records for client ${clientId}`);
         const base = initialize();
         const records = await base(CLIENT_RUN_RESULTS_TABLE).select({
-          filterByFormula: `{Client ID} = '${clientId}'`, // Fixed back to Client ID which is the correct field name in Airtable schema
+          filterByFormula: `{${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}'`, // Using constant for field name
           maxRecords: 5,
-          sort: [{ field: 'Start Time', direction: 'desc' }]
+          sort: [{ field: CLIENT_RUN_FIELDS.START_TIME, direction: 'desc' }]
         }).firstPage();
         
         if (records && records.length > 0) {
