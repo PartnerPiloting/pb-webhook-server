@@ -1,6 +1,9 @@
 // services/postService.js
 // Service for managing LinkedIn posts in Airtable
 
+// Import unified constants for field names
+const { CLIENT_TABLES, POST_FIELDS } = require('../constants/airtableUnifiedConstants');
+
 /**
  * Create a new post record in the Posts table
  * @param {Object} clientBase - The Airtable base for the client
@@ -20,8 +23,8 @@ async function createPost(clientBase, post) {
     console.log(`[postService] Creating post record for URL: ${post.url}`);
 
     // Check if post already exists
-    const existingPosts = await clientBase('Posts').select({
-      filterByFormula: `{URL} = '${post.url.replace(/'/g, "\\'")}'`,
+    const existingPosts = await clientBase(CLIENT_TABLES.LINKEDIN_POSTS).select({
+      filterByFormula: `{${POST_FIELDS.URL}} = '${post.url.replace(/'/g, "\\'")}'`,
       maxRecords: 1
     }).firstPage();
 
@@ -32,20 +35,20 @@ async function createPost(clientBase, post) {
 
     // Format the post data for Airtable
     const postRecord = {
-      'URL': post.url,
-      'Content': post.text || '',
-      'Author Name': post.authorName || '',
-      'Author URL': post.authorUrl || '',
-      'Posted At': post.timestamp || new Date().toISOString(),
-      'Like Count': post.likeCount || 0,
-      'Comment Count': post.commentCount || 0,
-      'Media Type': post.mediaType || 'text',
-      'Post Type': post.postType || 'regular',
-      'Raw Data': JSON.stringify(post.rawData || {})
+      [POST_FIELDS.URL]: post.url,
+      [POST_FIELDS.CONTENT]: post.text || '',
+      [POST_FIELDS.AUTHOR_NAME]: post.authorName || '',
+      [POST_FIELDS.AUTHOR_URL]: post.authorUrl || '',
+      [POST_FIELDS.POSTED_AT]: post.timestamp || new Date().toISOString(),
+      [POST_FIELDS.LIKE_COUNT]: post.likeCount || 0,
+      [POST_FIELDS.COMMENT_COUNT]: post.commentCount || 0,
+      [POST_FIELDS.MEDIA_TYPE]: post.mediaType || 'text',
+      [POST_FIELDS.POST_TYPE]: post.postType || 'regular',
+      [POST_FIELDS.RAW_DATA]: JSON.stringify(post.rawData || {})
     };
 
     // Create the record
-    const records = await clientBase('Posts').create([{ fields: postRecord }]);
+    const records = await clientBase(CLIENT_TABLES.LINKEDIN_POSTS).create([{ fields: postRecord }]);
     console.log(`[postService] Created post record ID: ${records[0].id}`);
     return records[0];
   } catch (error) {
