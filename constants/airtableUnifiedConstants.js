@@ -236,6 +236,20 @@ const CLIENT_EXECUTION_LOG_FIELDS = {
   NEXT_ACTION: 'Next Action'
 };
 
+// Field names for the LinkedIn Posts table
+const POST_FIELDS = {
+  URL: 'URL',
+  CONTENT: 'Content',
+  AUTHOR_NAME: 'Author Name',
+  AUTHOR_URL: 'Author URL',
+  POSTED_AT: 'Posted At',
+  LIKE_COUNT: 'Like Count',
+  COMMENT_COUNT: 'Comment Count',
+  MEDIA_TYPE: 'Media Type',
+  POST_TYPE: 'Post Type',
+  RAW_DATA: 'Raw Data'
+};
+
 module.exports = {
   MASTER_TABLES,
   CLIENT_TABLES,
@@ -246,5 +260,6 @@ module.exports = {
   FORMULA_FIELDS,
   CLIENT_RUN_STATUS_VALUES,
   SCORING_STATUS_VALUES,
-  CLIENT_EXECUTION_LOG_FIELDS
+  CLIENT_EXECUTION_LOG_FIELDS,
+  POST_FIELDS
 };
