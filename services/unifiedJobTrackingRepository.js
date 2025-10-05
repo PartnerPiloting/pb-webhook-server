@@ -248,6 +248,10 @@ async function updateJobTrackingRecord(params) {
       }
     });
     
+    // DEBUG: Log what we're about to send to Airtable
+    const fieldKeys = Object.keys(updateFields);
+    log.debug(`[updateJobTrackingRecord] Sending ${fieldKeys.length} fields to Airtable: ${fieldKeys.join(', ')}`);
+    
     // Update the record
     await masterBase(JOB_TRACKING_TABLE).update(record.id, updateFields);
     
