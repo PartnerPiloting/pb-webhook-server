@@ -154,8 +154,8 @@ async function createJobTrackingRecord(runId, stream) {
           [JOB_TRACKING_FIELDS.START_TIME]: new Date().toISOString(),
           [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
           [JOB_TRACKING_FIELDS.STREAM]: Number(stream), // Ensure stream is a number for Airtable's number field
-          // NOTE: 'Clients Processed' and 'Clients With Errors' fields removed from Job Tracking table (calculated on-the-fly)
-          'Total Profiles Examined': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
+          // NOTE: 'Clients Processed', 'Clients With Errors', and 'Total Profiles Examined' fields removed from Job Tracking table (calculated on-the-fly)
+          // 'Total Profiles Examined': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
           'Successful Profiles': 0, // Note: This field has been removed from constants as it's now calculated on-the-fly
           'Total Posts Harvested': 0,
           'Posts Examined for Scoring': 0, 
@@ -588,9 +588,9 @@ async function updateAggregateMetrics(runId) {
     }
     
     // Calculate aggregates
-    // NOTE: 'Clients Processed' and 'Clients With Errors' removed from Job Tracking (calculated on-the-fly)
+    // NOTE: 'Clients Processed', 'Clients With Errors', and 'Total Profiles Examined' removed from Job Tracking (calculated on-the-fly)
     const aggregates = {
-      'Total Profiles Examined': 0,
+      // 'Total Profiles Examined': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
       'Successful Profiles': 0,
       'Total Posts Harvested': 0,
       'Posts Examined for Scoring': 0,
@@ -601,7 +601,7 @@ async function updateAggregateMetrics(runId) {
     
     // Sum up metrics from all client records
     clientRecords.forEach(record => {
-      aggregates['Total Profiles Examined'] += Number(record.get('Profiles Examined for Scoring') || 0);
+      // aggregates['Total Profiles Examined'] += Number(record.get('Profiles Examined for Scoring') || 0); - Removed 2025-10-02
       aggregates['Successful Profiles'] += Number(record.get('Profiles Successfully Scored') || 0);
       aggregates['Total Posts Harvested'] += Number(record.get('Total Posts Harvested') || 0);
       aggregates['Posts Examined for Scoring'] += Number(record.get('Posts Examined for Scoring') || 0);

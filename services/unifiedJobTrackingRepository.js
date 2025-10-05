@@ -239,10 +239,11 @@ async function updateJobTrackingRecord(params) {
     if (updates.notes) updateFields[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = updates.notes;
     
     // Add any other custom fields from updates
+    // Use case-insensitive comparison to prevent duplicate fields when updates object has different casing
+    const excludedKeys = ['status', 'endtime', 'error', 'progress', 'itemsprocessed', 'notes', 'clientid', 'success rate'];
     Object.keys(updates).forEach(key => {
       // Skip fields that are handled separately
-      const excludedKeys = ['status', 'endTime', 'error', 'progress', 'itemsProcessed', 'notes', 'clientId', 'Success Rate'];
-      if (!excludedKeys.includes(key)) {
+      if (!excludedKeys.includes(key.toLowerCase())) {
         updateFields[key] = updates[key];
       }
     });
@@ -652,10 +653,10 @@ async function updateAggregateMetrics(params) {
     }
     
     // Calculate aggregates
-    // NOTE: 'Clients Processed' and 'Clients With Errors' fields were removed from Job Tracking table
+    // NOTE: 'Clients Processed', 'Clients With Errors', and 'Total Profiles Examined' fields were removed from Job Tracking table
     // as they are now calculated on-the-fly. Only storing metrics that can't be easily calculated.
     const aggregates = {
-      'Total Profiles Examined': 0,
+      // 'Total Profiles Examined': 0, - Removed 2025-10-02 (field deleted from Job Tracking table)
       'Successful Profiles': 0,
       'Total Posts Harvested': 0,
       'Posts Examined for Scoring': 0,
@@ -666,7 +667,7 @@ async function updateAggregateMetrics(params) {
     
     // Sum up metrics from all client records
     clientRecords.forEach(record => {
-      aggregates['Total Profiles Examined'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_EXAMINED) || 0);
+      // aggregates['Total Profiles Examined'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_EXAMINED) || 0); - Removed 2025-10-02
       aggregates['Successful Profiles'] += Number(record.get(CLIENT_RUN_FIELDS.PROFILES_SCORED) || 0);
       aggregates['Total Posts Harvested'] += Number(record.get(CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED) || 0);
       aggregates['Posts Examined for Scoring'] += Number(record.get(CLIENT_RUN_FIELDS.POSTS_EXAMINED) || 0);
