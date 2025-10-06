@@ -15,7 +15,8 @@ const MASTER_TABLES = {
   CLIENT_RUN_RESULTS: 'Client Run Results',
   JOB_TRACKING: 'Job Tracking',
   CLIENT_EXECUTION_LOG: 'Client Execution Log',
-  APIFY: 'Apify'
+  APIFY: 'Apify',
+  ERROR_LOG: 'Error Log'
 };
 
 // Table names in individual client bases
@@ -319,6 +320,56 @@ const CREDENTIAL_FIELDS = {
   USER_AGENT: 'User-Agent'
 };
 
+// Field names for Error Log table in Master Clients Base
+const ERROR_LOG_FIELDS = {
+  ERROR_ID: 'Error ID',
+  TIMESTAMP: 'Timestamp',
+  SEVERITY: 'Severity',
+  ERROR_TYPE: 'Error Type',
+  ERROR_MESSAGE: 'Error Message',
+  STACK_TRACE: 'Stack Trace',
+  FILE_PATH: 'File Path',
+  FUNCTION_NAME: 'Function Name',
+  LINE_NUMBER: 'Line Number',
+  CONTEXT_JSON: 'Context JSON',
+  CLIENT_ID: 'Client ID',
+  RUN_ID: 'Run ID',
+  STATUS: 'Status',
+  RESOLUTION_NOTES: 'Resolution Notes',
+  FIXED_IN_COMMIT: 'Fixed In Commit',
+  FIXED_BY: 'Fixed By',
+  FIXED_DATE: 'Fixed Date'
+};
+
+// Error severity values
+const ERROR_SEVERITY_VALUES = {
+  CRITICAL: 'CRITICAL',
+  ERROR: 'ERROR',
+  WARNING: 'WARNING'
+};
+
+// Error type values
+const ERROR_TYPE_VALUES = {
+  MODULE_IMPORT: 'Module Import',
+  AI_SERVICE: 'AI Service',
+  AIRTABLE_API: 'Airtable API',
+  DATA_VALIDATION: 'Data Validation',
+  AUTHENTICATION: 'Authentication',
+  MEMORY_RESOURCES: 'Memory/Resources',
+  BUSINESS_LOGIC: 'Business Logic',
+  JOB_TRACKING: 'Job Tracking',
+  NETWORK: 'Network',
+  UNKNOWN: 'Unknown'
+};
+
+// Error status values
+const ERROR_STATUS_VALUES = {
+  NEW: 'NEW',
+  INVESTIGATING: 'INVESTIGATING',
+  FIXED: 'FIXED',
+  IGNORED: 'IGNORED'
+};
+
 module.exports = {
   MASTER_TABLES,
   CLIENT_TABLES,
@@ -337,5 +388,9 @@ module.exports = {
   POST_FIELDS,
   CREDENTIAL_FIELDS,
   POST_MEDIA_TYPES,
-  POST_TYPES
+  POST_TYPES,
+  ERROR_LOG_FIELDS,
+  ERROR_SEVERITY_VALUES,
+  ERROR_TYPE_VALUES,
+  ERROR_STATUS_VALUES
 };
