@@ -27,9 +27,8 @@ const { validateFieldNames, createValidatedObject } = require('../utils/airtable
 const { getStatusString } = require('../utils/statusUtils');
 // Use the new run ID system for all run ID operations
 const runIdSystem = require('../services/runIdSystem.js');
-const unifiedJobTrackingRepository = require('../services/unifiedJobTrackingRepository.js');
+const { JobTracking } = require('../services/jobTracking.js');
 const jobOrchestrationService = require('../services/jobOrchestrationService.js');
-const JobTracking = require('../services/jobTracking.js');
 const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
@@ -1277,10 +1276,10 @@ async function processPostScoringInBackground(jobId, stream, options) {
             };
             
             // Use the unified job tracking repository
-            const updateResult = await unifiedJobTrackingRepository.updateClientRunRecord({
+            const updateResult = await JobTracking.updateClientRun({
               runId: clientRunId,
               clientId: client.clientId,
-              metrics: metricsUpdates,
+              updates: metricsUpdates,
               options: {
                 isStandalone: false,  // This is never standalone if we have a parentRunId
                 logger: console,
@@ -1546,8 +1545,8 @@ router.get("/debug-clients", async (req, res) => {
   }
   
   try {
-    // Use the new airtableService instead of clientService directly
-    const airtableService = require("../services/airtable/airtableService");
+    // Use clientService to get all clients
+    const clientService = require("../services/clientService");
     
     // Check environment variables
     const debugInfo = {
@@ -1567,11 +1566,8 @@ router.get("/debug-clients", async (req, res) => {
     let error = null;
     
     try {
-      // Initialize the service first
-      airtableService.initialize();
-      
       // Get all clients
-      allClients = await airtableService.getAllClients();
+      allClients = await clientService.getAllClients();
       
       // Filter for active clients (to maintain compatibility)
       activeClients = allClients.filter(client => client.status === 'Active');
