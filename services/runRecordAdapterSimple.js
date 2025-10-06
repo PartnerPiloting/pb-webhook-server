@@ -64,7 +64,7 @@ if (!CLIENT_RUN_STATUS_VALUES || typeof CLIENT_RUN_STATUS_VALUES !== 'object') {
 }
 
 // Import run ID validator for input validation
-const RunIdValidator = require('./runIdValidator');
+const RunIdValidator = require('../utils/runIdValidator');
 // Import safe access utilities for defensive programming
 const { safeGet, safeSet } = require('../utils/safeAccess');
 

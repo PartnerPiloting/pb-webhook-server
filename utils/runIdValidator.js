@@ -54,5 +54,8 @@ function validateAndNormalizeClientId(clientId) {
 
 module.exports = {
     validateAndNormalizeRunId,
-    validateAndNormalizeClientId
+    validateAndNormalizeClientId,
+    // Aliases for backward compatibility
+    validateAndNormalize: validateAndNormalizeRunId,
+    validateClientId: validateAndNormalizeClientId
 };
