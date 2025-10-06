@@ -178,6 +178,7 @@ function normalizeMetricValue(metricKey, value) {
         }
         return value;
       } catch (e) {
+        logCriticalError(e, { context: 'Date validation failed (using default)', service: 'jobMetricsService.js' }).catch(() => {});
         return metricDef.defaultValue;
       }
       
@@ -346,6 +347,7 @@ async function updateClientMetrics(params) {
     });
   } catch (error) {
     // Handle different types of errors
+    await logCriticalError(error, { context: 'Client metrics update failed', service: 'jobMetricsService.js' }).catch(() => {});
     if (error.statusCode === 404 || (error.message && error.message.includes('not found'))) {
       const result = errorHandling.handleRecordNotFound(runId, clientId, { logger: log });
       

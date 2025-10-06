@@ -31,6 +31,7 @@ try {
     airtableService = require('./airtableService');
 } catch (err) {
     console.error("Failed to load airtableService:", err.message);
+    logCriticalError(err, { context: 'Module initialization error', service: 'apifyRunsService.js' }).catch(() => {});
 }
 
 /**

@@ -174,6 +174,7 @@ async function createJobRecord(params) {
       throw error;
     }
     logger.debug(`Error checking for existing job record: ${error.message}`);
+    await logCriticalError(error, { context: 'Job record existence check failed (continuing)', service: 'runRecordServiceV2.js' }).catch(() => {});
     // Continue to create a new record if the error was just in checking
   }
   
@@ -362,6 +363,7 @@ async function getRunRecord(params) {
       return record;
     } catch (err) {
       logger.debug(`Run Record Service: Cached record ID ${cachedRecordId} no longer valid`);
+      await logCriticalError(err, { context: 'Cached record lookup failed (will query)', service: 'runRecordServiceV2.js' }).catch(() => {});
     }
   }
   
@@ -374,6 +376,7 @@ async function getRunRecord(params) {
       await base(CLIENT_RUN_RESULTS_TABLE).select({ maxRecords: 1 }).firstPage();
     } catch (tableError) {
       // Convert "not authorized" errors to a more helpful message about missing tables/fields
+      await logCriticalError(tableError, { context: 'Table validation check failed', service: 'runRecordServiceV2.js' }).catch(() => {});
       if (tableError.message.includes('not authorized')) {
         const betterError = new Error(`Table '${CLIENT_RUN_RESULTS_TABLE}' may not exist in client ${clientId}'s base or you don't have access. Original error: ${tableError.message}`);
         logger.warn(`Run Record Service: ${betterError.message}`);
@@ -874,6 +877,7 @@ async function checkRunRecordExists(runId, clientId = null) {
         }
       } catch (searchError) {
         console.error(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Error searching for client records: ${searchError.message}`);
+        await logCriticalError(searchError, { context: 'Client records search failed (debug info)', service: 'runRecordServiceV2.js' }).catch(() => {});
       }
     }
     
