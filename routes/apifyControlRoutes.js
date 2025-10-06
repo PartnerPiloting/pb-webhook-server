@@ -9,6 +9,21 @@ const fetch = getFetch();
 const router = express.Router();
 const { logCriticalError } = require('../utils/errorLogger');
 
+// Helper function for logging route errors to Airtable
+async function logRouteError(error, req, additionalContext = {}) {
+  try {
+    await logCriticalError(error, {
+      endpoint: `${req.method} ${req.path}`,
+      clientId: req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId,
+      requestBody: req.body,
+      queryParams: req.query,
+      ...additionalContext
+    });
+  } catch (loggingError) {
+    console.error('Failed to log route error to Airtable:', loggingError.message);
+  }
+}
+
 // Helpers reused from webhook route without re-import cycles
 const { DateTime } = require('luxon');
 const syncPBPostsToAirtable = require('../utils/pbPostsSync');
@@ -77,7 +92,6 @@ function extractLinkedInPublicId(url) {
 
 // Build a canonical profile URL from a LinkedIn public identifier
 function buildCanonicalProfileUrl(publicId) {
-    logCriticalError(_, { operation: 'unknown' }).catch(() => {});
   if (!publicId || typeof publicId !== 'string') return null;
   const clean = publicId.replace(/\/$/, '');
   return `https://www.linkedin.com/in/${clean}`;
@@ -448,7 +462,7 @@ router.post('/api/apify/run', async (req, res) => {
     return res.json({ ok: true, mode: 'webhook', runId: run.id, systemRunId: systemRunId, status: run.status, url: run.url || run.buildUrl || null });
   } catch (e) {
     console.error('[ApifyControl] run error:', e.message);
-    await logCriticalError(error, req).catch(() => {});
+    await logCriticalError(e, { operation: 'apify_run_webhook', req }).catch(() => {});
     return res.status(500).json({ ok: false, error: e.message });
   }
 });

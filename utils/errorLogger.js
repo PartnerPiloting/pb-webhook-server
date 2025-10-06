@@ -119,9 +119,9 @@ async function logCriticalError(error, context = {}) {
       [ERROR_LOG_FIELDS.STATUS]: ERROR_STATUS_VALUES.NEW
     };
 
-    // Add client link if available
+    // Add client ID as text if available (human-readable identifier like "Guy-Wilson")
     if (context.clientId) {
-      record[ERROR_LOG_FIELDS.CLIENT_ID] = [context.clientId];
+      record[ERROR_LOG_FIELDS.CLIENT_ID] = context.clientId;
     }
 
     // Add run ID if available
