@@ -69,8 +69,9 @@ class EmailReportingService {
                             const parsedData = JSON.parse(responseData);
                             resolve(parsedData);
                         } catch (error) {
+                            // JSON parse error - log but continue with raw response
+                            logCriticalError(error, { operation: 'mailgun_response_parse', isSearch: true }).catch(() => {});
                             resolve({ id: 'unknown', message: responseData });
-    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
                         }
                     } else {
                         reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
@@ -530,8 +531,9 @@ class EmailReportingService {
             };
         } catch (error) {
             console.error('📧 Email report failed:', error.message);
+            // Log email service error
+            logCriticalError(error, { operation: 'send_execution_report' }).catch(() => {});
             return { 
-    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
                 success: false, 
                 error: error.message 
             };
