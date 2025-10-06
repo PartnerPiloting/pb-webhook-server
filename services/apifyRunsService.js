@@ -27,7 +27,7 @@ let masterClientsBase = null;
 // Load airtableService for updating client run metrics
 let airtableService;
 try {
-    airtableService = require('./airtable/airtableService');
+    airtableService = require('./airtableService');
 } catch (err) {
     console.error("Failed to load airtableService:", err.message);
 }
@@ -394,7 +394,7 @@ function clearRunsCache() {
 async function updateClientRunMetrics(runId, clientId, data) {
     try {
         if (!airtableService) {
-            airtableService = require('./airtable/airtableService');
+            airtableService = require('./airtableService');
         }
         
         // Check if runId already has client ID suffix, if not add it
