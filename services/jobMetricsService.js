@@ -8,7 +8,7 @@
 
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
-const unifiedJobTrackingRepository = require('./unifiedJobTrackingRepository');
+const { JobTracking } = require('./jobTracking');
 const runIdSystem = require('./runIdSystem');
 const errorHandling = require('./jobTrackingErrorHandling');
 
@@ -334,7 +334,7 @@ async function updateClientMetrics(params) {
     }
     
     // Update the client run record
-    return await unifiedJobTrackingRepository.updateClientRunRecord({
+    return await JobTracking.updateClientRun({
       runId,
       clientId,
       updates: validMetrics,
@@ -350,7 +350,7 @@ async function updateClientMetrics(params) {
       
       if (result.shouldCreate) {
         log.info(`Creating new client metrics record for ${clientId} with run ID ${runId}`);
-        return await unifiedJobTrackingRepository.createClientRunRecord({
+        return await JobTracking.createClientRun({
           runId,
           clientId,
           initialData: metrics,
@@ -400,7 +400,7 @@ async function completeClientMetrics(params) {
     };
     
     // Complete the client run record
-    return await unifiedJobTrackingRepository.completeClientRunRecord({
+    return await JobTracking.completeClientRun({
       runId,
       clientId,
       metrics: finalMetrics,
@@ -444,7 +444,7 @@ async function updateJobAggregateMetrics(params) {
     }
     
     // Use the unified job tracking repository to aggregate and update metrics
-    return await unifiedJobTrackingRepository.updateAggregateMetrics({
+    return await JobTracking.updateAggregateMetrics({
       runId: standardizedRunId,
       options: { 
         logger: log,
@@ -480,12 +480,10 @@ async function completeJobMetrics(params) {
     await updateJobAggregateMetrics({ runId, options });
     
     // Then complete the job with final status
-    return await unifiedJobTrackingRepository.completeJobTrackingRecord({
+    return await JobTracking.completeJob({
       runId,
       status: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
-      metrics: {
-        'System Notes': notes
-      },
+      systemNotes: notes,
       options: { 
         logger: log,
         source: 'job_metrics_service' 
