@@ -237,10 +237,15 @@ async function determineClientWorkflow(client) {
         statusSummary: {}
     };
     
+    console.log(`🔍 [WORKFLOW-DEBUG] Determining workflow for ${client.clientName} (${client.clientId})`);
+    
     // Check each operation status
     for (const operation of operations) {
+        console.log(`🔍 [WORKFLOW-DEBUG] Checking operation: ${operation}`);
+        
         // Skip post_harvesting for service level < 2
         if (operation === 'post_harvesting' && Number(client.serviceLevel) < 2) {
+            console.log(`⚠️ [WORKFLOW-DEBUG] Skipping ${operation} - service level ${client.serviceLevel} < 2`);
             workflow.statusSummary[operation] = { 
                 completed: true, 
                 reason: `Skipped (service level ${client.serviceLevel} < 2)` 
@@ -249,6 +254,7 @@ async function determineClientWorkflow(client) {
         }
         
         const status = await checkOperationStatus(client.clientId, operation);
+        console.log(`🔍 [WORKFLOW-DEBUG] Operation ${operation} status:`, JSON.stringify(status));
         workflow.statusSummary[operation] = status;
         
         // Special handling for post_scoring - check if there are unscored posts regardless of last run time
@@ -275,10 +281,18 @@ async function determineClientWorkflow(client) {
         }
         
         if (!status.completed) {
+            console.log(`✅ [WORKFLOW-DEBUG] Operation ${operation} will be executed (status.completed=false)`);
             workflow.needsProcessing = true;
             workflow.operationsToRun.push(operation);
+        } else {
+            console.log(`⏭️ [WORKFLOW-DEBUG] Operation ${operation} skipped (status.completed=true)`);
         }
     }
+    
+    console.log(`🔍 [WORKFLOW-DEBUG] Final workflow for ${client.clientName}:`);
+    console.log(`   - needsProcessing: ${workflow.needsProcessing}`);
+    console.log(`   - operationsToRun: ${workflow.operationsToRun.join(', ') || 'NONE'}`);
+    console.log(`   - statusSummary:`, JSON.stringify(workflow.statusSummary, null, 2));
     
     return workflow;
 }
@@ -578,14 +592,20 @@ async function main() {
             for (let opIndex = 0; opIndex < workflow.operationsToRun.length; opIndex++) {
                 const operation = workflow.operationsToRun[opIndex];
                 log(`   🚀 Starting operation [${opIndex + 1}/${workflow.operationsToRun.length}] ${operation}...`);
+                console.log(`🔍 [TRIGGER-DEBUG] About to trigger ${operation} for ${workflow.clientId}`);
+                
                 const operationParams = operation === 'post_scoring' 
                     ? { stream, limit: postScoringLimit, secret, runId: normalizedRunId }
                     : { stream, limit: leadScoringLimit, secret, runId: normalizedRunId };
+                
+                console.log(`🔍 [TRIGGER-DEBUG] Operation params for ${operation}:`, JSON.stringify(operationParams));
                     
                 const authRequired = ['post_harvesting', 'post_scoring'].includes(operation);
                 const headers = authRequired ? authHeaders : {};
                 
+                console.log(`🔍 [TRIGGER-DEBUG] Calling triggerOperation for ${operation}...`);
                 const result = await triggerOperation(baseUrl, workflow.clientId, operation, operationParams, headers);
+                console.log(`🔍 [TRIGGER-DEBUG] Result for ${operation}:`, JSON.stringify(result));
                 totalTriggered++;
                 
                 if (result.success) {
