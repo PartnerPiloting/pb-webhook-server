@@ -1355,6 +1355,12 @@ async function processPostScoringInBackground(jobId, stream, options) {
 
       } catch (error) {
         // Handle client failure or timeout
+        await logRouteError(error, req, { 
+          client: client.clientId, 
+          operation: 'post_scoring',
+          timeout: error.message.includes('timeout')
+        }).catch(() => {});
+        
         const clientDuration = formatDuration(Date.now() - clientStartTime);
         const isTimeout = error.message.includes('timeout');
         const status = isTimeout ? 'CLIENT_TIMEOUT_KILLED' : 'FAILED';
@@ -1442,6 +1448,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
   diagnostics: results.diagnostics || null
     });
   } catch (e) {
+    await logRouteError(e, req, { operation: 'batch_lead_scoring' }).catch(() => {});
     res.status(500).json({ status: getStatusString('ERROR'), message: e.message });
   }
 });
@@ -1548,6 +1555,10 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
           aggregate.failedClients++;
         }
       } catch (e) {
+        await logRouteError(e, req, { 
+          client: c.clientId, 
+          operation: 'batch_summary' 
+        }).catch(() => {});
         summaries.push({ clientId: c.clientId, status: getStatusString('FAILED'), error: e.message });
         aggregate.failedClients++;
         aggregate.totalErrors++;

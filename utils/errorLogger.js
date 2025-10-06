@@ -4,7 +4,7 @@
  * Logs critical errors to Airtable for debugging without needing Render logs
  */
 
-const { isCriticalError, classifySeverity, classifyErrorType, extractLocationFromStack, shouldSkipError } = require('./errorClassifier');
+const { isCriticalError, classifySeverity, classifyErrorType, extractLocationFromStack, shouldSkipError, isExpectedBehavior } = require('./errorClassifier');
 const { ERROR_LOG_FIELDS, MASTER_TABLES, ERROR_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
 let masterClientsBase = null;
@@ -43,14 +43,16 @@ async function logCriticalError(error, context = {}) {
       return null;
     }
 
-    // Skip expected business logic errors
+    // Skip expected business logic errors (unless we want audit trail)
     if (shouldSkipError(error, context)) {
       console.log('[ErrorLogger] Skipping expected error:', error.message);
       return null;
     }
 
-    // Check if error is critical enough to log
-    if (!isCriticalError(error, context)) {
+    // Log all errors at INFO and above (even expected behavior for audit trail)
+    // But skip truly non-critical errors unless forced
+    const severity = classifySeverity(error, context);
+    if (!isCriticalError(error, context) && severity !== 'INFO') {
       console.log('[ErrorLogger] Error not critical, skipping Airtable log:', error.message);
       return null;
     }
@@ -87,7 +89,6 @@ async function logCriticalError(error, context = {}) {
     }
 
     // Extract error details
-    const severity = classifySeverity(error, context);
     const errorType = classifyErrorType(error, context);
     const location = extractLocationFromStack(error);
 

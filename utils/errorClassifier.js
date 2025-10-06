@@ -10,7 +10,8 @@
 const ERROR_SEVERITY = {
   CRITICAL: 'CRITICAL',  // System crashes, data loss, service unavailable
   ERROR: 'ERROR',        // Feature broken but system runs
-  WARNING: 'WARNING'     // Degraded performance, approaching limits
+  WARNING: 'WARNING',    // Degraded performance, approaching limits
+  INFO: 'INFO'           // Expected behavior, logged for audit trail only
 };
 
 /**
@@ -123,10 +124,15 @@ function isCriticalError(error, context = {}) {
  * Classify error severity
  * @param {Error} error - The error object
  * @param {Object} context - Additional context
- * @returns {string} - Severity level (CRITICAL, ERROR, WARNING)
+ * @returns {string} - Severity level (CRITICAL, ERROR, WARNING, INFO)
  */
 function classifySeverity(error, context = {}) {
   const errorMessage = error.message || error.toString();
+
+  // INFO: Expected behavior (logged for audit but not a bug)
+  if (isExpectedBehavior(error, context)) {
+    return ERROR_SEVERITY.INFO;
+  }
 
   // CRITICAL: System failures, data loss, service unavailable
   if (errorMessage.includes('Cannot find module') ||
@@ -245,6 +251,76 @@ function extractLocationFromStack(error) {
 }
 
 /**
+ * Check if error represents expected behavior (not a real bug)
+ * These errors are logged at INFO level for audit trail but filtered from error queries
+ * @param {Error} error - The error object
+ * @param {Object} context - Additional context
+ * @returns {boolean} - True if this is expected behavior
+ */
+function isExpectedBehavior(error, context = {}) {
+  const errorMessage = error.message || error.toString();
+
+  // Explicit flag from caller
+  if (context.expectedBehavior === true) {
+    return true;
+  }
+
+  // JSON parse failures with fallback logic (very common)
+  if (errorMessage.includes('JSON.parse') || 
+      errorMessage.includes('Unexpected token') ||
+      errorMessage.includes('Unexpected end of JSON')) {
+    return true;
+  }
+
+  // Record not found in search operations (normal when searching)
+  if ((errorMessage.includes('not found') || 
+       errorMessage.includes('no record') ||
+       errorMessage.includes('does not exist')) &&
+      (context.operation?.includes('search') || 
+       context.operation?.includes('find') ||
+       context.isSearch)) {
+    return true;
+  }
+
+  // Duplicate key errors with retry logic
+  if ((errorMessage.includes('duplicate') || 
+       errorMessage.includes('already exists')) &&
+      context.willRetry) {
+    return true;
+  }
+
+  // Timeout errors with retry mechanism
+  if ((errorMessage.includes('timeout') || 
+       errorMessage.includes('ETIMEDOUT')) &&
+      context.willRetry) {
+    return true;
+  }
+
+  // Empty result sets (not errors, just no data)
+  if (errorMessage.includes('no leads') ||
+      errorMessage.includes('no posts') ||
+      errorMessage.includes('no results') ||
+      errorMessage.includes('empty array')) {
+    return true;
+  }
+
+  // LinkedIn URL format variations (handled gracefully)
+  if (errorMessage.includes('invalid LinkedIn URL') ||
+      errorMessage.includes('malformed URL')) {
+    return true;
+  }
+
+  // Rate limiting with backoff (expected during high load)
+  if (errorMessage.includes('rate limit') ||
+      errorMessage.includes('too many requests') ||
+      error.statusCode === 429) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Check if error should be skipped (expected business logic)
  * @param {Error} error - The error object
  * @param {Object} context - Additional context
@@ -284,6 +360,7 @@ module.exports = {
   classifyErrorType,
   extractLocationFromStack,
   shouldSkipError,
+  isExpectedBehavior,
   ERROR_SEVERITY,
   ERROR_TYPES
 };
