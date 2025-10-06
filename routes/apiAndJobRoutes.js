@@ -1183,8 +1183,8 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
         jobType: 'post_scoring',
         clientId: singleClientId || 'SYSTEM', // Fixed: use singleClientId instead of undefined 'client'
         initialData: {
-          'Stream': stream, // Ensure stream is included
-          'Job ID': jobId // Store the original job ID
+          [JOB_TRACKING_FIELDS.STREAM]: stream,
+          [JOB_TRACKING_FIELDS.RUN_ID]: jobId
         },
         options: {
           logger: console
