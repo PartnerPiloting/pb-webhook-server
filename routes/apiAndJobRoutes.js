@@ -4963,18 +4963,6 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
   console.log("🔍 Query parameters:", req.query);
   
   try {
-    // Check webhook secret from query parameter for GET requests
-    const providedSecret = req.query['secret'];
-    const expectedSecret = process.env.PB_WEBHOOK_SECRET;
-    
-    if (!providedSecret || providedSecret !== expectedSecret) {
-      console.log("❌ Smart resume: Unauthorized - invalid webhook secret");
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Unauthorized - invalid webhook secret' 
-      });
-    }
-    
     // Extract parameters from query string
     const stream = parseInt(req.query.stream) || 1;
     const leadScoringLimit = req.query.leadScoringLimit ? parseInt(req.query.leadScoringLimit) : null;
