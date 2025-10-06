@@ -25,7 +25,7 @@ function initialize() {
     return airtableService.initialize();
   } catch (error) {
     logger.error(`Error initializing Airtable service: ${error.message}`);
-    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'airtableServiceAdapter.js' }).catch(() => {});
+    logCriticalError(error, { context: 'Service error (swallowed)', service: 'airtableServiceAdapter.js' }).catch(() => {});
     return false;
   }
 }

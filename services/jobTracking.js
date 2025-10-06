@@ -171,7 +171,7 @@ class JobTracking {
       return baseRunId;
     } catch (error) {
       log.error(`Error standardizing run ID: ${error.message}`);
-      await logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
+      logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
       return null;
     }
   }

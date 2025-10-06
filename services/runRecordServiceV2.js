@@ -121,7 +121,7 @@ function initialize() {
     return clientsBase;
   } catch (error) {
     console.error("CRITICAL ERROR initializing Airtable connection:", error.message);
-    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
+    logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     throw error;
   }
 }
