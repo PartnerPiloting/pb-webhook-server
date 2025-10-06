@@ -17,11 +17,11 @@ const fetch = getFetch();
 async function logRouteError(error, req, additionalContext = {}) {
   try {
     await logCriticalError(error, {
-      endpoint: `${req.method} ${req.path || req.url || 'unknown'}`,
-      clientId: additionalContext.clientId || req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId || null,
-      runId: additionalContext.runId || req.query?.runId || req.body?.runId || null,
-      requestBody: req.body,
-      queryParams: req.query,
+      endpoint: req ? `${req.method || 'POST'} ${req.path || req.url || 'unknown'}` : 'unknown endpoint',
+      clientId: additionalContext.clientId || req?.headers?.['x-client-id'] || req?.query?.clientId || req?.body?.clientId || null,
+      runId: additionalContext.runId || req?.query?.runId || req?.body?.runId || null,
+      requestBody: req?.body,
+      queryParams: req?.query,
       ...additionalContext
     });
   } catch (loggingError) {
@@ -312,6 +312,9 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
   // Create a deeper clone that preserves important objects like headers
   const reqClone = {
     ...req,
+    method: req.method || 'POST',
+    path: req.path || req.url || '/api/apify/process-level2-v2',
+    url: req.url || '/api/apify/process-level2-v2',
     headers: {...req.headers},
     query: {...req.query},
     body: req.body ? {...req.body} : undefined
