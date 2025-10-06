@@ -135,6 +135,12 @@ router.get("/debug-job-status", async (req, res) => {
         }
       } catch (error) {
         // Continue searching other clients
+        await logRouteError(error, req, { 
+          operation: 'job_status_search',
+          expectedBehavior: true,
+          isSearch: true,
+          jobId: jobId 
+        }).catch(() => {});
       }
     }
     
@@ -148,6 +154,12 @@ router.get("/debug-job-status", async (req, res) => {
         }
       } catch (error) {
         // Job not found
+        await logRouteError(error, req, { 
+          operation: 'global_job_status_search',
+          expectedBehavior: true,
+          isSearch: true,
+          jobId: jobId 
+        }).catch(() => {});
       }
     }
     

@@ -47,6 +47,7 @@ async function sendMailgunEmail(emailData) {
                         resolve(parsedData);
                     } catch (error) {
                         resolve({ id: 'unknown', message: responseData });
+    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
                     }
                 } else {
                     reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
@@ -128,6 +129,7 @@ async function sendTemplatedEmail(clientData, templateId, options = {}) {
 
     } catch (error) {
         console.error(`❌ Error sending templated email to ${clientData.clientEmailAddress || 'unknown'}:`, error);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         
         return {
             success: false,
@@ -184,6 +186,7 @@ async function sendBulkTemplatedEmails(clientDataList, templateId, options = {})
         } catch (error) {
             results.failed++;
             results.errors.push({
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
                 clientId: clientData.clientId,
                 email: clientData.clientEmailAddress,
                 error: error.message
@@ -223,6 +226,7 @@ async function sendAlertEmail(subject, htmlBody, recipient = null) {
     } catch (error) {
         console.error(`❌ Error sending alert email:`, error);
         return { success: false, error: error.message };
+    await logCriticalError(error, { operation: 'unknown' }).catch(() => {});
     }
 }
 

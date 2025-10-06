@@ -70,6 +70,7 @@ class EmailReportingService {
                             resolve(parsedData);
                         } catch (error) {
                             resolve({ id: 'unknown', message: responseData });
+    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
                         }
                     } else {
                         reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
@@ -530,6 +531,7 @@ class EmailReportingService {
         } catch (error) {
             console.error('📧 Email report failed:', error.message);
             return { 
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
                 success: false, 
                 error: error.message 
             };

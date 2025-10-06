@@ -179,6 +179,7 @@ async function findJobTrackingRecord(runId, jobTrackingTable) {
       } catch (error) {
         // If cached record not found, continue to normal lookup
         logger.debug(`Cached record ${cachedRecordId} not found for run ID ${baseRunId}, falling back to query`);
+    await logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
         jobTrackingRecordCache.delete(baseRunId);
       }
     }

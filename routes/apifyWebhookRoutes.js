@@ -77,6 +77,7 @@ async function validateRunRecordExists(runId, clientId) {
         });
     } catch (error) {
         logger.error(`Error validating run record existence: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown', clientId: clientId, runId: runId }).catch(() => {});
         return false;
     }
 }
@@ -135,6 +136,7 @@ async function apifyWebhookHandler(req, res) {
                 }
             } catch (err) {
                 logger.error(`Failed to resolve client ID from Apify run: ${err.message}`);
+    logCriticalError(err, { operation: 'unknown', isSearch: true, clientId: clientId }).catch(() => {});
             }
         }
         
@@ -191,6 +193,7 @@ async function apifyWebhookHandler(req, res) {
                         }
                     } catch (lookupError) {
                         logger.error(`Error looking up Apify record: ${lookupError.message}`);
+    logCriticalError(lookupError, { operation: 'unknown' }).catch(() => {});
                     }
                 }
                 
@@ -271,6 +274,7 @@ async function apifyWebhookHandler(req, res) {
         } catch (metricsError) {
             logger.error(`Failed to update initial Apify metrics: ${metricsError.message}`);
             // Continue processing even if metrics update fails
+    logCriticalError(metricsError, { operation: 'unknown' }).catch(() => {});
         }
 
         // Process the webhook in background with validated runId
@@ -280,6 +284,7 @@ async function apifyWebhookHandler(req, res) {
         
     } catch (error) {
         logger.error(`Error in webhook handler: ${error.message}`, { error });
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         
         // Only send response if not already sent
         if (!res.headersSent) {
@@ -382,6 +387,7 @@ function extractRunIdFromPayload(payload) {
         return null;
     } catch (error) {
         logger.error(`Error extracting Apify run ID: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         return null;
     }
 }
@@ -416,6 +422,7 @@ function extractClientIdFromPayload(payload) {
         return null;
     } catch (error) {
         logger.error(`Error extracting client ID: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown', isSearch: true, clientId: clientId }).catch(() => {});
         return null;
     }
 }
@@ -466,6 +473,7 @@ function extractPostsFromPayload(payload) {
         return [];
     } catch (error) {
         logger.error(`Error extracting posts: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         return [];
     }
 }
@@ -537,6 +545,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             } catch (metricsError) {
                 clientLogger.error(`Failed to update harvest metrics: ${metricsError.message}`);
                 // Continue processing even if metrics update fails
+    logCriticalError(metricsError, { operation: 'unknown' }).catch(() => {});
             }
             
             // Use job orchestration service to handle completion
@@ -613,6 +622,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         } catch (metricsError) {
             clientLogger.error(`Failed to update harvest metrics: ${metricsError.message}`);
             // Continue processing even if metrics update fails
+    logCriticalError(metricsError, { operation: 'unknown' }).catch(() => {});
         }
         
         // Use job orchestration service to handle completion
@@ -649,6 +659,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         clientLogger.info(`Processing complete: ${result.success} posts saved, ${result.errors} errors`);
     } catch (error) {
         clientLogger.error(`Error processing webhook: ${error.message}`, { error });
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         
         // Check if this is a standalone run or part of a workflow
         const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
@@ -666,6 +677,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             }
         } catch (normError) {
             clientLogger.error(`Error normalizing run ID: ${normError.message}. Using original run ID.`);
+    logCriticalError(normError, { operation: 'unknown' }).catch(() => {});
         }
         
         await JobTracking.completeClientProcessing({
@@ -767,6 +779,7 @@ async function syncPBPostsToAirtable(posts, clientBase, clientId, logger = null)
         } catch (error) {
             errors++;
             log.error(`Error creating post: ${error.message}`, { error });
+    logCriticalError(error, { operation: 'unknown', postId: postId }).catch(() => {});
         }
     }
     

@@ -192,6 +192,7 @@ async function upsertLead(
         } catch (metricError) {
             console.error(`leadService/upsertLead: Failed to update run metrics: ${metricError.message}`);
             // Continue execution even if metrics update fails
+    logCriticalError(metricError, { operation: 'unknown' }).catch(() => {});
         }
     }
     
@@ -229,6 +230,7 @@ async function trackLeadProcessingMetrics(runId, clientId, metrics) {
         return updateResult;
     } catch (error) {
         console.error(`leadService/trackLeadProcessingMetrics: Failed to update metrics: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         return { 
             success: false, 
             error: error.message,

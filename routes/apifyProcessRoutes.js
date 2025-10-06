@@ -88,6 +88,7 @@ async function pickLeadBatch(base, batchSize) {
         statusesByValue[status || 'BLANK'] = statusRecords.length;
       } catch (err) {
         console.log(`🔍 LEAD_SELECTION_DIAG: Error checking status '${status}': ${err.message}`);
+    logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
       }
     });
     
@@ -108,6 +109,7 @@ async function pickLeadBatch(base, batchSize) {
     console.log(`🔍 LEAD_SELECTION_DIAG: Leads not yet scored (Date Posts Scored empty): ${scoredRecords.length ? 'YES' : 'NONE'}`);
   } catch (err) {
     console.log(`🔍 LEAD_SELECTION_DIAG: Error running diagnostics: ${err.message}`);
+    logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
   }
   
   let formula;
@@ -143,6 +145,7 @@ async function pickLeadBatch(base, batchSize) {
   } catch (e) {
     // Fallback without sort (e.g., if Created Time field is missing)
     const fallbackOptions = {
+    logCriticalError(e, { operation: 'unknown', isSearch: true }).catch(() => {});
       filterByFormula: formula,
       maxRecords: batchSize,
       fields: [LINKEDIN_URL_FIELD, STATUS_FIELD]
@@ -245,6 +248,7 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
     console.log(`[process-level2-v2] 🔍 FULL REQUEST: ${JSON.stringify(requestStructure, null, 2).substring(0, 1000)}...`);
   } catch (e) {
     console.log(`[process-level2-v2] Could not stringify full request: ${e.message}`);
+    logCriticalError(e, { operation: 'unknown', isSearch: true, clientId: clientId }).catch(() => {});
   }
   
   
@@ -523,6 +527,7 @@ async function processClientHandler(req, res) {
         }
       } catch (err) {
         console.log(`🔍 CLIENT_DEBUG: Error getting client info: ${err.message}`);
+    logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
       }
       
       if (!pick.length) {
@@ -557,6 +562,7 @@ async function processClientHandler(req, res) {
           }
         } catch (err) {
           console.log(`🔍 DIAGNOSTIC: Error running quick diagnostic: ${err.message}`);
+    logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
         }
         
         break;

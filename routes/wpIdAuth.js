@@ -100,6 +100,7 @@ router.get('/auth-by-wp-id', async (req, res) => {
     console.error('WP ID Auth: Error during authentication:', error.message);
     
     return res.status(500).json({
+    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
       status: 'error',
       code: 'AUTH_ERROR',
       message: 'Authentication system error'
