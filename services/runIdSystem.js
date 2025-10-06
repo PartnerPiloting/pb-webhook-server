@@ -1,4 +1,5 @@
 /**
+const { logCriticalError } = require('../utils/errorLogger');
  * services/runIdSystem.js
  * 
  * Single source of truth for all run ID operations in the system.
@@ -146,6 +147,7 @@ async function createJobTrackingRecord(runId, jobTrackingTable, data = {}) {
     return record;
   } catch (error) {
     logger.error(`Failed to create job tracking record for run ID ${runId}: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runIdSystem.js' }).catch(() => {});
     throw error;
   }
 }
@@ -198,6 +200,7 @@ async function findJobTrackingRecord(runId, jobTrackingTable) {
     return null;
   } catch (error) {
     logger.error(`Error finding job tracking record for run ID ${runId}: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'runIdSystem.js' }).catch(() => {});
     return null;
   }
 }
@@ -228,6 +231,7 @@ async function updateJobTrackingRecord(runId, jobTrackingTable, data) {
     return updatedRecord;
   } catch (error) {
     logger.error(`Error updating job tracking record for run ID ${runId}: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'runIdSystem.js' }).catch(() => {});
     return null;
   }
 }

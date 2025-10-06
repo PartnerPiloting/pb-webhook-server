@@ -1,3 +1,4 @@
+const { logCriticalError } = require("../utils/errorLogger");
 /**
  * services/airtableServiceAdapter.js
  * 
@@ -24,6 +25,7 @@ function initialize() {
     return airtableService.initialize();
   } catch (error) {
     logger.error(`Error initializing Airtable service: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'airtableServiceAdapter.js' }).catch(() => {});
     return false;
   }
 }
@@ -50,6 +52,7 @@ async function createJobTrackingRecord(runId, stream) {
     });
   } catch (error) {
     logger.error(`Error creating job tracking record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableServiceAdapter.js' }).catch(() => {});
     throw error;
   }
 }
@@ -74,6 +77,7 @@ async function updateAggregateMetrics(runId, metrics = {}) {
     });
   } catch (error) {
     logger.error(`Error updating aggregate metrics: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableServiceAdapter.js' }).catch(() => {});
     throw error;
   }
 }
@@ -103,6 +107,7 @@ async function completeJobRun(runId, success, notes = '') {
     });
   } catch (error) {
     logger.error(`Error completing job run: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableServiceAdapter.js' }).catch(() => {});
     throw error;
   }
 }
@@ -127,6 +132,7 @@ async function updateClientRun(runId, clientId, updates) {
     });
   } catch (error) {
     logger.error(`Error updating client run: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableServiceAdapter.js' }).catch(() => {});
     throw error;
   }
 }

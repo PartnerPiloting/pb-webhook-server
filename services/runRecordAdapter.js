@@ -1,3 +1,4 @@
+const { logCriticalError } = require("../utils/errorLogger");
 // runRecordAdapter.js
 // Adapter to bridge from the old service to the new V2 service with Single Creation Point pattern
 
@@ -93,6 +94,7 @@ async function adaptCreateRunRecord(runId, clientId, clientName, options = {}) {
     } catch (error) {
         if (logger) {
             logger.error(`[Adapter] Error in adaptCreateRunRecord: ${error.message}`);
+            await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapter.js' }).catch(() => {});
         }
         throw error;
     }

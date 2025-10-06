@@ -4,6 +4,7 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { logCriticalError } = require('../utils/errorLogger');
 const { MASTER_TABLES, CLIENT_EXECUTION_LOG_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { parseServiceLevel } = require('../utils/serviceLevel');
 const { safeFieldUpdate } = require('../utils/errorHandler');
@@ -146,6 +147,7 @@ async function getAllClients() {
 
     } catch (error) {
         console.error("Error fetching all clients:", error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -166,6 +168,7 @@ async function getAllActiveClients() {
 
     } catch (error) {
         console.error("Error fetching active clients:", error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -195,6 +198,7 @@ async function getClientById(clientId) {
 
     } catch (error) {
         console.error(`Error fetching client ${clientId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -219,6 +223,7 @@ async function getClientByWpUserId(wpUserId) {
 
     } catch (error) {
         console.error(`Error fetching client by WP User ID ${wpUserId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -238,6 +243,7 @@ async function validateClient(clientId) {
 
     } catch (error) {
         console.error(`Error validating client ${clientId}:`, error);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
 }
@@ -282,6 +288,7 @@ async function updateExecutionLog(clientId, logEntry) {
 
     } catch (error) {
         console.error(`Error updating execution log for client ${clientId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -381,10 +388,12 @@ async function logExecution(clientId, executionData) {
             return updateResult;
         } catch (innerError) {
             console.error(`Airtable Service ERROR: Failed to update client run: ${innerError.message}`);
+            await logCriticalError(innerError, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
             return false;
         }
     } catch (error) {
         console.error(`Error logging execution for client ${clientId}:`, error);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
 }
@@ -414,6 +423,7 @@ async function getActiveClients(clientId = null) {
         }
     } catch (error) {
         console.error("Error in getActiveClients:", error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -449,6 +459,7 @@ async function getActiveClientsByStream(stream, clientId = null) {
         return streamClients;
     } catch (error) {
         console.error(`Error getting active clients for stream ${stream}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -483,6 +494,7 @@ async function getClientTokenLimits(clientId) {
 
     } catch (error) {
         console.error(`Error getting token limits for client ${clientId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -512,6 +524,7 @@ async function getClientFloorConfig(clientId) {
 
     } catch (error) {
         console.error(`Error getting floor config for client ${clientId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -558,6 +571,7 @@ async function updateClientFloorConfig(clientId, floorConfig) {
 
     } catch (error) {
         console.error(`Error updating floor config for client ${clientId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -794,6 +808,7 @@ async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
 
     } catch (error) {
         console.error(`❌ Error setting ${operation} status for ${clientId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
 }
@@ -846,6 +861,7 @@ async function getJobStatus(clientId, operation) {
 
     } catch (error) {
         console.error(`Error getting ${operation} status for ${clientId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return null;
     }
 }
@@ -929,6 +945,7 @@ async function isJobRunning(clientId, operation) {
         return isRunning;
     } catch (error) {
         console.error(`Error checking if ${operation} is running for ${clientId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false; // Default to false (not running) on error
     }
 }
@@ -967,6 +984,7 @@ async function setProcessingStream(clientId, stream) {
 
     } catch (error) {
         console.error(`❌ Error setting processing stream for ${clientId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
 }
@@ -985,6 +1003,7 @@ async function getProcessingStream(clientId) {
 
     } catch (error) {
         console.error(`Error getting processing stream for ${clientId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return null;
     }
 }

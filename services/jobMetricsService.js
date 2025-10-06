@@ -1,3 +1,4 @@
+const { logCriticalError } = require("../utils/errorLogger");
 /**
  * services/jobMetricsService.js
  * 
@@ -411,6 +412,7 @@ async function completeClientMetrics(params) {
     });
   } catch (error) {
     log.error(`Error completing client metrics: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobMetricsService.js' }).catch(() => {});
     throw error;
   }
 }
@@ -453,6 +455,7 @@ async function updateJobAggregateMetrics(params) {
     });
   } catch (error) {
     log.error(`Error updating aggregate metrics: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobMetricsService.js' }).catch(() => {});
     throw error;
   }
 }
@@ -491,6 +494,7 @@ async function completeJobMetrics(params) {
     });
   } catch (error) {
     log.error(`Error completing job metrics: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobMetricsService.js' }).catch(() => {});
     throw error;
   }
 }

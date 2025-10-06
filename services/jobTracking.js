@@ -12,6 +12,7 @@
  */
 
 const { createLogger } = require('../utils/unifiedLoggerFactory');
+const { logCriticalError } = require('../utils/errorLogger');
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
 // Import field validator for consistent field naming
 const { FIELD_NAMES, createValidatedObject } = require('../utils/airtableFieldValidator');
@@ -170,6 +171,7 @@ class JobTracking {
       return baseRunId;
     } catch (error) {
       log.error(`Error standardizing run ID: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
       return null;
     }
   }
@@ -227,6 +229,7 @@ class JobTracking {
         runIdSystem.validateRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        await logCriticalError(validationError, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
         throw validationError;
       }
       
@@ -302,6 +305,7 @@ class JobTracking {
       };
     } catch (error) {
       log.error(`Error creating job tracking record: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
   }
@@ -335,6 +339,7 @@ class JobTracking {
         runIdSystem.validateRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        await logCriticalError(validationError, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
         throw validationError;
       }
       
@@ -437,6 +442,7 @@ class JobTracking {
       };
     } catch (error) {
       log.error(`Error updating job tracking record: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
   }
@@ -471,6 +477,7 @@ class JobTracking {
         runIdSystem.validateRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        await logCriticalError(validationError, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
         throw validationError;
       }
       
@@ -551,6 +558,7 @@ class JobTracking {
       };
     } catch (error) {
       log.error(`Error creating client run record: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
   }
@@ -729,6 +737,7 @@ class JobTracking {
       };
     } catch (error) {
       log.error(`Error updating client run record: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
   }
@@ -809,6 +818,7 @@ class JobTracking {
         runIdSystem.validateRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        await logCriticalError(validationError, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
         throw validationError;
       }
       
@@ -868,6 +878,7 @@ class JobTracking {
           }
         } catch (lookupError) {
           log.error(`Failed to look up recent records: ${lookupError.message}`);
+          await logCriticalError(lookupError, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
         }
         
         return null;
@@ -877,6 +888,7 @@ class JobTracking {
       return records[0];
     } catch (error) {
       log.error(`Error getting job by ID: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
       return null;
     }
   }
@@ -911,6 +923,7 @@ class JobTracking {
         standardRunId = runIdSystem.validateAndStandardizeRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        await logCriticalError(validationError, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
         return null;
       }
       
@@ -949,6 +962,7 @@ class JobTracking {
       return records[0];
     } catch (error) {
       logger.error(`Error getting client run: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
       return null;
     }
   }
@@ -1030,6 +1044,7 @@ class JobTracking {
       });
     } catch (error) {
       log.error(`Error updating client metrics: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
   }
@@ -1082,6 +1097,7 @@ class JobTracking {
         standardRunId = runIdSystem.validateAndStandardizeRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        await logCriticalError(validationError, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
         return false;
       }
       
@@ -1120,6 +1136,7 @@ class JobTracking {
       return exists;
     } catch (error) {
       log.error(`Error checking client run record existence: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
       return false;
     }
   }
@@ -1152,6 +1169,7 @@ class JobTracking {
         runIdSystem.validateRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+        await logCriticalError(validationError, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
         throw validationError;
       }
       
@@ -1245,6 +1263,7 @@ class JobTracking {
       };
     } catch (error) {
       log.error(`Error updating aggregate metrics: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
   }
@@ -1386,6 +1405,7 @@ class JobTracking {
       });
     } catch (error) {
       log.error(`Error completing client processing: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
   }

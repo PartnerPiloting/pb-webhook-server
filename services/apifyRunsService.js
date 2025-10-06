@@ -1,4 +1,5 @@
 // services/apifyRunsService.js
+const { logCriticalError } = require('../utils/errorLogger');
 // Service for managing Apify run tracking to enable multi-tenant webhook handling
 // Stores mapping between Apify run IDs and client IDs in Master Clients base
 
@@ -128,6 +129,7 @@ async function createApifyRun(runId, clientId, options = {}) {
 
     } catch (error) {
         console.error(`[ApifyRuns] Error creating run record for ${runId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -200,6 +202,7 @@ async function getApifyRun(runId, options = {}) {
 
     } catch (error) {
         console.error(`[ApifyRuns] Error fetching run ${runId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -276,6 +279,7 @@ async function updateApifyRun(runId, updateData) {
 
     } catch (error) {
         console.error(`[ApifyRuns] Error updating run ${runId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -291,6 +295,7 @@ async function getClientIdForRun(runId) {
         return runData ? runData.clientId : null;
     } catch (error) {
         console.error(`[ApifyRuns] Error getting client ID for run ${runId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'apifyRunsService.js' }).catch(() => {});
         return null;
     }
 }
@@ -333,6 +338,7 @@ async function getClientRuns(clientId, limit = 10) {
 
     } catch (error) {
         console.error(`[ApifyRuns] Error fetching runs for client ${clientId}:`, error.message);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -368,6 +374,7 @@ function extractRunIdFromPayload(body) {
         return null;
     } catch (error) {
         console.error('[ApifyRuns] Error extracting run ID from payload:', error.message);
+        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'apifyRunsService.js' }).catch(() => {});
         return null;
     }
 }
@@ -466,6 +473,7 @@ async function updateClientRunMetrics(runId, clientId, data) {
         return updated;
     } catch (error) {
         console.error(`[METDEBUG] Failed to update client run metrics: ${error.message}`);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -544,6 +552,7 @@ async function processApifyWebhook(webhookData, clientId, runId) {
         
     } catch (error) {
         logger.error(`Error processing Apify webhook: ${error.message}`);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
 }

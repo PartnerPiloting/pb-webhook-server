@@ -14,32 +14,54 @@ function addErrorLogging(filePath) {
   const originalContent = content;
   let addedCount = 0;
   
-  // Pattern to match catch blocks with console.error followed by res.status
+  // Pattern to match catch blocks with console.error/log.error
   // that don't already have logRouteError
   const lines = content.split('\n');
   const newLines = [];
+  let inCatchBlock = false;
+  let catchBlockIndent = '';
+  let catchErrorVar = 'error';
+  let foundConsoleError = false;
+  let alreadyHasLogging = false;
   
   for (let i = 0; i < lines.length; i++) {
-    newLines.push(lines[i]);
+    const line = lines[i];
     
-    // Check if this line has console.error in a catch block
-    if (lines[i].includes('console.error') && i > 0 && 
-        (lines[i-1].includes('} catch') || lines[i-2].includes('} catch'))) {
+    // Detect start of catch block
+    if (line.match(/}\s*catch\s*\((\w+)\)/)) {
+      const match = line.match(/}\s*catch\s*\((\w+)\)/);
+      catchErrorVar = match[1];
+      inCatchBlock = true;
+      catchBlockIndent = line.match(/^(\s*)/)[1];
+      foundConsoleError = false;
+      alreadyHasLogging = false;
+    }
+    
+    // Check for console.error/log.error in catch block
+    if (inCatchBlock && (line.includes('console.error') || line.includes('log.error'))) {
+      foundConsoleError = true;
+    }
+    
+    // Check if already has logRouteError/logCriticalError
+    if (inCatchBlock && (line.includes('logRouteError') || line.includes('logCriticalError'))) {
+      alreadyHasLogging = true;
+    }
+    
+    // Detect end of catch block (closing brace at same indentation level)
+    if (inCatchBlock && line.trim().startsWith('}') && 
+        line.match(/^(\s*)/)[1].length === catchBlockIndent.length) {
       
-      // Check if next few lines have res.status but NOT logRouteError/logCriticalError
-      const nextFewLines = lines.slice(i, i + 5).join('\n');
-      if (nextFewLines.includes('res.status') && 
-          !nextFewLines.includes('logRouteError') && 
-          !nextFewLines.includes('logCriticalError')) {
-        
-        // Get the indentation from current line
-        const indent = lines[i].match(/^(\s*)/)[1];
-        
-        // Add the logging line
-        newLines.push(`${indent}await logRouteError(error, req).catch(() => {});`);
+      // If we found console.error but no logging, add it before the closing brace
+      if (foundConsoleError && !alreadyHasLogging) {
+        const indent = catchBlockIndent + '  ';
+        newLines.push(`${indent}await logRouteError(${catchErrorVar}, req).catch(() => {});`);
         addedCount++;
       }
+      
+      inCatchBlock = false;
     }
+    
+    newLines.push(line);
   }
   
   content = newLines.join('\n');

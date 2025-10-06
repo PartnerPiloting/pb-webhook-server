@@ -1,3 +1,4 @@
+const { logCriticalError } = require("../utils/errorLogger");
 // services/runRecordAdapterSimple.js
 // Simplified adapter to the airtableServiceSimple implementation
 // Using the "Create once, update many, error if missing" principle
@@ -198,6 +199,7 @@ async function createRunRecord(params) {
     return await airtableService.createClientRunRecord(standardRunId, validatedClientId, providedClientName);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating run record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     throw error;
   }
 }
@@ -288,6 +290,7 @@ async function updateRunRecord(params) {
     return await airtableService.updateClientRun(standardRunId, validatedClientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error updating run record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     throw error;
   }
 }
@@ -434,6 +437,7 @@ async function completeRunRecord(params) {
       }
     } catch (error) {
       logger.error(`[${source}] Error adding client suffix: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
       throw new Error(`Error adding client suffix: ${error.message}`);
     }
     
@@ -464,6 +468,7 @@ async function completeRunRecord(params) {
     return await airtableService.completeClientRun(standardRunId, validatedClientId, updateData);
   } catch (error) {
     logger.error(`[${source}] Error completing run record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     throw error;
   }
 }
@@ -592,6 +597,7 @@ async function createJobRecord(params) {
     };
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating job record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     // Return error information instead of throwing
     return {
       success: false,
@@ -676,6 +682,7 @@ async function completeJobRecord(params) {
     return await airtableService.completeJobRun(baseRunId, success, notes);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error completing job record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     throw error;
   }
 }
@@ -728,6 +735,7 @@ async function updateJobAggregates(params) {
     return await airtableService.updateAggregateMetrics(baseRunId);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error updating job aggregates: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     throw error;
   }
 }
@@ -791,6 +799,7 @@ async function updateClientMetrics(params) {
     return await airtableService.updateClientRun(standardRunId, clientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Failed to update metrics: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     throw error;
   }
 }
@@ -978,6 +987,7 @@ async function completeClientProcessing(params) {
     return await airtableService.updateClientRun(standardRunId, clientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Failed to complete client processing: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     throw error;
   }
 }
@@ -1130,6 +1140,7 @@ async function checkRunRecordExists(params) {
     return false;
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error checking if run record exists: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     return false; // Fail safe - return false on any error
   }
 }

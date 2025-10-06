@@ -1,4 +1,5 @@
 // services/airtableService.js
+const { logCriticalError } = require('../utils/errorLogger');
 // Service for tracking run metrics in Airtable
 // Handles recording data to Job Tracking and Client Run Results tables
 
@@ -108,6 +109,7 @@ function initialize() {
       return clientsBase;
     } catch (fallbackError) {
       console.error("FATAL ERROR: Emergency fallback also failed:", fallbackError.message);
+      await logCriticalError(fallbackError, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
       throw error; // Throw the original error
     }
   }
@@ -167,6 +169,7 @@ async function createJobTrackingRecord(runId, stream) {
     return records[0];
   } catch (error) {
     console.error(`Airtable Service ERROR: Failed to create job tracking record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
 }
@@ -264,6 +267,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
     return records[0];
   } catch (error) {
     console.error(`Airtable Service ERROR: Failed to create client run record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
 }
@@ -346,6 +350,7 @@ async function updateJobTracking(runId, updates) {
     return updated;
   } catch (error) {
     console.error(`Airtable Service ERROR: Failed to update job tracking: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
 }
@@ -476,6 +481,7 @@ async function updateClientRun(runId, clientId, updates) {
     return updated;
   } catch (error) {
     console.error(`Airtable Service ERROR: Failed to update client run: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
 }
@@ -612,6 +618,7 @@ async function updateAggregateMetrics(runId) {
     return await updateJobTracking(baseRunId, aggregates);
   } catch (error) {
     console.error(`Airtable Service ERROR: Failed to update aggregate metrics: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
 }
@@ -668,6 +675,7 @@ async function checkRunRecordExists(runId, clientId) {
     }
   } catch (error) {
     console.error(`[RUNDEBUG] Error checking run record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'airtableService.js' }).catch(() => {});
     return false;
   }
 }
