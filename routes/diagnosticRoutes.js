@@ -8,7 +8,7 @@
 
 const express = require('express');
 const router = express.Router();
-const unifiedRunIdService = require('../services/unifiedRunIdService');
+const runIdSystem = require('../services/runIdSystem');
 const JobTracking = require('../services/jobTracking');
 const { createLogger } = require('../utils/unifiedLoggerFactory');
 
@@ -72,13 +72,13 @@ router.post('/validate-run-id', async (req, res) => {
     
     try {
       // This will throw if the run ID is invalid in strict mode
-      const normalizedId = unifiedRunIdService.normalizeRunId(runId, 'validate-run-id-endpoint');
+      const normalizedId = runIdSystem.normalizeRunId(runId, 'validate-run-id-endpoint');
       
       return res.status(200).json({
         success: true,
         originalRunId: runId,
         normalizedRunId: normalizedId,
-        format: unifiedRunIdService.detectRunIdFormat(runId)?.formatKey || 'unknown',
+        format: runIdSystem.detectRunIdFormat(runId)?.formatKey || 'unknown',
         isValid: true,
       });
     } catch (validationError) {
@@ -126,7 +126,7 @@ router.get('/check-job-record/:runId', async (req, res) => {
           success: true,
           exists: true,
           runId: runId,
-          normalizedRunId: unifiedRunIdService.normalizeRunId(runId, 'check-job-record-endpoint'),
+          normalizedRunId: runIdSystem.normalizeRunId(runId, 'check-job-record-endpoint'),
           recordId: jobRecord.id,
           status: jobRecord.fields[JobTracking.JOB_TRACKING_FIELDS.STATUS],
           startTime: jobRecord.fields[JobTracking.JOB_TRACKING_FIELDS.START_TIME],

@@ -16,7 +16,7 @@ const { getClientBase } = require('./config/airtableClient');
 
 // --- Repository Layer Dependencies ---
 const JobTracking = require('./services/jobTracking');
-const unifiedRunIdService = require('./services/unifiedRunIdService');
+const runIdSystem = require('./services/runIdSystem');
 
 // --- Post Scoring Dependencies ---
 const { loadPostScoringAirtableConfig } = require('./postAttributeLoader');
@@ -68,7 +68,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
     // This ensures it's available throughout the entire function scope
     let normalizedRunId;
     try {
-        normalizedRunId = unifiedRunIdService.normalizeRunId(runId);
+        normalizedRunId = runId;
     } catch (error) {
         // Fallback to original runId if normalization fails
         normalizedRunId = runId;
@@ -275,7 +275,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         // This ensures we use the same runId throughout the system
         let normalizedRunId;
         try {
-            normalizedRunId = inputRunId ? unifiedRunIdService.normalizeRunId(inputRunId) : `post_batch_${Date.now()}`;
+            normalizedRunId = inputRunId ? inputRunId : `post_batch_${Date.now()}`;
             logger.info(`Using normalized runId: ${normalizedRunId} (original: ${inputRunId || 'not provided'})`);
         } catch (error) {
             logger.error(`Error normalizing runId: ${error.message}. Using fallback.`);
@@ -501,8 +501,8 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${processRunId}`);
             
             // Add client suffix to the normalized runId for client-specific records
-            const clientSpecificRunId = unifiedRunIdService.addClientSuffix(
-                unifiedRunIdService.stripClientSuffix(processRunId),
+            const clientSpecificRunId = runIdSystem.createClientRunId(
+                runIdSystem.getBaseRunId(processRunId),
                 client.clientId
             );
                 

@@ -360,9 +360,9 @@ router.post('/api/apify/run', async (req, res) => {
   if (opts.build) webhookParams.set('build', opts.build);
   const startUrl = `${baseUrl}/acts/${encodeURIComponent(actorId)}/runs${webhookParams.toString() ? `?${webhookParams.toString()}` : ''}`;
     
-    // Generate a standardized system run ID that will be consistent with our validation rules
-    const unifiedRunIdService = require('../services/unifiedRunIdService');
-    const systemRunId = unifiedRunIdService.generateTimestampRunId();
+    // Generate a standardized system run ID
+    const runIdSystem = require('../services/runIdSystem');
+    const systemRunId = runIdSystem.generateRunId();
     console.log(`[ApifyControl] Generated system run ID ${systemRunId} for client ${clientId}`);
 
     // Add webhook configuration for Actor runs

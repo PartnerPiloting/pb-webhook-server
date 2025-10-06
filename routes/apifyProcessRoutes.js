@@ -17,10 +17,10 @@ const {
   CLIENT_RUN_FIELDS 
 } = require('../constants/airtableUnifiedConstants');
 const runIdUtils = require('../utils/runIdUtils');
-// Updated to use unified run ID service
-const runIdService = require('../services/unifiedRunIdService');
+// Use canonical run ID system
+const runIdSystem = require('../services/runIdSystem');
 // Import run ID generator
-const { generateTimestampRunId: generateRunId } = runIdService;
+const { generateRunId } = runIdSystem;
 // SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
 const runRecordService = require('../services/runRecordAdapterSimple');
 // Import airtableService for direct access to the Master base
@@ -570,9 +570,8 @@ async function processClientHandler(req, res) {
         }
       }
 
-      // Generate a proper run ID using runIdService
-      // UPDATED: Using generateTimestampRunId directly for consistency
-      const placeholderRunId = runIdService.generateTimestampRunId(clientId);
+      // Generate a proper run ID using canonical runIdSystem
+      const placeholderRunId = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
       console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: Generated run ID: ${placeholderRunId}`);
       await base(LEADS_TABLE).update(pick.map(r => ({
         id: r.id,
@@ -672,8 +671,7 @@ async function processClientHandler(req, res) {
     
     if (isStandaloneRun) {
       // Generate a parent run ID just for tracking purposes, but don't create a record
-      // UPDATED: Using generateTimestampRunId directly for consistency
-      parentRunId = runIdService.generateTimestampRunId(clientId);
+      parentRunId = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
       console.log(`[DEBUG-RUN-ID-FLOW] Running in standalone mode (no metrics recording) with tracking ID: ${parentRunId}`);
     } else {
       console.log(`[DEBUG-RUN-ID-FLOW] Using provided parent run ID: ${parentRunId}`);
@@ -725,10 +723,6 @@ async function processClientHandler(req, res) {
     // Use the parent run ID from Smart Resume
     console.log(`[DEBUG-RUN-ID-FLOW] Parent run ID before normalization: ${parentRunId}`);
     
-    // Log the runIdService details
-    console.log(`[DEBUG-RUN-ID-FLOW] runIdService type: ${typeof runIdService}`);
-    console.log(`[DEBUG-RUN-ID-FLOW] runIdService.normalizeRunId type: ${typeof runIdService.normalizeRunId}`);
-    
     // CRITICAL FIX: STRICT RUN ID HANDLING
     // This implements a true single-source-of-truth pattern for run IDs
     // No more implicit conversions or normalizations - explicit control only
@@ -757,7 +751,7 @@ async function processClientHandler(req, res) {
       // Only if we have no other source, generate a new ID
       // This should be rare as most calls should have a runId from upstream
       console.log(`[DEBUG-RUN-ID-FLOW] ⚠️ WARNING: No run ID provided, generating new one`);
-      runIdToUse = runIdService.generateTimestampRunId(clientId);
+      runIdToUse = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
       console.log(`[DEBUG-RUN-ID-FLOW] ✅ Generated new run ID: ${runIdToUse}`);
     }
     
@@ -945,7 +939,7 @@ async function processClientHandler(req, res) {
           try {
             console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching for similar run IDs...`);
             const clientBase = await getClientBase(clientId);
-            const baseRunId = runIdService.stripClientSuffix(runIdToUse);
+            const baseRunId = runIdSystem.getBaseRunId(runIdToUse);
             const partialRunId = baseRunId.split('-')[0]; // Just the date part
             
             console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching with partialRunId=${partialRunId}`);
@@ -1154,8 +1148,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
   try {
     // Use the parentRunId if provided, otherwise generate a new master run ID
     // This maintains the connection with the parent process that initiated this batch
-    // UPDATED: Using generateTimestampRunId directly for consistency
-    const masterRunId = parentRunId || runIdService.generateTimestampRunId('batch-all-clients');
+    const masterRunId = parentRunId || runIdSystem.createClientRunId(runIdSystem.generateRunId(), 'batch-all-clients');
     console.log(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
     
     // Changed from const to let to prevent "Assignment to constant variable" errors
