@@ -141,6 +141,17 @@ function getDefaultBase() {
     return airtableBaseInstance;
 }
 
+/**
+ * Get the Master Clients base instance
+ * @returns {Object} Airtable base instance for Master Clients base
+ */
+function getMasterClientsBase() {
+    if (!process.env.MASTER_CLIENTS_BASE_ID) {
+        throw new Error("MASTER_CLIENTS_BASE_ID environment variable is not set");
+    }
+    return createBaseInstance(process.env.MASTER_CLIENTS_BASE_ID);
+}
+
 // Export the initialized base instance (UNCHANGED - maintains backward compatibility)
 module.exports = airtableBaseInstance;
 
@@ -149,3 +160,4 @@ module.exports.createBaseInstance = createBaseInstance;
 module.exports.getClientBase = getClientBase;
 module.exports.clearBaseCache = clearBaseCache;
 module.exports.getDefaultBase = getDefaultBase;
+module.exports.getMasterClientsBase = getMasterClientsBase;

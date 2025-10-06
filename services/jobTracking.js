@@ -17,7 +17,7 @@ const { validateString, validateRequiredParams } = require('../utils/simpleValid
 const { FIELD_NAMES, createValidatedObject } = require('../utils/airtableFieldValidator');
 
 // Database access
-const baseManager = require('./airtable/baseManager');
+const airtableClient = require('../config/airtableClient');
 const runIdSystem = require('./runIdSystem');
 
 // Import constants - using standardized names only
@@ -242,7 +242,7 @@ class JobTracking {
       log.debug(`[${source}] Creating job with standardized run ID: ${standardRunId}`);
       
       // Get the master base
-      const masterBase = baseManager.getMasterClientsBase();
+      const masterBase = airtableClient.getMasterClientsBase();
       
       // Only check for the standardized run ID to prevent duplicates
       const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
@@ -350,7 +350,7 @@ class JobTracking {
       log.debug(`Updating job with standardized run ID: ${standardRunId}`);
       
       // Get the master base
-      const masterBase = baseManager.getMasterClientsBase();
+      const masterBase = airtableClient.getMasterClientsBase();
       
       // Only check for the standardized run ID
       const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
@@ -496,7 +496,7 @@ class JobTracking {
       log.debug(`Using standardized client run ID: ${clientRunId}`);
       
       // Get the master base
-      const masterBase = baseManager.getMasterClientsBase();
+      const masterBase = airtableClient.getMasterClientsBase();
       
       // Only check for the standardized client run ID
       const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
@@ -626,7 +626,7 @@ class JobTracking {
       log.debug(`Updating client run with standardized ID: ${clientRunId}`);
       
       // Get the master base
-      const masterBase = baseManager.getMasterClientsBase();
+      const masterBase = airtableClient.getMasterClientsBase();
       
       // Only check for the standardized client run ID using constants
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
@@ -821,7 +821,7 @@ class JobTracking {
         throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
       }
       
-      const masterBase = baseManager.getMasterClientsBase();
+      const masterBase = airtableClient.getMasterClientsBase();
       
       // Use only the standardized run ID with constant for field name
       const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
@@ -928,7 +928,7 @@ class JobTracking {
         return null;
       }
       
-      const masterBase = baseManager.getMasterClientsBase();
+      const masterBase = airtableClient.getMasterClientsBase();
       
       // Only check for the standardized client run ID using constants
       const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
@@ -1100,7 +1100,7 @@ class JobTracking {
       }
       
       // Get the master base
-      const masterBase = baseManager.getMasterClientsBase();
+      const masterBase = airtableClient.getMasterClientsBase();
       
       // Only check for the standardized client run ID
       const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
