@@ -20,8 +20,8 @@ const runIdService = require('../services/unifiedRunIdService');
 const { generateTimestampRunId: generateRunId } = runIdService;
 // SIMPLIFIED: Use the adapter that enforces the Simple Creation Point pattern
 const runRecordService = require('../services/runRecordAdapterSimple');
-// Import airtableServiceSimple for direct access to the Master base
-const airtableServiceSimple = require('../services/airtableServiceSimple');
+// Import airtableService for direct access to the Master base
+const airtableService = require('../services/airtableService');
 
 // Check if we're in batch process testing mode
 const TESTING_MODE = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
@@ -848,7 +848,7 @@ async function processClientHandler(req, res) {
           console.log(`[DEBUG-RUN-ID-FLOW] Run record exists for ${runIdToUse}, fetching details`);
           
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
-          let masterBase = airtableServiceSimple.initialize(); // Get the Master base
+          let masterBase = airtableService.initialize(); // Get the Master base
           console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for Client Run Results table query`);
           
           // ROOT CAUSE FIX: Client Run Results records use client-suffixed Run IDs
@@ -948,7 +948,7 @@ async function processClientHandler(req, res) {
             console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching with partialRunId=${partialRunId}`);
             
             // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
-            let masterBase = airtableServiceSimple.initialize(); // Get the Master base
+            let masterBase = airtableService.initialize(); // Get the Master base
             console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for recovery search`);
             
             let similarRecords = await masterBase('Client Run Results').select({

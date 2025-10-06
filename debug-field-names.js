@@ -5,7 +5,7 @@
 require('dotenv').config();
 const { getClientBase } = require('./config/airtableClient');
 const clientService = require('./services/clientService');
-const airtableServiceSimple = require('./services/airtableServiceSimple');
+const airtableService = require('./services/airtableService');
 
 // Table constants - these are what the code expects
 const EXPECTED = {
@@ -13,11 +13,11 @@ const EXPECTED = {
   RUN_ID_FIELD: 'Run ID'
 };
 
-// Check what's actually in airtableServiceSimple.js
+// Check what's actually in airtableService.js
 console.log('\n===== CONFIGURED TABLE/FIELD NAMES =====');
-console.log(`airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE = ${airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE}`);
+console.log(`airtableService.CLIENT_RUN_RESULTS_TABLE = ${airtableService.CLIENT_RUN_RESULTS_TABLE}`);
 console.log(`Expected: ${EXPECTED.CLIENT_RUN_RESULTS_TABLE}`);
-console.log(`Match: ${airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE === EXPECTED.CLIENT_RUN_RESULTS_TABLE ? '✅ YES' : '❌ NO'}`);
+console.log(`Match: ${airtableService.CLIENT_RUN_RESULTS_TABLE === EXPECTED.CLIENT_RUN_RESULTS_TABLE ? '✅ YES' : '❌ NO'}`);
 
 // Main function
 async function checkFieldNames(clientId) {

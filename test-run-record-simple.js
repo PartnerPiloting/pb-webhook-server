@@ -2,7 +2,7 @@
 // Test script for the simplified run record service
 
 require('dotenv').config();
-const airtableServiceSimple = require('./services/airtableServiceSimple');
+const airtableService = require('./services/airtableService');
 const runRecordAdapterSimple = require('./services/runRecordAdapterSimple');
 const { generateRunId } = require('./utils/runIdGenerator');
 const clientService = require('./services/clientService');

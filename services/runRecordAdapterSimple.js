@@ -19,7 +19,7 @@ const creationAttempts = new Map();
 // Set a TTL for creation attempt records to prevent memory leaks
 const CREATION_ATTEMPT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-const airtableServiceSimple = require('./airtableServiceSimple');
+const airtableService = require('./airtableService');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 // CIRCULAR DEPENDENCY FIX: Import airtableClient once at module level
@@ -195,7 +195,7 @@ async function createRunRecord(params) {
     logger.debug(`[RunRecordAdapterSimple] No existing client run record found, creating new: ${standardRunId}, ${validatedClientId}`);
     
     // Direct call to the simple service - only creates if doesn't exist
-    return await airtableServiceSimple.createClientRunRecord(standardRunId, validatedClientId, providedClientName);
+    return await airtableService.createClientRunRecord(standardRunId, validatedClientId, providedClientName);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error creating run record: ${error.message}`);
     throw error;
@@ -285,7 +285,7 @@ async function updateRunRecord(params) {
     }
     
     // Direct call to the simple service - will only be called if record exists
-    return await airtableServiceSimple.updateClientRun(standardRunId, validatedClientId, updates);
+    return await airtableService.updateClientRun(standardRunId, validatedClientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error updating run record: ${error.message}`);
     throw error;
@@ -461,7 +461,7 @@ async function completeRunRecord(params) {
     };
     
     // Direct call to the simple service using standardized field names
-    return await airtableServiceSimple.completeClientRun(standardRunId, validatedClientId, updateData);
+    return await airtableService.completeClientRun(standardRunId, validatedClientId, updateData);
   } catch (error) {
     logger.error(`[${source}] Error completing run record: ${error.message}`);
     throw error;
@@ -571,7 +571,7 @@ async function createJobRecord(params) {
     logger.debug(`[RunRecordAdapterSimple] No existing job record found, creating new with ID: ${baseRunId}`);
     
     // Direct call to the simple service - only creates if doesn't exist
-    const newRecord = await airtableServiceSimple.createJobTrackingRecord(baseRunId, stream);
+    const newRecord = await airtableService.createJobTrackingRecord(baseRunId, stream);
     
     // CRITICAL FIX: Validate successful creation
     if (!newRecord || !newRecord.id) {
@@ -659,7 +659,7 @@ async function completeJobRecord(params) {
     
     // CRITICAL: Check if job record exists first
     const masterBase = airtableClient.getMasterBase();
-    const existingRecords = await masterBase(airtableServiceSimple.JOB_TRACKING_TABLE).select({
+    const existingRecords = await masterBase(airtableService.JOB_TRACKING_TABLE).select({
       filterByFormula: `{Run ID} = '${baseRunId}'`,
       maxRecords: 1
     }).firstPage();
@@ -673,7 +673,7 @@ async function completeJobRecord(params) {
     logger.debug(`[RunRecordAdapterSimple] Found job record, completing with ID: ${baseRunId}`);
     
     // Direct call to the simple service - only updates if exists
-    return await airtableServiceSimple.completeJobRun(baseRunId, success, notes);
+    return await airtableService.completeJobRun(baseRunId, success, notes);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error completing job record: ${error.message}`);
     throw error;
@@ -725,7 +725,7 @@ async function updateJobAggregates(params) {
     logger.debug(`[RunRecordAdapterSimple] Updating aggregate metrics for job: ${baseRunId}`);
     
     // Direct call to the simple service
-    return await airtableServiceSimple.updateAggregateMetrics(baseRunId);
+    return await airtableService.updateAggregateMetrics(baseRunId);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Error updating job aggregates: ${error.message}`);
     throw error;
@@ -788,7 +788,7 @@ async function updateClientMetrics(params) {
     }
     
     // Use airtableServiceSimple to update the record
-    return await airtableServiceSimple.updateClientRun(standardRunId, clientId, updates);
+    return await airtableService.updateClientRun(standardRunId, clientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Failed to update metrics: ${error.message}`);
     throw error;
@@ -919,7 +919,7 @@ async function completeClientProcessing(params) {
         }
         
         // Update with filtered updates
-        return await airtableServiceSimple.updateClientRun(standardRunId, clientId, filteredUpdates);
+        return await airtableService.updateClientRun(standardRunId, clientId, filteredUpdates);
       }
     } catch (checkError) {
       logger.warn(`Error checking process completion: ${checkError.message}. Proceeding with completion.`);
@@ -975,7 +975,7 @@ async function completeClientProcessing(params) {
     }
     
     // Use airtableServiceSimple to update the record
-    return await airtableServiceSimple.updateClientRun(standardRunId, clientId, updates);
+    return await airtableService.updateClientRun(standardRunId, clientId, updates);
   } catch (error) {
     logger.error(`[RunRecordAdapterSimple] Failed to complete client processing: ${error.message}`);
     throw error;
@@ -1055,12 +1055,12 @@ async function checkRunRecordExists(params) {
     try {
       // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
       // The "Client Run Results" table exists in the Master Clients Base, not in client bases
-      const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+      const masterBase = airtableService.initialize(); // Get the Master base
       
       // Query the master table
       logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId} in master base`);
       
-      const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+      const records = await masterBase(airtableService.CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: `{Run ID} = '${runId}'`,
         maxRecords: 1
       }).firstPage();
@@ -1084,9 +1084,9 @@ async function checkRunRecordExists(params) {
       if (standardRunId !== runId) {
         // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
         // The "Client Run Results" table exists in the Master Clients Base, not in client bases
-        const masterBase = airtableServiceSimple.initialize(); // Get the Master base
+        const masterBase = airtableService.initialize(); // Get the Master base
         
-        const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+        const records = await masterBase(airtableService.CLIENT_RUN_RESULTS_TABLE).select({
           filterByFormula: `{Run ID} = '${standardRunId}'`,
           maxRecords: 1
         }).firstPage();
@@ -1109,8 +1109,8 @@ async function checkRunRecordExists(params) {
         if (datePart && datePart.length === 6) { // YYMMDD format
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
           // The "Client Run Results" table exists in the Master Clients Base, not in client bases
-          const masterBase = airtableServiceSimple.initialize(); // Get the Master base
-          const records = await masterBase(airtableServiceSimple.CLIENT_RUN_RESULTS_TABLE).select({
+          const masterBase = airtableService.initialize(); // Get the Master base
+          const records = await masterBase(airtableService.CLIENT_RUN_RESULTS_TABLE).select({
             filterByFormula: `FIND('${datePart}', {Run ID}) > 0`,
             maxRecords: 5
           }).firstPage();
