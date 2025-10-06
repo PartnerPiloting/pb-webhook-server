@@ -1171,7 +1171,7 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
       // Use job orchestration service to start job
       const jobInfo = await jobOrchestrationService.startJob({
         jobType: 'post_scoring',
-        clientId: client.clientId,
+        clientId: singleClientId || 'SYSTEM', // Fixed: use singleClientId instead of undefined 'client'
         initialData: {
           'Stream': stream, // Ensure stream is included
           'Job ID': jobId // Store the original job ID
@@ -1187,7 +1187,10 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     } catch (trackingError) {
       // Continue even if tracking record creation fails (may already exist)
       console.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
-      await logRouteError(trackingError, req).catch(() => {});
+      await logRouteError(trackingError, req, { 
+        clientId: singleClientId || 'SYSTEM',
+        operation: 'create-job-tracking-post-scoring' 
+      }).catch(() => {});
     }
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
