@@ -166,24 +166,42 @@ async function checkUnscoredPostsCount(clientId) {
         
         console.log(`🚨 UNSCORED CHECK: Successfully connected to client base for ${clientId}`);
         
+        // FIRST: Do a count using formula to get TRUE count of unscored posts
+        try {
+            console.log(`🚨 UNSCORED CHECK: PHASE 1 - Getting TRUE count of unscored posts using formula...`);
+            const allUnscoredRecords = await clientBase('Leads').select({
+                filterByFormula: "AND({Posts Content} != '', {Date Posts Scored} = BLANK())",
+                fields: ['ID'] // Only get ID to minimize data transfer
+            }).all(); // Get ALL records, not just first page
+            
+            const trueCount = allUnscoredRecords.length;
+            console.log(`🚨 UNSCORED CHECK: TRUE COUNT = ${trueCount} total unscored posts exist in database`);
+        } catch (countError) {
+            console.error(`❌ UNSCORED CHECK: Failed to get true count: ${countError.message}`);
+        }
+        
         // Try to get the view first - this is how the post scoring normally works
         try {
             // First try using the "Leads with Posts not yet scored" view
-            console.log(`🚨 UNSCORED CHECK: Attempting to use view "Leads with Posts not yet scored" for ${clientId}`);
+            console.log(`🚨 UNSCORED CHECK: PHASE 2 - Attempting to use view "Leads with Posts not yet scored" for ${clientId}`);
             const viewRecords = await clientBase('Leads').select({
                 view: 'Leads with Posts not yet scored',
                 maxRecords: 100 // Increase to get actual count up to 100
             }).firstPage();
             
             const count = viewRecords.length;
-            console.log(`🚨 UNSCORED CHECK: Found ${count} unscored posts for ${clientId} using VIEW method`);
+            console.log(`🚨 UNSCORED CHECK: VIEW returned ${count} records (maxRecords=100, so could be more)`);
             
             // If we found records, log the first few record IDs
             if (count > 0) {
-                console.log(`🚨 UNSCORED CHECK: First ${Math.min(5, count)} records with unscored posts:`);
+                console.log(`🚨 UNSCORED CHECK: First ${Math.min(5, count)} records from VIEW:`);
                 viewRecords.slice(0, 5).forEach(record => {
-                    console.log(`🚨 UNSCORED CHECK: - Record ID: ${record.id}, Name: ${record.fields['Full Name'] || 'N/A'}`);
+                    const hasPostsContent = !!record.fields['Posts Content'];
+                    const hasDateScored = !!record.fields['Date Posts Scored'];
+                    console.log(`🚨 UNSCORED CHECK: - ID: ${record.id}, Name: ${record.fields['Full Name'] || 'N/A'}, Has Posts: ${hasPostsContent}, Has Date Scored: ${hasDateScored}`);
                 });
+            } else {
+                console.log(`⚠️ UNSCORED CHECK: VIEW returned 0 records - this is suspicious if true count > 0!`);
             }
             
             return { 
@@ -192,24 +210,28 @@ async function checkUnscoredPostsCount(clientId) {
                 source: 'view'
             };
         } catch (viewError) {
-            console.warn(`⚠️ Could not use view for ${clientId}, falling back to formula: ${viewError.message}`);
+            console.warn(`⚠️ UNSCORED CHECK: Could not use view for ${clientId}, falling back to formula: ${viewError.message}`);
             
             // Fallback - use formula to check for unscored posts
-            console.log(`🚨 UNSCORED CHECK: Falling back to formula method for ${clientId}`);
+            console.log(`🚨 UNSCORED CHECK: PHASE 3 - Falling back to formula method for ${clientId}`);
             const formulaRecords = await clientBase('Leads').select({
                 filterByFormula: "AND({Posts Content} != '', {Date Posts Scored} = BLANK())",
                 maxRecords: 100 // Increase to get actual count up to 100
             }).firstPage();
             
             const count = formulaRecords.length;
-            console.log(`🚨 UNSCORED CHECK: Found ${count} unscored posts for ${clientId} using FORMULA method`);
+            console.log(`🚨 UNSCORED CHECK: FORMULA returned ${count} records (maxRecords=100, so could be more)`);
             
             // If we found records, log the first few record IDs
             if (count > 0) {
-                console.log(`🚨 UNSCORED CHECK: First ${Math.min(5, count)} records with unscored posts (formula method):`);
+                console.log(`🚨 UNSCORED CHECK: First ${Math.min(5, count)} records from FORMULA:`);
                 formulaRecords.slice(0, 5).forEach(record => {
-                    console.log(`🚨 UNSCORED CHECK: - Record ID: ${record.id}, Name: ${record.fields['Full Name'] || 'N/A'}`);
+                    const hasPostsContent = !!record.fields['Posts Content'];
+                    const hasDateScored = !!record.fields['Date Posts Scored'];
+                    console.log(`🚨 UNSCORED CHECK: - ID: ${record.id}, Name: ${record.fields['Full Name'] || 'N/A'}, Has Posts: ${hasPostsContent}, Has Date Scored: ${hasDateScored}`);
                 });
+            } else {
+                console.log(`⚠️ UNSCORED CHECK: FORMULA returned 0 records - this is suspicious if true count > 0!`);
             }
             
             return { 
@@ -219,7 +241,8 @@ async function checkUnscoredPostsCount(clientId) {
             };
         }
     } catch (error) {
-        console.warn(`⚠️ Error checking unscored posts: ${error.message}`);
+        console.error(`❌ UNSCORED CHECK: Error checking unscored posts: ${error.message}`);
+        console.error(`❌ UNSCORED CHECK: Stack trace:`, error.stack);
         return { hasUnscoredPosts: false, count: 0, error: error.message };
     }
 }
