@@ -964,6 +964,16 @@ async function processClientHandler(req, res) {
           console.error(`[DEBUG-RUN-ID-FLOW] This indicates a process kickoff issue - run record should exist`);
           console.error(`[DEBUG-RUN-ID-FLOW] Run ID details: originalParentRunId=${parentRunId}, normalizedRunId=${runIdToUse}, clientId=${clientId}`);
           
+          // Log this critical error to Airtable for debugging without Render access
+          const notFoundError = new Error(`Client run record not found for ${runIdToUse}`);
+          await logRouteError(notFoundError, req, {
+            clientId,
+            operation: 'apify-post-harvest-metrics-update',
+            runId: runIdToUse,
+            parentRunId,
+            additionalContext: 'Record should have been created at process start'
+          }).catch(() => {});
+          
           // Try to find any records with similar run IDs
           try {
             console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching for similar run IDs...`);
