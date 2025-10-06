@@ -61,6 +61,13 @@
 - Raw strings: `'Status'` ⚠️
 - Lowercase: `status` ❌
 - CamelCase: `endTime` ❌
+- Computed properties with undefined: `[APIFY_RUN_ID]` when APIFY_RUN_ID not imported ❌
+
+**Pattern Discovery (Oct 6, 2025):**
+The same field normalization bug existed across 3 distinct layers:
+1. **Service Layer:** 11 implementations (5 Job Tracking + 6 Client Run Results) - FIXED commits 1-19
+2. **Route Layer:** Apify routes using raw strings - FOUND commit 20-21, FIX PENDING
+3. **Likely More:** Other routes may have same pattern - NOT YET AUDITED
 
 **Multiple Constant Files:**
 - ✅ `constants/airtableUnifiedConstants.js` - **KEEP** (unified, most complete)
@@ -69,20 +76,29 @@
 - ❌ `constants/airtableConstants.js` - CONSOLIDATE into unified
 - ❌ `src/domain/models/constants.js` - CONSOLIDATE or DELETE
 
-**Current Fixes (feature/comprehensive-field-standardization branch):**
+**Current Fixes (feature/comprehensive-field-standardization branch - 21 commits):**
 - ✅ Added field validator with auto-normalization
 - ✅ Fixed PROFILES_SCORED constant typo
-- ✅ Removed deleted fields from Job Tracking operations
-- ✅ Normalized field names in JobTracking.updateJob
-- ⏳ Need to migrate all callers to use constants
+- ✅ Removed deleted fields from Job Tracking operations (5 services)
+- ✅ Normalized field names in Client Run Results operations (6 services)
+- ✅ Fixed Run ID format mismatch in Apify webhook query
+- ⏳ BLOCKED: Apify routes still use raw field name strings (lines 882-921, 985-988, 1018-1020)
+
+**Current Production Blocker (October 6, 2025):**
+- `routes/apifyProcessRoutes.js` uses raw strings like `'Total Posts Harvested'`
+- Causes "Unknown field name: undefined" error
+- Apify webhook data (895 posts, $17.90 costs, 5 profiles) not saving
+- **Fix planned:** See `APIFY-FIELD-STANDARDIZATION-PLAN.md` for systematic solution
 
 **Remaining Work:**
-1. Audit all Airtable update/create operations
-2. Replace raw strings with constants
-3. Add linting rule to enforce constant usage
-4. Consolidate constant files into single source of truth
+1. ✅ Audit all Airtable update/create operations (DONE - found Apify routes)
+2. ⏳ Replace raw strings with constants in routes layer (IN PROGRESS)
+3. 🔜 Add linting rule to enforce constant usage
+4. ✅ Consolidate constant files into single source of truth (DONE - airtableUnifiedConstants.js)
 
-**Estimated Effort:** 1 week (mostly done on current branch)
+**Estimated Effort:** 1 week total
+- **Completed:** 6 days (21 commits, 11 service implementations fixed)
+- **Remaining:** 1 day (Apify routes + linting rules)
 
 #### 3. Schema Drift Between Code and Database
 
@@ -732,6 +748,111 @@ _archived_legacy/
 
 **Constants (5 files):**
 ```
+✅ constants/airtableUnifiedConstants.js (KEEP - single source of truth)
+❌ constants/airtableFields.js (CONSOLIDATE)
+❌ constants/airtableFields.unified.js (CONSOLIDATE)
+❌ constants/airtableConstants.js (CONSOLIDATE)
+❌ src/domain/models/constants.js (CONSOLIDATE or DELETE)
+```
+
+---
+
+## Key Learnings from Field Standardization Work (Oct 2-6, 2025)
+
+### Bug Multiplication Pattern
+
+**Discovery:** When architectural patterns lack enforcement, bugs multiply across implementations.
+
+**Example from this sprint:**
+1. **Day 1:** Found field normalization bug in 1 service
+2. **Day 2:** Realized same bug existed in 11 total service implementations
+3. **Day 3-5:** Fixed all 11 services systematically (commits 1-19)
+4. **Day 6:** Discovered routes layer has same bug (CURRENT)
+5. **Unknown:** How many other files have this pattern?
+
+**Root Cause Analysis:**
+- No linting to enforce constant usage
+- No integration tests to catch field name errors
+- Copy-paste coding without pattern enforcement
+- Each developer implements their own version
+
+**Cost:**
+- 1 bug became 11+ bugs requiring 11+ separate fixes
+- Each fix required 3-5 file changes (service + tests + constants)
+- 21 commits to fix what should have been prevented
+- 6 days of debugging vs minutes if caught by linting
+
+### The Three-Strike Pattern
+
+**Observation:** Same business logic error appeared in 3 consecutive execution attempts.
+
+**Timeline:**
+1. **Strike 1 (Commit 17-19):** Field normalization missing in Client Run Results updates
+   - Symptom: "Unknown field name: endTime"
+   - Fix: Added createValidatedObject() to 6 services
+   - Deploy → Test → ❌ NEXT ERROR
+
+2. **Strike 2 (Commit 20-21):** Run ID format mismatch
+   - Symptom: checkRunRecordExists returns TRUE but SELECT returns ZERO
+   - Fix: Build client-suffixed Run ID before query
+   - Deploy → Test → ❌ NEXT ERROR
+
+3. **Strike 3 (CURRENT):** Field constant not imported properly
+   - Symptom: "Unknown field name: undefined"
+   - Root Cause: Routes use raw field strings, APIFY_RUN_ID imported but not from CLIENT_RUN_FIELDS
+   - Fix: Systematic field constant replacement (APIFY-FIELD-STANDARDIZATION-PLAN.md)
+
+**Why This Happened:**
+- Each fix revealed the next layer of the same pattern
+- Services were fixed, but routes layer not audited
+- Incremental fixes (Path A) instead of systematic audit (Path B)
+- Testing only revealed errors at execution time, not compile time
+
+**Prevention Strategy:**
+1. ✅ When finding a pattern bug, audit ALL similar code (not just the failing path)
+2. ✅ Choose systematic fixes (Path B) over incremental debugging (Path A)
+3. 🔜 Add static analysis to catch these before runtime
+4. 🔜 Integration tests to verify field operations
+
+### Service Layer Proliferation
+
+**Count:** Found 11 separate implementations of similar functionality.
+
+**Evidence:**
+- 5 Job Tracking service implementations
+- 6 Client Run Results service implementations
+- Each had to be fixed individually
+- Some had same bug, some didn't (inconsistent)
+
+**Impact on Development Velocity:**
+- Simple field name change = 11 files to update
+- Easy to miss one and create inconsistency
+- New developers don't know which service to use
+- Bug fixes take 5-10x longer than they should
+
+**Recommended Solution:** See "Multiple Competing Service Layers" section above.
+
+### Documentation Value
+
+**What Worked:**
+- ✅ BUSINESS-LOGIC-ERRORS-FOUND.md - Clear list of issues from screenshot
+- ✅ CLIENT-RUN-RESULTS-FIXES-COMPLETE.md - Summary of all fixes
+- ✅ APIFY-FIELD-STANDARDIZATION-PLAN.md - Detailed plan for next sprint
+- ✅ TECHNICAL-DEBT-CLEANUP-PLAN.md - Strategic overview (this file)
+
+**Why It Worked:**
+- Created DURING debugging, not after
+- Captured context while fresh
+- Detailed enough for handoff to new chat/developer
+- Shows decision-making rationale (Path A vs Path B)
+
+**Time Investment:**
+- ~30 minutes total documentation time
+- Saved ~2-3 hours in context switching and re-discovery
+- Enables clean handoff for new work session
+
+**Lesson:** Documentation during debugging is a force multiplier for distributed work.
+
 ✅ constants/airtableUnifiedConstants.js (KEEP - primary)
 ❌ constants/airtableFields.js (CONSOLIDATE)
 ❌ constants/airtableFields.unified.js (CONSOLIDATE)
