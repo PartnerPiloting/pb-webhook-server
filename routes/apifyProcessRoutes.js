@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { logCriticalError } = require('../utils/errorLogger');
 const Airtable = require('airtable');
 const { getClientBase, createBaseInstance } = require('../config/airtableClient');
 const clientService = require('../services/clientService');
@@ -1048,6 +1049,7 @@ async function processClientHandler(req, res) {
   } catch (e) {
     let endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
     console.error(`[${endpoint}/process-client] error:`, e.message);
+    await logCriticalError(error, req).catch(() => {});
     
     // Check if response object exists (will be null in fire-and-forget mode)
     if (res) {
@@ -1103,6 +1105,7 @@ router.post('/api/apify/canary', async (req, res) => {
     return res.json({ ok: true, clientId, urls: targetUrls, counts: data.counts || null, runId: data.runId || null });
   } catch (e) {
     console.error('[apify/canary] error:', e.message);
+    await logCriticalError(error, req).catch(() => {});
     return res.status(500).json({ ok: false, error: e.message });
   }
 });

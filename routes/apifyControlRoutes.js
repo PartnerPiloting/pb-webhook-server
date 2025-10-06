@@ -7,6 +7,7 @@ const express = require('express');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const router = express.Router();
+const { logCriticalError } = require('../utils/errorLogger');
 
 // Helpers reused from webhook route without re-import cycles
 const { DateTime } = require('luxon');
@@ -430,6 +431,7 @@ router.post('/api/apify/run', async (req, res) => {
     return res.json({ ok: true, mode: 'webhook', runId: run.id, systemRunId: systemRunId, status: run.status, url: run.url || run.buildUrl || null });
   } catch (e) {
     console.error('[ApifyControl] run error:', e.message);
+    await logCriticalError(error, req).catch(() => {});
     return res.status(500).json({ ok: false, error: e.message });
   }
 });

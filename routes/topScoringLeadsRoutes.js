@@ -4,6 +4,7 @@
 // - POST /api/top-scoring-leads/dev/sanity-check: admin-only field existence checks
 
 const express = require('express');
+const { logCriticalError } = require('../utils/errorLogger');
 const airtableClient = require('../config/airtableClient.js');
 
 function parseBoolFlag(val, defaultValue = false) {
@@ -800,6 +801,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       return res.json(allLeads);
     } catch (e) {
       console.error('Error in /eligible/all:', e);
+      await logCriticalError(error, req).catch(() => {});
       res.status(500).json({ error: e?.message || String(e) });
     }
   });
@@ -867,6 +869,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       return res.json(allLeads);
     } catch (e) {
       console.error('Error in /eligible/all:', e);
+      await logCriticalError(error, req).catch(() => {});
       res.status(500).json({ error: e?.message || String(e) });
     }
   });

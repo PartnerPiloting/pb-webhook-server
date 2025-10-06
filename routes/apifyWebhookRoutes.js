@@ -5,6 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { logCriticalError } = require('../utils/errorLogger');
 const { getClientBase } = require('../config/airtableClient');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');

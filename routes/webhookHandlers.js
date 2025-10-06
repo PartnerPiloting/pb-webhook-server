@@ -6,6 +6,9 @@
 const express = require('express');
 const router = express.Router();
 
+// --- Error Logging ---
+const { logCriticalError } = require('../utils/errorLogger');
+
 // --- Dependencies needed for /lh-webhook/upsertLeadOnly ---
 const { upsertLead } = require('../services/leadService.js');
 const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
@@ -246,6 +249,14 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         // FIXED: Using createLogger instead of direct StructuredLogger instantiation
         const finalLog = log || createLogger(finalClientId);
         finalLog.error(`Critical error in /lh-webhook/upsertLeadOnly: ${err.message}`, err.stack);
+        
+        // Log to Airtable Error Log
+        await logCriticalError(err, {
+            endpoint: 'POST /lh-webhook/upsertLeadOnly',
+            clientId: finalClientId,
+            webhookPayload: req.body
+        }).catch(() => {});
+        
         await alertAdmin("Critical Error in /lh-webhook/upsertLeadOnly", `Client: ${req.query.client || 'unknown'}\\nError: ${err.message}`);
         if (!res.headersSent) {
             res.status(500).json({ error: err.message });

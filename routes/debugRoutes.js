@@ -1,8 +1,9 @@
 // Test endpoint to debug JSON serialization issue
 const express = require('express');
 const router = express.Router();
+const { logCriticalError } = require('../utils/errorLogger');
 
-router.get('/debug-json', (req, res) => {
+router.get('/debug-json', async (req, res) => {
   try {
     // Create the exact same response structure as authTestRoutes.js
     const response = {
@@ -32,6 +33,7 @@ router.get('/debug-json', (req, res) => {
 
   } catch (error) {
     console.error('Debug JSON: Error', error);
+    await logCriticalError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       message: 'Debug endpoint error',

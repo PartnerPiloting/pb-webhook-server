@@ -8,6 +8,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { logCriticalError } = require('../utils/errorLogger');
 const runIdSystem = require('../services/runIdSystem');
 const JobTracking = require('../services/jobTracking');
 const { createLogger } = require('../utils/unifiedLoggerFactory');
@@ -92,6 +93,7 @@ router.post('/validate-run-id', async (req, res) => {
     }
   } catch (error) {
     console.error(`Error in validate-run-id endpoint: ${error.message}`);
+    await logCriticalError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
       error: error.message
@@ -148,6 +150,7 @@ router.get('/check-job-record/:runId', async (req, res) => {
     }
   } catch (error) {
     console.error(`Error in check-job-record endpoint: ${error.message}`);
+    await logCriticalError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
       error: error.message

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { logCriticalError } = require('../utils/errorLogger');
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { testWordPressConnection } = require('../utils/wordpressAuth');
 
@@ -21,7 +22,7 @@ const { testWordPressConnection } = require('../utils/wordpressAuth');
  * Headers: Authorization: Basic <base64(username:password)>
  */
 
-router.get('/test', authenticateUserWithTestMode, (req, res) => {
+router.get('/test', authenticateUserWithTestMode, async (req, res) => {
   try {
     console.log('Auth Test: Building response for client:', req.client.clientName);
     console.log('Auth Test: Client object:', JSON.stringify(req.client, null, 2));
@@ -54,6 +55,7 @@ router.get('/test', authenticateUserWithTestMode, (req, res) => {
 
   } catch (error) {
     console.error('Auth Test: Error', error);
+    await logCriticalError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       message: 'Test endpoint error',
@@ -78,6 +80,7 @@ router.get('/wordpress-test', async (req, res) => {
 
   } catch (error) {
     console.error('WordPress Test: Error', error);
+    await logCriticalError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       connected: false,
@@ -90,7 +93,7 @@ router.get('/wordpress-test', async (req, res) => {
 /**
  * Service level test endpoint
  */
-router.get('/service-level-test/:level', authenticateUserWithTestMode, (req, res) => {
+router.get('/service-level-test/:level', authenticateUserWithTestMode, async (req, res) => {
   try {
     const requiredLevel = parseInt(req.params.level, 10);
     const hasAccess = req.client.serviceLevel >= requiredLevel;
@@ -110,6 +113,7 @@ router.get('/service-level-test/:level', authenticateUserWithTestMode, (req, res
 
   } catch (error) {
     console.error('Service Level Test: Error', error);
+    await logCriticalError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       message: 'Service level test error',
