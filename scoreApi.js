@@ -8,7 +8,7 @@ const express = require("express");
 const { buildPrompt, slimLead } = require("./promptBuilder"); // slimLead is used by scoreLeadNow internally
 const { loadAttributes } = require("./attributeLoader");
 const { computeFinalScore } = require("./scoring");
-const { buildAttributeBreakdown } = require("./breakdown");
+const { buildAttributeBreakdown } = require("./scripts/analysis/breakdown");
 const { scoreLeadNow } = require("./singleScorer");
 
 const router = express.Router();

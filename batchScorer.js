@@ -51,7 +51,7 @@ let BATCH_SCORER_AIRTABLE_BASE; // Legacy support - will be dynamically set per 
 const { buildPrompt, slimLead } = require("./promptBuilder"); 
 const { loadAttributes } = require("./attributeLoader");
 const { computeFinalScore } = require("./scoring");
-const { buildAttributeBreakdown } = require("./breakdown");
+const { buildAttributeBreakdown } = require("./scripts/analysis/breakdown");
 const { alertAdmin, isMissingCritical } = require('./utils/appHelpers.js');
 const { costGovernanceService } = require('./services/costGovernanceService.js'); 
 
