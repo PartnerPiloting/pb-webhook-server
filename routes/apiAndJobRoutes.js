@@ -64,6 +64,7 @@ async function logRouteError(error, req, additionalContext = {}) {
     });
   } catch (loggingError) {
     console.error('Failed to log error to Airtable:', loggingError.message);
+    await logRouteError(loggingError, req).catch(() => {});
   }
 }
 
@@ -290,6 +291,7 @@ router.get("/api/initiate-pb-message", async (req, res) => {
       });
     } catch (e) {
       console.warn("Airtable status update failed:", e.message);
+      await logRouteError(e, req).catch(() => {});
     }
 
     res.json({
@@ -297,18 +299,17 @@ router.get("/api/initiate-pb-message", async (req, res) => {
       message: `Lead ${recordId} queued.`,
       enqueueResponse: enqueueData,
     });
-  } catch (e) {
-    console.error("initiate-pb-message:", e);
-    await alertAdmin(
-      "Error /api/initiate-pb-message",
-      `ID:${recordId}\n${e.message}`
-    );
-    if (!res.headersSent)
-      res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// ---------------------------------------------------------------
+  } catch (e) {
+    console.error("initiate-pb-message:", e);
+    await logRouteError(e, req, { operation: 'initiate-pb-message', recordId }).catch(() => {});
+    await alertAdmin(
+      "Error /api/initiate-pb-message",
+      `ID:${recordId}\n${e.message}`
+    );
+    if (!res.headersSent)
+      res.status(500).json({ success: false, error: e.message });
+  }
+});// ---------------------------------------------------------------
 // Manual PB Posts Sync
 // ---------------------------------------------------------------
 router.all("/api/sync-pb-posts", async (_req, res) => {
@@ -361,12 +362,14 @@ router.post("/api/pb-webhook", async (req, res) => {
             postsInputArray = JSON.parse(cleanedString);
           } catch (parseError) {
             console.error("PB Webhook: Error parsing resultObject string with JSON.parse:", parseError);
+            await logRouteError(parseError, req).catch(() => {});
             // Fallback: try dirty-json
             try {
               postsInputArray = dirtyJSON.parse(rawResultObject);
               console.log("PB Webhook: dirty-json successfully parsed resultObject string.");
             } catch (dirtyErr) {
               console.error("PB Webhook: dirty-json also failed to parse resultObject string:", dirtyErr);
+              await logRouteError(dirtyErr, req).catch(() => {});
               return;
             }
           }
@@ -405,6 +408,7 @@ router.post("/api/pb-webhook", async (req, res) => {
           console.log("PB Webhook: No valid posts to sync after filtering.");
         }      } catch (backgroundErr) {
         console.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
+        await logRouteError(backgroundErr, req).catch(() => {});
       }
     })();
 
@@ -540,11 +544,13 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
     try {
       runId = runIdSystem.generateRunId();
       console.error(`Failed to generate run ID: ${err.message}. Generated new runId: ${runId}`);
+      await logRouteError(err, req).catch(() => {});
     } catch (innerError) {
       // Ultimate fallback if unified service is completely unavailable
       // This should rarely happen as the unified service has its own fallbacks
       runId = new Date().toISOString().replace(/[-:T.Z]/g, '');
       console.error(`Critical error generating run ID: ${innerError.message}. Using emergency timestamp: ${runId}`);
+      await logRouteError(innerError, req).catch(() => {});
     }
   }
 
@@ -616,6 +622,7 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
           console.log(`[lead-scoring-background] Client ${client.clientId} timeout (${MAX_CLIENT_PROCESSING_MINUTES}m), skipping`);
         } else {
           console.error(`[lead-scoring-background] Client ${client.clientId} error:`, error.message);
+          await logRouteError(error, req).catch(() => {});
         }
       }
 
@@ -641,6 +648,7 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
 
   } catch (error) {
     console.error(`[lead-scoring-background] Job ${jobId} failed:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     await setJobStatus(null, 'lead_scoring', 'FAILED', jobId, {
       lastRunDate: new Date().toISOString(),
       lastRunTime: formatDuration(Date.now() - jobStartTime),
@@ -694,6 +702,7 @@ async function processClientForLeadScoring(clientId, limit, aiDependencies, runI
     return result;
   } catch (error) {
     console.error(`[processClientForLeadScoring] Error processing client ${clientId}:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -994,6 +1003,7 @@ router.post("/run-post-batch-score", async (req, res) => {
         }
       } catch (e) {
         console.warn('Client name resolution failed:', e.message);
+        await logRouteError(e, req).catch(() => {});
       }
     }
     console.log(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, tableOverride=${tableOverride || 'DEFAULT'}, markSkips=${markSkips}`);
@@ -1017,6 +1027,7 @@ router.post("/run-post-batch-score", async (req, res) => {
       console.log(`Created job tracking record with ID ${runId}`);
     } catch (err) {
       console.error(`Failed to create job tracking record: ${err.message}`);
+      await logRouteError(err, req).catch(() => {});
       // Continue anyway as we want the job to run
     }
     
@@ -1082,6 +1093,7 @@ router.post("/run-post-batch-score", async (req, res) => {
     });
   } catch (error) {
     console.error("Multi-tenant post scoring error:", error.message, error.stack);
+    await logRouteError(error, req).catch(() => {});
     let errorMessage = "Multi-tenant post scoring failed";
     if (error.message) {
       errorMessage += ` Details: ${error.message}`;
@@ -1163,6 +1175,7 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     } catch (trackingError) {
       // Continue even if tracking record creation fails (may already exist)
       console.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
+      await logRouteError(trackingError, req).catch(() => {});
     }
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
@@ -1352,6 +1365,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
         });
         
         console.error(`❌ ${client.clientName} ${isTimeout ? 'TIMEOUT' : 'FAILED'}: ${error.message}`);
+        await logRouteError(error, req).catch(() => {});
         totalFailed++;
       }
     }
@@ -1363,6 +1377,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
 
   } catch (error) {
     console.error(`❌ Fatal error in background post scoring ${jobId}:`, error.message);
+    await logRouteError(error, req).catch(() => {});
   }
 }
 
@@ -1750,6 +1765,7 @@ async function getCurrentTokenUsage(clientId) {
     
   } catch (error) {
     console.error("Error calculating token usage:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -1791,6 +1807,7 @@ async function validateTokenBudget(attributeId, updatedData, clientId) {
     
   } catch (error) {
     console.error("Error validating token budget:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -1878,6 +1895,7 @@ async function getCurrentPostTokenUsage(clientId) {
     
   } catch (error) {
     console.error("Error calculating post token usage:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -1921,6 +1939,7 @@ async function validatePostTokenBudget(attributeId, updatedData, clientId) {
     
   } catch (error) {
     console.error("Error validating post token budget:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -2342,6 +2361,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
       aiResponse = JSON.parse(responseText);
     } catch (parseError) {
       console.error("apiAndJobRoutes.js: AI response parsing error:", parseError.message);
+      await logRouteError(parseError, req).catch(() => {});
       console.error("apiAndJobRoutes.js: Raw AI response:", responseText);
       throw new Error(`AI returned invalid JSON: ${responseText.substring(0, 200)}...`);
     }
@@ -2419,6 +2439,7 @@ router.post("/api/attributes/:id/save", async (req, res) => {
         
       } catch (budgetError) {
         console.error(`apiAndJobRoutes.js: Token budget check failed for ${attributeId}:`, budgetError.message);
+        await logRouteError(budgetError, req).catch(() => {});
         // Don't block save if budget check fails - just log warning
       }
     }
@@ -4006,6 +4027,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
   } catch (error) {
     console.error("Comprehensive audit error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     auditResults.overallStatus = "ERROR";
     auditResults.error = error.message;
     auditResults.duration = Date.now() - startTime;
@@ -4173,6 +4195,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
           }
         } catch (fixError) {
           console.warn(`⚠️  Automated fix failed for ${test.test}: ${fixError.message}`);
+          await logRouteError(fixError, req).catch(() => {});
           issue.automated_fix.error = fixError.message;
         }
       }
@@ -4570,6 +4593,7 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     currentSmartResumeJobId = null;
     
     console.error("❌ Smart resume startup error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: 'Failed to start smart resume processing',
@@ -4641,6 +4665,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
             smartResumeModule = require(scriptPath);
         } catch (loadError) {
             console.error(`❌ [${jobId}] Failed to load smart resume module:`, loadError);
+            await logRouteError(loadError, req).catch(() => {});
             throw new Error(`Module loading failed: ${loadError.message}`);
         }
         
@@ -4687,6 +4712,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         
     } catch (moduleError) {
         console.error(`🚨 [${jobId}] MODULE EXECUTION FAILED - ERROR DETAILS:`);
+        await logRouteError(moduleError, req).catch(() => {});
         console.error(`🚨 Error message: ${moduleError.message}`);
         console.error(`🚨 Stack trace: ${moduleError.stack}`);
         throw moduleError;
@@ -4721,6 +4747,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         });
       } catch (emailError) {
         console.error(`❌ [${jobId}] Failed to send error email:`, emailError.message);
+        await logRouteError(emailError, req).catch(() => {});
       }
     }
   } finally {
@@ -4823,6 +4850,7 @@ async function sendSmartResumeReport(jobId, success, details) {
       emailService = require('../services/emailReportingService');
     } catch (loadError) {
       console.error(`📧 [${jobId}] Could not load email service:`, loadError.message);
+      await logRouteError(loadError, req).catch(() => {});
       return { sent: false, reason: 'Email service not available' };
     }
     
@@ -4844,6 +4872,7 @@ async function sendSmartResumeReport(jobId, success, details) {
     
   } catch (emailError) {
     console.error(`📧 [${jobId}] Failed to send email report:`, emailError);
+    await logRouteError(emailError, req).catch(() => {});
     return { sent: false, error: emailError.message };
   }
 }
@@ -4923,6 +4952,7 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
     smartResumeLockTime = null;
     
     console.error("❌ Error in GET smart-resume processing:", error);
+    await logRouteError(error, req).catch(() => {});
     return res.status(500).json({
       success: false, 
       error: `Error in smart resume GET handler: ${error.message}`
