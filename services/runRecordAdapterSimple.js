@@ -316,7 +316,7 @@ async function completeRunRecord(params) {
   }
   
   // DEBUG: Log params structure to diagnose undefined issues
-  logger.debug(`[${source}] Received params with keys: ${Object.keys(params).map(k => k === undefined ? 'UNDEFINED' : `"${k}"`).join(', ')}`);
+  console.log(`[${source}] Received params with keys: ${Object.keys(params).map(k => k === undefined ? 'UNDEFINED' : `"${k}"`).join(', ')}`);
   
   // Extract values using standardized field names
   const runId = params.runId;
@@ -326,7 +326,7 @@ async function completeRunRecord(params) {
   const status = params[statusKey] || params.status || params.Status;
   
   // DEBUG: Log what status value we extracted
-  logger.debug(`[${source}] Extracted status: ${status} (type: ${typeof status}), statusKey used: ${statusKey}`);
+  console.log(`[${source}] Extracted status: ${status} (type: ${typeof status}), statusKey used: ${statusKey}`);
   const notesKey = FIELD_NAMES?.SYSTEM_NOTES || 'System Notes';
   const notes = params[notesKey] || params.systemNotes || params.notes || '';
   const options = params.options || {};
@@ -342,6 +342,7 @@ async function completeRunRecord(params) {
     throw new Error(errorMsg);
   }
   
+  // Initialize logger AFTER we have validated runId and clientId
   const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
   // Use our own source value if options.source is not provided
   const sourceContext = options.source || source;
