@@ -771,9 +771,9 @@ async function processClientHandler(req, res) {
       runIdToUse = req.body.runId;
       console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using run ID from body: ${runIdToUse}`);
     } else if (parentRunId) {
-      // Use parent run ID directly without normalization
-      runIdToUse = parentRunId;
-      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using parent run ID directly: ${runIdToUse}`);
+      // Parent run ID is the base ID - need to add client suffix for client-specific record
+      runIdToUse = runIdSystem.createClientRunId(parentRunId, clientId);
+      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using parent run ID with client suffix: ${runIdToUse} (from parentRunId: ${parentRunId})`);
     } else {
       // Only if we have no other source, generate a new ID
       // This should be rare as most calls should have a runId from upstream
