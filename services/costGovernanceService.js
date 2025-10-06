@@ -92,11 +92,13 @@ class CostGovernanceService {
                 }
             } catch (settingsError) {
                 console.log(`costGovernanceService: No Client Settings table for ${clientId}, using defaults`);
+    logCriticalError(settingsError, { operation: 'unknown', isSearch: true }).catch(() => {});
             }
 
             return DEFAULT_BUDGETS;
         } catch (error) {
             console.error(`costGovernanceService: Error loading budgets for ${clientId}:`, error.message);
+    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
             return DEFAULT_BUDGETS;
         }
     }
@@ -150,6 +152,7 @@ class CostGovernanceService {
                 }
             } catch (usageError) {
                 console.log(`costGovernanceService: No Usage Tracking table for ${clientId}`);
+    logCriticalError(usageError, { operation: 'unknown', isSearch: true }).catch(() => {});
             }
 
             const usage = { dailyTokens, monthlyTokens, dailyCost, monthlyCost };
@@ -163,6 +166,7 @@ class CostGovernanceService {
             return usage;
         } catch (error) {
             console.error(`costGovernanceService: Error loading usage for ${clientId}:`, error.message);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
             return { dailyTokens: 0, monthlyTokens: 0, dailyCost: 0, monthlyCost: 0 };
         }
     }
@@ -312,10 +316,12 @@ class CostGovernanceService {
 
             } catch (trackingError) {
                 console.warn(`costGovernanceService: Could not record usage for ${clientId}:`, trackingError.message);
+    logCriticalError(trackingError, { operation: 'unknown' }).catch(() => {});
             }
 
         } catch (error) {
             console.error(`costGovernanceService: Error recording usage for ${clientId}:`, error.message);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         }
     }
 

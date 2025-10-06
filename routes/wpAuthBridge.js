@@ -137,6 +137,7 @@ router.get('/check-wp-auth', async (req, res) => {
     console.error('WP Auth Bridge: Error during authentication:', error.message);
     
     if (error.response?.status === 401) {
+    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
       return res.status(401).json({
         status: 'error',
         code: 'NOT_LOGGED_IN',

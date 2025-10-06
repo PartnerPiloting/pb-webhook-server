@@ -56,6 +56,7 @@ function normalizeLinkedInUrl(url) {
 }
 
 function extractLinkedInPublicId(url) {
+    logCriticalError(_, { operation: 'unknown' }).catch(() => {});
   try {
     if (typeof url !== 'string') return null;
     const match = url.match(/linkedin\.com\/in\/([^\/?#]+)/i);
@@ -67,6 +68,7 @@ function extractLinkedInPublicId(url) {
 
 // Build a canonical profile URL from a LinkedIn public identifier
 function buildCanonicalProfileUrl(publicId) {
+    logCriticalError(_, { operation: 'unknown' }).catch(() => {});
   if (!publicId || typeof publicId !== 'string') return null;
   const clean = publicId.replace(/\/$/, '');
   return `https://www.linkedin.com/in/${clean}`;

@@ -61,6 +61,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             }
         } catch (clientError) {
             log.error(`Error validating client ${clientId}: ${clientError.message}`);
+    await logCriticalError(clientError, { operation: 'lh_webhook_upsertLeadOnly', isSearch: true, clientId: clientId }).catch(() => {});
             return res.status(401).json({ 
                 error: "Failed to validate client. Please check your client parameter." 
             });
@@ -88,6 +89,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             }
         } catch (baseError) {
             log.error(`Error getting Airtable base for client ${clientId}: ${baseError.message}`);
+    logCriticalError(baseError, { operation: 'unknown' }).catch(() => {});
             return res.status(503).json({ 
                 error: "Service temporarily unavailable. Failed to access client's database." 
             });
@@ -107,6 +109,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     processedBody = req.body; // Keep as string if parsing fails
                 }
             } else {
+    logCriticalError(e, { operation: 'unknown' }).catch(() => {});
                 processedBody = req.body;
             }
 
@@ -121,10 +124,12 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                             log.debug(`Successfully parsed stringified JSON in field: ${key}`);
                         } catch (parseError) {
                             try {
+    logCriticalError(parseError, { operation: 'unknown' }).catch(() => {});
                                 obj[key] = dirtyJSON.parse(value);
                                 log.info(`dirty-json successfully parsed malformed JSON in field: ${key}`);
                             } catch (dirtyError) {
                                 log.warn(`Failed to parse JSON in field ${key} with both JSON.parse and dirty-json. Keeping original string.`);
+    logCriticalError(dirtyError, { operation: 'unknown' }).catch(() => {});
                             }
                         }
                     } else if (typeof value === 'object') {
@@ -146,6 +151,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
 
         const rawLeadsFromWebhook = Array.isArray(processedBody) ? processedBody : (processedBody ? [processedBody] : []);
         log.setup(`Received ${rawLeadsFromWebhook.length} leads for processing`);
+    logCriticalError(bodyProcessingError, { operation: 'unknown' }).catch(() => {});
         
         if (rawLeadsFromWebhook.length > 0) {
             log.debug("First raw lead payload:", JSON.stringify(rawLeadsFromWebhook[0], null, 2));
@@ -237,6 +243,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             } catch (upsertError) {
                 errorCount++;
                 log.error(`Error upserting lead (Attempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}): ${upsertError.message}`, upsertError.stack);
+    logCriticalError(upsertError, { operation: 'unknown' }).catch(() => {});
                 await alertAdmin("Lead Upsert Error in /lh-webhook/upsertLeadOnly", `Client: ${clientId}\\nAttempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}\\nError: ${upsertError.message}`);
             }
         }

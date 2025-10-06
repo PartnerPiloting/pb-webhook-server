@@ -600,6 +600,7 @@ class JobTracking {
         runIdSystem.validateRunId(safeRunId);
       } catch (validationError) {
         log.error(`[${source}] Run ID validation failed: ${validationError.message}`);
+    logCriticalError(validationError, { operation: 'unknown' }).catch(() => {});
         return {
           success: false,
           error: validationError.message

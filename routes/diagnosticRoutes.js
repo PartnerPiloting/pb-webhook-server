@@ -84,6 +84,7 @@ router.post('/validate-run-id', async (req, res) => {
       });
     } catch (validationError) {
       return res.status(400).json({
+    await logCriticalError(validationError, { operation: 'validate_run_id' }).catch(() => {});
         success: false,
         error: validationError.message,
         originalRunId: runId,

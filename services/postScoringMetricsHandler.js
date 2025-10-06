@@ -85,6 +85,7 @@ async function updatePostScoringMetrics(params) {
     });
   } catch (error) {
     logger.error(`[PostScoringMetricsHandler] Error updating post scoring metrics: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
     return { 
       success: false, 
       error: error.message,
