@@ -694,7 +694,6 @@ async function processClientHandler(req, res) {
     const airtableService = require('../services/airtableService');
     
     // SIMPLIFIED: We use the parent run ID if provided, otherwise we're in standalone mode and skip metrics
-    console.log(`[DEBUG-RUN-ID-FLOW] Starting run ID check. parentRunId=${parentRunId}, clientId=${clientId}, req.body.parentRunId=${req.body.parentRunId}, req.query.parentRunId=${req.query.parentRunId}`);
     
     // Determine if this is a standalone run (no parent run ID)
     const isStandaloneRun = !parentRunId;
@@ -702,13 +701,10 @@ async function processClientHandler(req, res) {
     if (isStandaloneRun) {
       // Generate a parent run ID just for tracking purposes, but don't create a record
       parentRunId = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
-      console.log(`[DEBUG-RUN-ID-FLOW] Running in standalone mode (no metrics recording) with tracking ID: ${parentRunId}`);
     } else {
-      console.log(`[DEBUG-RUN-ID-FLOW] Using provided parent run ID: ${parentRunId}`);
       
       // ARCHITECTURAL FIX: We should ONLY check for existing records, never create them in this route
       try {
-        console.log(`[DEBUG-RUN-ID-FLOW] Checking for existing run record with runId=${parentRunId}, clientId=${clientId}`);
         
         // Check if record exists first
         const recordExists = await runRecordService.checkRunRecordExists({
@@ -742,58 +738,40 @@ async function processClientHandler(req, res) {
           },
           date: new Date().toISOString()
         });
-        console.log(`[DEBUG-RUN-ID-FLOW] Successfully created new run record for ${parentRunId}`);
       } catch (createError) {
-        console.error(`[DEBUG-RUN-ID-FLOW] FAILED to create run record: ${createError.message}`);
         await logRouteError(createError, req).catch(() => {});
-        console.error(`[DEBUG-RUN-ID-FLOW] Error stack: ${createError.stack}`);
         // Continue processing even if run record creation fails
       }
     }
     
     // Use the parent run ID from Smart Resume
-    console.log(`[DEBUG-RUN-ID-FLOW] Parent run ID before normalization: ${parentRunId}`);
     
     // CRITICAL FIX: STRICT RUN ID HANDLING
     // This implements a true single-source-of-truth pattern for run IDs
     // No more implicit conversions or normalizations - explicit control only
     
-    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 STRICT RUN ID CHECK - Available sources:`);
-    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - req.specificRunId: ${req.specificRunId || 'not provided'}`);
-    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - req.query.runId: ${req.query?.runId || 'not provided'}`);
-    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - req.body.runId: ${req.body?.runId || 'not provided'}`);
-    console.log(`[DEBUG-RUN-ID-FLOW] 🔍 - parentRunId: ${parentRunId || 'not provided'}`);
     
     // Priority order for run ID sources:
     if (req.specificRunId) {
       runIdToUse = req.specificRunId;
-      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using provided specific run ID: ${runIdToUse}`);
     } else if (req.query?.runId) {
       runIdToUse = req.query.runId;
-      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using run ID from query: ${runIdToUse}`);
     } else if (req.body?.runId) {
       runIdToUse = req.body.runId;
-      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using run ID from body: ${runIdToUse}`);
     } else if (parentRunId) {
       // Parent run ID is the base ID - need to add client suffix for client-specific record
       runIdToUse = runIdSystem.createClientRunId(parentRunId, clientId);
-      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Using parent run ID with client suffix: ${runIdToUse} (from parentRunId: ${parentRunId})`);
     } else {
       // Only if we have no other source, generate a new ID
       // This should be rare as most calls should have a runId from upstream
-      console.log(`[DEBUG-RUN-ID-FLOW] ⚠️ WARNING: No run ID provided, generating new one`);
       runIdToUse = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
-      console.log(`[DEBUG-RUN-ID-FLOW] ✅ Generated new run ID: ${runIdToUse}`);
     }
     
-    console.log(`[DEBUG-RUN-ID-FLOW] Using run ID: ${runIdToUse} (clientId: ${clientId})`);
     
     // Verify that we have a runIdToUse (from parent) - it should always be provided
     if (!runIdToUse) {
-      console.error(`[DEBUG-RUN-ID-FLOW] CRITICAL ERROR: Normalization returned null/undefined runIdToUse`);
       throw new Error('[apify/process-client] No run ID provided - this process should be called with a parent run ID');
     }
-    console.log(`[DEBUG-RUN-ID-FLOW] Using parent run record: ${runIdToUse} for client ${clientId}`);
     
     // NOTE: We no longer create a run record here. The Smart Resume process (parent)
     // is responsible for creating the run record, and we just update it.
@@ -805,13 +783,9 @@ async function processClientHandler(req, res) {
       // Calculate estimated API costs (based on LinkedIn post queries)
       const estimatedCost = (postsToday * 0.02); // $0.02 per post as estimate - send as number, not string
       
-      console.log(`[DEBUG-RUN-ID-FLOW] METRICS UPDATE: About to update metrics for run ID ${runIdToUse}, client ${clientId}`);
-      console.log(`[DEBUG-RUN-ID-FLOW] METRICS UPDATE: Estimated cost: ${estimatedCost}, posts today: ${postsToday}`);
         
       // Get the client run record to check existing values
       try {
-        console.log(`[DEBUG-RUN-ID-FLOW] RECORD CHECK: Checking for existing client run record with ID: ${runIdToUse} for client ${clientId}`);
-        console.log(`[DEBUG-RUN-ID-FLOW] RECORD CHECK: Using filter: {Run ID} = '${runIdToUse}'`);
         
         // Check client exists before trying to get base
         const client = await clientService.getClientById(clientId);
@@ -822,13 +796,11 @@ async function processClientHandler(req, res) {
         let clientBase = await getClientBase(clientId);
         
         // Log client base details
-        console.log(`[DEBUG-RUN-ID-FLOW] CLIENT BASE: ${clientBase ? "Successfully retrieved" : "Failed to retrieve"} for ${clientId}`);
         
         // Create a proxy to intercept and properly handle any attempts to access .tables
         clientBase = new Proxy(clientBase, {
           get: function(target, prop) {
             if (prop === 'tables') {
-              console.error('[DEBUG-RUN-ID-FLOW] WARNING: Attempted to access clientBase.tables which is not a function');
               // Return a mock function that logs an error when called
               return function() {
                 throw new Error('clientBase.tables is not a function - use clientBase("TableName") instead');
@@ -843,12 +815,10 @@ async function processClientHandler(req, res) {
         try {
           // No need to check if the table exists in client base - it doesn't and shouldn't
           // The correct approach is to use the Master Clients Base which we do through runRecordService
-          console.log(`[DEBUG-RUN-ID-FLOW] Skipping Client Run Results table check in client base - using Master base instead`);
           
           // We could verify the Master base has the table, but that would be redundant
           // since runRecordService.checkRunRecordExists will handle that correctly
         } catch (tableError) {
-          console.error(`[DEBUG-RUN-ID-FLOW] TABLE CHECK ERROR: ${tableError.message}`);
           await logRouteError(tableError, req).catch(() => {});
           // Don't throw the error - we'll let the runRecordService handle this
         }
@@ -874,16 +844,13 @@ async function processClientHandler(req, res) {
         
         if (recordExists) {
           // Record exists, now fetch it to get current values
-          console.log(`[DEBUG-RUN-ID-FLOW] Run record exists for ${runIdToUse}, fetching details`);
           
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
           let masterBase = airtableService.initialize(); // Get the Master base
-          console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for Client Run Results table query`);
           
           // ROOT CAUSE FIX: Client Run Results records use client-suffixed Run IDs
           // We need to add the client suffix before querying
           const clientSpecificRunId = `${runIdToUse}-${clientId}`;
-          console.log(`[DEBUG-RUN-ID-FLOW] Query filter: {Run ID} = '${clientSpecificRunId}' (base: ${runIdToUse}, client: ${clientId})`);
           
           // Query for the run record now that we know it exists
           let runRecords = await masterBase('Client Run Results').select({
@@ -891,34 +858,22 @@ async function processClientHandler(req, res) {
             maxRecords: 1
           }).firstPage();
           
-          console.log(`[DEBUG-RUN-ID-FLOW] Query completed. Records found: ${runRecords ? runRecords.length : 0}`);
           if (runRecords && runRecords.length === 0) {
-            console.error(`[DEBUG-RUN-ID-FLOW] ❌ CRITICAL: checkRunRecordExists returned TRUE but SELECT returned ZERO records!`);
-            console.error(`[DEBUG-RUN-ID-FLOW] This indicates a Run ID mismatch between check and select`);
-            console.error(`[DEBUG-RUN-ID-FLOW] Searched for: ${clientSpecificRunId}, but record may exist with different format`);
           }
           
           if (runRecords && runRecords.length > 0) {
             // Get current values, default to 0 if not set
             const currentRecord = runRecords[0];
           
-          console.log(`[DEBUG-RUN-ID-FLOW] RECORD FOUND: ✅ Found run record with ID ${currentRecord.id} for run ID ${runIdToUse}`);
           
           // Log all available fields for debugging
           const allFields = Object.keys(currentRecord.fields).map(key => `${key}: ${currentRecord.fields[key]}`);
-          console.log(`[DEBUG-RUN-ID-FLOW] RECORD FIELDS: ${JSON.stringify(allFields, null, 2)}`);
           
           const currentPostCount = Number(currentRecord.get(CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED) || 0);
           const currentApiCosts = Number(currentRecord.get(CLIENT_RUN_FIELDS.APIFY_API_COSTS) || 0);
           const profilesSubmittedCount = Number(currentRecord.get(CLIENT_RUN_FIELDS.PROFILES_SUBMITTED) || 0);
           const currentApifyRunId = currentRecord.get(CLIENT_RUN_FIELDS.APIFY_RUN_ID);
           
-          console.log(`[DEBUG-RUN-ID-FLOW] RECORD VALUES: Found existing record for ${runIdToUse}:`);
-          console.log(`[DEBUG-RUN-ID-FLOW] - Current Posts Harvested: ${currentPostCount}`);
-          console.log(`[DEBUG-RUN-ID-FLOW] - Current API Costs: ${currentApiCosts}`);
-          console.log(`[DEBUG-RUN-ID-FLOW] - Current Profiles Submitted: ${profilesSubmittedCount}`);
-          console.log(`[DEBUG-RUN-ID-FLOW] - Current Apify Run ID: ${currentApifyRunId || '(empty)'}`);
-          console.log(`[DEBUG-RUN-ID-FLOW] - New postsToday value: ${postsToday}`);
           
           // Get the Apify Run ID if it exists in the start data
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
@@ -964,9 +919,6 @@ async function processClientHandler(req, res) {
         } else {
           // ERROR: Record not found - this should have been created at the beginning of this process
           const errorMsg = `ERROR: Client run record not found for ${runIdToUse} (${clientId})`;
-          console.error(`[DEBUG-RUN-ID-FLOW] ❌ RECORD NOT FOUND: ${errorMsg}`);
-          console.error(`[DEBUG-RUN-ID-FLOW] This indicates a process kickoff issue - run record should exist`);
-          console.error(`[DEBUG-RUN-ID-FLOW] Run ID details: originalParentRunId=${parentRunId}, normalizedRunId=${runIdToUse}, clientId=${clientId}`);
           
           // Log this critical error to Airtable for debugging without Render access
           const notFoundError = new Error(`Client run record not found for ${runIdToUse}`);
@@ -980,16 +932,13 @@ async function processClientHandler(req, res) {
           
           // Try to find any records with similar run IDs
           try {
-            console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching for similar run IDs...`);
             const clientBase = await getClientBase(clientId);
             const baseRunId = runIdSystem.getBaseRunId(runIdToUse);
             const partialRunId = baseRunId.split('-')[0]; // Just the date part
             
-            console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Searching with partialRunId=${partialRunId}`);
             
             // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
             let masterBase = airtableService.initialize(); // Get the Master base
-            console.log(`[DEBUG-RUN-ID-FLOW] Using Master base for recovery search`);
             
             let similarRecords = await masterBase('Client Run Results').select({
               filterByFormula: `AND(FIND('${partialRunId}', {Run ID}) > 0, {Client ID} = '${clientId}')`,
@@ -997,15 +946,11 @@ async function processClientHandler(req, res) {
             }).firstPage();
             
             if (similarRecords && similarRecords.length > 0) {
-              console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: Found ${similarRecords.length} similar records:`);
               similarRecords.forEach(record => {
-                console.log(`[DEBUG-RUN-ID-FLOW] - Similar Run ID: ${record.fields['Run ID']}, Record ID: ${record.id}`);
               });
             } else {
-              console.log(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT: No similar records found`);
             }
           } catch (searchError) {
-            console.error(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT FAILED: ${searchError.message}`);
             await logRouteError(searchError, req).catch(() => {});
           }
           

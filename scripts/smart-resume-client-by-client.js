@@ -288,35 +288,28 @@ async function determineClientWorkflow(client) {
         
         // Special handling for post_scoring - check if there are unscored posts regardless of last run time
         if (operation === 'post_scoring' && status.completed) {
-            console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 1: Post scoring marked as completed recently`);
             const testingMode = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
             const testingModeLimit = parseInt(process.env.POST_SCORING_TESTING_LIMIT) || 10;
             
-            console.log(`🔍�🔍 POST_SCORING_TRACE [${client.clientName}] STEP 2: Testing mode = ${testingMode}`);
             console.log(`�🚨 POST SCORING CHECK: Client ${client.clientName} (${client.clientId}) has completed post_scoring recently`);
             console.log(`🚨 POST SCORING CHECK: Last run: ${status.lastRun}, Status: ${status.status}, Testing mode = ${testingMode}`);
             
             // In testing mode, always run post scoring regardless of recent completion (with limit)
             if (testingMode) {
-                console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 3A: IN TESTING MODE - will force run`);
                 console.log(`🧪 POST SCORING TESTING MODE: FORCE RUNNING post_scoring despite recent completion (limit: ${testingModeLimit})`);
                 status.completed = false;
                 status.overrideReason = `Testing mode active - forcing execution (max ${testingModeLimit} posts)`;
                 status.testingModeLimit = testingModeLimit;
                 workflow.statusSummary[operation] = status;
-                console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 3A-RESULT: status.completed set to FALSE - will run`);
             } else {
-                console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 3B: IN PRODUCTION MODE - checking for unscored posts`);
                 // In normal mode, check for unscored posts
                 console.log(`🚨 POST SCORING CHECK: Checking for unscored posts...`);
                 const unscoredPostsStatus = await checkUnscoredPostsCount(client.clientId);
                 
-                console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 4: Unscored posts check returned:`, JSON.stringify(unscoredPostsStatus));
                 console.log(`🚨 POST SCORING DECISION: Client ${client.clientName} - Unscored posts check results:`, JSON.stringify(unscoredPostsStatus));
                 
                 // If we have unscored posts, we should run post_scoring even if it was recent
                 if (unscoredPostsStatus.hasUnscoredPosts) {
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 5A: HAS UNSCORED POSTS (${unscoredPostsStatus.count}) - will override and run`);
                     console.log(`✅ POST SCORING OVERRIDE: Found ${unscoredPostsStatus.count} unscored posts for ${client.clientName} - WILL RUN post_scoring even though last run was recent`);
                     
                     // Override the completed status and add a reason
@@ -326,11 +319,8 @@ async function determineClientWorkflow(client) {
                     
                     // Update in the workflow summary
                     workflow.statusSummary[operation] = status;
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 5A-RESULT: status.completed set to FALSE - will run`);
                 } else {
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 5B: NO UNSCORED POSTS - will skip`);
                     console.log(`🚨 POST SCORING SKIPPED: No unscored posts found for ${client.clientName} - skipping post_scoring as it ran recently`);
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${client.clientName}] STEP 5B-RESULT: status.completed remains TRUE - will skip`);
                 }
             }
         }
@@ -646,12 +636,10 @@ async function main() {
             
             for (let opIndex = 0; opIndex < workflow.operationsToRun.length; opIndex++) {
                 const operation = workflow.operationsToRun[opIndex];
-                console.log(`🔍🔍🔍 POST_SCORING_TRACE [${workflow.clientName}] STEP 6: About to trigger operation ${opIndex + 1}/${workflow.operationsToRun.length}: ${operation}`);
                 log(`   🚀 Starting operation [${opIndex + 1}/${workflow.operationsToRun.length}] ${operation}...`);
                 console.log(`🔍 [TRIGGER-DEBUG] About to trigger ${operation} for ${workflow.clientId}`);
                 
                 if (operation === 'post_scoring') {
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${workflow.clientName}] STEP 7: THIS IS POST SCORING - preparing params`);
                 }
                 
                 const operationParams = operation === 'post_scoring' 
@@ -659,7 +647,6 @@ async function main() {
                     : { stream, limit: leadScoringLimit, secret, runId: normalizedRunId };
                 
                 if (operation === 'post_scoring') {
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${workflow.clientName}] STEP 8: Post scoring params created:`, JSON.stringify(operationParams));
                 }
                 
                 console.log(`🔍 [TRIGGER-DEBUG] Operation params for ${operation}:`, JSON.stringify(operationParams));
@@ -668,14 +655,12 @@ async function main() {
                 const headers = authRequired ? authHeaders : {};
                 
                 if (operation === 'post_scoring') {
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${workflow.clientName}] STEP 9: Calling triggerOperation NOW...`);
                 }
                 
                 console.log(`🔍 [TRIGGER-DEBUG] Calling triggerOperation for ${operation}...`);
                 const result = await triggerOperation(baseUrl, workflow.clientId, operation, operationParams, headers);
                 
                 if (operation === 'post_scoring') {
-                    console.log(`🔍🔍🔍 POST_SCORING_TRACE [${workflow.clientName}] STEP 10: triggerOperation returned:`, JSON.stringify(result));
                 }
                 
                 console.log(`🔍 [TRIGGER-DEBUG] Result for ${operation}:`, JSON.stringify(result));
@@ -683,13 +668,11 @@ async function main() {
                 
                 if (result.success) {
                     if (operation === 'post_scoring') {
-                        console.log(`🔍🔍🔍 POST_SCORING_TRACE [${workflow.clientName}] STEP 11: SUCCESS - Post scoring triggered successfully!`);
                     }
                     log(`   ✅ ${operation} triggered successfully`);
                     totalJobsStarted++;
                 } else {
                     if (operation === 'post_scoring') {
-                        console.log(`🔍🔍🔍 POST_SCORING_TRACE [${workflow.clientName}] STEP 11: FAILED - Post scoring trigger failed: ${result.error}`);
                     }
                     log(`   ❌ ${operation} failed: ${result.error}`);
                 }

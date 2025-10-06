@@ -419,11 +419,6 @@ async function updateClientRunMetrics(runId, clientId, data) {
             standardizedRunId = runIdSystem.createClientRunId(runId, clientId);
         }
         
-        console.log(`[METDEBUG] updateClientRunMetrics called for ${standardizedRunId}`);
-        console.log(`[METDEBUG] - Client: ${clientId}`);
-        console.log(`[METDEBUG] - Apify Run ID: ${runId}`);
-        console.log(`[METDEBUG] - Posts Count: ${data.postsCount}`);
-        console.log(`[METDEBUG] - Profiles Count: ${data.profilesCount}`);
         
         // Calculate estimated API costs (based on LinkedIn post queries)
         const estimatedCost = data.postsCount * 0.02; // $0.02 per post as estimate
@@ -466,14 +461,9 @@ async function updateClientRunMetrics(runId, clientId, data) {
             [UNIFIED_CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: data.profilesCount
         });
         
-        console.log(`[METDEBUG] Updated client run metrics for ${clientId}:`);
-        console.log(`[METDEBUG] - ${UNIFIED_CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED}: ${data.postsCount}`);
-        console.log(`[METDEBUG] - ${UNIFIED_CLIENT_RUN_FIELDS.APIFY_RUN_ID}: ${runId}`);
-        console.log(`[METDEBUG] - Using standardized run ID: ${standardizedRunId}`);
         
         return updated;
     } catch (error) {
-        console.error(`[METDEBUG] Failed to update client run metrics: ${error.message}`);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
