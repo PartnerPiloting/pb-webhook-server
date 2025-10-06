@@ -1,67 +1,92 @@
-# Handoff Document: Apify Field Standardization
+# Handoff Document: Technical Debt Reduction & Service Layer Consolidation
 
 **Date:** October 6, 2025  
-**Current Branch:** feature/comprehensive-field-standardization (21 commits, all pushed)  
-**Next Branch:** feature/apify-field-constants (to be created)  
-**Time Estimate:** 1 hour systematic fix  
-**Priority:** HIGH - Blocking production Apify data from saving
+**Current Branch:** feature/comprehensive-field-standardization (22 commits, all pushed)  
+**Primary Task:** Service layer consolidation (2-3 weeks)  
+**Prerequisites:** Fix production blocker first (1 hour)  
+**Priority:** HIGH - Prevents future bug multiplication
 
 ---
 
 ## TL;DR - What You Need to Know
 
 ### Current Situation
-- ✅ **Fixed:** 11 service implementations with field normalization (commits 1-21)
+- ✅ **Fixed:** 11 service implementations with field normalization (commits 1-22)
 - ❌ **Still Broken:** Routes layer (apifyProcessRoutes.js) uses raw field name strings
-- 🔥 **Production Impact:** Apify webhook data (895 posts, $17.90 costs) not saving to Airtable
-- ⚠️ **Error:** "Unknown field name: undefined"
+- � **Root Problem:** 11+ duplicate service implementations causing bugs to multiply
+- �🔥 **Production Impact:** Apify webhook data (895 posts, $17.90 costs) not saving
 
-### Decision Made
-- **Path A (Rejected):** Incremental debugging - 2-4 hours, multiple deploys
-- **Path B (Chosen):** Systematic fix - 1 hour, single deploy, comprehensive
+### The Plan
+1. **Phase 0 (1 hour):** Fix production blocker - Apify field constants
+2. **Phase 1-6 (2-3 weeks):** Consolidate service layer - eliminate duplicate implementations
 
 ### Your Mission
-Replace all raw field name strings in Apify routes with constants from `airtableUnifiedConstants.js`.
+**Primary:** Follow **SERVICE-LAYER-CONSOLIDATION-GUIDE.md** for systematic consolidation  
+**Prerequisite:** Complete **APIFY-FIELD-STANDARDIZATION-PLAN.md** first (unblocks production)
 
-**Key File:** `routes/apifyProcessRoutes.js` lines 882-921, 985-988, 1018-1020  
-**Pattern:** Change `'Total Posts Harvested'` to `CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED`
+**Goal:** Reduce 11+ service implementations to 3 canonical services, prevent future bug multiplication
 
 ---
 
-## Essential Documents (Read These First)
+## Essential Documents (Read in This Order)
 
-### 1. **APIFY-FIELD-STANDARDIZATION-PLAN.md** 
-**Your primary guide.** Contains:
-- Exact line numbers to fix
+### 1. **SERVICE-LAYER-CONSOLIDATION-GUIDE.md** ⭐ PRIMARY GUIDE
+**Your main playbook.** Contains:
+- Complete 6-phase consolidation plan
+- Prerequisite: Phase 0 (Apify field fix - 1 hour)
+- Service inventory with keep/deprecate decisions
+- Migration strategy for each service type
+- Testing strategy and rollback plan
+- 2-3 week timeline with milestones
+
+### 2. **APIFY-FIELD-STANDARDIZATION-PLAN.md** 🔥 START HERE
+**Phase 0 prerequisite** (do first to unblock production):
+- Exact line numbers to fix in apifyProcessRoutes.js
 - Before/after code examples
-- All available constants
-- Step-by-step implementation plan
-- Success criteria
+- 1 hour systematic fix
+- Unblocks production Apify data
 
-### 2. **TECHNICAL-DEBT-CLEANUP-PLAN.md**
-**Strategic context.** Shows:
-- Why this keeps happening (11 service implementations had same bug)
-- Bug multiplication pattern
-- Broader cleanup needed after this fix
-- Key learnings section at bottom (NEW - just added)
+### 3. **TECHNICAL-DEBT-CLEANUP-PLAN.md** 📊 STRATEGIC CONTEXT
+**Why consolidation matters:**
+- Bug multiplication pattern (1 bug → 11 bugs)
+- Service proliferation impact (11+ implementations)
+- Key learnings from field standardization work
+- Broader technical debt inventory
 
-### 3. **CLIENT-RUN-RESULTS-FIXES-COMPLETE.md**
-**Previous work.** Explains:
-- How we fixed 6 Client Run Results services (commits 17-19)
-- Same pattern we're applying to routes layer
-- Field normalization approach
+### 4. **CLIENT-RUN-RESULTS-FIXES-COMPLETE.md** 📝 REFERENCE
+**Previous consolidation work:**
+- How we fixed 6 Client Run Results services
+- Field normalization pattern examples
+- Lessons learned from commits 17-21
 
 ---
 
 ## Quick Start Guide
 
-### Step 1: Create New Branch (2 minutes)
+### Step 1: Fix Production Blocker First (1 hour)
+
+**Read:** APIFY-FIELD-STANDARDIZATION-PLAN.md (Phase 0)
+
 ```bash
 cd /c/Users/guyra/Desktop/pb-webhook-server-dev
 git checkout feature/comprehensive-field-standardization
 git pull origin feature/comprehensive-field-standardization
 git checkout -b feature/apify-field-constants
 ```
+
+**Then:** Follow APIFY-FIELD-STANDARDIZATION-PLAN.md steps to fix field constants
+
+### Step 2: Start Service Consolidation (After Phase 0 Complete)
+
+**Read:** SERVICE-LAYER-CONSOLIDATION-GUIDE.md
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/service-layer-consolidation
+```
+
+**Then:** Follow Phase 1 (Analysis & Planning) in the consolidation guide
 
 ### Step 2: Update Imports (5 minutes)
 
