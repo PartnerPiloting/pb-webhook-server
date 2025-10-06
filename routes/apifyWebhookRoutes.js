@@ -13,7 +13,7 @@ const jobOrchestrationService = require('../services/jobOrchestrationService');
 const { createPost } = require('../services/postService');
 const { handleClientError } = require('../utils/errorHandler');
 const clientService = require('../services/clientService');
-const unifiedRunIdService = require('../services/unifiedRunIdService');
+const runIdSystem = require('../services/runIdSystem');
 // Import the validator utility
 const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
 // Import Airtable field constants
@@ -288,9 +288,9 @@ async function apifyWebhookHandler(req, res) {
         // Update job tracking record if it was created
         if (jobRunId) {
             // Additional validation to ensure the jobRunId is properly defined
-            const normalizedRunId = jobRunId ? unifiedRunIdService.normalizeRunId(jobRunId) : null;
+            const normalizedRunId = jobRunId; // Run ID is already in correct format
             if (!normalizedRunId) {
-                logger.error("Cannot update job status: normalized runId is not valid");
+                logger.error("Cannot update job status: runId is not valid");
             } else {
                 await JobTracking.updateJob({
                     runId: normalizedRunId,
@@ -562,7 +562,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             
             // Update job tracking record
             // Additional validation to ensure the jobRunId is properly defined
-            const normalizedMainRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+            const normalizedMainRunId = jobRunId;
             if (!normalizedMainRunId) {
                 clientLogger.error("Cannot update job status: normalized runId is not valid");
             } else {
@@ -629,7 +629,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         
         // Update job tracking record
         // Additional validation to ensure the jobRunId is properly defined
-        const normalizedMainRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+        const normalizedMainRunId = jobRunId;
         if (!normalizedMainRunId) {
             clientLogger.error("Cannot update job status: normalized runId is not valid");
         } else {
@@ -658,7 +658,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         // Now use our utility to ensure we have a valid string
         let normalizedRunId;
         try {
-            normalizedRunId = unifiedRunIdService.normalizeRunId(safeRunId);
+            normalizedRunId = safeRunId;
             if (!normalizedRunId) {
                 clientLogger.error(`Unable to normalize run ID: ${safeRunId}. Using original run ID.`);
             }
@@ -685,7 +685,7 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         
         // Update job tracking record with error
         // Additional validation to ensure the jobRunId is properly defined
-        const normalizedMainRunId = unifiedRunIdService.normalizeRunId(jobRunId);
+        const normalizedMainRunId = jobRunId;
         if (!normalizedMainRunId) {
             clientLogger.error("Cannot update job status: normalized runId is not valid");
         } else {

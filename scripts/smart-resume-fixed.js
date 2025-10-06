@@ -40,12 +40,12 @@ const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 // Updated imports based on newer versions
 const airtableService = require('../services/airtableService');
 const { JobTracking } = require('../services/jobTracking');
-const unifiedRunIdService = require('../services/unifiedRunIdService');
+const runIdSystem = require('../services/runIdSystem');
 const { STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 const jobOrchestrationService = require('../services/jobOrchestrationService');
 const ParameterValidator = require('../utils/parameterValidator');
 // Define runIdService for backward compatibility
-const runIdService = unifiedRunIdService;
+const runIdService = runIdSystem;
 let runId = 'INITIALIZING';
 
 // ROOT CAUSE FIX: Create a function to ensure normalizedRunId is always defined
@@ -54,8 +54,8 @@ function getNormalizedRunId(originalRunId) {
   const runIdToNormalize = (typeof originalRunId === 'string') ? originalRunId : runId;
   
   try {
-    // Use the unifiedRunIdService to normalize the run ID
-    return unifiedRunIdService.normalizeRunId(runIdToNormalize);
+    // Use the runIdSystem to normalize the run ID
+    return runIdSystem.normalizeRunId(runIdToNormalize);
   } catch (error) {
     console.error(`Error normalizing runId ${runIdToNormalize}: ${error.message}`);
     // Return the original as fallback

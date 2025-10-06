@@ -40,7 +40,7 @@ const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 // Updated imports based on newer versions
 const airtableService = require('../services/airtableService');
 const { JobTracking } = require('../services/jobTracking');
-const unifiedRunIdService = require('../services/unifiedRunIdService');
+const runIdSystem = require('../services/runIdSystem');
 const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 const { 
   JOB_TRACKING_FIELDS, // Updated to use standardized constant name
@@ -49,7 +49,7 @@ const {
 const jobOrchestrationService = require('../services/jobOrchestrationService');
 const ParameterValidator = require('../utils/parameterValidator');
 // Define runIdService for backward compatibility
-const runIdService = unifiedRunIdService;
+const runIdService = runIdSystem;
 
 // Add defensive checks for required JobTracking methods
 function validateJobTrackingMethods() {
@@ -92,7 +92,7 @@ function getNormalizedRunId(originalRunId) {
     if (typeof runIdToNormalize === 'string' && 
         !runIdToNormalize.match(/^\d{6}-\d{6}$/)) {  // Standard YYMMDD-HHMMSS format
       // Only in this case do we normalize
-      return unifiedRunIdService.normalizeRunId(runIdToNormalize);
+      return runIdSystem.normalizeRunId(runIdToNormalize);
     }
     
     // In all other cases, return the original unchanged
