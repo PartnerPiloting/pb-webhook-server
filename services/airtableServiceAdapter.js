@@ -10,7 +10,7 @@
 
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
-const airtableService = require('./airtable/airtableService');
+const airtableService = require('./airtableService');
 
 // Default logger - using safe creation
 const logger = createSafeLogger('SYSTEM', null, 'airtable_service_adapter');

@@ -36,13 +36,11 @@ const { scoreLeadNow } = require("../singleScorer.js");
 const batchScorer = require("../batchScorer.js");
 const { loadAttributes, loadAttributeForEditing, loadAttributeForEditingWithClientBase, updateAttribute, updateAttributeWithClientBase } = require("../attributeLoader.js");
 const { computeFinalScore } = require("../scoring.js");
-const { buildAttributeBreakdown } = require("../breakdown.js");
+const { buildAttributeBreakdown } = require("../scripts/analysis/breakdown.js");
 const {
-  alertAdmin,
-  isMissingCritical,
-} = require("../utils/appHelpers.js");
-
-const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
+  alertAdmin,
+  isMissingCritical,
+} = require("../utils/appHelpers.js");const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
   || process.env.NEXT_PUBLIC_API_BASE_URL
   || `http://localhost:${process.env.PORT || 3001}`;
 const ENQUEUE_URL = `${__PUBLIC_BASE__}/enqueue`;
@@ -3688,7 +3686,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     // Test 2.3: Scoring System Components
     try {
       const { computeFinalScore } = require("../scoring.js");
-      const { buildAttributeBreakdown } = require("../breakdown.js");
+      const { buildAttributeBreakdown } = require("../scripts/analysis/breakdown.js");
       
       // Test with mock data
       const mockPositiveScores = { A: 5, B: 8 };
