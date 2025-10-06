@@ -29,7 +29,10 @@ const { getStatusString } = require('../utils/statusUtils');
 const runIdSystem = require('../services/runIdSystem.js');
 const { JobTracking } = require('../services/jobTracking.js');
 const jobOrchestrationService = require('../services/jobOrchestrationService.js');
-const { handleClientError } = require('../utils/errorHandler.js');const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
+const { handleClientError } = require('../utils/errorHandler.js');
+const { logCriticalError } = require('../utils/errorLogger.js');
+
+const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
 const { scoreLeadNow } = require("../singleScorer.js");
@@ -40,10 +43,29 @@ const { buildAttributeBreakdown } = require("../scripts/analysis/breakdown.js");
 const {
   alertAdmin,
   isMissingCritical,
-} = require("../utils/appHelpers.js");const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
+} = require("../utils/appHelpers.js");
+
+const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
   || process.env.NEXT_PUBLIC_API_BASE_URL
   || `http://localhost:${process.env.PORT || 3001}`;
 const ENQUEUE_URL = `${__PUBLIC_BASE__}/enqueue`;
+
+// ---------------------------------------------------------------
+// Helper: Log error to Airtable (non-blocking)
+// ---------------------------------------------------------------
+async function logRouteError(error, req, additionalContext = {}) {
+  try {
+    await logCriticalError(error, {
+      endpoint: `${req.method} ${req.path}`,
+      clientId: req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId,
+      requestBody: req.body,
+      queryParams: req.query,
+      ...additionalContext
+    });
+  } catch (loggingError) {
+    console.error('Failed to log error to Airtable:', loggingError.message);
+  }
+}
 
 // ---------------------------------------------------------------
 // Health Check
@@ -146,6 +168,7 @@ router.get("/debug-job-status", async (req, res) => {
     
   } catch (error) {
     console.error('Error in debug-job-status:', error);
+    await logRouteError(error, req, { operation: 'debug-job-status', jobId }).catch(() => {});
     res.status(500).json({
       error: 'Internal server error',
       message: error.message
@@ -182,6 +205,7 @@ router.get("/debug-job-status/:clientId/:operation", async (req, res) => {
     
   } catch (error) {
     console.error('Error in debug-job-status client endpoint:', error);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       error: 'Internal server error',
       message: error.message
@@ -297,6 +321,7 @@ router.all("/api/sync-pb-posts", async (_req, res) => {
     });
   } catch (err) {
     console.error("sync-pb-posts error (manual trigger):", err);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({ status: "error", error: err.message });
   }
 });
@@ -385,6 +410,7 @@ router.post("/api/pb-webhook", async (req, res) => {
 
   } catch (initialErr) {
     console.error("PB Webhook: Initial error:", initialErr.message, initialErr.stack);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({ error: initialErr.message });
   }
 });
@@ -466,6 +492,7 @@ router.get("/run-batch-score-v2", async (req, res) => {
 
   } catch (e) {
     console.error('[run-batch-score-v2] error:', e.message);
+    await logRouteError(error, req).catch(() => {});
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -825,6 +852,7 @@ router.get("/score-lead", async (req, res) => {
     res.json({ id, finalPct, aiProfileAssessment, breakdown });
   } catch (err) {
     console.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
+    await logRouteError(error, req).catch(() => {});
     if (!res.headersSent)
       res.status(500).json({ error: err.message });
   }
@@ -908,6 +936,7 @@ router.get("/debug-smart-resume-status", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Failed to get smart resume status:", error);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: 'Failed to get status',
@@ -1022,6 +1051,7 @@ router.post("/run-post-batch-score", async (req, res) => {
       console.log(`Updated job tracking record ${runId} with completion status`);
     } catch (err) {
       console.error(`Failed to update job tracking record: ${err.message}`);
+      await logRouteError(error, req).catch(() => {});
     }
     
     // Return results immediately
@@ -1159,6 +1189,7 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
 
   } catch (error) {
     console.error("❌ Fire-and-forget post scoring startup error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     if (!res.headersSent) {
       return res.status(500).json({
         status: 'error',
@@ -1522,6 +1553,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
     });
   } catch (error) {
     console.error("/run-post-batch-score-level2 error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     return res.status(500).json({ status: getStatusString('ERROR'), message: error.message });
   }
 });
@@ -1586,6 +1618,7 @@ router.get("/debug-clients", async (req, res) => {
     
   } catch (error) {
     console.error("Debug clients error:", error);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       error: error.message,
       stack: error.stack
@@ -1631,6 +1664,7 @@ router.get("/api/json-quality-analysis", async (req, res) => {
     
   } catch (error) {
     console.error("JSON quality analysis error:", error);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       message: error.message,
@@ -1927,6 +1961,7 @@ router.get("/api/token-usage", async (req, res) => {
     
   } catch (error) {
     console.error("apiAndJobRoutes.js: GET /api/token-usage error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get token usage"
@@ -1973,6 +2008,7 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to validate token budget"
@@ -2017,6 +2053,7 @@ router.get("/api/post-token-usage", async (req, res) => {
     
   } catch (error) {
     console.error("apiAndJobRoutes.js: GET /api/post-token-usage error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get post token usage"
@@ -2063,6 +2100,7 @@ router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to validate post token budget"
@@ -2173,6 +2211,7 @@ router.get("/api/attributes/:id/edit", async (req, res) => {
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load attribute for editing"
@@ -2319,6 +2358,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to generate AI suggestions"
@@ -2402,6 +2442,7 @@ router.post("/api/attributes/:id/save", async (req, res) => {
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to save attribute changes"
@@ -2510,6 +2551,7 @@ router.get("/api/attributes", async (req, res) => {
     
   } catch (error) {
     console.error("apiAndJobRoutes.js: GET /api/attributes error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load attributes"
@@ -2605,6 +2647,7 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
     
   } catch (error) {
     console.error("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to verify active filtering"
@@ -3149,6 +3192,7 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get AI help"
@@ -3241,6 +3285,7 @@ router.get("/api/post-attributes", async (req, res) => {
     
   } catch (error) {
     console.error("apiAndJobRoutes.js: GET /api/post-attributes error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load post attributes"
@@ -3304,6 +3349,7 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load post attribute for editing"
@@ -3423,6 +3469,7 @@ Include a brief explanation of why this example fits this attribute.`;
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to generate AI suggestions"
@@ -3496,6 +3543,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     
   } catch (error) {
     console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to save post attribute"
@@ -4022,6 +4070,7 @@ router.get("/api/audit/quick", async (req, res) => {
 
   } catch (error) {
     console.error("Quick audit error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message,
@@ -4171,6 +4220,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
 
   } catch (error) {
     console.error("🚨 Auto-fix error:", error);
+    await logRouteError(error, req).catch(() => {});
     const duration = Date.now() - startTime;
     
     res.status(500).json({
@@ -4412,6 +4462,7 @@ router.get("/guy-wilson-post-harvest", async (req, res) => {
     });
   } catch (error) {
     console.error("🚨 GUY WILSON POST HARVEST ERROR:", error);
+    await logRouteError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
       error: error.message,
@@ -4745,6 +4796,7 @@ router.get("/harvest-guy-wilson", async (req, res) => {
     });
   } catch (error) {
     console.error("🚨 GUY WILSON DIRECT HARVEST ERROR:", error);
+    await logRouteError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
       error: error.message,
@@ -4945,6 +4997,7 @@ router.post("/reset-smart-resume-lock", async (req, res) => {
     
   } catch (error) {
     console.error("❌ Emergency reset failed:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: 'Failed to reset lock',
@@ -5002,6 +5055,7 @@ router.get("/smart-resume-status", async (req, res) => {
     
   } catch (error) {
     console.error("❌ Smart resume status check failed:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: 'Failed to get status',
