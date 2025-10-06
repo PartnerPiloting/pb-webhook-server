@@ -259,24 +259,40 @@ async function determineClientWorkflow(client) {
         
         // Special handling for post_scoring - check if there are unscored posts regardless of last run time
         if (operation === 'post_scoring' && status.completed) {
-            console.log(`🚨 POST SCORING CHECK: Client ${client.clientName} (${client.clientId}) has completed post_scoring recently, checking for unscored posts...`);
-            const unscoredPostsStatus = await checkUnscoredPostsCount(client.clientId);
+            const testingMode = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
+            const testingModeLimit = parseInt(process.env.POST_SCORING_TESTING_LIMIT) || 10;
             
-            console.log(`🚨 POST SCORING DECISION: Client ${client.clientName} - Unscored posts check results:`, JSON.stringify(unscoredPostsStatus));
+            console.log(`🚨 POST SCORING CHECK: Client ${client.clientName} (${client.clientId}) has completed post_scoring recently`);
+            console.log(`🚨 POST SCORING CHECK: Last run: ${status.lastRun}, Status: ${status.status}, Testing mode = ${testingMode}`);
             
-            // If we have unscored posts, we should run post_scoring even if it was recent
-            if (unscoredPostsStatus.hasUnscoredPosts) {
-                console.log(`� POST SCORING OVERRIDE: Found ${unscoredPostsStatus.count} unscored posts for ${client.clientName} - WILL RUN post_scoring even though last run was recent`);
-                
-                // Override the completed status and add a reason
+            // In testing mode, always run post scoring regardless of recent completion (with limit)
+            if (testingMode) {
+                console.log(`🧪 POST SCORING TESTING MODE: FORCE RUNNING post_scoring despite recent completion (limit: ${testingModeLimit})`);
                 status.completed = false;
-                status.overrideReason = `Found ${unscoredPostsStatus.count} unscored posts`;
-                status.originalStatus = { ...status }; // Keep original status for reference
-                
-                // Update in the workflow summary
+                status.overrideReason = `Testing mode active - forcing execution (max ${testingModeLimit} posts)`;
+                status.testingModeLimit = testingModeLimit;
                 workflow.statusSummary[operation] = status;
             } else {
-                console.log(`🚨 POST SCORING SKIPPED: No unscored posts found for ${client.clientName} - skipping post_scoring as it ran recently`);
+                // In normal mode, check for unscored posts
+                console.log(`🚨 POST SCORING CHECK: Checking for unscored posts...`);
+                const unscoredPostsStatus = await checkUnscoredPostsCount(client.clientId);
+                
+                console.log(`🚨 POST SCORING DECISION: Client ${client.clientName} - Unscored posts check results:`, JSON.stringify(unscoredPostsStatus));
+                
+                // If we have unscored posts, we should run post_scoring even if it was recent
+                if (unscoredPostsStatus.hasUnscoredPosts) {
+                    console.log(`✅ POST SCORING OVERRIDE: Found ${unscoredPostsStatus.count} unscored posts for ${client.clientName} - WILL RUN post_scoring even though last run was recent`);
+                    
+                    // Override the completed status and add a reason
+                    status.completed = false;
+                    status.overrideReason = `Found ${unscoredPostsStatus.count} unscored posts`;
+                    status.originalStatus = { ...status }; // Keep original status for reference
+                    
+                    // Update in the workflow summary
+                    workflow.statusSummary[operation] = status;
+                } else {
+                    console.log(`🚨 POST SCORING SKIPPED: No unscored posts found for ${client.clientName} - skipping post_scoring as it ran recently`);
+                }
             }
         }
         
