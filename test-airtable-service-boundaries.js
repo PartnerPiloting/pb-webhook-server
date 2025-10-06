@@ -21,7 +21,7 @@ async function testServiceLayer() {
   console.log('---------------------------------------------');
   
   try {
-    const airtableService = require('./services/airtable/airtableService');
+    const airtableService = require('./services/airtableService');
     
     // Initialize the service
     console.log('Initializing airtableService...');

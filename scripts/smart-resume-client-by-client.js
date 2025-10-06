@@ -38,7 +38,7 @@ console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date()
 console.log(`🔍 TRACE: About to load run ID generator`);
 const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 // Updated imports based on newer versions
-const airtableService = require('../services/airtable/airtableService');
+const airtableService = require('../services/airtableService');
 const { JobTracking } = require('../services/jobTracking');
 const unifiedRunIdService = require('../services/unifiedRunIdService');
 const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
