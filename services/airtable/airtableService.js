@@ -11,7 +11,7 @@ const leadRepository = require('./leadRepository');
 const clientRepository = require('./clientRepository');
 // Use unified services for run ID and job tracking
 const runIdService = require('../../services/unifiedRunIdService');
-const unifiedJobTrackingRepository = require('../../services/unifiedJobTrackingRepository');
+const { JobTracking } = require('../../services/jobTracking');
 const runRecordService = require('../../services/runRecordServiceV2');
 
 // Import constants for standardized field names
@@ -271,11 +271,11 @@ async function createJobTrackingRecord(params) {
   const { runId, clientId, stream = 1, initialData = {}, options = {} } = params;
   
   try {
-    return await unifiedJobTrackingRepository.createJobTrackingRecord({
+    return await JobTracking.createJob({
       runId,
       clientId,
       stream,
-      initialData,
+      ...initialData,
       options
     });
   } catch (error) {
@@ -296,7 +296,7 @@ async function updateJobTrackingRecord(params) {
   const { runId, updates, options = {} } = params;
   
   try {
-    return await unifiedJobTrackingRepository.updateJobTrackingRecord({
+    return await JobTracking.updateJob({
       runId,
       updates,
       options
@@ -320,10 +320,10 @@ async function completeJobTrackingRecord(params) {
   const { runId, status = 'Completed', metrics = {}, options = {} } = params;
   
   try {
-    return await unifiedJobTrackingRepository.completeJobTrackingRecord({
+    return await JobTracking.completeJob({
       runId,
       status,
-      metrics,
+      systemNotes: metrics['System Notes'],
       options
     });
   } catch (error) {
