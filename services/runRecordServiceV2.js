@@ -1,3 +1,4 @@
+const { logCriticalError } = require("../utils/errorLogger");
 // services/runRecordServiceV2.js
 // Centralized service for run record management
 // Implements the STRICT Single Creation Point pattern
@@ -120,6 +121,7 @@ function initialize() {
     return clientsBase;
   } catch (error) {
     console.error("CRITICAL ERROR initializing Airtable connection:", error.message);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     throw error;
   }
 }
@@ -218,6 +220,7 @@ async function createJobRecord(params) {
     return records[0];
   } catch (error) {
     logger.error(`Run Record Service ERROR: Failed to create job tracking record: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     trackActivity('create_job', runId, 'SYSTEM', source, `ERROR: ${error.message}`);
     throw error;
   }
@@ -281,6 +284,7 @@ async function createClientRunRecord(params) {
     });
   } catch (error) {
     logger.error(`Run Record Service ERROR: Failed to create client run record via JobTracking: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     throw error;
   }
   
@@ -402,6 +406,7 @@ async function getRunRecord(params) {
     return null;
   } catch (error) {
     logger.error(`Run Record Service ERROR during get: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     trackActivity('get', standardRunId, clientId, source, `ERROR: ${error.message}`);
     throw error;
   }
@@ -510,6 +515,7 @@ async function updateRunRecord(params) {
     return updatedRecord[0];
   } catch (error) {
     logger.error(`Run Record Service ERROR during update: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     trackActivity('update', runId, clientId, source, `ERROR: ${error.message}`);
     throw error;
   }
@@ -721,6 +727,7 @@ async function updateJobRecord(runId, updates, options = {}) {
     return updatedRecords[0];
   } catch (error) {
     logger.error(`Run Record Service ERROR during job update: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     trackActivity('update_job', baseRunId, 'SYSTEM', source, `ERROR: ${error.message}`);
     throw error;
   }
@@ -873,7 +880,9 @@ async function checkRunRecordExists(runId, clientId = null) {
     return record !== null;
   } catch (error) {
     console.error(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] ❌ Error checking run record existence: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'runRecordServiceV2.js' }).catch(() => {});
     console.error(`[DEBUG-RUN-ID-FLOW][RUN-RECORD-SERVICE] Stack trace: ${error.stack}`);
+    await logCriticalError(error, { context: 'Service error (swallowed)', service: 'runRecordServiceV2.js' }).catch(() => {});
     return false;
   }
 }

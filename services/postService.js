@@ -1,4 +1,5 @@
 // services/postService.js
+const { logCriticalError } = require('../utils/errorLogger');
 // Service for managing LinkedIn posts in Airtable
 
 // Import unified constants for field names
@@ -53,6 +54,7 @@ async function createPost(clientBase, post) {
     return records[0];
   } catch (error) {
     console.error(`[postService] Error creating post: ${error.message}`);
+    await logCriticalError(error, { context: 'Service error (before throw)', service: 'postService.js' }).catch(() => {});
     throw error;
   }
 }

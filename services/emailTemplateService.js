@@ -1,3 +1,4 @@
+const { logCriticalError } = require("../utils/errorLogger");
 // services/emailTemplateService.js
 // Email template management service for client notifications
 // Handles reading email templates from the Master Clients Email Templates table
@@ -101,6 +102,7 @@ async function getAllActiveTemplates() {
 
     } catch (error) {
         console.error("Error fetching email templates:", error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'emailTemplateService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -125,6 +127,7 @@ async function getTemplateById(templateId) {
 
     } catch (error) {
         console.error(`Error fetching email template ${templateId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'emailTemplateService.js' }).catch(() => {});
         throw error;
     }
 }
@@ -209,6 +212,7 @@ async function processTemplate(templateId, clientData = {}) {
 
     } catch (error) {
         console.error(`Error processing email template ${templateId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'emailTemplateService.js' }).catch(() => {});
         throw error;
     }
 }
