@@ -12,6 +12,22 @@ const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
+
+// Helper function for logging route errors to Airtable
+async function logRouteError(error, req, additionalContext = {}) {
+  try {
+    await logCriticalError(error, {
+      endpoint: `${req.method} ${req.path}`,
+      clientId: req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId,
+      requestBody: req.body,
+      queryParams: req.query,
+      ...additionalContext
+    });
+  } catch (loggingError) {
+    console.error('Failed to log route error to Airtable:', loggingError.message);
+  }
+}
+
 // Import field constants
 const { 
   APIFY_RUN_ID,
@@ -1065,7 +1081,7 @@ async function processClientHandler(req, res) {
   } catch (e) {
     let endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
     console.error(`[${endpoint}/process-client] error:`, e.message);
-    await logCriticalError(error, req).catch(() => {});
+    await logCriticalError(e, { operation: 'process_client_handler', req }).catch(() => {});
     
     // Check if response object exists (will be null in fire-and-forget mode)
     if (res) {

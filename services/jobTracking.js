@@ -759,7 +759,7 @@ class JobTracking {
     const completeUpdates = {
       ...updates,
       status,
-      endTime: updates.endTime || new Date().toISOString()
+      [JOB_TRACKING_FIELDS.END_TIME]: updates[JOB_TRACKING_FIELDS.END_TIME] || new Date().toISOString()
     };
     
     // Update the record with completion details
