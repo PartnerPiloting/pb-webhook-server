@@ -143,9 +143,11 @@ async function pickLeadBatch(base, batchSize) {
     records = await base(LEADS_TABLE).select(selectOptions).firstPage();
     return records;
   } catch (e) {
+    // Log the error
+    logCriticalError(e, { operation: 'search_leads_with_sort_fallback', isSearch: true }).catch(() => {});
+    
     // Fallback without sort (e.g., if Created Time field is missing)
     const fallbackOptions = {
-    logCriticalError(e, { operation: 'unknown', isSearch: true }).catch(() => {});
       filterByFormula: formula,
       maxRecords: batchSize,
       fields: [LINKEDIN_URL_FIELD, STATUS_FIELD]

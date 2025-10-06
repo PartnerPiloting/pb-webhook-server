@@ -83,8 +83,10 @@ router.post('/validate-run-id', async (req, res) => {
         isValid: true,
       });
     } catch (validationError) {
+      // Log the validation error
+      await logCriticalError(validationError, { operation: 'validate_run_id' }).catch(() => {});
+      
       return res.status(400).json({
-    await logCriticalError(validationError, { operation: 'validate_run_id' }).catch(() => {});
         success: false,
         error: validationError.message,
         originalRunId: runId,
