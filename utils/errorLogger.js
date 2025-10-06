@@ -273,11 +273,186 @@ async function logAndConsole(error, context = {}) {
   return await logCriticalError(error, context);
 }
 
+/**
+ * Get all NEW errors from Airtable Error Log
+ * @param {Object} options - Query options
+ * @returns {Promise<Array>} - Array of error records
+ */
+async function getNewErrors(options = {}) {
+  try {
+    if (!masterClientsBase) {
+      initialize();
+    }
+
+    if (!masterClientsBase) {
+      console.error('[ErrorLogger] Master base not initialized');
+      return [];
+    }
+
+    const { maxRecords = 100, filterByClient = null } = options;
+
+    let filterFormula = `{${ERROR_LOG_FIELDS.STATUS}} = '${ERROR_STATUS_VALUES.NEW}'`;
+    
+    if (filterByClient) {
+      filterFormula = `AND(${filterFormula}, {Client ID} = '${filterByClient}')`;
+    }
+
+    const records = await masterClientsBase(MASTER_TABLES.ERROR_LOG)
+      .select({
+        filterByFormula,
+        maxRecords,
+        sort: [{ field: ERROR_LOG_FIELDS.TIMESTAMP, direction: 'desc' }]
+      })
+      .all();
+
+    return records.map(record => ({
+      id: record.id,
+      errorId: record.get(ERROR_LOG_FIELDS.ERROR_ID),
+      timestamp: record.get(ERROR_LOG_FIELDS.TIMESTAMP),
+      severity: record.get(ERROR_LOG_FIELDS.SEVERITY),
+      errorType: record.get(ERROR_LOG_FIELDS.ERROR_TYPE),
+      message: record.get(ERROR_LOG_FIELDS.ERROR_MESSAGE),
+      filePath: record.get(ERROR_LOG_FIELDS.FILE_PATH),
+      lineNumber: record.get(ERROR_LOG_FIELDS.LINE_NUMBER),
+      functionName: record.get(ERROR_LOG_FIELDS.FUNCTION_NAME),
+      runId: record.get(ERROR_LOG_FIELDS.RUN_ID),
+      stackTrace: record.get(ERROR_LOG_FIELDS.STACK_TRACE),
+      contextJSON: record.get(ERROR_LOG_FIELDS.CONTEXT_JSON)
+    }));
+
+  } catch (error) {
+    console.error('[ErrorLogger] Failed to get errors:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Mark error as fixed with commit information
+ * @param {string} recordId - Airtable record ID (e.g., 'recABC123')
+ * @param {string} commitHash - Git commit hash
+ * @param {string} fixedBy - Who fixed it (default: 'AI Assistant')
+ * @param {string} resolutionNotes - Optional notes about the fix
+ * @returns {Promise<Object|null>} - Updated record or null if failed
+ */
+async function markErrorAsFixed(recordId, commitHash, fixedBy = 'AI Assistant', resolutionNotes = '') {
+  try {
+    if (!masterClientsBase) {
+      initialize();
+    }
+
+    if (!masterClientsBase) {
+      console.error('[ErrorLogger] Master base not initialized');
+      return null;
+    }
+
+    const updateData = {
+      [ERROR_LOG_FIELDS.STATUS]: ERROR_STATUS_VALUES.FIXED,
+      [ERROR_LOG_FIELDS.FIXED_IN_COMMIT]: commitHash,
+      [ERROR_LOG_FIELDS.FIXED_BY]: fixedBy,
+      [ERROR_LOG_FIELDS.FIXED_DATE]: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    };
+
+    if (resolutionNotes) {
+      updateData[ERROR_LOG_FIELDS.RESOLUTION_NOTES] = resolutionNotes;
+    }
+
+    console.log(`[ErrorLogger] Marking error ${recordId} as FIXED (commit: ${commitHash})`);
+
+    const updatedRecord = await masterClientsBase(MASTER_TABLES.ERROR_LOG).update(recordId, updateData);
+
+    console.log(`[ErrorLogger] Error ${recordId} marked as FIXED successfully`);
+    return updatedRecord;
+
+  } catch (error) {
+    console.error('[ErrorLogger] Failed to mark error as fixed:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Update resolution notes for an error
+ * @param {string} recordId - Airtable record ID
+ * @param {string} notes - Resolution notes
+ * @returns {Promise<Object|null>} - Updated record or null if failed
+ */
+async function updateResolutionNotes(recordId, notes) {
+  try {
+    if (!masterClientsBase) {
+      initialize();
+    }
+
+    if (!masterClientsBase) {
+      console.error('[ErrorLogger] Master base not initialized');
+      return null;
+    }
+
+    const updatedRecord = await masterClientsBase(MASTER_TABLES.ERROR_LOG).update(recordId, {
+      [ERROR_LOG_FIELDS.RESOLUTION_NOTES]: notes
+    });
+
+    console.log(`[ErrorLogger] Updated resolution notes for ${recordId}`);
+    return updatedRecord;
+
+  } catch (error) {
+    console.error('[ErrorLogger] Failed to update resolution notes:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Get error details by record ID
+ * @param {string} recordId - Airtable record ID
+ * @returns {Promise<Object|null>} - Error details or null if not found
+ */
+async function getErrorById(recordId) {
+  try {
+    if (!masterClientsBase) {
+      initialize();
+    }
+
+    if (!masterClientsBase) {
+      console.error('[ErrorLogger] Master base not initialized');
+      return null;
+    }
+
+    const record = await masterClientsBase(MASTER_TABLES.ERROR_LOG).find(recordId);
+
+    return {
+      id: record.id,
+      errorId: record.get(ERROR_LOG_FIELDS.ERROR_ID),
+      timestamp: record.get(ERROR_LOG_FIELDS.TIMESTAMP),
+      severity: record.get(ERROR_LOG_FIELDS.SEVERITY),
+      errorType: record.get(ERROR_LOG_FIELDS.ERROR_TYPE),
+      message: record.get(ERROR_LOG_FIELDS.ERROR_MESSAGE),
+      stackTrace: record.get(ERROR_LOG_FIELDS.STACK_TRACE),
+      filePath: record.get(ERROR_LOG_FIELDS.FILE_PATH),
+      lineNumber: record.get(ERROR_LOG_FIELDS.LINE_NUMBER),
+      functionName: record.get(ERROR_LOG_FIELDS.FUNCTION_NAME),
+      contextJSON: record.get(ERROR_LOG_FIELDS.CONTEXT_JSON),
+      runId: record.get(ERROR_LOG_FIELDS.RUN_ID),
+      status: record.get(ERROR_LOG_FIELDS.STATUS),
+      resolutionNotes: record.get(ERROR_LOG_FIELDS.RESOLUTION_NOTES),
+      fixedInCommit: record.get(ERROR_LOG_FIELDS.FIXED_IN_COMMIT),
+      fixedBy: record.get(ERROR_LOG_FIELDS.FIXED_BY),
+      fixedDate: record.get(ERROR_LOG_FIELDS.FIXED_DATE)
+    };
+
+  } catch (error) {
+    console.error('[ErrorLogger] Failed to get error by ID:', error.message);
+    return null;
+  }
+}
+
 module.exports = {
   logCriticalError,
   logAndConsole,
   initialize,
   clearCache,
   captureSystemState,
-  sanitizeInputData
+  sanitizeInputData,
+  // New query and update functions
+  getNewErrors,
+  getErrorById,
+  markErrorAsFixed,
+  updateResolutionNotes
 };
