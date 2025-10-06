@@ -41,11 +41,11 @@ const { generateRunId, createLogger } = require('../utils/runIdGenerator');
 const airtableService = require('../services/airtableService');
 const { JobTracking } = require('../services/jobTracking');
 const runIdSystem = require('../services/runIdSystem');
-const { CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 const { 
-  JOB_TRACKING_FIELDS, // Updated to use standardized constant name
+  CLIENT_RUN_STATUS_VALUES,
+  JOB_TRACKING_FIELDS,
   CLIENT_RUN_FIELDS
-} = require('../constants/airtableSimpleConstants');
+} = require('../constants/airtableUnifiedConstants');
 const jobOrchestrationService = require('../services/jobOrchestrationService');
 const ParameterValidator = require('../utils/parameterValidator');
 // Define runIdService for backward compatibility

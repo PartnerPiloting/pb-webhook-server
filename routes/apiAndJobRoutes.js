@@ -4873,7 +4873,7 @@ async function sendSmartResumeReport(jobId, success, details) {
       emailService = require('../services/emailReportingService');
     } catch (loadError) {
       console.error(`📧 [${jobId}] Could not load email service:`, loadError.message);
-      await logRouteError(loadError, req).catch(() => {});
+      // Email service loading error is not critical - just log and continue
       return { sent: false, reason: 'Email service not available' };
     }
     
