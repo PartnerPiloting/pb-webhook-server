@@ -661,7 +661,8 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
 
   } catch (error) {
     console.error(`[lead-scoring-background] Job ${jobId} failed:`, error.message);
-    await logRouteError(error, req).catch(() => {});
+    console.error(`[lead-scoring-background] Error stack:`, error.stack);
+    await logRouteError(error).catch(() => {});
     await setJobStatus(null, 'lead_scoring', 'FAILED', jobId, {
       lastRunDate: new Date().toISOString(),
       lastRunTime: formatDuration(Date.now() - jobStartTime),
@@ -1440,7 +1441,8 @@ async function processPostScoringInBackground(jobId, stream, options) {
 
   } catch (error) {
     console.error(`❌ Fatal error in background post scoring ${jobId}:`, error.message);
-    await logRouteError(error, req).catch(() => {});
+    console.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
+    await logRouteError(error).catch(() => {});
   }
 }
 
