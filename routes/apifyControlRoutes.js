@@ -29,7 +29,12 @@ function toProfileUrl(author) {
         return `https://www.linkedin.com/in/${author.publicIdentifier.replace(/\/$/, '')}`;
       }
     }
-  } catch {}
+  } catch (error) {
+    logCriticalError(error, { 
+      operation: 'extract_author_url',
+      expectedBehavior: true 
+    }).catch(() => {});
+  }
   return null;
 }
 
@@ -50,13 +55,17 @@ function normalizeLinkedInUrl(url) {
       return `https://www.linkedin.com/in/${handle}/recent-activity/all/`;
     }
     return url;
-  } catch (_) {
+  } catch (error) {
+    logCriticalError(error, { 
+      operation: 'normalize_linkedin_url',
+      expectedBehavior: true,
+      url: url 
+    }).catch(() => {});
     return url;
   }
 }
 
 function extractLinkedInPublicId(url) {
-    logCriticalError(_, { operation: 'unknown' }).catch(() => {});
   try {
     if (typeof url !== 'string') return null;
     const match = url.match(/linkedin\.com\/in\/([^\/?#]+)/i);
