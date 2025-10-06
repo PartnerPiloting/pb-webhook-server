@@ -145,13 +145,16 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             }
 
         } catch (bodyProcessingError) {
+            logCriticalError(bodyProcessingError, { 
+                operation: 'json_parse_webhook_body',
+                expectedBehavior: true 
+            }).catch(() => {});
             log.error("Error processing request body with enhanced JSON parsing:", bodyProcessingError.message);
             processedBody = req.body; // Fallback
         }
 
         const rawLeadsFromWebhook = Array.isArray(processedBody) ? processedBody : (processedBody ? [processedBody] : []);
         log.setup(`Received ${rawLeadsFromWebhook.length} leads for processing`);
-    logCriticalError(bodyProcessingError, { operation: 'unknown' }).catch(() => {});
         
         if (rawLeadsFromWebhook.length > 0) {
             log.debug("First raw lead payload:", JSON.stringify(rawLeadsFromWebhook[0], null, 2));

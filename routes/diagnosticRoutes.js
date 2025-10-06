@@ -143,6 +143,10 @@ router.get('/check-job-record/:runId', async (req, res) => {
         });
       }
     } catch (error) {
+      await logCriticalError(error, { 
+        operation: 'check_job_record',
+        runId: runId 
+      }).catch(() => {});
       return res.status(400).json({
         success: false,
         error: error.message,
