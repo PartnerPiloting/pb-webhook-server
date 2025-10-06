@@ -635,7 +635,7 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
           console.log(`[lead-scoring-background] Client ${client.clientId} timeout (${MAX_CLIENT_PROCESSING_MINUTES}m), skipping`);
         } else {
           console.error(`[lead-scoring-background] Client ${client.clientId} error:`, error.message);
-          await logRouteError(error, req).catch(() => {});
+          console.error(`[lead-scoring-background] Error stack:`, error.stack);
         }
       }
 
@@ -1413,7 +1413,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
 
       } catch (error) {
         // Handle client failure or timeout
-        await logRouteError(error, req, { 
+        await logRouteError(error, { 
           client: client.clientId, 
           operation: 'post_scoring',
           timeout: error.message.includes('timeout')
@@ -1429,7 +1429,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
         });
         
         console.error(`❌ ${client.clientName} ${isTimeout ? 'TIMEOUT' : 'FAILED'}: ${error.message}`);
-        await logRouteError(error, req).catch(() => {});
+        console.error(`❌ Error stack:`, error.stack);
         totalFailed++;
       }
     }
