@@ -28,6 +28,7 @@ const { alertAdmin } = require('./utils/appHelpers.js');
 
 // --- Structured Logging ---
 const { createLogger } = require('./utils/unifiedLoggerFactory');
+const { createSafeLogger } = require('./utils/loggerHelper');
 
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
