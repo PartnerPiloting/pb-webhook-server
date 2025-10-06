@@ -18,6 +18,7 @@ try {
     }
 } catch (e) {
     console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
+    logCriticalError(e, { context: 'Module initialization error', service: 'airtableService.js' }).catch(() => {});
 }
 
 // Import new run ID system for centralized run ID management
@@ -78,6 +79,7 @@ function initialize() {
         console.log("Airtable Service: Successfully got base connection from clientService");
       } catch (initError) {
         console.error("ERROR using clientService.initializeClientsBase():", initError.message);
+        logCriticalError(initError, { context: 'Fallback to direct Airtable init', service: 'airtableService.js' }).catch(() => {});
         console.log("Falling back to direct initialization...");
         
         // Configure Airtable directly as fallback
@@ -98,6 +100,7 @@ function initialize() {
     return clientsBase;
   } catch (error) {
     console.error("CRITICAL ERROR initializing Airtable connection:", error.message);
+    logCriticalError(error, { context: 'Emergency fallback initialization', service: 'airtableService.js' }).catch(() => {});
     // Create a last-resort fallback attempt
     try {
       console.log("CRITICAL FALLBACK: Attempting emergency direct Airtable connection...");
@@ -202,6 +205,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
       return record;
     } catch (err) {
       console.log(`Airtable Service: Cached record ID ${cachedRecordId} no longer valid`);
+      await logCriticalError(err, { context: 'Cached record verification failed (fallback)', service: 'airtableService.js' }).catch(() => {});
       // Fall through to check by query
     }
   }
@@ -228,6 +232,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
     console.log(`Airtable Service: No existing record found, will create new one`);
   } catch (error) {
     console.error(`Airtable Service ERROR during record check: ${error.message}`);
+    await logCriticalError(error, { context: 'Record lookup failed (will create new)', service: 'airtableService.js' }).catch(() => {});
     // Continue to create a new record
   }
   
@@ -390,6 +395,7 @@ async function updateClientRun(runId, clientId, updates) {
         console.log(`[METDEBUG] Verified cached record exists`);
       } catch (err) {
         console.log(`[METDEBUG] Cached record not found, will search again`);
+        await logCriticalError(err, { context: 'Cached record validation failed (will search)', service: 'airtableService.js' }).catch(() => {});
         recordId = null;
       }
     }
@@ -466,6 +472,7 @@ async function updateClientRun(runId, clientId, updates) {
         }
       } catch (findError) {
         console.warn(`[METDEBUG] Could not check for existing field values: ${findError.message}`);
+        await logCriticalError(findError, { context: 'Field preservation check failed (continuing)', service: 'airtableService.js' }).catch(() => {});
       }
     }
     
@@ -650,6 +657,7 @@ async function checkRunRecordExists(runId, clientId) {
         return true;
       } catch (err) {
         console.log(`[RUNDEBUG] Cached record not found, will search again`);
+        await logCriticalError(err, { context: 'Cached record check failed (will search)', service: 'airtableService.js' }).catch(() => {});
         recordId = null;
       }
     }

@@ -389,6 +389,7 @@ async function completeRunRecord(params) {
         success = statusStr === completedStr || statusStr === 'success';
       } catch (error) {
         logger.warn(`[${source}] Error converting status to lowercase: ${error.message}`);
+        await logCriticalError(error, { context: 'Status conversion error (defaulting to false)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
         // Default to false on error
         success = false;
       }
@@ -411,6 +412,7 @@ async function completeRunRecord(params) {
     } catch (error) {
       // Error occurred during processing - use validated ID as fallback
       logger.warn(`[${source}] Error getting base run ID: ${error.message}, using validated ID as fallback`);
+      await logCriticalError(error, { context: 'Run ID normalization failed (using fallback)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
       normalizedRunId = validatedRunId; // Use validated ID as fallback to prevent undefined errors
     }
     
@@ -424,6 +426,7 @@ async function completeRunRecord(params) {
       }
     } catch (error) {
       logger.warn(`[${source}] Error stripping client suffix: ${error.message}, using normalized ID as fallback`);
+      await logCriticalError(error, { context: 'Client suffix stripping failed (using fallback)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
       baseRunId = normalizedRunId;
     }
     
@@ -932,6 +935,7 @@ async function completeClientProcessing(params) {
       }
     } catch (checkError) {
       logger.warn(`Error checking process completion: ${checkError.message}. Proceeding with completion.`);
+      await logCriticalError(checkError, { context: 'Process completion check failed (continuing)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
       // Continue with completion as normal in case of error checking processes
     }
     
@@ -1081,6 +1085,7 @@ async function checkRunRecordExists(params) {
       }
     } catch (exactMatchError) {
       logger.debug(`[RunRecordAdapterSimple] Exact match search failed: ${exactMatchError.message}`);
+      await logCriticalError(exactMatchError, { context: 'Exact run ID match search failed (trying standard match)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     }
     
     // Clean/standardize the run ID (strip any client suffix)
@@ -1108,6 +1113,7 @@ async function checkRunRecordExists(params) {
       }
     } catch (standardMatchError) {
       logger.debug(`[RunRecordAdapterSimple] Standard match search failed: ${standardMatchError.message}`);
+      await logCriticalError(standardMatchError, { context: 'Standard run ID match search failed (trying date part)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     }
     
     // Finally, try with just the date part of the run ID to find similar records
@@ -1134,6 +1140,7 @@ async function checkRunRecordExists(params) {
       }
     } catch (datePartMatchError) {
       logger.debug(`[RunRecordAdapterSimple] Date part match search failed: ${datePartMatchError.message}`);
+      await logCriticalError(datePartMatchError, { context: 'Date part match search failed (no record found)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     }
     
     logger.debug(`[RunRecordAdapterSimple] No matching records found for runId=${runId}, clientId=${clientIdToUse}`);
@@ -1307,6 +1314,7 @@ async function safeUpdateMetrics(params) {
   } catch (error) {
     // If anything goes wrong, log error but don't fail the process
     logger.error(`[${processType}] Error updating metrics for ${runId} (${clientId}): ${error.message}`);
+    await logCriticalError(error, { context: 'Metrics update failed (swallowed)', service: 'runRecordAdapterSimple.js' }).catch(() => {});
     
     return {
       success: false,
