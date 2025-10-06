@@ -110,6 +110,68 @@ if (!geminiConfig?.geminiModel) {
 - **Multi-tenant issues**: Verify `x-client-id` header and client exists in Master base
 - **Memory crashes**: See `MEMORY-CRASH-WARNING.md` for batch size limits
 
+## Production Error Logging System
+
+### Overview
+Production errors are automatically logged to the **Error Log table** in the Master Clients Airtable base with full debugging context (stack trace, input data, system state, etc.).
+
+### Error Log Service
+- **Location**: `utils/errorLogger.js`
+- **Purpose**: Capture critical errors to Airtable for debugging without needing Render logs
+- **Classification**: `utils/errorClassifier.js` determines which errors are critical enough to log
+
+### Key Functions Available
+
+```javascript
+// Query errors
+await getNewErrors()                    // Get all NEW status errors
+await getNewErrors({ filterByClient })  // Filter by specific client
+await getErrorById(recordId)            // Get full error details
+
+// Manage errors
+await markErrorAsFixed(recordId, commitHash, fixedBy, notes)
+await updateResolutionNotes(recordId, notes)
+```
+
+### Common AI Commands (Use These!)
+
+**Query Errors:**
+- "Show production errors" → Query Error Log for NEW errors
+- "What errors happened today?" → Filter by recent timestamp
+- "Show errors for Guy Wilson" → Filter by client
+- "Show me error #5 details" → Get full error context
+
+**Fix Errors:**
+- "Fix error #3" → Read error, fix code, commit, auto-mark as FIXED
+- "Fix all module import errors" → Batch fix similar errors
+- "Add note to error #2: [your note]" → Update resolution notes
+
+**Error Details Include:**
+- Error message & stack trace
+- File path, line number, function name
+- Severity (CRITICAL, ERROR, WARNING)
+- Error type (Module Import, AI Service, Airtable API, etc.)
+- Full context JSON (runId, clientId, input data, system state)
+- Auto-populated: Fixed In Commit, Fixed By, Fixed Date
+
+### Error Table Location
+- **Base**: Master Clients Airtable base
+- **Table**: Error Log
+- **Status Values**: NEW, INVESTIGATING, FIXED, IGNORED
+- **Constants**: `constants/airtableUnifiedConstants.js` (ERROR_LOG_FIELDS)
+
+### Workflow
+1. Production error occurs → Auto-logged to Airtable (Status: NEW)
+2. User asks "Show production errors" → AI queries Error Log table
+3. User says "Fix error #X" → AI fixes code, commits, auto-updates Airtable
+4. Error marked FIXED with commit hash, date, and resolution notes
+
+### Configuration
+- **Enable/Disable**: Set `DISABLE_ERROR_LOGGING=true` to turn off
+- **Rate Limit**: Max 100 errors/hour (prevents log spam)
+- **Deduplication**: Same error within 5 minutes = single record
+- **Sanitization**: Passwords, tokens, API keys automatically redacted
+
 ## Key Integration Points
 
 ### Frontend ↔ Backend
