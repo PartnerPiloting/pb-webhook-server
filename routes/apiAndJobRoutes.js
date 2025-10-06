@@ -1125,17 +1125,23 @@ router.post("/run-post-batch-score", async (req, res) => {
 // FIRE-AND-FORGET Post Batch Score (NEW PATTERN) 
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score-v2", async (req, res) => {
-  console.log("🚀 apiAndJobRoutes.js: /run-post-batch-score-v2 endpoint hit (FIRE-AND-FORGET)");
+  console.log("🚀 [POST-SCORING-DEBUG] apiAndJobRoutes.js: /run-post-batch-score-v2 endpoint hit (FIRE-AND-FORGET)");
+  console.log("🚀 [POST-SCORING-DEBUG] Request body:", JSON.stringify(req.body));
+  console.log("🚀 [POST-SCORING-DEBUG] Request query:", JSON.stringify(req.query));
   
   // Check if fire-and-forget is enabled
   const fireAndForgetEnabled = process.env.FIRE_AND_FORGET === 'true';
+  console.log("🚀 [POST-SCORING-DEBUG] FIRE_AND_FORGET env var:", process.env.FIRE_AND_FORGET, "Enabled:", fireAndForgetEnabled);
+  
   if (!fireAndForgetEnabled) {
-    console.log("⚠️ Fire-and-forget not enabled");
+    console.log("⚠️ [POST-SCORING-DEBUG] Fire-and-forget not enabled - returning 501");
     return res.status(501).json({
       status: 'error',
       message: 'Fire-and-forget mode not enabled. Set FIRE_AND_FORGET=true'
     });
   }
+  
+  console.log("✅ [POST-SCORING-DEBUG] Fire-and-forget IS enabled, continuing...");
 
   if (!vertexAIClient || !geminiModelId) {
     console.error("❌ Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
@@ -1160,11 +1166,13 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     // Determine if this is a standalone run or part of a parent process
     const isStandaloneRun = !parentRunId;
     
-    console.log(`🎯 Starting fire-and-forget post scoring: jobId=${jobId}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, ${isStandaloneRun ? 'STANDALONE MODE' : `parentRunId=${parentRunId}`}`);
+    console.log(`🎯 [POST-SCORING-DEBUG] Starting fire-and-forget post scoring: jobId=${jobId}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, ${isStandaloneRun ? 'STANDALONE MODE' : `parentRunId=${parentRunId}`}`);
     
     // For standalone runs, we'll skip metrics recording (simplification)
     if (isStandaloneRun) {
-      console.log(`ℹ️ Running in standalone mode - metrics recording will be skipped (no parentRunId)`);
+      console.log(`ℹ️ [POST-SCORING-DEBUG] Running in standalone mode - metrics recording will be skipped (no parentRunId)`);
+    } else {
+      console.log(`ℹ️ [POST-SCORING-DEBUG] Running with parentRunId - metrics WILL be recorded to Client Run Results`);
     }
     
     // Create a job tracking record using the orchestration service
@@ -1196,6 +1204,7 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     }
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
+    console.log(`✅ [POST-SCORING-DEBUG] Responding with 202 Accepted, starting background processing...`);
     res.status(202).json({
       status: 'accepted',
       message: 'Post scoring job started in background',
@@ -1208,13 +1217,15 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     });
 
     // Start background processing (don't await - fire and forget!)
+    console.log(`🔄 [POST-SCORING-DEBUG] Calling processPostScoringInBackground with jobId=${jobId}, parentRunId=${parentRunId}`);
     processPostScoringInBackground(jobId, stream, {
       limit,
       dryRun,
       singleClientId,
       parentRunId
     }).catch(error => {
-      console.error(`❌ Background post scoring failed for job ${jobId}:`, error.message);
+      console.error(`❌ [POST-SCORING-DEBUG] Background post scoring failed for job ${jobId}:`, error.message);
+      console.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
     });
 
   } catch (error) {
@@ -1245,14 +1256,21 @@ async function processPostScoringInBackground(jobId, stream, options) {
   const maxJobHours = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
   const maxJobMs = maxJobHours * 60 * 60 * 1000;
   
-  console.log(`🔄 Background post scoring started: ${jobId}`);
+  console.log(`🔄 [POST-SCORING-DEBUG] Background post scoring started: jobId=${jobId}, stream=${stream}, parentRunId=${options.parentRunId || 'NONE'}`);
   
   try {
     // Get active clients filtered by processing stream
     const clientService = require("../services/clientService");
+    console.log(`📊 [POST-SCORING-DEBUG] Getting active clients for stream ${stream}, singleClientId=${options.singleClientId || 'ALL'}`);
     let clients = await getActiveClientsByStream(stream, options.singleClientId);
     
-    console.log(`📊 Processing ${clients.length} clients in stream ${stream}`);
+    console.log(`📊 [POST-SCORING-DEBUG] Found ${clients.length} clients in stream ${stream}`);
+    if (clients.length > 0) {
+      console.log(`📊 [POST-SCORING-DEBUG] Client list:`, clients.map(c => `${c.clientName} (${c.clientId})`).join(', '));
+    } else {
+      console.log(`⚠️ [POST-SCORING-DEBUG] No clients found to process - exiting`);
+      return;
+    }
 
     let totalProcessed = 0;
     let totalSuccessful = 0;
@@ -1272,10 +1290,12 @@ async function processPostScoringInBackground(jobId, stream, options) {
         break;
       }
 
-      console.log(`🎯 Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
+      console.log(`🎯 [POST-SCORING-DEBUG] Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
+      console.log(`🎯 [POST-SCORING-DEBUG] Client details: serviceLevel=${client.serviceLevel}, baseId=${client.airtableBaseId}`);
       
       // Set client status (stream already set/filtered)
       await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
+      console.log(`✅ [POST-SCORING-DEBUG] Set job status to RUNNING for ${client.clientId}`);
       
       const clientStartTime = Date.now();
       
@@ -1283,6 +1303,8 @@ async function processPostScoringInBackground(jobId, stream, options) {
         // Generate a run ID for this client process
         // UPDATED: Now using runIdSystem for better consistency
         const clientRunId = options.parentRunId || runIdSystem.generateRunId();
+        console.log(`🔍 [POST-SCORING-DEBUG] Using clientRunId=${clientRunId} (from parentRunId=${options.parentRunId || 'generated'})`);
+        console.log(`🔍 [POST-SCORING-DEBUG] Calling postBatchScorer.runMultiTenantPostScoring with limit=${options.limit || 'UNLIMITED'}, dryRun=${options.dryRun || false}`);
         
         // Run post scoring for this client with timeout
         const clientResult = await Promise.race([
@@ -1307,21 +1329,30 @@ async function processPostScoringInBackground(jobId, stream, options) {
         const postsScored = clientResult.totalPostsScored || 0;
         const postsExamined = clientResult.totalPostsProcessed || 0;
         
+        console.log(`✅ [POST-SCORING-DEBUG] Post scoring completed for ${client.clientName}:`);
+        console.log(`   - Posts Examined: ${postsExamined}`);
+        console.log(`   - Posts Scored: ${postsScored}`);
+        console.log(`   - Tokens Used: ${clientResult.totalTokensUsed || 0}`);
+        console.log(`   - Errors: ${clientResult.errors || 0}`);
+        console.log(`   - Duration: ${clientDuration}`);
+        
         await setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', jobId, {
           duration: clientDuration,
           count: postsScored
         });
+        console.log(`✅ [POST-SCORING-DEBUG] Updated job status to COMPLETED for ${client.clientId}`);
         
         // If we have a parent run ID, update the client run record with post scoring metrics
         if (options.parentRunId) {
           try {
-            console.log(`[POST-SCORING] Starting metrics update for ${client.clientName} (${client.clientId})`);
+            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Starting for ${client.clientName} (${client.clientId})`);
+            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Has parentRunId=${options.parentRunId}`);
             
             // Generate client-specific run ID using runIdSystem
             const baseRunId = options.parentRunId;
             const clientRunId = runIdSystem.createClientRunId(baseRunId, client.clientId);
             
-            console.log(`[POST-SCORING] Using standardized run ID: ${clientRunId} (from ${options.parentRunId})`);
+            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Using standardized run ID: ${clientRunId} (from ${options.parentRunId})`);
             
             // Calculate duration as human-readable text
             const duration = formatDuration(Date.now() - (options.startTime || Date.now()));
@@ -1333,6 +1364,9 @@ async function processPostScoringInBackground(jobId, stream, options) {
               [CLIENT_RUN_FIELDS.POST_SCORING_TOKENS]: clientResult.totalTokensUsed || 0,
               [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
             };
+            
+            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Prepared updates:`, JSON.stringify(metricsUpdates, null, 2));
+            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Calling JobTracking.updateClientRun...`);
             
             // Use the unified job tracking repository
             const updateResult = await JobTracking.updateClientRun({
@@ -1346,6 +1380,8 @@ async function processPostScoringInBackground(jobId, stream, options) {
               }
             });
             
+            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Result:`, JSON.stringify(updateResult, null, 2));
+            
             // Add safety checks for updateResult properties
             if (updateResult && updateResult.success && !updateResult.skipped) {
               console.log(`📊 Updated client run record for ${client.clientName} with post scoring metrics`);
@@ -1358,12 +1394,16 @@ async function processPostScoringInBackground(jobId, stream, options) {
               console.error(`❌ [ERROR] Failed to update metrics: ${updateResult ? updateResult.error || 'Unknown error' : 'No update result returned'}`);
             }
           } catch (metricError) {
+            console.error(`❌ [POST-SCORING-DEBUG] METRICS UPDATE: Failed:`, metricError.message);
+            console.error(`❌ [POST-SCORING-DEBUG] METRICS UPDATE: Stack:`, metricError.stack);
             // Use standardized error handling
             handleClientError(client.clientId, 'post_scoring_metrics', metricError, {
               logger: console,
               includeStack: true
             });
           }
+        } else {
+          console.log(`⚠️ [POST-SCORING-DEBUG] METRICS UPDATE: Skipped - no parentRunId provided`);
         }
         
         console.log(`✅ ${client.clientName}: ${postsScored} posts scored in ${clientDuration}`);
