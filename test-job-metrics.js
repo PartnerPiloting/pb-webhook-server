@@ -10,7 +10,7 @@
 
 const jobMetricsService = require('./services/jobMetricsService');
 const unifiedRunIdService = require('./services/unifiedRunIdService');
-const unifiedJobTrackingRepository = require('./services/unifiedJobTrackingRepository');
+const { JobTracking } = require('./services/jobTracking');
 const { createSystemLogger } = require('./utils/unifiedLoggerFactory');
 
 // Configure logger
