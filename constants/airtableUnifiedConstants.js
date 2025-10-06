@@ -73,6 +73,7 @@ const LEAD_FIELDS = {
   STATUS: 'Status', // Added from leadService.js
   LINKEDIN_CONNECTION_STATUS: 'LinkedIn Connection Status', // Added from leadService.js
   DATE_CONNECTED: 'Date Connected',
+  DATE_CREATED: 'Date Created', // Airtable created time field
   CONVERSATION_STAGE: 'Conversation Stage',
   
   // Scoring fields

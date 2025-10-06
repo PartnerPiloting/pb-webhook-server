@@ -31,7 +31,8 @@ async function logRouteError(error, req, additionalContext = {}) {
 // Import field constants
 const { 
   APIFY_RUN_ID,
-  CLIENT_RUN_FIELDS 
+  CLIENT_RUN_FIELDS,
+  LEAD_FIELDS
 } = require('../constants/airtableUnifiedConstants');
 const runIdUtils = require('../utils/runIdUtils');
 // Use canonical run ID system
@@ -58,7 +59,7 @@ const FOUND_LAST_RUN_FIELD = 'Posts Found (Last Run)';
 const RUN_ID_FIELD = 'Posts Harvest Run ID';
 const POSTS_ACTIONED_FIELD = 'Posts Actioned';
 const DATE_POSTS_SCORED_FIELD = 'Date Posts Scored';
-const CREATED_TIME_FIELD = 'Created Time';
+const DATE_CREATED_FIELD = LEAD_FIELDS.DATE_CREATED; // Use constant instead of hardcoded 'Created Time'
 
 // Helper to format ISO now
 const nowISO = () => new Date().toISOString();
@@ -146,13 +147,13 @@ async function pickLeadBatch(base, batchSize) {
   
   console.log(`🔍 LEAD_SELECTION_FORMULA: ${formula.replace(/\n\s+/g, ' ')}`);
   
-  // Prefer sorting by most recently created leads first. If the Created Time field
+  // Prefer sorting by most recently created leads first. If the Date Created field
   // does not exist on a tenant base, gracefully fall back to no explicit sort.
   const selectOptions = {
     filterByFormula: formula,
     maxRecords: batchSize,
-    fields: [LINKEDIN_URL_FIELD, STATUS_FIELD, CREATED_TIME_FIELD],
-    sort: [{ field: CREATED_TIME_FIELD, direction: 'desc' }]
+    fields: [LINKEDIN_URL_FIELD, STATUS_FIELD, DATE_CREATED_FIELD],
+    sort: [{ field: DATE_CREATED_FIELD, direction: 'desc' }]
   };
   let records;
   try {
@@ -162,7 +163,7 @@ async function pickLeadBatch(base, batchSize) {
     // Log the error
     logCriticalError(e, { operation: 'search_leads_with_sort_fallback', isSearch: true }).catch(() => {});
     
-    // Fallback without sort (e.g., if Created Time field is missing)
+    // Fallback without sort (e.g., if Date Created field is missing)
     const fallbackOptions = {
       filterByFormula: formula,
       maxRecords: batchSize,
