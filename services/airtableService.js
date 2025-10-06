@@ -109,7 +109,7 @@ function initialize() {
       return clientsBase;
     } catch (fallbackError) {
       console.error("FATAL ERROR: Emergency fallback also failed:", fallbackError.message);
-      await logCriticalError(fallbackError, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
+      logCriticalError(fallbackError, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
       throw error; // Throw the original error
     }
   }

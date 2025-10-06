@@ -374,7 +374,7 @@ function extractRunIdFromPayload(body) {
         return null;
     } catch (error) {
         console.error('[ApifyRuns] Error extracting run ID from payload:', error.message);
-        await logCriticalError(error, { context: 'Service error (swallowed)', service: 'apifyRunsService.js' }).catch(() => {});
+        logCriticalError(error, { context: 'Service error (swallowed)', service: 'apifyRunsService.js' }).catch(() => {});
         return null;
     }
 }
