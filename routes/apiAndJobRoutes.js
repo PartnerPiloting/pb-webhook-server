@@ -56,15 +56,16 @@ const ENQUEUE_URL = `${__PUBLIC_BASE__}/enqueue`;
 async function logRouteError(error, req, additionalContext = {}) {
   try {
     await logCriticalError(error, {
-      endpoint: `${req.method} ${req.path}`,
-      clientId: req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId,
+      endpoint: `${req.method} ${req.path || req.url || 'unknown'}`,
+      clientId: additionalContext.clientId || req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId || null,
+      runId: additionalContext.runId || req.query?.runId || req.body?.runId || null,
       requestBody: req.body,
       queryParams: req.query,
       ...additionalContext
     });
   } catch (loggingError) {
     console.error('Failed to log error to Airtable:', loggingError.message);
-    await logRouteError(loggingError, req).catch(() => {});
+    // Don't recursively log the logging error to avoid infinite loop
   }
 }
 
@@ -1189,6 +1190,7 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
       console.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
       await logRouteError(trackingError, req, { 
         clientId: singleClientId || 'SYSTEM',
+        runId: jobId || null,
         operation: 'create-job-tracking-post-scoring' 
       }).catch(() => {});
     }

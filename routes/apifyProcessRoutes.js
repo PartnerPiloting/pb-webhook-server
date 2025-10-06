@@ -17,8 +17,9 @@ const fetch = getFetch();
 async function logRouteError(error, req, additionalContext = {}) {
   try {
     await logCriticalError(error, {
-      endpoint: `${req.method} ${req.path}`,
-      clientId: req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId,
+      endpoint: `${req.method} ${req.path || req.url || 'unknown'}`,
+      clientId: additionalContext.clientId || req.headers['x-client-id'] || req.query?.clientId || req.body?.clientId || null,
+      runId: additionalContext.runId || req.query?.runId || req.body?.runId || null,
       requestBody: req.body,
       queryParams: req.query,
       ...additionalContext
