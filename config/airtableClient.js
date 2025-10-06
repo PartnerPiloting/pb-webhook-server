@@ -42,42 +42,33 @@ try {
  * @returns {Object} Airtable base instance
  */
 function createBaseInstance(baseId) {
-    console.log(`[DEBUG-EXTREME] createBaseInstance CALLED with baseId=${baseId}`);
     
     if (!baseId) {
-        console.error(`[DEBUG-EXTREME] ERROR: Base ID is required to create base instance`);
         throw new Error("Base ID is required to create base instance");
     }
 
     // Check cache first
     if (baseInstanceCache.has(baseId)) {
-        console.log(`[DEBUG-EXTREME] Using cached base instance for: ${baseId}`);
         return baseInstanceCache.get(baseId);
     }
 
     try {
         // Ensure Airtable is configured
         if (!process.env.AIRTABLE_API_KEY) {
-            console.error(`[DEBUG-EXTREME] ERROR: AIRTABLE_API_KEY environment variable is not set`);
             throw new Error("AIRTABLE_API_KEY environment variable is not set");
         }
 
-        console.log(`[DEBUG-EXTREME] Configuring Airtable with API key: ${process.env.AIRTABLE_API_KEY.substring(0, 5)}...`);
         // Configure Airtable if not already done (should be safe to call multiple times)
         Airtable.configure({
             apiKey: process.env.AIRTABLE_API_KEY
         });
 
         // Create new base instance
-        console.log(`[DEBUG-EXTREME] Creating new Airtable.base with baseId=${baseId}`);
         const baseInstance = Airtable.base(baseId);
-        console.log(`[DEBUG-EXTREME] Base instance created successfully`);
         
         // Cache the instance
-        console.log(`[DEBUG-EXTREME] Caching base instance for baseId=${baseId}`);
         baseInstanceCache.set(baseId, baseInstance);
         
-        console.log(`[DEBUG-EXTREME] Successfully created new base instance for: ${baseId}`);
         return baseInstance;
 
     } catch (error) {
@@ -92,32 +83,23 @@ function createBaseInstance(baseId) {
  * @returns {Promise<Object>} Airtable base instance for the client
  */
 async function getClientBase(clientId) {
-    console.log(`[DEBUG-EXTREME] getClientBase CALLED with clientId=${clientId}`);
     
     try {
         // Import client service here to avoid circular dependencies
-        console.log(`[DEBUG-EXTREME] Importing clientService...`);
         const clientService = require('../services/clientService');
-        console.log(`[DEBUG-EXTREME] clientService imported successfully`);
         
         // Get client configuration
-        console.log(`[DEBUG-EXTREME] Calling clientService.getClientById with ${clientId}`);
         const client = await clientService.getClientById(clientId);
-        console.log(`[DEBUG-EXTREME] clientService.getClientById result: ${client ? 'FOUND' : 'NOT FOUND'}`);
         
         if (!client) {
-            console.error(`[DEBUG-EXTREME] ERROR: Client not found: ${clientId}`);
             throw new Error(`Client not found: ${clientId}`);
         }
 
         if (!client.airtableBaseId) {
-            console.error(`[DEBUG-EXTREME] ERROR: No Airtable base ID configured for client: ${clientId}`);
             throw new Error(`No Airtable base ID configured for client: ${clientId}`);
         }
 
-        console.log(`[DEBUG-EXTREME] Getting base for client ${clientId}: ${client.airtableBaseId}`);
         const baseInstance = createBaseInstance(client.airtableBaseId);
-        console.log(`[DEBUG-EXTREME] Base instance created: ${baseInstance ? 'SUCCESS' : 'FAILED'}`);
         return baseInstance;
     } catch (error) {
         console.error(`Error getting base for client ${clientId}:`, error.message);
