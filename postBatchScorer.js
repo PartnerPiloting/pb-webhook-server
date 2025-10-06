@@ -771,13 +771,15 @@ function ensureFormulaQuotes(formula) {
 }
 
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
-    console.log(`[POST_DEBUG] getLeadsForPostScoring: Starting with config:`, {
+    console.log(`🔍 [GET-LEADS-DEBUG] ========== getLeadsForPostScoring CALLED ==========`);
+    console.log(`🔍 [GET-LEADS-DEBUG] Config:`, {
         leadsTableName: config.leadsTableName,
         postsContentField: config.fields.postsContent,
         dateScoredField: config.fields.dateScored,
         forceRescore: !!options.forceRescore,
         limit: limit || 'unlimited'
     });
+    console.log(`🔍 [GET-LEADS-DEBUG] ClientBase type: ${typeof clientBase}`);
     
     // Display the full environment variables that might affect post scoring if in verbose mode
     if (process.env.VERBOSE_POST_SCORING === "true") {
@@ -797,10 +799,15 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     try {
         const formula = ensureFormulaQuotes(`AND({${config.fields.postsContent}} != '', {${config.fields.dateScored}} = BLANK())`);
         
+        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY: Running count of unscored leads`);
+        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY: Formula: ${formula}`);
+        
         // Get a sample record first to check field names (case sensitivity)
         const sampleRec = await clientBase(config.leadsTableName).select({ maxRecords: 1 }).firstPage();
         const hasUpperCaseIdField = sampleRec && sampleRec[0] && Object.keys(sampleRec[0].fields || {}).includes('ID');
         const hasLowerCaseIdField = sampleRec && sampleRec[0] && Object.keys(sampleRec[0].fields || {}).includes('id');
+        
+        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY: ID field check - uppercase: ${hasUpperCaseIdField}, lowercase: ${hasLowerCaseIdField}`);
         
         // Use the first available ID field, or don't specify fields at all if neither exists
         const countQuery = await clientBase(config.leadsTableName).select({
@@ -808,6 +815,7 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             filterByFormula: formula
         }).all();
         
+        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY RESULT: ${countQuery.length} leads have posts content but no Date Posts Scored`);
         if (VERBOSE) console.log(`[POST_DEBUG] TOTAL UNSCORED LEADS: ${countQuery.length} leads have posts content but no Date Posts Scored`);
         
         // Check limit constraints
@@ -883,27 +891,46 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     }
     
     try {
-        console.log(`[DEBUG] getLeadsForPostScoring: Trying primary select with view "Leads with Posts not yet scored"`);
-        console.log(`[DEBUG] getLeadsForPostScoring: Using filter: ${primarySelect.filterByFormula || 'NONE (using view filters only)'}`);
+        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT: Trying view "Leads with Posts not yet scored"`);
+        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT: Filter: ${primarySelect.filterByFormula || 'NONE (using view filters only)'}`);
+        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT: Fields requested:`, primarySelect.fields);
+        
         records = await clientBase(config.leadsTableName).select(primarySelect).all();
+        
+        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT RESULT: Found ${records.length} records from view`);
         console.log(`[DEBUG] getLeadsForPostScoring: Primary select found ${records.length} records`);
         
         if (records.length > 0) {
+            console.log(`🔍 [GET-LEADS-DEBUG] FILTERING: Checking ${records.length} records for valid posts content...`);
+            
             // Check if the records actually have posts content
             const withPosts = records.filter(r => {
-                if (!r.fields || !r.fields[config.fields.postsContent]) return false;
+                if (!r.fields || !r.fields[config.fields.postsContent]) {
+                    console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - No posts content field`);
+                    return false;
+                }
                 
                 // Verify post content is not empty
                 const content = r.fields[config.fields.postsContent];
                 if (typeof content === 'string') {
                     // Check if it's just whitespace or very short
-                    return content.trim().length > 10;
+                    const isValid = content.trim().length > 10;
+                    if (!isValid) {
+                        console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - Content too short (${content.trim().length} chars)`);
+                    }
+                    return isValid;
                 } else if (Array.isArray(content)) {
                     // If it's an array (multi-line text in Airtable), check if it has entries
-                    return content.length > 0;
+                    const isValid = content.length > 0;
+                    if (!isValid) {
+                        console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - Empty array`);
+                    }
+                    return isValid;
                 }
+                console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - Invalid content type: ${typeof content}`);
                 return false;
             });
+            console.log(`🔍 [GET-LEADS-DEBUG] FILTERING RESULT: ${withPosts.length} of ${records.length} records have valid posts content`);
             console.log(`[DEBUG] getLeadsForPostScoring: ${withPosts.length} of ${records.length} records have valid posts content`);
             
             // Check if the records have been scored already

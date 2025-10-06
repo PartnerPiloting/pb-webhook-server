@@ -4742,21 +4742,29 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         console.log(`🔍 DIAGNOSTIC: Module exports:`, Object.keys(smartResumeModule || {}));
         
         // Check what function is available and use the right one
+        console.log(`🔍 [SMART-RESUME-DEBUG] Module loaded, checking type...`);
+        console.log(`🔍 [SMART-RESUME-DEBUG] typeof smartResumeModule: ${typeof smartResumeModule}`);
+        console.log(`🔍 [SMART-RESUME-DEBUG] smartResumeModule keys: ${Object.keys(smartResumeModule || {}).join(', ')}`);
+        console.log(`🔍 [SMART-RESUME-DEBUG] Has runSmartResume?: ${typeof smartResumeModule.runSmartResume === 'function'}`);
+        console.log(`🔍 [SMART-RESUME-DEBUG] Has main?: ${typeof smartResumeModule.main === 'function'}`);
+        
         if (typeof smartResumeModule === 'function') {
-            console.log(`🔍 [${jobId}] Module is a direct function, calling it...`);
+            console.log(`🔍 [SMART-RESUME-DEBUG] Module is a direct function, calling it with stream=${stream}...`);
             await smartResumeModule(stream);
         } else if (typeof smartResumeModule.runSmartResume === 'function') {
-            console.log(`🔍 [${jobId}] Found runSmartResume function, calling it...`);
+            console.log(`🔍 [SMART-RESUME-DEBUG] Found runSmartResume function, calling it with stream=${stream}...`);
             // Pass the stream parameter properly
             await smartResumeModule.runSmartResume(stream);
         } else if (typeof smartResumeModule.main === 'function') {
-            console.log(`🔍 [${jobId}] Found main function, calling it...`);
+            console.log(`🔍 [SMART-RESUME-DEBUG] Found main function, calling it with stream=${stream}...`);
             await smartResumeModule.main(stream);
         } else {
-            console.error(`❌ [${jobId}] CRITICAL: No usable function found in module`);
-            console.error(`❌ [${jobId}] Available exports:`, Object.keys(smartResumeModule || {}));
+            console.error(`❌ [SMART-RESUME-DEBUG] CRITICAL: No usable function found in module`);
+            console.error(`❌ [SMART-RESUME-DEBUG] Available exports:`, Object.keys(smartResumeModule || {}));
             throw new Error('Smart resume module does not export a usable function');
         }
+        
+        console.log(`✅ [SMART-RESUME-DEBUG] Smart resume function returned successfully`);
         
         console.log(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
         console.log(`✅ [${jobId}] Smart resume function called successfully`);
