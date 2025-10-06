@@ -42,6 +42,9 @@ if (missingFields.length > 0) {
 // --- Structured Logging ---
 const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');
 
+// --- Error Logging to Airtable ---
+const { logCriticalError } = require('./utils/errorLogger');
+
 // --- Centralized Dependencies (will be passed into 'run' function) ---
 let BATCH_SCORER_VERTEX_AI_CLIENT;
 let BATCH_SCORER_GEMINI_MODEL_ID;
@@ -80,6 +83,17 @@ async function enqueue(recs, clientId, clientBase, log = console) {
             await scoreChunk(chunk, chunkClientId, chunkClientBase, log);
         } catch (err) {
             log.error(`CHUNK FATAL ERROR for client [${chunkClientId || 'unknown'}] chunk of ${chunk.length} records: ${err.message}`, err.stack);
+            
+            // Log critical batch scoring errors to Airtable
+            await logCriticalError(err, {
+                context: 'Batch Scoring - Chunk Processing',
+                clientId: chunkClientId,
+                chunkSize: chunk.length,
+                operation: 'scoreChunk'
+            }).catch(loggingErr => {
+                log.error(`Failed to log error to Airtable: ${loggingErr.message}`);
+            });
+            
             await alertAdmin("Chunk Failed Critically (batchScorer)", `Client: ${chunkClientId || 'unknown'}\nError: ${String(err.message)}\nStack: ${err.stack}`);
         }
     }
@@ -938,6 +952,16 @@ async function run(req, res, dependencies) {
 
             } catch (clientError) {
                 console.error(`batchScorer.run: [${clientId}] Fatal client processing error:`, clientError);
+                
+                // Log critical client processing errors to Airtable
+                await logCriticalError(clientError, {
+                    context: 'Batch Scoring - Client Processing',
+                    clientId: clientId,
+                    operation: 'processClient',
+                    runId: runId
+                }).catch(loggingErr => {
+                    console.error(`Failed to log client error to Airtable: ${loggingErr.message}`);
+                });
                 
                 // Log client failure
                 const clientDuration = Date.now() - clientStartTime;
