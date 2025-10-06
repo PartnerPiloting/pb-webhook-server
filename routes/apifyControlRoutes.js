@@ -132,6 +132,7 @@ function mapApifyItemsToPBPosts(items = []) {
       });
     } catch (err) {
       console.warn(`[ApifyControl] Error processing item ${i}: ${err.message}`);
+      logRouteError(err, req).catch(() => {});
     }
   }
   return out;
@@ -286,6 +287,7 @@ router.post('/api/apify/run', async (req, res) => {
         });
       } catch (runTrackingError) {
         console.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
+        await logRouteError(runTrackingError, req).catch(() => {});
         // Continue execution - run tracking failure shouldn't break the flow
       }
       
@@ -318,6 +320,7 @@ router.post('/api/apify/run', async (req, res) => {
         }
       } catch (reconcileErr) {
         console.warn('[ApifyControl] profileUrl reconcile skipped:', reconcileErr.message);
+        await logRouteError(reconcileErr, req).catch(() => {});
       }
       let result = { processed: 0, updated: 0, skipped: 0 };
       if (posts.length) {
@@ -327,6 +330,7 @@ router.post('/api/apify/run', async (req, res) => {
           clientBase = await getClientBase(clientId);
         } catch (e) {
           console.warn(`[ApifyControl] Failed to resolve client base for ${clientId}: ${e.message}`);
+          await logRouteError(e, req).catch(() => {});
         }
         result = await syncPBPostsToAirtable(posts, clientBase || null);
         
@@ -347,6 +351,7 @@ router.post('/api/apify/run', async (req, res) => {
             
           } catch (metricsError) {
             console.error(`[ApifyControl] Failed to update post harvesting metrics: ${metricsError.message}`);
+            await logRouteError(metricsError, req).catch(() => {});
             // Continue execution even if metrics update fails
           }
         } else {
@@ -425,6 +430,7 @@ router.post('/api/apify/run', async (req, res) => {
       console.log(`[ApifyControl] Created run tracking for Apify ID ${run.id} -> System ID ${systemRunId} -> Client ${clientId}`);
     } catch (runTrackingError) {
       console.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
+      await logRouteError(runTrackingError, req).catch(() => {});
       // Continue execution - run tracking failure shouldn't break the flow
     }
     

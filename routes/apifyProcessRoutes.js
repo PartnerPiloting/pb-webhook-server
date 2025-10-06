@@ -716,6 +716,7 @@ async function processClientHandler(req, res) {
         console.log(`[DEBUG-RUN-ID-FLOW] Successfully created new run record for ${parentRunId}`);
       } catch (createError) {
         console.error(`[DEBUG-RUN-ID-FLOW] FAILED to create run record: ${createError.message}`);
+        await logRouteError(createError, req).catch(() => {});
         console.error(`[DEBUG-RUN-ID-FLOW] Error stack: ${createError.stack}`);
         // Continue processing even if run record creation fails
       }
@@ -819,6 +820,7 @@ async function processClientHandler(req, res) {
           // since runRecordService.checkRunRecordExists will handle that correctly
         } catch (tableError) {
           console.error(`[DEBUG-RUN-ID-FLOW] TABLE CHECK ERROR: ${tableError.message}`);
+          await logRouteError(tableError, req).catch(() => {});
           // Don't throw the error - we'll let the runRecordService handle this
         }
         
@@ -925,6 +927,7 @@ async function processClientHandler(req, res) {
             }
           } catch (metricError) {
             console.error(`[ERROR] Failed to update client metrics: ${metricError.message}`);
+            await logRouteError(metricError, req).catch(() => {});
           }
           console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
           console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
@@ -964,6 +967,7 @@ async function processClientHandler(req, res) {
             }
           } catch (searchError) {
             console.error(`[DEBUG-RUN-ID-FLOW] RECOVERY ATTEMPT FAILED: ${searchError.message}`);
+            await logRouteError(searchError, req).catch(() => {});
           }
           
           // Get the Apify Run ID if it exists in the start data
@@ -993,12 +997,14 @@ async function processClientHandler(req, res) {
             }
           } catch (metricError) {
             console.error(`[ERROR] Failed to update client metrics in fallback handler: ${metricError.message}`);
+            await logRouteError(metricError, req).catch(() => {});
           }
           console.log(`  - Apify API Costs: ${estimatedCost}`);
         }
       } catch (recordError) {
         // Error checking for existing record
         console.error(`[apify/process-client] ERROR: Failed to check for existing record: ${recordError.message}`);
+        await logRouteError(recordError, req).catch(() => {});
         console.error(`[apify/process-client] Run ID: ${runIdToUse}, Client ID: ${clientId}`);
         
         // Try to update metrics anyway for operational continuity
@@ -1023,10 +1029,12 @@ async function processClientHandler(req, res) {
           console.log(`[apify/process-client] Attempted metrics update despite record lookup failure`);
         } catch (updateError) {
           console.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);
+          await logRouteError(updateError, req).catch(() => {});
         }
       }
     } catch (metricError) {
       console.error(`[apify/process-client] Failed to update post harvesting metrics: ${metricError.message}`);
+      await logRouteError(metricError, req).catch(() => {});
       console.error(`[DEBUG][METRICS_TRACKING] ERROR updating metrics: ${metricError.message}`);
       console.error(`[DEBUG][METRICS_TRACKING] Error stack: ${metricError.stack}`);
       console.error(`[DEBUG][METRICS_TRACKING] Client ID: ${clientId}, Run ID to use: ${runIdToUse || '(none)'}`);
@@ -1137,6 +1145,7 @@ async function getAllClients() {
     })).filter(client => client.clientId);
   } catch (error) {
     console.error('Error getting all clients:', error.message);
+    await logRouteError(error, req).catch(() => {});
     return [];
   }
 }
@@ -1231,6 +1240,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
         }
       } catch (clientError) {
         console.error(`[${endpoint}/batch] Error processing client ${client.clientId}:`, clientError.message);
+        await logRouteError(clientError, req).catch(() => {});
         results.failed++;
         results.clientResults[client.clientId] = { status: 'failed', error: clientError.message };
       }
@@ -1254,11 +1264,13 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
       fs.writeFileSync(`${resultsDir}/${masterRunId}.json`, JSON.stringify(results, null, 2));
     } catch (fsError) {
       console.error(`[${endpoint}/batch] Error saving results:`, fsError.message);
+      await logRouteError(fsError, req).catch(() => {});
     }
     
     return results;
   } catch (error) {
     console.error('[batch-process] Error processing clients in background:', error.message);
+    await logRouteError(error, req).catch(() => {});
     return { error: error.message };
   }
 }

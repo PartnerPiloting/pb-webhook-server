@@ -335,6 +335,7 @@ function normalizeLinkedInProfileURL(url) {
         return url;
     } catch (e) {
         console.error(`Error normalizing LinkedIn URL ${url}: ${e.message}`);
+        logRouteError(e, req).catch(() => {});
         return url;
     }
 }

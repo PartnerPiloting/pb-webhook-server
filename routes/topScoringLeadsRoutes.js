@@ -31,6 +31,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       } catch (e) {
         // Fall through to default base
         console.warn(`topScoringLeads: getClientBase failed for ${clientId}: ${e?.message || e}`);
+        await logRouteError(e, req).catch(() => {});
       }
     }
     return base;
