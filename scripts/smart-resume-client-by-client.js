@@ -250,7 +250,11 @@ console.log(`🔍 TRACE: checkUnscoredPostsCount function defined`);
 
 console.log(`🔍 TRACE: About to define determineClientWorkflow function`);
 async function determineClientWorkflow(client) {
+    console.log(`🔍 WORKFLOW-DEBUG: ========== determineClientWorkflow CALLED for ${client.clientName} (${client.clientId}) ==========`);
+    
     const operations = ['lead_scoring', 'post_harvesting', 'post_scoring'];
+    console.log(`🔍 WORKFLOW-DEBUG: Operations to check: ${operations.join(', ')}`);
+    
     const workflow = {
         clientId: client.clientId,
         clientName: client.clientName,
@@ -259,6 +263,8 @@ async function determineClientWorkflow(client) {
         operationsToRun: [],
         statusSummary: {}
     };
+    
+    console.log(`🔍 WORKFLOW-DEBUG: Starting operation status checks for ${client.clientName}...`);
     
     console.log(`🔍 [WORKFLOW-DEBUG] Determining workflow for ${client.clientName} (${client.clientId})`);
     
