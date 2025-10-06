@@ -12,7 +12,10 @@ const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelpe
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 // Import field constants
-const { APIFY_RUN_ID } = require('../constants/airtableUnifiedConstants');
+const { 
+  APIFY_RUN_ID,
+  CLIENT_RUN_FIELDS 
+} = require('../constants/airtableUnifiedConstants');
 const runIdUtils = require('../utils/runIdUtils');
 // Updated to use unified run ID service
 const runIdService = require('../services/unifiedRunIdService');
@@ -879,10 +882,10 @@ async function processClientHandler(req, res) {
           const allFields = Object.keys(currentRecord.fields).map(key => `${key}: ${currentRecord.fields[key]}`);
           console.log(`[DEBUG-RUN-ID-FLOW] RECORD FIELDS: ${JSON.stringify(allFields, null, 2)}`);
           
-          const currentPostCount = Number(currentRecord.get('Total Posts Harvested') || 0);
-          const currentApiCosts = Number(currentRecord.get('Apify API Costs') || 0);
-          const profilesSubmittedCount = Number(currentRecord.get('Profiles Submitted for Post Harvesting') || 0);
-          const currentApifyRunId = currentRecord.get(APIFY_RUN_ID);
+          const currentPostCount = Number(currentRecord.get(CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED) || 0);
+          const currentApiCosts = Number(currentRecord.get(CLIENT_RUN_FIELDS.APIFY_API_COSTS) || 0);
+          const profilesSubmittedCount = Number(currentRecord.get(CLIENT_RUN_FIELDS.PROFILES_SUBMITTED) || 0);
+          const currentApifyRunId = currentRecord.get(CLIENT_RUN_FIELDS.APIFY_RUN_ID);
           
           console.log(`[DEBUG-RUN-ID-FLOW] RECORD VALUES: Found existing record for ${runIdToUse}:`);
           console.log(`[DEBUG-RUN-ID-FLOW] - Current Posts Harvested: ${currentPostCount}`);
@@ -915,10 +918,10 @@ async function processClientHandler(req, res) {
                 runId: runIdToUse,
                 clientId: clientId,
                 metrics: {
-                  'Total Posts Harvested': updatedCount,
-                  'Apify API Costs': updatedCosts,
-                  [APIFY_RUN_ID]: apifyRunId,
-                  'Profiles Submitted for Post Harvesting': updatedProfilesSubmitted
+                  [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: updatedCount,
+                  [CLIENT_RUN_FIELDS.APIFY_API_COSTS]: updatedCosts,
+                  [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId,
+                  [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: updatedProfilesSubmitted
                 },
                 options: { source: 'apifyProcessRoutes' }
               });
@@ -982,10 +985,10 @@ async function processClientHandler(req, res) {
                 runId: runIdToUse,
                 clientId: clientId,
                 metrics: {
-                  'Total Posts Harvested': postsToday,
-                  'Apify API Costs': estimatedCost,
-                  [APIFY_RUN_ID]: apifyRunId,
-                  'Profiles Submitted for Post Harvesting': profilesSubmitted
+                  [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: postsToday,
+                  [CLIENT_RUN_FIELDS.APIFY_API_COSTS]: estimatedCost,
+                  [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId,
+                  [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted
                 },
                 options: { source: 'apifyProcessRoutes_fallback' }
               });
@@ -1015,9 +1018,9 @@ async function processClientHandler(req, res) {
               runId: runIdToUse,
               clientId: clientId,
               metrics: {
-                'Total Posts Harvested': postsToday,
-                [APIFY_RUN_ID]: apifyRunId,
-                'Profiles Submitted for Post Harvesting': targetUrls ? targetUrls.length : 0
+                [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: postsToday,
+                [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId,
+                [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: targetUrls ? targetUrls.length : 0
               },
               options: { source: 'apifyProcessRoutes_emergency' }
             });
