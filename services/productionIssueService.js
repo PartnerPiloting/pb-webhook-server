@@ -205,14 +205,9 @@ class ProductionIssueService {
       fields[FIELDS.SERVICE_FUNCTION] = issue.service;
     }
 
-    // TODO: Link to client if clientId is present
-    // Would need to look up client record by ID first
-    // if (issue.clientId) {
-    //   const clientRecord = await findClientByName(issue.clientId);
-    //   if (clientRecord) {
-    //     fields[FIELDS.CLIENT] = [clientRecord.id];
-    //   }
-    // }
+    if (issue.clientId) {
+      fields[FIELDS.CLIENT] = issue.clientId; // Store client name/ID as text
+    }
 
     const record = await this.masterBase(PRODUCTION_ISSUES_TABLE).create(fields);
     return record;
@@ -304,7 +299,8 @@ class ProductionIssueService {
     const updates = {
       [FIELDS.STATUS]: 'FIXED',
       [FIELDS.FIXED_BY]: fixedBy,
-      [FIELDS.FIXED_DATE]: new Date().toISOString().split('T')[0], // Date only
+      [FIELDS.FIXED_DATE]: new Date().toISOString().split('T')[0], // Date only (YYYY-MM-DD)
+      [FIELDS.FIXED_TIME]: new Date().toISOString(), // Full datetime with time
       [FIELDS.FIX_NOTES]: fixNotes,
     };
 
