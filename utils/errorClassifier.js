@@ -259,10 +259,17 @@ function extractLocationFromStack(error) {
  */
 function isExpectedBehavior(error, context = {}) {
   const errorMessage = error.message || error.toString();
+  const lowerMessage = errorMessage.toLowerCase();
 
   // Explicit flag from caller
   if (context.expectedBehavior === true) {
     return true;
+  }
+
+  // CRITICAL: NEVER treat system infrastructure errors as "expected behavior"
+  // These indicate broken system components and MUST be logged
+  if (isSystemError(errorMessage, context)) {
+    return false; // System errors are NEVER expected behavior
   }
 
   // JSON parse failures with fallback logic (very common)
@@ -272,10 +279,11 @@ function isExpectedBehavior(error, context = {}) {
     return true;
   }
 
-  // Record not found in search operations (normal when searching)
-  if ((errorMessage.includes('not found') || 
-       errorMessage.includes('no record') ||
-       errorMessage.includes('does not exist')) &&
+  // Record not found in BUSINESS DATA search operations (normal when searching)
+  // But NOT for system records (run tracking, job tracking, etc.)
+  if ((lowerMessage.includes('not found') || 
+       lowerMessage.includes('no record') ||
+       lowerMessage.includes('does not exist')) &&
       (context.operation?.includes('search') || 
        context.operation?.includes('find') ||
        context.isSearch)) {
@@ -321,6 +329,59 @@ function isExpectedBehavior(error, context = {}) {
 }
 
 /**
+ * Determine if error is a system/infrastructure error (must always be logged)
+ * System errors indicate broken components, not business logic issues
+ * @param {string} errorMessage - The error message to check
+ * @param {Object} context - Additional context
+ * @returns {boolean} - True if this is a system error
+ */
+function isSystemError(errorMessage, context = {}) {
+  const lowerMessage = errorMessage.toLowerCase();
+  
+  // System infrastructure keywords - these indicate broken system components
+  const systemKeywords = [
+    'run record',      // Job/client run tracking system
+    'run id',          // Run identification system
+    'job tracking',    // Job tracking infrastructure
+    'client run',      // Client run management system
+    'tracking record', // Tracking system failures
+    'schema',          // Database schema issues
+    'field name',      // Database field mapping errors
+    'table not found', // Missing database tables
+    'unknown field',   // Database field mismatches
+    'invalid field'    // Database field errors
+  ];
+  
+  // Check if error message contains system keywords
+  for (const keyword of systemKeywords) {
+    if (lowerMessage.includes(keyword)) {
+      return true;
+    }
+  }
+  
+  // Check if error occurred in system infrastructure files
+  const systemFiles = [
+    'jobtracking',
+    'runidsystem',
+    'errorlogger',
+    'errorclassifier',
+    'clientservice',
+    'airtableclient'
+  ];
+  
+  const stackTrace = context.stack || '';
+  const lowerStack = stackTrace.toLowerCase();
+  
+  for (const file of systemFiles) {
+    if (lowerStack.includes(file)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Check if error should be skipped (expected business logic)
  * @param {Error} error - The error object
  * @param {Object} context - Additional context
@@ -328,6 +389,12 @@ function isExpectedBehavior(error, context = {}) {
  */
 function shouldSkipError(error, context = {}) {
   const errorMessage = error.message || error.toString();
+
+  // CRITICAL: NEVER skip system infrastructure errors
+  // These must ALWAYS be logged as they indicate broken system components
+  if (isSystemError(errorMessage, context)) {
+    return false; // System errors must ALWAYS be logged
+  }
 
   // Skip validation warnings that were auto-corrected
   if (context.recovered || context.autoFixed) {
@@ -361,6 +428,7 @@ module.exports = {
   extractLocationFromStack,
   shouldSkipError,
   isExpectedBehavior,
+  isSystemError, // Exported for testing/debugging
   ERROR_SEVERITY,
   ERROR_TYPES
 };
