@@ -1065,12 +1065,11 @@ router.post("/run-post-batch-score", async (req, res) => {
     try {
       await JobTracking.completeJob({
         runId,
-        status: results.totalErrors > 0 ? CLIENT_RUN_STATUS_VALUES.COMPLETED_WITH_ERRORS : CLIENT_RUN_STATUS_VALUES.COMPLETED,
+        status: results.successfulClients === results.totalClients ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.COMPLETED_WITH_ERRORS,
         updates: {
           'System Notes': `Multi-tenant post scoring completed: ${results.successfulClients}/${results.totalClients} clients successful, ${results.totalPostsScored}/${results.totalPostsProcessed} posts scored`,
           'Items Processed': results.totalPostsProcessed,
-          'Posts Successfully Scored': results.totalPostsScored,
-          'Errors': results.totalErrors
+          'Posts Successfully Scored': results.totalPostsScored
         }
       });
       console.log(`Updated job tracking record ${runId} with completion status`);
@@ -1093,7 +1092,6 @@ router.post("/run-post-batch-score", async (req, res) => {
         totalPostsScored: results.totalPostsScored,
         totalLeadsSkipped: results.totalLeadsSkipped,
         skipCounts: results.skipCounts,
-        totalErrors: results.totalErrors,
         errorReasonCounts: results.errorReasonCounts,
         duration: results.duration
       },
@@ -1500,11 +1498,10 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
       scored: results.totalPostsScored,
       skipped: results.totalLeadsSkipped,
       skipCounts: results.skipCounts,
-      errors: results.totalErrors,
-  errorReasonCounts: results.errorReasonCounts,
+      errorReasonCounts: results.errorReasonCounts,
       duration: results.duration,
-  clientStatus: first.status || null,
-  diagnostics: results.diagnostics || null
+      clientStatus: first.status || null,
+      diagnostics: results.diagnostics || null
     });
   } catch (e) {
     await logRouteError(e, req, { operation: 'batch_lead_scoring' }).catch(() => {});
@@ -1551,7 +1548,6 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
       totalPostsScored: 0,
       totalLeadsSkipped: 0,
       skipCounts: {},
-      totalErrors: 0,
       errorReasonCounts: {},
       duration: 0
     };
@@ -1589,12 +1585,11 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
         // Each invocation with a single client returns a results object with one clientResults entry
         const first = results.clientResults && results.clientResults[0] ? results.clientResults[0] : null;
         if (first) {
-          summaries.push({ clientId: c.clientId, status: first.status, postsProcessed: first.postsProcessed || 0, postsScored: first.postsScored || 0, errors: first.errors || 0 });
+          summaries.push({ clientId: c.clientId, status: first.status, postsProcessed: first.postsProcessed || 0, postsScored: first.postsScored || 0 });
           // Aggregate totals
           aggregate.totalPostsProcessed += first.postsProcessed || 0;
           aggregate.totalPostsScored += first.postsScored || 0;
           aggregate.totalLeadsSkipped += first.leadsSkipped || 0;
-          aggregate.totalErrors += first.errors || 0;
           // Success vs failed (treat completed_with_errors as failed for counts)
           if (first.status === 'success') aggregate.successfulClients++; else aggregate.failedClients++;
           // Merge skip counts
@@ -1620,7 +1615,6 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
         }).catch(() => {});
         summaries.push({ clientId: c.clientId, status: getStatusString('FAILED'), error: e.message });
         aggregate.failedClients++;
-        aggregate.totalErrors++;
       }
     }
 
