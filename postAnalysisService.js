@@ -194,7 +194,16 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 
         // Step 6: Find the highest scoring post from the response
         if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
-            throw new Error("AI response was not a valid or non-empty array of post scores.");
+            // This is expected behavior when AI returns invalid format
+            // Track in metrics (examined vs scored gap) instead of logging as error
+            log.warn("AI response was not a valid or non-empty array. This will show in examined vs scored metrics.");
+            
+            // Return skip status instead of throwing - this is handled gracefully
+            return {
+                status: 'skipped',
+                skipReason: 'INVALID_AI_RESPONSE',
+                errorCategory: 'AI_RESPONSE_FORMAT'
+            };
         }
 
         // Use reduce to find the post with the highest score.

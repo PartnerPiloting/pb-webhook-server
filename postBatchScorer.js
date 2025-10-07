@@ -1415,12 +1415,16 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         
         // Find the highest scoring post (matching original logic)
         if (!Array.isArray(aiResponseArray) || aiResponseArray.length === 0) {
-            // Instead of throwing an error directly, handle this case more gracefully
-            // Log what happened for debugging
-            if (process.env.VERBOSE_POST_SCORING === "true") {
-            }
-            // Now throw the error which will be caught and handled by the error handler below
-            throw new Error("AI response was not a valid or non-empty array of post scores.");
+            // This is expected behavior when AI returns invalid format
+            // Track in metrics (examined vs scored gap) instead of logging as error
+            logger.warn(`Lead ${leadRecord.id}: AI response was not a valid or non-empty array. This will show in examined vs scored metrics.`);
+            
+            // Return skip status instead of throwing - this is handled gracefully
+            return {
+                status: 'skipped',
+                skipReason: 'INVALID_AI_RESPONSE',
+                errorCategory: 'AI_RESPONSE_FORMAT'
+            };
         }
 
         const highestScoringPost = aiResponseArray.reduce((max, current) => {
