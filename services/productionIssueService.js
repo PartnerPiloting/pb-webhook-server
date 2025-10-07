@@ -24,7 +24,6 @@ const FIELDS = {
   CLIENT: 'Client ID',
   SERVICE_FUNCTION: 'Service/Function',
   STATUS: 'Status',
-  FIXED_BY: 'Fixed By',
   FIXED_TIME: 'Fixed Time',
   FIX_NOTES: 'Fix Notes',
   FIX_COMMIT: 'Fix Commit',
@@ -290,14 +289,12 @@ class ProductionIssueService {
    */
   async markAsFixed(recordId, fixInfo = {}) {
     const {
-      fixedBy = 'AI Assistant - GitHub Copilot',
       fixNotes = '',
       commitHash = '',
     } = fixInfo;
 
     const updates = {
       [FIELDS.STATUS]: 'FIXED',
-      [FIELDS.FIXED_BY]: fixedBy,
       [FIELDS.FIXED_TIME]: new Date().toISOString(), // Datetime field
       [FIELDS.FIX_NOTES]: fixNotes,
     };

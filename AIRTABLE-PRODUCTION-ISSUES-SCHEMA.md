@@ -1,13 +1,28 @@
 # Airtable Table Schema: Production Issues
 
 ## Table Information
-- **Table Name:** `Production Issues`
+- **Table Name:** `Production I13. **Fix Notes**
+  15. **Render Log URL**
+    - Type: `URL`
+    - Description: Direct link to Render logs (valid for 7 days)
+    - Example: https://dashboard.render.com/web/srv-xyz/logs?start=1728316995
+
+---
+
+### Optional Fields (3 fields - for advanced tracking)
+
+16. **Occurrences**`Long text`
+    - Description: Explanation of what was done to fix it
+    - Enable rich text: No
+    - Example: "Fixed field name typo in leadService.js line 145. Changed 'Errors' to 'Error_Messages'. Committed as a3b2c1d."
+
+14. **Fix Commit**
 - **Location:** Master Clients Base (same base as "Clients" table)
 - **Purpose:** Store filtered production errors from Render logs for debugging and tracking
 
 ---
 
-## Field Definitions (19 Fields Total)
+## Field Definitions (18 Fields Total)
 
 ### Core Fields (7 fields - REQUIRED)
 
@@ -92,23 +107,18 @@
 
 ### Tracking Fields (3 fields - for fix management)
 
-12. **Fixed By**
-    - Type: `Single line text`
-    - Description: Who or what resolved the issue
-    - Example: "AI Assistant - GitHub Copilot", "Guy Wilson", "Auto-resolved"
-
-13. **Fixed Time**
+12. **Fixed Time**
     - Type: `Date and time`
     - Description: When the issue was resolved (includes date and time)
     - Format: Include time
 
-14. **Fix Notes**
+13. **Fix Notes**
     - Type: `Long text`
     - Description: Explanation of what was done to fix it
     - Enable rich text: No
     - Example: "Fixed field name typo in leadService.js line 145. Changed 'Errors' to 'Error_Messages'. Committed as a3b2c1d."
 
-15. **Fix Commit**
+14. **Fix Commit**
     - Type: `Single line text`
     - Description: Git commit hash of the fix
     - Example: "a3b2c1d" or "a3b2c1d4e5f6789"
@@ -117,7 +127,7 @@
 
 ### Reference Fields (1 field)
 
-16. **Render Log URL**
+15. **Render Log URL**
     - Type: `URL`
     - Description: Direct link to Render logs (valid for 7 days)
     - Example: https://dashboard.render.com/web/srv-xyz/logs?start=1728316995
@@ -126,19 +136,19 @@
 
 ### Optional Fields (3 fields - for advanced tracking)
 
-17. **Occurrences**
+16. **Occurrences**
     - Type: `Number`
     - Format: Integer
     - Description: How many times this exact error was seen
     - Default: 1
     - Incremented when same error is detected again
 
-18. **First Seen**
+17. **First Seen**
     - Type: `Date and time`
     - Description: First occurrence of this error pattern
     - Format: Include time
 
-19. **Last Seen**
+18. **Last Seen**
     - Type: `Date and time`
     - Description: Most recent occurrence
     - Format: Include time
@@ -188,7 +198,7 @@
    - Then Optional Fields (3)
 5. **Create the 5 views** listed above
 6. **Set default view** to "🔥 Critical Issues"
-7. **Verify** you have 19 fields total (plus any auto-generated fields like "Created Time")
+7. **Verify** you have 18 fields total (plus any auto-generated fields like "Created Time")
 
 ---
 

@@ -412,7 +412,7 @@ app.get('/api/production-issues', async (req, res) => {
  * Mark a Production Issue as fixed
  * POST /api/production-issues/:recordId/mark-fixed
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
- * Body: { fixedBy: "AI Assistant", fixNotes: "...", commitHash: "a3b2c1d" }
+ * Body: { fixNotes: "...", commitHash: "a3b2c1d" }
  */
 app.post('/api/production-issues/:recordId/mark-fixed', async (req, res) => {
     const auth = req.headers['authorization'];
@@ -422,10 +422,10 @@ app.post('/api/production-issues/:recordId/mark-fixed', async (req, res) => {
 
     try {
         const { recordId } = req.params;
-        const { fixedBy, fixNotes, commitHash } = req.body || {};
+        const { fixNotes, commitHash } = req.body || {};
         
         const service = new ProductionIssueService();
-        const updated = await service.markAsFixed(recordId, { fixedBy, fixNotes, commitHash });
+        const updated = await service.markAsFixed(recordId, { fixNotes, commitHash });
         
         res.json({ ok: true, message: 'Issue marked as fixed', record: updated });
     } catch (error) {
