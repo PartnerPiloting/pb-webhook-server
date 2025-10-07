@@ -177,15 +177,23 @@ const app = express();
 // ============================================================================
 // SENTRY REQUEST HANDLER - Must be FIRST middleware
 // ============================================================================
-if (process.env.SENTRY_DSN && Sentry && Sentry.Handlers) {
-    // RequestHandler creates a separate execution context using domains to automatically
-    // capture request data (URL, headers, query params, etc.) with errors
-    app.use(Sentry.Handlers.requestHandler());
-    
-    // TracingHandler creates a transaction for every request to monitor performance
-    app.use(Sentry.Handlers.tracingHandler());
-    
-    console.log("✓ Sentry request and tracing handlers added to Express app");
+if (Sentry && process.env.SENTRY_DSN) {
+    console.log("DEBUG: Checking Sentry.Handlers existence:", !!Sentry.Handlers);
+    if (Sentry.Handlers) {
+        console.log("DEBUG: Sentry.Handlers methods:", Object.keys(Sentry.Handlers));
+        // RequestHandler creates a separate execution context using domains to automatically
+        // capture request data (URL, headers, query params, etc.) with errors
+        app.use(Sentry.Handlers.requestHandler());
+        
+        // TracingHandler creates a transaction for every request to monitor performance
+        app.use(Sentry.Handlers.tracingHandler());
+        
+        console.log("✓ Sentry request and tracing handlers added to Express app");
+    } else {
+        console.warn("⚠ Sentry.Handlers not available - middleware not added");
+    }
+} else {
+    console.warn("⚠ Sentry or DSN not configured - skipping middleware setup");
 }
 // ============================================================================
 
@@ -1953,7 +1961,7 @@ const { logCriticalError } = require('./utils/errorLogger');
 // ============================================================================
 // SENTRY ERROR HANDLER - Must be AFTER all routes, BEFORE other error handlers
 // ============================================================================
-if (process.env.SENTRY_DSN && Sentry && Sentry.Handlers) {
+if (Sentry && process.env.SENTRY_DSN && Sentry.Handlers) {
     // The error handler must be registered before any other error middleware and after all controllers
     app.use(Sentry.Handlers.errorHandler({
         shouldHandleError(error) {
@@ -1963,6 +1971,8 @@ if (process.env.SENTRY_DSN && Sentry && Sentry.Handlers) {
         }
     }));
     console.log("✓ Sentry error handler added to Express app");
+} else {
+    console.warn("⚠ Sentry error handler not added - Sentry or Handlers not available");
 }
 // ============================================================================
 
