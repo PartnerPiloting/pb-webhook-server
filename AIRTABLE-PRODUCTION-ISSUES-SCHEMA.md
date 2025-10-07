@@ -78,11 +78,10 @@
      - `other`
    - Description: What type of operation was running
 
-10. **Client**
+10. **Client ID**
     - Type: `Single line text`
     - Description: Which client was affected (if applicable)
     - Example: "Guy Wilson", "John Smith"
-    - Note: Changed from "Link to another record" for simplicity
 
 11. **Service/Function**
     - Type: `Single line text`
