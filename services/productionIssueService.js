@@ -26,6 +26,7 @@ const FIELDS = {
   STATUS: 'Status',
   FIXED_BY: 'Fixed By',
   FIXED_DATE: 'Fixed Date',
+  FIXED_TIME: 'Fixed Time',
   FIX_NOTES: 'Fix Notes',
   FIX_COMMIT: 'Fix Commit',
   RENDER_LOG_URL: 'Render Log URL',

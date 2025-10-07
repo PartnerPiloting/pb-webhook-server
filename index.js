@@ -465,8 +465,8 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
             // Metadata Fields (4)
             'Stack Trace': 'Test stack trace\n  at testFunction (test.js:123:45)\n  at main (index.js:789:10)',
             'Run Type': 'api-endpoint', // Test single select
+            'Client': 'Guy Wilson', // Single line text field (changed from linked record)
             'Service/Function': 'verifyProductionIssuesTable',
-            // Client field skipped - requires actual client record link
             
             // Tracking Fields (4) - test with placeholder values
             'Fixed Date': '2025-10-08', // Date field
@@ -509,13 +509,13 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
                     datetime: 4,
                     single_select: 3,
                     long_text: 4,
-                    single_line_text: 6,
+                    single_line_text: 7,
                     url: 1,
                     number: 1,
                     date: 1
                 },
                 total_expected_fields: 19,
-                fields_not_tested: ['Client (requires actual record link)'],
+                all_fields_tested: true,
                 test_record_created_and_deleted: true
             },
             next_steps: [
