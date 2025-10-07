@@ -16,7 +16,7 @@ const MASTER_TABLES = {
   JOB_TRACKING: 'Job Tracking',
   CLIENT_EXECUTION_LOG: 'Client Execution Log',
   APIFY: 'Apify',
-  ERROR_LOG: 'Error Log'
+  PRODUCTION_ISSUES: 'Production Issues' // Replaced Error Log table
 };
 
 // Table names in individual client bases
@@ -320,33 +320,14 @@ const CREDENTIAL_FIELDS = {
   USER_AGENT: 'User-Agent'
 };
 
-// Field names for Error Log table in Master Clients Base
-const ERROR_LOG_FIELDS = {
-  ERROR_ID: 'Error ID',
-  TIMESTAMP: 'Timestamp',
-  SEVERITY: 'Severity',
-  ERROR_TYPE: 'Error Type',
-  ERROR_MESSAGE: 'Error Message',
-  STACK_TRACE: 'Stack Trace',
-  FILE_PATH: 'File Path',
-  FUNCTION_NAME: 'Function Name',
-  LINE_NUMBER: 'Line Number',
-  CONTEXT_JSON: 'Context JSON',
-  CLIENT_ID: 'Client ID',
-  RUN_ID: 'Run ID',
-  STATUS: 'Status',
-  RESOLUTION_NOTES: 'Resolution Notes',
-  FIXED_IN_COMMIT: 'Fixed In Commit',
-  FIXED_BY: 'Fixed By',
-  FIXED_DATE: 'Fixed Date'
-};
-
-// Error severity values
-const ERROR_SEVERITY_VALUES = {
-  CRITICAL: 'CRITICAL',
-  ERROR: 'ERROR',
-  WARNING: 'WARNING'
-};
+// ============================================================================
+// LEGACY: Old Error Log table fields (DEPRECATED - use Production Issues)
+// ============================================================================
+// The Error Log table and these constants are deprecated and should not be used.
+// Use services/productionIssueService.js and Production Issues table instead.
+// 
+// This section kept for reference only - can be deleted after migration complete.
+// ============================================================================
 
 // Error type values
 const ERROR_TYPE_VALUES = {
@@ -388,9 +369,7 @@ module.exports = {
   POST_FIELDS,
   CREDENTIAL_FIELDS,
   POST_MEDIA_TYPES,
-  POST_TYPES,
-  ERROR_LOG_FIELDS,
-  ERROR_SEVERITY_VALUES,
-  ERROR_TYPE_VALUES,
-  ERROR_STATUS_VALUES
+  POST_TYPES
+  // Removed: ERROR_LOG_FIELDS, ERROR_SEVERITY_VALUES, ERROR_TYPE_VALUES, ERROR_STATUS_VALUES
+  // (Legacy error logger - replaced with Production Issues system)
 };
