@@ -25,7 +25,6 @@ const FIELDS = {
   SERVICE_FUNCTION: 'Service/Function',
   STATUS: 'Status',
   FIXED_BY: 'Fixed By',
-  FIXED_DATE: 'Fixed Date',
   FIXED_TIME: 'Fixed Time',
   FIX_NOTES: 'Fix Notes',
   FIX_COMMIT: 'Fix Commit',
@@ -299,8 +298,7 @@ class ProductionIssueService {
     const updates = {
       [FIELDS.STATUS]: 'FIXED',
       [FIELDS.FIXED_BY]: fixedBy,
-      [FIELDS.FIXED_DATE]: new Date().toISOString().split('T')[0], // Date only (YYYY-MM-DD)
-      [FIELDS.FIXED_TIME]: new Date().toISOString(), // Full datetime with time
+      [FIELDS.FIXED_TIME]: new Date().toISOString(), // Datetime field
       [FIELDS.FIX_NOTES]: fixNotes,
     };
 
