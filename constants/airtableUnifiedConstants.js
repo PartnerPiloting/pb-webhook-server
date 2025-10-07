@@ -118,14 +118,12 @@ const CLIENT_RUN_FIELDS = {
   PROFILES_SCORED: 'Profiles Successfully Scored',
   PROFILE_SCORING_SUCCESS_RATE: 'Profile Scoring Success Rate', // Formula field
   PROFILE_SCORING_TOKENS: 'Profile Scoring Tokens',
-  LEAD_SCORING_ERRORS: 'Errors',
   
   // Post scoring metrics
   POSTS_EXAMINED: 'Posts Examined for Scoring',
   POSTS_SCORED: 'Posts Successfully Scored',
   POST_SCORING_SUCCESS_RATE: 'Post Scoring Success Rate', // Formula field
   POST_SCORING_TOKENS: 'Post Scoring Tokens',
-  POST_SCORING_ERRORS: 'Post Scoring Errors',
   
   // Harvesting metrics
   PROFILES_SUBMITTED: 'Profiles Submitted for Post Harvesting',
