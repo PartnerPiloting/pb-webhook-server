@@ -954,13 +954,13 @@ class JobTracking {
         return null;
       }
       
-      // Create client-specific run ID with standard format
-      const clientRunId = JobTracking.addClientSuffix(standardRunId, safeClientId);
+      // PURE CONSUMER ARCHITECTURE: In orchestrated runs, the runId passed here is ALREADY 
+      // the complete client run ID (e.g., "251007-070457-Guy-Wilson") created by createClientRun().
+      // We use it EXACTLY as-is with NO reconstruction or suffix manipulation.
+      // This matches the pattern used in updateClientRun() (line 638-645).
+      const clientRunId = standardRunId;
       
-      if (!clientRunId) {
-        log.error(`Failed to create client run ID for ${standardRunId} and ${safeClientId}`);
-        return null;
-      }
+      log.debug(`Using client run ID exactly as passed: ${clientRunId}`);
       
       const masterBase = airtableClient.getMasterClientsBase();
       
@@ -1128,13 +1128,13 @@ class JobTracking {
         return false;
       }
       
-      // Create client-specific run ID with standard format
-      const clientRunId = JobTracking.addClientSuffix(standardRunId, safeClientId);
+      // PURE CONSUMER ARCHITECTURE: In orchestrated runs, the runId passed here is ALREADY 
+      // the complete client run ID (e.g., "251007-070457-Guy-Wilson") created by createClientRun().
+      // We use it EXACTLY as-is with NO reconstruction or suffix manipulation.
+      // This matches the pattern used in updateClientRun() (line 638-645).
+      const clientRunId = standardRunId;
       
-      if (!clientRunId) {
-        log.error(`Failed to create client run ID for ${standardRunId} and ${safeClientId}`);
-        return false;
-      }
+      log.debug(`Using client run ID exactly as passed: ${clientRunId}`);
       
       // Get the master base
       const masterBase = airtableClient.getMasterClientsBase();
