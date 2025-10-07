@@ -410,9 +410,11 @@ async function processClientHandler(req, res) {
       throw new Error(errMsg);
     }
 
-    // Get parent run ID from query params or body (if provided)
-    // Changed from const to let to allow reassignment later
-    let parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
+    // Get parent run ID and client-specific run ID from query params or body (if provided)
+    // parentRunId: Master run ID (e.g., "251006-225513") - IMMUTABLE, never modified
+    // clientRunId: Client-specific run ID (e.g., "251006-225513-Guy-Wilson") - created by smart-resume
+    const parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId);
+    const clientRunId = req.query.clientRunId || (req.body && req.body.clientRunId);
     
     // Add debug logs to identify the issue
     console.log(`[processClientHandler] DEBUG: req.path = ${req.path}`);
@@ -695,20 +697,21 @@ async function processClientHandler(req, res) {
     
     // SIMPLIFIED: We use the parent run ID if provided, otherwise we're in standalone mode and skip metrics
     
-    // Determine if this is a standalone run (no parent run ID)
-    const isStandaloneRun = !parentRunId;
+    // CLEAN ARCHITECTURE: Single source of truth - smart-resume creates clientRunId, we just use it
+    // If clientRunId provided: normal mode (metrics tracked)
+    // If no clientRunId: standalone mode (skip all metrics)
+    const runIdToUse = clientRunId || null;
     
-    if (isStandaloneRun) {
-      // Generate a parent run ID just for tracking purposes, but don't create a record
-      parentRunId = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
-    } else {
-      
+    // Determine if this is a standalone run (no client run ID means skip all metrics)
+    const isStandaloneRun = !clientRunId;
+    
+    if (!isStandaloneRun) {
       // ARCHITECTURAL FIX: We should ONLY check for existing records, never create them in this route
       try {
         
-        // Check if record exists first
+        // Check if record exists first (runIdToUse already has client suffix)
         const recordExists = await runRecordService.checkRunRecordExists({
-          runId: parentRunId,
+          runId: runIdToUse,
           clientId,
           options: {
             source: 'post_harvesting_check',
@@ -716,18 +719,19 @@ async function processClientHandler(req, res) {
         });
         
         if (!recordExists) {
-          console.error(`[CRITICAL ERROR] No run record exists for ${parentRunId}/${clientId} - cannot process webhook without an existing run record`);
+          console.error(`[CRITICAL ERROR] No run record exists for ${runIdToUse} (parent: ${parentRunId}, client: ${clientId}) - cannot process webhook without an existing run record`);
           return res.status(400).json({
             error: 'No active run found for this client',
             message: 'Post harvesting webhooks must be part of an active run with an existing record',
-            runId: parentRunId,
+            runId: runIdToUse,
+            parentRunId: parentRunId,
             clientId
           });
         }
         
         // Record exists, update it with webhook received status
         await runRecordService.updateRunRecord({
-          runId: parentRunId,
+          runId: runIdToUse,
           clientId,
           updates: {
             'System Notes': `Apify webhook received at ${new Date().toISOString()}`,
@@ -745,33 +749,7 @@ async function processClientHandler(req, res) {
     }
     
     // Use the parent run ID from Smart Resume
-    
-    // CRITICAL FIX: STRICT RUN ID HANDLING
-    // This implements a true single-source-of-truth pattern for run IDs
-    // No more implicit conversions or normalizations - explicit control only
-    
-    
-    // Priority order for run ID sources:
-    if (req.specificRunId) {
-      runIdToUse = req.specificRunId;
-    } else if (req.query?.runId) {
-      runIdToUse = req.query.runId;
-    } else if (req.body?.runId) {
-      runIdToUse = req.body.runId;
-    } else if (parentRunId) {
-      // Parent run ID is the base ID - need to add client suffix for client-specific record
-      runIdToUse = runIdSystem.createClientRunId(parentRunId, clientId);
-    } else {
-      // Only if we have no other source, generate a new ID
-      // This should be rare as most calls should have a runId from upstream
-      runIdToUse = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
-    }
-    
-    
-    // Verify that we have a runIdToUse (from parent) - it should always be provided
-    if (!runIdToUse) {
-      throw new Error('[apify/process-client] No run ID provided - this process should be called with a parent run ID');
-    }
+    // NOTE: runIdToUse (client-specific) is already set above - this comment preserved for context
     
     // NOTE: We no longer create a run record here. The Smart Resume process (parent)
     // is responsible for creating the run record, and we just update it.

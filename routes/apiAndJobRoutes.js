@@ -481,7 +481,8 @@ router.get("/run-batch-score-v2", async (req, res) => {
     const stream = parseInt(req.query.stream) || 1;
     const limit = Number(req.query.limit) || 500;
     const singleClientId = req.query.clientId; // Optional: process single client
-    const parentRunId = req.query.parentRunId; // Optional: parent run ID from Smart Resume
+    const parentRunId = req.query.parentRunId; // Optional: master run ID from Smart Resume (IMMUTABLE)
+    const clientRunId = req.query.clientRunId; // Optional: client-specific run ID from Smart Resume
     const { generateJobId, setJobStatus, setProcessingStream, getActiveClientsByStream } = require('../services/clientService');
     
     // Generate job ID and set initial status
@@ -504,7 +505,8 @@ router.get("/run-batch-score-v2", async (req, res) => {
     processLeadScoringInBackground(jobId, stream, limit, singleClientId, { 
       vertexAIClient, 
       geminiModelId,
-      parentRunId // Pass the parent run ID if provided
+      parentRunId, // Master run ID (IMMUTABLE)
+      clientRunId  // Client-specific run ID created by smart-resume
     });
 
   } catch (e) {
@@ -539,14 +541,18 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
   // Generate or use provided run ID for tracking
   let runId;
   try {
-    // If parentRunId is provided, use it as the base runId to maintain consistency
-    const { parentRunId } = aiDependencies;
+    // CLEAN ARCHITECTURE: If clientRunId is provided by smart-resume, use it directly
+    // If not provided, we're in standalone mode - generate a new one
+    const { parentRunId, clientRunId } = aiDependencies;
     
-    if (parentRunId) {
-      // CRITICAL FIX: If we have a parent run ID, use it directly without normalization
-      // to maintain consistent identifier throughout the process chain
+    if (clientRunId) {
+      // Normal mode: smart-resume created clientRunId, we just use it
+      runId = clientRunId;
+      console.log(`Using client run ID from smart-resume: ${runId} for lead scoring job ${jobId}`);
+    } else if (parentRunId) {
+      // Legacy mode (shouldn't happen with new smart-resume, but keep for backward compat)
       runId = parentRunId;
-      console.log(`Using parent run ID as-is: ${runId} for lead scoring job ${jobId}`);
+      console.log(`Using parent run ID: ${runId} for lead scoring job ${jobId}`);
     } else {
       // Generate a new run ID using the new system
       runId = runIdSystem.generateRunId();
@@ -606,13 +612,11 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       console.log(`[lead-scoring-background] Processing client ${client.clientId} (${processedCount + 1}/${activeClients.length})`);
 
       try {
-        // Generate a unique client-specific run ID based on the parent run ID
-        // This ensures each client gets its own unique run ID while maintaining the connection to the job
-        
-        // Use the new runIdSystem for run ID management
-        const baseRunId = runId; // Use the provided run ID as the base
-        const clientRunId = runIdSystem.createClientRunId(baseRunId, client.clientId);
-        console.log(`Generated client-specific run ID: ${clientRunId} for client ${client.clientId}`);
+        // CLEAN ARCHITECTURE: runId is already client-specific from smart-resume
+        // In standalone mode, runId is generated fresh for this run
+        // No need to create client-specific ID here - it's already the right ID
+        const clientRunId = runId;
+        console.log(`Using run ID for client ${client.clientId}: ${clientRunId}`);
         
         // Set up client timeout
         const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies, clientRunId);
@@ -1156,7 +1160,8 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true' || req.body?.dryRun === true;
     const singleClientId = req.query.clientId || req.query.client_id || req.body?.clientId || null;
     const stream = req.query.stream ? parseInt(req.query.stream, 10) : (req.body?.stream || 1);
-    const parentRunId = req.query.parentRunId || req.body?.parentRunId || null;
+    const parentRunId = req.query.parentRunId || req.body?.parentRunId || null; // Master run ID (IMMUTABLE)
+    const clientRunId = req.query.clientRunId || req.body?.clientRunId || null; // Client-specific run ID from smart-resume
 
     // Generate job ID for this execution
     const { generateJobId } = require('../services/clientService');
@@ -1216,12 +1221,13 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     });
 
     // Start background processing (don't await - fire and forget!)
-    console.log(`🔄 [POST-SCORING-DEBUG] Calling processPostScoringInBackground with jobId=${jobId}, parentRunId=${parentRunId}`);
+    console.log(`🔄 [POST-SCORING-DEBUG] Calling processPostScoringInBackground with jobId=${jobId}, parentRunId=${parentRunId}, clientRunId=${clientRunId}`);
     processPostScoringInBackground(jobId, stream, {
       limit,
       dryRun,
       singleClientId,
-      parentRunId
+      parentRunId, // Master run ID (IMMUTABLE)
+      clientRunId  // Client-specific run ID created by smart-resume
     }).catch(error => {
       console.error(`❌ [POST-SCORING-DEBUG] Background post scoring failed for job ${jobId}:`, error.message);
       console.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
@@ -1299,10 +1305,10 @@ async function processPostScoringInBackground(jobId, stream, options) {
       const clientStartTime = Date.now();
       
       try {
-        // Generate a run ID for this client process
-        // UPDATED: Now using runIdSystem for better consistency
-        const clientRunId = options.parentRunId || runIdSystem.generateRunId();
-        console.log(`🔍 [POST-SCORING-DEBUG] Using clientRunId=${clientRunId} (from parentRunId=${options.parentRunId || 'generated'})`);
+        // CLEAN ARCHITECTURE: Use clientRunId from smart-resume if provided
+        // In standalone mode (no clientRunId), generate a new one
+        const clientRunId = options.clientRunId || runIdSystem.generateRunId();
+        console.log(`🔍 [POST-SCORING-DEBUG] Using clientRunId=${clientRunId} (${options.clientRunId ? 'from smart-resume' : 'generated for standalone'})`);
         console.log(`🔍 [POST-SCORING-DEBUG] Calling postBatchScorer.runMultiTenantPostScoring with limit=${options.limit || 'UNLIMITED'}, dryRun=${options.dryRun || false}`);
         
         // Run post scoring for this client with timeout
