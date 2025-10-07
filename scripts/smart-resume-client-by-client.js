@@ -345,9 +345,11 @@ console.log(`🔍 TRACE: determineClientWorkflow function defined`);
 
 console.log(`🔍 TRACE: About to define triggerOperation function`);
 async function triggerOperation(baseUrl, clientId, operation, params = {}, authHeaders = {}) {
-    // Create client-specific run ID once, upfront (single source of truth)
-    // This combines the master run ID with the client suffix
-    const clientRunId = params.runId ? runIdSystem.createClientRunId(params.runId, clientId) : null;
+    // PURE CONSUMER ARCHITECTURE: params.runId is ALREADY the complete client run ID
+    // (e.g., "251007-064024-Guy-Wilson") created by smart-resume at line 620.
+    // DO NOT reconstruct it - just pass it exactly as-is to operations.
+    // Operations are pure consumers and will use it without modification.
+    const clientRunId = params.runId; // Use exactly as-is, no reconstruction
     
     const operationMap = {
         'lead_scoring': {
