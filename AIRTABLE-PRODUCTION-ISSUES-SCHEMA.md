@@ -79,10 +79,10 @@
    - Description: What type of operation was running
 
 10. **Client**
-    - Type: `Link to another record`
-    - Linked table: `Clients` (in same base)
+    - Type: `Single line text`
     - Description: Which client was affected (if applicable)
-    - Allow linking to multiple records: No
+    - Example: "Guy Wilson", "John Smith"
+    - Note: Changed from "Link to another record" for simplicity
 
 11. **Service/Function**
     - Type: `Single line text`
