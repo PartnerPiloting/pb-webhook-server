@@ -1,4 +1,3 @@
-const { logCriticalError } = require("../utils/errorLogger");
 // services/renderLogService.js
 // Service for interacting with Render API to retrieve and analyze logs
 
@@ -60,7 +59,6 @@ class RenderLogService {
             }));
         } catch (error) {
             this.logger.error('getAllServices', `Failed to fetch services: ${error.message}`);
-            await logCriticalError(error, { context: 'Service error (before throw)', service: 'renderLogService.js' }).catch(() => {});
             throw error;
         }
     }
@@ -98,7 +96,6 @@ class RenderLogService {
             return data;
         } catch (error) {
             this.logger.error('getServiceLogs', `Failed to fetch logs for service ${serviceId}: ${error.message}`);
-            await logCriticalError(error, { context: 'Service error (before throw)', service: 'renderLogService.js' }).catch(() => {});
             throw error;
         }
     }
@@ -145,7 +142,6 @@ class RenderLogService {
             return results;
         } catch (error) {
             this.logger.error('searchLogsAcrossServices', `Search failed: ${error.message}`);
-            await logCriticalError(error, { context: 'Service error (before throw)', service: 'renderLogService.js' }).catch(() => {});
             throw error;
         }
     }
@@ -177,7 +173,6 @@ class RenderLogService {
             return analysis;
         } catch (error) {
             this.logger.error('analyzeErrorPatterns', `Error analysis failed: ${error.message}`);
-            await logCriticalError(error, { context: 'Service error (before throw)', service: 'renderLogService.js' }).catch(() => {});
             throw error;
         }
     }

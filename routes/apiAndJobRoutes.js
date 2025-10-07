@@ -30,7 +30,8 @@ const runIdSystem = require('../services/runIdSystem.js');
 const { JobTracking } = require('../services/jobTracking.js');
 const jobOrchestrationService = require('../services/jobOrchestrationService.js');
 const { handleClientError } = require('../utils/errorHandler.js');
-const { logCriticalError } = require('../utils/errorLogger.js');
+// Old error logger removed - now using Render log analysis
+const logCriticalError = async () => {}; // No-op
 
 const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;

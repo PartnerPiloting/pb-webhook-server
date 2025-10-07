@@ -12,7 +12,8 @@
  */
 
 const { createLogger } = require('../utils/unifiedLoggerFactory');
-const { logCriticalError } = require('../utils/errorLogger');
+// Old error logger removed - now using Render log analysis
+const logCriticalError = async () => {}; // No-op
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
 // Import field validator for consistent field naming
 const { FIELD_NAMES, createValidatedObject } = require('../utils/airtableFieldValidator');

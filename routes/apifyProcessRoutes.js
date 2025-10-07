@@ -3,7 +3,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { logCriticalError } = require('../utils/errorLogger');
+// Old error logger removed - now using Render log analysis
+const logCriticalError = async () => {}; // No-op
 const Airtable = require('airtable');
 const { getClientBase, createBaseInstance } = require('../config/airtableClient');
 const clientService = require('../services/clientService');

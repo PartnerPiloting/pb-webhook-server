@@ -42,8 +42,8 @@ if (missingFields.length > 0) {
 // --- Structured Logging ---
 const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');
 
-// --- Error Logging to Airtable ---
-const { logCriticalError } = require('./utils/errorLogger');
+// Old error logger removed - now using Render log analysis
+const logCriticalError = async () => {}; // No-op
 
 // --- Centralized Dependencies (will be passed into 'run' function) ---
 let BATCH_SCORER_VERTEX_AI_CLIENT;
