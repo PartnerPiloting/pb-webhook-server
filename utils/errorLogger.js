@@ -133,8 +133,16 @@ async function logCriticalError(error, context = {}) {
       severity,
       errorType,
       message: error.message,
-      operation: context.operation
+      operation: context.operation,
+      tableName: MASTER_TABLES.ERROR_LOG,
+      tableNameType: typeof MASTER_TABLES.ERROR_LOG
     });
+
+    // DEFENSIVE: Verify table name is not undefined before calling Airtable
+    if (!MASTER_TABLES.ERROR_LOG) {
+      console.error('[ErrorLogger] CRITICAL: ERROR_LOG table name is undefined!');
+      return null;
+    }
 
     const createdRecord = await masterClientsBase(MASTER_TABLES.ERROR_LOG).create(record);
 
@@ -290,6 +298,12 @@ async function getNewErrors(options = {}) {
       return [];
     }
 
+    // DEFENSIVE: Verify table name is defined
+    if (!MASTER_TABLES.ERROR_LOG) {
+      console.error('[ErrorLogger] CRITICAL: ERROR_LOG table name is undefined!');
+      return [];
+    }
+
     const { maxRecords = 100, filterByClient = null } = options;
 
     let filterFormula = `{${ERROR_LOG_FIELDS.STATUS}} = '${ERROR_STATUS_VALUES.NEW}'`;
@@ -346,6 +360,12 @@ async function markErrorAsFixed(recordId, commitHash, fixedBy = 'AI Assistant', 
       return null;
     }
 
+    // DEFENSIVE: Verify table name is defined
+    if (!MASTER_TABLES.ERROR_LOG) {
+      console.error('[ErrorLogger] CRITICAL: ERROR_LOG table name is undefined!');
+      return null;
+    }
+
     const updateData = {
       [ERROR_LOG_FIELDS.STATUS]: ERROR_STATUS_VALUES.FIXED,
       [ERROR_LOG_FIELDS.FIXED_IN_COMMIT]: commitHash,
@@ -384,6 +404,12 @@ async function updateResolutionNotes(recordId, notes) {
 
     if (!masterClientsBase) {
       console.error('[ErrorLogger] Master base not initialized');
+      return null;
+    }
+
+    // DEFENSIVE: Verify table name is defined
+    if (!MASTER_TABLES.ERROR_LOG) {
+      console.error('[ErrorLogger] CRITICAL: ERROR_LOG table name is undefined!');
       return null;
     }
 
