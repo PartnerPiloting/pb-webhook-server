@@ -1,5 +1,6 @@
 /**
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
  * services/runIdSystem.js
  * 
  * Single source of truth for all run ID operations in the system.

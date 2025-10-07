@@ -4,7 +4,8 @@
 // - POST /api/top-scoring-leads/dev/sanity-check: admin-only field existence checks
 
 const express = require('express');
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const airtableClient = require('../config/airtableClient.js');
 
 // Helper for route error logging

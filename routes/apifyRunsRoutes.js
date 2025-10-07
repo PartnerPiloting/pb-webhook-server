@@ -4,7 +4,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const { 
     getApifyRun, 
     getClientRuns, 

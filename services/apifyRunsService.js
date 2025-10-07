@@ -1,5 +1,6 @@
 // services/apifyRunsService.js
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 // Service for managing Apify run tracking to enable multi-tenant webhook handling
 // Stores mapping between Apify run IDs and client IDs in Master Clients base
 

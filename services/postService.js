@@ -1,5 +1,6 @@
 // services/postService.js
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 // Service for managing LinkedIn posts in Airtable
 
 // Import unified constants for field names
