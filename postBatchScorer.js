@@ -483,11 +483,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             
             logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${processRunId}`);
             
-            // Add client suffix to the normalized runId for client-specific records
-            const clientSpecificRunId = runIdSystem.createClientRunId(
-                runIdSystem.getBaseRunId(processRunId),
-                client.clientId
-            );
+            // PURE CONSUMER ARCHITECTURE: processRunId is ALREADY the complete client run ID
+            // (e.g., "251007-055311-Guy-Wilson") passed from orchestrator.
+            // Use it exactly as-is with NO reconstruction or suffix manipulation.
+            // This follows the same pattern as apiAndJobRoutes.js and apifyProcessRoutes.js.
+            const clientSpecificRunId = processRunId;
                 
                 // Update metrics in the Client Run Results table
                 

@@ -831,13 +831,13 @@ async function processClientHandler(req, res) {
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
           let masterBase = airtableService.initialize(); // Get the Master base
           
-          // ROOT CAUSE FIX: Client Run Results records use client-suffixed Run IDs
-          // We need to add the client suffix before querying
-          const clientSpecificRunId = `${runIdToUse}-${clientId}`;
+          // CRITICAL FIX: runIdToUse is ALREADY the complete client run ID (e.g., "251007-055311-Guy-Wilson")
+          // DO NOT add client suffix again - that causes double suffix bug (Guy-Wilson-Guy-Wilson)
+          // Just use runIdToUse exactly as-is (pure consumer pattern)
           
           // Query for the run record now that we know it exists
           let runRecords = await masterBase('Client Run Results').select({
-            filterByFormula: `{Run ID} = '${clientSpecificRunId}'`,
+            filterByFormula: `{Run ID} = '${runIdToUse}'`,
             maxRecords: 1
           }).firstPage();
           
