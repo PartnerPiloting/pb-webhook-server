@@ -14,14 +14,19 @@ const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 
 // Helper function for logging route errors to Airtable
-async function logRouteError(error, req, additionalContext = {}) {
+async function logRouteError(error, req = null, additionalContext = {}) {
   try {
+    // Handle both route mode (has req) and background mode (no req)
+    const endpoint = req ? `${req.method || 'POST'} ${req.path || req.url || 'unknown'}` : 'background-job';
+    const clientId = additionalContext.clientId || req?.headers?.['x-client-id'] || req?.query?.clientId || req?.body?.clientId || null;
+    const runId = additionalContext.runId || req?.query?.runId || req?.body?.runId || null;
+    
     await logCriticalError(error, {
-      endpoint: req ? `${req.method || 'POST'} ${req.path || req.url || 'unknown'}` : 'unknown endpoint',
-      clientId: additionalContext.clientId || req?.headers?.['x-client-id'] || req?.query?.clientId || req?.body?.clientId || null,
-      runId: additionalContext.runId || req?.query?.runId || req?.body?.runId || null,
-      requestBody: req?.body,
-      queryParams: req?.query,
+      endpoint,
+      clientId,
+      runId,
+      requestBody: req?.body || null,
+      queryParams: req?.query || null,
       ...additionalContext
     });
   } catch (loggingError) {
