@@ -36,6 +36,14 @@ if (Sentry && process.env.SENTRY_DSN) {
             // Set sample rate for performance monitoring (10% of transactions)
             tracesSampleRate: 0.1,
             
+            // Integrate Express for automatic request tracking
+            integrations: [
+                // Enable HTTP instrumentation
+                Sentry.httpIntegration(),
+                // Enable Express instrumentation
+                Sentry.expressIntegration(),
+            ],
+            
             // Enhanced error context for multi-tenant system
             beforeSend(event, hint) {
                 // Add custom context if available in error
@@ -175,26 +183,9 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 const app = express();
 
 // ============================================================================
-// SENTRY REQUEST HANDLER - Must be FIRST middleware
-// ============================================================================
-if (Sentry && process.env.SENTRY_DSN) {
-    console.log("DEBUG: Checking Sentry.Handlers existence:", !!Sentry.Handlers);
-    if (Sentry.Handlers) {
-        console.log("DEBUG: Sentry.Handlers methods:", Object.keys(Sentry.Handlers));
-        // RequestHandler creates a separate execution context using domains to automatically
-        // capture request data (URL, headers, query params, etc.) with errors
-        app.use(Sentry.Handlers.requestHandler());
-        
-        // TracingHandler creates a transaction for every request to monitor performance
-        app.use(Sentry.Handlers.tracingHandler());
-        
-        console.log("✓ Sentry request and tracing handlers added to Express app");
-    } else {
-        console.warn("⚠ Sentry.Handlers not available - middleware not added");
-    }
-} else {
-    console.warn("⚠ Sentry or DSN not configured - skipping middleware setup");
-}
+// SENTRY REQUEST TRACING - Must be FIRST middleware
+// Note: In @sentry/node v8+, request tracking is automatic via expressIntegration()
+// configured in Sentry.init(). No manual middleware needed here.
 // ============================================================================
 
 app.use(express.json({ limit: "10mb" }));
@@ -1961,18 +1952,10 @@ const { logCriticalError } = require('./utils/errorLogger');
 // ============================================================================
 // SENTRY ERROR HANDLER - Must be AFTER all routes, BEFORE other error handlers
 // ============================================================================
-if (Sentry && process.env.SENTRY_DSN && Sentry.Handlers) {
-    // The error handler must be registered before any other error middleware and after all controllers
-    app.use(Sentry.Handlers.errorHandler({
-        shouldHandleError(error) {
-            // Capture all errors (4xx and 5xx)
-            // You can customize this to only capture 5xx errors if needed
-            return true;
-        }
-    }));
-    console.log("✓ Sentry error handler added to Express app");
-} else {
-    console.warn("⚠ Sentry error handler not added - Sentry or Handlers not available");
+if (Sentry && process.env.SENTRY_DSN) {
+    // setupExpressErrorHandler must be called after all controllers and before custom error handlers
+    Sentry.setupExpressErrorHandler(app);
+    console.log("✓ Sentry Express error handler added");
 }
 // ============================================================================
 
