@@ -33,7 +33,8 @@ function generateRunId() {
 
 /**
  * Creates a client-specific run ID by adding client suffix to base run ID
- * @param {string} baseRunId - Base run ID (YYMMDD-HHMMSS)
+ * IDEMPOTENT: If baseRunId already ends with "-clientId", returns it unchanged
+ * @param {string} baseRunId - Base run ID (YYMMDD-HHMMSS) or complete client run ID
  * @param {string} clientId - Client ID to add as suffix
  * @returns {string} Client run ID (YYMMDD-HHMMSS-ClientID)
  */
@@ -48,6 +49,14 @@ function createClientRunId(baseRunId, clientId) {
     const errorMessage = 'clientId is required to create client run ID';
     logger.error(errorMessage);
     throw new Error(errorMessage);
+  }
+  
+  // IDEMPOTENT FIX: Check if the suffix already exists to prevent double suffixes
+  // This prevents "251007-070457-Guy-Wilson" + "Guy-Wilson" from becoming
+  // "251007-070457-Guy-Wilson-Guy-Wilson"
+  if (baseRunId.endsWith(`-${clientId}`)) {
+    logger.debug(`Run ID ${baseRunId} already has client suffix ${clientId}, returning as-is`);
+    return baseRunId;
   }
   
   return `${baseRunId}-${clientId}`;

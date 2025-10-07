@@ -483,11 +483,12 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             
             logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${processRunId}`);
             
-            // PURE CONSUMER ARCHITECTURE: processRunId is ALREADY the complete client run ID
-            // (e.g., "251007-055311-Guy-Wilson") passed from orchestrator.
-            // Use it exactly as-is with NO reconstruction or suffix manipulation.
-            // This follows the same pattern as apiAndJobRoutes.js and apifyProcessRoutes.js.
-            const clientSpecificRunId = processRunId;
+            // PURE CONSUMER ARCHITECTURE FIX: processRunId is the BASE run ID from the parent.
+            // We need to construct the COMPLETE client run ID here before passing to consumer functions.
+            const runIdSystem = require('./services/runIdSystem');
+            const clientSpecificRunId = runIdSystem.createClientRunId(processRunId, client.clientId);
+            
+            logger.debug(`Constructed complete client run ID: ${clientSpecificRunId} (from base: ${processRunId})`);
                 
                 // Update metrics in the Client Run Results table
                 
@@ -570,6 +571,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             logger.error(`Missing required parameters for job completion: runId=${safeRunId}, clientId=${safeClientId}`);
         }
         
+        // PURE CONSUMER ARCHITECTURE FIX: completeClientProcessing expects a COMPLETE client run ID
+        // (e.g., "251007-070457-Guy-Wilson"), not a base run ID. We need to construct it here.
+        const runIdSystem = require('./services/runIdSystem');
+        const completeClientRunId = runIdSystem.createClientRunId(safeRunId, safeClientId);
+        
         // Create metrics object with proper field names from constants
         const finalMetrics = {
             [FIELD_NAMES.POSTS_EXAMINED]: clientResult.postsProcessed || 0,
@@ -582,7 +588,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         const validatedMetrics = createValidatedObject(finalMetrics);
         
         await JobTracking.completeClientProcessing({
-            runId: safeRunId, // Use the consistent runId from options
+            runId: completeClientRunId, // Pass COMPLETE client run ID, not base run ID
             clientId: safeClientId,
             finalMetrics: validatedMetrics,
             options: {

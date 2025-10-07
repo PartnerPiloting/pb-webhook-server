@@ -67,9 +67,13 @@ async function validateRunRecordExists(runId, clientId) {
             return false;
         }
         
+        // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+        const runIdSystem = require('../services/runIdSystem');
+        const completeClientRunId = runIdSystem.createClientRunId(standardizedRunId, clientId);
+        
         // Check if a corresponding job record exists in the tracking system using standardized run ID
         return await JobTracking.checkClientRunExists({
-            runId: standardizedRunId,
+            runId: completeClientRunId, // Pass COMPLETE client run ID
             clientId,
             options: {
                 source: 'apify_webhook_validation'
@@ -255,9 +259,13 @@ async function apifyWebhookHandler(req, res) {
             
             metricsLogger.info(`Updating metrics for ${profilesSubmitted} profiles submitted to Apify run ${apifyRunId}`);
             
+            // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+            const runIdSystem = require('../services/runIdSystem');
+            const completeClientRunId = runIdSystem.createClientRunId(validatedJobRunId, clientId);
+            
             // Use JobTracking service to update client metrics
             await JobTracking.updateClientMetrics({
-                runId: validatedJobRunId,
+                runId: completeClientRunId, // Pass COMPLETE client run ID
                 clientId,
                 metrics: {
                     [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted,
@@ -531,9 +539,13 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             clientLogger.info(`Updating client metrics with harvest results: 0 posts harvested from ${profilesSubmitted} profiles`);
             
             try {
+                // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+                const runIdSystem = require('../services/runIdSystem');
+                const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+                
                 // Update client metrics with standardized field names from constants
                 await JobTracking.updateClientMetrics({
-                    runId: jobRunId,
+                    runId: completeClientRunId, // Pass COMPLETE client run ID
                     clientId,
                     metrics: harvestMetrics,
                     options: {
@@ -555,9 +567,14 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
                 finalMetrics: harvestMetrics
             });
             
+            // PURE CONSUMER ARCHITECTURE FIX: Construct complete client run ID before passing
+            // to completeClientProcessing (consumer function expects complete ID)
+            const runIdSystem = require('../services/runIdSystem');
+            const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+            
             // Still update client-specific metrics
             await JobTracking.completeClientProcessing({
-                runId: jobRunId,
+                runId: completeClientRunId, // Pass COMPLETE client run ID
                 clientId,
                 finalMetrics: {
                     [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
@@ -608,9 +625,13 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
         clientLogger.info(`Updating client metrics with harvest results: ${posts.length} posts harvested from ${profilesSubmitted} profiles`);
         
         try {
+            // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+            const runIdSystem = require('../services/runIdSystem');
+            const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+            
             // Update client metrics with standardized field names
             await JobTracking.updateClientMetrics({
-                runId: jobRunId,
+                runId: completeClientRunId, // Pass COMPLETE client run ID
                 clientId,
                 metrics: harvestMetrics,
                 options: {
@@ -632,9 +653,14 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
             finalMetrics: harvestMetrics
         });
         
+        // PURE CONSUMER ARCHITECTURE FIX: Construct complete client run ID before passing
+        // to completeClientProcessing (consumer function expects complete ID)
+        const runIdSystem = require('../services/runIdSystem');
+        const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+        
         // Complete client processing
         await JobTracking.completeClientProcessing({
-            runId: jobRunId,
+            runId: completeClientRunId, // Pass COMPLETE client run ID
             clientId,
             finalMetrics: harvestMetrics
         });
@@ -680,8 +706,14 @@ async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
     logCriticalError(normError, { operation: 'unknown' }).catch(() => {});
         }
         
+        // PURE CONSUMER ARCHITECTURE FIX: Construct complete client run ID before passing
+        // to completeClientProcessing (consumer function expects complete ID)
+        const runIdSystem = require('../services/runIdSystem');
+        const bestRunId = normalizedRunId || safeRunId || jobRunId;
+        const completeClientRunId = runIdSystem.createClientRunId(bestRunId, clientId);
+        
         await JobTracking.completeClientProcessing({
-            runId: normalizedRunId || safeRunId || jobRunId, // Use best available ID
+            runId: completeClientRunId, // Pass COMPLETE client run ID
             clientId,
             finalMetrics: {
                 failed: true,
