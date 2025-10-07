@@ -1,4 +1,6 @@
-const { logCriticalError } = require("../utils/errorLogger");
+// No-op replacement for removed error logger
+const logCriticalError = async () => {};
+
 // runRecordAdapter.js
 // Adapter to bridge from the old service to the new V2 service with Single Creation Point pattern
 

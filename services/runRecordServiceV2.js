@@ -1,4 +1,5 @@
-const { logCriticalError } = require("../utils/errorLogger");
+// No-op replacement for removed error logger
+const logCriticalError = async () => {};
 // services/runRecordServiceV2.js
 // Centralized service for run record management
 // Implements the STRICT Single Creation Point pattern

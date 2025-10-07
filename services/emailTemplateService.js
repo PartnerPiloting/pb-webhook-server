@@ -1,4 +1,5 @@
-const { logCriticalError } = require("../utils/errorLogger");
+// No-op replacement for removed error logger
+const logCriticalError = async () => {};
 // services/emailTemplateService.js
 // Email template management service for client notifications
 // Handles reading email templates from the Master Clients Email Templates table
