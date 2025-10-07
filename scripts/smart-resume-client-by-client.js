@@ -345,14 +345,18 @@ console.log(`🔍 TRACE: determineClientWorkflow function defined`);
 
 console.log(`🔍 TRACE: About to define triggerOperation function`);
 async function triggerOperation(baseUrl, clientId, operation, params = {}, authHeaders = {}) {
+    // Create client-specific run ID once, upfront (single source of truth)
+    // This combines the master run ID with the client suffix
+    const clientRunId = params.runId ? runIdSystem.createClientRunId(params.runId, clientId) : null;
+    
     const operationMap = {
         'lead_scoring': {
-            url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}&parentRunId=${params.runId || ''}`,
+            url: `/run-batch-score-v2?stream=${params.stream}&limit=${params.limit}&clientId=${clientId}&parentRunId=${params.runId || ''}&clientRunId=${clientRunId || ''}`,
             method: 'GET',
             headers: { 'x-webhook-secret': params.secret }
         },
         'post_harvesting': {
-            url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}&parentRunId=${params.runId || ''}`,
+            url: `/api/apify/process-level2-v2?stream=${params.stream}&clientId=${clientId}&parentRunId=${params.runId || ''}&clientRunId=${clientRunId || ''}`,
             method: 'POST',
             headers: { 'Authorization': `Bearer ${params.secret}` }
         },
@@ -360,7 +364,7 @@ async function triggerOperation(baseUrl, clientId, operation, params = {}, authH
             url: `/run-post-batch-score-v2`,
             method: 'POST',
             headers: { 'x-webhook-secret': params.secret },
-            body: { stream: params.stream, limit: params.limit, clientId: clientId, parentRunId: params.runId }
+            body: { stream: params.stream, limit: params.limit, clientId: clientId, parentRunId: params.runId, clientRunId: clientRunId }
         }
     };
     
