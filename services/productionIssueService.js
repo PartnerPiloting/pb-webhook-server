@@ -21,7 +21,7 @@ const FIELDS = {
   CONTEXT: 'Context',
   STACK_TRACE: 'Stack Trace',
   RUN_TYPE: 'Run Type',
-  CLIENT: 'Client',
+  CLIENT: 'Client ID',
   SERVICE_FUNCTION: 'Service/Function',
   STATUS: 'Status',
   FIXED_BY: 'Fixed By',

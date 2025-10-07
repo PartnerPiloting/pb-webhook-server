@@ -465,7 +465,7 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
             // Metadata Fields (4)
             'Stack Trace': 'Test stack trace\n  at testFunction (test.js:123:45)\n  at main (index.js:789:10)',
             'Run Type': 'api-endpoint', // Test single select
-            'Client': 'Guy Wilson', // Single line text field (changed from linked record)
+            'Client ID': 'Guy Wilson', // Single line text field
             'Service/Function': 'verifyProductionIssuesTable',
             
             // Tracking Fields (4) - test with placeholder values
