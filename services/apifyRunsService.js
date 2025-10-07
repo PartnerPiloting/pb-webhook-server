@@ -405,20 +405,10 @@ async function updateClientRunMetrics(runId, clientId, data) {
             airtableService = require('./airtableService');
         }
         
-        // Check if runId already has client ID suffix, if not add it
-        let standardizedRunId;
-        if (runIdSystem.getClientId(runId) === clientId) {
-            // Already has correct client ID
-            standardizedRunId = runId;
-        } else if (runIdSystem.getClientId(runId)) {
-            // Has a different client ID, extract base and add correct one
-            const baseRunId = runIdSystem.getBaseRunId(runId);
-            standardizedRunId = runIdSystem.createClientRunId(baseRunId, clientId);
-        } else {
-            // No client ID, add it
-            standardizedRunId = runIdSystem.createClientRunId(runId, clientId);
-        }
-        
+        // CRITICAL: In orchestrated runs, the runId passed here is ALREADY the complete
+        // client run ID (e.g., "251007-041822-Guy-Wilson") created by the orchestrator.
+        // We use it EXACTLY as-is with NO reconstruction or suffix manipulation.
+        const standardizedRunId = runId;
         
         // Calculate estimated API costs (based on LinkedIn post queries)
         const estimatedCost = data.postsCount * 0.02; // $0.02 per post as estimate

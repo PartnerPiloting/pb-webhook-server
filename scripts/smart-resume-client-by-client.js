@@ -617,7 +617,8 @@ async function main() {
                 });
                 log(`   ✅ Run tracking record created (ID: ${clientRunRecord?.recordId || 'unknown'})`);
                 
-                // Store record ID for later use
+                // Store client run ID for passing to operations
+                workflow.clientRunId = clientRunRecord?.runId;
                 workflow.trackingRecordId = clientRunRecord?.recordId;
             } catch (error) {
                 log(`   ⚠️ Failed to create run tracking record: ${error.message}. Continuing execution.`, 'WARN');
@@ -647,8 +648,8 @@ async function main() {
                 }
                 
                 const operationParams = operation === 'post_scoring' 
-                    ? { stream, limit: postScoringLimit, secret, runId: normalizedRunId }
-                    : { stream, limit: leadScoringLimit, secret, runId: normalizedRunId };
+                    ? { stream, limit: postScoringLimit, secret, runId: workflow.clientRunId || normalizedRunId }
+                    : { stream, limit: leadScoringLimit, secret, runId: workflow.clientRunId || normalizedRunId };
                 
                 if (operation === 'post_scoring') {
                 }

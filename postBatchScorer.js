@@ -60,9 +60,11 @@ const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS
  * @returns {Object} - Summary of execution across all clients
  */
 async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, clientId = null, limit = null, options = {}) {
-    // Validate required runId
+    // CLEAN ARCHITECTURE: If runId not provided (standalone mode), generate one for internal logging
+    // Orchestrated runs will always provide a run ID
     if (!runId) {
-        throw new Error('Run ID is required for post scoring operations');
+        runId = `post_batch_standalone_${Date.now()}`;
+        console.log(`[POST-SCORER] No run ID provided (standalone mode), generated: ${runId}`);
     }
     
     // FIX: Initialize normalizedRunId at the beginning of the function
