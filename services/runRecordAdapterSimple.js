@@ -669,7 +669,7 @@ async function completeJobRecord(params) {
     
     // CRITICAL: Check if job record exists first
     const masterBase = airtableClient.getMasterBase();
-    const existingRecords = await masterBase(airtableService.JOB_TRACKING_TABLE).select({
+    const existingRecords = await masterBase(MASTER_TABLES.JOB_TRACKING).select({
       filterByFormula: `{Run ID} = '${baseRunId}'`,
       maxRecords: 1
     }).firstPage();
@@ -1075,7 +1075,7 @@ async function checkRunRecordExists(params) {
       // Query the master table
       logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId} in master base`);
       
-      const records = await masterBase(airtableService.CLIENT_RUN_RESULTS_TABLE).select({
+      const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
         filterByFormula: `{Run ID} = '${runId}'`,
         maxRecords: 1
       }).firstPage();
@@ -1102,7 +1102,7 @@ async function checkRunRecordExists(params) {
         // The "Client Run Results" table exists in the Master Clients Base, not in client bases
         const masterBase = airtableService.initialize(); // Get the Master base
         
-        const records = await masterBase(airtableService.CLIENT_RUN_RESULTS_TABLE).select({
+        const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
           filterByFormula: `{Run ID} = '${standardRunId}'`,
           maxRecords: 1
         }).firstPage();
@@ -1127,7 +1127,7 @@ async function checkRunRecordExists(params) {
           // ARCHITECTURE FIX: Use Master Clients Base instead of client-specific base
           // The "Client Run Results" table exists in the Master Clients Base, not in client bases
           const masterBase = airtableService.initialize(); // Get the Master base
-          const records = await masterBase(airtableService.CLIENT_RUN_RESULTS_TABLE).select({
+          const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
             filterByFormula: `FIND('${datePart}', {Run ID}) > 0`,
             maxRecords: 5
           }).firstPage();
