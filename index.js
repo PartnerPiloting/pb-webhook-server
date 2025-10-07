@@ -18,6 +18,7 @@ require("dotenv").config();
 const geminiConfig = require('./config/geminiClient.js');
 const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
 const base = require('./config/airtableClient.js'); // Your Airtable base connection
+const { getMasterClientsBase } = require('./config/airtableClient'); // For Production Issues table
 
 // Initialize OpenAI client for attribute editing
 const { initializeOpenAI } = require('./config/openaiClient.js');
