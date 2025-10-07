@@ -11,8 +11,46 @@
 // See commits for feature/comprehensive-field-standardization for full implementation details.
 
 // index.js
-// Load environment variables from .env file
+// Load environment variables from .env file FIRST (before Sentry)
 require("dotenv").config();
+
+// ============================================================================
+// SENTRY INITIALIZATION - MUST BE FIRST (before any other imports)
+// ============================================================================
+const Sentry = require("@sentry/node");
+
+// Initialize Sentry only if DSN is configured
+if (process.env.SENTRY_DSN) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.NODE_ENV || 'production',
+        
+        // Set sample rate for performance monitoring (10% of transactions)
+        tracesSampleRate: 0.1,
+        
+        // Enhanced error context for multi-tenant system
+        beforeSend(event, hint) {
+            // Add custom context if available in error
+            const error = hint.originalException;
+            if (error && typeof error === 'object') {
+                // Extract client info from error object if present
+                if (error.clientId) {
+                    event.tags = event.tags || {};
+                    event.tags.clientId = error.clientId;
+                }
+                if (error.runId) {
+                    event.tags = event.tags || {};
+                    event.tags.runId = error.runId;
+                }
+            }
+            return event;
+        },
+    });
+    console.log("✓ Sentry initialized successfully for error monitoring");
+} else {
+    console.warn("⚠ Sentry DSN not configured - error monitoring disabled (set SENTRY_DSN environment variable)");
+}
+// ============================================================================
 
 // --- CONFIGURATIONS ---
 const geminiConfig = require('./config/geminiClient.js');
@@ -121,6 +159,22 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
     1)  Express App Setup
 ------------------------------------------------------------------*/
 const app = express();
+
+// ============================================================================
+// SENTRY REQUEST HANDLER - Must be FIRST middleware
+// ============================================================================
+if (process.env.SENTRY_DSN) {
+    // RequestHandler creates a separate execution context using domains to automatically
+    // capture request data (URL, headers, query params, etc.) with errors
+    app.use(Sentry.Handlers.requestHandler());
+    
+    // TracingHandler creates a transaction for every request to monitor performance
+    app.use(Sentry.Handlers.tracingHandler());
+    
+    console.log("✓ Sentry request and tracing handlers added to Express app");
+}
+// ============================================================================
+
 app.use(express.json({ limit: "10mb" }));
 
 // Add CORS configuration to allow frontend requests
@@ -206,6 +260,16 @@ app.get('/api/test/minimal-json', (req, res) => {
     });
 });
 console.log("JSON diagnostic test route added at /api/test/minimal-json");
+
+// ============================================================================
+// SENTRY TEST ENDPOINT - Intentionally throws an error to test Sentry integration
+// ============================================================================
+app.get('/debug-sentry', (req, res) => {
+    console.log('Sentry test endpoint called - throwing intentional error');
+    throw new Error('This is a test error to verify Sentry is working! If you see this in Sentry dashboard, integration is successful.');
+});
+console.log("Sentry test route added at /debug-sentry (throws intentional error)");
+// ============================================================================
 
 // --- ADMIN REPAIR ENDPOINT (SECURE) ---
 // Full import for repair script
@@ -1871,6 +1935,22 @@ app.get('/debug-linkedin-files', (req, res) => {
     3) Global Error Handling Middleware
 ------------------------------------------------------------------*/
 const { logCriticalError } = require('./utils/errorLogger');
+
+// ============================================================================
+// SENTRY ERROR HANDLER - Must be AFTER all routes, BEFORE other error handlers
+// ============================================================================
+if (process.env.SENTRY_DSN) {
+    // The error handler must be registered before any other error middleware and after all controllers
+    app.use(Sentry.Handlers.errorHandler({
+        shouldHandleError(error) {
+            // Capture all errors (4xx and 5xx)
+            // You can customize this to only capture 5xx errors if needed
+            return true;
+        }
+    }));
+    console.log("✓ Sentry error handler added to Express app");
+}
+// ============================================================================
 
 // 404 handler - must come before error handler
 app.use((req, res, next) => {
