@@ -17,36 +17,50 @@ require("dotenv").config();
 // ============================================================================
 // SENTRY INITIALIZATION - MUST BE FIRST (before any other imports)
 // ============================================================================
-const Sentry = require("@sentry/node");
+let Sentry;
+try {
+    Sentry = require("@sentry/node");
+    console.log("✓ Sentry package loaded successfully");
+} catch (sentryLoadError) {
+    console.error("✗ Failed to load @sentry/node package:", sentryLoadError.message);
+    Sentry = null;
+}
 
-// Initialize Sentry only if DSN is configured
-if (process.env.SENTRY_DSN) {
-    Sentry.init({
-        dsn: process.env.SENTRY_DSN,
-        environment: process.env.NODE_ENV || 'production',
-        
-        // Set sample rate for performance monitoring (10% of transactions)
-        tracesSampleRate: 0.1,
-        
-        // Enhanced error context for multi-tenant system
-        beforeSend(event, hint) {
-            // Add custom context if available in error
-            const error = hint.originalException;
-            if (error && typeof error === 'object') {
-                // Extract client info from error object if present
-                if (error.clientId) {
-                    event.tags = event.tags || {};
-                    event.tags.clientId = error.clientId;
+// Initialize Sentry only if DSN is configured and package loaded successfully
+if (Sentry && process.env.SENTRY_DSN) {
+    try {
+        Sentry.init({
+            dsn: process.env.SENTRY_DSN,
+            environment: process.env.NODE_ENV || 'production',
+            
+            // Set sample rate for performance monitoring (10% of transactions)
+            tracesSampleRate: 0.1,
+            
+            // Enhanced error context for multi-tenant system
+            beforeSend(event, hint) {
+                // Add custom context if available in error
+                const error = hint.originalException;
+                if (error && typeof error === 'object') {
+                    // Extract client info from error object if present
+                    if (error.clientId) {
+                        event.tags = event.tags || {};
+                        event.tags.clientId = error.clientId;
+                    }
+                    if (error.runId) {
+                        event.tags = event.tags || {};
+                        event.tags.runId = error.runId;
+                    }
                 }
-                if (error.runId) {
-                    event.tags = event.tags || {};
-                    event.tags.runId = error.runId;
-                }
-            }
-            return event;
-        },
-    });
-    console.log("✓ Sentry initialized successfully for error monitoring");
+                return event;
+            },
+        });
+        console.log("✓ Sentry initialized successfully for error monitoring");
+    } catch (sentryInitError) {
+        console.error("✗ Sentry initialization failed:", sentryInitError.message);
+        Sentry = null;
+    }
+} else if (!Sentry) {
+    console.warn("⚠ Sentry package not loaded - error monitoring disabled");
 } else {
     console.warn("⚠ Sentry DSN not configured - error monitoring disabled (set SENTRY_DSN environment variable)");
 }
@@ -163,7 +177,7 @@ const app = express();
 // ============================================================================
 // SENTRY REQUEST HANDLER - Must be FIRST middleware
 // ============================================================================
-if (process.env.SENTRY_DSN) {
+if (process.env.SENTRY_DSN && Sentry && Sentry.Handlers) {
     // RequestHandler creates a separate execution context using domains to automatically
     // capture request data (URL, headers, query params, etc.) with errors
     app.use(Sentry.Handlers.requestHandler());
@@ -1939,7 +1953,7 @@ const { logCriticalError } = require('./utils/errorLogger');
 // ============================================================================
 // SENTRY ERROR HANDLER - Must be AFTER all routes, BEFORE other error handlers
 // ============================================================================
-if (process.env.SENTRY_DSN) {
+if (process.env.SENTRY_DSN && Sentry && Sentry.Handlers) {
     // The error handler must be registered before any other error middleware and after all controllers
     app.use(Sentry.Handlers.errorHandler({
         shouldHandleError(error) {
