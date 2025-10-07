@@ -90,17 +90,17 @@
 
 ---
 
-### Tracking Fields (4 fields - for fix management)
+### Tracking Fields (3 fields - for fix management)
 
 12. **Fixed By**
     - Type: `Single line text`
     - Description: Who or what resolved the issue
     - Example: "AI Assistant - GitHub Copilot", "Guy Wilson", "Auto-resolved"
 
-13. **Fixed Date**
-    - Type: `Date`
-    - Description: When the issue was resolved
-    - Format: Local date
+13. **Fixed Time**
+    - Type: `Date and time`
+    - Description: When the issue was resolved (includes date and time)
+    - Format: Include time
 
 14. **Fix Notes**
     - Type: `Long text`

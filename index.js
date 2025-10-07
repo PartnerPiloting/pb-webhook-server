@@ -469,7 +469,6 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
             'Service/Function': 'verifyProductionIssuesTable',
             
             // Tracking Fields (4) - test with placeholder values
-            'Fixed Date': '2025-10-08', // Date field
             'Fixed Time': new Date().toISOString(), // DateTime field
             'Fix Notes': 'Test fix notes - this field stores resolution details',
             'Fix Commit': 'abc123def456', // Test commit hash format
@@ -511,8 +510,7 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
                     long_text: 4,
                     single_line_text: 7,
                     url: 1,
-                    number: 1,
-                    date: 1
+                    number: 1
                 },
                 total_expected_fields: 19,
                 all_fields_tested: true,
