@@ -1144,7 +1144,7 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
 
     // Generate job ID for this execution
     const { generateJobId } = require('../services/clientService');
-    const jobId = generateJobId('post_scoring', stream);
+    let jobId = generateJobId('post_scoring', stream); // Changed to 'let' to allow reassignment at line 1177
     
     // Determine if this is a standalone run or part of a parent process
     const isStandaloneRun = !parentRunId;
