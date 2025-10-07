@@ -11,68 +11,8 @@
 // See commits for feature/comprehensive-field-standardization for full implementation details.
 
 // index.js
-// Load environment variables from .env file FIRST (before Sentry)
+// Load environment variables from .env file FIRST
 require("dotenv").config();
-
-// ============================================================================
-// SENTRY INITIALIZATION - MUST BE FIRST (before any other imports)
-// ============================================================================
-let Sentry;
-try {
-    Sentry = require("@sentry/node");
-    console.log("✓ Sentry package loaded successfully");
-} catch (sentryLoadError) {
-    console.error("✗ Failed to load @sentry/node package:", sentryLoadError.message);
-    Sentry = null;
-}
-
-// Initialize Sentry only if DSN is configured and package loaded successfully
-if (Sentry && process.env.SENTRY_DSN) {
-    try {
-        Sentry.init({
-            dsn: process.env.SENTRY_DSN,
-            environment: process.env.NODE_ENV || 'production',
-            
-            // Set sample rate for performance monitoring (10% of transactions)
-            tracesSampleRate: 0.1,
-            
-            // Integrate Express for automatic request tracking
-            integrations: [
-                // Enable HTTP instrumentation
-                Sentry.httpIntegration(),
-                // Enable Express instrumentation
-                Sentry.expressIntegration(),
-            ],
-            
-            // Enhanced error context for multi-tenant system
-            beforeSend(event, hint) {
-                // Add custom context if available in error
-                const error = hint.originalException;
-                if (error && typeof error === 'object') {
-                    // Extract client info from error object if present
-                    if (error.clientId) {
-                        event.tags = event.tags || {};
-                        event.tags.clientId = error.clientId;
-                    }
-                    if (error.runId) {
-                        event.tags = event.tags || {};
-                        event.tags.runId = error.runId;
-                    }
-                }
-                return event;
-            },
-        });
-        console.log("✓ Sentry initialized successfully for error monitoring");
-    } catch (sentryInitError) {
-        console.error("✗ Sentry initialization failed:", sentryInitError.message);
-        Sentry = null;
-    }
-} else if (!Sentry) {
-    console.warn("⚠ Sentry package not loaded - error monitoring disabled");
-} else {
-    console.warn("⚠ Sentry DSN not configured - error monitoring disabled (set SENTRY_DSN environment variable)");
-}
-// ============================================================================
 
 // --- CONFIGURATIONS ---
 const geminiConfig = require('./config/geminiClient.js');
@@ -182,12 +122,6 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 ------------------------------------------------------------------*/
 const app = express();
 
-// ============================================================================
-// SENTRY REQUEST TRACING - Must be FIRST middleware
-// Note: In @sentry/node v8+, request tracking is automatic via expressIntegration()
-// configured in Sentry.init(). No manual middleware needed here.
-// ============================================================================
-
 app.use(express.json({ limit: "10mb" }));
 
 // Add CORS configuration to allow frontend requests
@@ -273,16 +207,6 @@ app.get('/api/test/minimal-json', (req, res) => {
     });
 });
 console.log("JSON diagnostic test route added at /api/test/minimal-json");
-
-// ============================================================================
-// SENTRY TEST ENDPOINT - Intentionally throws an error to test Sentry integration
-// ============================================================================
-app.get('/debug-sentry', (req, res) => {
-    console.log('Sentry test endpoint called - throwing intentional error');
-    throw new Error('This is a test error to verify Sentry is working! If you see this in Sentry dashboard, integration is successful.');
-});
-console.log("Sentry test route added at /debug-sentry (throws intentional error)");
-// ============================================================================
 
 // --- ADMIN REPAIR ENDPOINT (SECURE) ---
 // Full import for repair script
@@ -390,7 +314,232 @@ app.post('/admin/repair-all-bad-json', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-    2) Mount All Route Handlers and Sub-APIs
+    3) Production Issue Analysis Endpoints
+------------------------------------------------------------------*/
+const ProductionIssueService = require('./services/productionIssueService');
+
+/**
+ * Analyze recent Render logs and create Production Issue records
+ * POST /api/analyze-logs/recent
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body (optional): { minutes: 60 }
+ */
+app.post('/api/analyze-logs/recent', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { minutes = 60 } = req.body || {};
+        const service = new ProductionIssueService();
+        const results = await service.analyzeRecentLogs({ minutes });
+        
+        res.json({ 
+            ok: true, 
+            ...results,
+            message: `Analyzed ${minutes} minutes of logs. Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
+        });
+    } catch (error) {
+        console.error('Failed to analyze recent logs:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * Analyze provided log text and create Production Issue records
+ * POST /api/analyze-logs/text
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: { logText: "...full log text..." }
+ */
+app.post('/api/analyze-logs/text', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { logText } = req.body || {};
+        
+        if (!logText || typeof logText !== 'string') {
+            return res.status(400).json({ ok: false, error: 'Missing or invalid logText in request body' });
+        }
+
+        const service = new ProductionIssueService();
+        const results = await service.analyzeLogText(logText);
+        
+        res.json({ 
+            ok: true, 
+            ...results,
+            message: `Analyzed log text. Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
+        });
+    } catch (error) {
+        console.error('Failed to analyze log text:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * Get Production Issues from Airtable with filters
+ * GET /api/production-issues
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Query params: ?status=NEW&severity=CRITICAL&limit=50
+ */
+app.get('/api/production-issues', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { status, severity, limit } = req.query;
+        const service = new ProductionIssueService();
+        const issues = await service.getProductionIssues({ 
+            status, 
+            severity, 
+            limit: limit ? parseInt(limit) : 100 
+        });
+        
+        res.json({ ok: true, count: issues.length, issues });
+    } catch (error) {
+        console.error('Failed to get production issues:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * Mark a Production Issue as fixed
+ * POST /api/production-issues/:recordId/mark-fixed
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: { fixedBy: "AI Assistant", fixNotes: "...", commitHash: "a3b2c1d" }
+ */
+app.post('/api/production-issues/:recordId/mark-fixed', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { recordId } = req.params;
+        const { fixedBy, fixNotes, commitHash } = req.body || {};
+        
+        const service = new ProductionIssueService();
+        const updated = await service.markAsFixed(recordId, { fixedBy, fixNotes, commitHash });
+        
+        res.json({ ok: true, message: 'Issue marked as fixed', record: updated });
+    } catch (error) {
+        console.error('Failed to mark issue as fixed:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * Verify Production Issues table schema
+ * GET /api/verify-production-issues-table
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Tests field names and single select options by creating/deleting a test record
+ */
+app.get('/api/verify-production-issues-table', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const base = getMasterClientsBase();
+        const table = base('Production Issues');
+        
+        console.log('🔍 Verifying Production Issues table schema...');
+        
+        // Create a test record to verify field names and single select options
+        const testRecord = {
+            'Timestamp': new Date().toISOString(),
+            'Severity': 'WARNING',
+            'Pattern Matched': 'Test Pattern - Verification Script',
+            'Error Message': 'This is a test record to verify field names match code',
+            'Context': 'Test context - created by verification endpoint. Will be deleted immediately.',
+            'Status': 'NEW',
+            'Occurrences': 1,
+            'First Seen': new Date().toISOString(),
+            'Last Seen': new Date().toISOString(),
+        };
+        
+        console.log('Creating test record with core fields...');
+        const created = await table.create([{ fields: testRecord }]);
+        const recordId = created[0].id;
+        
+        console.log(`✅ Test record created: ${recordId}`);
+        
+        // Now delete it
+        await table.destroy([recordId]);
+        console.log('✅ Test record deleted');
+        
+        res.json({
+            ok: true,
+            message: 'Table verification successful!',
+            verified: {
+                table_name: 'Production Issues',
+                fields_tested: Object.keys(testRecord),
+                single_select_values_tested: {
+                    Status: 'NEW',
+                    Severity: 'WARNING'
+                },
+                total_expected_fields: 19,
+                test_record_created_and_deleted: true
+            },
+            next_steps: [
+                'All core field names match ✓',
+                'Single select options match ✓',
+                'Ready to analyze production logs!',
+                'Try: POST /api/analyze-logs/text with sample logs'
+            ]
+        });
+        
+    } catch (error) {
+        console.error('❌ Table verification failed:', error.message);
+        
+        let troubleshooting = [];
+        
+        if (error.message.includes('Unknown field name')) {
+            const match = error.message.match(/Unknown field name: "(.+)"/);
+            troubleshooting = [
+                `Field name mismatch detected: "${match ? match[1] : 'unknown'}"`,
+                'Check that field exists in Airtable with exact spelling and capitalization',
+                'Expected fields: Timestamp, Severity, Pattern Matched, Error Message, Context, Status, Occurrences, First Seen, Last Seen'
+            ];
+        } else if (error.message.toLowerCase().includes('invalid') || error.message.toLowerCase().includes('value')) {
+            troubleshooting = [
+                'Invalid single select value detected',
+                'Check these options match exactly:',
+                '  • Status: NEW, INVESTIGATING, FIXED, IGNORED',
+                '  • Severity: CRITICAL, ERROR, WARNING',
+                '  • Run Type: smart-resume, batch-score, apify-webhook, api-endpoint, scheduled-job, other'
+            ];
+        } else if (error.message.includes('Could not find table')) {
+            troubleshooting = [
+                'Table "Production Issues" not found in Master Clients base',
+                'Please create the table first'
+            ];
+        }
+        
+        res.status(500).json({
+            ok: false,
+            error: error.message,
+            troubleshooting,
+            failed_at: 'Table verification'
+        });
+    }
+});
+
+console.log("Production Issue Analysis endpoints added:");
+console.log("  POST /api/analyze-logs/recent");
+console.log("  POST /api/analyze-logs/text");
+console.log("  GET /api/production-issues");
+console.log("  POST /api/production-issues/:recordId/mark-fixed");
+console.log("  GET /api/verify-production-issues-table");
+
+/* ------------------------------------------------------------------
+    4) Mount All Route Handlers and Sub-APIs
 ------------------------------------------------------------------*/
 console.log("index.js: Mounting routes and APIs...");
 
@@ -1947,17 +2096,8 @@ app.get('/debug-linkedin-files', (req, res) => {
 /* ------------------------------------------------------------------
     3) Global Error Handling Middleware
 ------------------------------------------------------------------*/
-const { logCriticalError } = require('./utils/errorLogger');
-
-// ============================================================================
-// SENTRY ERROR HANDLER - Must be AFTER all routes, BEFORE other error handlers
-// ============================================================================
-if (Sentry && process.env.SENTRY_DSN) {
-    // setupExpressErrorHandler must be called after all controllers and before custom error handlers
-    Sentry.setupExpressErrorHandler(app);
-    console.log("✓ Sentry Express error handler added");
-}
-// ============================================================================
+// Old error logger removed - now using Render log analysis
+const logCriticalError = async () => {}; // No-op
 
 // 404 handler - must come before error handler
 app.use((req, res, next) => {
