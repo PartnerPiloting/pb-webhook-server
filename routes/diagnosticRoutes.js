@@ -8,7 +8,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const runIdSystem = require('../services/runIdSystem');
 const JobTracking = require('../services/jobTracking');
 const { createLogger } = require('../utils/unifiedLoggerFactory');

@@ -5,7 +5,8 @@
 // MIGRATED: To use unified constants
 
 const base = require('../config/airtableClient.js'); 
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
 const { slimLead } = require('../promptBuilder.js');
 const airtableService = require('./airtableService');

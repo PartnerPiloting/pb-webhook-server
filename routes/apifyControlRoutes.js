@@ -7,7 +7,8 @@ const express = require('express');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const router = express.Router();
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 
 // Helper function for logging route errors to Airtable
 async function logRouteError(error, req = null, additionalContext = {}) {

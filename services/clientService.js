@@ -4,7 +4,8 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const { MASTER_TABLES, CLIENT_EXECUTION_LOG_FIELDS } = require('../constants/airtableUnifiedConstants');
 const { parseServiceLevel } = require('../utils/serviceLevel');
 const { safeFieldUpdate } = require('../utils/errorHandler');

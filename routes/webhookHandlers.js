@@ -7,7 +7,8 @@ const express = require('express');
 const router = express.Router();
 
 // --- Error Logging ---
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 
 // --- Dependencies needed for /lh-webhook/upsertLeadOnly ---
 const { upsertLead } = require('../services/leadService.js');

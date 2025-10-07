@@ -1,5 +1,6 @@
 // services/airtableService.js
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 // Service for tracking run metrics in Airtable
 // Handles recording data to Job Tracking and Client Run Results tables
 

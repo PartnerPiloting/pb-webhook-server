@@ -5,7 +5,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { logCriticalError } = require('../utils/errorLogger');
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const { getClientBase } = require('../config/airtableClient');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
