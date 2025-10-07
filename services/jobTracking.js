@@ -710,7 +710,7 @@ class JobTracking {
       }
       if ('leadsProcessed' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.LEADS_PROCESSED] = normalizedUpdates.leadsProcessed;
       if ('postsProcessed' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.POSTS_PROCESSED] = normalizedUpdates.postsProcessed;
-      if ('errors' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.ERRORS] = normalizedUpdates.errors;
+      if ('errors' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.ERROR_DETAILS] = normalizedUpdates.errors;
       
       // Handle System Notes properly using constants
       if (normalizedUpdates[CLIENT_RUN_FIELDS.SYSTEM_NOTES]) {

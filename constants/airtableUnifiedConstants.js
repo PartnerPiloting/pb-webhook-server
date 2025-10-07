@@ -136,6 +136,7 @@ const CLIENT_RUN_FIELDS = {
   SYSTEM_NOTES: 'System Notes',
   ERROR_DETAILS: 'Error Details',
   LAST_WEBHOOK: 'Last Webhook',
+  FULL_RUN_LOG: 'Full Run Log', // Complete log output for validation and debugging
   
   // Aggregate metrics
   TOTAL_TOKENS_USED: 'Total Tokens Used',
