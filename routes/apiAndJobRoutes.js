@@ -543,39 +543,15 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
   let scoredCount = 0;
   let errorCount = 0;
 
-  // Generate or use provided run ID for tracking
-  let runId;
-  try {
-    // CLEAN ARCHITECTURE: If clientRunId is provided by smart-resume, use it directly
-    // If not provided, we're in standalone mode - generate a new one
-    const { parentRunId, clientRunId } = aiDependencies;
-    
-    if (clientRunId) {
-      // Normal mode: smart-resume created clientRunId, we just use it
-      runId = clientRunId;
-      console.log(`Using client run ID from smart-resume: ${runId} for lead scoring job ${jobId}`);
-    } else if (parentRunId) {
-      // Legacy mode (shouldn't happen with new smart-resume, but keep for backward compat)
-      runId = parentRunId;
-      console.log(`Using parent run ID: ${runId} for lead scoring job ${jobId}`);
-    } else {
-      // Generate a new run ID using the new system
-      runId = runIdSystem.generateRunId();
-      console.log(`Generated run ID: ${runId} for lead scoring job ${jobId}`);
-    }
-  } catch (err) {
-    // Use system for fallback
-    try {
-      runId = runIdSystem.generateRunId();
-      console.error(`Failed to generate run ID: ${err.message}. Generated new runId: ${runId}`);
-      await logRouteError(err, req).catch(() => {});
-    } catch (innerError) {
-      // Ultimate fallback if unified service is completely unavailable
-      // This should rarely happen as the unified service has its own fallbacks
-      runId = new Date().toISOString().replace(/[-:T.Z]/g, '');
-      console.error(`Critical error generating run ID: ${innerError.message}. Using emergency timestamp: ${runId}`);
-      await logRouteError(innerError, req).catch(() => {});
-    }
+  // CLEAN ARCHITECTURE: Lead scoring is a pure consumer of run IDs
+  // If orchestrator provides clientRunId, use it for metrics updates
+  // If not provided (standalone mode), skip metrics updates entirely
+  const { clientRunId } = aiDependencies;
+  
+  if (clientRunId) {
+    console.log(`[lead-scoring-background] Using client run ID from orchestrator: ${clientRunId} for job ${jobId}`);
+  } else {
+    console.log(`[lead-scoring-background] No run ID provided - running in standalone mode (no metrics updates) for job ${jobId}`);
   }
 
   try {
@@ -617,11 +593,9 @@ async function processLeadScoringInBackground(jobId, stream, limit, singleClient
       console.log(`[lead-scoring-background] Processing client ${client.clientId} (${processedCount + 1}/${activeClients.length})`);
 
       try {
-        // CLEAN ARCHITECTURE: runId is already client-specific from smart-resume
-        // In standalone mode, runId is generated fresh for this run
-        // No need to create client-specific ID here - it's already the right ID
-        const clientRunId = runId;
-        console.log(`Using run ID for client ${client.clientId}: ${clientRunId}`);
+        // CLEAN ARCHITECTURE: Pass client run ID exactly as received from orchestrator
+        // In standalone mode (clientRunId is undefined), lead scoring still works but doesn't update metrics
+        console.log(`Processing client ${client.clientId} with run ID: ${clientRunId || 'none (standalone mode)'}`);
         
         // Set up client timeout
         const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies, clientRunId);
@@ -693,8 +667,8 @@ async function processClientForLeadScoring(clientId, limit, aiDependencies, runI
     query: {
       limit: limit,
       clientId: clientId,
-      // Only include runId if defined, or use a fallback
-      runId: runId || `client-fallback-${clientId}-${Date.now()}`
+      // Only include runId if provided (orchestrated run), otherwise undefined (standalone)
+      runId: runId
     }
   };
 
@@ -1310,10 +1284,10 @@ async function processPostScoringInBackground(jobId, stream, options) {
       const clientStartTime = Date.now();
       
       try {
-        // CLEAN ARCHITECTURE: Use clientRunId from smart-resume if provided
-        // In standalone mode (no clientRunId), generate a new one
-        const clientRunId = options.clientRunId || runIdSystem.generateRunId();
-        console.log(`🔍 [POST-SCORING-DEBUG] Using clientRunId=${clientRunId} (${options.clientRunId ? 'from smart-resume' : 'generated for standalone'})`);
+        // CLEAN ARCHITECTURE: Pure consumer - use clientRunId exactly as provided by orchestrator
+        // If not provided (standalone mode), postBatchScorer will handle it internally
+        const clientRunId = options.clientRunId; // May be undefined in standalone mode
+        console.log(`🔍 [POST-SCORING-DEBUG] Using clientRunId=${clientRunId || 'undefined (scorer will handle)'} (${options.clientRunId ? 'from orchestrator' : 'standalone mode'})`);
         console.log(`🔍 [POST-SCORING-DEBUG] Calling postBatchScorer.runMultiTenantPostScoring with limit=${options.limit || 'UNLIMITED'}, dryRun=${options.dryRun || false}`);
         
         // Run post scoring for this client with timeout
@@ -1321,7 +1295,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
           postBatchScorer.runMultiTenantPostScoring(
             vertexAIClient,
             geminiModelId,
-            clientRunId, // Pass the run ID
+            clientRunId, // Pass exactly as-is (may be undefined)
             client.clientId,
             options.limit,
             {
@@ -1358,11 +1332,9 @@ async function processPostScoringInBackground(jobId, stream, options) {
             console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Starting for ${client.clientName} (${client.clientId})`);
             console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Has parentRunId=${options.parentRunId}`);
             
-            // Generate client-specific run ID using runIdSystem
-            const baseRunId = options.parentRunId;
-            const clientRunId = runIdSystem.createClientRunId(baseRunId, client.clientId);
-            
-            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Using standardized run ID: ${clientRunId} (from ${options.parentRunId})`);
+            // CRITICAL: The parentRunId from orchestrator is ALREADY the complete client run ID
+            // (e.g., "251007-041822-Guy-Wilson") - we use it EXACTLY as-is, no reconstruction
+            console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Using client run ID as-is: ${options.parentRunId}`);
             
             // Calculate duration as human-readable text
             const duration = formatDuration(Date.now() - (options.startTime || Date.now()));
@@ -1370,7 +1342,7 @@ async function processPostScoringInBackground(jobId, stream, options) {
             // Prepare metrics updates
             const metricsUpdates = {
               [CLIENT_RUN_FIELDS.POSTS_EXAMINED]: postsExamined,
-              [CLIENT_RUN_FIELDS.POSTS_SUCCESSFULLY_SCORED]: postsScored,
+              [CLIENT_RUN_FIELDS.POSTS_SCORED]: postsScored,
               [CLIENT_RUN_FIELDS.POST_SCORING_TOKENS]: clientResult.totalTokensUsed || 0,
               [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
             };
@@ -1378,9 +1350,10 @@ async function processPostScoringInBackground(jobId, stream, options) {
             console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Prepared updates:`, JSON.stringify(metricsUpdates, null, 2));
             console.log(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Calling JobTracking.updateClientRun...`);
             
-            // Use the unified job tracking repository
+            // Pass the complete client run ID exactly as received from orchestrator
+            // NO reconstruction, NO suffix manipulation - just use it as-is
             const updateResult = await JobTracking.updateClientRun({
-              runId: clientRunId,
+              runId: options.parentRunId,  // Complete client run ID, use exactly as-is
               clientId: client.clientId,
               updates: metricsUpdates,
               options: {

@@ -247,6 +247,17 @@ class JobTracking {
       // Get the master base
       const masterBase = airtableClient.getMasterClientsBase();
       
+      // DIAGNOSTIC: Log table name before Airtable call
+      console.log(`[DIAGNOSTIC] JOB_TRACKING_TABLE value: "${JOB_TRACKING_TABLE}"`);
+      console.log(`[DIAGNOSTIC] typeof JOB_TRACKING_TABLE: ${typeof JOB_TRACKING_TABLE}`);
+      console.log(`[DIAGNOSTIC] MASTER_TABLES.JOB_TRACKING value: "${MASTER_TABLES.JOB_TRACKING}"`);
+      
+      if (!JOB_TRACKING_TABLE || JOB_TRACKING_TABLE === 'undefined') {
+        const errorMsg = `CRITICAL: JOB_TRACKING_TABLE is ${JOB_TRACKING_TABLE} (should be "Job Tracking")`;
+        console.error(`[DIAGNOSTIC] ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+      
       // Only check for the standardized run ID to prevent duplicates
       const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
       
@@ -292,6 +303,11 @@ class JobTracking {
       
       // Validate field names before sending to Airtable
       validateJobTrackingFields(JOB_TRACKING_TABLE, recordData);
+      
+      // DIAGNOSTIC: Log right before create call
+      console.log(`[DIAGNOSTIC] About to create job tracking record`);
+      console.log(`[DIAGNOSTIC] Table name: "${JOB_TRACKING_TABLE}"`);
+      console.log(`[DIAGNOSTIC] Record data keys:`, Object.keys(recordData));
       
       // Create the record
       const record = await masterBase(JOB_TRACKING_TABLE).create(recordData);
@@ -620,8 +636,12 @@ class JobTracking {
         };
       }
       
-      // Create client-specific run ID with standard format
-      const clientRunId = JobTracking.addClientSuffix(standardRunId, safeClientId);
+      // CRITICAL: In orchestrated runs, the runId passed here is ALREADY the complete 
+      // client run ID (e.g., "251007-041822-Guy-Wilson") created by the orchestrator.
+      // We use it EXACTLY as-is with NO reconstruction or suffix manipulation.
+      const clientRunId = standardRunId;
+      
+      log.debug(`Using client run ID exactly as passed: ${clientRunId}`);
       
       if (!clientRunId) {
         log.error(`Failed to create client run ID for ${standardRunId} and ${safeClientId}`);
@@ -1373,11 +1393,11 @@ class JobTracking {
       if (hasErrors) {
         notes.push(`Completed with ${finalMetrics[CLIENT_RUN_FIELDS.ERRORS]} errors`);
       }
-      if (finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SUCCESSFULLY_SCORED]) {
-        notes.push(`Scored ${finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SUCCESSFULLY_SCORED]} profiles`);
+      if (finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SCORED]) {
+        notes.push(`Scored ${finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SCORED]} profiles`);
       }
-      if (finalMetrics[CLIENT_RUN_FIELDS.POSTS_SUCCESSFULLY_SCORED]) {
-        notes.push(`Scored ${finalMetrics[CLIENT_RUN_FIELDS.POSTS_SUCCESSFULLY_SCORED]} posts`);
+      if (finalMetrics[CLIENT_RUN_FIELDS.POSTS_SCORED]) {
+        notes.push(`Scored ${finalMetrics[CLIENT_RUN_FIELDS.POSTS_SCORED]} posts`);
       }
       if (finalMetrics[CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]) {
         notes.push(`Harvested ${finalMetrics[CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]} posts`);

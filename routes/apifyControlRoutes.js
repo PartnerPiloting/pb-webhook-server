@@ -175,6 +175,8 @@ function mapApifyItemsToPBPosts(items = []) {
 //   x-client-id: <tenant id>
 // Body:
 //   { targetUrls: string[], options?: { postedLimit?: string, maxPosts?: number, reactions?: boolean, comments?: boolean }, mode?: 'webhook'|'inline' }
+// Query/Body params (optional):
+//   runId: client run ID from orchestrator (for metrics tracking)
 router.post('/api/apify/run', async (req, res) => {
   try {
     // Auth
@@ -183,7 +185,8 @@ router.post('/api/apify/run', async (req, res) => {
     if (!secret) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
     if (!auth || auth !== `Bearer ${secret}`) return res.status(401).json({ ok: false, error: 'Unauthorized' });
 
-    // Multi-tenant client identification
+    // CLEAN ARCHITECTURE: Extract client run ID from orchestrator (if provided)
+    const clientRunId = req.query.runId || req.body.runId || null;    // Multi-tenant client identification
     let clientId = req.headers['x-client-id'];
     // Fallback to query param for visibility/simplicity in testing
     if (!clientId) clientId = req.query.client || req.query.clientId;
@@ -365,17 +368,15 @@ router.post('/api/apify/run', async (req, res) => {
         }
         result = await syncPBPostsToAirtable(posts, clientBase || null);
         
-        // Update metrics ONLY if we're in an orchestrated run (not standalone)
-        // Check if this is part of an orchestrated flow by looking for parent run ID
-        const isOrchestrated = req.query.parentRunId || req.body.parentRunId;
-        
-        if (isOrchestrated) {
+        // Update metrics ONLY if we're in an orchestrated run (have client run ID)
+        // In standalone mode (no clientRunId), skip metrics updates
+        if (clientRunId) {
           // Update the client run record with post harvesting metrics using the centralized function
           try {
             const { updateClientRunMetrics } = require('../services/apifyRunsService');
             
-            // Update metrics using the centralized function
-            await updateClientRunMetrics(run.id, clientId, {
+            // CLEAN ARCHITECTURE: Pass client run ID exactly as received from orchestrator
+            await updateClientRunMetrics(clientRunId, clientId, {
               postsCount: posts.length,
               profilesCount: targetUrls.length
             });
@@ -386,7 +387,7 @@ router.post('/api/apify/run', async (req, res) => {
             // Continue execution even if metrics update fails
           }
         } else {
-          console.log(`[ApifyControl] Skipping metrics update for standalone run (no parentRunId provided)`);
+          console.log(`[ApifyControl] Skipping metrics update for standalone run (no clientRunId provided)`);
         }
       }
       return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, datasetId, counts: { items: (items||[]).length, posts: posts.length }, result });
