@@ -10,6 +10,15 @@
  * - Reports what was skipped vs. what was processed
  */
 
+// CRITICAL: Load dependencies FIRST before any logging
+require('dotenv').config();
+const { generateRunId, createLogger: createBasicLogger } = require('../utils/runIdGenerator');
+const { createLogger } = require('../utils/contextLogger'); // NEW: Structured logging
+
+// Create module logger IMMEDIATELY after imports
+const moduleLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'smart_resume_init' });
+
+// NOW we can use moduleLogger safely
 moduleLogger.info(`🔍 MODULE_DEBUG: Script loading started [${new Date().toISOString()}]`);
 
 // Catch ALL errors immediately
@@ -26,18 +35,13 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 moduleLogger.info(`🔍 ERROR_HANDLERS: Installed global error handlers`);
-
-require('dotenv').config();
-
 moduleLogger.info(`🔍 MODULE_DEBUG: dotenv configured, NODE_ENV: ${process.env.NODE_ENV}`);
 moduleLogger.info(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_RUN_ID}`);
 
 // FORCE EXECUTION - Skip the require.main check entirely
 moduleLogger.info(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date().toISOString()}]`);
 
-moduleLogger.info(`🔍 TRACE: About to load run ID generator`);
-const { generateRunId, createLogger: createBasicLogger } = require('../utils/runIdGenerator');
-const { createLogger } = require('../utils/contextLogger'); // NEW: Structured logging
+moduleLogger.info(`🔍 TRACE: About to load remaining dependencies`);
 // Updated imports based on newer versions
 const airtableService = require('../services/airtableService');
 const { JobTracking } = require('../services/jobTracking');
@@ -72,8 +76,7 @@ function validateJobTrackingMethods() {
 validateJobTrackingMethods();
 let runId = 'INITIALIZING';
 
-// Module-level logger for initialization and helper functions
-const moduleLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'smart_resume_init' });
+// moduleLogger already created at top of file (line 19)
 
 // ROOT CAUSE FIX: Create a function to ensure normalizedRunId is always defined
 function getNormalizedRunId(originalRunId) {
