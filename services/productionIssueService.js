@@ -21,6 +21,7 @@ const FIELDS = {
   CONTEXT: 'Context',
   STACK_TRACE: 'Stack Trace',
   RUN_TYPE: 'Run Type',
+  STREAM: 'Stream',
   CLIENT: 'Client ID',
   SERVICE_FUNCTION: 'Service/Function',
   STATUS: 'Status',
@@ -199,6 +200,10 @@ class ProductionIssueService {
       fields[FIELDS.RUN_TYPE] = issue.runType;
     }
 
+    if (issue.stream) {
+      fields[FIELDS.STREAM] = parseInt(issue.stream, 10);
+    }
+
     if (issue.service) {
       fields[FIELDS.SERVICE_FUNCTION] = issue.service;
     }
@@ -304,6 +309,112 @@ class ProductionIssueService {
     }
 
     return this.updateProductionIssue(recordId, updates);
+  }
+
+  /**
+   * Analyze logs for a specific run ID
+   * @param {Object} options - Analysis options
+   * @param {string} options.runId - Run ID to analyze (e.g., "251008-143015")
+   * @param {Date} options.startTime - Actual start time of the run
+   * @param {Date} options.endTime - Actual end time of the run
+   * @param {number} options.stream - Stream number (1, 2, or 3)
+   * @param {string} options.serviceId - Render service ID (optional)
+   * @returns {Promise<Object>} - Analysis results
+   */
+  async analyzeRunLogs(options = {}) {
+    const {
+      runId,
+      startTime,
+      endTime,
+      stream = 1,
+      serviceId = process.env.RENDER_SERVICE_ID,
+    } = options;
+
+    // Validate required parameters
+    if (!runId) {
+      throw new Error('runId is required for log analysis');
+    }
+
+    if (!startTime || !endTime) {
+      throw new Error('startTime and endTime are required for log analysis');
+    }
+
+    logger.setup('analyzeRunLogs', `Analyzing logs for run ${runId} (stream ${stream})`);
+    logger.debug('analyzeRunLogs', `Time window: ${startTime.toISOString()} to ${endTime.toISOString()}`);
+
+    try {
+      // Fetch logs from Render for the exact time window
+      logger.process('analyzeRunLogs', 'Fetching logs from Render API...');
+      const logData = await this.renderLogService.getServiceLogs(serviceId, {
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        limit: 10000,
+      });
+
+      // Convert to text
+      const allLogsText = this.convertLogsToText(logData.logs || []);
+      const allLogLines = allLogsText.split('\n');
+      
+      logger.process('analyzeRunLogs', `Fetched ${allLogLines.length} total log lines`);
+
+      // Filter to only logs containing this run ID
+      const runIdPattern = `[${runId}]`;
+      const runSpecificLogs = allLogLines.filter(line => line.includes(runIdPattern));
+      
+      logger.process('analyzeRunLogs', `Filtered to ${runSpecificLogs.length} lines for run ${runId}`);
+
+      if (runSpecificLogs.length === 0) {
+        logger.warn('analyzeRunLogs', `No logs found for run ID ${runId}`);
+        return {
+          success: true,
+          runId,
+          stream,
+          message: 'No logs found for this run ID',
+          issuesFound: 0,
+          createdRecords: 0,
+        };
+      }
+
+      // Rejoin filtered logs
+      const runLogsText = runSpecificLogs.join('\n');
+
+      // Filter logs for issues using pattern matching
+      logger.process('analyzeRunLogs', 'Running pattern matching on filtered logs...');
+      const issues = filterLogs(runLogsText, {
+        deduplicateIssues: true,
+        contextSize: 25,
+      });
+
+      logger.process('analyzeRunLogs', `Found ${issues.length} unique issues`);
+
+      // Enrich issues with run metadata
+      const enrichedIssues = issues.map(issue => ({
+        ...issue,
+        runType: 'smart-resume',
+        stream: stream,
+      }));
+
+      // Create Production Issue records
+      const createdRecords = await this.createProductionIssues(enrichedIssues);
+
+      const summary = generateSummary(enrichedIssues);
+
+      logger.summary('analyzeRunLogs', `Analysis complete: ${createdRecords.length} Production Issues created`);
+
+      return {
+        success: true,
+        runId,
+        stream,
+        summary,
+        issuesFound: issues.length,
+        createdRecords: createdRecords.length,
+        records: createdRecords,
+      };
+
+    } catch (error) {
+      logger.error('analyzeRunLogs', `Analysis failed: ${error.message}`);
+      throw error;
+    }
   }
 }
 

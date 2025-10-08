@@ -74,7 +74,7 @@
 
 ---
 
-### Metadata Fields (4 fields - for debugging context)
+### Metadata Fields (5 fields - for debugging context)
 
 8. **Stack Trace**
    - Type: `Long text`
@@ -93,12 +93,19 @@
      - `other`
    - Description: What type of operation was running
 
-10. **Client ID**
+10. **Stream**
+    - Type: `Number`
+    - Format: Integer
+    - Description: Which processing stream (1, 2, or 3) was running
+    - Example: 1, 2, 3
+    - Optional field (may be empty for non-stream operations)
+
+11. **Client ID**
     - Type: `Single line text`
     - Description: Which client was affected (if applicable)
     - Example: "Guy Wilson", "John Smith"
 
-11. **Service/Function**
+12. **Service/Function**
     - Type: `Single line text`
     - Description: Specific code location or function name
     - Example: "processClientRun", "updateLeadRecord", "scoreLeadBatch"
@@ -107,18 +114,18 @@
 
 ### Tracking Fields (3 fields - for fix management)
 
-12. **Fixed Time**
+13. **Fixed Time**
     - Type: `Date and time`
     - Description: When the issue was resolved (includes date and time)
     - Format: Include time
 
-13. **Fix Notes**
+14. **Fix Notes**
     - Type: `Long text`
     - Description: Explanation of what was done to fix it
     - Enable rich text: No
     - Example: "Fixed field name typo in leadService.js line 145. Changed 'Errors' to 'Error_Messages'. Committed as a3b2c1d."
 
-14. **Fix Commit**
+15. **Fix Commit**
     - Type: `Single line text`
     - Description: Git commit hash of the fix
     - Example: "a3b2c1d" or "a3b2c1d4e5f6789"
@@ -127,7 +134,7 @@
 
 ### Reference Fields (1 field)
 
-15. **Render Log URL**
+16. **Render Log URL**
     - Type: `URL`
     - Description: Direct link to Render logs (valid for 7 days)
     - Example: https://dashboard.render.com/web/srv-xyz/logs?start=1728316995
@@ -136,22 +143,32 @@
 
 ### Optional Fields (3 fields - for advanced tracking)
 
-16. **Occurrences**
+17. **Occurrences**
     - Type: `Number`
     - Format: Integer
     - Description: How many times this exact error was seen
     - Default: 1
     - Incremented when same error is detected again
 
-17. **First Seen**
+18. **First Seen**
     - Type: `Date and time`
     - Description: First occurrence of this error pattern
     - Format: Include time
 
-18. **Last Seen**
+19. **Last Seen**
     - Type: `Date and time`
     - Description: Most recent occurrence
     - Format: Include time
+
+---
+
+## Field Count Summary
+- **Total Fields:** 19 (increased from 18)
+- **Core Fields:** 7
+- **Metadata Fields:** 5 (increased from 4 - added Stream)
+- **Tracking Fields:** 3
+- **Reference Fields:** 1
+- **Optional Fields:** 3
 
 ---
 
@@ -192,13 +209,13 @@
 3. **Delete default fields** (Airtable creates Name, Notes, etc.)
 4. **Add fields one by one** following the specifications above
    - Start with Core Fields (7)
-   - Then Metadata Fields (4)
-   - Then Tracking Fields (4)
+   - Then Metadata Fields (5) - **includes new Stream field**
+   - Then Tracking Fields (3)
    - Then Reference Fields (1)
    - Then Optional Fields (3)
 5. **Create the 5 views** listed above
 6. **Set default view** to "🔥 Critical Issues"
-7. **Verify** you have 18 fields total (plus any auto-generated fields like "Created Time")
+7. **Verify** you have 19 fields total (plus any auto-generated fields like "Created Time")
 
 ---
 
@@ -212,3 +229,4 @@
 - All other fields will be populated by the backend code
 - You can manually update Status, Fix Notes, and other fields as needed
 - The Context field is the most important for debugging - it contains the log excerpt
+- **NEW: Stream field** tracks which processing stream (1, 2, or 3) the error occurred in
