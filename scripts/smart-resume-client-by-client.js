@@ -36,7 +36,8 @@ console.log(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_
 console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date().toISOString()}]`);
 
 console.log(`🔍 TRACE: About to load run ID generator`);
-const { generateRunId, createLogger } = require('../utils/runIdGenerator');
+const { generateRunId, createLogger: createBasicLogger } = require('../utils/runIdGenerator');
+const { createLogger } = require('../utils/contextLogger'); // NEW: Structured logging
 // Updated imports based on newer versions
 const airtableService = require('../services/airtableService');
 const { JobTracking } = require('../services/jobTracking');
@@ -432,9 +433,15 @@ async function main() {
     
     // Create a normalized run ID
     const normalizedRunId = getNormalizedRunId(runId);
-    log = createLogger(runId);
     
-    log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId}, Normalized: ${normalizedRunId})`, 'INFO');
+    // Create structured context logger (NEW)
+    const logger = createLogger({
+        runId: runId,
+        clientId: 'SYSTEM',
+        operation: 'smart-resume'
+    });
+    
+    logger.info(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId}, Normalized: ${normalizedRunId})`);
     
     // Track actual start and end times for log analysis
     const runStartTimestamp = new Date(); // Actual start time for log fetching
@@ -448,31 +455,31 @@ async function main() {
     
     // Initialize run tracking in Airtable
     try {
-        log(`🚀 PROGRESS: Creating job tracking record for run ${runId}...`, 'INFO');
+        logger.info(`🚀 PROGRESS: Creating job tracking record for run ${runId}...`);
         const jobRecord = await JobTracking.createJob({
             runId: normalizedRunId, 
             jobType: 'smart_resume', 
             initialData: { [JOB_TRACKING_FIELDS.STREAM]: stream }
         });
-        log(`✅ Job tracking record created successfully (ID: ${jobRecord?.recordId || 'unknown'})`, 'INFO');
+        logger.info(`✅ Job tracking record created successfully (ID: ${jobRecord?.recordId || 'unknown'})`);
     } catch (error) {
-        log(`⚠️ Failed to create job tracking record: ${error.message}. Continuing execution.`, 'WARN');
-        log(`🔍 Error details: ${error.stack || 'No stack trace'}`, 'DEBUG');
+        logger.warn(`⚠️ Failed to create job tracking record: ${error.message}. Continuing execution.`);
+        logger.debug(`🔍 Error details: ${error.stack || 'No stack trace'}`);
     }
     
-    log(`🚀 PROGRESS: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`, 'INFO');
+    logger.info(`🚀 PROGRESS: Configuration loaded - baseUrl: ${baseUrl}, stream: ${stream}`);
     
     // Initialize email reporting
-    log(`🚀 PROGRESS: Initializing email service...`, 'INFO');
+    logger.info(`🚀 PROGRESS: Initializing email service...`);
     const emailService = require('../services/emailReportingService');
-    log(`🚀 PROGRESS: Email service initialized successfully`, 'INFO');
+    logger.info(`🚀 PROGRESS: Email service initialized successfully`);
     
     const runStartTime = Date.now();
     
-    log(`🔍 SCRIPT_DEBUG: Checking secret...`, 'INFO');
+    logger.debug(`🔍 SCRIPT_DEBUG: Checking secret...`);
     if (!secret) {
         const errorMsg = 'PB_WEBHOOK_SECRET environment variable is required';
-        log(`❌ ${errorMsg}`, 'ERROR');
+        logger.error(`❌ ${errorMsg}`);
         
         // Send failure alert
         await emailService.sendExecutionReport({
@@ -487,16 +494,16 @@ async function main() {
         process.exit(1);
     }
     
-    log(`🔍 SCRIPT_DEBUG: Secret found, length: ${secret.length}`, 'INFO');
+    logger.debug(`🔍 SCRIPT_DEBUG: Secret found, length: ${secret.length}`);
     
     const authHeaders = { 'Authorization': `Bearer ${secret}` };
     
-    log(`🚀 SMART RESUME CLIENT-BY-CLIENT PROCESSING STARTING`);
-    log(`   Run ID: ${runId}`);
-    log(`   Base URL: ${baseUrl}`);
-    log(`   Stream: ${stream}`);
-    log(`   Resume Logic: Skip completed operations from last 24 hours`);
-    log(`   Email Reporting: ${emailService.isConfigured() ? '✅ Enabled' : '⚠️  Not configured'}`);
+    logger.info(`🚀 SMART RESUME CLIENT-BY-CLIENT PROCESSING STARTING`);
+    logger.info(`   Run ID: ${runId}`);
+    logger.info(`   Base URL: ${baseUrl}`);
+    logger.info(`   Stream: ${stream}`);
+    logger.info(`   Resume Logic: Skip completed operations from last 24 hours`);
+    logger.info(`   Email Reporting: ${emailService.isConfigured() ? '✅ Enabled' : '⚠️  Not configured'}`);
     
     // Get clients for this stream
     log(`� PROGRESS: [1/6] Loading client service...`, 'INFO');

@@ -355,32 +355,24 @@ class ProductionIssueService {
       const allLogsText = this.convertLogsToText(logData.logs || []);
       const allLogLines = allLogsText.split('\n');
       
-      logger.process('analyzeRunLogs', `Fetched ${allLogLines.length} total log lines`);
+      logger.process('analyzeRunLogs', `Fetched ${allLogLines.length} total log lines from time window`);
 
-      // Filter to only logs containing this run ID
-      const runIdPattern = `[${runId}]`;
-      const runSpecificLogs = allLogLines.filter(line => line.includes(runIdPattern));
-      
-      logger.process('analyzeRunLogs', `Filtered to ${runSpecificLogs.length} lines for run ${runId}`);
-
-      if (runSpecificLogs.length === 0) {
-        logger.warn('analyzeRunLogs', `No logs found for run ID ${runId}`);
+      if (allLogLines.length === 0) {
+        logger.warn('analyzeRunLogs', `No logs found in time window`);
         return {
           success: true,
           runId,
           stream,
-          message: 'No logs found for this run ID',
+          message: 'No logs found in time window',
           issuesFound: 0,
           createdRecords: 0,
         };
       }
 
-      // Rejoin filtered logs
-      const runLogsText = runSpecificLogs.join('\n');
-
-      // Filter logs for issues using pattern matching
-      logger.process('analyzeRunLogs', 'Running pattern matching on filtered logs...');
-      const issues = filterLogs(runLogsText, {
+      // Analyze ALL logs in the time window (no filtering by runId)
+      // With structured logging, every line will have [runId] prefix, so we get complete coverage
+      logger.process('analyzeRunLogs', 'Running pattern matching on all logs in time window...');
+      const issues = filterLogs(allLogsText, {
         deduplicateIssues: true,
         contextSize: 25,
       });
