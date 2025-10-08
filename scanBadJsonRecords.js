@@ -1,4 +1,7 @@
 // scanBadJsonRecords.js
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 // Scans Airtable for records with malformed JSON in the 'Posts Content' field and logs the first 5
 
 const base = require('./config/airtableClient');
@@ -6,26 +9,26 @@ const POSTS_CONTENT_FIELD = 'Posts Content';
 const LEADS_TABLE = 'Leads';
 
 async function scanBadJsonRecords() {
-    console.log('DEBUG: scanBadJsonRecords function started.');
+    logger.info('DEBUG: scanBadJsonRecords function started.');
     const maxToLog = 5;
     let badRecords = [];
     let checked = 0;
     let page = 0;
-    console.log('Scanning Airtable for records with malformed JSON in Posts Content...');
+    logger.info('Scanning Airtable for records with malformed JSON in Posts Content...');
     await base(LEADS_TABLE).select({fields: [POSTS_CONTENT_FIELD]}).eachPage((records, fetchNextPage) => {
         page++;
-        console.log(`DEBUG: Fetched page ${page} with ${records.length} records.`);
+        logger.info(`DEBUG: Fetched page ${page} with ${records.length} records.`);
         for (const record of records) {
             checked++;
             if (checked % 100 === 0) {
-                console.log(`Checked ${checked} records so far...`);
+                logger.info(`Checked ${checked} records so far...`);
             }
             const raw = record.get(POSTS_CONTENT_FIELD);
             if (!raw) continue;
             try {
                 JSON.parse(raw);
             } catch (e) {
-                console.log(`DEBUG: Found bad record at #${checked} (Record ID: ${record.id})`);
+                logger.info(`DEBUG: Found bad record at #${checked} (Record ID: ${record.id})`);
                 badRecords.push({
                     id: record.id,
                     snippet: raw.substring(0, 300),
@@ -36,15 +39,15 @@ async function scanBadJsonRecords() {
         }
         if (badRecords.length < maxToLog) fetchNextPage();
     });
-    console.log(`DEBUG: scanBadJsonRecords finished. Total checked: ${checked}, bad records: ${badRecords.length}`);
+    logger.info(`DEBUG: scanBadJsonRecords finished. Total checked: ${checked}, bad records: ${badRecords.length}`);
     if (badRecords.length === 0) {
-        console.log('No malformed JSON records found.');
+        logger.info('No malformed JSON records found.');
     } else {
-        console.log(`Found ${badRecords.length} records with malformed JSON:`);
+        logger.info(`Found ${badRecords.length} records with malformed JSON:`);
         badRecords.forEach((rec, i) => {
-            console.log(`\n#${i+1} Record ID: ${rec.id}`);
-            console.log(`Error: ${rec.error}`);
-            console.log(`Snippet: ${rec.snippet}`);
+            logger.info(`\n#${i+1} Record ID: ${rec.id}`);
+            logger.info(`Error: ${rec.error}`);
+            logger.info(`Snippet: ${rec.snippet}`);
         });
     }
 }
