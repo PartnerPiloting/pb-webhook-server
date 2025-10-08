@@ -8,6 +8,8 @@
  * Example: 250924-152230-Dean-Hobin
  */
 const TIMESTAMP_RUN_ID_REGEX = /^(\d{6}-\d{6})-(.+)$/;
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'util' });
 
 /**
  * Helper function to identify if the run ID has any client suffix
@@ -44,7 +46,7 @@ function getBaseRunId(runId) {
   
   // Check for null, undefined, or other non-string values
   if (typeof runId !== 'string') {
-    console.error(`[runIdUtils] ERROR: Non-string runId provided to getBaseRunId: ${runId}`);
+    logger.error(`[runIdUtils] ERROR: Non-string runId provided to getBaseRunId: ${runId}`);
     return '';
   }
   
@@ -60,7 +62,7 @@ function getBaseRunId(runId) {
   }
   
   // If it's not our format, log a warning but return the original runId to prevent data loss
-  console.warn(`[runIdUtils] WARNING: Encountered non-standard run ID format: ${runId}`);
+  logger.warn(`[runIdUtils] WARNING: Encountered non-standard run ID format: ${runId}`);
   return runId;
 }
 

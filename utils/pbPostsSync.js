@@ -1,6 +1,8 @@
 // utils/pbPostsSync.js - MULTI-TENANT SUPPORT: Updated to use client-specific Airtable bases
 
 require("dotenv").config();
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'util' });
 const { getClientBase } = require('../config/airtableClient');
 const base = require('../config/airtableClient'); // Fallback for backward compatibility
 const dirtyJSON = require('dirty-json'); // Add dirty-json for safe parsing
@@ -51,7 +53,7 @@ async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
             return null;
         }
     } catch (e) {
-        console.error(`[getAirtableRecord] Filtered lookup failed: ${e.message}`);
+        logger.error(`[getAirtableRecord] Filtered lookup failed: ${e.message}`);
         // DO NOT fallback to .all() - this was causing memory crashes
         // Return null instead of risking memory overflow
         return null;
@@ -62,7 +64,7 @@ async function getAirtableRecordByProfileUrl(profileUrl, clientBase) {
 // Identifies which client base contains the LinkedIn profiles from the posts
 async function identifyClientForPosts(pbPostsArr) {
     if (!pbPostsArr || pbPostsArr.length === 0) {
-        console.warn('PB Posts: No posts provided for client identification');
+        logger.warn('PB Posts: No posts provided for client identification');
         return null;
     }
 
@@ -74,7 +76,7 @@ async function identifyClientForPosts(pbPostsArr) {
         )];
 
         if (profileUrls.length === 0) {
-            console.warn('PB Posts: No valid profile URLs found in posts');
+            logger.warn('PB Posts: No valid profile URLs found in posts');
             return null;
         }
 
@@ -105,11 +107,11 @@ async function identifyClientForPosts(pbPostsArr) {
                 
                 // If we found matches for most sample URLs, this is likely the correct client
                 if (foundCount > 0) {
-                    console.log(`PB Posts: Identified client ${client.id} based on ${foundCount}/${sampleUrls.length} profile URL matches`);
+                    logger.info(`PB Posts: Identified client ${client.id} based on ${foundCount}/${sampleUrls.length} profile URL matches`);
                     return { clientId: client.id, clientBase };
                 }
             } catch (clientError) {
-                console.warn(`Error checking client ${client.id}: ${clientError.message}`);
+                logger.warn(`Error checking client ${client.id}: ${clientError.message}`);
                 continue;
             }
         }
@@ -117,7 +119,7 @@ async function identifyClientForPosts(pbPostsArr) {
         return null;
         
     } catch (error) {
-        console.error('Error identifying client for PB posts:', error.message);
+        logger.error('Error identifying client for PB posts:', error.message);
         return null;
     }
 }
@@ -141,7 +143,7 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
             clientId = clientInfo.clientId;
         } else {
             // Fallback to global base for backward compatibility
-            console.warn('PB Posts: Client auto-detection failed, falling back to global base');
+            logger.warn('PB Posts: Client auto-detection failed, falling back to global base');
             airtableBase = base;
         }
     }
@@ -150,7 +152,7 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
         throw new Error('No Airtable base available for PB posts sync');
     }
 
-    console.log(`[PBPostsSync] Starting sync with ${pbPostsArr.length} posts`);
+    logger.info(`[PBPostsSync] Starting sync with ${pbPostsArr.length} posts`);
 
     // Index posts by normalized profile URL
     const postsByProfile = {};
@@ -185,7 +187,7 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
         });
     });
 
-    console.log(`[PBPostsSync] Processing ${Object.keys(postsByProfile).length} unique profiles`);
+    logger.info(`[PBPostsSync] Processing ${Object.keys(postsByProfile).length} unique profiles`);
 
     let processedCount = 0;
     
@@ -194,7 +196,7 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
         
         const record = await getAirtableRecordByProfileUrl(normProfileUrl, airtableBase);
         if (!record) {
-            console.warn(`No Airtable lead found for: ${normProfileUrl}`);
+            logger.warn(`No Airtable lead found for: ${normProfileUrl}`);
             continue;
         }
 
@@ -204,19 +206,19 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
             
             // Check if the field is extremely large (could cause memory issues)
             if (postsFieldValue.length > 1000000) { // 1MB limit
-                console.warn(`[PBPostsSync] Existing posts field too large (${postsFieldValue.length} chars), truncating to avoid memory crash`);
+                logger.warn(`[PBPostsSync] Existing posts field too large (${postsFieldValue.length} chars), truncating to avoid memory crash`);
                 existingPosts = []; // Start fresh to avoid memory crash
             } else {
                 // Use dirty-json for safer parsing of existing posts (same as webhook parsing)
                 try {
                     existingPosts = JSON.parse(postsFieldValue);
                 } catch (jsonError) {
-                    console.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
+                    logger.warn(`Standard JSON.parse failed for existing posts, trying dirty-json: ${jsonError.message}`);
                     existingPosts = dirtyJSON.parse(postsFieldValue);
                 }
             }
         } catch (parseError) {
-            console.error(`Both JSON.parse and dirty-json failed for existing posts: ${parseError.message}`);
+            logger.error(`Both JSON.parse and dirty-json failed for existing posts: ${parseError.message}`);
             existingPosts = []; // Fallback to empty array
         }
 
@@ -255,8 +257,8 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                     [AIRTABLE_DATE_ADDED_FIELD]: new Date().toISOString()
                 };
 
-                console.log(`[DEBUG] PBPostsSync: Updating record ${record.id} with ${newPostsAdded} new, ${postsUpdated} updated posts`);
-                console.log(`[DEBUG] PBPostsSync: Final posts array length: ${existingPosts.length}, JSON size: ${updateData[AIRTABLE_POSTS_FIELD].length} chars`);
+                logger.info(`[DEBUG] PBPostsSync: Updating record ${record.id} with ${newPostsAdded} new, ${postsUpdated} updated posts`);
+                logger.info(`[DEBUG] PBPostsSync: Final posts array length: ${existingPosts.length}, JSON size: ${updateData[AIRTABLE_POSTS_FIELD].length} chars`);
 
                 // Add optional timestamp fields if they exist in the base
                 try {
@@ -267,19 +269,19 @@ async function syncPBPostsToAirtable(pbPostsArr, clientBase = null) {
                 }
 
                 await airtableBase(AIRTABLE_LEADS_TABLE_NAME).update(record.id, updateData);
-                console.log(`[DEBUG] PBPostsSync: Successfully updated Airtable record ${record.id}`);
-                console.log(`Updated ${normProfileUrl}: Added ${newPostsAdded}, Updated ${postsUpdated} posts (total: ${existingPosts.length})`);
+                logger.info(`[DEBUG] PBPostsSync: Successfully updated Airtable record ${record.id}`);
+                logger.info(`Updated ${normProfileUrl}: Added ${newPostsAdded}, Updated ${postsUpdated} posts (total: ${existingPosts.length})`);
             } catch (updateError) {
-                console.error(`[DEBUG] PBPostsSync: Failed to update ${normProfileUrl}:`, updateError.message);
-                console.error(`Failed to update ${normProfileUrl}:`, updateError.message);
+                logger.error(`[DEBUG] PBPostsSync: Failed to update ${normProfileUrl}:`, updateError.message);
+                logger.error(`Failed to update ${normProfileUrl}:`, updateError.message);
             }
         } else {
-            console.log(`[DEBUG] PBPostsSync: No updates needed for ${normProfileUrl} (no new or updated posts)`);
+            logger.info(`[DEBUG] PBPostsSync: No updates needed for ${normProfileUrl} (no new or updated posts)`);
         }
     }
 
     const totalProfiles = Object.keys(postsByProfile).length;
-    console.log(`PB Posts sync completed: ${processedCount}/${totalProfiles} profiles processed`);
+    logger.info(`PB Posts sync completed: ${processedCount}/${totalProfiles} profiles processed`);
     
     return {
         success: true,

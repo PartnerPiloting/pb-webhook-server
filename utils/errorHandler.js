@@ -5,6 +5,8 @@
  */
 
 const { StructuredLogger } = require('./structuredLogger');
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'util' });
 const { createSafeLogger, getLoggerFromOptions } = require('./loggerHelper');
 
 /**
@@ -437,7 +439,7 @@ async function getFieldCase(base, tableName, fieldName, defaultCase = null) {
     
     return match || defaultCase || fieldName;
   } catch (error) {
-    console.error(`Error detecting field case: ${error.message}`);
+    logger.error(`Error detecting field case: ${error.message}`);
     return defaultCase || fieldName;
   }
 }

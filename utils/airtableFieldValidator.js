@@ -12,8 +12,9 @@
  * - Enables defensive programming patterns
  */
 
-// Import the logger helper
-const { createSafeLogger } = require('./loggerHelper');
+// Import the logger
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'field-validator' });
 
 // Import specialized error classes
 const { FieldNameError } = require('./airtableErrors');
@@ -28,9 +29,6 @@ const {
   STATUS_VALUES,
   SCORING_STATUS_VALUES
 } = require('../constants/airtableUnifiedConstants');
-
-// Base logger for this module
-const logger = createSafeLogger('SYSTEM', 'field-validator', 'airtable');
 
 /**
  * Consolidated constants for Airtable field names
@@ -183,13 +181,13 @@ function createValidatedObject(data, options = {}) {
   // DIAGNOSTIC: Identify which constant is causing toLowerCase crash
   for (const [key, value] of Object.entries(FIELD_NAMES)) {
     if (value === undefined || value === null) {
-      console.error(`[airtableFieldValidator] CRITICAL: Field constant "${key}" is undefined/null!`);
-      console.error(`[airtableFieldValidator] This constant is exported from CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, or LEAD_FIELDS`);
-      console.error(`[airtableFieldValidator] Check constants/airtableUnifiedConstants.js for missing or commented-out field definitions`);
+      logger.error(`[airtableFieldValidator] CRITICAL: Field constant "${key}" is undefined/null!`);
+      logger.error(`[airtableFieldValidator] This constant is exported from CLIENT_RUN_FIELDS, JOB_TRACKING_FIELDS, or LEAD_FIELDS`);
+      logger.error(`[airtableFieldValidator] Check constants/airtableUnifiedConstants.js for missing or commented-out field definitions`);
       throw new Error(`Field constant "${key}" is undefined. Fix the constant definition before proceeding.`);
     }
     if (typeof value !== 'string') {
-      console.error(`[airtableFieldValidator] CRITICAL: Field constant "${key}" is not a string! Type: ${typeof value}, Value: ${JSON.stringify(value)}`);
+      logger.error(`[airtableFieldValidator] CRITICAL: Field constant "${key}" is not a string! Type: ${typeof value}, Value: ${JSON.stringify(value)}`);
       throw new Error(`Field constant "${key}" has wrong type: ${typeof value}. Must be a string.`);
     }
     lowerCaseMappings[value.toLowerCase()] = value;
@@ -199,7 +197,7 @@ function createValidatedObject(data, options = {}) {
   for (const [key, value] of Object.entries(data)) {
     // CRITICAL FIX: Skip undefined or null keys to prevent toLowerCase crash
     if (key === undefined || key === null) {
-      console.warn(`[airtableFieldValidator] Skipping undefined/null key in data object. Value was: ${value}`);
+      logger.warn(`[airtableFieldValidator] Skipping undefined/null key in data object. Value was: ${value}`);
       continue;
     }
     

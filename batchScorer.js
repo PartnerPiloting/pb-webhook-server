@@ -1105,9 +1105,9 @@ async function run(req, res, dependencies) {
 
 // Direct execution block (remains with warnings about needing manual dependency setup if run directly)
 if (require.main === module) { 
-    console.warn("batchScorer.js: Attempting to run directly via Node.js.");
-    console.warn("batchScorer.js: Direct execution mode currently does NOT support automatic dependency injection (Gemini client, multi-tenant configuration).");
-    console.warn("batchScorer.js: This direct run will likely fail unless this script is modified to load configurations itself OR if called by a wrapper that provides them.");
+    logger.warn("batchScorer.js: Attempting to run directly via Node.js.");
+    logger.warn("batchScorer.js: Direct execution mode currently does NOT support automatic dependency injection (Gemini client, multi-tenant configuration).");
+    logger.warn("batchScorer.js: This direct run will likely fail unless this script is modified to load configurations itself OR if called by a wrapper that provides them.");
 }
 
 module.exports = { run };
