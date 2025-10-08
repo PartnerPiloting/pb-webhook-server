@@ -5,6 +5,9 @@
  */
 
 const { CLIENT_RUN_FIELDS } = require('../constants/airtableUnifiedConstants');
+const { createLogger } = require('../utils/contextLogger');
+
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'system' });
 const runRecordAdapter = require('./runRecordAdapterSimple');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
@@ -27,7 +30,7 @@ async function updatePostScoringMetrics(params) {
   // Input validation
   if (!params || typeof params !== 'object') {
     const error = new Error(`Invalid params: ${JSON.stringify(params)}`);
-    console.error(`[PostScoringMetricsHandler] ${error.message}`);
+    logger.error(`[PostScoringMetricsHandler] ${error.message}`);
     return { success: false, error: error.message };
   }
 

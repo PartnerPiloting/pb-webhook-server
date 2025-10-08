@@ -6,6 +6,14 @@ const logCriticalError = async () => {};
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for airtable service
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'airtable-service' 
+});
 const runIdUtils = require('../utils/runIdUtils');
 
 // Import the client service with explicit destructuring to ensure we get what we need
@@ -15,10 +23,10 @@ try {
     clientService = require('./clientService');
     // Verify the critical functions exist
     if (!clientService.initializeClientsBase) {
-        console.error("ERROR: clientService.initializeClientsBase function is missing");
+        logger.error("ERROR: clientService.initializeClientsBase function is missing");
     }
 } catch (e) {
-    console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
+    logger.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
     logCriticalError(e, { context: 'Module initialization error', service: 'airtableService.js' }).catch(() => {});
 }
 
@@ -44,16 +52,16 @@ let clientsBase = null;
  */
 function initialize() {
   if (clientsBase) {
-    console.log("Airtable Service: Using existing base connection");
+    logger.info("Airtable Service: Using existing base connection");
     return clientsBase;
   }
 
   try {
     // Check if clientService is properly loaded
     if (!clientService || typeof clientService.initializeClientsBase !== 'function') {
-      console.error("ERROR: clientService is not properly loaded or initializeClientsBase is not a function");
-      console.error("clientService type:", typeof clientService);
-      console.error("clientService functions available:", 
+      logger.error("ERROR: clientService is not properly loaded or initializeClientsBase is not a function");
+      logger.error("clientService type:", typeof clientService);
+      logger.error("clientService functions available:", 
                    clientService ? Object.keys(clientService).join(", ") : "NONE");
       
       // Fallback: Initialize directly if clientService is not working
@@ -69,19 +77,19 @@ function initialize() {
         apiKey: process.env.AIRTABLE_API_KEY
       });
 
-      console.log("FALLBACK: Directly initializing Airtable base connection");
+      logger.info("FALLBACK: Directly initializing Airtable base connection");
       clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-      console.log("FALLBACK: Successfully initialized Airtable base directly");
+      logger.info("FALLBACK: Successfully initialized Airtable base directly");
     } else {
       // Use clientService's initialization (preferred method)
       try {
-        console.log("Attempting to use clientService.initializeClientsBase()...");
+        logger.info("Attempting to use clientService.initializeClientsBase()...");
         clientsBase = clientService.initializeClientsBase();
-        console.log("Airtable Service: Successfully got base connection from clientService");
+        logger.info("Airtable Service: Successfully got base connection from clientService");
       } catch (initError) {
-        console.error("ERROR using clientService.initializeClientsBase():", initError.message);
+        logger.error("ERROR using clientService.initializeClientsBase():", initError.message);
         logCriticalError(initError, { context: 'Fallback to direct Airtable init', service: 'airtableService.js' }).catch(() => {});
-        console.log("Falling back to direct initialization...");
+        logger.info("Falling back to direct initialization...");
         
         // Configure Airtable directly as fallback
         Airtable.configure({
@@ -89,7 +97,7 @@ function initialize() {
         });
         
         clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-        console.log("FALLBACK: Successfully initialized Airtable base directly after clientService failed");
+        logger.info("FALLBACK: Successfully initialized Airtable base directly after clientService failed");
       }
     }
 
@@ -97,22 +105,22 @@ function initialize() {
       throw new Error("Failed to initialize clients base in airtableService");
     }
 
-    console.log("Airtable Service: Run tracking tables connection initialized");
+    logger.info("Airtable Service: Run tracking tables connection initialized");
     return clientsBase;
   } catch (error) {
-    console.error("CRITICAL ERROR initializing Airtable connection:", error.message);
+    logger.error("CRITICAL ERROR initializing Airtable connection:", error.message);
     logCriticalError(error, { context: 'Emergency fallback initialization', service: 'airtableService.js' }).catch(() => {});
     // Create a last-resort fallback attempt
     try {
-      console.log("CRITICAL FALLBACK: Attempting emergency direct Airtable connection...");
+      logger.info("CRITICAL FALLBACK: Attempting emergency direct Airtable connection...");
       Airtable.configure({
         apiKey: process.env.AIRTABLE_API_KEY
       });
       clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-      console.log("CRITICAL FALLBACK: Emergency Airtable connection successful");
+      logger.info("CRITICAL FALLBACK: Emergency Airtable connection successful");
       return clientsBase;
     } catch (fallbackError) {
-      console.error("FATAL ERROR: Emergency fallback also failed:", fallbackError.message);
+      logger.error("FATAL ERROR: Emergency fallback also failed:", fallbackError.message);
       logCriticalError(fallbackError, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
       throw error; // Throw the original error
     }
@@ -130,11 +138,11 @@ async function createJobTrackingRecord(runId, stream) {
   
   // Handle null or invalid run ID
   if (!runId) {
-    console.error(`Airtable Service ERROR: Attempting to create job tracking with invalid runId: ${runId}`);
+    logger.error(`Airtable Service ERROR: Attempting to create job tracking with invalid runId: ${runId}`);
     // Generate a valid runId if none provided
     const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').substring(2, 14);
     runId = `${timestamp.substring(0, 6)}-${timestamp.substring(6, 12)}`;
-    console.log(`Airtable Service: Generated new runId: ${runId}`);
+    logger.info(`Airtable Service: Generated new runId: ${runId}`);
   }
   
   // Strip client suffix from runId to get the base run ID for tracking
@@ -143,14 +151,14 @@ async function createJobTrackingRecord(runId, stream) {
   // Format check - ensure baseRunId matches expected pattern
   const runIdPattern = /^(\d{6}-\d{6})$/;
   if (!runIdPattern.test(baseRunId)) {
-    console.error(`Airtable Service WARNING: baseRunId doesn't match expected format: ${baseRunId}`);
+    logger.error(`Airtable Service WARNING: baseRunId doesn't match expected format: ${baseRunId}`);
     // Try to repair the format if possible
     const timestamp = new Date().toISOString().replace(/[-:T.Z]/g, '').substring(2, 14);
     baseRunId = `${timestamp.substring(0, 6)}-${timestamp.substring(6, 12)}`;
-    console.log(`Airtable Service: Repaired baseRunId to: ${baseRunId}`);
+    logger.info(`Airtable Service: Repaired baseRunId to: ${baseRunId}`);
   }
   
-  console.log(`Airtable Service: Creating job tracking record for ${runId} (base run ID: ${baseRunId})`);
+  logger.info(`Airtable Service: Creating job tracking record for ${runId} (base run ID: ${baseRunId})`);
   
   try {
     const records = await base(JOB_TRACKING_TABLE).create([
@@ -169,10 +177,10 @@ async function createJobTrackingRecord(runId, stream) {
       }
     ]);
 
-    console.log(`Airtable Service: Created job tracking record ID: ${records[0].id}`);
+    logger.info(`Airtable Service: Created job tracking record ID: ${records[0].id}`);
     return records[0];
   } catch (error) {
-    console.error(`Airtable Service ERROR: Failed to create job tracking record: ${error.message}`);
+    logger.error(`Airtable Service ERROR: Failed to create job tracking record: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
@@ -191,21 +199,21 @@ async function createClientRunRecord(runId, clientId, clientName) {
   // SIMPLIFIED: Just normalize the run ID once to ensure consistency
   const standardRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
-  console.log(`Airtable Service: Creating run record for client ${clientId}`);
-  console.log(`Airtable Service: Using standardized ID: ${standardRunId}`);
+  logger.info(`Airtable Service: Creating run record for client ${clientId}`);
+  logger.info(`Airtable Service: Using standardized ID: ${standardRunId}`);
   
   // First check if we have a cached record ID
   const cachedRecordId = runIdSystem.getRunRecordId(standardRunId, clientId);
   
   if (cachedRecordId) {
-    console.log(`Airtable Service: Using cached record ID ${cachedRecordId}`);
+    logger.info(`Airtable Service: Using cached record ID ${cachedRecordId}`);
     try {
       // Verify the record exists
       const record = await base(CLIENT_RUN_RESULTS_TABLE).find(cachedRecordId);
-      console.log(`Airtable Service: Found existing record with ID ${cachedRecordId}`);
+      logger.info(`Airtable Service: Found existing record with ID ${cachedRecordId}`);
       return record;
     } catch (err) {
-      console.log(`Airtable Service: Cached record ID ${cachedRecordId} no longer valid`);
+      logger.info(`Airtable Service: Cached record ID ${cachedRecordId} no longer valid`);
       await logCriticalError(err, { context: 'Cached record verification failed (fallback)', service: 'airtableService.js' }).catch(() => {});
       // Fall through to check by query
     }
@@ -214,7 +222,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
   // Check if a record already exists with this run ID
   try {
     const exactIdQuery = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`;
-    console.log(`Airtable Service: Looking for exact Run ID match: ${exactIdQuery}`);
+    logger.info(`Airtable Service: Looking for exact Run ID match: ${exactIdQuery}`);
     
     const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
       filterByFormula: exactIdQuery,
@@ -222,7 +230,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
     }).firstPage();
     
     if (exactMatches && exactMatches.length > 0) {
-      console.log(`Airtable Service: Found existing record ID: ${exactMatches[0].id}`);
+      logger.info(`Airtable Service: Found existing record ID: ${exactMatches[0].id}`);
       
       // Register the record ID for future lookups
       runIdSystem.registerRunRecord(standardRunId, clientId, exactMatches[0].id);
@@ -230,23 +238,23 @@ async function createClientRunRecord(runId, clientId, clientName) {
       return exactMatches[0];
     }
     
-    console.log(`Airtable Service: No existing record found, will create new one`);
+    logger.info(`Airtable Service: No existing record found, will create new one`);
   } catch (error) {
-    console.error(`Airtable Service ERROR during record check: ${error.message}`);
+    logger.error(`Airtable Service ERROR during record check: ${error.message}`);
     await logCriticalError(error, { context: 'Record lookup failed (will create new)', service: 'airtableService.js' }).catch(() => {});
     // Continue to create a new record
   }
   
   // Create a new record with our standardized ID
-  console.log(`Airtable Service: Creating new client run record for ${clientId} with standardized ID ${standardRunId}`);
+  logger.info(`Airtable Service: Creating new client run record for ${clientId} with standardized ID ${standardRunId}`);
   
   // SIMPLIFIED: Just use current time for Start Time
   const startTimestamp = new Date().toISOString();
-  console.log(`Airtable Service: Using Start Time: ${startTimestamp}`);
+  logger.info(`Airtable Service: Using Start Time: ${startTimestamp}`);
   
   try {
     // Create new record with detailed debug
-    console.log(`Airtable Service: CREATE DEBUG - Full record creation request:`);
+    logger.info(`Airtable Service: CREATE DEBUG - Full record creation request:`);
     const recordData = {
       fields: {
         [CLIENT_RUN_FIELDS.RUN_ID]: standardRunId, // Always use our standardized timestamp format
@@ -262,17 +270,17 @@ async function createClientRunRecord(runId, clientId, clientName) {
         [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Processing started at ${startTimestamp}`
       }
     };
-    console.log(`Airtable Service: CREATE DEBUG - Record data:`, JSON.stringify(recordData));
+    logger.info(`Airtable Service: CREATE DEBUG - Record data:`, JSON.stringify(recordData));
     
     const records = await base(CLIENT_RUN_RESULTS_TABLE).create([recordData]);
 
     // Register the new record ID with runIdSystem
     runIdSystem.registerRunRecord(standardRunId, clientId, records[0].id);
     
-    console.log(`Airtable Service: Created client run record ID: ${records[0].id}`);
+    logger.info(`Airtable Service: Created client run record ID: ${records[0].id}`);
     return records[0];
   } catch (error) {
-    console.error(`Airtable Service ERROR: Failed to create client run record: ${error.message}`);
+    logger.error(`Airtable Service ERROR: Failed to create client run record: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
@@ -312,10 +320,10 @@ async function updateJobTracking(runId, updates) {
     ].join('');
     
     baseRunId = `${datePart}-${timePart}`;
-    console.log(`Airtable Service: Generated fallback timestamp ID ${baseRunId} for job tracking of unrecognized format ${runId}`);
+    logger.info(`Airtable Service: Generated fallback timestamp ID ${baseRunId} for job tracking of unrecognized format ${runId}`);
   }
   
-  console.log(`Airtable Service: Updating job tracking for ${runId} (base run ID: ${baseRunId})`);
+  logger.info(`Airtable Service: Updating job tracking for ${runId} (base run ID: ${baseRunId})`);
   
   try {
     // Find all records with the base run ID (without client suffix)
@@ -326,13 +334,13 @@ async function updateJobTracking(runId, updates) {
     if (!records || records.length === 0) {
       // CRITICAL CHANGE: Don't create a new record, log an error instead
       const errorMsg = `Job tracking record not found for ${runId} (base: ${baseRunId}). Updates will not be applied.`;
-      console.error(`Airtable Service ERROR: ${errorMsg}`);
+      logger.error(`Airtable Service ERROR: ${errorMsg}`);
       return { error: errorMsg, runId, baseRunId, notFound: true };
     }
     
     // Handle case where there are multiple records with the same run ID
     if (records.length > 1) {
-      console.warn(`WARNING: Found ${records.length} records with the same Run ID: ${baseRunId}. Updating the most recent one.`);
+      logger.warn(`WARNING: Found ${records.length} records with the same Run ID: ${baseRunId}. Updating the most recent one.`);
       
       // Sort by creation time and update the most recent one
       records.sort((a, b) => {
@@ -351,11 +359,11 @@ async function updateJobTracking(runId, updates) {
     
     // Update the record with normalized field names
     const updated = await base(JOB_TRACKING_TABLE).update(recordId, normalizedUpdates);
-    console.log(`Airtable Service: Updated job tracking record ${recordId}`);
+    logger.info(`Airtable Service: Updated job tracking record ${recordId}`);
     
     return updated;
   } catch (error) {
-    console.error(`Airtable Service ERROR: Failed to update job tracking: ${error.message}`);
+    logger.error(`Airtable Service ERROR: Failed to update job tracking: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
@@ -374,11 +382,11 @@ async function updateClientRun(runId, clientId, updates) {
   // Use the standardized run ID format
   const standardRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
-  console.log(`[METDEBUG] AirtableService updateClientRun called:`);
-  console.log(`[METDEBUG] - Client: ${clientId}`);
-  console.log(`[METDEBUG] - Original Run ID: ${runId}`);
-  console.log(`[METDEBUG] - Standardized Run ID: ${standardRunId}`);
-  console.log(`[METDEBUG] - Updates:`, JSON.stringify(updates));
+  logger.info(`[METDEBUG] AirtableService updateClientRun called:`);
+  logger.info(`[METDEBUG] - Client: ${clientId}`);
+  logger.info(`[METDEBUG] - Original Run ID: ${runId}`);
+  logger.info(`[METDEBUG] - Standardized Run ID: ${standardRunId}`);
+  logger.info(`[METDEBUG] - Updates:`, JSON.stringify(updates));
   
   try {
     // Look for exact Run ID match using our standard format
@@ -388,14 +396,14 @@ async function updateClientRun(runId, clientId, updates) {
     recordId = runIdSystem.getRunRecordId(standardRunId, clientId);
     
     if (recordId) {
-      console.log(`[METDEBUG] Using cached record ID ${recordId} for run ${standardRunId}`);
+      logger.info(`[METDEBUG] Using cached record ID ${recordId} for run ${standardRunId}`);
       
       try {
         // Verify the record exists
         await base(CLIENT_RUN_RESULTS_TABLE).find(recordId);
-        console.log(`[METDEBUG] Verified cached record exists`);
+        logger.info(`[METDEBUG] Verified cached record exists`);
       } catch (err) {
-        console.log(`[METDEBUG] Cached record not found, will search again`);
+        logger.info(`[METDEBUG] Cached record not found, will search again`);
         await logCriticalError(err, { context: 'Cached record validation failed (will search)', service: 'airtableService.js' }).catch(() => {});
         recordId = null;
       }
@@ -403,7 +411,7 @@ async function updateClientRun(runId, clientId, updates) {
     
     // If not found in cache, search by exact Run ID match
     if (!recordId) {
-      console.log(`[METDEBUG] Looking for exact Run ID match`);
+      logger.info(`[METDEBUG] Looking for exact Run ID match`);
       const exactIdQuery = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`;
       
       const exactMatches = await base(CLIENT_RUN_RESULTS_TABLE).select({
@@ -413,12 +421,12 @@ async function updateClientRun(runId, clientId, updates) {
       
       if (exactMatches && exactMatches.length > 0) {
         recordId = exactMatches[0].id;
-        console.log(`[METDEBUG] Found exact Run ID match ${recordId}`);
+        logger.info(`[METDEBUG] Found exact Run ID match ${recordId}`);
         
         // Register for future lookups
         runIdSystem.registerRunRecord(standardRunId, clientId, recordId);
       } else {
-        console.log(`[METDEBUG] No exact Run ID match found for ${standardRunId}`);
+        logger.info(`[METDEBUG] No exact Run ID match found for ${standardRunId}`);
       }
     }
       
@@ -426,16 +434,16 @@ async function updateClientRun(runId, clientId, updates) {
     if (!recordId) {
       // Generate a detailed error message
       const errorMsg = `[STRICT ENFORCEMENT] No existing record found for ${standardRunId} (client ${clientId}). UPDATES REJECTED.`;
-      console.error(errorMsg);
-      console.error(`[STRICT ENFORCEMENT] This indicates a process kickoff issue - run record should already exist`);
-      console.error(`[STRICT ENFORCEMENT] Update operation skipped - updates would have been:`, JSON.stringify(updates));
+      logger.error(errorMsg);
+      logger.error(`[STRICT ENFORCEMENT] This indicates a process kickoff issue - run record should already exist`);
+      logger.error(`[STRICT ENFORCEMENT] Update operation skipped - updates would have been:`, JSON.stringify(updates));
       
       // Throw error as explicitly requested
       throw new Error(`Cannot update non-existent run record for ${clientId} (${standardRunId}). Record must exist before updates.`);
     }
     
     // Now update it
-    console.log(`[METDEBUG] Updating record ${recordId} with:`, JSON.stringify(updates));
+    logger.info(`[METDEBUG] Updating record ${recordId} with:`, JSON.stringify(updates));
     
     // Define the fields we want to preserve when not explicitly updated
     const fieldsToPreserve = [
@@ -462,17 +470,17 @@ async function updateClientRun(runId, clientId, updates) {
           const existingValue = existingRecord.get(field);
           // If the field has a value, preserve it
           if (existingValue !== undefined && existingValue !== null && existingValue !== '') {
-            console.log(`[METDEBUG] Preserving existing value for ${field}: ${existingValue}`);
+            logger.info(`[METDEBUG] Preserving existing value for ${field}: ${existingValue}`);
             updates[field] = existingValue;
             preservedAny = true;
           }
         }
         
         if (preservedAny) {
-          console.log(`[METDEBUG] Final update with preserved values:`, JSON.stringify(updates));
+          logger.info(`[METDEBUG] Final update with preserved values:`, JSON.stringify(updates));
         }
       } catch (findError) {
-        console.warn(`[METDEBUG] Could not check for existing field values: ${findError.message}`);
+        logger.warn(`[METDEBUG] Could not check for existing field values: ${findError.message}`);
         await logCriticalError(findError, { context: 'Field preservation check failed (continuing)', service: 'airtableService.js' }).catch(() => {});
       }
     }
@@ -483,12 +491,12 @@ async function updateClientRun(runId, clientId, updates) {
     const normalizedUpdates = createValidatedObject(updates, { log: false });
     
     const updated = await base(CLIENT_RUN_RESULTS_TABLE).update(recordId, normalizedUpdates);
-    console.log(`[METDEBUG] Successfully updated client run record ${recordId}`);
-    console.log(`[METDEBUG] Updated fields:`, JSON.stringify(Object.keys(updates)));
+    logger.info(`[METDEBUG] Successfully updated client run record ${recordId}`);
+    logger.info(`[METDEBUG] Updated fields:`, JSON.stringify(Object.keys(updates)));
     
     return updated;
   } catch (error) {
-    console.error(`Airtable Service ERROR: Failed to update client run: ${error.message}`);
+    logger.error(`Airtable Service ERROR: Failed to update client run: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
@@ -538,8 +546,8 @@ async function completeClientRun(runId, clientId, success = true, notes = '') {
   const normalizedRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
   // Log what we're doing
-  console.log(`Airtable Service: Completing client run for ${clientId}`);
-  console.log(`Airtable Service: Using standardized run ID: ${normalizedRunId}`);
+  logger.info(`Airtable Service: Completing client run for ${clientId}`);
+  logger.info(`Airtable Service: Using standardized run ID: ${normalizedRunId}`);
   
   // updateClientRun will find the record - using RUNNING status first if possible
   return await updateClientRun(normalizedRunId, clientId, updates);
@@ -576,11 +584,11 @@ async function updateAggregateMetrics(runId) {
       ].join('');
       
       baseRunId = `${datePart}-${timePart}`;
-      console.log(`Airtable Service: Generated fallback timestamp ID ${baseRunId} for aggregate metrics of unrecognized format ${runId}`);
+      logger.info(`Airtable Service: Generated fallback timestamp ID ${baseRunId} for aggregate metrics of unrecognized format ${runId}`);
     }
   }
   
-  console.log(`Airtable Service: Updating aggregate metrics for ${runId} (base run ID: ${baseRunId})`);
+  logger.info(`Airtable Service: Updating aggregate metrics for ${runId} (base run ID: ${baseRunId})`);
   
   try {
     // Use modified formula to find all client records with the right date part
@@ -591,17 +599,17 @@ async function updateAggregateMetrics(runId) {
     }).all();
     
     // Log the records and their run IDs for debugging
-    console.log(`Found ${clientRecords.length} client records matching base run ID ${baseRunId} (date part ${datePartOnly}):`);
+    logger.info(`Found ${clientRecords.length} client records matching base run ID ${baseRunId} (date part ${datePartOnly}):`);
     clientRecords.forEach(record => {
-      console.log(`- Record ${record.id}: Run ID = ${record.get('Run ID')}, Client ID = ${record.get('Client ID')}`);
+      logger.info(`- Record ${record.id}: Run ID = ${record.get('Run ID')}, Client ID = ${record.get('Client ID')}`);
     });
     
     if (!clientRecords || clientRecords.length === 0) {
-      console.warn(`Airtable Service WARNING: No client records found for run ID: ${runId}`);
+      logger.warn(`Airtable Service WARNING: No client records found for run ID: ${runId}`);
       // Create a dummy record to avoid null errors downstream
       const jobTrackingRecord = await createJobTrackingRecord(baseRunId, 1);
       if (jobTrackingRecord) {
-        console.log(`Airtable Service: Created fallback job tracking record with no client data: ${jobTrackingRecord.id}`);
+        logger.info(`Airtable Service: Created fallback job tracking record with no client data: ${jobTrackingRecord.id}`);
         return jobTrackingRecord;
       }
       return null;
@@ -625,7 +633,7 @@ async function updateAggregateMetrics(runId) {
     // Update the job tracking record using the base run ID (without client suffix)
     return await updateJobTracking(baseRunId, aggregates);
   } catch (error) {
-    console.error(`Airtable Service ERROR: Failed to update aggregate metrics: ${error.message}`);
+    logger.error(`Airtable Service ERROR: Failed to update aggregate metrics: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});
     throw error;
   }
@@ -643,21 +651,21 @@ async function checkRunRecordExists(runId, clientId) {
   // Use the standardized run ID format
   const standardRunId = runIdSystem.validateAndStandardizeRunId(runId);
   
-  console.log(`[RUNDEBUG] Checking if run record exists for ${standardRunId} (client ${clientId})`);
+  logger.info(`[RUNDEBUG] Checking if run record exists for ${standardRunId} (client ${clientId})`);
   
   try {
     // First check if we have a cached record ID for this run
     let recordId = runIdSystem.getRunRecordId(standardRunId, clientId);
     
     if (recordId) {
-      console.log(`[RUNDEBUG] Found cached record ID ${recordId} for run ${standardRunId}`);
+      logger.info(`[RUNDEBUG] Found cached record ID ${recordId} for run ${standardRunId}`);
       try {
         // Verify the record exists
         await base(CLIENT_RUN_RESULTS_TABLE).find(recordId);
-        console.log(`[RUNDEBUG] Verified cached record exists`);
+        logger.info(`[RUNDEBUG] Verified cached record exists`);
         return true;
       } catch (err) {
-        console.log(`[RUNDEBUG] Cached record not found, will search again`);
+        logger.info(`[RUNDEBUG] Cached record not found, will search again`);
         await logCriticalError(err, { context: 'Cached record check failed (will search)', service: 'airtableService.js' }).catch(() => {});
         recordId = null;
       }
@@ -673,17 +681,17 @@ async function checkRunRecordExists(runId, clientId) {
     
     if (exactMatches && exactMatches.length > 0) {
       recordId = exactMatches[0].id;
-      console.log(`[RUNDEBUG] Found exact Run ID match ${recordId}`);
+      logger.info(`[RUNDEBUG] Found exact Run ID match ${recordId}`);
       
       // Register for future lookups
       runIdSystem.registerRunRecord(standardRunId, clientId, recordId);
       return true;
     } else {
-      console.log(`[RUNDEBUG] No run record found for ${standardRunId} (client ${clientId})`);
+      logger.info(`[RUNDEBUG] No run record found for ${standardRunId} (client ${clientId})`);
       return false;
     }
   } catch (error) {
-    console.error(`[RUNDEBUG] Error checking run record: ${error.message}`);
+    logger.error(`[RUNDEBUG] Error checking run record: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (swallowed)', service: 'airtableService.js' }).catch(() => {});
     return false;
   }

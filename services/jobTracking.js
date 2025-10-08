@@ -249,13 +249,13 @@ class JobTracking {
       const masterBase = airtableClient.getMasterClientsBase();
       
       // DIAGNOSTIC: Log table name before Airtable call
-      console.log(`[DIAGNOSTIC] JOB_TRACKING_TABLE value: "${JOB_TRACKING_TABLE}"`);
-      console.log(`[DIAGNOSTIC] typeof JOB_TRACKING_TABLE: ${typeof JOB_TRACKING_TABLE}`);
-      console.log(`[DIAGNOSTIC] MASTER_TABLES.JOB_TRACKING value: "${MASTER_TABLES.JOB_TRACKING}"`);
+      logger.debug(`JOB_TRACKING_TABLE value: "${JOB_TRACKING_TABLE}"`);
+      logger.debug(`typeof JOB_TRACKING_TABLE: ${typeof JOB_TRACKING_TABLE}`);
+      logger.debug(`MASTER_TABLES.JOB_TRACKING value: "${MASTER_TABLES.JOB_TRACKING}"`);
       
       if (!JOB_TRACKING_TABLE || JOB_TRACKING_TABLE === 'undefined') {
         const errorMsg = `CRITICAL: JOB_TRACKING_TABLE is ${JOB_TRACKING_TABLE} (should be "Job Tracking")`;
-        console.error(`[DIAGNOSTIC] ${errorMsg}`);
+        logger.error(errorMsg);
         throw new Error(errorMsg);
       }
       
@@ -306,9 +306,9 @@ class JobTracking {
       validateJobTrackingFields(JOB_TRACKING_TABLE, recordData);
       
       // DIAGNOSTIC: Log right before create call
-      console.log(`[DIAGNOSTIC] About to create job tracking record`);
-      console.log(`[DIAGNOSTIC] Table name: "${JOB_TRACKING_TABLE}"`);
-      console.log(`[DIAGNOSTIC] Record data keys:`, Object.keys(recordData));
+      logger.debug(`About to create job tracking record`);
+      logger.debug(`Table name: "${JOB_TRACKING_TABLE}"`);
+      logger.debug(`Record data keys:`, { keys: Object.keys(recordData) });
       
       // Create the record
       const record = await masterBase(JOB_TRACKING_TABLE).create(recordData);

@@ -3,6 +3,9 @@
 
 // Updated to use new run ID system
 const runIdSystem = require('./runIdSystem');
+const { createLogger } = require('../utils/contextLogger');
+
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'system' });
 
 // DEPRECATED: This module is being replaced by runIdSystem
 // Keeping for backwards compatibility during migration
@@ -17,7 +20,7 @@ const runIdSystem = require('./runIdSystem');
 function storeClientRunRecordId(runId, clientId, recordId) {
   // Delegate to runIdSystem
   runIdSystem.registerRunRecord(runId, clientId, recordId);
-  console.log(`RecordCache: Stored record ID ${recordId} for run ${runId} (delegated to runIdSystem)`);
+  logger.info(`RecordCache: Stored record ID ${recordId} for run ${runId} (delegated to runIdSystem)`);
 }
 
 /**
@@ -30,7 +33,7 @@ function getClientRunRecordId(runId, clientId) {
   // Delegate to runIdSystem
   const recordId = runIdSystem.getRunRecordId(runId, clientId);
   if (recordId) {
-    console.log(`RecordCache: Found record ID ${recordId} for run ${runId} (delegated to runIdSystem)`);
+    logger.info(`RecordCache: Found record ID ${recordId} for run ${runId} (delegated to runIdSystem)`);
   }
   return recordId;
 }
@@ -43,7 +46,7 @@ function getClientRunRecordId(runId, clientId) {
 function clearClientRunCache(runId, clientId) {
   // Delegate to runIdSystem
   runIdSystem.clearCache(runId);
-  console.log(`RecordCache: Cleared cache for ${runId}-${clientId} (delegated to runIdSystem)`);
+  logger.info(`RecordCache: Cleared cache for ${runId}-${clientId} (delegated to runIdSystem)`);
 }
 
 /**
@@ -52,7 +55,7 @@ function clearClientRunCache(runId, clientId) {
 function clearAllCache() {
   // Delegate to runIdSystem
   runIdSystem.clearCache();
-  console.log(`RecordCache: Cleared all cache entries (delegated to runIdSystem)`);
+  logger.info(`RecordCache: Cleared all cache entries (delegated to runIdSystem)`);
 }
 
 module.exports = {

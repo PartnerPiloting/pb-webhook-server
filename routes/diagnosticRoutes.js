@@ -96,7 +96,7 @@ router.post('/validate-run-id', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error(`Error in validate-run-id endpoint: ${error.message}`);
+    logger.error(`Error in validate-run-id endpoint: ${error.message}`, { stack: error.stack });
     await logCriticalError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
@@ -157,7 +157,7 @@ router.get('/check-job-record/:runId', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error(`Error in check-job-record endpoint: ${error.message}`);
+    logger.error(`Error in check-job-record endpoint: ${error.message}`, { stack: error.stack });
     await logCriticalError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
