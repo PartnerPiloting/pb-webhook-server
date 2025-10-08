@@ -4,6 +4,14 @@
 require('dotenv').config();
 
 const Airtable = require('airtable');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for config initialization
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'airtable-config' 
+});
 
 let airtableBaseInstance = null; // This will hold our initialized Airtable base
 
@@ -28,10 +36,10 @@ try {
     // Get the specific base you want to use with your Base ID
     airtableBaseInstance = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
-    console.log("Airtable Client Initialized successfully in config/airtableClient.js.");
+    logger.info("Airtable Client Initialized successfully in config/airtableClient.js.");
 
 } catch (error) {
-    console.error("CRITICAL ERROR: Failed to initialize Airtable Client in config/airtableClient.js:", error.message);
+    logger.error("CRITICAL ERROR: Failed to initialize Airtable Client in config/airtableClient.js:", { error: error.message });
     // airtableBaseInstance will remain null if an error occurs
     // The main application (index.js) will need to handle this possibility.
 }
@@ -72,7 +80,7 @@ function createBaseInstance(baseId) {
         return baseInstance;
 
     } catch (error) {
-        console.error(`Error creating base instance for ${baseId}:`, error.message);
+        logger.error(`Error creating base instance for ${baseId}:`, { error: error.message });
         throw error;
     }
 }
@@ -102,7 +110,7 @@ async function getClientBase(clientId) {
         const baseInstance = createBaseInstance(client.airtableBaseId);
         return baseInstance;
     } catch (error) {
-        console.error(`Error getting base for client ${clientId}:`, error.message);
+        logger.error(`Error getting base for client ${clientId}:`, { error: error.message });
         throw error;
     }
 }
@@ -112,7 +120,7 @@ async function getClientBase(clientId) {
  */
 function clearBaseCache() {
     baseInstanceCache.clear();
-    console.log("Base instance cache cleared");
+    logger.info("Base instance cache cleared");
 }
 
 /**
