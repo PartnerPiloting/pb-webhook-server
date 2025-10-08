@@ -1,4 +1,7 @@
 // jsonDiagnosticTool.js - Advanced JSON Quality Analysis and Remediation Tool
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'json-diagnostic' });
+
 
 require("dotenv").config();
 
@@ -11,8 +14,8 @@ const dirtyJSON = require('dirty-json');
  * Identifies specific issues with JSON data and suggests fixes
  */
 async function analyzeJsonQuality(clientId = null, limit = 20, mode = 'analyze') {
-    console.log("=== JSON QUALITY DIAGNOSTIC TOOL ===");
-    console.log(`Mode: ${mode} | Client: ${clientId || 'ALL'} | Limit: ${limit}`);
+    logger.info("=== JSON QUALITY DIAGNOSTIC TOOL ===");
+    logger.info(`Mode: ${mode} | Client: ${clientId || 'ALL'} | Limit: ${limit}`);
     
     const results = {
         totalRecords: 0,
@@ -28,7 +31,7 @@ async function analyzeJsonQuality(clientId = null, limit = 20, mode = 'analyze')
             await clientService.getAllClients();
         
         for (const client of clients) {
-            console.log(`\nAnalyzing client: ${client.clientName} (${client.clientId})`);
+            logger.info(`\nAnalyzing client: ${client.clientName} (${client.clientId})`);
             
             const clientBase = getClientBase(client.clientId);
             const config = {
@@ -60,7 +63,7 @@ async function analyzeJsonQuality(clientId = null, limit = 20, mode = 'analyze')
                 fetchNextPage();
             });
             
-            console.log(`Found ${allRecords.length} records to analyze`);
+            logger.info(`Found ${allRecords.length} records to analyze`);
             results.totalRecords += allRecords.length;
             
             // Analyze each record
@@ -95,9 +98,9 @@ async function analyzeJsonQuality(clientId = null, limit = 20, mode = 'analyze')
                             'JSON Quality': analysis.quality,
                             'JSON Issues': analysis.issues.join('; ')
                         });
-                        console.log(`Updated record ${record.id} with quality: ${analysis.quality}`);
+                        logger.info(`Updated record ${record.id} with quality: ${analysis.quality}`);
                     } catch (updateError) {
-                        console.warn(`Failed to update record ${record.id}:`, updateError.message);
+                        logger.warn(`Failed to update record ${record.id}:`, updateError.message);
                     }
                 }
             }
@@ -107,15 +110,15 @@ async function analyzeJsonQuality(clientId = null, limit = 20, mode = 'analyze')
         results.recommendedActions = generateRecommendations(results);
         
         // Display summary
-        console.log("\n=== ANALYSIS SUMMARY ===");
-        console.log(`Total records analyzed: ${results.totalRecords}`);
-        console.log("\nQuality breakdown:");
+        logger.info("\n=== ANALYSIS SUMMARY ===");
+        logger.info(`Total records analyzed: ${results.totalRecords}`);
+        logger.info("\nQuality breakdown:");
         Object.entries(results.qualityBreakdown).forEach(([quality, count]) => {
             const percentage = ((count / results.totalRecords) * 100).toFixed(1);
-            console.log(`  ${quality}: ${count} (${percentage}%)`);
+            logger.info(`  ${quality}: ${count} (${percentage}%)`);
         });
         
-        console.log("\nTop issues found:");
+        logger.info("\nTop issues found:");
         const issueCount = {};
         results.specificIssues.forEach(issue => {
             issueCount[issue] = (issueCount[issue] || 0) + 1;
@@ -124,27 +127,27 @@ async function analyzeJsonQuality(clientId = null, limit = 20, mode = 'analyze')
             .sort(([,a], [,b]) => b - a)
             .slice(0, 10)
             .forEach(([issue, count]) => {
-                console.log(`  ${issue}: ${count} occurrences`);
+                logger.info(`  ${issue}: ${count} occurrences`);
             });
         
-        console.log("\nRecommended actions:");
+        logger.info("\nRecommended actions:");
         results.recommendedActions.forEach((action, index) => {
-            console.log(`  ${index + 1}. ${action}`);
+            logger.info(`  ${index + 1}. ${action}`);
         });
         
         if (results.sampleProblems.length > 0) {
-            console.log("\nSample corrupted records for manual review:");
+            logger.info("\nSample corrupted records for manual review:");
             results.sampleProblems.forEach((sample, index) => {
-                console.log(`  ${index + 1}. Record ${sample.recordId} (${sample.clientId})`);
-                console.log(`     Issues: ${sample.issues.join(', ')}`);
-                console.log(`     Content preview: ${sample.rawContent}`);
+                logger.info(`  ${index + 1}. Record ${sample.recordId} (${sample.clientId})`);
+                logger.info(`     Issues: ${sample.issues.join(', ')}`);
+                logger.info(`     Content preview: ${sample.rawContent}`);
             });
         }
         
         return results;
         
     } catch (error) {
-        console.error("Error in JSON quality analysis:", error);
+        logger.error("Error in JSON quality analysis:", error);
         throw error;
     }
 }
@@ -340,8 +343,8 @@ function generateRecommendations(results) {
  * Repair common JSON issues automatically
  */
 async function repairCommonJsonIssues(clientId = null, limit = 10, dryRun = true) {
-    console.log("=== JSON REPAIR TOOL ===");
-    console.log(`Mode: ${dryRun ? 'DRY RUN' : 'LIVE REPAIR'} | Client: ${clientId || 'ALL'} | Limit: ${limit}`);
+    logger.info("=== JSON REPAIR TOOL ===");
+    logger.info(`Mode: ${dryRun ? 'DRY RUN' : 'LIVE REPAIR'} | Client: ${clientId || 'ALL'} | Limit: ${limit}`);
     
     const repairResults = {
         totalAttempted: 0,
@@ -366,25 +369,25 @@ if (require.main === module) {
     if (mode === 'analyze') {
         analyzeJsonQuality(clientId, limit, 'analyze')
             .then(results => {
-                console.log("\nAnalysis complete. Results saved to memory.");
+                logger.info("\nAnalysis complete. Results saved to memory.");
                 process.exit(0);
             })
             .catch(error => {
-                console.error("Analysis failed:", error);
+                logger.error("Analysis failed:", error);
                 process.exit(1);
             });
     } else if (mode === 'repair') {
         analyzeJsonQuality(clientId, limit, 'repair')
             .then(results => {
-                console.log("\nRepair mode complete. Records updated with quality status.");
+                logger.info("\nRepair mode complete. Records updated with quality status.");
                 process.exit(0);
             })
             .catch(error => {
-                console.error("Repair mode failed:", error);
+                logger.error("Repair mode failed:", error);
                 process.exit(1);
             });
     } else {
-        console.log("Usage: node jsonDiagnosticTool.js [analyze|repair] [clientId] [limit]");
+        logger.info("Usage: node jsonDiagnosticTool.js [analyze|repair] [clientId] [limit]");
         process.exit(1);
     }
 }
