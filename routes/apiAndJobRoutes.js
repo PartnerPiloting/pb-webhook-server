@@ -5161,6 +5161,28 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     // Reset termination signal
     global.smartResumeTerminateSignal = false;
     
+    // 🔍 AUTO-ANALYZE LOGS: Run System 1 to capture all errors to Production Issues table
+    try {
+      moduleLogger.info(`🔍 [${jobId}] Starting automatic log analysis (System 1)...`);
+      const ProductionIssueService = require('../services/productionIssueService');
+      const logAnalysisService = new ProductionIssueService();
+      
+      // Analyze logs from the last 10 minutes (covers the smart resume run)
+      const analysisResults = await logAnalysisService.analyzeRecentLogs({ minutes: 10 });
+      
+      moduleLogger.info(`✅ [${jobId}] Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+      
+      if (analysisResults.issues > 0) {
+        moduleLogger.info(`📋 [${jobId}] Errors saved to Production Issues table in Airtable`);
+      } else {
+        moduleLogger.info(`🎉 [${jobId}] No errors detected in logs - clean run!`);
+      }
+    } catch (logAnalysisError) {
+      // Log analysis failure should not break the smart resume flow
+      moduleLogger.error(`⚠️ [${jobId}] Failed to analyze logs automatically:`, logAnalysisError.message);
+      moduleLogger.error(`⚠️ [${jobId}] You can manually analyze logs by calling /api/analyze-logs/recent`);
+    }
+    
 // ---------------------------------------------------------------
 // SPECIAL GUY WILSON POST HARVESTING DIRECT ENDPOINT
 // ---------------------------------------------------------------
