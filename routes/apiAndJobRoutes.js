@@ -1833,6 +1833,113 @@ router.get("/debug-clients", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Debug Production Issues endpoint (Admin Only)
+// ---------------------------------------------------------------
+router.get("/debug-production-issues", async (req, res) => {
+  moduleLogger.info("Debug production issues endpoint hit");
+  
+  // This is an admin endpoint - require debug key
+  const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
+  if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for debug endpoints'
+    });
+  }
+  
+  try {
+    const ProductionIssueService = require("../services/productionIssueService");
+    const service = new ProductionIssueService();
+    
+    // Get query parameters
+    const hours = parseInt(req.query.hours) || 2;
+    const limit = parseInt(req.query.limit) || 100;
+    const status = req.query.status || null;
+    
+    // Get all issues
+    const allRecords = await service.getProductionIssues({ limit, status });
+    
+    // Filter by time if needed
+    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const recentRecords = allRecords.filter(r => {
+      const timestamp = r.get('Timestamp');
+      if (!timestamp) return false;
+      return new Date(timestamp) > cutoffTime;
+    });
+    
+    // Format the response
+    const issues = recentRecords.map(record => ({
+      id: record.id,
+      'Timestamp': record.get('Timestamp'),
+      'Status': record.get('Status'),
+      'Severity': record.get('Severity'),
+      'Error Type': record.get('Error Type'),
+      'Error Message': record.get('Error Message'),
+      'Client ID': record.get('Client ID'),
+      'Run ID': record.get('Run ID'),
+      'File Path': record.get('File Path'),
+      'Function Name': record.get('Function Name'),
+      'Line Number': record.get('Line Number'),
+      'Stack Trace': record.get('Stack Trace'),
+      'Context': record.get('Context'),
+      'Fixed In Commit': record.get('Fixed In Commit'),
+      'Fixed By': record.get('Fixed By'),
+      'Resolution Notes': record.get('Resolution Notes')
+    }));
+    
+    // Group by error type
+    const byType = {};
+    issues.forEach(issue => {
+      const type = issue['Error Type'] || 'Unknown';
+      byType[type] = (byType[type] || 0) + 1;
+    });
+    
+    // Group by severity
+    const bySeverity = {};
+    issues.forEach(issue => {
+      const severity = issue.Severity || 'Unknown';
+      bySeverity[severity] = (bySeverity[severity] || 0) + 1;
+    });
+    
+    // Group by run ID
+    const byRunId = {};
+    issues.forEach(issue => {
+      const runId = issue['Run ID'] || 'Unknown';
+      if (runId !== 'Unknown') {
+        byRunId[runId] = (byRunId[runId] || 0) + 1;
+      }
+    });
+    
+    res.json({
+      summary: {
+        totalInDatabase: allRecords.length,
+        recentCount: issues.length,
+        hoursFilter: hours,
+        byType,
+        bySeverity,
+        byRunId
+      },
+      issues: issues,
+      expected: {
+        message: 'Based on Render log 251008-130924-Guy-Wilson, we expect:',
+        errors: [
+          '1. Airtable Field Error: "Unknown field name: Errors" (3 occurrences)',
+          '2. Logger Initialization: "Cannot access logger before initialization" (1 occurrence)'
+        ],
+        expectedTotal: '2-3 distinct errors'
+      }
+    });
+    
+  } catch (error) {
+    moduleLogger.error("Debug production issues error:", error);
+    res.status(500).json({
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // JSON Quality Diagnostic endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/api/json-quality-analysis", async (req, res) => {
