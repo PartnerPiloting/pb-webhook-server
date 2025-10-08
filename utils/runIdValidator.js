@@ -3,6 +3,9 @@
 // This provides lightweight validation at API entry points to prevent object parameters
 // from propagating through the system
 
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'runid_validator' });
+
 /**
  * Validates and normalizes a run ID to ensure it's a string
  * @param {string|Object} runId - Run ID or object containing runId
