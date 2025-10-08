@@ -88,10 +88,8 @@ class RenderLogService {
                 ownerId: this.ownerId,
                 limit: limit.toString(),
                 direction: 'backward', // Most recent first
+                resource: serviceId, // Just 'resource', not 'resource[]'
             });
-            
-            // Add resource filter (service ID)
-            params.append('resource[]', serviceId);
             
             // Add time range if provided
             if (startTime) params.append('startTime', startTime);
