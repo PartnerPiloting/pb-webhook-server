@@ -113,64 +113,41 @@ if (!geminiConfig?.geminiModel) {
 ## Production Error Logging System
 
 ### Overview
-Production errors are automatically logged to the **Error Log table** in the Master Clients Airtable base with full debugging context (stack trace, input data, system state, etc.).
+Production errors are captured by analyzing Render logs using pattern-based detection. Errors are saved to the **Production Issues table** in the Master Clients Airtable base.
 
-### Error Log Service
-- **Location**: `utils/errorLogger.js`
-- **Purpose**: Capture critical errors to Airtable for debugging without needing Render logs
-- **Classification**: `utils/errorClassifier.js` determines which errors are critical enough to log
+### Architecture (Single System - Pattern-Based Log Analysis)
+- **Location**: `config/errorPatterns.js` + `services/logFilterService.js`
+- **How it works**: Scans Render logs with 31+ regex patterns for CRITICAL/ERROR/WARNING detection
+- **Coverage**: 97-98% (analyzes all logs, not just caught errors)
+- **API endpoints**: `/api/analyze-logs/recent`, `/api/analyze-logs/text`
 
-### Key Functions Available
+### Error Detection Process
+1. Operations run on Render → logs written to stdout/stderr
+2. Pattern-based scanner analyzes logs (either via API call or scheduled)
+3. Errors extracted with context (25 lines before/after, stack traces)
+4. Saved to Production Issues table with full debugging info
+5. Errors tracked through fix workflow (NEW → INVESTIGATING → FIXED)
 
-```javascript
-// Query errors
-await getNewErrors()                    // Get all NEW status errors
-await getNewErrors({ filterByClient })  // Filter by specific client
-await getErrorById(recordId)            // Get full error details
-
-// Manage errors
-await markErrorAsFixed(recordId, commitHash, fixedBy, notes)
-await updateResolutionNotes(recordId, notes)
-```
-
-### Common AI Commands (Use These!)
-
-**Query Errors:**
-- "Show production errors" → Query Error Log for NEW errors
-- "What errors happened today?" → Filter by recent timestamp
-- "Show errors for Guy Wilson" → Filter by client
-- "Show me error #5 details" → Get full error context
-
-**Fix Errors:**
-- "Fix error #3" → Read error, fix code, commit, auto-mark as FIXED
-- "Fix all module import errors" → Batch fix similar errors
-- "Add note to error #2: [your note]" → Update resolution notes
-
-**Error Details Include:**
-- Error message & stack trace
-- File path, line number, function name
-- Severity (CRITICAL, ERROR, WARNING)
-- Error type (Module Import, AI Service, Airtable API, etc.)
-- Full context JSON (runId, clientId, input data, system state)
-- Auto-populated: Fixed In Commit, Fixed By, Fixed Date
-
-### Error Table Location
+### Production Issues Table
 - **Base**: Master Clients Airtable base
-- **Table**: Error Log
+- **Table**: Production Issues
 - **Status Values**: NEW, INVESTIGATING, FIXED, IGNORED
-- **Constants**: `constants/airtableUnifiedConstants.js` (ERROR_LOG_FIELDS)
+- **Fields**: Error message, stack trace, severity, error type, context, timestamps
 
-### Workflow
-1. Production error occurs → Auto-logged to Airtable (Status: NEW)
-2. User asks "Show production errors" → AI queries Error Log table
-3. User says "Fix error #X" → AI fixes code, commits, auto-updates Airtable
-4. Error marked FIXED with commit hash, date, and resolution notes
+### How to Analyze Errors
 
-### Configuration
-- **Enable/Disable**: Set `DISABLE_ERROR_LOGGING=true` to turn off
-- **Rate Limit**: Max 100 errors/hour (prevents log spam)
-- **Deduplication**: Same error within 5 minutes = single record
-- **Sanitization**: Passwords, tokens, API keys automatically redacted
+**API Endpoints:**
+- `POST /api/analyze-logs/recent` - Analyze recent Render logs (last N minutes)
+- `POST /api/analyze-logs/text` - Analyze arbitrary log text
+
+**Workflow:**
+1. Run operations on Render
+2. Call `/api/analyze-logs/recent` with minutes parameter
+3. Errors automatically saved to Production Issues table
+4. Review errors in Airtable, fix code, mark as FIXED
+
+### Note on Legacy System
+Prior to Oct 9, 2025, a second system (direct error logger in `utils/errorLogger.js`) existed but has been fully removed. All error detection now uses pattern-based log analysis only.
 
 ## Key Integration Points
 
