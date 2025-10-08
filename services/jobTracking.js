@@ -11,7 +11,7 @@
  * REFACTORING NOTE: This file has been updated to use the runIdSystem service.
  */
 
-const { createLogger } = require('../utils/unifiedLoggerFactory');
+const { createLogger } = require('../utils/contextLogger');
 // Old error logger removed - now using Render log analysis
 const logCriticalError = async () => {}; // No-op
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
@@ -37,7 +37,7 @@ const JOB_TRACKING_TABLE = MASTER_TABLES.JOB_TRACKING;
 const CLIENT_RUN_RESULTS_TABLE = MASTER_TABLES.CLIENT_RUN_RESULTS;
 
 // Default logger - using unified factory for consistent creation
-const logger = createLogger('SYSTEM', null, 'job_tracking');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'job_tracking' });
 
 // Using centralized status utility functions for consistent behavior
 // This import replaces the local getStatusString function
@@ -607,7 +607,7 @@ class JobTracking {
     }
     
     // Use existing logger or create a new one with unified factory
-    const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
+    const log = options.logger || createLogger({ runId: safeRunId, clientId: safeClientId, operation: 'job_tracking' });
     const source = options.source || 'JobTracking.updateClientRun';
     
     try {
@@ -1015,7 +1015,7 @@ class JobTracking {
     }
     
     // Use existing logger or create a new one with unified factory
-    const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
+    const log = options.logger || createLogger({ runId: safeRunId, clientId: safeClientId, operation: 'job_tracking' });
     const source = options.source || 'unknown';
     
     // Simple existence check with validated parameters
@@ -1311,7 +1311,7 @@ class JobTracking {
     params.clientId = safeClientId;
     
     // Use existing logger or create a new one with unified factory
-    const log = options.logger || createLogger(safeClientId, safeRunId, 'job_tracking');
+    const log = options.logger || createLogger({ runId: safeRunId, clientId: safeClientId, operation: 'job_tracking' });
     
     const isStandalone = options.isStandalone === true;
     const source = options.source || 'unknown';

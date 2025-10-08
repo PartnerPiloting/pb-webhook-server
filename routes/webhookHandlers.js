@@ -23,7 +23,7 @@ const { getClientBase, getClientById } = require('../services/clientService.js')
 
 // --- Structured Logging ---
 // FIXED: Using unified logger factory to prevent "Object passed as sessionId" errors
-const { createLogger } = require('../utils/unifiedLoggerFactory');
+const { createLogger } = require('../utils/contextLogger');
 
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID – Linked Helper Webhook
@@ -41,7 +41,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         
         // Create client-specific logger using safe creation
         log = createSafeLogger(clientId || 'UNKNOWN', null, 'webhook');
-        log.setup("=== WEBHOOK REQUEST: /lh-webhook/upsertLeadOnly ===");
+        log.info("=== WEBHOOK REQUEST: /lh-webhook/upsertLeadOnly ===");
         
         if (!clientId) {
             log.error("Missing required 'client' parameter");
@@ -96,7 +96,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             });
         }
 
-        log.setup(`Processing for client: ${client.clientName} (${clientId})`);
+        log.info(`Processing for client: ${client.clientName} (${clientId})`);
 
         // ADDED: Enhanced JSON processing with dirty-json fallback for malformed data
         let processedBody;
@@ -155,7 +155,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         }
 
         const rawLeadsFromWebhook = Array.isArray(processedBody) ? processedBody : (processedBody ? [processedBody] : []);
-        log.setup(`Received ${rawLeadsFromWebhook.length} leads for processing`);
+        log.info(`Received ${rawLeadsFromWebhook.length} leads for processing`);
         
         if (rawLeadsFromWebhook.length > 0) {
             log.debug("First raw lead payload:", JSON.stringify(rawLeadsFromWebhook[0], null, 2));
@@ -251,14 +251,14 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 await alertAdmin("Lead Upsert Error in /lh-webhook/upsertLeadOnly", `Client: ${clientId}\\nAttempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}\\nError: ${upsertError.message}`);
             }
         }
-        log.summary(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}`);
+        log.info(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}`);
         if (!res.headersSent) {
             res.json({ message: `Client ${clientId}: Upserted/Updated ${processedCount} LH profiles, Failed: ${errorCount}` });
         }
     } catch (err) {
         const finalClientId = req.query.client || 'unknown';
         // FIXED: Using createLogger instead of direct StructuredLogger instantiation
-        const finalLog = log || createLogger(finalClientId);
+        const finalLog = log || createLogger({ runId: 'SYSTEM', clientId: finalClientId, operation: 'webhook' });
         finalLog.error(`Critical error in /lh-webhook/upsertLeadOnly: ${err.message}`, err.stack);
         
         // Log to Airtable Error Log

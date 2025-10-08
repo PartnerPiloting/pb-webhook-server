@@ -79,7 +79,7 @@ function slimLead(profile = {}) {
 async function buildPrompt(logger = null, clientId = null) {
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
-        logger = require('./utils/unifiedLoggerFactory').createLogger('SYSTEM', 'PROMPT');
+        logger = require('./utils/contextLogger').createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'prompt_builder' });
     }
 
     logger.setup('buildPrompt', `Starting lead scoring prompt construction${clientId ? ` for client: ${clientId}` : ''}`);

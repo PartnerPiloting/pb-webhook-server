@@ -1,7 +1,7 @@
 // attributeLoader.js - MULTI-TENANT SUPPORT: Updated to use client-specific bases
 
 require("dotenv").config();
-const { createLogger } = require('./utils/unifiedLoggerFactory');
+const { createLogger } = require('./utils/contextLogger');
 
 // Import multi-tenant Airtable client functions
 const { getClientBase } = require('./config/airtableClient.js');
@@ -31,7 +31,7 @@ let cacheUntil = 0;
 async function loadAttributes(logger = null, clientId = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = createLogger('SYSTEM', 'ATTR');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attribute_loader' });
   }
 
   logger.setup('loadAttributes', `Starting attribute loading from Airtable${clientId ? ` for client: ${clientId}` : ''}`);
@@ -146,7 +146,7 @@ async function loadAttributes(logger = null, clientId = null) {
 async function loadAttributeForEditing(attributeId, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = createLogger('SYSTEM', null, 'ATTR-EDIT');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_edit' });
   }
 
   try {
@@ -189,7 +189,7 @@ async function loadAttributeForEditing(attributeId, logger = null) {
 async function updateAttribute(attributeId, data, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = createLogger('SYSTEM', null, 'ATTR-UPDATE');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_update' });
   }
 
   try {
@@ -234,7 +234,7 @@ async function updateAttribute(attributeId, data, logger = null) {
 async function listAttributesForEditing(logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = createLogger('SYSTEM', null, 'ATTR-LIST');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_list' });
   }
 
   try {
@@ -284,7 +284,7 @@ async function listAttributesForEditing(logger = null) {
 async function loadAttributeForEditingWithClientBase(attributeId, clientBase, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = createLogger('SYSTEM', null, 'ATTR-EDIT-CLIENT');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_edit_client' });
   }
 
   try {
@@ -327,7 +327,7 @@ async function loadAttributeForEditingWithClientBase(attributeId, clientBase, lo
 async function updateAttributeWithClientBase(attributeId, data, clientBase, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = createLogger('SYSTEM', null, 'ATTR-UPDATE-CLIENT');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_update_client' });
   }
 
   try {

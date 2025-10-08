@@ -12,10 +12,10 @@ const router = express.Router();
 const logCriticalError = async () => {};
 const runIdSystem = require('../services/runIdSystem');
 const JobTracking = require('../services/jobTracking');
-const { createLogger } = require('../utils/unifiedLoggerFactory');
+const { createLogger } = require('../utils/contextLogger');
 
 // Default logger
-const logger = createLogger('SYSTEM', null, 'diagnostic-routes');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'diagnostic_routes' });
 
 /**
  * Environment check to prevent these routes from running in production
@@ -124,7 +124,7 @@ router.get('/check-job-record/:runId', async (req, res) => {
     try {
       // Try to get the job tracking record
       const jobRecord = await JobTracking.getJobById(runId, { 
-        logger: createLogger('SYSTEM', runId, 'diagnostic-routes') 
+        logger: createLogger({ runId: runId, clientId: 'SYSTEM', operation: 'diagnostic_routes' }) 
       });
       
       if (jobRecord) {

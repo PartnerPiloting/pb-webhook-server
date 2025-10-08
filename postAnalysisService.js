@@ -9,14 +9,14 @@ const { repairAndParseJson } = require('./utils/jsonRepair');
 const dirtyJSON = require('dirty-json');
 
 // --- Structured Logging ---
-const { createLogger } = require('./utils/unifiedLoggerFactory');
+const { createLogger } = require('./utils/contextLogger');
 
 /**
  * Diagnostic helper for parsing the Posts Content field safely.
  * Logs type, length, head/tail, and prints raw value if parsing fails.
  */
 function diagnosePostsContent(rawField, recordId = '', logger = null) {
-    const log = logger || createLogger('DIAGNOSTICS', null, 'post_scoring');
+    const log = logger || createLogger({ runId: 'SYSTEM', clientId: 'DIAGNOSTICS', operation: 'post_scoring' });
     
     log.debug('------------------------');
     log.debug(`Diagnosing Posts Content for record: ${recordId}`);
@@ -62,9 +62,9 @@ function normalizeUrl(url) {
  * the posts for a single lead record.
  */
 async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, logger = null) {
-    const log = logger || createLogger(`LEAD-${leadRecord.id}`, null, 'post_scoring');
+    const log = logger || createLogger({ runId: 'SYSTEM', clientId: `LEAD-${leadRecord.id}`, operation: 'post_scoring' });
     
-    log.setup(`Analyzing posts for lead: ${leadRecord.id}`);
+    log.info(`Analyzing posts for lead: ${leadRecord.id}`);
 
     // Read the JSON field and robustly parse it into structured posts
     const postsJsonField = leadRecord.fields[config.fields.postsContent];
@@ -75,7 +75,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         
         if (repairResult.success) {
             parsedPostsArray = repairResult.data;
-            log.process(`JSON parsed successfully using method: ${repairResult.method}`);
+            log.info(`JSON parsed successfully using method: ${repairResult.method}`);
             
             // Update Posts JSON Status field
             try {
@@ -128,26 +128,26 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
 
     try {
         // Load scoring configuration (no global filtering - let attributes handle relevance)
-        log.setup(`Loading config from Airtable...`);
+        log.info(`Loading config from Airtable...`);
         const config_data = await loadPostScoringAirtableConfig(base, config, log);
         
         // Score all posts (originals + reposts). Let attributes handle relevance.
-        log.process(`Scoring all ${allPosts.length} posts (including reposts) using client's attribute criteria`);
+        log.info(`Scoring all ${allPosts.length} posts (including reposts) using client's attribute criteria`);
         
         if (allPosts.length === 0) {
-            log.summary(`No posts found, skipping scoring`);
+            log.info(`No posts found, skipping scoring`);
             return { status: "No posts found", leadId: leadRecord.id };
         }
 
         // Proceed with full AI scoring on all posts
-        log.process(`Found ${allPosts.length} posts. Proceeding with Gemini scoring`);
+        log.info(`Found ${allPosts.length} posts. Proceeding with Gemini scoring`);
 
         // Step 3: Build the full system prompt
-        log.process(`Building system prompt...`);
+        log.info(`Building system prompt...`);
         const systemPrompt = await buildPostScoringPrompt(base, config);
 
         // Step 4: Configure the Gemini Model instance with the system prompt
-        log.process(`Configuring Gemini model instance...`);
+        log.info(`Configuring Gemini model instance...`);
         const geminiModelId = process.env.GEMINI_MODEL_ID || (config.geminiConfig && config.geminiConfig.geminiModelId);
         const configuredGeminiModel = vertexAIClient.getGenerativeModel({
             model: geminiModelId,
@@ -162,7 +162,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
         });
 
         // Step 5: Call the Gemini scorer with all original posts
-        log.process(`Calling Gemini scorer...`);
+        log.info(`Calling Gemini scorer...`);
         // --- FIX: Wrap posts in object with lead_id for Gemini ---
     const geminiInput = { lead_id: leadRecord.id, posts: allPosts };
         const aiResponseArray = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
@@ -215,7 +215,7 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
              throw new Error("Could not determine the highest scoring post from the AI response.");
         }
         
-        log.process(`Highest scoring post has a score of ${highestScoringPost.post_score}`);
+        log.info(`Highest scoring post has a score of ${highestScoringPost.post_score}`);
 
         // Step 7: Update Airtable with the results from the highest-scoring post
         // Use the date as-is if it's not a valid ISO string
@@ -256,11 +256,11 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
             // Ignore if field missing
         }
 
-        log.summary(`Successfully scored. Final Score: ${highestScoringPost.post_score}`);
+        log.info(`Successfully scored. Final Score: ${highestScoringPost.post_score}`);
         return { status: "Successfully scored", leadId: leadRecord.id, final_score: highestScoringPost.post_score, full_analysis: aiResponseArray };
 
     } catch (error) {
-        log.error(`Error during AI scoring process: ${error.message}`, error.stack);
+        log.error(`Error during AI scoring process: ${error.message}`, { stack: error.stack });
         // --- Improved error/debug messaging in Airtable ---
         const errorDetails = {
             errorMessage: error.message,
@@ -283,9 +283,9 @@ async function analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, con
  * Processes posts for all leads in Airtable that haven't been scored yet.
  */
 async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, forceRescore, viewName, logger = null) {
-    const log = logger || createLogger('POST-BATCH-PROCESSOR', null, 'post_scoring');
+    const log = logger || createLogger({ runId: 'SYSTEM', clientId: 'POST-BATCH-PROCESSOR', operation: 'post_scoring' });
     
-    log.setup("=== STARTING POST BATCH PROCESSING ===");
+    log.info("=== STARTING POST BATCH PROCESSING ===");
     let processedCount = 0, errorCount = 0;
     try {
         // Build select options
@@ -308,7 +308,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
         let recordsToProcess = await base(config.leadsTableName).select(selectOptions).all();
         if (typeof limit === 'number' && limit > 0) {
             recordsToProcess = recordsToProcess.slice(0, limit);
-            log.setup(`Limiting batch to first ${limit} leads`);
+            log.info(`Limiting batch to first ${limit} leads`);
         }
         
         // Generate detailed reason if no leads found
@@ -319,7 +319,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
             } else {
                 statusReason = `No leads found without post scores (use forceRescore=true to re-analyze already scored posts)`;
             }
-            log.setup(statusReason);
+            log.info(statusReason);
             
             // Return the detailed reason in the result
             return {
@@ -330,7 +330,7 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
             };
         }
         
-        log.setup(`Found ${recordsToProcess.length} leads to process for post scoring`);
+        log.info(`Found ${recordsToProcess.length} leads to process for post scoring`);
         for (const leadRecord of recordsToProcess) {
             try {
                 await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, log);
@@ -341,9 +341,9 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
             }
         }
     } catch (error) {
-        log.error(`Major error in processAllPendingLeadPosts (e.g., fetching records from Airtable): ${error.message}`, error.stack);
+        log.error(`Major error in processAllPendingLeadPosts (e.g., fetching records from Airtable): ${error.message}`, { stack: error.stack });
     }
-    log.summary(`Finished. Processed: ${processedCount}, Errors: ${errorCount}`);
+    log.info(`Finished. Processed: ${processedCount}, Errors: ${errorCount}`);
 }
 
 /**
@@ -351,9 +351,9 @@ async function processAllPendingLeadPosts(base, vertexAIClient, config, limit, f
  * and returns the scoring outcome.
  */
 async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config, logger = null) {
-    const log = logger || createLogger(`SPECIFIC-LEAD-${leadId}`, null, 'post_scoring');
+    const log = logger || createLogger({ runId: 'SYSTEM', clientId: `SPECIFIC-LEAD-${leadId}`, operation: 'post_scoring' });
     
-    log.setup(`Processing specific lead: ${leadId}`);
+    log.info(`Processing specific lead: ${leadId}`);
     try {
         const records = await base(config.leadsTableName).select({
             filterByFormula: `RECORD_ID() = '${leadId}'`,
@@ -368,7 +368,7 @@ async function scoreSpecificLeadPosts(leadId, base, vertexAIClient, config, logg
         }
         return await analyzeAndScorePostsForLead(leadRecord, base, vertexAIClient, config, log);
     } catch (error) {
-        log.error(`Error in scoreSpecificLeadPosts: ${error.message}`, error.stack);
+        log.error(`Error in scoreSpecificLeadPosts: ${error.message}`, { stack: error.stack });
         if (error.statusCode === 404) return { status: "Lead not found", error: error.message, leadId: leadId };
         return { status: "Error scoring specific lead", error: error.message, leadId: leadId };
     }

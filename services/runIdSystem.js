@@ -14,10 +14,10 @@ const logCriticalError = async () => {};
  */
 
 const { format } = require('date-fns');
-const { createLogger } = require('../utils/unifiedLoggerFactory');
+const { createLogger } = require('../utils/contextLogger');
 
 // Create a dedicated logger for this service
-const logger = createLogger('SYSTEM', null, 'run_id_system');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'run_id_system' });
 
 // In-memory cache for job tracking record IDs
 const jobTrackingRecordCache = new Map();
