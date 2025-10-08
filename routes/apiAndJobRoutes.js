@@ -1256,9 +1256,13 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
   const tempJobId = generateJobId('post_scoring', stream);
   const singleClientId = req.query.clientId || req.query.client_id || req.body?.clientId || null;
   
-  // Create endpoint-scoped logger with jobId
+  // Extract timestamp-only portion for cleaner logs (avoids duplicating client name)
+  // Format: "251009-153045-Guy-Wilson" → "251009-153045"
+  const timestampOnlyRunId = tempJobId.split('-').slice(0, 2).join('-');
+  
+  // Create endpoint-scoped logger with timestamp-only runId
   const endpointLogger = createLogger({
-    runId: tempJobId,
+    runId: timestampOnlyRunId,
     clientId: singleClientId || 'SYSTEM',
     operation: 'post_scoring_endpoint'
   });
@@ -1395,9 +1399,13 @@ async function processPostScoringInBackground(jobId, stream, options) {
   const maxJobHours = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
   const maxJobMs = maxJobHours * 60 * 60 * 1000;
   
-  // Create job-level logger with real runId (not MODULE_INIT)
+  // Extract timestamp-only portion for cleaner logs
+  const baseRunId = options.parentRunId || jobId;
+  const timestampOnlyRunId = baseRunId.split('-').slice(0, 2).join('-');
+  
+  // Create job-level logger with timestamp-only runId (avoids duplication)
   const jobLogger = createLogger({
-    runId: options.parentRunId || jobId,  // Use parent runId if available, otherwise jobId
+    runId: timestampOnlyRunId,
     clientId: options.singleClientId || 'MULTI-CLIENT',
     operation: 'post_scoring_batch'
   });
@@ -1426,9 +1434,10 @@ async function processPostScoringInBackground(jobId, stream, options) {
     for (let i = 0; i < clients.length; i++) {
       const client = clients[i];
       
-      // Create client-specific logger with real runId for this client
+      // Extract timestamp-only portion for client logger (cleaner logs)
+      // Create client-specific logger with timestamp-only runId
       const clientLogger = createLogger({
-        runId: options.clientRunId || `${jobId}-${client.clientId}`,
+        runId: timestampOnlyRunId,  // Reuse the timestamp from job logger
         clientId: client.clientId,
         operation: 'post_scoring_client'
       });
