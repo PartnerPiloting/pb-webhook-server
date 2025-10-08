@@ -1,3 +1,6 @@
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 // File: postAnalysisService.js (Now with robust diagnostics for Posts Content parsing)
 
 // Require our newly defined helper modules
@@ -9,7 +12,6 @@ const { repairAndParseJson } = require('./utils/jsonRepair');
 const dirtyJSON = require('dirty-json');
 
 // --- Structured Logging ---
-const { createLogger } = require('./utils/contextLogger');
 
 /**
  * Diagnostic helper for parsing the Posts Content field safely.

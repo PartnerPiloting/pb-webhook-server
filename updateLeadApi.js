@@ -1,6 +1,7 @@
-/****************************************************************
 const { createLogger } = require('./utils/contextLogger');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
+/****************************************************************
 
   POST /update-lead
   Body: { nextMessage: string, sendAt?: string, messageStatus?: string }

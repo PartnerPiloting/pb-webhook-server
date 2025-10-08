@@ -1,6 +1,7 @@
-/****************************************************************
 const { createLogger } = require('./utils/contextLogger');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
+/****************************************************************
 
   GET /latest-lead  →  returns selected fields for the “current” lead
   (current = record ID stored in Credentials → Record ID for Chat)
