@@ -51,14 +51,14 @@ class ProductionIssueService {
       serviceId = process.env.RENDER_SERVICE_ID,
     } = options;
 
-    logger.setup('analyzeRecentLogs', `Analyzing last ${minutes} minutes of logs`);
+    logger.info( `Analyzing last ${minutes} minutes of logs`);
 
     try {
       // Fetch logs from Render
       const endTime = new Date().toISOString();
       const startTime = new Date(Date.now() - minutes * 60 * 1000).toISOString();
       
-      logger.process('analyzeRecentLogs', 'Fetching logs from Render API...');
+      logger.debug( 'Fetching logs from Render API...');
       const logData = await this.renderLogService.getServiceLogs(serviceId, {
         startTime,
         endTime,
@@ -68,7 +68,7 @@ class ProductionIssueService {
       // Convert log data to text
       const logText = this.convertLogsToText(logData.logs || []);
       
-      logger.process('analyzeRecentLogs', `Filtering ${logText.split('\n').length} log lines for issues...`);
+      logger.debug( `Filtering ${logText.split('\n').length} log lines for issues...`);
       
       // Filter logs for issues
       const issues = filterLogs(logText, {
@@ -76,7 +76,7 @@ class ProductionIssueService {
         contextSize: 25,
       });
 
-      logger.process('analyzeRecentLogs', `Found ${issues.length} unique issues`);
+      logger.debug( `Found ${issues.length} unique issues`);
 
       // Create Airtable records
       const createdRecords = await this.createProductionIssues(issues);
@@ -106,7 +106,7 @@ class ProductionIssueService {
    * @returns {Promise<Object>} - Analysis results
    */
   async analyzeLogText(logText) {
-    logger.setup('analyzeLogText', `Analyzing provided log text (${logText.length} chars)`);
+    logger.info( `Analyzing provided log text (${logText.length} chars)`);
 
     try {
       // Filter logs for issues
@@ -115,7 +115,7 @@ class ProductionIssueService {
         contextSize: 25,
       });
 
-      logger.process('analyzeLogText', `Found ${issues.length} unique issues`);
+      logger.debug( `Found ${issues.length} unique issues`);
 
       // Create Airtable records
       const createdRecords = await this.createProductionIssues(issues);
@@ -149,7 +149,7 @@ class ProductionIssueService {
       return [];
     }
 
-    logger.setup('createProductionIssues', `Creating ${issues.length} Production Issue records`);
+    logger.info( `Creating ${issues.length} Production Issue records`);
 
     const createdRecords = [];
     const errors = [];
@@ -339,12 +339,12 @@ class ProductionIssueService {
       throw new Error('startTime and endTime are required for log analysis');
     }
 
-    logger.setup('analyzeRunLogs', `Analyzing logs for run ${runId} (stream ${stream})`);
+    logger.info( `Analyzing logs for run ${runId} (stream ${stream})`);
     logger.debug('analyzeRunLogs', `Time window: ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
     try {
       // Fetch logs from Render for the exact time window
-      logger.process('analyzeRunLogs', 'Fetching logs from Render API...');
+      logger.debug( 'Fetching logs from Render API...');
       const logData = await this.renderLogService.getServiceLogs(serviceId, {
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
@@ -355,7 +355,7 @@ class ProductionIssueService {
       const allLogsText = this.convertLogsToText(logData.logs || []);
       const allLogLines = allLogsText.split('\n');
       
-      logger.process('analyzeRunLogs', `Fetched ${allLogLines.length} total log lines from time window`);
+      logger.debug( `Fetched ${allLogLines.length} total log lines from time window`);
 
       if (allLogLines.length === 0) {
         logger.warn('analyzeRunLogs', `No logs found in time window`);
@@ -371,13 +371,13 @@ class ProductionIssueService {
 
       // Analyze ALL logs in the time window (no filtering by runId)
       // With structured logging, every line will have [runId] prefix, so we get complete coverage
-      logger.process('analyzeRunLogs', 'Running pattern matching on all logs in time window...');
+      logger.debug( 'Running pattern matching on all logs in time window...');
       const issues = filterLogs(allLogsText, {
         deduplicateIssues: true,
         contextSize: 25,
       });
 
-      logger.process('analyzeRunLogs', `Found ${issues.length} unique issues`);
+      logger.debug( `Found ${issues.length} unique issues`);
 
       // Enrich issues with run metadata
       const enrichedIssues = issues.map(issue => ({

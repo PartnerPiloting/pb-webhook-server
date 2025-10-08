@@ -25,7 +25,7 @@ class RenderLogService {
      * Get all services for the account
      */
     async getAllServices() {
-        this.logger.setup('getAllServices', 'Fetching all Render services');
+        this.logger.info( 'Fetching all Render services');
         
         try {
             const response = await axios.get(`${this.baseUrl}/services`, {
@@ -80,7 +80,7 @@ class RenderLogService {
             cursor = null
         } = options;
 
-        this.logger.setup('getServiceLogs', `Fetching logs for service ${serviceId}`);
+        this.logger.info( `Fetching logs for service ${serviceId}`);
 
         try {
             // Build query parameters for the correct /v1/logs endpoint
@@ -88,8 +88,10 @@ class RenderLogService {
                 ownerId: this.ownerId,
                 limit: limit.toString(),
                 direction: 'backward', // Most recent first
-                resource: serviceId, // Just 'resource', not 'resource[]'
             });
+            
+            // Add resources[] parameter (Render API requires array notation)
+            params.append('resources[]', serviceId);
             
             // Add time range if provided
             if (startTime) params.append('startTime', startTime);
@@ -111,7 +113,7 @@ class RenderLogService {
             
             // Render API v1 returns: { logs: [...], hasMore: bool, nextStartTime, nextEndTime }
             const logCount = data.logs?.length || 0;
-            this.logger.process('getServiceLogs', `Retrieved ${logCount} log entries for service ${serviceId}`);
+            this.logger.debug( `Retrieved ${logCount} log entries for service ${serviceId}`);
             
             if (data.hasMore) {
                 this.logger.debug('getServiceLogs', `More logs available. Use nextStartTime: ${data.nextStartTime}, nextEndTime: ${data.nextEndTime}`);
@@ -141,7 +143,7 @@ class RenderLogService {
      * Search logs across multiple services for specific patterns
      */
     async searchLogsAcrossServices(searchTerms, timeRange = '1h') {
-        this.logger.setup('searchLogsAcrossServices', `Searching for: ${searchTerms.join(', ')} in last ${timeRange}`);
+        this.logger.info( `Searching for: ${searchTerms.join(', ')} in last ${timeRange}`);
 
         try {
             // Get all services first
@@ -187,7 +189,7 @@ class RenderLogService {
      * Analyze logs for common error patterns
      */
     async analyzeErrorPatterns(timeRange = '1h') {
-        this.logger.setup('analyzeErrorPatterns', `Analyzing error patterns in last ${timeRange}`);
+        this.logger.info( `Analyzing error patterns in last ${timeRange}`);
 
         const errorPatterns = [
             'ERROR',

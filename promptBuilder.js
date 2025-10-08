@@ -82,12 +82,12 @@ async function buildPrompt(logger = null, clientId = null) {
         logger = require('./utils/contextLogger').createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'prompt_builder' });
     }
 
-    logger.setup('buildPrompt', `Starting lead scoring prompt construction${clientId ? ` for client: ${clientId}` : ''}`);
+    logger.info(`Starting lead scoring prompt construction${clientId ? ` for client: ${clientId}` : ''}`);
 
     // Pass clientId to loadAttributes for multi-tenant support
     const { preamble, positives, negatives } = await loadAttributes(logger, clientId);
 
-    logger.process('buildPrompt', `Loaded attributes: ${Object.keys(positives).length} positive, ${Object.keys(negatives).length} negative`);
+    logger.debug(`Loaded attributes: ${Object.keys(positives).length} positive, ${Object.keys(negatives).length} negative`);
 
     // This schema defines the structure for EACH lead object within the JSON array
     // that Gemini is instructed to return.

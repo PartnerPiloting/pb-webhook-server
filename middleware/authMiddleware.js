@@ -42,7 +42,7 @@ async function getWordPressUserId(req) {
         const wpUser = await getCurrentWordPressUser(req);
         
         if (wpUser && wpUser.id) {
-            logger.process('getWordPressUserId', `WordPress user authenticated: ${wpUser.name} (ID: ${wpUser.id})`);
+            logger.debug( `WordPress user authenticated: ${wpUser.name} (ID: ${wpUser.id})`);
             return wpUser.id;
         }
 
