@@ -6,6 +6,9 @@
  * resulting in '[object Object]' being used as identifiers.
  */
 
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'parameter_validator' });
+
 class ParameterValidator {
   /**
    * Validates and extracts string value from a parameter that might be an object
