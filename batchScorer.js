@@ -2,13 +2,23 @@
 
 require("dotenv").config(); 
 
+// Import structured context logger
+const { createLogger } = require('./utils/contextLogger');
+
+// Create module-level logger for initialization
+const initLogger = createLogger({
+  runId: 'INIT',
+  clientId: 'SYSTEM',
+  operation: 'batch_scorer_init'
+});
+
 // Debug logging for environment variables
-console.log('ENVIRONMENT VARIABLES CHECK (batchScorer):');
-console.log(`- FIRE_AND_FORGET_BATCH_PROCESS_TESTING: ${process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING || 'not set'}`);
-console.log(`- DEBUG_LEVEL: ${process.env.DEBUG_LEVEL || 'not set'}`);
-console.log(`- DEBUG_MODE: ${process.env.DEBUG_MODE || 'not set'}`);
-console.log(`- LEAD_SCORING_LIMIT: ${process.env.LEAD_SCORING_LIMIT || 'not set'}`);
-console.log(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREAM || 'not set'}`);
+initLogger.info('ENVIRONMENT VARIABLES CHECK (batchScorer):');
+initLogger.info(`- FIRE_AND_FORGET_BATCH_PROCESS_TESTING: ${process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING || 'not set'}`);
+initLogger.info(`- DEBUG_LEVEL: ${process.env.DEBUG_LEVEL || 'not set'}`);
+initLogger.info(`- DEBUG_MODE: ${process.env.DEBUG_MODE || 'not set'}`);
+initLogger.info(`- LEAD_SCORING_LIMIT: ${process.env.LEAD_SCORING_LIMIT || 'not set'}`);
+initLogger.info(`- BATCH_PROCESSING_STREAM: ${process.env.BATCH_PROCESSING_STREAM || 'not set'}`);
 
 const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
@@ -34,13 +44,10 @@ const { CLIENT_RUN_FIELDS } = require('./constants/airtableUnifiedConstants');
 const requiredFields = ['STATUS', 'SYSTEM_NOTES', 'ERROR_DETAILS'];
 const missingFields = requiredFields.filter(field => !CLIENT_RUN_FIELDS[field]);
 if (missingFields.length > 0) {
-  console.error('CRITICAL: Missing CLIENT_RUN_FIELDS constants:', missingFields);
-  console.error('Available CLIENT_RUN_FIELDS:', Object.keys(CLIENT_RUN_FIELDS));
+  initLogger.critical('Missing CLIENT_RUN_FIELDS constants:', missingFields);
+  initLogger.critical('Available CLIENT_RUN_FIELDS:', Object.keys(CLIENT_RUN_FIELDS));
   throw new Error(`Missing required CLIENT_RUN_FIELDS: ${missingFields.join(', ')}`);
 }
-
-// --- Structured Logging ---
-const { createLogger, getOrCreateLogger, createSafeLogger } = require('./utils/unifiedLoggerFactory');
 
 // Old error logger removed - now using Render log analysis
 const logCriticalError = async () => {}; // No-op
@@ -65,24 +72,37 @@ const CHUNK_SIZE = Math.max(1, parseInt(process.env.BATCH_CHUNK_SIZE || "40", 10
 const GEMINI_TIMEOUT_MS = Math.max(30000, parseInt(process.env.GEMINI_TIMEOUT_MS || "900000", 10)); // 15 minutes
 
 // MODIFIED a few turns ago to indicate "Prompt Length Log" to help confirm version - keeping it
-console.log(`▶︎ batchScorer module loaded (DEBUG Profile, High Output, Increased Timeout, filterByFormula, Prompt Length Log). CHUNK_SIZE: ${CHUNK_SIZE}, TIMEOUT: ${GEMINI_TIMEOUT_MS}ms. Ready for dependencies.`);
+initLogger.info(`▶︎ batchScorer module loaded (DEBUG Profile, High Output, Increased Timeout, filterByFormula, Prompt Length Log). CHUNK_SIZE: ${CHUNK_SIZE}, TIMEOUT: ${GEMINI_TIMEOUT_MS}ms. Ready for dependencies.`);
 
 /* ---------- LEAD PROCESSING QUEUE (Client-Aware Internal Queue) ------------- */
 const queue = [];
 let running = false;
-async function enqueue(recs, clientId, clientBase, log = console) { 
-    queue.push({ records: recs, clientId, clientBase });
+async function enqueue(recs, clientId, clientBase, runId = 'UNKNOWN') { 
+    queue.push({ records: recs, clientId, clientBase, runId });
     if (running) return;
     running = true;
-    const logger = (log === console) ? createSafeLogger('SYSTEM', null, 'lead_scoring') : log;
-    logger.debug(`batchScorer.enqueue: Queue started. ${queue.length} chunk(s) to process.`);
+    
+    const queueLogger = createLogger({
+        runId: runId || 'UNKNOWN',
+        clientId: 'SYSTEM',
+        operation: 'batch_scorer_queue'
+    });
+    
+    queueLogger.debug(`batchScorer.enqueue: Queue started. ${queue.length} chunk(s) to process.`);
     while (queue.length) {
-        const { records: chunk, clientId: chunkClientId, clientBase: chunkClientBase } = queue.shift();
-        log.process(`Processing chunk of ${chunk.length} records for client [${chunkClientId || 'unknown'}]...`);
+        const { records: chunk, clientId: chunkClientId, clientBase: chunkClientBase, runId: chunkRunId } = queue.shift();
+        
+        const chunkLogger = createLogger({
+            runId: chunkRunId || 'UNKNOWN',
+            clientId: chunkClientId || 'UNKNOWN',
+            operation: 'lead_scoring'
+        });
+        
+        chunkLogger.info(`Processing chunk of ${chunk.length} records for client [${chunkClientId || 'unknown'}]...`);
         try {
-            await scoreChunk(chunk, chunkClientId, chunkClientBase, log);
+            await scoreChunk(chunk, chunkClientId, chunkClientBase, chunkRunId || 'UNKNOWN');
         } catch (err) {
-            log.error(`CHUNK FATAL ERROR for client [${chunkClientId || 'unknown'}] chunk of ${chunk.length} records: ${err.message}`, err.stack);
+            chunkLogger.error(`CHUNK FATAL ERROR for client [${chunkClientId || 'unknown'}] chunk of ${chunk.length} records: ${err.message}`, err.stack);
             
             // Log critical batch scoring errors to Airtable
             await logCriticalError(err, {
@@ -91,19 +111,23 @@ async function enqueue(recs, clientId, clientBase, log = console) {
                 chunkSize: chunk.length,
                 operation: 'scoreChunk'
             }).catch(loggingErr => {
-                log.error(`Failed to log error to Airtable: ${loggingErr.message}`);
+                chunkLogger.error(`Failed to log error to Airtable: ${loggingErr.message}`);
             });
             
             await alertAdmin("Chunk Failed Critically (batchScorer)", `Client: ${chunkClientId || 'unknown'}\nError: ${String(err.message)}\nStack: ${err.stack}`);
         }
     }
     running = false;
-    log.summary("Queue empty, all processing finished for this run.");
+    queueLogger.info("Queue empty, all processing finished for this run.");
 }
 
 /* ---------- FETCH LEADS FROM AIRTABLE (Client-Specific) --------- */
-async function fetchLeads(limit, clientBase, clientId, logger = null) {
-    const log = logger || createSafeLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
+async function fetchLeads(limit, clientBase, clientId, runId = 'UNKNOWN') {
+    const log = createLogger({
+        runId: runId,
+        clientId: clientId || 'UNKNOWN',
+        operation: 'lead_scoring'
+    });
     
     if (!clientBase) {
         throw new Error(`Airtable base not provided for client ${clientId || 'unknown'}.`);
@@ -118,12 +142,12 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     let filterFormula = `{Scoring Status} = 'To Be Scored'`;
     
     // Debug logging for client ID and filter formula
-    console.log(`[DEBUG] fetchLeads for client: ${clientId} using filter formula with single quotes`);
-    console.log(`[DEBUG] Raw filter formula: ${filterFormula}`);
+    log.debug(`fetchLeads for client: ${clientId} using filter formula with single quotes`);
+    log.debug(`Raw filter formula: ${filterFormula}`);
     
     // In testing mode, we might want to allow rescoring of leads that were recently scored
     if (TESTING_MODE) {
-        log.setup(`TESTING MODE ACTIVE: Including recently scored leads for testing`);
+        log.info(`TESTING MODE ACTIVE: Including recently scored leads for testing`);
         
         // Modify the filter to include recently scored leads for testing
         // This will re-score leads that were scored in the past 2 days
@@ -132,10 +156,10 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
         
         log.debug(`Testing mode filter formula: ${filterFormula}`);
     } else {
-        log.setup(`Normal mode: Using standard filter for "To Be Scored" status only`);
+        log.info(`Normal mode: Using standard filter for "To Be Scored" status only`);
     }
     
-    log.setup(`Fetching up to ${limit} leads using formula: ${filterFormula}`);
+    log.info(`Fetching up to ${limit} leads using formula: ${filterFormula}`);
     
     // Add debug logging for table discovery
     try {
@@ -174,7 +198,7 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     try {
         // Special debug for Guy Wilson
         if (clientId === 'guy-wilson') {
-            console.log(`[DEBUG-GUY-WILSON] About to count Guy Wilson leads with filter: ${filterFormula}`);
+            log.debug(`About to count Guy Wilson leads with filter: ${filterFormula}`);
         }
         
         const countQuery = await clientBase("Leads")
@@ -186,7 +210,7 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
         
         // Special debug for Guy Wilson
         if (clientId === 'guy-wilson') {
-            console.log(`[DEBUG-GUY-WILSON] Found ${countQuery.length} leads to score for Guy Wilson`);
+            log.debug(`Found ${countQuery.length} leads to score for Guy Wilson`);
             if (countQuery.length === 0) {
                 try {
                     // Try to query with double quotes to confirm issue
@@ -196,9 +220,9 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
                             filterByFormula: doubleQuoteFilter
                         })
                         .all();
-                    console.log(`[DEBUG-GUY-WILSON] Double quote query found ${doubleQuoteQuery.length} leads`);
+                    log.debug(`Double quote query found ${doubleQuoteQuery.length} leads`);
                 } catch (doubleQuoteErr) {
-                    console.log(`[DEBUG-GUY-WILSON] Double quote query error: ${doubleQuoteErr.message}`);
+                    log.debug(`Double quote query error: ${doubleQuoteErr.message}`);
                 }
             }
         }
@@ -217,7 +241,7 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
     } catch (err) {
         log.error(`Failed to fetch leads: ${err.message}`);
     }
-    log.setup(`Fetched ${records.length} leads`);
+    log.info(`Fetched ${records.length} leads`);
     
     // Add more detailed logging
     if (records.length === 0) {
@@ -232,8 +256,12 @@ async function fetchLeads(limit, clientBase, clientId, logger = null) {
 /* =================================================================
     scoreChunk - Processes a chunk of leads with Gemini (Client-Aware)
 =================================================================== */
-async function scoreChunk(records, clientId, clientBase, logger = null) {
-    const log = logger || createSafeLogger(clientId || 'UNKNOWN', null, 'lead_scoring');
+async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
+    const log = createLogger({
+        runId: runId,
+        clientId: clientId || 'UNKNOWN',
+        operation: 'lead_scoring'
+    });
     
     if (!BATCH_SCORER_VERTEX_AI_CLIENT || !BATCH_SCORER_GEMINI_MODEL_ID) {
         const errorMsg = `Aborting. Gemini AI Client or Model ID not initialized/provided`;
@@ -250,7 +278,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
     const airtableUpdatesForSkipped = [];
     let debugProfileLogCount = 0; 
 
-    log.process(`Starting pre-flight checks for ${records.length} records`);
+    log.info(`Starting pre-flight checks for ${records.length} records`);
     for (const rec of records) {
         const profileJsonString = rec.get(LEAD_FIELDS.PROFILE_FULL_JSON) || "{}";
         let profile;
@@ -265,24 +293,24 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         
         // ***** DEBUG LOGGING for isMissingCritical *****
         if (debugProfileLogCount < 5) { // Log details for the first 5 profiles being checked in the chunk
-            console.log(`batchScorer.scoreChunk: Debugging profile for rec.id ${rec.id}:`);
-            console.log(`  - Profile URL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}`);
-            console.log(`  - Has 'about' or 'summary' or 'linkedinDescription'? Length: ${aboutText.length}`);
-            console.log(`  - Has 'headline'? : ${profile.headline ? 'Yes' : 'No'} (Value: ${profile.headline ? `"${profile.headline.substring(0,50)}..."` : 'N/A'})`);
-            console.log(`  - Has 'experience' array? : ${Array.isArray(profile.experience) && profile.experience.length > 0 ? `Yes, length ${profile.experience.length}` : 'No'}`);
+            log.debug(`batchScorer.scoreChunk: Debugging profile for rec.id ${rec.id}:`);
+            log.debug(`  - Profile URL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}`);
+            log.debug(`  - Has 'about' or 'summary' or 'linkedinDescription'? Length: ${aboutText.length}`);
+            log.debug(`  - Has 'headline'? : ${profile.headline ? 'Yes' : 'No'} (Value: ${profile.headline ? `"${profile.headline.substring(0,50)}..."` : 'N/A'})`);
+            log.debug(`  - Has 'experience' array? : ${Array.isArray(profile.experience) && profile.experience.length > 0 ? `Yes, length ${profile.experience.length}` : 'No'}`);
             let orgFallbackFound = false;
             if (!(Array.isArray(profile.experience) && profile.experience.length > 0)) {
                 for (let i = 1; i <= 5; i++) { // Check first 5 org fallbacks
                     if (profile[`organization_${i}`] || profile[`organization_title_${i}`]) {
                         orgFallbackFound = true;
-                        console.log(`  - Found job history via organization_${i} ("${profile[`organization_${i}`]}") or title_${i} ("${profile[`organization_title_${i}`]}")`);
+                        log.debug(`  - Found job history via organization_${i} ("${profile[`organization_${i}`]}") or title_${i} ("${profile[`organization_title_${i}`]}")`);
                         break;
                     }
                 }
-                if (!orgFallbackFound) console.log(`  - No job history found via organization_X fallback (checked 1-5).`);
+                if (!orgFallbackFound) log.debug(`  - No job history found via organization_X fallback (checked 1-5).`);
             }
             const isMissing = isMissingCritical(profile);
-            console.log(`  - isMissingCritical() will return: ${isMissing}`);
+            log.debug(`  - isMissingCritical() will return: ${isMissing}`);
             if (isMissing) {
                 debugProfileLogCount++; 
             } else {
@@ -313,7 +341,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
 
     if (airtableUpdatesForSkipped.length > 0 && clientBase) {
         try {
-            log.process(`Updating ${airtableUpdatesForSkipped.length} Airtable records for skipped leads`);
+            log.info(`Updating ${airtableUpdatesForSkipped.length} Airtable records for skipped leads`);
             for (let i = 0; i < airtableUpdatesForSkipped.length; i += 10) {
                 await clientBase("Leads").update(airtableUpdatesForSkipped.slice(i, i + 10));
             }
@@ -324,10 +352,10 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
     }
 
     if (!scorable.length) {
-        log.summary(`No scorable leads in this chunk after pre-flight checks`);
+        log.info(`No scorable leads in this chunk after pre-flight checks`);
         return { processed: records.length, successful: 0, failed: 0, tokensUsed: 0 };
     }
-    log.process(`Attempting to score ${scorable.length} leads with Gemini`);
+    log.info(`Attempting to score ${scorable.length} leads with Gemini`);
 
     // MULTI-TENANT: Pass clientId to buildPrompt to load client-specific attributes
     const systemPromptInstructions = await buildPrompt(log, clientId); 
@@ -341,7 +369,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
     
     const maxOutputForRequest = 60000; // DEBUG: High limit
 
-    log.process(`DEBUG MODE - Calling Gemini. Using Model ID: ${BATCH_SCORER_GEMINI_MODEL_ID}. Max output tokens for API: ${maxOutputForRequest}`);
+    log.info(`DEBUG MODE - Calling Gemini. Using Model ID: ${BATCH_SCORER_GEMINI_MODEL_ID}. Max output tokens for API: ${maxOutputForRequest}`);
 
     let rawResponseText = "";
     let usageMetadataForBatch = {}; 
@@ -378,12 +406,12 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         if (!result || !result.response) throw new Error("Gemini API call (batchScorer chunk) returned no response object.");
         
         usageMetadataForBatch = result.response.usageMetadata || {};
-        console.log("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
-        console.log(`batchScorer.scoreChunk: [${clientId || 'unknown'}] TOKENS FOR BATCH CALL (Gemini):`);
-        console.log("  Prompt Tokens      :", usageMetadataForBatch.promptTokenCount || "?");
-        console.log("  Candidates Tokens  :", usageMetadataForBatch.candidatesTokenCount || "?");
-        console.log("  Total Tokens       :", usageMetadataForBatch.totalTokenCount || "?");
-        console.log("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        log.info(`TOKENS FOR BATCH CALL (Gemini):`);
+        log.info("  Prompt Tokens      :", usageMetadataForBatch.promptTokenCount || "?");
+        log.info("  Candidates Tokens  :", usageMetadataForBatch.candidatesTokenCount || "?");
+        log.info("  Total Tokens       :", usageMetadataForBatch.totalTokenCount || "?");
+        log.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
 
         const candidate = result.response.candidates?.[0];
         if (!candidate) { 
@@ -435,7 +463,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         lastLeadId: scorable[scorable.length - 1]?.id || 'unknown'
     };
     
-    log.process(`🎯 BATCH_SCORER_DEBUG: ${JSON.stringify(batchDebugInfo)}`);
+    log.info(`🎯 BATCH_SCORER_DEBUG: ${JSON.stringify(batchDebugInfo)}`);
     
     // Response completeness analysis 
     const responseLength = rawResponseText.length;
@@ -454,12 +482,12 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         finishReason: modelFinishReasonForBatch
     };
     
-    log.process(`🔍 RESPONSE_ANALYSIS: ${JSON.stringify(responseAnalysis)}`);
+    log.info(`🔍 RESPONSE_ANALYSIS: ${JSON.stringify(responseAnalysis)}`);
 
     if (process.env.DEBUG_RAW_GEMINI === "1") {
-        console.log(`batchScorer.scoreChunk: [${clientId || 'unknown'}] DBG-RAW-GEMINI (Full Batch Response Text):\n`, rawResponseText);
+        log.debug(`DBG-RAW-GEMINI (Full Batch Response Text):\n`, rawResponseText);
     } else if (modelFinishReasonForBatch === 'MAX_TOKENS' && rawResponseText) {
-        console.log(`batchScorer.scoreChunk: [${clientId || 'unknown'}] DBG-RAW-GEMINI (MAX_TOKENS - Batch Snippet):\\n${rawResponseText.substring(0, 2000)}...`);
+        log.debug(`DBG-RAW-GEMINI (MAX_TOKENS - Batch Snippet):\n${rawResponseText.substring(0, 2000)}...`);
     }
 
     if (rawResponseText.trim() === "") {
@@ -499,7 +527,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
         return { processed: records.length, successful: 0, failed: records.length, tokensUsed: usageMetadataForBatch.totalTokenCount || 0 }; 
     }
     
-    log.process(`Parsed ${outputArray.length} results from Gemini for chunk of ${scorable.length}`);
+    log.info(`Parsed ${outputArray.length} results from Gemini for chunk of ${scorable.length}`);
     if (outputArray.length !== scorable.length) { 
         await alertAdmin("Gemini Result Count Mismatch (batchScorer)", `Client: ${clientId || 'unknown'}\nExpected ${scorable.length}, got ${outputArray.length}.`);
     }
@@ -575,7 +603,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
             successfulUpdates++;
 
         } catch (scoringErr) { 
-            console.error(`batchScorer.scoreChunk: [${clientId || 'unknown'}] Error in scoring logic for lead ${leadItem.id}: ${scoringErr.message}`, geminiOutputItem);
+            log.error(`Error in scoring logic for lead ${leadItem.id}: ${scoringErr.message}`, geminiOutputItem);
             updateFields["Scoring Status"] = "Failed – Scoring Logic Error";
             updateFields["Date Scored"] = new Date().toISOString();
             updateFields["AI Profile Assessment"] = `Scoring Error: ${scoringErr.message}`;
@@ -586,12 +614,12 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
     }
 
     if (airtableResultUpdates.length > 0 && clientBase) { 
-        console.log(`batchScorer.scoreChunk: [${clientId || 'unknown'}] Attempting final Airtable update for ${airtableResultUpdates.length} leads.`);
+        log.info(`Attempting final Airtable update for ${airtableResultUpdates.length} leads.`);
         for (let i = 0; i < airtableResultUpdates.length; i += 10) {
             const batchUpdates = airtableResultUpdates.slice(i, i + 10);
             try {
                 await clientBase("Leads").update(batchUpdates);
-                log.process(`Updated batch of ${batchUpdates.length} Airtable records`);
+                log.info(`Updated batch of ${batchUpdates.length} Airtable records`);
             } catch (airtableUpdateError) {
                 log.error(`Airtable update error for scored/failed leads: ${airtableUpdateError.message}`, airtableUpdateError.stack);
                 await alertAdmin("Airtable Update Failed (Batch Scoring Results)", `Client: ${clientId || 'unknown'}\nError: ${String(airtableUpdateError)}`);
@@ -602,7 +630,7 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
             }
         }
     }
-    log.summary(`Finished chunk. Scorable: ${scorable.length}, Updates: ${airtableResultUpdates.length}, Successful: ${successfulUpdates}, Failed: ${failedUpdates}`);
+    log.info(`Finished chunk. Scorable: ${scorable.length}, Updates: ${airtableResultUpdates.length}, Successful: ${successfulUpdates}, Failed: ${failedUpdates}`);
     
     return { 
         processed: records.length, 
@@ -614,10 +642,17 @@ async function scoreChunk(records, clientId, clientBase, logger = null) {
 
 /* ---------- MULTI-TENANT PUBLIC EXPORTED FUNCTION ---------------------- */
 async function run(req, res, dependencies) { 
-    // Create system-level logger for multi-tenant lead scoring operations
-    const systemLogger = createSafeLogger('SYSTEM', null, 'lead_scoring');
+    // Determine runId from request (passed by API route or generated)
+    const runId = req?.query?.parentRunId || req?.query?.runId || 'UNKNOWN';
     
-    systemLogger.setup("=== STARTING MULTI-TENANT LEAD SCORING ===");
+    // Create system-level logger for multi-tenant lead scoring operations
+    const systemLogger = createLogger({
+        runId: runId,
+        clientId: 'SYSTEM',
+        operation: 'lead_scoring'
+    });
+    
+    systemLogger.info("=== STARTING MULTI-TENANT LEAD SCORING ===");
 
     if (!dependencies || !dependencies.vertexAIClient || !dependencies.geminiModelId) {
         const errorMsg = "Critical dependencies (vertexAIClient, geminiModelId) not provided";
@@ -632,20 +667,20 @@ async function run(req, res, dependencies) {
     BATCH_SCORER_VERTEX_AI_CLIENT = dependencies.vertexAIClient;
     BATCH_SCORER_GEMINI_MODEL_ID = dependencies.geminiModelId;
 
-    systemLogger.setup("Dependencies received and set");
+    systemLogger.info("Dependencies received and set");
 
     const startTime = Date.now();
     const limit = Number(req?.query?.limit) || 1000;
     const requestedClientId = req?.query?.clientId;
 
-    systemLogger.setup(`Parameters: limit=${limit}, clientId=${requestedClientId || 'ALL'}`);
+    systemLogger.info(`Parameters: limit=${limit}, clientId=${requestedClientId || 'ALL'}`);
 
     try {
         let clientsToProcess = [];
         
         if (requestedClientId) {
             // Single client mode
-            systemLogger.setup(`Single client mode requested for: ${requestedClientId}`);
+            systemLogger.info(`Single client mode requested for: ${requestedClientId}`);
             const isValid = await clientService.validateClient(requestedClientId);
             if (!isValid) {
                 const errorMsg = `Invalid or inactive client: ${requestedClientId}`;
@@ -659,41 +694,39 @@ async function run(req, res, dependencies) {
             clientsToProcess = [client];
         } else {
             // Multi-client mode - process all active clients
-            systemLogger.setup("Multi-client mode - processing all active clients");
+            systemLogger.info("Multi-client mode - processing all active clients");
             clientsToProcess = await clientService.getAllActiveClients();
         }
 
         if (!clientsToProcess.length) {
             const noClientsMsg = "No active clients found to process";
-            systemLogger.summary(noClientsMsg);
+            systemLogger.info(noClientsMsg);
             if (res && res.json && !res.headersSent) {
                 res.json({ ok: true, message: noClientsMsg });
             }
             return;
         }
 
-        systemLogger.setup(`Processing ${clientsToProcess.length} client(s): ${clientsToProcess.map(c => c.clientId).join(', ')}`);
+        systemLogger.info(`Processing ${clientsToProcess.length} client(s): ${clientsToProcess.map(c => c.clientId).join(', ')}`);
 
         let totalLeadsProcessed = 0;
         let totalSuccessful = 0;
         let totalFailed = 0;
         let totalTokensUsed = 0;
         const clientResults = [];
-        
-        // Extract runId from request if available
-        const runId = req?.query?.runId;
-        if (runId) {
-            systemLogger.setup(`Using run ID: ${runId}`);
-        }
 
         // Process each client sequentially for error isolation
         for (const client of clientsToProcess) {
             const clientId = client.clientId;
             const clientStartTime = Date.now();
             
-            // Create client-specific logger with shared session ID
-            const clientLogger = createSafeLogger(clientId, systemLogger.getSessionId(), 'lead_scoring');
-            clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${clientId}) ---`);
+            // Create client-specific logger
+            const clientLogger = createLogger({
+                runId: runId,
+                clientId: clientId,
+                operation: 'lead_scoring'
+            });
+            clientLogger.info(`--- PROCESSING CLIENT: ${client.clientName} (${clientId}) ---`);
             
             // Initialize client variables early
             let clientProcessed = 0;
@@ -709,12 +742,12 @@ async function run(req, res, dependencies) {
                     throw new Error(`Failed to get Airtable base for client ${clientId}`);
                 }
 
-                clientLogger.setup(`Connected to client base: ${client.airtableBaseId}`);
+                clientLogger.info(`Connected to client base: ${client.airtableBaseId}`);
 
                 // Fetch leads for this client (with error handling)
                 let leads;
                 try {
-                    leads = await fetchLeads(limit, clientBase, clientId, clientLogger);
+                    leads = await fetchLeads(limit, clientBase, clientId, runId);
                 } catch (fetchError) {
                     const errorMsg = `Failed to fetch leads: ${fetchError.message}`;
                     clientLogger.error(errorMsg);
@@ -731,7 +764,7 @@ async function run(req, res, dependencies) {
                         `No leads found with "To Be Scored" status or recently scored (testing mode active)` : 
                         `No leads found with "To Be Scored" status`;
                     
-                    clientLogger.summary(reason);
+                    clientLogger.info(reason);
                     
                     // Log execution for this client
                     const duration = Date.now() - clientStartTime;
@@ -758,7 +791,7 @@ async function run(req, res, dependencies) {
                             });
                             
                             if (recordExists) {
-                                clientLogger.setup(`Updating existing client run record with skip reason: ${reason}`);
+                                clientLogger.info(`Updating existing client run record with skip reason: ${reason}`);
                                 // Only complete the record if it exists
                                 await runRecordService.completeRunRecord({
                                     runId, 
@@ -794,7 +827,7 @@ async function run(req, res, dependencies) {
                     continue;
                 }
 
-                clientLogger.setup(`Fetched ${leads.length} leads. Chunk size: ${CHUNK_SIZE}`);
+                clientLogger.info(`Fetched ${leads.length} leads. Chunk size: ${CHUNK_SIZE}`);
 
                 // Create chunks for this client
                 const chunks = [];
@@ -802,7 +835,7 @@ async function run(req, res, dependencies) {
                     chunks.push(leads.slice(i, i + CHUNK_SIZE));
                 }
 
-                clientLogger.process(`Queuing ${leads.length} leads in ${chunks.length} chunk(s)`);
+                clientLogger.info(`Queuing ${leads.length} leads in ${chunks.length} chunk(s)`);
                 
                 // Reset the client counters since they were declared earlier
                 clientProcessed = 0;
@@ -813,7 +846,7 @@ async function run(req, res, dependencies) {
                 // ARCHITECTURAL FIX: Only check for existing records, never create
                 if (runId) {
                     try {
-                        clientLogger.setup(`Checking for existing client run record for ${clientId} in run ${runId}...`);
+                        clientLogger.info(`Checking for existing client run record for ${clientId} in run ${runId}...`);
                         
                         // Check if record exists first
                         const recordExists = await runRecordService.checkRunRecordExists({
@@ -826,7 +859,7 @@ async function run(req, res, dependencies) {
                         });
                         
                         if (recordExists) {
-                            clientLogger.setup(`Found existing run record for ${runId}/${clientId}`);
+                            clientLogger.info(`Found existing run record for ${runId}/${clientId}`);
                             
                             // Update the existing record with processing started status
                             await runRecordService.updateRunRecord({
@@ -897,7 +930,7 @@ async function run(req, res, dependencies) {
                     try {
                         const success = clientErrors.length === 0;
                         
-                        clientLogger.setup(`Completing client run record for ${clientId}...`);
+                        clientLogger.info(`Completing client run record for ${clientId}...`);
                         const status = success ? 'Success' : 'Error';
                         await runRecordService.completeRunRecord({
                             runId,
@@ -948,10 +981,10 @@ async function run(req, res, dependencies) {
                     errorDetails: clientErrors && clientErrors.length > 0 ? clientErrors : []  // Handle potential undefined
                 });
 
-                console.log(`batchScorer.run: [${clientId}] Client processing completed. Processed: ${clientProcessed}, Successful: ${clientSuccessful}, Failed: ${clientFailed}, Tokens: ${clientTokensUsed}`);
+                clientLogger.info(`Client processing completed. Processed: ${clientProcessed}, Successful: ${clientSuccessful}, Failed: ${clientFailed}, Tokens: ${clientTokensUsed}`);
 
             } catch (clientError) {
-                console.error(`batchScorer.run: [${clientId}] Fatal client processing error:`, clientError);
+                clientLogger.error(`Fatal client processing error:`, clientError);
                 
                 // Log critical client processing errors to Airtable
                 await logCriticalError(clientError, {
@@ -960,7 +993,7 @@ async function run(req, res, dependencies) {
                     operation: 'processClient',
                     runId: runId
                 }).catch(loggingErr => {
-                    console.error(`Failed to log client error to Airtable: ${loggingErr.message}`);
+                    clientLogger.error(`Failed to log client error to Airtable: ${loggingErr.message}`);
                 });
                 
                 // Log client failure
@@ -983,7 +1016,7 @@ async function run(req, res, dependencies) {
                 // Complete client run record if runId is provided
                 if (runId) {
                     try {
-                        console.log(`Completing failed client run record for ${clientId}...`);
+                        clientLogger.info(`Completing failed client run record for ${clientId}...`);
                         // FIXED: Use proper field name capitalization and validate IDs
                         const safeRunId = typeof runId === 'object' ? (runId.runId || runId.id || String(runId)) : String(runId);
                         const safeClientId = typeof clientId === 'object' ? (clientId.clientId || clientId.id || String(clientId)) : String(clientId);
@@ -1000,7 +1033,7 @@ async function run(req, res, dependencies) {
                             }
                         });
                     } catch (error) {
-                        console.warn(`Failed to complete client run record: ${error.message}`);
+                        clientLogger.warn(`Failed to complete client run record: ${error.message}`);
                     }
                 }
 
@@ -1027,18 +1060,18 @@ async function run(req, res, dependencies) {
             ? `Single client processing completed for ${requestedClientId}. Processed: ${totalLeadsProcessed}, Successful: ${totalSuccessful}, Failed: ${totalFailed}, Tokens: ${totalTokensUsed}, Duration: ${totalDuration}s`
             : `Multi-client batch scoring completed for ${clientsToProcess.length} clients. Total processed: ${totalLeadsProcessed}, Successful: ${totalSuccessful}, Failed: ${totalFailed}, Tokens: ${totalTokensUsed}, Duration: ${totalDuration}s`;
         
-        systemLogger.summary(message);
+        systemLogger.info(message);
         
         // Complete job tracking record if runId is provided
         if (runId) {
             try {
-                systemLogger.setup(`Updating aggregate metrics for run ${runId}...`);
+                systemLogger.info(`Updating aggregate metrics for run ${runId}...`);
                 await airtableService.updateAggregateMetrics(runId);
                 
                 const success = totalFailed === 0;
                 const notes = `Processed ${totalLeadsProcessed} leads across ${clientsToProcess.length} clients`;
                 
-                systemLogger.setup(`Completing job tracking record for run ${runId}...`);
+                systemLogger.info(`Completing job tracking record for run ${runId}...`);
                 await airtableService.completeJobRun(runId, success, notes);
             } catch (error) {
                 systemLogger.warn(`Failed to update/complete job tracking record: ${error.message}`);
