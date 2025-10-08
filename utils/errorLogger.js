@@ -1,25 +1,16 @@
 // utils/errorLogger.js
 /**
  * Production error logging service
- * Logs critical errors to Airtable for debugging without needing Render logs
- * ENHANCED: Also sends errors to Sentry for real-time monitoring
+ * Logs errors to Airtable Production Issues table for debugging
+ * 
+ * NOTE: This is a SIMPLE direct logger for explicit error logging from code.
+ * The main error detection system uses pattern-based log scanning via:
+ * - config/errorPatterns.js (regex patterns for CRITICAL/ERROR/WARNING)
+ * - services/logFilterService.js (scans logs and extracts errors)
+ * - API endpoints: /api/analyze-logs/recent and /api/analyze-logs/text
  */
 
-const { isCriticalError, classifySeverity, classifyErrorType, extractLocationFromStack, shouldSkipError, isExpectedBehavior } = require('./errorClassifier');
 const { ERROR_LOG_FIELDS, MASTER_TABLES, ERROR_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
-
-// Sentry integration (lazy-loaded to avoid dependency issues)
-let Sentry = null;
-function getSentry() {
-  if (!Sentry) {
-    try {
-      Sentry = require('@sentry/node');
-    } catch (err) {
-      // Sentry not available, that's ok
-    }
-  }
-  return Sentry;
-}
 
 let masterClientsBase = null;
 let errorLogCache = new Map(); // For deduplication
@@ -44,7 +35,141 @@ function initialize() {
 }
 
 /**
- * Log a critical error to Airtable
+ * Simple severity determination (no complex filtering)
+ * @param {Error} error - The error object
+ * @param {Object} context - Additional context
+ * @returns {string} - Severity level
+ */
+function determineSeverity(error, context = {}) {
+  // Allow explicit override
+  if (context.severity) {
+    return context.severity;
+  }
+  
+  // Simple classification based on error type
+  const errorMessage = error.message || error.toString();
+  
+  // CRITICAL: System crashes, connection failures
+  if (errorMessage.includes('FATAL') ||
+      errorMessage.includes('out of memory') ||
+      errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('Cannot connect')) {
+    return 'CRITICAL';
+  }
+  
+  // WARNING: Deprecations, slow operations
+  if (errorMessage.includes('deprecated') ||
+      errorMessage.includes('slow') ||
+      errorMessage.includes('timeout')) {
+    return 'WARNING';
+  }
+  
+  // Default to ERROR
+  return 'ERROR';
+}
+
+/**
+ * Simple error type determination
+ * @param {Error} error - The error object
+ * @param {Object} context - Additional context
+ * @returns {string} - Error type
+ */
+function determineErrorType(error, context = {}) {
+  const errorMessage = error.message || error.toString();
+  
+  // Module import errors
+  if (errorMessage.includes('Cannot find module') ||
+      errorMessage.includes('MODULE_NOT_FOUND')) {
+    return 'Module Import';
+  }
+  
+  // Airtable errors
+  if (errorMessage.includes('Unknown field name') ||
+      errorMessage.includes('INVALID_REQUEST') ||
+      errorMessage.includes('Record not found')) {
+    return 'Airtable API';
+  }
+  
+  // AI service errors
+  if (errorMessage.includes('Gemini') ||
+      errorMessage.includes('OpenAI') ||
+      errorMessage.includes('AI') ||
+      context.operation?.includes('scoring')) {
+    return 'AI Service';
+  }
+  
+  // Job tracking errors
+  if (errorMessage.includes('run record') ||
+      errorMessage.includes('Job Tracking') ||
+      errorMessage.includes('run ID')) {
+    return 'Job Tracking';
+  }
+  
+  // Network errors
+  if (errorMessage.includes('ECONNREFUSED') ||
+      errorMessage.includes('ETIMEDOUT') ||
+      errorMessage.includes('timeout') ||
+      error.code?.startsWith('E')) {
+    return 'Network';
+  }
+  
+  // Authentication errors
+  if (error.statusCode === 401 || error.statusCode === 403 ||
+      errorMessage.includes('Unauthorized') ||
+      errorMessage.includes('Authentication')) {
+    return 'Authentication';
+  }
+  
+  return 'Unknown';
+}
+
+/**
+ * Extract location information from error stack
+ * @param {Error} error - The error object
+ * @returns {Object} - Location information
+ */
+function extractLocation(error) {
+  try {
+    if (!error.stack) {
+      return { filePath: null, functionName: null, lineNumber: null };
+    }
+    
+    // Parse first line of stack trace (after error message)
+    const lines = error.stack.split('\n');
+    if (lines.length < 2) {
+      return { filePath: null, functionName: null, lineNumber: null };
+    }
+    
+    // Look for pattern: "at functionName (file.js:123:45)"
+    const stackLine = lines[1];
+    const match = stackLine.match(/at\s+(\S+)\s+\((.+):(\d+):(\d+)\)/);
+    
+    if (match) {
+      return {
+        functionName: match[1],
+        filePath: match[2],
+        lineNumber: parseInt(match[3], 10)
+      };
+    }
+    
+    // Alternative pattern: "at file.js:123:45"
+    const simpleMatch = stackLine.match(/at\s+(.+):(\d+):(\d+)/);
+    if (simpleMatch) {
+      return {
+        functionName: null,
+        filePath: simpleMatch[1],
+        lineNumber: parseInt(simpleMatch[2], 10)
+      };
+    }
+    
+    return { filePath: null, functionName: null, lineNumber: null };
+  } catch (err) {
+    return { filePath: null, functionName: null, lineNumber: null };
+  }
+}
+
+/**
+ * Log an error to Airtable Production Issues table
  * @param {Error} error - The error object
  * @param {Object} context - Additional context about the error
  * @returns {Promise<Object|null>} - The created Airtable record or null if skipped
@@ -53,25 +178,11 @@ async function logCriticalError(error, context = {}) {
   try {
     // Skip if error logging is disabled in env
     if (process.env.DISABLE_ERROR_LOGGING === 'true') {
-      console.log('[ErrorLogger] Error logging disabled, skipping');
+      console.log('[ErrorLogger] Error logging disabled via DISABLE_ERROR_LOGGING env var');
       return null;
     }
 
-    // Skip expected business logic errors (unless we want audit trail)
-    if (shouldSkipError(error, context)) {
-      console.log('[ErrorLogger] Skipping expected error:', error.message);
-      return null;
-    }
-
-    // Log all errors at INFO and above (even expected behavior for audit trail)
-    // But skip truly non-critical errors unless forced
-    const severity = classifySeverity(error, context);
-    if (!isCriticalError(error, context) && severity !== 'INFO') {
-      console.log('[ErrorLogger] Error not critical, skipping Airtable log:', error.message);
-      return null;
-    }
-
-    // Rate limiting
+    // Rate limiting - prevent overwhelming Airtable if something goes very wrong
     const now = Date.now();
     if (now - lastHourReset > 3600000) {
       // Reset counter every hour
@@ -80,7 +191,7 @@ async function logCriticalError(error, context = {}) {
     }
 
     if (errorCount >= MAX_ERRORS_PER_HOUR) {
-      console.error('[ErrorLogger] Rate limit exceeded, skipping error log');
+      console.error('[ErrorLogger] Rate limit exceeded (100 errors/hour), skipping error log');
       return null;
     }
 
@@ -102,9 +213,10 @@ async function logCriticalError(error, context = {}) {
       return null;
     }
 
-    // Extract error details
-    const errorType = classifyErrorType(error, context);
-    const location = extractLocationFromStack(error);
+    // Simple error classification (no complex filtering - log everything!)
+    const severity = determineSeverity(error, context);
+    const errorType = determineErrorType(error, context);
+    const location = extractLocation(error);
 
     // Build context JSON
     const contextData = {
@@ -165,34 +277,6 @@ async function logCriticalError(error, context = {}) {
     errorCount++;
 
     console.log('[ErrorLogger] Error logged successfully:', createdRecord.id);
-    
-    // ============================================================================
-    // SENTRY INTEGRATION: Send to Sentry for real-time monitoring
-    // ============================================================================
-    const sentry = getSentry();
-    if (sentry && process.env.SENTRY_DSN) {
-      try {
-        sentry.captureException(error, {
-          level: severity.toLowerCase(), // CRITICAL/ERROR/WARNING → critical/error/warning
-          tags: {
-            errorType,
-            clientId: context.clientId || 'unknown',
-            operation: context.operation || 'unknown',
-            airtableRecordId: createdRecord.id
-          },
-          extra: {
-            ...contextData,
-            location,
-            airtableRecordUrl: `https://airtable.com/${createdRecord.id}`
-          }
-        });
-        console.log('[ErrorLogger] Error also sent to Sentry for real-time monitoring');
-      } catch (sentryError) {
-        // Never let Sentry errors break logging
-        console.error('[ErrorLogger] Failed to send to Sentry:', sentryError.message);
-      }
-    }
-    // ============================================================================
     
     return createdRecord;
 
