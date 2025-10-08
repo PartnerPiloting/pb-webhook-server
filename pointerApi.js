@@ -1,7 +1,8 @@
-/***************************************************************
 const { createLogger } = require('./utils/contextLogger');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
+
+/***************************************************************
   Pointer API – updates Credentials → Record ID for Chat
   then redirects the browser to your Custom GPT
 ***************************************************************/
