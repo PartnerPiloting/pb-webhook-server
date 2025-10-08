@@ -17,7 +17,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         logger = createLogger({ runId: 'SYSTEM', clientId: `SINGLE-${leadId.substring(0, 8)}`, operation: 'single_scorer' });
     }
 
-    logger.setup('scoreLeadNow', `Starting single lead scoring for lead: ${fullLead?.id || fullLead?.public_id || 'N/A'}${clientId ? ` (client: ${clientId})` : ''}`);
+    logger.info( `Starting single lead scoring for lead: ${fullLead?.id || fullLead?.public_id || 'N/A'}${clientId ? ` (client: ${clientId})` : ''}`);
 
     if (!vertexAIClient || !geminiModelId) {
         logger.error('scoreLeadNow', 'vertexAIClient or geminiModelId was not provided');
@@ -31,7 +31,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
     
     const maxOutputForSingleLead = 4096; // Production-appropriate value
 
-    logger.process('scoreLeadNow', `Calling Gemini for single lead - Model: ${geminiModelId}, Max tokens: ${maxOutputForSingleLead}`);
+    logger.debug( `Calling Gemini for single lead - Model: ${geminiModelId}, Max tokens: ${maxOutputForSingleLead}`);
 
     let rawResponseText = ""; 
     let usageMetadata = {};

@@ -1,0 +1,93 @@
+=== COMPREHENSIVE CONSOLE.* AUDIT ===
+Date: $(date)
+
+PRODUCTION DIRECTORIES (routes, services, config):
+✅ routes/: 0 files with console.* - CLEAN
+✅ services/: 0 files with console.* - CLEAN  
+✅ config/: 0 files with console.* - CLEAN
+
+MIDDLEWARE:
+⚠️ middleware/authMiddleware.js: 14 console calls
+   - Usage: Used by 1 production file
+   - Priority: MEDIUM (used in auth flows)
+
+ROOT API FILES (loaded by index.js):
+⚠️ promptApi.js: 5 console calls
+⚠️ recordApi.js: 3 console calls
+⚠️ scoreApi.js: 7 console calls
+⚠️ postScoreTestApi.js: 5 console calls
+⚠️ postScoreBatchApi.js: 6 console calls
+⚠️ queueDispatcher.js: 24 console calls
+   - Priority: HIGH (all loaded by main server)
+   - Total: 50 console calls
+
+CRITICAL UTILS (used by routes/services):
+⚠️ utils/airtableFieldValidator.js: 5 calls (used in 11 files)
+⚠️ utils/clientIdResolver.js: 2 calls (used in 1 file)
+⚠️ utils/errorHandler.js: 1 call (used in 3 files)
+⚠️ utils/parameterValidator.js: 5 calls (used in 2 files)
+⚠️ utils/pbPostsSync.js: 21 calls (used in 3 files)
+⚠️ utils/runIdUtils.js: 2 calls (used in 2 files)
+⚠️ utils/runIdValidator.js: 2 calls (used in 2 files)
+⚠️ utils/wordpressAuth.js: 10 calls (used in 1 file)
+   - Total: 48 console calls
+
+OTHER UTILS (infrastructure):
+⚠️ utils/contextLogger.js: 11 calls (logger itself uses console)
+⚠️ utils/errorLogger.js: 32 calls (error logging service)
+⚠️ utils/structuredLogger.js: 16 calls (legacy logger)
+ℹ️ utils/airtableUtils.js: 3 calls
+ℹ️ utils/pbPostsSync_clean.js: 39 calls (backup file)
+ℹ️ utils/repairAirtablePostsContentQuotes.js: 4 calls
+ℹ️ utils/runIdGenerator.js: 3 calls
+
+REPAIR/SCAN UTILITIES:
+ℹ️ scanBadJsonRecords.js: 11 calls (loaded by index.js)
+ℹ️ repairSingleBadJsonRecord.js: 18 calls (loaded by index.js)
+ℹ️ repairAllBadJsonRecords.js: 14 calls (loaded by index.js)
+
+PRIORITY MIGRATION RECOMMENDATIONS:
+
+TIER 1 - CRITICAL (loaded by index.js, high usage):
+1. promptApi.js (5 calls)
+2. recordApi.js (3 calls)
+3. scoreApi.js (7 calls)
+4. postScoreTestApi.js (5 calls)
+5. postScoreBatchApi.js (6 calls)
+6. queueDispatcher.js (24 calls)
+Total: 50 calls - These are main API endpoints
+
+TIER 2 - HIGH PRIORITY (used by multiple production files):
+7. utils/airtableFieldValidator.js (5 calls, 11 usages)
+8. utils/pbPostsSync.js (21 calls, 3 usages)
+9. utils/parameterValidator.js (5 calls, 2 usages)
+10. utils/wordpressAuth.js (10 calls, 1 usage)
+11. utils/errorHandler.js (1 call, 3 usages)
+12. middleware/authMiddleware.js (14 calls, 1 usage)
+Total: 56 calls - Core utilities
+
+TIER 3 - MEDIUM PRIORITY (less critical):
+13. utils/clientIdResolver.js (2 calls)
+14. utils/runIdUtils.js (2 calls)
+15. utils/runIdValidator.js (2 calls)
+Total: 6 calls
+
+TIER 4 - INFRASTRUCTURE (loggers themselves):
+- utils/contextLogger.js (11 calls) - Logger uses console by design
+- utils/errorLogger.js (32 calls) - Error logger service
+- utils/structuredLogger.js (16 calls) - Legacy logger
+
+TIER 5 - UTILITIES (repair/maintenance):
+- scanBadJsonRecords.js, repairSingleBadJsonRecord.js, etc.
+- These are maintenance scripts
+
+GRAND TOTAL TO MIGRATE:
+- Tier 1 (Root APIs): 6 files, ~50 calls
+- Tier 2 (Utils/Middleware): 6 files, ~56 calls  
+- Tier 3 (Utils): 3 files, ~6 calls
+TOTAL ACTIONABLE: 15 files, ~112 console calls
+
+RECOMMENDATION:
+Migrate Tier 1 + Tier 2 (12 files, ~106 calls) for complete production coverage.
+This will ensure ALL code paths from index.js through routes/services/utils
+use structured logging.

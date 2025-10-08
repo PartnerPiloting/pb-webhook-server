@@ -34,7 +34,7 @@ async function loadAttributes(logger = null, clientId = null) {
     logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attribute_loader' });
   }
 
-  logger.setup('loadAttributes', `Starting attribute loading from Airtable${clientId ? ` for client: ${clientId}` : ''}`);
+  logger.info( `Starting attribute loading from Airtable${clientId ? ` for client: ${clientId}` : ''}`);
 
   // Get the appropriate base instance
   let attributeBase;
@@ -63,7 +63,7 @@ async function loadAttributes(logger = null, clientId = null) {
   }
 
   try {
-    logger.process('loadAttributes', `Fetching attributes from Airtable table: ${TABLE_NAME}`);
+    logger.debug( `Fetching attributes from Airtable table: ${TABLE_NAME}`);
     const rows = await attributeBase(TABLE_NAME).select().all(); // Uses the client-specific base
     const positives = {};
     const negatives = {};
@@ -150,7 +150,7 @@ async function loadAttributeForEditing(attributeId, logger = null) {
   }
 
   try {
-    logger.setup('loadAttributeForEditing', `Loading attribute ${attributeId} for editing`);
+    logger.info( `Loading attribute ${attributeId} for editing`);
     
     if (!base) {
       logger.error('loadAttributeForEditing', 'Airtable base not available from config/airtableClient.js');
@@ -193,7 +193,7 @@ async function updateAttribute(attributeId, data, logger = null) {
   }
 
   try {
-    logger.setup('updateAttribute', `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
+    logger.info( `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
     
     if (!base) {
       logger.error('updateAttribute', 'Airtable base not available from config/airtableClient.js');
@@ -238,7 +238,7 @@ async function listAttributesForEditing(logger = null) {
   }
 
   try {
-    logger.setup('listAttributesForEditing', 'Loading all attributes for editing');
+    logger.info( 'Loading all attributes for editing');
     
     if (!base) {
       logger.error('listAttributesForEditing', 'Airtable base not available from config/airtableClient.js');
@@ -288,7 +288,7 @@ async function loadAttributeForEditingWithClientBase(attributeId, clientBase, lo
   }
 
   try {
-    logger.setup('loadAttributeForEditingWithClientBase', `Loading attribute ${attributeId} for editing from client base`);
+    logger.info( `Loading attribute ${attributeId} for editing from client base`);
     
     if (!clientBase) {
       logger.error('loadAttributeForEditingWithClientBase', 'Client-specific Airtable base not provided');
@@ -331,7 +331,7 @@ async function updateAttributeWithClientBase(attributeId, data, clientBase, logg
   }
 
   try {
-    logger.setup('updateAttributeWithClientBase', `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
+    logger.info( `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
     
     if (!clientBase) {
       logger.error('updateAttributeWithClientBase', 'Client-specific Airtable base not provided');

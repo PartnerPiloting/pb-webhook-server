@@ -19,21 +19,21 @@ async function buildPostScoringPrompt(base, config, logger = null) {
         logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'prompt_builder' });
     }
 
-    logger.setup('buildPostScoringPrompt', 'Starting post scoring prompt construction');
+    logger.info('Starting post scoring prompt construction');
 
     // 1. Load the structured data (prompt components and attributes) from Airtable
     const { promptComponents, attributesById } = await loadPostScoringAirtableConfig(base, config, logger);
 
     if (!promptComponents || promptComponents.length === 0) {
-        logger.error('buildPostScoringPrompt', 'No prompt components loaded from Airtable');
+        logger.error('No prompt components loaded from Airtable');
         throw new Error("PostPromptBuilder: Cannot build prompt. No prompt components were loaded from Airtable.");
     }
     if (!attributesById || Object.keys(attributesById).length === 0) {
-        logger.error('buildPostScoringPrompt', 'No scoring attributes loaded from Airtable');
+        logger.error('No scoring attributes loaded from Airtable');
         throw new Error("PostPromptBuilder: Cannot build prompt. No scoring attributes were loaded from Airtable.");
     }
 
-    logger.process('buildPostScoringPrompt', `Assembling prompt from ${promptComponents.length} components and ${Object.keys(attributesById).length} attributes`);
+    logger.debug(`Assembling prompt from ${promptComponents.length} components and ${Object.keys(attributesById).length} attributes`);
 
     // 2. Assemble the prompt by iterating through the ordered components from Table 2
     let finalPrompt = "";
@@ -87,12 +87,12 @@ function buildScoringRubricSection(attributesById, logger) {
             negativeAttrs.push(attr);
         } else {
             // Add any other attributes to a default list if needed
-            logger.warn('buildScoringRubricSection', `Attribute '${attr.id}' has unhandled category: '${attr.Category}' - defaulting to positive`);
+            logger.warn(`Attribute '${attr.id}' has unhandled category: '${attr.Category}' - defaulting to positive`);
             positiveAttrs.push(attr); // Defaulting to list under positives
         }
     }
 
-    logger.process('buildScoringRubricSection', `Processed attributes: ${positiveAttrs.length} positive, ${negativeAttrs.length} negative, ${skippedCount} skipped (inactive)`);
+    logger.debug(`Processed attributes: ${positiveAttrs.length} positive, ${negativeAttrs.length} negative, ${skippedCount} skipped (inactive)`);
 
     // Format the positive attributes section
     if (positiveAttrs.length > 0) {

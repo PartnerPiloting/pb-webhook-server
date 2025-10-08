@@ -1,0 +1,67 @@
+=== COMPREHENSIVE MIGRATION FINDINGS ===
+
+DISCOVERY: We migrated SOME files but missed others that share similar names or were updated by sed in Phase 3
+
+FILES THAT NEED MIGRATION (CRITICAL - Used in Production):
+
+1. services/airtableService.js - 83 console calls
+   - Used by: batchScorer, smart-resume, apifyProcessRoutes
+   - Purpose: Job tracking and run metrics to Airtable
+   - CRITICAL: This is different from services/airtable/airtableService.js (which WAS migrated)
+
+2. routes/apifyProcessRoutes.js - 140 console calls  
+   - Used by: Apify webhook handler for LinkedIn post scraping
+   - CRITICAL: Multi-tenant post harvesting
+
+3. services/apifyRunsService.js - 25 console calls
+   - Purpose: Apify run tracking and management
+
+4. services/runRecordAdapterSimple.js - 13 calls
+   - Purpose: Run record management
+
+5. services/runRecordServiceV2.js - 5 calls
+   - Purpose: Run record service v2
+
+PARTIALLY MIGRATED (Need cleanup):
+
+6. routes/diagnosticRoutes.js - 2 console.error calls remain
+   - Lines 99, 160 - error handlers missed by sed
+   - Has contextLogger import but 2 console.error calls remain
+
+7. services/jobTracking.js - 7 console calls remain  
+   - Lines 252-254, 258, 309-311 - [DIAGNOSTIC] tagged calls
+   - Has contextLogger import but diagnostic calls remain
+
+LESS CRITICAL (but should be clean):
+
+8. services/costGovernanceService.js - 10 calls
+9. services/emailNotificationService.js - 14 calls
+10. services/emailReportingService.js - 8 calls
+11. services/emailTemplateService.js - 12 calls
+12. services/postScoringMetricsHandler.js - 1 call
+13. services/postService.js - 4 calls
+14. services/recordCache.js - 4 calls
+
+ROUTES (Less Critical):
+- routes/apifyControlRoutes.js - 11 calls
+- routes/apifyRunsRoutes.js - 4 calls
+- routes/authTestRoutes.js - 9 calls
+- routes/debugRoutes.js - 2 calls
+- routes/topScoringLeadsRoutes.js - 5 calls
+- routes/wpAuthBridge.js - 11 calls
+- routes/wpIdAuth.js - 7 calls
+
+UTILS (Various utility functions):
+- Multiple utils files with console.* (20+ files)
+
+RECOMMENDATION:
+Prioritize migration of TOP 7 files:
+1. services/airtableService.js (83 calls - CRITICAL)
+2. routes/apifyProcessRoutes.js (140 calls - CRITICAL)
+3. services/apifyRunsService.js (25 calls)
+4. services/runRecordAdapterSimple.js (13 calls)
+5. services/runRecordServiceV2.js (5 calls)
+6. routes/diagnosticRoutes.js (2 calls - cleanup)
+7. services/jobTracking.js (7 calls - cleanup)
+
+These 7 files are used in scoring runs, post harvesting, and run tracking.

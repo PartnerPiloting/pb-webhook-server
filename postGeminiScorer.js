@@ -10,7 +10,7 @@ async function scorePostsWithGemini(geminiInputObject, configuredGeminiModelInst
         logger = createLogger({ runId: 'SYSTEM', clientId: clientId, operation: 'post_gemini_scorer' });
     }
 
-    logger.setup('scorePostsWithGemini', `Starting Gemini post scoring for ${geminiInputObject?.posts?.length || 0} posts`);
+    logger.info( `Starting Gemini post scoring for ${geminiInputObject?.posts?.length || 0} posts`);
 
     if (!geminiInputObject || !geminiInputObject.posts || geminiInputObject.posts.length === 0) {
         logger.error('scorePostsWithGemini', 'No posts provided to score');
@@ -50,7 +50,7 @@ Here is the object to analyze:
 ${JSON.stringify(geminiInputObject, null, 2)}
 `;
 
-    logger.process('scorePostsWithGemini', `Calling Gemini API - Prompt length: ${userPromptContent.length}, Max tokens: ${MAX_OUTPUT_TOKENS_FOR_POST_SCORING}`);
+    logger.debug( `Calling Gemini API - Prompt length: ${userPromptContent.length}, Max tokens: ${MAX_OUTPUT_TOKENS_FOR_POST_SCORING}`);
     let rawResponseText = "", usageMetadata = {}, modelFinishReason = null, modelSafetyRatings = null;
     try {
         const requestPayload = {
