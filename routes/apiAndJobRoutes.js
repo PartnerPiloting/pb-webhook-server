@@ -973,8 +973,8 @@ router.get("/debug-render-api", async (_req, res) => {
       ownerId: RENDER_OWNER_ID,
       limit: '5',
       direction: 'backward',
+      resource: RENDER_SERVICE_ID,  // Just 'resource', not 'resource[]'
     });
-    params.append('resource[]', RENDER_SERVICE_ID);
     
     const logsUrl = `https://api.render.com/v1/logs?${params.toString()}`;
     
