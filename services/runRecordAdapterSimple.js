@@ -55,13 +55,13 @@ function getLoggerFromOptions(options, clientId, runId, context = 'general') {
 
 // CRITICAL: Verify constants are properly imported
 if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_FIELDS || !MASTER_TABLES) {
-  console.error('CRITICAL: Constants not properly imported from airtableUnifiedConstants.js');
+  logger.error('CRITICAL: Constants not properly imported from airtableUnifiedConstants.js');
   throw new Error('Missing required constants');
 }
 
 // CRITICAL: Verify status values are properly imported
 if (!CLIENT_RUN_STATUS_VALUES || typeof CLIENT_RUN_STATUS_VALUES !== 'object') {
-  console.error('CRITICAL: CLIENT_RUN_STATUS_VALUES not properly imported from airtableUnifiedConstants.js');
+  logger.error('CRITICAL: CLIENT_RUN_STATUS_VALUES not properly imported from airtableUnifiedConstants.js');
   throw new Error('Missing required status constants');
 }
 
@@ -110,7 +110,7 @@ async function createRunRecord(params) {
   // CRITICAL FIX: Validate params is an object before destructuring
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     throw new Error(errMsg);
   }
   
@@ -230,7 +230,7 @@ async function updateRunRecord(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     throw new Error(errMsg);
   }
   
@@ -312,12 +312,12 @@ async function completeRunRecord(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[${source}] ${errMsg}`);
+    logger.error(`[${source}] ${errMsg}`);
     throw new Error(errMsg);
   }
   
   // DEBUG: Log params structure to diagnose undefined issues
-  console.log(`[${source}] Received params with keys: ${Object.keys(params).map(k => k === undefined ? 'UNDEFINED' : `"${k}"`).join(', ')}`);
+  logger.info(`[${source}] Received params with keys: ${Object.keys(params).map(k => k === undefined ? 'UNDEFINED' : `"${k}"`).join(', ')}`);
   
   // Extract values using standardized field names
   const runId = params.runId;
@@ -327,7 +327,7 @@ async function completeRunRecord(params) {
   const status = params[statusKey] || params.status || params.Status;
   
   // DEBUG: Log what status value we extracted
-  console.log(`[${source}] Extracted status: ${status} (type: ${typeof status}), statusKey used: ${statusKey}`);
+  logger.info(`[${source}] Extracted status: ${status} (type: ${typeof status}), statusKey used: ${statusKey}`);
   const notesKey = FIELD_NAMES?.SYSTEM_NOTES || 'System Notes';
   const notes = params[notesKey] || params.systemNotes || params.notes || '';
   const options = params.options || {};
@@ -500,7 +500,7 @@ async function createJobRecord(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     throw new Error(errMsg);
   }
   
@@ -637,7 +637,7 @@ async function completeJobRecord(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     throw new Error(errMsg);
   }
   
@@ -712,7 +712,7 @@ async function updateJobAggregates(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     throw new Error(errMsg);
   }
   
@@ -1022,7 +1022,7 @@ async function checkRunRecordExists(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     return false; // Fail safe - return false on validation errors
   }
   
@@ -1031,7 +1031,7 @@ async function checkRunRecordExists(params) {
   // ROOT CAUSE FIX: Validate runId
   if (!runId) {
     const errorMsg = `Missing runId parameter in checkRunRecordExists`;
-    console.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     return false; // Fail safe - return false on missing runId
   }
 
@@ -1204,7 +1204,7 @@ async function safeUpdateMetrics(params) {
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    console.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     throw new Error(errMsg);
   }
   

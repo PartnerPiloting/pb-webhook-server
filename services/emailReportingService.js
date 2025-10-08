@@ -6,6 +6,9 @@
  */
 
 const https = require('https');
+const { createLogger } = require('../utils/contextLogger');
+
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'system' });
 const querystring = require('querystring');
 
 class EmailReportingService {
@@ -20,12 +23,12 @@ class EmailReportingService {
     initialize() {
         // Check for Mailgun configuration
         if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN || !this.alertEmail) {
-            console.log('⚠️  Email service not configured (missing Mailgun credentials)');
+            logger.info('⚠️  Email service not configured (missing Mailgun credentials)');
             return;
         }
         
         this.configured = true;
-        console.log('✅ Email service configured successfully (Mailgun)');
+        logger.info('✅ Email service configured successfully (Mailgun)');
     }
     
     isConfigured() {
@@ -446,7 +449,7 @@ class EmailReportingService {
             stream === this.#lastSentEmail.stream &&
             (now - this.#lastSentEmail.timestamp) < 30000) {
             
-            console.log(`📧 DUPLICATE EMAIL DETECTED - Skipping duplicate email for runId: ${runId}`);
+            logger.info(`📧 DUPLICATE EMAIL DETECTED - Skipping duplicate email for runId: ${runId}`);
             return true;
         }
         
@@ -458,13 +461,13 @@ class EmailReportingService {
      */
     async sendExecutionReport(reportData) {
         if (!this.configured) {
-            console.log('📧 Email not configured - skipping report');
+            logger.info('📧 Email not configured - skipping report');
             return { success: false, reason: 'Email not configured' };
         }
         
         // Check for duplicate email sends
         if (this.#isDuplicateEmailSend(reportData)) {
-            console.log('📧 Preventing duplicate email send - same runId within 30 seconds');
+            logger.info('📧 Preventing duplicate email send - same runId within 30 seconds');
             return { success: true, sent: true, duplicate: true, message: 'Duplicate email prevented' };
         }
         
@@ -479,7 +482,7 @@ class EmailReportingService {
                 
                 // If undefined or NaN, default to 100%
                 if (successRate === undefined || isNaN(successRate)) {
-                    console.log('⚠️ Success rate is undefined or NaN, defaulting to 100%');
+                    logger.info('⚠️ Success rate is undefined or NaN, defaulting to 100%');
                     successRate = 100;
                 }
                 
@@ -517,7 +520,7 @@ class EmailReportingService {
             
             const result = await this.sendMailgunEmail(emailData);
             
-            console.log('📧 Email report sent successfully', { 
+            logger.info('📧 Email report sent successfully', { 
                 subject, 
                 to: this.alertEmail,
                 mailgunId: result.id
@@ -530,7 +533,7 @@ class EmailReportingService {
                 to: this.alertEmail
             };
         } catch (error) {
-            console.error('📧 Email report failed:', error.message);
+            logger.error('📧 Email report failed:', error.message);
             // Log email service error
             logCriticalError(error, { operation: 'send_execution_report' }).catch(() => {});
             return { 

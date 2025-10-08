@@ -12,6 +12,8 @@
 
 const express = require('express');
 const router = express.Router();
+const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'wp-id-auth' });
 const clientService = require('../services/clientService');
 
 /**
@@ -23,7 +25,7 @@ router.get('/auth-by-wp-id', async (req, res) => {
     const wpUserId = req.query.wpUserId || req.query.wpuserid || req.query.id;
     
     if (!wpUserId) {
-      console.log('WP ID Auth: No WordPress User ID provided');
+      logger.info('WP ID Auth: No WordPress User ID provided');
       return res.status(400).json({
         status: 'error',
         code: 'MISSING_WP_USER_ID',
@@ -34,7 +36,7 @@ router.get('/auth-by-wp-id', async (req, res) => {
 
     const userId = parseInt(wpUserId, 10);
     if (isNaN(userId) || userId <= 0) {
-      console.log(`WP ID Auth: Invalid WordPress User ID: ${wpUserId}`);
+      logger.info(`WP ID Auth: Invalid WordPress User ID: ${wpUserId}`);
       return res.status(400).json({
         status: 'error',
         code: 'INVALID_WP_USER_ID', 
@@ -42,13 +44,13 @@ router.get('/auth-by-wp-id', async (req, res) => {
       });
     }
 
-    console.log(`WP ID Auth: Looking up client for WordPress User ID: ${userId}`);
+    logger.info(`WP ID Auth: Looking up client for WordPress User ID: ${userId}`);
     
     // Look up the client by WordPress User ID
     const client = await clientService.getClientByWpUserId(userId);
     
     if (!client) {
-      console.log(`WP ID Auth: Client not found for WP User ID: ${userId}`);
+      logger.info(`WP ID Auth: Client not found for WP User ID: ${userId}`);
       return res.status(403).json({
         status: 'error',
         code: 'CLIENT_NOT_FOUND',
@@ -58,7 +60,7 @@ router.get('/auth-by-wp-id', async (req, res) => {
     }
 
     if (client.status !== 'Active') {
-      console.log(`WP ID Auth: Client found but inactive: ${client.clientName} (${client.status})`);
+      logger.info(`WP ID Auth: Client found but inactive: ${client.clientName} (${client.status})`);
       return res.status(403).json({
         status: 'error',
         code: 'CLIENT_INACTIVE',
@@ -72,7 +74,7 @@ router.get('/auth-by-wp-id', async (req, res) => {
     }
 
     // Success! Return client profile
-    console.log(`WP ID Auth: Authentication successful for ${client.clientName} (WP User ID: ${userId})`);
+    logger.info(`WP ID Auth: Authentication successful for ${client.clientName} (WP User ID: ${userId})`);
     return res.json({
       status: 'success',
       message: 'Authentication successful',
@@ -97,10 +99,9 @@ router.get('/auth-by-wp-id', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('WP ID Auth: Error during authentication:', error.message);
+    logger.error('WP ID Auth: Error during authentication:', { error: error.message, stack: error.stack });
     
     return res.status(500).json({
-    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
       status: 'error',
       code: 'AUTH_ERROR',
       message: 'Authentication system error'

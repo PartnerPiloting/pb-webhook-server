@@ -7,6 +7,8 @@ const express = require('express');
 const { getFetch } = require('../utils/safeFetch');
 const fetch = getFetch();
 const router = express.Router();
+const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'route' });
 // Removed old error logger - now using production issue tracking
 const logCriticalError = async () => {};
 
@@ -27,7 +29,7 @@ async function logRouteError(error, req = null, additionalContext = {}) {
       ...additionalContext
     });
   } catch (loggingError) {
-    console.error('Failed to log route error to Airtable:', loggingError.message);
+    logger.error('Failed to log route error to Airtable:', loggingError.message);
   }
 }
 
@@ -163,7 +165,7 @@ function mapApifyItemsToPBPosts(items = []) {
         }
       });
     } catch (err) {
-      console.warn(`[ApifyControl] Error processing item ${i}: ${err.message}`);
+      logger.warn(`[ApifyControl] Error processing item ${i}: ${err.message}`);
       logRouteError(err, req).catch(() => {});
     }
   }
@@ -321,7 +323,7 @@ router.post('/api/apify/run', async (req, res) => {
           mode: 'inline'
         });
       } catch (runTrackingError) {
-        console.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
+        logger.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
         await logRouteError(runTrackingError, req).catch(() => {});
         // Continue execution - run tracking failure shouldn't break the flow
       }
@@ -354,7 +356,7 @@ router.post('/api/apify/run', async (req, res) => {
           });
         }
       } catch (reconcileErr) {
-        console.warn('[ApifyControl] profileUrl reconcile skipped:', reconcileErr.message);
+        logger.warn('[ApifyControl] profileUrl reconcile skipped:', reconcileErr.message);
         await logRouteError(reconcileErr, req).catch(() => {});
       }
       let result = { processed: 0, updated: 0, skipped: 0 };
@@ -364,7 +366,7 @@ router.post('/api/apify/run', async (req, res) => {
         try {
           clientBase = await getClientBase(clientId);
         } catch (e) {
-          console.warn(`[ApifyControl] Failed to resolve client base for ${clientId}: ${e.message}`);
+          logger.warn(`[ApifyControl] Failed to resolve client base for ${clientId}: ${e.message}`);
           await logRouteError(e, req).catch(() => {});
         }
         result = await syncPBPostsToAirtable(posts, clientBase || null);
@@ -383,12 +385,12 @@ router.post('/api/apify/run', async (req, res) => {
             });
             
           } catch (metricsError) {
-            console.error(`[ApifyControl] Failed to update post harvesting metrics: ${metricsError.message}`);
+            logger.error(`[ApifyControl] Failed to update post harvesting metrics: ${metricsError.message}`);
             await logRouteError(metricsError, req).catch(() => {});
             // Continue execution even if metrics update fails
           }
         } else {
-          console.log(`[ApifyControl] Skipping metrics update for standalone run (no clientRunId provided)`);
+          logger.info(`[ApifyControl] Skipping metrics update for standalone run (no clientRunId provided)`);
         }
       }
       return res.json({ ok: true, mode: 'inline', runId: run.id, status: run.status, datasetId, counts: { items: (items||[]).length, posts: posts.length }, result });
@@ -402,7 +404,7 @@ router.post('/api/apify/run', async (req, res) => {
     // Generate a standardized system run ID
     const runIdSystem = require('../services/runIdSystem');
     const systemRunId = runIdSystem.generateRunId();
-    console.log(`[ApifyControl] Generated system run ID ${systemRunId} for client ${clientId}`);
+    logger.info(`[ApifyControl] Generated system run ID ${systemRunId} for client ${clientId}`);
 
     // Add webhook configuration for Actor runs
     const defaultWebhookUrl = 'https://pb-webhook-server.onrender.com/api/apify-webhook';
@@ -460,16 +462,16 @@ router.post('/api/apify/run', async (req, res) => {
         mode: 'webhook',
         systemRunId: systemRunId  // Include our system run ID
       });
-      console.log(`[ApifyControl] Created run tracking for Apify ID ${run.id} -> System ID ${systemRunId} -> Client ${clientId}`);
+      logger.info(`[ApifyControl] Created run tracking for Apify ID ${run.id} -> System ID ${systemRunId} -> Client ${clientId}`);
     } catch (runTrackingError) {
-      console.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
+      logger.warn(`[ApifyControl] Failed to track run ${run.id}:`, runTrackingError.message);
       await logRouteError(runTrackingError, req).catch(() => {});
       // Continue execution - run tracking failure shouldn't break the flow
     }
     
     return res.json({ ok: true, mode: 'webhook', runId: run.id, systemRunId: systemRunId, status: run.status, url: run.url || run.buildUrl || null });
   } catch (e) {
-    console.error('[ApifyControl] run error:', e.message);
+    logger.error('[ApifyControl] run error:', e.message);
     await logCriticalError(e, { operation: 'apify_run_webhook', req }).catch(() => {});
     return res.status(500).json({ ok: false, error: e.message });
   }

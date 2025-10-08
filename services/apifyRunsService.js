@@ -6,6 +6,14 @@ const logCriticalError = async () => {};
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for apify runs service
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'apify-runs-service' 
+});
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
 // Using the new runIdSystem service as the single source of truth
@@ -31,7 +39,7 @@ let airtableService;
 try {
     airtableService = require('./airtableService');
 } catch (err) {
-    console.error("Failed to load airtableService:", err.message);
+    logger.error("Failed to load airtableService:", err.message);
     logCriticalError(err, { context: 'Module initialization error', service: 'apifyRunsService.js' }).catch(() => {});
 }
 
@@ -54,7 +62,7 @@ function initializeMasterClientsBase() {
     });
 
     masterClientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-    console.log("Master Clients base initialized for Apify Runs service");
+    logger.info("Master Clients base initialized for Apify Runs service");
     return masterClientsBase;
 }
 
@@ -79,12 +87,12 @@ async function createApifyRun(runId, clientId, options = {}) {
         
         if (options.systemRunId) {
             normalizedRunId = options.systemRunId;
-            console.log(`[ApifyRuns] Using provided system run ID: ${normalizedRunId} for Apify run: ${runId} and client ${clientId}`);
+            logger.info(`[ApifyRuns] Using provided system run ID: ${normalizedRunId} for Apify run: ${runId} and client ${clientId}`);
         } else {
             // Generate a new run ID and add client suffix
             const baseRunId = runIdSystem.generateRunId();
             normalizedRunId = runIdSystem.createClientRunId(baseRunId, clientId);
-            console.log(`[ApifyRuns] Created new run ID: ${normalizedRunId} for Apify run: ${runId} and client ${clientId}`);
+            logger.info(`[ApifyRuns] Created new run ID: ${normalizedRunId} for Apify run: ${runId} and client ${clientId}`);
         }
         
         const recordData = {
@@ -100,7 +108,7 @@ async function createApifyRun(runId, clientId, options = {}) {
             [APIFY_FIELDS.LAST_UPDATED]: new Date().toISOString()
         };
 
-        console.log(`[ApifyRuns] Creating run record: ${runId} for client: ${clientId}`);
+        logger.info(`[ApifyRuns] Creating run record: ${runId} for client: ${clientId}`);
         
         const createdRecords = await base(MASTER_TABLES.APIFY).create([{
             fields: recordData
@@ -126,11 +134,11 @@ async function createApifyRun(runId, clientId, options = {}) {
         // Cache the record
         runsCache.set(runId, { data: runData, timestamp: Date.now() });
         
-        console.log(`[ApifyRuns] Successfully created run record: ${runId}`);
+        logger.info(`[ApifyRuns] Successfully created run record: ${runId}`);
         return runData;
 
     } catch (error) {
-        console.error(`[ApifyRuns] Error creating run record for ${runId}:`, error.message);
+        logger.error(`[ApifyRuns] Error creating run record for ${runId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
@@ -148,13 +156,13 @@ async function getApifyRun(runId, options = {}) {
         // Check cache first
         const cached = runsCache.get(runId);
         if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION_MS) {
-            console.log(`[ApifyRuns] Returning cached run data for: ${runId}`);
+            logger.info(`[ApifyRuns] Returning cached run data for: ${runId}`);
             return cached.data;
         }
 
         const base = initializeMasterClientsBase();
         
-        console.log(`[ApifyRuns] Fetching run data for: ${runId}`);
+        logger.info(`[ApifyRuns] Fetching run data for: ${runId}`);
         
         // Build the filter formula based on whether we're looking up by Apify run ID or system run ID
         let filterFormula;
@@ -175,7 +183,7 @@ async function getApifyRun(runId, options = {}) {
         }).firstPage();
 
         if (records.length === 0) {
-            console.log(`[ApifyRuns] No run found for: ${runId}`);
+            logger.info(`[ApifyRuns] No run found for: ${runId}`);
             return null;
         }
 
@@ -199,11 +207,11 @@ async function getApifyRun(runId, options = {}) {
         // Cache the result
         runsCache.set(runId, { data: runData, timestamp: Date.now() });
         
-        console.log(`[ApifyRuns] Found run for client: ${runData.clientId}`);
+        logger.info(`[ApifyRuns] Found run for client: ${runData.clientId}`);
         return runData;
 
     } catch (error) {
-        console.error(`[ApifyRuns] Error fetching run ${runId}:`, error.message);
+        logger.error(`[ApifyRuns] Error fetching run ${runId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
@@ -250,7 +258,7 @@ async function updateApifyRun(runId, updateData) {
             updateFields[APIFY_FIELDS.ERROR] = updateData.error;
         }
 
-        console.log(`[ApifyRuns] Updating run ${runId} with status: ${updateData.status}`);
+        logger.info(`[ApifyRuns] Updating run ${runId} with status: ${updateData.status}`);
         
         const updatedRecords = await base(MASTER_TABLES.APIFY).update([{
             id: existingRun.id,
@@ -276,11 +284,11 @@ async function updateApifyRun(runId, updateData) {
         // Update cache
         runsCache.set(runId, { data: runData, timestamp: Date.now() });
         
-        console.log(`[ApifyRuns] Successfully updated run: ${runId}`);
+        logger.info(`[ApifyRuns] Successfully updated run: ${runId}`);
         return runData;
 
     } catch (error) {
-        console.error(`[ApifyRuns] Error updating run ${runId}:`, error.message);
+        logger.error(`[ApifyRuns] Error updating run ${runId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
@@ -296,7 +304,7 @@ async function getClientIdForRun(runId) {
         const runData = await getApifyRun(runId);
         return runData ? runData.clientId : null;
     } catch (error) {
-        console.error(`[ApifyRuns] Error getting client ID for run ${runId}:`, error.message);
+        logger.error(`[ApifyRuns] Error getting client ID for run ${runId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'apifyRunsService.js' }).catch(() => {});
         return null;
     }
@@ -312,7 +320,7 @@ async function getClientRuns(clientId, limit = 10) {
     try {
         const base = initializeMasterClientsBase();
         
-        console.log(`[ApifyRuns] Fetching recent runs for client: ${clientId}`);
+        logger.info(`[ApifyRuns] Fetching recent runs for client: ${clientId}`);
         
         const records = await base(MASTER_TABLES.APIFY).select({
             filterByFormula: `{${APIFY_FIELDS.CLIENT_ID}} = '${clientId}'`,
@@ -335,11 +343,11 @@ async function getClientRuns(clientId, limit = 10) {
             error: record.fields[APIFY_FIELDS.ERROR] ? record.get(APIFY_FIELDS.ERROR) : null
         }));
 
-        console.log(`[ApifyRuns] Found ${runs.length} runs for client: ${clientId}`);
+        logger.info(`[ApifyRuns] Found ${runs.length} runs for client: ${clientId}`);
         return runs;
 
     } catch (error) {
-        console.error(`[ApifyRuns] Error fetching runs for client ${clientId}:`, error.message);
+        logger.error(`[ApifyRuns] Error fetching runs for client ${clientId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'apifyRunsService.js' }).catch(() => {});
         throw error;
     }
@@ -375,7 +383,7 @@ function extractRunIdFromPayload(body) {
         
         return null;
     } catch (error) {
-        console.error('[ApifyRuns] Error extracting run ID from payload:', error.message);
+        logger.error('[ApifyRuns] Error extracting run ID from payload:', error.message);
         logCriticalError(error, { context: 'Service error (swallowed)', service: 'apifyRunsService.js' }).catch(() => {});
         return null;
     }
@@ -386,7 +394,7 @@ function extractRunIdFromPayload(body) {
  */
 function clearRunsCache() {
     runsCache.clear();
-    console.log("[ApifyRuns] Cache cleared");
+    logger.info("[ApifyRuns] Cache cleared");
 }
 
 /**
@@ -424,7 +432,7 @@ async function updateClientRunMetrics(runId, clientId, data) {
         
         if (!validatedRunId || !validatedClientId) {
             const errorMsg = `Invalid parameters: runId=${JSON.stringify(standardizedRunId)}, clientId=${JSON.stringify(clientId)}`;
-            console.error(`[APIFY_METRICS] ${errorMsg}`);
+            logger.error(`[APIFY_METRICS] ${errorMsg}`);
             throw new Error(errorMsg);
         }
         
@@ -436,11 +444,11 @@ async function updateClientRunMetrics(runId, clientId, data) {
             options: { source: 'apify_metrics' }
         });
         
-        console.log(`[APIFY_METRICS] Run record exists check for ${validatedRunId}: ${recordExists ? 'YES' : 'NO'}`);
+        logger.info(`[APIFY_METRICS] Run record exists check for ${validatedRunId}: ${recordExists ? 'YES' : 'NO'}`);
         
         if (!recordExists) {
             const errorMsg = `No run record exists for ${validatedRunId}/${validatedClientId} - cannot update metrics`;
-            console.error(`[APIFY_METRICS] CRITICAL ERROR: ${errorMsg}`);
+            logger.error(`[APIFY_METRICS] CRITICAL ERROR: ${errorMsg}`);
             throw new Error(errorMsg);
         }
         
@@ -481,7 +489,7 @@ async function processApifyWebhook(webhookData, clientId, runId) {
     
     if (!validatedRunId || !validatedClientId) {
         const errorMsg = `Invalid parameters: runId=${JSON.stringify(runId)}, clientId=${JSON.stringify(clientId)}`;
-        console.error(`[APIFY_WEBHOOK] ${errorMsg}`);
+        logger.error(`[APIFY_WEBHOOK] ${errorMsg}`);
         throw new Error(errorMsg);
     }
     

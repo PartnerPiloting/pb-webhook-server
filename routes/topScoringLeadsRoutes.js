@@ -29,7 +29,7 @@ module.exports = function mountTopScoringLeads(app, base) {
   const REPAIR_SECRET = process.env.PB_WEBHOOK_SECRET || 'changeme-please-update-this!';
 
   // Mount diagnostics
-  console.log(`[TopScoringLeads] Mounted. ENABLED=${ENABLED}`);
+  logger.info(`[TopScoringLeads] Mounted. ENABLED=${ENABLED}`);
 
   // Resolve Airtable base per-request (multi-tenant) with fallback to default
   async function getBaseForRequest(req) {
@@ -39,7 +39,7 @@ module.exports = function mountTopScoringLeads(app, base) {
         return await airtableClient.getClientBase(clientId);
       } catch (e) {
         // Fall through to default base
-        console.warn(`topScoringLeads: getClientBase failed for ${clientId}: ${e?.message || e}`);
+        logger.warn(`topScoringLeads: getClientBase failed for ${clientId}: ${e?.message || e}`);
         await logRouteError(e, req).catch(() => {});
       }
     }
@@ -823,7 +823,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       
       return res.json(allLeads);
     } catch (e) {
-      console.error('Error in /eligible/all:', e);
+      logger.error('Error in /eligible/all:', e);
       await logRouteError(e, req, { operation: 'get_all_eligible_leads', count: allLeads?.length || 0 });
       await logCriticalError(error, req).catch(() => {});
       res.status(500).json({ error: e?.message || String(e) });
@@ -892,7 +892,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       
       return res.json(allLeads);
     } catch (e) {
-      console.error('Error in /eligible/all:', e);
+      logger.error('Error in /eligible/all:', e);
       await logRouteError(e, req, { operation: 'get_all_eligible_leads_batch', count: allLeads?.length || 0 });
       res.status(500).json({ error: e?.message || String(e) });
     }
@@ -1216,7 +1216,7 @@ module.exports = function mountTopScoringLeads(app, base) {
     const summary = stack
       .filter((layer) => layer && layer.route)
       .map((layer) => ({ path: layer.route.path, methods: Object.keys(layer.route.methods || {}).filter(Boolean) }));
-    console.log(`[TopScoringLeads] Routes registered:`, summary);
+    logger.info(`[TopScoringLeads] Routes registered:`, summary);
   } catch (_) {}
   app.use('/api/top-scoring-leads', router);
 };

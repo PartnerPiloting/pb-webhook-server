@@ -5,6 +5,9 @@ const logCriticalError = async () => {};
 
 // Import unified constants for field names
 const { CLIENT_TABLES, POST_FIELDS, POST_MEDIA_TYPES, POST_TYPES } = require('../constants/airtableUnifiedConstants');
+const { createLogger } = require('../utils/contextLogger');
+
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'system' });
 
 /**
  * Create a new post record in the Posts table
@@ -22,7 +25,7 @@ async function createPost(clientBase, post) {
       throw new Error('Invalid post data');
     }
 
-    console.log(`[postService] Creating post record for URL: ${post.url}`);
+    logger.info(`[postService] Creating post record for URL: ${post.url}`);
 
     // Check if post already exists
     const existingPosts = await clientBase(CLIENT_TABLES.LINKEDIN_POSTS).select({
@@ -31,7 +34,7 @@ async function createPost(clientBase, post) {
     }).firstPage();
 
     if (existingPosts && existingPosts.length > 0) {
-      console.log(`[postService] Post already exists: ${post.url}`);
+      logger.info(`[postService] Post already exists: ${post.url}`);
       return existingPosts[0];
     }
 
@@ -51,10 +54,10 @@ async function createPost(clientBase, post) {
 
     // Create the record
     const records = await clientBase(CLIENT_TABLES.LINKEDIN_POSTS).create([{ fields: postRecord }]);
-    console.log(`[postService] Created post record ID: ${records[0].id}`);
+    logger.info(`[postService] Created post record ID: ${records[0].id}`);
     return records[0];
   } catch (error) {
-    console.error(`[postService] Error creating post: ${error.message}`);
+    logger.error(`[postService] Error creating post: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (before throw)', service: 'postService.js' }).catch(() => {});
     throw error;
   }

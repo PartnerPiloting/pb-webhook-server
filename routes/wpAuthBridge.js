@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'route' });
 const axios = require('axios');
 const clientService = require('../services/clientService');
 
@@ -15,12 +17,12 @@ const clientService = require('../services/clientService');
  */
 router.get('/check-wp-auth', async (req, res) => {
   try {
-    console.log('WP Auth Bridge: Checking WordPress authentication...');
+    logger.info('WP Auth Bridge: Checking WordPress authentication...');
     
     // Method 1: Check for authentication token (from ASH redirect)
     const authToken = req.query.token || req.headers['x-auth-token'];
     if (authToken) {
-      console.log('WP Auth Bridge: Found authentication token, validating...');
+      logger.info('WP Auth Bridge: Found authentication token, validating...');
       // TODO: Implement token validation with ASH
       // For now, we'll implement the cookie-based method and add token support later
     }
@@ -28,7 +30,7 @@ router.get('/check-wp-auth', async (req, res) => {
     // Method 2: Extract cookies from the request
     const cookies = req.headers.cookie;
     if (!cookies) {
-      console.log('WP Auth Bridge: No cookies provided');
+      logger.info('WP Auth Bridge: No cookies provided');
       return res.status(401).json({
         status: 'error',
         code: 'NO_COOKIES',
@@ -43,7 +45,7 @@ router.get('/check-wp-auth', async (req, res) => {
                         cookies.includes('wordpress_sec');
     
     if (!hasWpCookies) {
-      console.log('WP Auth Bridge: No WordPress cookies found');
+      logger.info('WP Auth Bridge: No WordPress cookies found');
       return res.status(401).json({
         status: 'error',
         code: 'NOT_LOGGED_IN_WP',
@@ -55,7 +57,7 @@ router.get('/check-wp-auth', async (req, res) => {
     const wpBaseUrl = process.env.WP_BASE_URL || 'https://australiansidehustles.com.au';
     const wpApiUrl = `${wpBaseUrl}/wp-json/wp/v2/users/me`;
     
-    console.log(`WP Auth Bridge: Validating user with ${wpApiUrl}`);
+    logger.info(`WP Auth Bridge: Validating user with ${wpApiUrl}`);
     
     // Call WordPress API with the user's cookies
     const wpResponse = await axios.get(wpApiUrl, {
@@ -68,13 +70,13 @@ router.get('/check-wp-auth', async (req, res) => {
 
     if (wpResponse.status === 200 && wpResponse.data) {
       const wpUser = wpResponse.data;
-      console.log(`WP Auth Bridge: WordPress user validated: ${wpUser.name} (ID: ${wpUser.id})`);
+      logger.info(`WP Auth Bridge: WordPress user validated: ${wpUser.name} (ID: ${wpUser.id})`);
       
       // Look up the client by WordPress User ID
       const client = await clientService.getClientByWpUserId(wpUser.id);
       
       if (!client) {
-        console.log(`WP Auth Bridge: Client not found for WP User ID: ${wpUser.id}`);
+        logger.info(`WP Auth Bridge: Client not found for WP User ID: ${wpUser.id}`);
         return res.status(403).json({
           status: 'error',
           code: 'CLIENT_NOT_FOUND',
@@ -87,7 +89,7 @@ router.get('/check-wp-auth', async (req, res) => {
       }
 
       if (client.status !== 'Active') {
-        console.log(`WP Auth Bridge: Client found but inactive: ${client.clientName} (${client.status})`);
+        logger.info(`WP Auth Bridge: Client found but inactive: ${client.clientName} (${client.status})`);
         return res.status(403).json({
           status: 'error',
           code: 'CLIENT_INACTIVE',
@@ -101,7 +103,7 @@ router.get('/check-wp-auth', async (req, res) => {
       }
 
       // Success! Return client profile
-      console.log(`WP Auth Bridge: Authentication successful for ${client.clientName}`);
+      logger.info(`WP Auth Bridge: Authentication successful for ${client.clientName}`);
       return res.json({
         status: 'success',
         message: 'Authentication successful',
@@ -126,7 +128,7 @@ router.get('/check-wp-auth', async (req, res) => {
       });
     }
 
-    console.log('WP Auth Bridge: WordPress API returned invalid response');
+    logger.info('WP Auth Bridge: WordPress API returned invalid response');
     return res.status(401).json({
       status: 'error',
       code: 'WP_AUTH_FAILED',
@@ -134,7 +136,7 @@ router.get('/check-wp-auth', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('WP Auth Bridge: Error during authentication:', error.message);
+    logger.error('WP Auth Bridge: Error during authentication:', error.message);
     
     if (error.response?.status === 401) {
     logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});

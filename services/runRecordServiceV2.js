@@ -16,6 +16,14 @@ require('dotenv').config();
 
 // Import dependencies
 const Airtable = require('airtable');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for run record service v2
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'run-record-service-v2' 
+});
 const clientService = require('./clientService');
 // Updated to use the new runIdSystem service
 const runIdSystem = require('./runIdSystem');
@@ -91,7 +99,7 @@ function initialize() {
   try {
     // Check if clientService is properly loaded
     if (!clientService || typeof clientService.initializeClientsBase !== 'function') {
-      console.error("ERROR: clientService is not properly loaded or initializeClientsBase is not a function");
+      logger.error("ERROR: clientService is not properly loaded or initializeClientsBase is not a function");
       
       // Fallback: Initialize directly if clientService is not working
       if (!process.env.MASTER_CLIENTS_BASE_ID) {
@@ -106,22 +114,22 @@ function initialize() {
         apiKey: process.env.AIRTABLE_API_KEY
       });
 
-      console.log("FALLBACK: Directly initializing Airtable base connection");
+      logger.info("FALLBACK: Directly initializing Airtable base connection");
       clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
     } else {
       // Use clientService's initialization (preferred method)
       clientsBase = clientService.initializeClientsBase();
-      console.log("Run Record Service: Successfully got base connection from clientService");
+      logger.info("Run Record Service: Successfully got base connection from clientService");
     }
 
     if (!clientsBase) {
       throw new Error("Failed to initialize clients base in runRecordService");
     }
 
-    console.log("Run Record Service: Connection to run tracking table initialized");
+    logger.info("Run Record Service: Connection to run tracking table initialized");
     return clientsBase;
   } catch (error) {
-    console.error("CRITICAL ERROR initializing Airtable connection:", error.message);
+    logger.error("CRITICAL ERROR initializing Airtable connection:", error.message);
     logCriticalError(error, { context: 'Service error (before throw)', service: 'runRecordServiceV2.js' }).catch(() => {});
     throw error;
   }

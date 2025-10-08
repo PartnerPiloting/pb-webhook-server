@@ -3,6 +3,14 @@
 
 const express = require('express');
 const router = express.Router();
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for apify process routes
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'apify-process-routes' 
+});
 // Old error logger removed - now using Render log analysis
 const logCriticalError = async () => {}; // No-op
 const Airtable = require('airtable');
@@ -31,7 +39,7 @@ async function logRouteError(error, req = null, additionalContext = {}) {
       ...additionalContext
     });
   } catch (loggingError) {
-    console.error('Failed to log route error to Airtable:', loggingError.message);
+    logger.error('Failed to log route error to Airtable:', loggingError.message);
   }
 }
 
@@ -78,11 +86,11 @@ const nowISO = () => new Date().toISOString();
 async function pickLeadBatch(base, batchSize) {
   const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   
-  console.log(`🔍 LEAD_SELECTION_START: Starting to pick leads batch of size ${batchSize}`);
+  logger.info(`🔍 LEAD_SELECTION_START: Starting to pick leads batch of size ${batchSize}`);
   
   // Query Airtable to get counts of leads matching different criteria
   try {
-    console.log(`🔍 LEAD_SELECTION_DIAG: Running diagnostic counts on lead criteria...`);
+    logger.info(`🔍 LEAD_SELECTION_DIAG: Running diagnostic counts on lead criteria...`);
     
     // Remove field name detection since we're not using id field anymore
     
@@ -92,7 +100,7 @@ async function pickLeadBatch(base, batchSize) {
       // Don't request any fields - we only need count
       maxRecords: 1
     }).firstPage();
-    console.log(`🔍 LEAD_SELECTION_DIAG: Leads with LinkedIn URLs: ${urlRecords.length ? 'YES' : 'NONE'}`);
+    logger.info(`🔍 LEAD_SELECTION_DIAG: Leads with LinkedIn URLs: ${urlRecords.length ? 'YES' : 'NONE'}`);
     
     // Check status field values
     const statusesByValue = {};
@@ -108,10 +116,10 @@ async function pickLeadBatch(base, batchSize) {
           maxRecords: 100
         }).firstPage();
         
-        console.log(`🔍 LEAD_SELECTION_DIAG: Leads with status '${status || 'BLANK'}': ${statusRecords.length}`);
+        logger.info(`🔍 LEAD_SELECTION_DIAG: Leads with status '${status || 'BLANK'}': ${statusRecords.length}`);
         statusesByValue[status || 'BLANK'] = statusRecords.length;
       } catch (err) {
-        console.log(`🔍 LEAD_SELECTION_DIAG: Error checking status '${status}': ${err.message}`);
+        logger.info(`🔍 LEAD_SELECTION_DIAG: Error checking status '${status}': ${err.message}`);
     logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
       }
     });
@@ -122,7 +130,7 @@ async function pickLeadBatch(base, batchSize) {
       // No fields needed for count
       maxRecords: 1
     }).firstPage();
-    console.log(`🔍 LEAD_SELECTION_DIAG: Leads with Posts Actioned empty/0: ${actionedRecords.length ? 'YES' : 'NONE'}`);
+    logger.info(`🔍 LEAD_SELECTION_DIAG: Leads with Posts Actioned empty/0: ${actionedRecords.length ? 'YES' : 'NONE'}`);
     
     // Check Date Posts Scored field
     const scoredRecords = await base(LEADS_TABLE).select({
@@ -130,9 +138,9 @@ async function pickLeadBatch(base, batchSize) {
       // No fields needed for count
       maxRecords: 1
     }).firstPage();
-    console.log(`🔍 LEAD_SELECTION_DIAG: Leads not yet scored (Date Posts Scored empty): ${scoredRecords.length ? 'YES' : 'NONE'}`);
+    logger.info(`🔍 LEAD_SELECTION_DIAG: Leads not yet scored (Date Posts Scored empty): ${scoredRecords.length ? 'YES' : 'NONE'}`);
   } catch (err) {
-    console.log(`🔍 LEAD_SELECTION_DIAG: Error running diagnostics: ${err.message}`);
+    logger.info(`🔍 LEAD_SELECTION_DIAG: Error running diagnostics: ${err.message}`);
     logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
   }
   
@@ -152,7 +160,7 @@ async function pickLeadBatch(base, batchSize) {
     {${DATE_POSTS_SCORED_FIELD}} = BLANK()
   )`;
   
-  console.log(`🔍 LEAD_SELECTION_FORMULA: ${formula.replace(/\n\s+/g, ' ')}`);
+  logger.info(`🔍 LEAD_SELECTION_FORMULA: ${formula.replace(/\n\s+/g, ' ')}`);
   
   // Prefer sorting by most recently created leads first. If the Date Created field
   // does not exist on a tenant base, gracefully fall back to no explicit sort.
@@ -242,24 +250,24 @@ router.post('/api/smart-resume/process-client', processClientHandler);
  */
 router.post('/api/apify/process-level2-v2', async (req, res) => {
   // Enhanced logging to track execution
-  console.log(`[process-level2-v2] ENTRY POINT: New request received at ${new Date().toISOString()}`);
-  console.log(`[process-level2-v2] Headers: ${JSON.stringify(Object.keys(req.headers))}`);
-  console.log(`[process-level2-v2] Query params: ${JSON.stringify(req.query)}`);
-  console.log(`[process-level2-v2] Body params: ${JSON.stringify(req.body || {})}`);
+  logger.info(`[process-level2-v2] ENTRY POINT: New request received at ${new Date().toISOString()}`);
+  logger.info(`[process-level2-v2] Headers: ${JSON.stringify(Object.keys(req.headers))}`);
+  logger.info(`[process-level2-v2] Query params: ${JSON.stringify(req.query)}`);
+  logger.info(`[process-level2-v2] Body params: ${JSON.stringify(req.body || {})}`);
   
   // Detailed debugging for clientId identification
-  console.log(`[process-level2-v2] COMPARISON DEBUG: clientId sources:`);
-  console.log(`[process-level2-v2] - From x-client-id header: ${req.headers['x-client-id'] || 'missing'}`);
-  console.log(`[process-level2-v2] - From query.client: ${req.query.client || 'missing'}`);
-  console.log(`[process-level2-v2] - From query.clientId: ${req.query.clientId || 'missing'}`);
-  console.log(`[process-level2-v2] - From body.clientId: ${req.body?.clientId || 'missing'}`);
-  console.log(`[process-level2-v2] - From body.client: ${req.body?.client || 'missing'}`);
-  console.log(`[process-level2-v2] - From stream: ${req.query.stream || 'missing'}`);
-  console.log(`[process-level2-v2] - Authorization present: ${!!req.headers['authorization']}`);
+  logger.info(`[process-level2-v2] COMPARISON DEBUG: clientId sources:`);
+  logger.info(`[process-level2-v2] - From x-client-id header: ${req.headers['x-client-id'] || 'missing'}`);
+  logger.info(`[process-level2-v2] - From query.client: ${req.query.client || 'missing'}`);
+  logger.info(`[process-level2-v2] - From query.clientId: ${req.query.clientId || 'missing'}`);
+  logger.info(`[process-level2-v2] - From body.clientId: ${req.body?.clientId || 'missing'}`);
+  logger.info(`[process-level2-v2] - From body.client: ${req.body?.client || 'missing'}`);
+  logger.info(`[process-level2-v2] - From stream: ${req.query.stream || 'missing'}`);
+  logger.info(`[process-level2-v2] - Authorization present: ${!!req.headers['authorization']}`);
   
   // Compare with values expected in the processClientHandler
   const clientIdForHandler = req.headers['x-client-id'] || req.query.client || req.query.clientId || (req.body && (req.body.clientId || req.body.client));
-  console.log(`[process-level2-v2] - Effective clientId for handler: ${clientIdForHandler || 'missing'}`);
+  logger.info(`[process-level2-v2] - Effective clientId for handler: ${clientIdForHandler || 'missing'}`);
   
   // Log full request structure for complete debugging
   try {
@@ -271,9 +279,9 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
       body: req.body || {},
       params: req.params || {}
     };
-    console.log(`[process-level2-v2] 🔍 FULL REQUEST: ${JSON.stringify(requestStructure, null, 2).substring(0, 1000)}...`);
+    logger.info(`[process-level2-v2] 🔍 FULL REQUEST: ${JSON.stringify(requestStructure, null, 2).substring(0, 1000)}...`);
   } catch (e) {
-    console.log(`[process-level2-v2] Could not stringify full request: ${e.message}`);
+    logger.info(`[process-level2-v2] Could not stringify full request: ${e.message}`);
     logCriticalError(e, { operation: 'unknown', isSearch: true, clientId: clientId }).catch(() => {});
   }
   
@@ -282,18 +290,18 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
   const auth = req.headers['authorization'];
   const secret = process.env.PB_WEBHOOK_SECRET;
   if (!secret) {
-    console.error('[process-level2-v2] Server missing PB_WEBHOOK_SECRET');
+    logger.error('[process-level2-v2] Server missing PB_WEBHOOK_SECRET');
     return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
   }
   if (!auth || auth !== `Bearer ${secret}`) {
-    console.error('[process-level2-v2] Unauthorized request');
+    logger.error('[process-level2-v2] Unauthorized request');
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
 
   // Get client ID from header, query param or body
   const clientId = req.headers['x-client-id'] || req.query.clientId || (req.body && req.body.clientId);
   if (!clientId) {
-    console.error('[process-level2-v2] Missing clientId');
+    logger.error('[process-level2-v2] Missing clientId');
     return res.status(400).json({ ok: false, error: 'Missing clientId parameter' });
   }
 
@@ -301,7 +309,7 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
   // Changed from const to let to allow reassignment if needed
   let parentRunId = req.query.parentRunId || (req.body && req.body.parentRunId) || '';
   
-  console.log(`[process-level2-v2] Received post harvesting request for client ${clientId}, stream ${stream}, parentRunId: ${parentRunId || 'none'}`);
+  logger.info(`[process-level2-v2] Received post harvesting request for client ${clientId}, stream ${stream}, parentRunId: ${parentRunId || 'none'}`);
   
   // Acknowledge the request immediately (fire-and-forget pattern)
   res.status(202).json({ 
@@ -312,7 +320,7 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
     clientId
   });
   
-  console.log(`[process-level2-v2] ✅ Request acknowledged, starting background processing for client ${clientId}`);
+  logger.info(`[process-level2-v2] ✅ Request acknowledged, starting background processing for client ${clientId}`);
   
   // Clone the request object and attach some tracking data
   // Create a deeper clone that preserves important objects like headers
@@ -339,15 +347,15 @@ router.post('/api/apify/process-level2-v2', async (req, res) => {
     parentRunId
   };
   
-  console.log(`[process-level2-v2] DEBUG CLONE: Cloned request object with clientId=${clientId}`);
-  console.log(`[process-level2-v2] DEBUG CLONE: Cloned headers x-client-id=${reqClone.headers['x-client-id']}`);
-  console.log(`[process-level2-v2] DEBUG CLONE: Cloned query clientId=${reqClone.query.clientId}`);
+  logger.info(`[process-level2-v2] DEBUG CLONE: Cloned request object with clientId=${clientId}`);
+  logger.info(`[process-level2-v2] DEBUG CLONE: Cloned headers x-client-id=${reqClone.headers['x-client-id']}`);
+  logger.info(`[process-level2-v2] DEBUG CLONE: Cloned query clientId=${reqClone.query.clientId}`);
   
   
   // Process in the background
   processClientHandler(reqClone, null).catch(err => {
-    console.error(`[process-level2-v2] Background processing error for client ${clientId}:`, err.message);
-    console.error(`[process-level2-v2] Error stack: ${err.stack}`);
+    logger.error(`[process-level2-v2] Background processing error for client ${clientId}:`, err.message);
+    logger.error(`[process-level2-v2] Error stack: ${err.stack}`);
   });
 });
 
@@ -388,13 +396,13 @@ async function processClientHandler(req, res) {
     const secret = process.env.PB_WEBHOOK_SECRET;
     
     if (!secret) {
-      console.error('[processClientHandler] Server missing PB_WEBHOOK_SECRET');
+      logger.error('[processClientHandler] Server missing PB_WEBHOOK_SECRET');
       if (res) return res.status(500).json({ ok: false, error: 'Server missing PB_WEBHOOK_SECRET' });
       throw new Error('Server missing PB_WEBHOOK_SECRET');
     }
     
     if (!auth || auth !== `Bearer ${secret}`) {
-      console.error('[processClientHandler] Unauthorized request');
+      logger.error('[processClientHandler] Unauthorized request');
       if (res) return res.status(401).json({ ok: false, error: 'Unauthorized' });
       throw new Error('Unauthorized');
     }
@@ -408,7 +416,7 @@ async function processClientHandler(req, res) {
     if (!clientId && !processAllClients) {
       // For backward compatibility, require client ID if not explicitly processing all clients
       const errMsg = 'Missing client identifier. Use x-client-id header, client query param, or add ?processAll=true to process all clients';
-      console.error(`[processClientHandler] ${errMsg}`);
+      logger.error(`[processClientHandler] ${errMsg}`);
       
       if (res) {
         return res.status(400).json({ ok: false, error: errMsg });
@@ -423,27 +431,27 @@ async function processClientHandler(req, res) {
     const clientRunId = req.query.clientRunId || (req.body && req.body.clientRunId);
     
     // Add debug logs to identify the issue
-    console.log(`[processClientHandler] DEBUG: req.path = ${req.path}`);
-    console.log(`[processClientHandler] DEBUG: req.url = ${req.url}`);
+    logger.info(`[processClientHandler] DEBUG: req.path = ${req.path}`);
+    logger.info(`[processClientHandler] DEBUG: req.url = ${req.url}`);
     
     // Fix: Add null check before calling includes
     // FIXED: Changed const to let to prevent "Assignment to constant variable" errors
     let endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
-    console.log(`[processClientHandler] DEBUG: Using endpoint = ${endpoint}`);
+    logger.info(`[processClientHandler] DEBUG: Using endpoint = ${endpoint}`);
 
     // Process all clients if requested
     if (processAllClients) {
-      console.log(`[${endpoint}/process-client] Processing all clients`);
+      logger.info(`[${endpoint}/process-client] Processing all clients`);
       
       // Get all active clients
       let clients = await getAllClients();
       if (!clients || !clients.length) {
-        console.error(`[${endpoint}/process-client] No clients found`);
+        logger.error(`[${endpoint}/process-client] No clients found`);
         if (res) return res.status(404).json({ ok: false, error: 'No clients found' });
         throw new Error('No clients found');
       }
       
-      console.log(`[${endpoint}/process-client] Found ${clients.length} clients to process`);
+      logger.info(`[${endpoint}/process-client] Found ${clients.length} clients to process`);
       
       // Start processing - respond immediately to avoid timeout
       if (res) {
@@ -458,7 +466,7 @@ async function processClientHandler(req, res) {
         
         return; // Already sent response
       } else {
-        console.log(`[${endpoint}/process-client] Background processing of ${clients.length} clients`);
+        logger.info(`[${endpoint}/process-client] Background processing of ${clients.length} clients`);
         // When in fire-and-forget mode, just throw since we can't process all clients
         throw new Error('Process all clients not supported in fire-and-forget mode');
       }
@@ -466,28 +474,28 @@ async function processClientHandler(req, res) {
 
     // Single client processing
     let client = await getClientById(clientId);
-    console.log(`[${endpoint}/process-client] Processing client: ${clientId}`);
+    logger.info(`[${endpoint}/process-client] Processing client: ${clientId}`);
     if (!client) {
-      console.log(`[${endpoint}/process-client] Client not found: ${clientId}`);
+      logger.info(`[${endpoint}/process-client] Client not found: ${clientId}`);
       if (res) return res.status(404).json({ ok: false, error: 'Client not found' });
       throw new Error(`Client not found: ${clientId}`);
     }
-    console.log(`[${endpoint}/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
+    logger.info(`[${endpoint}/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
     
     // Skip inactive clients and service level check UNLESS we're in testing mode
     if (!TESTING_MODE) {
       if (client.status !== 'Active') {
-        console.log(`[apify/process-client] Client ${clientId} not Active, skipping`);
+        logger.info(`[apify/process-client] Client ${clientId} not Active, skipping`);
         if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
         throw new Error(`Client ${clientId} not Active, skipping`);
       }
       if (Number(client.serviceLevel) < 2) {
-        console.log(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
+        logger.info(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
         if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
         throw new Error(`Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
       }
     } else {
-      console.log(`[apify/process-client] 🧪 TESTING MODE - Bypassing active status and service level checks`);
+      logger.info(`[apify/process-client] 🧪 TESTING MODE - Bypassing active status and service level checks`);
     }
 
     // In testing mode, use small fixed limits; otherwise use client configuration
@@ -496,16 +504,16 @@ async function processClientHandler(req, res) {
       postsTarget = 5; // Target 5 posts total
       batchSize = 5;   // Process 5 profiles at a time
       maxBatches = 1;  // Run only 1 batch
-      console.log(`[apify/process-client] 🧪 TESTING MODE - Using limited batch settings: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
+      logger.info(`[apify/process-client] 🧪 TESTING MODE - Using limited batch settings: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
     } else {
       // Use normal client settings
       postsTarget = Number(client.postsDailyTarget || 0);
       batchSize = Number(client.leadsBatchSizeForPostCollection || 20);
       maxBatches = Number(req.body?.maxBatchesOverride ?? client.maxPostBatchesPerDayGuardrail ?? 10);
-      console.log(`[apify/process-client] Client ${clientId} targets: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
+      logger.info(`[apify/process-client] Client ${clientId} targets: postsTarget=${postsTarget}, batchSize=${batchSize}, maxBatches=${maxBatches}`);
       
       if (!postsTarget || !batchSize) {
-        console.log(`[apify/process-client] Client ${clientId} missing targets, skipping`);
+        logger.info(`[apify/process-client] Client ${clientId} missing targets, skipping`);
         return res.status(200).json({ ok: true, skipped: true, reason: 'Missing targets' });
       }
     }
@@ -514,7 +522,7 @@ async function processClientHandler(req, res) {
 
     // running tally
     postsToday = await computeTodaysPosts(base);
-    console.log(`[apify/process-client] Client ${clientId} postsToday: ${postsToday}, target: ${postsTarget}`);
+    logger.info(`[apify/process-client] Client ${clientId} postsToday: ${postsToday}, target: ${postsTarget}`);
     
     batches = 0;
     
@@ -522,13 +530,13 @@ async function processClientHandler(req, res) {
     debugMode = req.query?.debug === '1' || req.body?.debug === true;
 
     while ((IGNORE_POST_HARVESTING_LIMITS || postsToday < postsTarget) && batches < maxBatches) {
-      console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: picking ${batchSize} leads`);
+      logger.info(`[apify/process-client] Client ${clientId} batch ${batches + 1}: picking ${batchSize} leads`);
       
       // Enhanced debugging for post harvesting
-      console.log(`🔍 POST_HARVEST_LEADS: About to select eligible leads for client ${clientId}`);
+      logger.info(`🔍 POST_HARVEST_LEADS: About to select eligible leads for client ${clientId}`);
       
       const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-      console.log(`🔍 POST_HARVEST_CRITERIA: Selection criteria includes:
+      logger.info(`🔍 POST_HARVEST_CRITERIA: Selection criteria includes:
         - Has LinkedIn Profile URL
         - Status is 'Pending', blank, or 'Processing' but older than ${thirtyMinAgo}
         - Status is not 'No Posts'
@@ -536,15 +544,15 @@ async function processClientHandler(req, res) {
         - Date Posts Scored is blank`);
       
       let pick = await pickLeadBatch(base, batchSize);
-      console.log(`[apify/process-client] Client ${clientId} picked ${pick.length} leads`);
+      logger.info(`[apify/process-client] Client ${clientId} picked ${pick.length} leads`);
       
       // Detailed inspection of the client's base
       try {
         let clientInfo = await getClientById(clientId);
-        console.log(`🔍 CLIENT_DEBUG: Client ${clientId} info found: ${!!clientInfo}`);
+        logger.info(`🔍 CLIENT_DEBUG: Client ${clientId} info found: ${!!clientInfo}`);
         if (clientInfo) {
-          console.log(`🔍 CLIENT_DEBUG: Client ${clientId} service level: ${clientInfo.serviceLevel}`);
-          console.log(`🔍 CLIENT_DEBUG: Client ${clientId} base ID: ${clientInfo.airtableBaseId}`);
+          logger.info(`🔍 CLIENT_DEBUG: Client ${clientId} service level: ${clientInfo.serviceLevel}`);
+          logger.info(`🔍 CLIENT_DEBUG: Client ${clientId} base ID: ${clientInfo.airtableBaseId}`);
           
           // Query total number of leads in the base for context
           // Remove field name check as we don't need specific fields
@@ -554,21 +562,21 @@ async function processClientHandler(req, res) {
             maxRecords: 1
           }).firstPage();
           
-          console.log(`🔍 CLIENT_DEBUG: Client ${clientId} has leads in Airtable: ${allLeads.length > 0 ? 'YES' : 'NO'}`);
+          logger.info(`🔍 CLIENT_DEBUG: Client ${clientId} has leads in Airtable: ${allLeads.length > 0 ? 'YES' : 'NO'}`);
         }
       } catch (err) {
-        console.log(`🔍 CLIENT_DEBUG: Error getting client info: ${err.message}`);
+        logger.info(`🔍 CLIENT_DEBUG: Error getting client info: ${err.message}`);
     logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
       }
       
       if (!pick.length) {
-        console.log(`[apify/process-client] Client ${clientId} no more eligible leads, breaking`);
-        console.log(`🔍 POST_HARVEST_LEADS: No eligible leads found for client ${clientId}.`);
-        console.log(`🔍 POST_HARVEST_LEADS: This is likely because:`);
-        console.log(`🔍 POST_HARVEST_LEADS: 1. All leads have already been processed`);
-        console.log(`🔍 POST_HARVEST_LEADS: 2. There are no new leads with LinkedIn URLs`);
-        console.log(`🔍 POST_HARVEST_LEADS: 3. All leads have been marked 'No Posts'`);
-        console.log(`🔍 POST_HARVEST_LEADS: 4. All leads have already had posts scored`);
+        logger.info(`[apify/process-client] Client ${clientId} no more eligible leads, breaking`);
+        logger.info(`🔍 POST_HARVEST_LEADS: No eligible leads found for client ${clientId}.`);
+        logger.info(`🔍 POST_HARVEST_LEADS: This is likely because:`);
+        logger.info(`🔍 POST_HARVEST_LEADS: 1. All leads have already been processed`);
+        logger.info(`🔍 POST_HARVEST_LEADS: 2. There are no new leads with LinkedIn URLs`);
+        logger.info(`🔍 POST_HARVEST_LEADS: 3. All leads have been marked 'No Posts'`);
+        logger.info(`🔍 POST_HARVEST_LEADS: 4. All leads have already had posts scored`);
         
         // Try a quick diagnostic query with minimal criteria
         try {
@@ -581,36 +589,36 @@ async function processClientHandler(req, res) {
           }).firstPage();
           
           if (anyLeadsWithUrl.length) {
-            console.log(`🔍 DIAGNOSTIC: Found ${anyLeadsWithUrl.length} leads with LinkedIn URLs`);
+            logger.info(`🔍 DIAGNOSTIC: Found ${anyLeadsWithUrl.length} leads with LinkedIn URLs`);
             for (let i = 0; i < anyLeadsWithUrl.length; i++) {
               const lead = anyLeadsWithUrl[i];
-              console.log(`🔍 DIAGNOSTIC: Lead #${i+1} - Status: ${lead.fields[STATUS_FIELD] || 'EMPTY'}, ` +
+              logger.info(`🔍 DIAGNOSTIC: Lead #${i+1} - Status: ${lead.fields[STATUS_FIELD] || 'EMPTY'}, ` +
                 `Posts Actioned: ${lead.fields[POSTS_ACTIONED_FIELD] || 'EMPTY'}, ` +
                 `Date Posts Scored: ${lead.fields[DATE_POSTS_SCORED_FIELD] || 'EMPTY'}`);
             }
           } else {
-            console.log(`🔍 DIAGNOSTIC: No leads found with LinkedIn URLs`);
+            logger.info(`🔍 DIAGNOSTIC: No leads found with LinkedIn URLs`);
           }
         } catch (err) {
-          console.log(`🔍 DIAGNOSTIC: Error running quick diagnostic: ${err.message}`);
+          logger.info(`🔍 DIAGNOSTIC: Error running quick diagnostic: ${err.message}`);
     logCriticalError(err, { operation: 'unknown', isSearch: true }).catch(() => {});
         }
         
         break;
       }
       
-      console.log(`🔍 POST_HARVEST_LEADS: Found ${pick.length} eligible leads for client ${clientId}`);
+      logger.info(`🔍 POST_HARVEST_LEADS: Found ${pick.length} eligible leads for client ${clientId}`);
       // Log the first 3 leads to provide context
       if (pick.length > 0) {
-        console.log(`🔍 POST_HARVEST_LEADS_SAMPLE: Showing details for first ${Math.min(3, pick.length)} leads:`);
+        logger.info(`🔍 POST_HARVEST_LEADS_SAMPLE: Showing details for first ${Math.min(3, pick.length)} leads:`);
         for (let i = 0; i < Math.min(3, pick.length); i++) {
-          console.log(`🔍 POST_HARVEST_LEADS_SAMPLE: Lead #${i+1} - ID: ${pick[i].id}, LinkedIn URL: ${pick[i].fields[LINKEDIN_URL_FIELD] ? 'Present' : 'Missing'}`);
+          logger.info(`🔍 POST_HARVEST_LEADS_SAMPLE: Lead #${i+1} - ID: ${pick[i].id}, LinkedIn URL: ${pick[i].fields[LINKEDIN_URL_FIELD] ? 'Present' : 'Missing'}`);
         }
       }
 
       // Generate a proper run ID using canonical runIdSystem
       const placeholderRunId = runIdSystem.createClientRunId(runIdSystem.generateRunId(), clientId);
-      console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: Generated run ID: ${placeholderRunId}`);
+      logger.info(`[apify/process-client] Client ${clientId} batch ${batches + 1}: Generated run ID: ${placeholderRunId}`);
       await base(LEADS_TABLE).update(pick.map(r => ({
         id: r.id,
         fields: { [STATUS_FIELD]: 'Processing', [RUN_ID_FIELD]: placeholderRunId, [LAST_CHECK_AT_FIELD]: nowISO() }
@@ -618,7 +626,7 @@ async function processClientHandler(req, res) {
 
       // prepare targetUrls
       targetUrls = pick.map(r => r.get(LINKEDIN_URL_FIELD)).filter(Boolean);
-      console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: ${targetUrls.length} LinkedIn URLs to process`);
+      logger.info(`[apify/process-client] Client ${clientId} batch ${batches + 1}: ${targetUrls.length} LinkedIn URLs to process`);
       
       if (debugMode) {
         debugBatches.push({ pickedCount: pick.length, targetUrls });
@@ -628,7 +636,7 @@ async function processClientHandler(req, res) {
       const baseUrl = process.env.API_PUBLIC_BASE_URL
         || process.env.NEXT_PUBLIC_API_BASE_URL
         || `http://localhost:${process.env.PORT || 3001}`;
-      console.log(`[apify/process-client] Client ${clientId} calling Apify run at ${baseUrl}/api/apify/run`);
+      logger.info(`[apify/process-client] Client ${clientId} calling Apify run at ${baseUrl}/api/apify/run`);
       
       let startResp = await fetch(`${baseUrl}/api/apify/run`, {
         method: 'POST',
@@ -653,18 +661,18 @@ async function processClientHandler(req, res) {
         })
       });
       startData = await startResp.json().catch(() => ({}));
-      console.log(`[apify/process-client] Client ${clientId} Apify response status: ${startResp.status}, data:`, startData);
+      logger.info(`[apify/process-client] Client ${clientId} Apify response status: ${startResp.status}, data:`, startData);
       
       // Log detailed information about the startData object for debugging
-      console.log(`[DEBUG][METRICS_TRACKING] Received startData for client ${clientId}:`);
-      console.log(`[DEBUG][METRICS_TRACKING] - runId: ${startData.runId || '(not present)'}`);
-      console.log(`[DEBUG][METRICS_TRACKING] - apifyRunId: ${startData.apifyRunId || '(not present)'}`);
-      console.log(`[DEBUG][METRICS_TRACKING] - actorRunId: ${startData.actorRunId || '(not present)'}`);
-      console.log(`[DEBUG][METRICS_TRACKING] - full data:`, JSON.stringify(startData));
+      logger.info(`[DEBUG][METRICS_TRACKING] Received startData for client ${clientId}:`);
+      logger.info(`[DEBUG][METRICS_TRACKING] - runId: ${startData.runId || '(not present)'}`);
+      logger.info(`[DEBUG][METRICS_TRACKING] - apifyRunId: ${startData.apifyRunId || '(not present)'}`);
+      logger.info(`[DEBUG][METRICS_TRACKING] - actorRunId: ${startData.actorRunId || '(not present)'}`);
+      logger.info(`[DEBUG][METRICS_TRACKING] - full data:`, JSON.stringify(startData));
 
       // after inline run, use returned counts to compute gained
       const gained = Number((startData && startData.counts && startData.counts.posts) || 0);
-      console.log(`[apify/process-client] Client ${clientId} batch ${batches + 1}: gained ${gained} posts`);
+      logger.info(`[apify/process-client] Client ${clientId} batch ${batches + 1}: gained ${gained} posts`);
       postsToday += gained;
 
       // Update statuses based on gain
@@ -695,7 +703,7 @@ async function processClientHandler(req, res) {
       batches++;
     }
 
-    console.log(`[apify/process-client] Client ${clientId} completed: ${batches} batches, postsToday: ${postsToday}, target: ${postsTarget}`);
+    logger.info(`[apify/process-client] Client ${clientId} completed: ${batches} batches, postsToday: ${postsToday}, target: ${postsTarget}`);
     
     // SIMPLIFIED: We must get a parent run ID from Smart Resume - THIS IS THE KEY CHANGE
     // Legacy import - only used for other functions not related to run records
@@ -725,7 +733,7 @@ async function processClientHandler(req, res) {
         });
         
         if (!recordExists) {
-          console.error(`[CRITICAL ERROR] No run record exists for ${runIdToUse} (parent: ${parentRunId}, client: ${clientId}) - cannot process webhook without an existing run record`);
+          logger.error(`[CRITICAL ERROR] No run record exists for ${runIdToUse} (parent: ${parentRunId}, client: ${clientId}) - cannot process webhook without an existing run record`);
           return res.status(400).json({
             error: 'No active run found for this client',
             message: 'Post harvesting webhooks must be part of an active run with an existing record',
@@ -808,7 +816,7 @@ async function processClientHandler(req, res) {
         }
         
         // Use our enhanced checkRunRecordExists function from runRecordAdapterSimple
-        console.log(`[DEBUG-EXTREME] About to check if run record exists for runId=${runIdToUse}, clientId=${clientId}`);
+        logger.info(`[DEBUG-EXTREME] About to check if run record exists for runId=${runIdToUse}, clientId=${clientId}`);
         const debugLogger = createSafeLogger(clientId, runIdToUse, 'apify_process');
         debugLogger.debug(`Starting run record check for ${runIdToUse}`);
         
@@ -820,11 +828,11 @@ async function processClientHandler(req, res) {
             logger: debugLogger 
           }
         });
-        console.log(`[DEBUG-EXTREME] checkRunRecordExists result: ${recordExists}`);
+        logger.info(`[DEBUG-EXTREME] checkRunRecordExists result: ${recordExists}`);
         
         // Let's verify the fields and table names
-        console.log(`[DEBUG-EXTREME] FIELD_VERIFICATION: Expected table name = 'Client Run Results'`);
-        console.log(`[DEBUG-EXTREME] FIELD_VERIFICATION: Run ID field name = 'Run ID'`);
+        logger.info(`[DEBUG-EXTREME] FIELD_VERIFICATION: Expected table name = 'Client Run Results'`);
+        logger.info(`[DEBUG-EXTREME] FIELD_VERIFICATION: Run ID field name = 'Run ID'`);
         
         if (recordExists) {
           // Record exists, now fetch it to get current values
@@ -861,7 +869,7 @@ async function processClientHandler(req, res) {
           
           // Get the Apify Run ID if it exists in the start data
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
-          console.log(`[DEBUG][METRICS_TRACKING] - New Apify Run ID from startData: ${apifyRunId || '(empty)'}`);
+          logger.info(`[DEBUG][METRICS_TRACKING] - New Apify Run ID from startData: ${apifyRunId || '(empty)'}`);
           
           // Take the higher count for posts harvested
           const updatedCount = Math.max(currentPostCount, postsToday);
@@ -870,14 +878,14 @@ async function processClientHandler(req, res) {
           // Track profiles submitted (should be at least the batch size we processed)
           const updatedProfilesSubmitted = Math.max(profilesSubmittedCount, targetUrls ? targetUrls.length : 0);
           
-          console.log(`[DEBUG][METRICS_TRACKING] - Updated values to save:`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${updatedCount}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
-          console.log(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${updatedProfilesSubmitted}`);
+          logger.info(`[DEBUG][METRICS_TRACKING] - Updated values to save:`);
+          logger.info(`[DEBUG][METRICS_TRACKING] - Posts Harvested: ${updatedCount}`);
+          logger.info(`[DEBUG][METRICS_TRACKING] - API Costs: ${updatedCosts}`);
+          logger.info(`[DEBUG][METRICS_TRACKING] - Profiles Submitted: ${updatedProfilesSubmitted}`);
           
           try {
             if (typeof runRecordService.updateClientMetrics !== 'function') {
-              console.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics`);
+              logger.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics`);
             } else {
               await runRecordService.updateClientMetrics({
                 runId: runIdToUse,
@@ -891,14 +899,14 @@ async function processClientHandler(req, res) {
                 options: { source: 'apifyProcessRoutes' }
               });
               
-              console.log(`[apify/process-client] Updated client run record for ${clientId}:`);
+              logger.info(`[apify/process-client] Updated client run record for ${clientId}:`);
             }
           } catch (metricError) {
-            console.error(`[ERROR] Failed to update client metrics: ${metricError.message}`);
+            logger.error(`[ERROR] Failed to update client metrics: ${metricError.message}`);
             await logRouteError(metricError, req).catch(() => {});
           }
-          console.log(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
-          console.log(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
+          logger.info(`  - Total Posts Harvested: ${currentPostCount} → ${updatedCount}`);
+          logger.info(`  - Apify API Costs: ${currentApiCosts} → ${updatedCosts}`);
           }
         } else {
           // ERROR: Record not found - this should have been created at the beginning of this process
@@ -946,7 +954,7 @@ async function processClientHandler(req, res) {
           // but we'll log it as an error
           try {
             if (typeof runRecordService.updateClientMetrics !== 'function') {
-              console.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics in fallback handler`);
+              logger.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics in fallback handler`);
             } else {
               await runRecordService.updateClientMetrics({
                 runId: runIdToUse,
@@ -960,20 +968,20 @@ async function processClientHandler(req, res) {
                 options: { source: 'apifyProcessRoutes_fallback' }
               });
               
-              console.log(`[apify/process-client] Attempted metrics update despite missing run record`);
-              console.log(`  - Total Posts Harvested: ${postsToday}`);
+              logger.info(`[apify/process-client] Attempted metrics update despite missing run record`);
+              logger.info(`  - Total Posts Harvested: ${postsToday}`);
             }
           } catch (metricError) {
-            console.error(`[ERROR] Failed to update client metrics in fallback handler: ${metricError.message}`);
+            logger.error(`[ERROR] Failed to update client metrics in fallback handler: ${metricError.message}`);
             await logRouteError(metricError, req).catch(() => {});
           }
-          console.log(`  - Apify API Costs: ${estimatedCost}`);
+          logger.info(`  - Apify API Costs: ${estimatedCost}`);
         }
       } catch (recordError) {
         // Error checking for existing record
-        console.error(`[apify/process-client] ERROR: Failed to check for existing record: ${recordError.message}`);
+        logger.error(`[apify/process-client] ERROR: Failed to check for existing record: ${recordError.message}`);
         await logRouteError(recordError, req).catch(() => {});
-        console.error(`[apify/process-client] Run ID: ${runIdToUse}, Client ID: ${clientId}`);
+        logger.error(`[apify/process-client] Run ID: ${runIdToUse}, Client ID: ${clientId}`);
         
         // Try to update metrics anyway for operational continuity
         try {
@@ -981,7 +989,7 @@ async function processClientHandler(req, res) {
           const apifyRunId = startData?.apifyRunId || startData?.actorRunId || '';
           
           if (typeof runRecordService.updateClientMetrics !== 'function') {
-            console.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics in emergency handler`);
+            logger.error(`[ERROR] runRecordService.updateClientMetrics is not a function - cannot update metrics in emergency handler`);
           } else {
             await runRecordService.updateClientMetrics({
               runId: runIdToUse,
@@ -994,19 +1002,19 @@ async function processClientHandler(req, res) {
               options: { source: 'apifyProcessRoutes_emergency' }
             });
           }
-          console.log(`[apify/process-client] Attempted metrics update despite record lookup failure`);
+          logger.info(`[apify/process-client] Attempted metrics update despite record lookup failure`);
         } catch (updateError) {
-          console.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);
+          logger.error(`[apify/process-client] Failed to update metrics: ${updateError.message}`);
           await logRouteError(updateError, req).catch(() => {});
         }
       }
     } catch (metricError) {
-      console.error(`[apify/process-client] Failed to update post harvesting metrics: ${metricError.message}`);
+      logger.error(`[apify/process-client] Failed to update post harvesting metrics: ${metricError.message}`);
       await logRouteError(metricError, req).catch(() => {});
-      console.error(`[DEBUG][METRICS_TRACKING] ERROR updating metrics: ${metricError.message}`);
-      console.error(`[DEBUG][METRICS_TRACKING] Error stack: ${metricError.stack}`);
-      console.error(`[DEBUG][METRICS_TRACKING] Client ID: ${clientId}, Run ID to use: ${runIdToUse || '(none)'}`);
-      console.error(`[DEBUG][METRICS_TRACKING] Posts today value: ${postsToday}`);
+      logger.error(`[DEBUG][METRICS_TRACKING] ERROR updating metrics: ${metricError.message}`);
+      logger.error(`[DEBUG][METRICS_TRACKING] Error stack: ${metricError.stack}`);
+      logger.error(`[DEBUG][METRICS_TRACKING] Client ID: ${clientId}, Run ID to use: ${runIdToUse || '(none)'}`);
+      logger.error(`[DEBUG][METRICS_TRACKING] Posts today value: ${postsToday}`);
       // Continue execution even if metrics update fails
     }
     
@@ -1017,21 +1025,21 @@ async function processClientHandler(req, res) {
     if (res) {
       return res.json(payload);
     } else {
-      console.log(`[apify/process-level2-v2] Background processing completed successfully for client ${clientId}`);
-      console.log(`[apify/process-level2-v2] Posts harvested: ${postsToday}, batches: ${batches}, runs: ${runs.length}`);
+      logger.info(`[apify/process-level2-v2] Background processing completed successfully for client ${clientId}`);
+      logger.info(`[apify/process-level2-v2] Posts harvested: ${postsToday}, batches: ${batches}, runs: ${runs.length}`);
       return payload;
     }
     
   } catch (e) {
     let endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
-    console.error(`[${endpoint}/process-client] error:`, e.message);
+    logger.error(`[${endpoint}/process-client] error:`, e.message);
     await logCriticalError(e, { operation: 'process_client_handler', req }).catch(() => {});
     
     // Check if response object exists (will be null in fire-and-forget mode)
     if (res) {
       return res.status(500).json({ ok: false, error: e.message });
     } else {
-      console.error(`[apify/process-level2-v2] Background processing error: ${e.message}`);
+      logger.error(`[apify/process-level2-v2] Background processing error: ${e.message}`);
       throw e; // Re-throw to be caught by the caller for proper error logging
     }
   }
@@ -1080,7 +1088,7 @@ router.post('/api/apify/canary', async (req, res) => {
     const data = await resp.json().catch(() => ({}));
     return res.json({ ok: true, clientId, urls: targetUrls, counts: data.counts || null, runId: data.runId || null });
   } catch (e) {
-    console.error('[apify/canary] error:', e.message);
+    logger.error('[apify/canary] error:', e.message);
     await logCriticalError(error, req).catch(() => {});
     return res.status(500).json({ ok: false, error: e.message });
   }
@@ -1093,7 +1101,7 @@ async function getAllClients() {
   try {
     const masterClientsBase = process.env.MASTER_CLIENTS_BASE_ID;
     if (!masterClientsBase) {
-      console.error('Missing MASTER_CLIENTS_BASE_ID env variable');
+      logger.error('Missing MASTER_CLIENTS_BASE_ID env variable');
       return [];
     }
     
@@ -1112,7 +1120,7 @@ async function getAllClients() {
       status: record.get('Status')
     })).filter(client => client.clientId);
   } catch (error) {
-    console.error('Error getting all clients:', error.message);
+    logger.error('Error getting all clients:', error.message);
     await logRouteError(error, req).catch(() => {});
     return [];
   }
@@ -1129,7 +1137,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
     // Use the parentRunId if provided, otherwise generate a new master run ID
     // This maintains the connection with the parent process that initiated this batch
     const masterRunId = parentRunId || runIdSystem.createClientRunId(runIdSystem.generateRunId(), 'batch-all-clients');
-    console.log(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
+    logger.info(`[batch-process] Starting batch processing with master run ID ${masterRunId} for ${clients.length} clients`);
     
     // Changed from const to let to prevent "Assignment to constant variable" errors
     let endpoint = path.includes('smart-resume') ? 'smart-resume' : 'apify';
@@ -1146,11 +1154,11 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
     // Process clients sequentially to avoid rate limits and resource contention
     for (const client of clients) {
       try {
-        console.log(`[${endpoint}/batch] Processing client ${client.clientId} (${client.clientName})`);
+        logger.info(`[${endpoint}/batch] Processing client ${client.clientId} (${client.clientName})`);
         
         // Skip inactive clients
         if (client.status !== 'Active') {
-          console.log(`[${endpoint}/batch] Skipping inactive client ${client.clientId}`);
+          logger.info(`[${endpoint}/batch] Skipping inactive client ${client.clientId}`);
           results.skipped++;
           results.clientResults[client.clientId] = { status: 'skipped', reason: 'inactive' };
           continue;
@@ -1158,7 +1166,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
         
         // Skip clients with service level < 2 for post harvesting (apify endpoint)
         if (endpoint === 'apify' && Number(client.serviceLevel) < 2) {
-          console.log(`[${endpoint}/batch] Skipping client ${client.clientId} - service level ${client.serviceLevel} < 2`);
+          logger.info(`[${endpoint}/batch] Skipping client ${client.clientId} - service level ${client.serviceLevel} < 2`);
           results.skipped++;
           results.clientResults[client.clientId] = { status: 'skipped', reason: 'service_level' };
           continue;
@@ -1167,7 +1175,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
         // Create a consistent client-specific run ID that maintains the connection to the master run
         // This ensures job tracking records can be found consistently
         const clientRunId = `${masterRunId}-${client.clientId}`;
-        console.log(`[${endpoint}/batch] Using consistent clientRunId: ${clientRunId} for client ${client.clientId}`);
+        logger.info(`[${endpoint}/batch] Using consistent clientRunId: ${clientRunId} for client ${client.clientId}`);
         
         // Call the process-client handler directly with a mock request/response
         // IMPORTANT: We use the exact same runId throughout the chain to maintain consistency
@@ -1180,10 +1188,10 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
           specificRunId: clientRunId
         };
         
-        console.log(`[${endpoint}/batch] 🔍 STRICT RUN ID FLOW: For client ${client.clientId}:`);
-        console.log(`[${endpoint}/batch] 🔍 - Source masterRunId: ${masterRunId}`);
-        console.log(`[${endpoint}/batch] 🔍 - Client-specific runId: ${clientRunId}`);
-        console.log(`[${endpoint}/batch] 🔍 - This specific runId will be preserved throughout the entire chain`);
+        logger.info(`[${endpoint}/batch] 🔍 STRICT RUN ID FLOW: For client ${client.clientId}:`);
+        logger.info(`[${endpoint}/batch] 🔍 - Source masterRunId: ${masterRunId}`);
+        logger.info(`[${endpoint}/batch] 🔍 - Client-specific runId: ${clientRunId}`);
+        logger.info(`[${endpoint}/batch] 🔍 - This specific runId will be preserved throughout the entire chain`);
         
         
         // Use a promise to capture the response
@@ -1197,7 +1205,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
         });
         
         const result = await responsePromise;
-        console.log(`[${endpoint}/batch] Client ${client.clientId} result:`, result);
+        logger.info(`[${endpoint}/batch] Client ${client.clientId} result:`, result);
         
         if (result.ok) {
           results.successful++;
@@ -1207,7 +1215,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
           results.clientResults[client.clientId] = { status: 'failed', error: result.error };
         }
       } catch (clientError) {
-        console.error(`[${endpoint}/batch] Error processing client ${client.clientId}:`, clientError.message);
+        logger.error(`[${endpoint}/batch] Error processing client ${client.clientId}:`, clientError.message);
         await logRouteError(clientError, req).catch(() => {});
         results.failed++;
         results.clientResults[client.clientId] = { status: 'failed', error: clientError.message };
@@ -1220,7 +1228,7 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
     results.endTime = new Date().toISOString();
     
     // Log the final results
-    console.log(`[${endpoint}/batch] Batch processing complete: ${results.successful} successful, ${results.failed} failed, ${results.skipped} skipped`);
+    logger.info(`[${endpoint}/batch] Batch processing complete: ${results.successful} successful, ${results.failed} failed, ${results.skipped} skipped`);
     
     // Save batch results to a file for debugging if needed
     try {
@@ -1231,13 +1239,13 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
       }
       fs.writeFileSync(`${resultsDir}/${masterRunId}.json`, JSON.stringify(results, null, 2));
     } catch (fsError) {
-      console.error(`[${endpoint}/batch] Error saving results:`, fsError.message);
+      logger.error(`[${endpoint}/batch] Error saving results:`, fsError.message);
       await logRouteError(fsError, req).catch(() => {});
     }
     
     return results;
   } catch (error) {
-    console.error('[batch-process] Error processing clients in background:', error.message);
+    logger.error('[batch-process] Error processing clients in background:', error.message);
     await logRouteError(error, req).catch(() => {});
     return { error: error.message };
   }
