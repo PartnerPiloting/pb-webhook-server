@@ -9,7 +9,7 @@
  */
 
 // FIXED: Using unified logger factory instead of direct StructuredLogger instantiation
-const { createSystemLogger } = require('./unifiedLoggerFactory');
+const { createSystemLogger } = require('./contextLogger');
 const runIdSystem = require('../services/runIdSystem');
 
 // Base logger for the validation system - using factory pattern
