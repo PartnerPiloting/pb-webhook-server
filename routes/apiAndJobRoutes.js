@@ -933,6 +933,99 @@ router.get("/debug-gemini-info", (_req, res) => {
 });
 
 /**
+ * Test Render API connectivity
+ */
+router.get("/debug-render-api", async (_req, res) => {
+  const logger = createLogger({ runId: 'DEBUG_API', clientId: 'SYSTEM', operation: 'render_api_test' });
+  
+  try {
+    const axios = require('axios');
+    const RENDER_API_KEY = process.env.RENDER_API_KEY;
+    const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
+    const RENDER_OWNER_ID = process.env.RENDER_OWNER_ID;
+    
+    logger.info('Testing Render API connectivity');
+    
+    // Check environment variables
+    const envCheck = {
+      hasApiKey: !!RENDER_API_KEY,
+      hasServiceId: !!RENDER_SERVICE_ID,
+      hasOwnerId: !!RENDER_OWNER_ID,
+      serviceId: RENDER_SERVICE_ID || 'NOT SET',
+      ownerId: RENDER_OWNER_ID || 'NOT SET',
+    };
+    
+    if (!RENDER_API_KEY || !RENDER_SERVICE_ID || !RENDER_OWNER_ID) {
+      return res.json({
+        success: false,
+        message: 'Missing required environment variables',
+        environmentCheck: envCheck,
+        instructions: {
+          RENDER_API_KEY: 'Get from Render Dashboard → Account Settings → API Keys',
+          RENDER_SERVICE_ID: 'Service ID from URL (srv-xxx)',
+          RENDER_OWNER_ID: 'Workspace ID from URL (/w/xxx) or Account Settings',
+        }
+      });
+    }
+    
+    // Test the API
+    const params = new URLSearchParams({
+      ownerId: RENDER_OWNER_ID,
+      limit: '5',
+      direction: 'backward',
+    });
+    params.append('resource[]', RENDER_SERVICE_ID);
+    
+    const logsUrl = `https://api.render.com/v1/logs?${params.toString()}`;
+    
+    const logsResponse = await axios.get(logsUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${RENDER_API_KEY}`
+      },
+      timeout: 10000
+    });
+    
+    logger.info('Render API test successful', {
+      logsCount: logsResponse.data.logs?.length || 0,
+      hasMore: logsResponse.data.hasMore
+    });
+    
+    res.json({
+      success: true,
+      message: 'Render API connectivity test passed!',
+      environmentCheck: envCheck,
+      testResults: {
+        logsRetrieved: logsResponse.data.logs?.length || 0,
+        hasMore: logsResponse.data.hasMore,
+        sampleLog: logsResponse.data.logs?.[0] || null
+      }
+    });
+    
+  } catch (error) {
+    logger.error('Render API test failed', {
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Render API test failed',
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      troubleshooting: {
+        '401 Unauthorized': 'Check RENDER_API_KEY is valid',
+        '403 Forbidden': 'Check API key has permission to access logs',
+        '404 Not Found': 'Check RENDER_OWNER_ID and RENDER_SERVICE_ID are correct',
+        'Timeout': 'Render API might be slow or unreachable'
+      }
+    });
+  }
+});
+
+/**
  * Get the status of any running or recent Smart Resume processes
  */
 router.get("/debug-smart-resume-status", async (req, res) => {
