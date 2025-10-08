@@ -2,6 +2,8 @@
 // Centralized client ID resolution with validation and logging
 
 const { getClientBase } = require('../config/airtableClient');
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'util' });
 
 /**
  * Resolves client ID from multiple sources with proper validation
@@ -39,7 +41,7 @@ async function resolveClientId(req, options = {}) {
     throw error;
   }
   
-  console.log(`Client ID resolved: ${clientId} (source: ${source})`);
+  logger.info(`Client ID resolved: ${clientId} (source: ${source})`);
   
   if (!requireValid) {
     return { clientId, clientBase: null, source };
@@ -81,7 +83,7 @@ function requireClientId(options = {}) {
       req.clientIdSource = result.source;
       next();
     } catch (error) {
-      console.error(`Client ID resolution failed: ${error.message}`);
+      logger.error(`Client ID resolution failed: ${error.message}`);
       
       if (error.code === 'MISSING_CLIENT_ID') {
         return res.status(400).json({

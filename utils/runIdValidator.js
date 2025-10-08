@@ -19,7 +19,7 @@ function validateAndNormalizeRunId(runId, clientId) {
         
         // If we still couldn't get a value, log and return null
         if (!runId) {
-            console.warn(`[runIdValidator] Received object as runId but couldn't extract ID: ${JSON.stringify(runId)} for client ${clientId || 'unknown'}`);
+            logger.warn(`[runIdValidator] Received object as runId but couldn't extract ID: ${JSON.stringify(runId)} for client ${clientId || 'unknown'}`);
             return null;
         }
     }
@@ -43,7 +43,7 @@ function validateAndNormalizeClientId(clientId) {
         
         // If we still couldn't get a value, log and return null
         if (!clientId) {
-            console.warn(`[runIdValidator] Received object as clientId but couldn't extract ID: ${JSON.stringify(clientId)}`);
+            logger.warn(`[runIdValidator] Received object as clientId but couldn't extract ID: ${JSON.stringify(clientId)}`);
             return null;
         }
     }

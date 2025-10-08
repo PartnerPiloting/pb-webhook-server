@@ -65,7 +65,7 @@ function authenticateBatchRequest(req, res, next) {
     const apiKey = req.headers['x-api-key'] || req.query.apiKey;
     
     if (!apiKey) {
-        console.warn('Batch API: Missing API key', {
+        logger.warn('Batch API: Missing API key', {
             ip: req.ip,
             userAgent: req.get('User-Agent'),
             endpoint: req.path
@@ -78,7 +78,7 @@ function authenticateBatchRequest(req, res, next) {
     }
     
     if (apiKey !== process.env.BATCH_API_SECRET) {
-        console.warn('Batch API: Invalid API key', {
+        logger.warn('Batch API: Invalid API key', {
             ip: req.ip,
             userAgent: req.get('User-Agent'),
             endpoint: req.path,
@@ -91,7 +91,7 @@ function authenticateBatchRequest(req, res, next) {
         });
     }
     
-    console.log('Batch API: Authorized batch request', { 
+    logger.info('Batch API: Authorized batch request', { 
         endpoint: req.path,
         method: req.method,
         timestamp: new Date().toISOString()
@@ -105,13 +105,13 @@ function authenticateBatchRequest(req, res, next) {
  */
 async function authenticateUser(req, res, next) {
     try {
-        console.log('AuthMiddleware: Starting user authentication');
+        logger.info('AuthMiddleware: Starting user authentication');
         
         // Step 1: Check if user is logged into WordPress
         const wpUserId = await getWordPressUserId(req);
         
         if (!wpUserId) {
-            console.log('AuthMiddleware: User not logged in');
+            logger.info('AuthMiddleware: User not logged in');
             return res.status(401).json({
                 status: 'error',
                 code: 'NOT_LOGGED_IN',
@@ -121,13 +121,13 @@ async function authenticateUser(req, res, next) {
             });
         }
         
-        console.log(`AuthMiddleware: Found WordPress User ID: ${wpUserId}`);
+        logger.info(`AuthMiddleware: Found WordPress User ID: ${wpUserId}`);
         
         // Step 2: Lookup client by WordPress User ID
         const client = await clientService.getClientByWpUserId(wpUserId);
         
         if (!client) {
-            console.log(`AuthMiddleware: Client not found for WP User ID: ${wpUserId}`);
+            logger.info(`AuthMiddleware: Client not found for WP User ID: ${wpUserId}`);
             return res.status(403).json({
                 status: 'error',
                 code: 'ACCESS_DENIED',
@@ -138,11 +138,11 @@ async function authenticateUser(req, res, next) {
             });
         }
         
-        console.log(`AuthMiddleware: Found client: ${client.clientName} (${client.clientId})`);
+        logger.info(`AuthMiddleware: Found client: ${client.clientName} (${client.clientId})`);
         
         // Step 3: Check if client is active
         if (client.status !== 'Active') {
-            console.log(`AuthMiddleware: Client ${client.clientId} is inactive (status: ${client.status})`);
+            logger.info(`AuthMiddleware: Client ${client.clientId} is inactive (status: ${client.status})`);
             return res.status(403).json({
                 status: 'error',
                 code: 'ACCOUNT_INACTIVE',
@@ -158,11 +158,11 @@ async function authenticateUser(req, res, next) {
         req.client = client;
         req.wpUserId = wpUserId;
         
-        console.log(`AuthMiddleware: Authentication successful for ${client.clientName}`);
+        logger.info(`AuthMiddleware: Authentication successful for ${client.clientName}`);
         next();
         
     } catch (error) {
-        console.error('AuthMiddleware: Error during authentication:', error);
+        logger.error('AuthMiddleware: Error during authentication:', error);
         
         // Handle different types of database/system errors
         if (error.message && error.message.includes('timeout')) {
@@ -234,7 +234,7 @@ async function authenticateUserWithTestMode(req, res, next) {
         // Check for test mode
         const testClientId = req.query.testClient;
         if (testClientId) {
-            console.log(`AuthMiddleware: Test mode activated for client: ${testClientId}`);
+            logger.info(`AuthMiddleware: Test mode activated for client: ${testClientId}`);
             const client = await clientService.getClientById(testClientId);
             
             if (!client) {
@@ -255,7 +255,7 @@ async function authenticateUserWithTestMode(req, res, next) {
             
             req.client = client;
             req.testMode = true;
-            console.log(`AuthMiddleware: Test mode successful for ${client.clientName}`);
+            logger.info(`AuthMiddleware: Test mode successful for ${client.clientName}`);
             return next();
         }
         
@@ -263,7 +263,7 @@ async function authenticateUserWithTestMode(req, res, next) {
         return authenticateUser(req, res, next);
         
     } catch (error) {
-        console.error('AuthMiddleware: Error during test authentication:', error);
+        logger.error('AuthMiddleware: Error during test authentication:', error);
         return res.status(500).json({
             status: 'error',
             code: 'AUTH_ERROR',

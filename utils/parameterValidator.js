@@ -24,19 +24,19 @@ class ParameterValidator {
     
     // If it's null or undefined, return null
     if (param === null || param === undefined) {
-      console.error(`[ParameterValidator] ${paramName} is null/undefined at ${source}`);
+      logger.error(`[ParameterValidator] ${paramName} is null/undefined at ${source}`);
       return null;
     }
     
     // If it's an object, try to extract the value
     if (typeof param === 'object') {
-      console.error(`[ParameterValidator] CRITICAL: Object passed as ${paramName} at ${source}:`, JSON.stringify(param));
+      logger.error(`[ParameterValidator] CRITICAL: Object passed as ${paramName} at ${source}:`, JSON.stringify(param));
       
       // Try common property names
       const possibleKeys = [paramName, 'id', paramName + 'Id', 'value'];
       for (const key of possibleKeys) {
         if (param[key] && typeof param[key] === 'string') {
-          console.log(`[ParameterValidator] Extracted ${paramName} from object.${key}`);
+          logger.info(`[ParameterValidator] Extracted ${paramName} from object.${key}`);
           return param[key];
         }
       }
@@ -48,7 +48,7 @@ class ParameterValidator {
     // Convert to string as last resort
     const strValue = String(param);
     if (strValue === '[object Object]') {
-      console.error(`[ParameterValidator] ${paramName} converted to "[object Object]" at ${source}`);
+      logger.error(`[ParameterValidator] ${paramName} converted to "[object Object]" at ${source}`);
       return null;
     }
     
@@ -64,7 +64,7 @@ class ParameterValidator {
    */
   static validateParams(params, source) {
     if (!params || typeof params !== 'object') {
-      console.error(`[ParameterValidator] Invalid params object at ${source}:`, params);
+      logger.error(`[ParameterValidator] Invalid params object at ${source}:`, params);
       return {};
     }
     
