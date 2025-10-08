@@ -5,7 +5,7 @@
  * Provides a unified interface to all Airtable operations through repositories.
  */
 
-const { createSystemLogger } = require('../../utils/unifiedLoggerFactory');
+const { createSystemLogger } = require('../../utils/contextLogger');
 const baseManager = require('./baseManager');
 const leadRepository = require('./leadRepository');
 const clientRepository = require('./clientRepository');
