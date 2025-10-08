@@ -4,6 +4,8 @@
 // - POST /api/top-scoring-leads/dev/sanity-check: admin-only field existence checks
 
 const express = require('express');
+const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'top_scoring_leads' });
 // Removed old error logger - now using production issue tracking
 const logCriticalError = async () => {};
 const airtableClient = require('../config/airtableClient.js');
