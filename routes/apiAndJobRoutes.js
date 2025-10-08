@@ -1006,7 +1006,8 @@ router.get("/debug-render-api", async (_req, res) => {
     logger.error('Render API test failed', {
       error: error.message,
       status: error.response?.status,
-      statusText: error.response?.statusText
+      statusText: error.response?.statusText,
+      responseData: error.response?.data
     });
     
     res.status(500).json({
@@ -1015,7 +1016,10 @@ router.get("/debug-render-api", async (_req, res) => {
       error: error.message,
       status: error.response?.status,
       statusText: error.response?.statusText,
+      responseData: error.response?.data,
+      requestUrl: `https://api.render.com/v1/logs?ownerId=xxx&limit=5&direction=backward&resource[]=xxx`,
       troubleshooting: {
+        '400 Bad Request': 'Invalid parameters - check owner ID format or resource ID',
         '401 Unauthorized': 'Check RENDER_API_KEY is valid',
         '403 Forbidden': 'Check API key has permission to access logs',
         '404 Not Found': 'Check RENDER_OWNER_ID and RENDER_SERVICE_ID are correct',
