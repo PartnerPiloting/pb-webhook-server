@@ -436,6 +436,9 @@ async function main() {
     
     log(`🚀 PROGRESS: Starting smart resume processing (Run ID: ${runId}, Normalized: ${normalizedRunId})`, 'INFO');
     
+    // Track actual start and end times for log analysis
+    const runStartTimestamp = new Date(); // Actual start time for log fetching
+    
     // Use external URL for Render, localhost for local development
     const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || 'https://pb-webhook-server-staging.onrender.com';
     const secret = process.env.PB_WEBHOOK_SECRET;
@@ -820,6 +823,32 @@ async function main() {
         } catch (error) {
             log(`⚠️ Failed to update job tracking metrics: ${error.message}.`, 'WARN');
         }
+        
+        // Track end timestamp for log analysis
+        const runEndTimestamp = new Date();
+        
+        // FIRE-AND-FORGET: Analyze logs for this run to create Production Issues
+        log(`🔍 Starting automatic log analysis for run ${runId}...`);
+        (async () => {
+            try {
+                const ProductionIssueService = require('../services/productionIssueService');
+                const productionIssueService = new ProductionIssueService();
+                
+                const analysisResult = await productionIssueService.analyzeRunLogs({
+                    runId,
+                    startTime: runStartTimestamp,
+                    endTime: runEndTimestamp,
+                    stream,
+                });
+                
+                log(`✅ Log analysis complete: ${analysisResult.createdRecords} Production Issues created`, 'INFO');
+            } catch (analysisError) {
+                log(`⚠️ Log analysis failed (non-critical): ${analysisError.message}`, 'WARN');
+                // Don't block completion if log analysis fails
+            }
+        })().catch(err => {
+            log(`⚠️ Log analysis fire-and-forget error: ${err.message}`, 'WARN');
+        });
         
         log(`\n🎉 ✅ SMART RESUME FULLY COMPLETED!`);
         log(`🚀 PROGRESS: [6/6] ✅ ALL PHASES COMPLETE - Script execution finished successfully`);
