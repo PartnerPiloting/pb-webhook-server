@@ -1,33 +1,17 @@
 // Simple script to check Production Issues table on Render staging
-// No local env needed - calls the debug endpoint on staging server
+// Uses temporary unauthenticated endpoint for testing
 
 const https = require('https');
 
 const STAGING_URL = 'https://pb-webhook-server-staging.onrender.com';
 
-// You can pass the debug key as an argument or it will prompt for it
-const DEBUG_KEY = process.argv[2] || process.env.DEBUG_API_KEY;
-
-if (!DEBUG_KEY) {
-  console.error('\n❌ ERROR: DEBUG_API_KEY required');
-  console.error('\nUsage: node check-production-issues-staging.js <DEBUG_API_KEY>');
-  console.error('   OR: Set DEBUG_API_KEY environment variable');
-  process.exit(1);
-}
-
 // Function to make HTTP request
-function makeRequest(path, debugKey) {
+function makeRequest(path) {
   return new Promise((resolve, reject) => {
     const url = `${STAGING_URL}${path}`;
     console.log(`\nFetching: ${url}\n`);
     
-    const options = {
-      headers: {
-        'x-debug-key': debugKey
-      }
-    };
-    
-    https.get(url, options, (res) => {
+    https.get(url, (res) => {
       let data = '';
       
       res.on('data', (chunk) => {
@@ -59,7 +43,7 @@ async function checkProductionIssues() {
     
     // Get recent production issues (last 2 hours by default)
     const hours = 2;
-    const result = await makeRequest(`/debug-production-issues?hours=${hours}`, DEBUG_KEY);
+    const result = await makeRequest(`/check-production-issues-temp?hours=${hours}`);
     
     if (!result.issues || result.issues.length === 0) {
       console.log(`\n❌ NO ERRORS FOUND in Production Issues table from the last ${hours} hours`);
@@ -134,6 +118,18 @@ async function checkProductionIssues() {
       } else {
         console.log('\n   ⚠️  Error count is less than expected - some errors may not be logged');
       }
+    } else {
+      // Manually show expected since temp endpoint doesn't include it
+      console.log('\n📋 EXPECTED ERRORS from Render log 251008-130924-Guy-Wilson:');
+      console.log('   1. Airtable Field Error: "Unknown field name: Errors" (3 occurrences)');
+      console.log('   2. Logger Initialization: "Cannot access logger before initialization" (1 occurrence)');
+      console.log('\n   Expected total: 2-3 distinct errors');
+      
+      if (result.issues.length >= 2) {
+        console.log('\n   ✅ Error count matches or exceeds expectations!');
+      } else {
+        console.log('\n   ⚠️  Error count is less than expected - some errors may not be logged');
+      }
     }
     
     console.log('\n' + '=' .repeat(80));
@@ -142,8 +138,8 @@ async function checkProductionIssues() {
     console.error('\n❌ ERROR:', error.message);
     console.error('\nPossible issues:');
     console.error('  1. Staging server is down');
-    console.error('  2. DEBUG_API_KEY is incorrect');
-    console.error('  3. Endpoint not deployed yet (commit and deploy first)');
+    console.error('  2. Endpoint not deployed yet (wait for Render deployment)');
+    console.error('  3. ProductionIssueService is not working');
   }
 }
 

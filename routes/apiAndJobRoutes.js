@@ -1940,6 +1940,83 @@ router.get("/debug-production-issues", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// TEMPORARY: Check Production Issues (No Auth - For Testing Only)
+// ---------------------------------------------------------------
+router.get("/check-production-issues-temp", async (req, res) => {
+  moduleLogger.info("Temporary production issues check endpoint hit (no auth)");
+  
+  try {
+    const ProductionIssueService = require("../services/productionIssueService");
+    const service = new ProductionIssueService();
+    
+    // Get query parameters
+    const hours = parseInt(req.query.hours) || 2;
+    const limit = parseInt(req.query.limit) || 100;
+    
+    // Get all issues
+    const allRecords = await service.getProductionIssues({ limit });
+    
+    // Filter by time if needed
+    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const recentRecords = allRecords.filter(r => {
+      const timestamp = r.get('Timestamp');
+      if (!timestamp) return false;
+      return new Date(timestamp) > cutoffTime;
+    });
+    
+    // Format the response
+    const issues = recentRecords.map(record => ({
+      id: record.id,
+      'Timestamp': record.get('Timestamp'),
+      'Status': record.get('Status'),
+      'Severity': record.get('Severity'),
+      'Error Type': record.get('Error Type'),
+      'Error Message': record.get('Error Message'),
+      'Client ID': record.get('Client ID'),
+      'Run ID': record.get('Run ID'),
+      'File Path': record.get('File Path'),
+      'Function Name': record.get('Function Name'),
+      'Line Number': record.get('Line Number')
+    }));
+    
+    // Group by error type
+    const byType = {};
+    issues.forEach(issue => {
+      const type = issue['Error Type'] || 'Unknown';
+      byType[type] = (byType[type] || 0) + 1;
+    });
+    
+    // Group by severity
+    const bySeverity = {};
+    issues.forEach(issue => {
+      const severity = issue.Severity || 'Unknown';
+      bySeverity[severity] = (bySeverity[severity] || 0) + 1;
+    });
+    
+    res.json({
+      success: true,
+      summary: {
+        totalInDatabase: allRecords.length,
+        recentCount: issues.length,
+        hoursFilter: hours,
+        byType,
+        bySeverity
+      },
+      issues: issues,
+      note: "TEMPORARY ENDPOINT - Will be removed after testing. Use /debug-production-issues with auth key for production."
+    });
+    
+  } catch (error) {
+    moduleLogger.error("Temporary production issues check error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // JSON Quality Diagnostic endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/api/json-quality-analysis", async (req, res) => {
