@@ -155,7 +155,7 @@ ${rulesAndOutputFormat}
         logger.debug('buildPrompt', 'Dumped DEBUG_PROMPT_GEMINI.txt for debugging');
     }
 
-    logger.summary('buildPrompt', `Successfully built prompt with ${systemPrompt.length} characters`);
+    logger.info('buildPrompt', `Successfully built prompt with ${systemPrompt.length} characters`);
     return systemPrompt;
 }
 

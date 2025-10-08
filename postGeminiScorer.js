@@ -121,17 +121,17 @@ ${JSON.stringify(geminiInputObject, null, 2)}
         let resultArray;
         if (Array.isArray(parsedJsonObject)) {
             // Format 1: Direct array [{post_id: "...", post_score: 50}]
-            logger.summary('scorePostsWithGemini', `Successfully parsed direct array format with ${parsedJsonObject.length} scored posts`);
+            logger.info('scorePostsWithGemini', `Successfully parsed direct array format with ${parsedJsonObject.length} scored posts`);
             resultArray = parsedJsonObject;
         } else if (parsedJsonObject.post_analysis && Array.isArray(parsedJsonObject.post_analysis)) {
             // Format 2: Wrapped in object {post_analysis: [{post_id: "...", post_score: 50}]}
             logger.debug('scorePostsWithGemini', 'Detected wrapped response format, extracting post_analysis array');
-            logger.summary('scorePostsWithGemini', `Successfully parsed wrapped format with ${parsedJsonObject.post_analysis.length} scored posts`);
+            logger.info('scorePostsWithGemini', `Successfully parsed wrapped format with ${parsedJsonObject.post_analysis.length} scored posts`);
             resultArray = parsedJsonObject.post_analysis;
         } else if (parsedJsonObject.posts && Array.isArray(parsedJsonObject.posts)) {
             // Format 3: Alternative wrapper {posts: [{post_id: "...", post_score: 50}]}
             logger.debug('scorePostsWithGemini', 'Detected alternative wrapped response format, extracting posts array');
-            logger.summary('scorePostsWithGemini', `Successfully parsed alternative format with ${parsedJsonObject.posts.length} scored posts`);
+            logger.info('scorePostsWithGemini', `Successfully parsed alternative format with ${parsedJsonObject.posts.length} scored posts`);
             resultArray = parsedJsonObject.posts;
         } else {
             logger.error('scorePostsWithGemini', `Gemini response not in recognized format: ${JSON.stringify(parsedJsonObject).substring(0, 200)}...`);

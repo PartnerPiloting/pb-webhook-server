@@ -50,7 +50,7 @@ async function buildPostScoringPrompt(base, config, logger = null) {
         }
     });
 
-    logger.summary('buildPostScoringPrompt', `Successfully built prompt with ${finalPrompt.length} characters`);
+    logger.info('buildPostScoringPrompt', `Successfully built prompt with ${finalPrompt.length} characters`);
     return finalPrompt.trim();
 }
 
