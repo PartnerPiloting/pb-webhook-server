@@ -10,6 +10,7 @@ const logCriticalError = async () => {};
 const { getClientBase } = require('../config/airtableClient');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger } = require('../utils/loggerHelper');
+const { createLogger } = require('../utils/contextLogger');
 const JobTracking = require('../services/jobTracking');
 const jobOrchestrationService = require('../services/jobOrchestrationService');
 const { createPost } = require('../services/postService');
@@ -26,6 +27,9 @@ const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
 
 // Default logger - using safe logger creation
 const logger = createSafeLogger('SYSTEM', null, 'apify_webhook');
+
+// Module-level logger for utility functions
+const moduleLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'apify_webhook_utils' });
 
 /**
  * Webhook authentication middleware
@@ -348,8 +352,7 @@ function normalizeLinkedInProfileURL(url) {
         }
         return url;
     } catch (e) {
-        console.error(`Error normalizing LinkedIn URL ${url}: ${e.message}`);
-        logRouteError(e, req).catch(() => {});
+        moduleLogger.error(`Error normalizing LinkedIn URL ${url}: ${e.message}`);
         return url;
     }
 }
