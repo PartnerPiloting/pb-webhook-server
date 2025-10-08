@@ -27,8 +27,7 @@ const { repairAndParseJson } = require('./utils/jsonRepair');
 const { alertAdmin } = require('./utils/appHelpers.js');
 
 // --- Structured Logging ---
-const { createLogger } = require('./utils/unifiedLoggerFactory');
-const { createSafeLogger } = require('./utils/loggerHelper');
+const { createLogger } = require('./utils/contextLogger');
 
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
@@ -64,7 +63,6 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
     // Orchestrated runs will always provide a run ID
     if (!runId) {
         runId = `post_batch_standalone_${Date.now()}`;
-        console.log(`[POST-SCORER] No run ID provided (standalone mode), generated: ${runId}`);
     }
     
     // FIX: Initialize normalizedRunId at the beginning of the function
@@ -77,11 +75,15 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
         normalizedRunId = runId;
     }
     
-    // Create system-level logger for multi-tenant operations using safe creation
-    const systemLogger = createSafeLogger('SYSTEM', null, 'post_batch_scorer');
+    // Create system-level logger for multi-tenant operations
+    const systemLogger = createLogger({ 
+        runId: normalizedRunId, 
+        clientId: 'SYSTEM', 
+        operation: 'post_batch_scorer' 
+    });
     
-    systemLogger.setup("=== STARTING MULTI-TENANT POST SCORING ===");
-    systemLogger.setup(`Parameters: clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${!!options.dryRun}, tableOverride=${options.leadsTableName || 'DEFAULT'}, markSkips=${options.markSkips !== false}`);
+    systemLogger.info("=== STARTING MULTI-TENANT POST SCORING ===");
+    systemLogger.info(`Parameters: clientId=${clientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${!!options.dryRun}, tableOverride=${options.leadsTableName || 'DEFAULT'}, markSkips=${options.markSkips !== false}`);
     
     // Set global dependencies
     POST_BATCH_SCORER_VERTEX_AI_CLIENT = geminiClient;
@@ -110,13 +112,17 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
         const clientsToProcess = await clientService.getActiveClients(clientId);
         results.totalClients = clientsToProcess.length;
         
-        systemLogger.setup(`Found ${clientsToProcess.length} client(s) to process for post scoring`);
+        systemLogger.info(`Found ${clientsToProcess.length} client(s) to process for post scoring`);
         
         // Process each client sequentially
         for (const client of clientsToProcess) {
-            // Create client-specific logger with shared session ID using safe creation
-            const clientLogger = createSafeLogger(client.clientId, systemLogger.getSessionId(), 'post_batch_scorer');
-            clientLogger.setup(`--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
+            // Create client-specific logger with runId context
+            const clientLogger = createLogger({ 
+                runId: normalizedRunId, 
+                clientId: client.clientId, 
+                operation: 'post_batch_scorer' 
+            });
+            clientLogger.info(`--- PROCESSING CLIENT: ${client.clientName} (${client.clientId}) ---`);
             
             try {
                 // Explicitly pass the normalized runId to ensure consistency
@@ -152,7 +158,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
                 }
                 results.totalErrors += clientResult.errors || 0; // will be 0 if success
                 if (isSuccess) {
-                    clientLogger.summary(`SUCCESS - Processed: ${clientResult.postsProcessed}, Scored: ${clientResult.postsScored}, Duration: ${clientResult.duration}s`);
+                    clientLogger.info(`SUCCESS - Processed: ${clientResult.postsProcessed}, Scored: ${clientResult.postsScored}, Duration: ${clientResult.duration}s`);
                 } else {
                     clientLogger.error(`COMPLETED WITH ERRORS - Errors: ${clientResult.errors}, Details: ${clientResult.errorDetails?.join('; ')}`);
                 }
@@ -170,7 +176,11 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
                 });
                 
             } catch (clientError) {
-                const clientLogger = createSafeLogger(client.clientId, systemLogger.getSessionId(), 'post_batch_scorer');
+                const clientLogger = createLogger({ 
+                    runId: normalizedRunId, 
+                    clientId: client.clientId, 
+                    operation: 'post_batch_scorer' 
+                });
                 clientLogger.error(`Failed to process client ${client.clientId}: ${clientError.message}`);
                 
                 const failedResult = {
@@ -211,15 +221,15 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
     const endTime = new Date();
     results.duration = Math.round((endTime - startTime) / 1000); // seconds
     
-    systemLogger.summary("=== MULTI-TENANT POST SCORING SUMMARY ===");
-    systemLogger.summary(`Clients: ${results.successfulClients}/${results.totalClients} successful`);
-    systemLogger.summary(`Posts processed: ${results.totalPostsProcessed}`);
-    systemLogger.summary(`Posts scored: ${results.totalPostsScored}`);
-    systemLogger.summary(`Leads skipped: ${results.totalLeadsSkipped}`);
-    systemLogger.summary(`Skip reasons: ${JSON.stringify(results.skipCounts)}`);
-    systemLogger.summary(`Error reasons: ${JSON.stringify(results.errorReasonCounts)}`);
-    systemLogger.summary(`Errors (lead-level): ${results.totalErrors}`);
-    systemLogger.summary(`Duration: ${results.duration}s`);
+    systemLogger.info("=== MULTI-TENANT POST SCORING SUMMARY ===");
+    systemLogger.info(`Clients: ${results.successfulClients}/${results.totalClients} successful`);
+    systemLogger.info(`Posts processed: ${results.totalPostsProcessed}`);
+    systemLogger.info(`Posts scored: ${results.totalPostsScored}`);
+    systemLogger.info(`Leads skipped: ${results.totalLeadsSkipped}`);
+    systemLogger.info(`Skip reasons: ${JSON.stringify(results.skipCounts)}`);
+    systemLogger.info(`Error reasons: ${JSON.stringify(results.errorReasonCounts)}`);
+    systemLogger.info(`Errors (lead-level): ${results.totalErrors}`);
+    systemLogger.info(`Duration: ${results.duration}s`);
 
     // Attach diagnostics BEFORE returning (previously unreachable after early return)
     if (options.verboseErrors && diagnosticsCollector) {
@@ -308,10 +318,9 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         if (process.env.VERBOSE_POST_SCORING === "true") {
         }
         
-        logger.setup(`Set job status to RUNNING for client ${client.clientId}`);
+        logger.info(`Set job status to RUNNING for client ${client.clientId}`);
     } catch (jobError) {
         logger.warn(`Could not check/set job status: ${jobError.message}`);
-        console.warn(`[WARN] Could not check/set job status for ${client.clientId}: ${jobError.message}`);
     }
     
     try {
@@ -321,13 +330,13 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             throw new Error(`Failed to connect to Airtable base: ${client.airtableBaseId}`);
         }
         
-        logger.setup(`Connected to client base: ${client.airtableBaseId}`);
+        logger.info(`Connected to client base: ${client.airtableBaseId}`);
         
         // Load client-specific configuration
         const config = await loadClientPostScoringConfig(clientBase);
         // Optional table override (e.g., "Leads copy")
         if (options.leadsTableName) {
-            logger.setup(`Overriding leads table name: ${config.leadsTableName} -> ${options.leadsTableName}`);
+            logger.info(`Overriding leads table name: ${config.leadsTableName} -> ${options.leadsTableName}`);
             config.leadsTableName = options.leadsTableName;
         }
         
@@ -362,15 +371,15 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         // Get leads with posts to be scored - reduce debug logging
         if (process.env.VERBOSE_POST_SCORING === "true") {
         }
-        logger.setup(`Looking for leads with posts to score for client ${client.clientId} (${client.clientName})`);
+        logger.info(`Looking for leads with posts to score for client ${client.clientId} (${client.clientName})`);
         
         // Special debug for Guy Wilson client - only in verbose mode
         if (client.clientId === 'Guy-Wilson' && process.env.VERBOSE_POST_SCORING === "true") {
         }
         
-        const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, options);
+        const leadsToProcess = await getLeadsForPostScoring(clientBase, config, limit, { ...options, clientId: client.clientId });
         
-        logger.setup(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
+        logger.info(`Found ${leadsToProcess.length} leads with posts to score for client ${client.clientId}`);
         
         if (process.env.VERBOSE_POST_SCORING === "true") {
         }
@@ -381,7 +390,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         
         if (leadsToProcess.length === 0) {
             // No leads to process, complete with success but 0 scored
-            logger.summary(`No posts to score for client ${client.clientId} (${client.clientName})`);
+            logger.info(`No posts to score for client ${client.clientId} (${client.clientName})`);
             
             if (process.env.VERBOSE_POST_SCORING === "true") {
             }
@@ -408,7 +417,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         let prebuiltPrompt = null;
         try {
             prebuiltPrompt = await buildPostScoringPrompt(clientBase, config);
-            logger.setup(`Built post scoring prompt once for client ${client.clientId} (length=${prebuiltPrompt.length})`);
+            logger.info(`Built post scoring prompt once for client ${client.clientId} (length=${prebuiltPrompt.length})`);
         } catch (e) {
             logger.error(`Failed to build prebuilt prompt (will fallback per-lead): ${e.message}`);
         }
@@ -416,17 +425,17 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         if (leadsToProcess.length === 0) {
             clientResult.status = 'success';
             clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
-            logger.summary(`No posts to score for client ${client.clientId}`);
+            logger.info(`No posts to score for client ${client.clientId}`);
             return clientResult;
         }
         
         // Process leads in chunks
         const chunks = chunkArray(leadsToProcess, CHUNK_SIZE);
-        logger.process(`Processing ${leadsToProcess.length} leads in ${chunks.length} chunk(s) of max ${CHUNK_SIZE}`);
+        logger.info(`Processing ${leadsToProcess.length} leads in ${chunks.length} chunk(s) of max ${CHUNK_SIZE}`);
         
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
-            logger.process(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} leads) for client ${client.clientId}`);
+            logger.info(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} leads) for client ${client.clientId}`);
             
             try {
                 const chunkResult = await processPostScoringChunk(
@@ -481,7 +490,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                 return clientResult;
             }
             
-            logger.process(`Updating post scoring metrics for client ${client.clientId} using run ID: ${processRunId}`);
+            logger.info(`Updating post scoring metrics for client ${client.clientId} using run ID: ${processRunId}`);
             
             // PURE CONSUMER ARCHITECTURE FIX: processRunId is the BASE run ID from the parent.
             // We need to construct the COMPLETE client run ID here before passing to consumer functions.
@@ -530,13 +539,11 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
                         errorMessage: error.message
                     });
                     // Don't fail the entire process just because metrics couldn't be updated
-                    console.error(`[METRICS_UPDATE_ERROR] Failed to update client run metrics: ${error.message}`);
                 }
                 
-                logger.summary(`Successfully updated post scoring metrics in Client Run Results table`);
+                logger.info(`Successfully updated post scoring metrics in Client Run Results table`);
             } catch (metricsError) {
                 logger.error(`Failed to update metrics: ${metricsError.message}`);
-                console.error(`[POST_METRICS_ERROR] Failed to update metrics for ${client.clientId}: ${metricsError.message}`);
                 // Continue execution even if metrics update fails
             }
         
@@ -598,7 +605,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
             }
         });
         
-        logger.summary(`Completed all processing for client ${client.clientId} with duration=${clientResult.duration}s, posts scored=${clientResult.postsScored}`);
+        logger.info(`Completed all processing for client ${client.clientId} with duration=${clientResult.duration}s, posts scored=${clientResult.postsScored}`);
         
         // Also update the main job tracking record to show progress
         // Check if options.runId is defined before attempting to update job status
@@ -615,7 +622,6 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         }
     } catch (jobError) {
         logger.warn(`Could not update job status: ${jobError.message}`);
-        console.error(`Error updating job status: ${jobError.message}`);
     }
     
     return clientResult;
@@ -736,15 +742,22 @@ function ensureFormulaQuotes(formula) {
 }
 
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
-    console.log(`🔍 [GET-LEADS-DEBUG] ========== getLeadsForPostScoring CALLED ==========`);
-    console.log(`🔍 [GET-LEADS-DEBUG] Config:`, {
+    // Create logger with context from options
+    const log = createLogger({
+        runId: options.runId || 'UNKNOWN',
+        clientId: options.clientId || 'UNKNOWN',
+        operation: 'get_leads_for_post_scoring'
+    });
+    
+    log.debug(`========== getLeadsForPostScoring CALLED ==========`);
+    log.debug(`Config:`, {
         leadsTableName: config.leadsTableName,
         postsContentField: config.fields.postsContent,
         dateScoredField: config.fields.dateScored,
         forceRescore: !!options.forceRescore,
         limit: limit || 'unlimited'
     });
-    console.log(`🔍 [GET-LEADS-DEBUG] ClientBase type: ${typeof clientBase}`);
+    log.debug(`ClientBase type: ${typeof clientBase}`);
     
     // Display the full environment variables that might affect post scoring if in verbose mode
     if (process.env.VERBOSE_POST_SCORING === "true") {
@@ -756,15 +769,15 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     try {
         const formula = ensureFormulaQuotes(`AND({${config.fields.postsContent}} != '', {${config.fields.dateScored}} = BLANK())`);
         
-        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY: Running count of unscored leads`);
-        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY: Formula: ${formula}`);
+        log.debug(`COUNT QUERY: Running count of unscored leads`);
+        log.debug(`COUNT QUERY: Formula: ${formula}`);
         
         // Get a sample record first to check field names (case sensitivity)
         const sampleRec = await clientBase(config.leadsTableName).select({ maxRecords: 1 }).firstPage();
         const hasUpperCaseIdField = sampleRec && sampleRec[0] && Object.keys(sampleRec[0].fields || {}).includes('ID');
         const hasLowerCaseIdField = sampleRec && sampleRec[0] && Object.keys(sampleRec[0].fields || {}).includes('id');
         
-        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY: ID field check - uppercase: ${hasUpperCaseIdField}, lowercase: ${hasLowerCaseIdField}`);
+        log.debug(`COUNT QUERY: ID field check - uppercase: ${hasUpperCaseIdField}, lowercase: ${hasLowerCaseIdField}`);
         
         // Use the first available ID field, or don't specify fields at all if neither exists
         const countQuery = await clientBase(config.leadsTableName).select({
@@ -772,14 +785,14 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             filterByFormula: formula
         }).all();
         
-        console.log(`🔍 [GET-LEADS-DEBUG] COUNT QUERY RESULT: ${countQuery.length} leads have posts content but no Date Posts Scored`);
+        log.debug(`COUNT QUERY RESULT: ${countQuery.length} leads have posts content but no Date Posts Scored`);
         
         // Check limit constraints
         if (limit && limit < countQuery.length) {
-            console.log(`[DEBUG-POST-SCORING] LIMIT CONSTRAINT: Processing only ${limit} of ${countQuery.length} available leads due to limit parameter`);
+            log.debug(`LIMIT CONSTRAINT: Processing only ${limit} of ${countQuery.length} available leads due to limit parameter`);
         }
     } catch (countError) {
-        console.error(`[DEBUG-POST-SCORING] Error counting unscored leads: ${countError.message}`);
+        log.error(`Error counting unscored leads: ${countError.message}`);
     }
 
     // If explicit targetIds provided, use them directly (bypass view path)
@@ -803,10 +816,10 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
                 }).firstPage();
                 if (recs && recs[0]) found.push(recs[0]);
             } catch (e) {
-                console.warn(`[postBatchScorer] Failed to fetch record by id ${id}: ${e.message}`);
+                log.warn(`Failed to fetch record by id ${id}: ${e.message}`);
             }
         }
-        console.log(`[DEBUG] getLeadsForPostScoring: Using explicit targetIds: ${ids.length} specified, ${found.length} found`);
+        log.debug(`Using explicit targetIds: ${ids.length} specified, ${found.length} found`);
         return found;
     }
 
@@ -837,32 +850,32 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
         // Instead, we'll check if we can access the table directly
         try {
             await clientBase(config.leadsTableName).select({ maxRecords: 1 }).all();
-            console.log(`[DEBUG] getLeadsForPostScoring: Confirmed table "${config.leadsTableName}" exists`);
+            log.debug(`Confirmed table "${config.leadsTableName}" exists`);
         } catch (accessError) {
-            console.error(`[ERROR] getLeadsForPostScoring: Table "${config.leadsTableName}" does not exist or is not accessible!`);
+            log.error(`Table "${config.leadsTableName}" does not exist or is not accessible!`);
             return [];
         }
     } catch (tableError) {
-        console.error(`[ERROR] getLeadsForPostScoring: Failed to check tables: ${tableError.message}`);
+        log.error(`Failed to check tables: ${tableError.message}`);
     }
     
     try {
-        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT: Trying view "Leads with Posts not yet scored"`);
-        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT: Filter: ${primarySelect.filterByFormula || 'NONE (using view filters only)'}`);
-        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT: Fields requested:`, primarySelect.fields);
+        log.debug(`PRIMARY SELECT: Trying view "Leads with Posts not yet scored"`);
+        log.debug(`PRIMARY SELECT: Filter: ${primarySelect.filterByFormula || 'NONE (using view filters only)'}`);
+        log.debug(`PRIMARY SELECT: Fields requested:`, primarySelect.fields);
         
         records = await clientBase(config.leadsTableName).select(primarySelect).all();
         
-        console.log(`🔍 [GET-LEADS-DEBUG] PRIMARY SELECT RESULT: Found ${records.length} records from view`);
-        console.log(`[DEBUG] getLeadsForPostScoring: Primary select found ${records.length} records`);
+        log.debug(`PRIMARY SELECT RESULT: Found ${records.length} records from view`);
+        log.debug(`Primary select found ${records.length} records`);
         
         if (records.length > 0) {
-            console.log(`🔍 [GET-LEADS-DEBUG] FILTERING: Checking ${records.length} records for valid posts content...`);
+            log.debug(`FILTERING: Checking ${records.length} records for valid posts content...`);
             
             // Check if the records actually have posts content
             const withPosts = records.filter(r => {
                 if (!r.fields || !r.fields[config.fields.postsContent]) {
-                    console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - No posts content field`);
+                    log.debug(`FILTER OUT: Record ${r.id} - No posts content field`);
                     return false;
                 }
                 
@@ -872,57 +885,57 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
                     // Check if it's just whitespace or very short
                     const isValid = content.trim().length > 10;
                     if (!isValid) {
-                        console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - Content too short (${content.trim().length} chars)`);
+                        log.debug(`FILTER OUT: Record ${r.id} - Content too short (${content.trim().length} chars)`);
                     }
                     return isValid;
                 } else if (Array.isArray(content)) {
                     // If it's an array (multi-line text in Airtable), check if it has entries
                     const isValid = content.length > 0;
                     if (!isValid) {
-                        console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - Empty array`);
+                        log.debug(`FILTER OUT: Record ${r.id} - Empty array`);
                     }
                     return isValid;
                 }
-                console.log(`🔍 [GET-LEADS-DEBUG] FILTER OUT: Record ${r.id} - Invalid content type: ${typeof content}`);
+                log.debug(`FILTER OUT: Record ${r.id} - Invalid content type: ${typeof content}`);
                 return false;
             });
-            console.log(`🔍 [GET-LEADS-DEBUG] FILTERING RESULT: ${withPosts.length} of ${records.length} records have valid posts content`);
-            console.log(`[DEBUG] getLeadsForPostScoring: ${withPosts.length} of ${records.length} records have valid posts content`);
+            log.debug(`FILTERING RESULT: ${withPosts.length} of ${records.length} records have valid posts content`);
+            log.debug(`${withPosts.length} of ${records.length} records have valid posts content`);
             
             // Check if the records have been scored already
             const alreadyScored = records.filter(r => r.fields && r.fields[config.fields.dateScored]);
-            console.log(`[DEBUG] getLeadsForPostScoring: ${alreadyScored.length} of ${records.length} records have already been scored`);
+            log.debug(`${alreadyScored.length} of ${records.length} records have already been scored`);
             
             // Filter out records without valid post content
             if (withPosts.length < records.length) {
-                console.warn(`[WARN] getLeadsForPostScoring: ${records.length - withPosts.length} records don't have valid posts content!`);
-                console.log(`[INFO] getLeadsForPostScoring: Filtering out records without valid posts content`);
+                log.warn(`${records.length - withPosts.length} records don't have valid posts content!`);
+                log.info(`Filtering out records without valid posts content`);
                 records = withPosts;
             }
             
             // Warn about already scored records (shouldn't happen with view-based filtering)
             if (alreadyScored.length > 0) {
-                console.warn(`[WARN] getLeadsForPostScoring: ${alreadyScored.length} records have already been scored!`);
+                log.warn(`${alreadyScored.length} records have already been scored!`);
             }
             
             // If we have records to process, log a sample to help with debugging
             if (records.length > 0) {
                 const sample = records[0];
-                console.log(`[DEBUG] getLeadsForPostScoring: Sample record ID: ${sample.id}`);
-                console.log(`[DEBUG] getLeadsForPostScoring: Sample LinkedIn URL: ${sample.fields[config.fields.linkedinUrl] || 'N/A'}`);
+                log.debug(`Sample record ID: ${sample.id}`);
+                log.debug(`Sample LinkedIn URL: ${sample.fields[config.fields.linkedinUrl] || 'N/A'}`);
                 
                 // Only log a snippet of the posts content for debugging
                 const postsContent = sample.fields[config.fields.postsContent];
                 if (typeof postsContent === 'string') {
                     const snippet = postsContent.slice(0, 100) + (postsContent.length > 100 ? '...' : '');
-                    console.log(`[DEBUG] getLeadsForPostScoring: Sample posts content (snippet): ${snippet}`);
+                    log.debug(`Sample posts content (snippet): ${snippet}`);
                 }
             }
         }
     } catch (e) {
-        console.log(`[DEBUG] getLeadsForPostScoring: Primary select failed: ${e.message}`);
+        log.debug(`Primary select failed: ${e.message}`);
         // If the view doesn't exist on this tenant, fall back to a formula-only query below
-        console.warn(`[postBatchScorer] Primary select using view failed: ${e.message}. Falling back to formula-only selection.`);
+        log.warn(`Primary select using view failed: ${e.message}. Falling back to formula-only selection.`);
     }
 
     // Fallback: if no records found (or view missing), query by formula only:
@@ -930,7 +943,7 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     // - Date Posts Scored blank
     // - Posts Actioned blank/false when field exists
     if (!Array.isArray(records) || records.length === 0) {
-        console.log(`[DEBUG] getLeadsForPostScoring: Using fallback formula-based query`);
+        log.debug(`Using fallback formula-based query`);
         usedFallback = true;
         const postsActionedField = 'Posts Actioned';
         // Attempt 1: include Posts Actioned guard
@@ -958,13 +971,13 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
             
             // Apply quote fixing to ensure consistency
             filterFormula = ensureFormulaQuotes(filterFormula);
-            console.log(`[DEBUG] getLeadsForPostScoring: Generated filter formula: ${filterFormula}`);
+            log.debug(`Generated filter formula: ${filterFormula}`);
             return filterFormula;
         };
 
         // First, try a very basic check to see if we can find ANY records with posts content
         try {
-            console.log(`[DEBUG] getLeadsForPostScoring: Checking if any records have posts content`);
+            log.debug(`Checking if any records have posts content`);
             const basicFormula = ensureFormulaQuotes(`{${config.fields.postsContent}} != ''`);
             const basicCheck = await clientBase(config.leadsTableName).select({
                 fields: [config.fields.postsContent],
@@ -972,70 +985,70 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
                 maxRecords: 5
             }).firstPage();
             
-            console.log(`[DEBUG] getLeadsForPostScoring: Basic posts content check found ${basicCheck.length} records`);
+            log.debug(`Basic posts content check found ${basicCheck.length} records`);
             
             if (basicCheck.length === 0) {
-                console.warn(`[WARN] getLeadsForPostScoring: No records with posts content found at all!`);
+                log.warn(`No records with posts content found at all!`);
                 // If no posts content found, there's nothing to score
                 return [];
             }
         } catch (e) {
-            console.warn(`[WARN] getLeadsForPostScoring: Basic posts content check failed: ${e.message}`);
+            log.warn(`Basic posts content check failed: ${e.message}`);
         }
 
         try {
-            console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback with Posts Actioned guard`);
+            log.debug(`Trying fallback with Posts Actioned guard`);
             const filter = makeFilter(true);
             const formula = ensureFormulaQuotes(filter);
             records = await clientBase(config.leadsTableName).select({
                 fields: baseFields,
                 filterByFormula: formula
             }).all();
-            console.log(`[DEBUG] getLeadsForPostScoring: Fallback with guard found ${records.length} records`);
+            log.debug(`Fallback with guard found ${records.length} records`);
         } catch (e2) {
-            console.log(`[DEBUG] getLeadsForPostScoring: Fallback with guard failed: ${e2.message}`);
+            log.debug(`Fallback with guard failed: ${e2.message}`);
             // If "Posts Actioned" is missing on this base, retry without referencing it
             const msg = e2?.message || String(e2);
-            console.warn(`[postBatchScorer] Fallback select with actioned guard failed: ${msg}. Retrying without Posts Actioned condition.`);
+            log.warn(`Fallback select with actioned guard failed: ${msg}. Retrying without Posts Actioned condition.`);
             try {
-                console.log(`[DEBUG] getLeadsForPostScoring: Trying fallback without Posts Actioned guard`);
+                log.debug(`Trying fallback without Posts Actioned guard`);
                 const filter = makeFilter(false);
                 const formula = ensureFormulaQuotes(filter);
                 records = await clientBase(config.leadsTableName).select({
                     fields: baseFields,
                     filterByFormula: formula
                 }).all();
-                console.log(`[DEBUG] getLeadsForPostScoring: Fallback without guard found ${records.length} records`);
+                log.debug(`Fallback without guard found ${records.length} records`);
             } catch (e3) {
-                console.log(`[DEBUG] getLeadsForPostScoring: All fallback attempts failed: ${e3.message}`);
-                console.error(`[postBatchScorer] Fallback select without actioned guard also failed: ${e3.message}`);
+                log.debug(`All fallback attempts failed: ${e3.message}`);
+                log.error(`Fallback select without actioned guard also failed: ${e3.message}`);
                 records = [];
             }
         }
     }
 
     if (typeof limit === 'number' && limit > 0 && Array.isArray(records)) {
-        console.log(`[DEBUG] getLeadsForPostScoring: Applying limit ${limit} to ${records.length} records`);
+        log.debug(`Applying limit ${limit} to ${records.length} records`);
         records = records.slice(0, limit);
-        console.log(`[postBatchScorer] Limiting batch to first ${limit} leads (${usedFallback ? 'fallback' : 'view'} mode)`);
+        log.info(`Limiting batch to first ${limit} leads (${usedFallback ? 'fallback' : 'view'} mode)`);
     }
 
-    console.log(`[DEBUG] getLeadsForPostScoring: Final result: ${records.length} records`);
+    log.debug(`Final result: ${records.length} records`);
     
     // Enhanced validation and logging
     if (records.length > 0) {
         // Check for field existence and format in the records
         const sampleRecord = records[0];
-        console.log(`[DEBUG] getLeadsForPostScoring: Sample record fields: ${Object.keys(sampleRecord.fields || {}).join(', ')}`);
+        log.debug(`Sample record fields: ${Object.keys(sampleRecord.fields || {}).join(', ')}`);
         
         const hasPostsContent = sampleRecord.fields && sampleRecord.fields[config.fields.postsContent];
-        console.log(`[DEBUG] getLeadsForPostScoring: Sample record has posts content: ${!!hasPostsContent}`);
+        log.debug(`Sample record has posts content: ${!!hasPostsContent}`);
         
         if (hasPostsContent) {
             const postsValue = sampleRecord.fields[config.fields.postsContent];
             const postsValueType = typeof postsValue;
             const postsValueLength = postsValueType === 'string' ? postsValue.length : (Array.isArray(postsValue) ? postsValue.length : 'N/A');
-            console.log(`[DEBUG] getLeadsForPostScoring: Posts content type: ${postsValueType}, length: ${postsValueLength}`);
+            log.debug(`Posts content type: ${postsValueType}, length: ${postsValueLength}`);
         }
         
         // Count records with essential data
@@ -1045,14 +1058,14 @@ async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
                 r.fields[config.fields.postsContent].length > 10 : true);
         }).length;
         
-        console.log(`[DEBUG] getLeadsForPostScoring: Records with valid posts content: ${withValidPostsCount} of ${records.length}`);
+        log.debug(`Records with valid posts content: ${withValidPostsCount} of ${records.length}`);
         
         // If many records have no posts content, that's a problem
         if (withValidPostsCount < records.length * 0.5 && records.length > 1) {
-            console.warn(`[WARN] getLeadsForPostScoring: Less than half of records have valid posts content!`);
+            log.warn(`Less than half of records have valid posts content!`);
         }
     } else {
-        console.warn(`[WARN] getLeadsForPostScoring: No records found for post scoring!`);
+        log.warn(`No records found for post scoring!`);
     }
     
     return records;
@@ -1070,7 +1083,7 @@ async function processPostScoringChunk(records, clientBase, config, clientId, lo
         totalTokensUsed: 0  // Add token tracking at chunk level
     };
     
-    logger.process(`Processing ${records.length} leads for post scoring in client ${clientId}`);
+    logger.info(`Processing ${records.length} leads for post scoring in client ${clientId}`);
     
     for (const leadRecord of records) {
         try {
@@ -1220,7 +1233,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             } catch (e) { /* Field might not exist */ }
         }
     } else {
-        console.warn(`Lead ${leadRecord.id}: Posts Content field is not a string or array, skipping`);
+        logger.warn(`Lead ${leadRecord.id}: Posts Content field is not a string or array, skipping`);
         if (!options.dryRun) {
             await clientBase(config.leadsTableName).update(leadRecord.id, {
                 [config.fields.relevanceScore]: 0,
@@ -1233,7 +1246,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     }
     
     if (!Array.isArray(parsedPostsArray) || parsedPostsArray.length === 0) {
-        console.warn(`Lead ${leadRecord.id}: Parsed Posts Content is not an array or empty, skipping`);
+        logger.warn(`Lead ${leadRecord.id}: Parsed Posts Content is not an array or empty, skipping`);
         if (!options.dryRun && options.markSkips !== false) {
             try {
                 // Initialize basic update fields
@@ -1262,7 +1275,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
     const config_data = await loadPostScoringAirtableConfig(clientBase, config, logger);
 
     // Score all posts (originals + reposts) using client's specific attributes
-    logger.process(`Lead ${leadRecord.id}: Scoring all ${allPosts.length} posts (including reposts) using client's attribute criteria`);
+    logger.info(`Lead ${leadRecord.id}: Scoring all ${allPosts.length} posts (including reposts) using client's attribute criteria`);
 
     // Use prebuilt prompt if provided (per-client batch cache), else build on demand
     const systemPrompt = options.prebuiltPrompt || await buildPostScoringPrompt(clientBase, config);
@@ -1441,7 +1454,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
              throw new Error("Could not determine the highest scoring post from the AI response.");
         }
         
-        logger.process(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}`);
+        logger.info(`Lead ${leadRecord.id}: Highest scoring post has a score of ${highestScoringPost.post_score}`);
         
         // Format top scoring post text (matching original)
         function safeFormatDate(dateStr) {
@@ -1515,7 +1528,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
             }
         }
         
-        logger.summary(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
+        logger.info(`Lead ${leadRecord.id}: Successfully scored. Final Score: ${highestScoringPost.post_score}`);
         return { 
             status: "success", 
             relevanceScore: highestScoringPost.post_score,
@@ -1523,7 +1536,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         };
 
     } catch (error) {
-        console.error(`Lead ${leadRecord.id}: Error during AI scoring process. Error: ${error.message}`, error.stack);
+        logger.error(`Lead ${leadRecord.id}: Error during AI scoring process. Error: ${error.message}`, error.stack);
         // Improved error/debug messaging in Airtable (matching original)
         const errorDetails = {
             errorMessage: error.message,
