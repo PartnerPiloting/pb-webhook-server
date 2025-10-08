@@ -127,7 +127,7 @@ async function loadAttributes(logger = null, clientId = null) {
     cache[cacheKey] = result;
     cacheUntil = now + 10 * 60 * 1000;          // 10-minute cache
     
-    logger.summary('loadAttributes', 
+    logger.info('loadAttributes', 
       `Loaded ${rows.length} rows → ${Object.keys(positives).length} positives, ` +
       `${Object.keys(negatives).length} negatives. Cached for 10 minutes for ${cacheKey}.`
     );
@@ -175,7 +175,7 @@ async function loadAttributeForEditing(attributeId, logger = null) {
       active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
     };
     
-    logger.summary('loadAttributeForEditing', `Successfully loaded attribute ${attributeId}`);
+    logger.info('loadAttributeForEditing', `Successfully loaded attribute ${attributeId}`);
     return attribute;
   } catch (error) {
     logger.error('loadAttributeForEditing', `Error loading attribute ${attributeId}: ${error.message}`);
@@ -220,7 +220,7 @@ async function updateAttribute(attributeId, data, logger = null) {
     cache = null;
     cacheUntil = 0;
     
-    logger.summary('updateAttribute', `Successfully updated attribute ${attributeId}`);
+    logger.info('updateAttribute', `Successfully updated attribute ${attributeId}`);
     return { success: true, id: record.id };
   } catch (error) {
     logger.error('updateAttribute', `Error updating attribute ${attributeId}: ${error.message}`);
@@ -268,7 +268,7 @@ async function listAttributesForEditing(logger = null) {
       isEmpty: !record.get("Heading") && !record.get("Instructions")
     }));
     
-    logger.summary('listAttributesForEditing', `Successfully loaded ${attributes.length} attributes for editing`);
+    logger.info('listAttributesForEditing', `Successfully loaded ${attributes.length} attributes for editing`);
     return attributes;
   } catch (error) {
     logger.error('listAttributesForEditing', `Error loading attributes for editing: ${error.message}`);
@@ -313,7 +313,7 @@ async function loadAttributeForEditingWithClientBase(attributeId, clientBase, lo
       active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
     };
     
-    logger.summary('loadAttributeForEditingWithClientBase', `Successfully loaded attribute ${attributeId} from client base`);
+    logger.info('loadAttributeForEditingWithClientBase', `Successfully loaded attribute ${attributeId} from client base`);
     return attribute;
   } catch (error) {
     logger.error('loadAttributeForEditingWithClientBase', `Error loading attribute ${attributeId}: ${error.message}`);
@@ -357,7 +357,7 @@ async function updateAttributeWithClientBase(attributeId, data, clientBase, logg
     // Clear cache since live data changed
     cache = null;
     
-    logger.summary('updateAttributeWithClientBase', `Successfully updated attribute ${attributeId}`);
+    logger.info('updateAttributeWithClientBase', `Successfully updated attribute ${attributeId}`);
     return record;
   } catch (error) {
     logger.error('updateAttributeWithClientBase', `Error updating attribute ${attributeId}: ${error.message}`);

@@ -84,7 +84,7 @@ class ProductionIssueService {
       // Generate summary
       const summary = generateSummary(issues);
 
-      logger.summary('analyzeRecentLogs', `Analysis complete: ${summary.critical} critical, ${summary.error} errors, ${summary.warning} warnings`);
+      logger.info('analyzeRecentLogs', `Analysis complete: ${summary.critical} critical, ${summary.error} errors, ${summary.warning} warnings`);
 
       return {
         success: true,
@@ -123,7 +123,7 @@ class ProductionIssueService {
       // Generate summary
       const summary = generateSummary(issues);
 
-      logger.summary('analyzeLogText', `Analysis complete: ${summary.critical} critical, ${summary.error} errors, ${summary.warning} warnings`);
+      logger.info('analyzeLogText', `Analysis complete: ${summary.critical} critical, ${summary.error} errors, ${summary.warning} warnings`);
 
       return {
         success: true,
@@ -168,7 +168,7 @@ class ProductionIssueService {
       logger.warn('createProductionIssues', `${errors.length} records failed to create`);
     }
 
-    logger.summary('createProductionIssues', `Created ${createdRecords.length} of ${issues.length} records`);
+    logger.info('createProductionIssues', `Created ${createdRecords.length} of ${issues.length} records`);
 
     return createdRecords;
   }
@@ -391,7 +391,7 @@ class ProductionIssueService {
 
       const summary = generateSummary(enrichedIssues);
 
-      logger.summary('analyzeRunLogs', `Analysis complete: ${createdRecords.length} Production Issues created`);
+      logger.info('analyzeRunLogs', `Analysis complete: ${createdRecords.length} Production Issues created`);
 
       return {
         success: true,

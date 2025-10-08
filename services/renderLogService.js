@@ -53,7 +53,7 @@ class RenderLogService {
                 throw new Error('Services response is not an array');
             }
             
-            this.logger.summary('getAllServices', `Found ${services.length} services`);
+            this.logger.info('getAllServices', `Found ${services.length} services`);
             
             return services.map(service => ({
                 id: service.id || service.serviceId || service.service?.id,
@@ -177,7 +177,7 @@ class RenderLogService {
                 }
             }
 
-            this.logger.summary('searchLogsAcrossServices', `Found matches in ${results.length} services`);
+            this.logger.info('searchLogsAcrossServices', `Found matches in ${results.length} services`);
             return results;
         } catch (error) {
             this.logger.error('searchLogsAcrossServices', `Search failed: ${error.message}`);
@@ -208,7 +208,7 @@ class RenderLogService {
             // Group and analyze patterns
             const analysis = this.categorizeErrors(results);
             
-            this.logger.summary('analyzeErrorPatterns', `Analysis complete - found ${analysis.totalErrors} errors across ${analysis.affectedServices} services`);
+            this.logger.info('analyzeErrorPatterns', `Analysis complete - found ${analysis.totalErrors} errors across ${analysis.affectedServices} services`);
             return analysis;
         } catch (error) {
             this.logger.error('analyzeErrorPatterns', `Error analysis failed: ${error.message}`);

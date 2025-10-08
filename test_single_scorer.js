@@ -19,7 +19,7 @@ async function testSingleLeadScoring() {
             logger.error('testSingleLeadScoring', 'Failed to initialize VertexAI client or model from config.');
             return;
         }
-        logger.summary('testSingleLeadScoring', 'VertexAI client loaded successfully from config.');
+        logger.info('testSingleLeadScoring', 'VertexAI client loaded successfully from config.');
 
         const dependencies = {
             vertexAIClient,
@@ -33,7 +33,7 @@ async function testSingleLeadScoring() {
             logger.error('testSingleLeadScoring', `Could not fetch lead data for ${leadId}.`);
             return;
         }
-        logger.summary('testSingleLeadScoring', 'Successfully fetched lead data.');
+        logger.info('testSingleLeadScoring', 'Successfully fetched lead data.');
         // console.log("Lead Data:", JSON.stringify(leadData, null, 2));
 
 
@@ -42,7 +42,7 @@ async function testSingleLeadScoring() {
         const result = await scoreLeadNow(leadData, dependencies, logger);
 
         // 4. Log the result
-        logger.summary('testSingleLeadScoring', 'scoreLeadNow completed.');
+        logger.info('testSingleLeadScoring', 'scoreLeadNow completed.');
         console.log('--- FINAL SCORING RESULT ---');
         console.log(JSON.stringify(result, null, 2));
         console.log('--------------------------');

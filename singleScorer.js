@@ -142,7 +142,7 @@ async function scoreLeadNow(fullLead = {}, dependencies, logger = null) {
         };
 
         if (Array.isArray(parsedArrayOrObject) && parsedArrayOrObject.length > 0) {
-            logger.summary('scoreLeadNow', 'Successfully parsed single lead score from array format');
+            logger.info('scoreLeadNow', 'Successfully parsed single lead score from array format');
             result = parsedArrayOrObject[0];
         } else if (!Array.isArray(parsedArrayOrObject) && typeof parsedArrayOrObject === 'object' && parsedArrayOrObject !== null) {
             logger.warn('scoreLeadNow', 'Gemini returned single object directly for single lead scoring - using it');
