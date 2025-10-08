@@ -1,4 +1,7 @@
 // repairAllBadJsonRecords.js
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 // Batch repairs all bad JSON records in the Leads table, with progress logging and verification
 
 const base = require('./config/airtableClient');
@@ -15,15 +18,15 @@ async function repairAllBadJsonRecords() {
     let pageCount = 0;
     let badRecords = [];
 
-    console.log('Starting batch repair of bad JSON records in Airtable...');
+    logger.info('Starting batch repair of bad JSON records in Airtable...');
 
     await base(LEADS_TABLE).select({fields: [POSTS_CONTENT_FIELD]}).eachPage(async (records, fetchNextPage) => {
         pageCount++;
-        console.log(`Fetched page ${pageCount} with ${records.length} records.`);
+        logger.info(`Fetched page ${pageCount} with ${records.length} records.`);
         for (const record of records) {
             total++;
             if (total % 50 === 0) {
-                console.log(`Scanned ${total} records so far...`);
+                logger.info(`Scanned ${total} records so far...`);
             }
             const raw = record.get(POSTS_CONTENT_FIELD);
             if (!raw) {
@@ -45,7 +48,7 @@ async function repairAllBadJsonRecords() {
             } catch (e) {
                 failed++;
                 badRecords.push({id: record.id, error: e.message});
-                console.log(`Failed to repair record ${record.id}: ${e.message}`);
+                logger.info(`Failed to repair record ${record.id}: ${e.message}`);
                 continue;
             }
             // Write back cleaned JSON
@@ -61,36 +64,36 @@ async function repairAllBadJsonRecords() {
                 if (!verifyRecords.length) {
                     failed++;
                     badRecords.push({id: record.id, error: 'Not found after update'});
-                    console.log(`Record ${record.id} not found after update.`);
+                    logger.info(`Record ${record.id} not found after update.`);
                     continue;
                 }
                 const newRaw = verifyRecords[0].get(POSTS_CONTENT_FIELD);
                 try {
                     JSON.parse(newRaw);
                     repaired++;
-                    console.log(`Record ${record.id} repaired and verified.`);
+                    logger.info(`Record ${record.id} repaired and verified.`);
                 } catch (e) {
                     failed++;
                     badRecords.push({id: record.id, error: 'Still invalid after repair'});
-                    console.log(`Record ${record.id} still invalid after repair.`);
+                    logger.info(`Record ${record.id} still invalid after repair.`);
                 }
             } catch (e) {
                 failed++;
                 badRecords.push({id: record.id, error: 'Airtable update error: ' + e.message});
-                console.log(`Airtable update error for record ${record.id}: ${e.message}`);
+                logger.info(`Airtable update error for record ${record.id}: ${e.message}`);
             }
         }
         fetchNextPage();
     });
     // Wait a moment for all async updates to finish
     setTimeout(() => {
-        console.log('=== Batch Repair Complete ===');
-        console.log(`Total records scanned: ${total}`);
-        console.log(`Records repaired: ${repaired}`);
-        console.log(`Records skipped (empty): ${skipped}`);
-        console.log(`Records failed to repair: ${failed}`);
+        logger.info('=== Batch Repair Complete ===');
+        logger.info(`Total records scanned: ${total}`);
+        logger.info(`Records repaired: ${repaired}`);
+        logger.info(`Records skipped (empty): ${skipped}`);
+        logger.info(`Records failed to repair: ${failed}`);
         if (badRecords.length) {
-            console.log('Failed records:', badRecords);
+            logger.info('Failed records:', badRecords);
         }
     }, 5000);
 }

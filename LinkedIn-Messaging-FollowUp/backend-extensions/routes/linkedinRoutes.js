@@ -1,4 +1,7 @@
 const express = require('express');
+const { createLogger } = require('../../../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 const router = express.Router();
 
 // Import Airtable base directly instead of validateClient
@@ -12,17 +15,17 @@ const { loadPostScoringAirtableConfig } = require('../../../postAttributeLoader'
  * Sorted by First Name, Last Name
  */
 router.get('/leads/top-scoring-posts', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/top-scoring-posts called');
+  logger.info('LinkedIn Routes: GET /leads/top-scoring-posts called');
   
   try {
   const clientId = req.query.client;
-    console.log('LinkedIn Routes: Client ID:', clientId);
+    logger.info('LinkedIn Routes: Client ID:', clientId);
     
     if (!clientId) {
       return res.status(400).json({ error: 'Client parameter is required' });
     }
 
-    console.log('LinkedIn Routes: Fetching leads from Airtable...');
+    logger.info('LinkedIn Routes: Fetching leads from Airtable...');
 
     // Define field names (matching frontend)
     const FIELD_NAMES = {
@@ -54,7 +57,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
         if (active && Number.isFinite(val)) maxPossibleScore += val;
       }
     } catch (e) {
-      console.warn('LinkedIn Routes: Failed to load Post Scoring Attributes for max score:', e?.message || e);
+      logger.warn('LinkedIn Routes: Failed to load Post Scoring Attributes for max score:', e?.message || e);
     }
     if (!Number.isFinite(maxPossibleScore) || maxPossibleScore <= 0) {
       maxPossibleScore = 100;
@@ -69,7 +72,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
           const raw = row ? row.get('Posts Threshold Percentage') : undefined;
           minPercNum = Number.parseFloat(raw);
         } catch (e) {
-          console.warn('LinkedIn Routes: Could not read Posts Threshold Percentage from Credentials:', e?.message || e);
+          logger.warn('LinkedIn Routes: Could not read Posts Threshold Percentage from Credentials:', e?.message || e);
         }
       }
       if (!Number.isFinite(minPercNum)) minPercNum = 0;
@@ -95,7 +98,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       ]
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${leads.length} leads with Posts Relevance Status = "Relevant"`);
+    logger.info(`LinkedIn Routes: Found ${leads.length} leads with Posts Relevance Status = "Relevant"`);
 
     // Transform records to match frontend API expectations
     const transformedLeads = leads.map(record => ({
@@ -122,7 +125,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
 
     res.json(transformedLeads);
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
+    logger.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
     res.status(500).json({
       error: 'Failed to fetch top scoring posts',
       details: error.message
@@ -135,11 +138,11 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
  * Get leads that need follow-ups
  */
 router.get('/leads/follow-ups', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/follow-ups called');
+  logger.info('LinkedIn Routes: GET /leads/follow-ups called');
   
   try {
     const clientId = req.query.client;
-    console.log('LinkedIn Routes: Client ID:', clientId);
+    logger.info('LinkedIn Routes: Client ID:', clientId);
 
     // Get leads with Follow-Up Date set (including overdue dates)
     // This includes leads with follow-up dates today or earlier as per frontend expectations
@@ -154,7 +157,7 @@ router.get('/leads/follow-ups', async (req, res) => {
       ]
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${leads.length} follow-ups`);
+    logger.info(`LinkedIn Routes: Found ${leads.length} follow-ups`);
 
     // Transform to expected format with days calculation
     const transformedLeads = leads.map(record => {
@@ -188,7 +191,7 @@ router.get('/leads/follow-ups', async (req, res) => {
     res.json(transformedLeads);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
+    logger.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
     res.status(500).json({ 
       error: 'Failed to fetch follow-ups',
       details: error.message 
@@ -201,14 +204,14 @@ router.get('/leads/follow-ups', async (req, res) => {
  * Search for leads by name and optionally filter by priority
  */
 router.get('/leads/search', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/search called');
+  logger.info('LinkedIn Routes: GET /leads/search called');
   
   try {
     const query = req.query.q;
     const priority = req.query.priority;
     const clientId = req.query.client;
     
-    console.log('LinkedIn Routes: Search query:', query, 'Priority:', priority, 'Client:', clientId);
+    logger.info('LinkedIn Routes: Search query:', query, 'Priority:', priority, 'Client:', clientId);
     
     // Build filter formula based on query and priority
     let filterParts = [];
@@ -249,7 +252,7 @@ router.get('/leads/search', async (req, res) => {
       maxRecords: 25 // Limit to 25 results as per frontend
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${leads.length} leads matching "${query}" with priority "${priority}"`);
+    logger.info(`LinkedIn Routes: Found ${leads.length} leads matching "${query}" with priority "${priority}"`);
 
     // Transform to expected format
     const transformedLeads = leads.map(record => ({
@@ -270,7 +273,7 @@ router.get('/leads/search', async (req, res) => {
     res.json(transformedLeads);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/search:', error);
+    logger.error('LinkedIn Routes: Error in /leads/search:', error);
     res.status(500).json({ 
       error: 'Failed to search leads',
       details: error.message 
@@ -283,13 +286,13 @@ router.get('/leads/search', async (req, res) => {
  * Get a specific lead by ID
  */
 router.get('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/:id called');
+  logger.info('LinkedIn Routes: GET /leads/:id called');
   
   try {
     const leadId = req.params.id;
     const clientId = req.query.client;
     
-    console.log('LinkedIn Routes: Getting lead:', leadId, 'Client:', clientId);
+    logger.info('LinkedIn Routes: Getting lead:', leadId, 'Client:', clientId);
 
     // Get the lead from Airtable
     const record = await airtableBase('Leads').find(leadId);
@@ -328,11 +331,11 @@ router.get('/leads/:id', async (req, res) => {
       ...record.fields
     };
 
-    console.log('LinkedIn Routes: Lead found');
+    logger.info('LinkedIn Routes: Lead found');
     res.json(transformedLead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error getting lead:', error);
+    logger.error('LinkedIn Routes: Error getting lead:', error);
     if (error.statusCode === 404) {
       res.status(404).json({ error: 'Lead not found' });
     } else {
@@ -349,13 +352,13 @@ router.get('/leads/:id', async (req, res) => {
  * Create a new lead
  */
 router.post('/leads', async (req, res) => {
-  console.log('LinkedIn Routes: POST /leads called');
+  logger.info('LinkedIn Routes: POST /leads called');
   
   try {
     const leadData = req.body;
     const clientId = req.query.client;
     
-    console.log('LinkedIn Routes: Creating lead with data:', leadData, 'Client:', clientId);
+    logger.info('LinkedIn Routes: Creating lead with data:', leadData, 'Client:', clientId);
 
     // DEBUG: Log exactly what we're sending to Airtable
     const recordToCreate = {
@@ -394,11 +397,11 @@ router.post('/leads', async (req, res) => {
       ...createdRecords[0].fields
     };
 
-    console.log('LinkedIn Routes: Lead created successfully');
+    logger.info('LinkedIn Routes: Lead created successfully');
     res.status(201).json(newLead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error creating lead:', error);
+    logger.error('LinkedIn Routes: Error creating lead:', error);
     res.status(500).json({ 
       error: 'Failed to create lead',
       details: error.message 
@@ -411,14 +414,14 @@ router.post('/leads', async (req, res) => {
  * Update a lead by ID
  */
 router.put('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: PUT /leads/:id called');
+  logger.info('LinkedIn Routes: PUT /leads/:id called');
   
   try {
     const leadId = req.params.id;
     const updates = req.body;
     const clientId = req.query.client;
     
-    console.log('LinkedIn Routes: Updating lead:', leadId, 'Updates:', updates, 'Client:', clientId);
+    logger.info('LinkedIn Routes: Updating lead:', leadId, 'Updates:', updates, 'Client:', clientId);
 
     // Update the lead in Airtable
     const updatedRecords = await airtableBase('Leads').update([
@@ -457,11 +460,11 @@ router.put('/leads/:id', async (req, res) => {
       ...updatedRecords[0].fields
     };
 
-    console.log('LinkedIn Routes: Lead updated successfully');
+    logger.info('LinkedIn Routes: Lead updated successfully');
     res.json(updatedLead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error updating lead:', error);
+    logger.error('LinkedIn Routes: Error updating lead:', error);
     res.status(500).json({ 
       error: 'Failed to update lead',
       details: error.message 
@@ -484,11 +487,11 @@ router.put('/leads/:id', async (req, res) => {
  * Get leads that need follow-ups
  */
 router.get('/leads/follow-ups', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/follow-ups called');
+  logger.info('LinkedIn Routes: GET /leads/follow-ups called');
   
   try {
     const clientId = req.query.client;
-    console.log('LinkedIn Routes: Client ID:', clientId);
+    logger.info('LinkedIn Routes: Client ID:', clientId);
 
     // Get leads with Follow-Up Date set (including overdue dates)
     // This includes leads with follow-up dates today or earlier as per frontend expectations
@@ -503,7 +506,7 @@ router.get('/leads/follow-ups', async (req, res) => {
       ]
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${leads.length} follow-ups`);
+    logger.info(`LinkedIn Routes: Found ${leads.length} follow-ups`);
 
     // Transform to expected format with days calculation
     const transformedLeads = leads.map(record => {
@@ -537,7 +540,7 @@ router.get('/leads/follow-ups', async (req, res) => {
     res.json(transformedLeads);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
+    logger.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
     res.status(500).json({ 
       error: 'Failed to fetch follow-ups',
       details: error.message 
@@ -550,12 +553,12 @@ router.get('/leads/follow-ups', async (req, res) => {
  * Find a lead by LinkedIn URL
  */
 router.get('/leads/by-linkedin-url', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/by-linkedin-url called');
+  logger.info('LinkedIn Routes: GET /leads/by-linkedin-url called');
   
   try {
     const linkedinUrl = req.query.url;
     
-    console.log('LinkedIn Routes: Searching for LinkedIn URL:', linkedinUrl);
+    logger.info('LinkedIn Routes: Searching for LinkedIn URL:', linkedinUrl);
     
     if (!linkedinUrl) {
       return res.status(400).json({ error: 'LinkedIn URL parameter is required' });
@@ -582,11 +585,11 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
       ...leads[0].fields
     };
 
-    console.log('LinkedIn Routes: Lead found by LinkedIn URL');
+    logger.info('LinkedIn Routes: Lead found by LinkedIn URL');
     res.json(lead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error finding lead by LinkedIn URL:', error);
+    logger.error('LinkedIn Routes: Error finding lead by LinkedIn URL:', error);
     res.status(500).json({ 
       error: 'Failed to find lead by LinkedIn URL',
       details: error.message 
@@ -599,13 +602,13 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
  * Add message to lead's message history
  */
 router.post('/leads/:id/messages', async (req, res) => {
-  console.log('LinkedIn Routes: POST /leads/:id/messages called');
+  logger.info('LinkedIn Routes: POST /leads/:id/messages called');
   
   try {
     const leadId = req.params.id;
     const messageData = req.body;
     
-    console.log('LinkedIn Routes: Adding message to lead:', leadId, 'Message:', messageData);
+    logger.info('LinkedIn Routes: Adding message to lead:', leadId, 'Message:', messageData);
 
     // Get current lead to append to existing messages
     const record = await airtableBase('Leads').find(leadId);
@@ -643,11 +646,11 @@ router.post('/leads/:id/messages', async (req, res) => {
       ...updatedRecords[0].fields
     };
 
-    console.log('LinkedIn Routes: Message added successfully');
+    logger.info('LinkedIn Routes: Message added successfully');
     res.json(updatedLead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error adding message:', error);
+    logger.error('LinkedIn Routes: Error adding message:', error);
     res.status(500).json({ 
       error: 'Failed to add message',
       details: error.message 
@@ -660,12 +663,12 @@ router.post('/leads/:id/messages', async (req, res) => {
  * Get message history for a lead
  */
 router.get('/leads/:id/messages', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/:id/messages called');
+  logger.info('LinkedIn Routes: GET /leads/:id/messages called');
   
   try {
     const leadId = req.params.id;
     
-    console.log('LinkedIn Routes: Getting messages for lead:', leadId);
+    logger.info('LinkedIn Routes: Getting messages for lead:', leadId);
 
     // Get the lead from Airtable
     const record = await airtableBase('Leads').find(leadId);
@@ -676,11 +679,11 @@ router.get('/leads/:id/messages', async (req, res) => {
       ? messages.split('\n').filter(msg => msg.trim())
       : [];
 
-    console.log('LinkedIn Routes: Messages retrieved');
+    logger.info('LinkedIn Routes: Messages retrieved');
     res.json({ messages: messageHistory });
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error getting messages:', error);
+    logger.error('LinkedIn Routes: Error getting messages:', error);
     res.status(500).json({ 
       error: 'Failed to get message history',
       details: error.message 
@@ -693,12 +696,12 @@ router.get('/leads/:id/messages', async (req, res) => {
  * Sync data from Chrome extension
  */
 router.post('/extension/sync', async (req, res) => {
-  console.log('LinkedIn Routes: POST /extension/sync called');
+  logger.info('LinkedIn Routes: POST /extension/sync called');
   
   try {
     const syncData = req.body;
     
-    console.log('LinkedIn Routes: Syncing extension data:', syncData);
+    logger.info('LinkedIn Routes: Syncing extension data:', syncData);
 
     // This would handle syncing data from the Chrome extension
     // For now, just acknowledge the sync
@@ -709,7 +712,7 @@ router.post('/extension/sync', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in extension sync:', error);
+    logger.error('LinkedIn Routes: Error in extension sync:', error);
     res.status(500).json({ 
       error: 'Failed to sync extension data',
       details: error.message 

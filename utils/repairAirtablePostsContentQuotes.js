@@ -1,4 +1,7 @@
 /**
+const { createLogger } = require('./contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
  * utils/repairAirtablePostsContentQuotes.js
  * -------------------------------------------------------------------
  * One-time repair: normalize every “Posts Content” JSON to valid,
@@ -51,7 +54,7 @@ async function repair() {
       try {
         data = JSON.parse(cleaned);
       } catch (e) {
-        console.log(`FAILED parse – ${id} (${e.message})`);
+        logger.info(`FAILED parse – ${id} (${e.message})`);
         failed++;
         continue;
       }
@@ -63,16 +66,16 @@ async function repair() {
       await base(TABLE).update([
         { id, fields: { [FIELD]: normalized } }
       ]);
-      console.log(`FIXED       – ${id}`);
+      logger.info(`FIXED       – ${id}`);
       fixed++;
 
     } catch (err) {
-      console.log(`ERROR       – ${id} (${err.message})`);
+      logger.info(`ERROR       – ${id} (${err.message})`);
       failed++;
     }
   }
 
-  console.log(`\nSUMMARY → attempted ${IDS.length} | fixed ${fixed} | failed ${failed}`);
+  logger.info(`\nSUMMARY → attempted ${IDS.length} | fixed ${fixed} | failed ${failed}`);
   return { attempted: IDS.length, fixed, failed };
 }
 

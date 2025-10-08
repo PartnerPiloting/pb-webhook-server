@@ -1,4 +1,7 @@
 /***************************************************************
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
   Pointer API – updates Credentials → Record ID for Chat
   then redirects the browser to your Custom GPT
 ***************************************************************/
@@ -16,7 +19,7 @@ module.exports = function pointerApi(app, base, gptUrl) {
         await credsTbl.update(credsRow.id, { "Record ID for Chat": recordId });
         return res.redirect(302, gptUrl);      // jump to Custom GPT
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         return res.status(500).send("Server error: " + err.message);
       }
     });

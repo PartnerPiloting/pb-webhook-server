@@ -1,4 +1,7 @@
 // repairSingleBadJsonRecord.js
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 // Repairs a single Airtable record's Posts Content field using dirty-json, with full step-by-step logging
 
 const base = require('./config/airtableClient');
@@ -12,7 +15,7 @@ const POSTS_CONTENT_FIELD = 'Posts Content';
  * @param {string} recordId - The Airtable record ID to repair.
  */
 async function repairSingleBadJsonRecord(recordId) {
-    console.log(`\n=== Starting repair for record: ${recordId} ===`);
+    logger.info(`\n=== Starting repair for record: ${recordId} ===`);
     // 1. Fetch the record
     let record;
     try {
@@ -22,20 +25,20 @@ async function repairSingleBadJsonRecord(recordId) {
             fields: [POSTS_CONTENT_FIELD]
         }).firstPage();
         if (!records.length) {
-            console.log('Record not found.');
+            logger.info('Record not found.');
             return;
         }
         record = records[0];
-        console.log('Fetched record.');
+        logger.info('Fetched record.');
     } catch (e) {
-        console.log('Error fetching record:', e.message);
+        logger.info('Error fetching record:', e.message);
         return;
     }
 
     const raw = record.get(POSTS_CONTENT_FIELD);
-    console.log('Original field value:', raw);
+    logger.info('Original field value:', raw);
     if (!raw) {
-        console.log('Field is empty. Nothing to repair.');
+        logger.info('Field is empty. Nothing to repair.');
         return;
     }
 
@@ -44,19 +47,19 @@ async function repairSingleBadJsonRecord(recordId) {
     let fixed = false;
     try {
         parsed = JSON.parse(raw);
-        console.log('Field is already valid JSON. No repair needed.');
+        logger.info('Field is already valid JSON. No repair needed.');
         return;
     } catch (e) {
-        console.log('Standard JSON.parse failed:', e.message);
+        logger.info('Standard JSON.parse failed:', e.message);
     }
 
     // 3. Try dirty-json
     try {
         parsed = dirtyJSON.parse(raw);
         fixed = true;
-        console.log('dirty-json successfully parsed the field.');
+        logger.info('dirty-json successfully parsed the field.');
     } catch (e) {
-        console.log('dirty-json failed to parse the field:', e.message);
+        logger.info('dirty-json failed to parse the field:', e.message);
         return;
     }
 
@@ -67,9 +70,9 @@ async function repairSingleBadJsonRecord(recordId) {
             id: recordId,
             fields: { [POSTS_CONTENT_FIELD]: cleaned }
         }]);
-        console.log('Wrote cleaned JSON back to Airtable.');
+        logger.info('Wrote cleaned JSON back to Airtable.');
     } catch (e) {
-        console.log('Error writing cleaned JSON to Airtable:', e.message);
+        logger.info('Error writing cleaned JSON to Airtable:', e.message);
         return;
     }
 
@@ -81,21 +84,21 @@ async function repairSingleBadJsonRecord(recordId) {
             fields: [POSTS_CONTENT_FIELD]
         }).firstPage();
         if (!verifyRecords.length) {
-            console.log('Record not found after update.');
+            logger.info('Record not found after update.');
             return;
         }
         const newRaw = verifyRecords[0].get(POSTS_CONTENT_FIELD);
-        console.log('Fetched updated field value:', newRaw);
+        logger.info('Fetched updated field value:', newRaw);
         try {
             JSON.parse(newRaw);
-            console.log('Verification: Field is now valid JSON. Repair successful!');
+            logger.info('Verification: Field is now valid JSON. Repair successful!');
         } catch (e) {
-            console.log('Verification: Field is still invalid JSON after repair:', e.message);
+            logger.info('Verification: Field is still invalid JSON after repair:', e.message);
         }
     } catch (e) {
-        console.log('Error fetching record for verification:', e.message);
+        logger.info('Error fetching record for verification:', e.message);
     }
-    console.log(`=== Repair process complete for record: ${recordId} ===\n`);
+    logger.info(`=== Repair process complete for record: ${recordId} ===\n`);
 }
 
 // To use this utility, call repairSingleBadJsonRecord('recXXXXXXXXXXXXXX');
