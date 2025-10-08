@@ -4,6 +4,14 @@
 
 require('dotenv').config();
 const Airtable = require('airtable');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for client service
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'client-service' 
+});
 // Removed old error logger - now using production issue tracking
 const logCriticalError = async () => {};
 const { MASTER_TABLES, CLIENT_EXECUTION_LOG_FIELDS } = require('../constants/airtableUnifiedConstants');
@@ -44,7 +52,7 @@ function initializeClientsBase() {
     });
 
     clientsBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-    console.log("Clients base initialized successfully");
+    logger.info("Clients base initialized successfully");
     return clientsBase;
 }
 
@@ -61,21 +69,21 @@ function isCacheValid() {
  * @returns {Promise<Array>} Array of client records
  */
 async function getAllClients() {
-    console.log(`[DEBUG-EXTREME] getAllClients CALLED`);
+    logger.info(`[DEBUG-EXTREME] getAllClients CALLED`);
     
     try {
         // Return cached data if valid
         if (isCacheValid()) {
-            console.log(`[DEBUG-EXTREME] Returning cached client data (${clientsCache ? clientsCache.length : 0} clients)`);
+            logger.info(`[DEBUG-EXTREME] Returning cached client data (${clientsCache ? clientsCache.length : 0} clients)`);
             return clientsCache;
         }
 
-        console.log(`[DEBUG-EXTREME] Initializing clients base...`);
+        logger.info(`[DEBUG-EXTREME] Initializing clients base...`);
         const base = initializeClientsBase();
-        console.log(`[DEBUG-EXTREME] Clients base initialized: ${base ? 'SUCCESS' : 'FAILED'}`);
+        logger.info(`[DEBUG-EXTREME] Clients base initialized: ${base ? 'SUCCESS' : 'FAILED'}`);
         const clients = [];
 
-        console.log("Fetching all clients from Clients base...");
+        logger.info("Fetching all clients from Clients base...");
 
         await base(MASTER_TABLES.CLIENTS).select({
             // No filter - get all clients
@@ -143,11 +151,11 @@ async function getAllClients() {
         clientsCache = clients;
         clientsCacheTimestamp = Date.now();
 
-        console.log(`Retrieved ${clients.length} clients from Clients base`);
+        logger.info(`Retrieved ${clients.length} clients from Clients base`);
         return clients;
 
     } catch (error) {
-        console.error("Error fetching all clients:", error);
+        logger.error("Error fetching all clients:", error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -164,11 +172,11 @@ async function getAllActiveClients() {
             client.status === 'Active'
         );
 
-        console.log(`Found ${activeClients.length} active clients out of ${allClients.length} total`);
+        logger.info(`Found ${activeClients.length} active clients out of ${allClients.length} total`);
         return activeClients;
 
     } catch (error) {
-        console.error("Error fetching active clients:", error);
+        logger.error("Error fetching active clients:", error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -180,25 +188,25 @@ async function getAllActiveClients() {
  * @returns {Promise<Object|null>} Client record or null if not found
  */
 async function getClientById(clientId) {
-    console.log(`[DEBUG-EXTREME] getClientById CALLED with clientId=${clientId}`);
+    logger.info(`[DEBUG-EXTREME] getClientById CALLED with clientId=${clientId}`);
     
     try {
-        console.log(`[DEBUG-EXTREME] Getting all clients...`);
+        logger.info(`[DEBUG-EXTREME] Getting all clients...`);
         const allClients = await getAllClients();
-        console.log(`[DEBUG-EXTREME] Got ${allClients.length} clients, looking for clientId=${clientId}`);
+        logger.info(`[DEBUG-EXTREME] Got ${allClients.length} clients, looking for clientId=${clientId}`);
         
         const client = allClients.find(c => c.clientId === clientId);
         
         if (client) {
-            console.log(`[DEBUG-EXTREME] SUCCESS: Found client: ${client.clientName} (${clientId}), baseId=${client.airtableBaseId}`);
+            logger.info(`[DEBUG-EXTREME] SUCCESS: Found client: ${client.clientName} (${clientId}), baseId=${client.airtableBaseId}`);
         } else {
-            console.error(`[DEBUG-EXTREME] ERROR: Client not found: ${clientId}`);
+            logger.error(`[DEBUG-EXTREME] ERROR: Client not found: ${clientId}`);
         }
 
         return client || null;
 
     } catch (error) {
-        console.error(`Error fetching client ${clientId}:`, error);
+        logger.error(`Error fetching client ${clientId}:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -215,15 +223,15 @@ async function getClientByWpUserId(wpUserId) {
         const client = allClients.find(c => c.wpUserId === wpUserId);
         
         if (client) {
-            console.log(`Found client by WP User ID ${wpUserId}: ${client.clientName} (${client.clientId})`);
+            logger.info(`Found client by WP User ID ${wpUserId}: ${client.clientName} (${client.clientId})`);
         } else {
-            console.log(`Client not found for WP User ID: ${wpUserId}`);
+            logger.info(`Client not found for WP User ID: ${wpUserId}`);
         }
 
         return client || null;
 
     } catch (error) {
-        console.error(`Error fetching client by WP User ID ${wpUserId}:`, error);
+        logger.error(`Error fetching client by WP User ID ${wpUserId}:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -239,11 +247,11 @@ async function validateClient(clientId) {
         const client = await getClientById(clientId);
         const isValid = client && client.status === 'Active';
         
-        console.log(`Client validation for ${clientId}: ${isValid ? 'VALID' : 'INVALID'}`);
+        logger.info(`Client validation for ${clientId}: ${isValid ? 'VALID' : 'INVALID'}`);
         return isValid;
 
     } catch (error) {
-        console.error(`Error validating client ${clientId}:`, error);
+        logger.error(`Error validating client ${clientId}:`, error);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
@@ -279,7 +287,7 @@ async function updateExecutionLog(clientId, logEntry) {
             }
         ]);
 
-        console.log(`Execution log updated for client ${clientId}`);
+        logger.info(`Execution log updated for client ${clientId}`);
         
         // Invalidate cache to force refresh on next read
         clientsCache = null;
@@ -288,7 +296,7 @@ async function updateExecutionLog(clientId, logEntry) {
         return true;
 
     } catch (error) {
-        console.error(`Error updating execution log for client ${clientId}:`, error);
+        logger.error(`Error updating execution log for client ${clientId}:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -388,12 +396,12 @@ async function logExecution(clientId, executionData) {
             const updateResult = await updateExecutionLog(clientId, logEntry);
             return updateResult;
         } catch (innerError) {
-            console.error(`Airtable Service ERROR: Failed to update client run: ${innerError.message}`);
+            logger.error(`Airtable Service ERROR: Failed to update client run: ${innerError.message}`);
             await logCriticalError(innerError, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
             return false;
         }
     } catch (error) {
-        console.error(`Error logging execution for client ${clientId}:`, error);
+        logger.error(`Error logging execution for client ${clientId}:`, error);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
@@ -410,11 +418,11 @@ async function getActiveClients(clientId = null) {
             // Get specific client
             const client = await getClientById(clientId);
             if (!client) {
-                console.log(`Client ${clientId} not found`);
+                logger.info(`Client ${clientId} not found`);
                 return [];
             }
             if (client.status !== 'Active') {
-                console.log(`Client ${clientId} is not active (status: ${client.status})`);
+                logger.info(`Client ${clientId} is not active (status: ${client.status})`);
                 return [];
             }
             return [client];
@@ -423,7 +431,7 @@ async function getActiveClients(clientId = null) {
             return await getAllActiveClients();
         }
     } catch (error) {
-        console.error("Error in getActiveClients:", error);
+        logger.error("Error in getActiveClients:", error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -443,7 +451,7 @@ async function getActiveClientsByStream(stream, clientId = null) {
         const activeClients = await getActiveClients(clientId);
         
         // Enhanced logging for stream debugging
-        console.log(`📊 Active clients before stream filtering: ${activeClients.map(c => c.clientId).join(', ')}`);
+        logger.info(`📊 Active clients before stream filtering: ${activeClients.map(c => c.clientId).join(', ')}`);
         
         // Filter by processing stream with detailed logging
         const streamClients = activeClients.filter(client => {
@@ -451,15 +459,15 @@ async function getActiveClientsByStream(stream, clientId = null) {
             const isMatch = clientStream === stream;
             
             // Log each client's stream assignment for debugging
-            console.log(`📊 Client ${client.clientId} has stream '${clientStream}' (match for stream ${stream}: ${isMatch})`);
+            logger.info(`📊 Client ${client.clientId} has stream '${clientStream}' (match for stream ${stream}: ${isMatch})`);
             
             return isMatch;
         });
         
-        console.log(`📊 Found ${streamClients.length} active clients on stream ${stream}: ${streamClients.map(c => c.clientId).join(', ')}`);
+        logger.info(`📊 Found ${streamClients.length} active clients on stream ${stream}: ${streamClients.map(c => c.clientId).join(', ')}`);
         return streamClients;
     } catch (error) {
-        console.error(`Error getting active clients for stream ${stream}:`, error);
+        logger.error(`Error getting active clients for stream ${stream}:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -471,7 +479,7 @@ async function getActiveClientsByStream(stream, clientId = null) {
 function clearCache() {
     clientsCache = null;
     clientsCacheTimestamp = null;
-    console.log("Clients cache cleared");
+    logger.info("Clients cache cleared");
 }
 
 /**
@@ -483,7 +491,7 @@ async function getClientTokenLimits(clientId) {
     try {
         const client = await getClientById(clientId);
         if (!client) {
-            console.log(`Client not found for token limits: ${clientId}`);
+            logger.info(`Client not found for token limits: ${clientId}`);
             return null;
         }
 
@@ -494,7 +502,7 @@ async function getClientTokenLimits(clientId) {
         };
 
     } catch (error) {
-        console.error(`Error getting token limits for client ${clientId}:`, error);
+        logger.error(`Error getting token limits for client ${clientId}:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -509,7 +517,7 @@ async function getClientFloorConfig(clientId) {
     try {
         const client = await getClientById(clientId);
         if (!client) {
-            console.log(`Client not found for floor config: ${clientId}`);
+            logger.info(`Client not found for floor config: ${clientId}`);
             return null;
         }
 
@@ -524,7 +532,7 @@ async function getClientFloorConfig(clientId) {
         };
 
     } catch (error) {
-        console.error(`Error getting floor config for client ${clientId}:`, error);
+        logger.error(`Error getting floor config for client ${clientId}:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -562,7 +570,7 @@ async function updateClientFloorConfig(clientId, floorConfig) {
             }
         ]);
 
-        console.log(`Floor configuration updated for client ${clientId}:`, updateFields);
+        logger.info(`Floor configuration updated for client ${clientId}:`, updateFields);
         
         // Invalidate cache to force refresh on next read
         clientsCache = null;
@@ -571,7 +579,7 @@ async function updateClientFloorConfig(clientId, floorConfig) {
         return true;
 
     } catch (error) {
-        console.error(`Error updating floor config for client ${clientId}:`, error);
+        logger.error(`Error updating floor config for client ${clientId}:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -669,7 +677,7 @@ function getClientBase(airtableBaseId) {
     });
 
     const base = Airtable.base(airtableBaseId);
-    console.log(`Created Airtable base connection for: ${airtableBaseId}`);
+    logger.info(`Created Airtable base connection for: ${airtableBaseId}`);
     return base;
 }
 
@@ -699,12 +707,12 @@ function generateJobId(operation, stream) {
  */
 async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
     try {
-        console.log(`🔄 Setting ${operation} status for ${clientId || 'global'}: ${status}`);
+        logger.info(`🔄 Setting ${operation} status for ${clientId || 'global'}: ${status}`);
         
         // Handle global operations (when clientId is null)
         if (!clientId) {
             // Log status for tracking but don't update any specific client
-            console.log(`ℹ️ Global ${operation} status: ${status}, jobId: ${jobId}`);
+            logger.info(`ℹ️ Global ${operation} status: ${status}, jobId: ${jobId}`);
             return true;
         }
         
@@ -717,11 +725,11 @@ async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
                 timestamp: Date.now(),
                 jobId: jobId || `job_${operation}_${Date.now()}`
             });
-            console.log(`[INFO] Set memory lock for ${clientId}:${operation} with jobId: ${jobId}`);
+            logger.info(`[INFO] Set memory lock for ${clientId}:${operation} with jobId: ${jobId}`);
         } else if (status === "COMPLETED" || status === "FAILED") {
             // Remove the lock when job completes or fails
             if (runningJobs.has(lockKey)) {
-                console.log(`[INFO] Releasing memory lock for ${clientId}:${operation} (status: ${status})`);
+                logger.info(`[INFO] Releasing memory lock for ${clientId}:${operation} (status: ${status})`);
                 runningJobs.delete(lockKey);
             }
         }
@@ -793,11 +801,11 @@ async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
         );
 
         if (updateResult.updated) {
-            console.log(`✅ ${operation} status updated for ${clientId}: ${status}`);
+            logger.info(`✅ ${operation} status updated for ${clientId}: ${status}`);
         } else {
-            console.warn(`⚠️ ${operation} status update for ${clientId} had issues: ${updateResult.reason || updateResult.error || 'Unknown issue'}`);
+            logger.warn(`⚠️ ${operation} status update for ${clientId} had issues: ${updateResult.reason || updateResult.error || 'Unknown issue'}`);
             if (updateResult.skippedFields && updateResult.skippedFields.length > 0) {
-                console.warn(`⚠️ Skipped fields: ${updateResult.skippedFields.join(', ')}`);
+                logger.warn(`⚠️ Skipped fields: ${updateResult.skippedFields.join(', ')}`);
             }
         }
         
@@ -808,7 +816,7 @@ async function setJobStatus(clientId, operation, status, jobId, metrics = {}) {
         return updateResult.updated;
 
     } catch (error) {
-        console.error(`❌ Error setting ${operation} status for ${clientId}:`, error.message);
+        logger.error(`❌ Error setting ${operation} status for ${clientId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
@@ -861,7 +869,7 @@ async function getJobStatus(clientId, operation) {
         };
 
     } catch (error) {
-        console.error(`Error getting ${operation} status for ${clientId}:`, error.message);
+        logger.error(`Error getting ${operation} status for ${clientId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return null;
     }
@@ -877,14 +885,14 @@ async function isJobRunning(clientId, operation) {
     try {
         // RECOVERY PATH FOR TESTING - Check for "stuck" jobs on specific clients
         if ((clientId === 'Guy-Wilson' || clientId === 'Dean-Hobin') && operation === 'post_scoring') {
-            console.log(`[JOB_DEBUG] � Checking for stuck job status on ${clientId} for ${operation}`);
+            logger.info(`[JOB_DEBUG] � Checking for stuck job status on ${clientId} for ${operation}`);
             
             // Get the current job status
             const jobStatus = await getJobStatus(clientId, operation);
             
             // If there's a running job, check when it was started
             if (jobStatus && jobStatus.status === "RUNNING" && jobStatus.jobId) {
-                console.log(`[JOB_DEBUG] 🕰️ Found RUNNING job for ${clientId}:${operation}, ID: ${jobStatus.jobId}`);
+                logger.info(`[JOB_DEBUG] 🕰️ Found RUNNING job for ${clientId}:${operation}, ID: ${jobStatus.jobId}`);
                 
                 // Extract timestamp from jobId (assuming format job_post_scoring_TIMESTAMP)
                 const timestampMatch = jobStatus.jobId.match(/\d+$/);
@@ -893,11 +901,11 @@ async function isJobRunning(clientId, operation) {
                     const now = Date.now();
                     const jobAgeMinutes = Math.round((now - jobTimestamp) / (60 * 1000));
                     
-                    console.log(`[JOB_DEBUG] ⏱️ Job age: ${jobAgeMinutes} minutes`);
+                    logger.info(`[JOB_DEBUG] ⏱️ Job age: ${jobAgeMinutes} minutes`);
                     
                     // If job has been running for more than 30 minutes, consider it stuck
                     if (jobAgeMinutes > 30) {
-                        console.log(`[JOB_DEBUG] 🚨 Detected stuck job for ${clientId}:${operation}, running for ${jobAgeMinutes} minutes. Auto-resetting.`);
+                        logger.info(`[JOB_DEBUG] 🚨 Detected stuck job for ${clientId}:${operation}, running for ${jobAgeMinutes} minutes. Auto-resetting.`);
                         
                         // Reset the job status
                         await setJobStatus(clientId, operation, 'COMPLETED', jobStatus.jobId, { 
@@ -905,7 +913,7 @@ async function isJobRunning(clientId, operation) {
                             originalStartTime: new Date(jobTimestamp).toISOString()
                         });
                         
-                        console.log(`[JOB_DEBUG] ✅ Successfully reset stuck job for ${clientId}:${operation}`);
+                        logger.info(`[JOB_DEBUG] ✅ Successfully reset stuck job for ${clientId}:${operation}`);
                         return false; // Allow the job to run now
                     }
                 }
@@ -920,11 +928,11 @@ async function isJobRunning(clientId, operation) {
             const now = Date.now();
             // If the lock is recent (within JOB_LOCK_TIMEOUT_MS)
             if (now - lock.timestamp < JOB_LOCK_TIMEOUT_MS) {
-                console.log(`[JOB_DEBUG] Memory lock found for ${clientId}:${operation}, created ${(now - lock.timestamp)/1000}s ago`);
+                logger.info(`[JOB_DEBUG] Memory lock found for ${clientId}:${operation}, created ${(now - lock.timestamp)/1000}s ago`);
                 return true;
             } else {
                 // Lock is expired, remove it
-                console.log(`[JOB_DEBUG] Memory lock for ${clientId}:${operation} has expired (${(now - lock.timestamp)/1000}s old), releasing`);
+                logger.info(`[JOB_DEBUG] Memory lock for ${clientId}:${operation} has expired (${(now - lock.timestamp)/1000}s old), releasing`);
                 runningJobs.delete(lockKey);
             }
         }
@@ -936,7 +944,7 @@ async function isJobRunning(clientId, operation) {
         
         // If running in Airtable but not in memory, add to memory
         if (isRunning && !lock) {
-            console.log(`[INFO] Job ${operation} for ${clientId} is running in Airtable but not in memory, adding memory lock`);
+            logger.info(`[INFO] Job ${operation} for ${clientId} is running in Airtable but not in memory, adding memory lock`);
             runningJobs.set(lockKey, { 
                 timestamp: Date.now(),
                 jobId: jobStatus.jobId || `unknown_${Date.now()}`
@@ -945,7 +953,7 @@ async function isJobRunning(clientId, operation) {
         
         return isRunning;
     } catch (error) {
-        console.error(`Error checking if ${operation} is running for ${clientId}:`, error.message);
+        logger.error(`Error checking if ${operation} is running for ${clientId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false; // Default to false (not running) on error
     }
@@ -959,7 +967,7 @@ async function isJobRunning(clientId, operation) {
  */
 async function setProcessingStream(clientId, stream) {
     try {
-        console.log(`🔄 Setting processing stream for ${clientId}: ${stream}`);
+        logger.info(`🔄 Setting processing stream for ${clientId}: ${stream}`);
         
         const base = initializeClientsBase();
         const client = await getClientById(clientId);
@@ -975,7 +983,7 @@ async function setProcessingStream(clientId, stream) {
             }
         }]);
 
-        console.log(`✅ Processing stream set for ${clientId}: ${stream}`);
+        logger.info(`✅ Processing stream set for ${clientId}: ${stream}`);
         
         // Invalidate cache
         clientsCache = null;
@@ -984,7 +992,7 @@ async function setProcessingStream(clientId, stream) {
         return true;
 
     } catch (error) {
-        console.error(`❌ Error setting processing stream for ${clientId}:`, error.message);
+        logger.error(`❌ Error setting processing stream for ${clientId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return false;
     }
@@ -1003,7 +1011,7 @@ async function getProcessingStream(clientId) {
         return client.rawRecord?.get('Processing Stream') || null;
 
     } catch (error) {
-        console.error(`Error getting processing stream for ${clientId}:`, error.message);
+        logger.error(`Error getting processing stream for ${clientId}:`, error.message);
         await logCriticalError(error, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
         return null;
     }

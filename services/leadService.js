@@ -5,6 +5,14 @@
 // MIGRATED: To use unified constants
 
 const base = require('../config/airtableClient.js'); 
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for lead service
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'lead-service' 
+});
 // Removed old error logger - now using production issue tracking
 const logCriticalError = async () => {};
 const { getLastTwoOrgs, canonicalUrl, safeDate } = require('../utils/appHelpers.js');
@@ -34,7 +42,7 @@ async function upsertLead(
     const airtableBase = clientAirtableBase || base;
     
     if (!airtableBase) {
-        console.error("CRITICAL ERROR in leadService/upsertLead: Airtable Base is not initialized. Cannot proceed.");
+        logger.error("CRITICAL ERROR in leadService/upsertLead: Airtable Base is not initialized. Cannot proceed.");
         throw new Error("Airtable base is not available in leadService. Check config/airtableClient.js logs.");
     }
     
@@ -82,7 +90,7 @@ async function upsertLead(
     }
 
     if (!finalUrl) {
-        console.warn("leadService/upsertLead: Skipping upsert. No finalUrl could be determined for lead:", firstName, lastName);
+        logger.warn("leadService/upsertLead: Skipping upsert. No finalUrl could be determined for lead:", firstName, lastName);
         return; 
     }
     const profileKey = canonicalUrl(finalUrl); 
@@ -141,7 +149,7 @@ async function upsertLead(
     
     if (existing.length) {
         isNewLead = false;
-        console.log(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
+        logger.info(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
         // For "Date Connected", if it's now "Connected" and didn't have a date before, or if a new date is provided
         if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !existing[0].fields[LEAD_FIELDS.DATE_CONNECTED] && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
             fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
@@ -165,7 +173,7 @@ async function upsertLead(
             // Note: "1st" is from LinkedIn API, not a field constant we control
             fields[LEAD_FIELDS.SYSTEM_NOTES] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
         }
-        console.log(`leadService/upsertLead: Creating new lead ${finalUrl}`);
+        logger.info(`leadService/upsertLead: Creating new lead ${finalUrl}`);
         const createdRecords = await airtableBase(CLIENT_TABLES.LEADS).create([{ fields }]);
         recordId = createdRecords[0].id; 
     }
@@ -187,11 +195,11 @@ async function upsertLead(
                     [CLIENT_RUN_FIELDS.PROFILE_SCORING_TOKENS]: tokenUsage
                 };
                 
-                console.log(`leadService/upsertLead: Updating run metrics for client ${trackingInfo.clientId} - Lead ${finalUrl} scored (tokens: ${tokenUsage})`);
+                logger.info(`leadService/upsertLead: Updating run metrics for client ${trackingInfo.clientId} - Lead ${finalUrl} scored (tokens: ${tokenUsage})`);
                 await airtableService.updateClientRun(trackingInfo.runId, trackingInfo.clientId, updates);
             }
         } catch (metricError) {
-            console.error(`leadService/upsertLead: Failed to update run metrics: ${metricError.message}`);
+            logger.error(`leadService/upsertLead: Failed to update run metrics: ${metricError.message}`);
             // Continue execution even if metrics update fails
     logCriticalError(metricError, { operation: 'unknown' }).catch(() => {});
         }
@@ -208,12 +216,12 @@ async function upsertLead(
  */
 async function trackLeadProcessingMetrics(runId, clientId, metrics) {
     if (!runId || !clientId) {
-        console.warn('leadService/trackLeadProcessingMetrics: Missing required tracking information');
+        logger.warn('leadService/trackLeadProcessingMetrics: Missing required tracking information');
         return { success: false, reason: 'missing_parameters' };
     }
     
     try {
-        console.log(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${runId}`);
+        logger.info(`leadService/trackLeadProcessingMetrics: Updating metrics for client ${clientId} in run ${runId}`);
         
         // Use our new safeUpdateMetrics function for consistent handling
         const updateResult = await safeUpdateMetrics({
@@ -230,7 +238,7 @@ async function trackLeadProcessingMetrics(runId, clientId, metrics) {
         
         return updateResult;
     } catch (error) {
-        console.error(`leadService/trackLeadProcessingMetrics: Failed to update metrics: ${error.message}`);
+        logger.error(`leadService/trackLeadProcessingMetrics: Failed to update metrics: ${error.message}`);
     logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         return { 
             success: false, 
