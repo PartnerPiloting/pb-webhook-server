@@ -14,6 +14,11 @@
 // Load environment variables from .env file FIRST
 require("dotenv").config();
 
+// Import structured logging
+const { createLogger } = require('./utils/contextLogger');
+// Create module-level logger for server initialization and requests
+const moduleLogger = createLogger({ runId: 'SERVER', clientId: 'SYSTEM', operation: 'server_init' });
+
 // --- CONFIGURATIONS ---
 const geminiConfig = require('./config/geminiClient.js');
 const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
@@ -25,9 +30,9 @@ const { initializeOpenAI } = require('./config/openaiClient.js');
 let openaiClient = null;
 try {
     openaiClient = initializeOpenAI();
-    console.log("index.js: OpenAI client initialized successfully for attribute editing");
+    moduleLogger.info("index.js: OpenAI client initialized successfully for attribute editing");
 } catch (openaiError) {
-    console.warn("index.js: OpenAI client initialization failed - attribute editing will not work:", openaiError.message);
+    moduleLogger.warn("index.js: OpenAI client initialization failed - attribute editing will not work:", openaiError.message);
 }
 
 // --- Potentially import your update function ---
@@ -39,36 +44,36 @@ const express = require("express");
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-console.log("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>"); // Your existing log
+moduleLogger.info("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>"); // Your existing log
 
 // --- INITIALIZATION CHECKS ---
 if (!globalGeminiModel) {
-    console.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize. Scoring will not work. Check logs in config/geminiClient.js.");
+    moduleLogger.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize. Scoring will not work. Check logs in config/geminiClient.js.");
 } else {
-    console.log("index.js: Gemini Model (default instance) loaded successfully from config.");
+    moduleLogger.info("index.js: Gemini Model (default instance) loaded successfully from config.");
 }
 if (!geminiConfig || !geminiConfig.vertexAIClient) {
-    console.error("FATAL ERROR in index.js: VertexAI Client is not available from geminiConfig. Batch scoring might fail. Check logs in config/geminiClient.js.");
+    moduleLogger.error("FATAL ERROR in index.js: VertexAI Client is not available from geminiConfig. Batch scoring might fail. Check logs in config/geminiClient.js.");
 }
 if (!base) {
-    console.error("FATAL ERROR in index.js: Airtable Base failed to initialize. Airtable operations will fail. Check logs in config/airtableClient.js.");
+    moduleLogger.error("FATAL ERROR in index.js: Airtable Base failed to initialize. Airtable operations will fail. Check logs in config/airtableClient.js.");
 } else {
-    console.log("index.js: Airtable Base loaded successfully from config.");
+    moduleLogger.info("index.js: Airtable Base loaded successfully from config.");
 }
 
 // Initialize the run record service (Single Creation Point pattern implementation)
 const runRecordService = require('./services/runRecordAdapter');
 try {
     runRecordService.initialize();
-    console.log("index.js: Run Record Service initialized successfully - Single Creation Point pattern active");
+    moduleLogger.info("index.js: Run Record Service initialized successfully - Single Creation Point pattern active");
 } catch (runRecordError) {
-    console.error("FATAL ERROR in index.js: Run Record Service failed to initialize:", runRecordError.message);
+    moduleLogger.error("FATAL ERROR in index.js: Run Record Service failed to initialize:", runRecordError.message);
 }
 
 /* ---------- APP-LEVEL ENV CONFIGURATION & CONSTANTS --- */
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL;
 if (!GPT_CHAT_URL) {
-    console.error("CRITICAL WARNING: Missing GPT_CHAT_URL environment variable. pointerApi may not function correctly.");
+    moduleLogger.error("CRITICAL WARNING: Missing GPT_CHAT_URL environment variable. pointerApi may not function correctly.");
 }
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID; // Corrected line from bug fix
@@ -77,7 +82,7 @@ const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
 const AIRTABLE_NOTES_FIELD = "System Notes"; // Changed from "Notes" to match Airtable schema
 
 if (!AIRTABLE_BASE_ID) {
-    console.error("CRITICAL WARNING: Missing AIRTABLE_BASE_ID environment variable. Airtable operations will fail for textblaze-linkedin-webhook.");
+    moduleLogger.error("CRITICAL WARNING: Missing AIRTABLE_BASE_ID environment variable. Airtable operations will fail for textblaze-linkedin-webhook.");
 }
 
 // --- NEW: CONSTANTS FOR POST SCORING ---
@@ -114,7 +119,7 @@ const postAnalysisConfig = {
 
 // Check for critical Post Analysis configurations
 if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptComponentsTableName) {
-    console.error("CRITICAL WARNING: Missing essential Airtable table name configurations for Post Analysis. Post scoring may fail.");
+    moduleLogger.error("CRITICAL WARNING: Missing essential Airtable table name configurations for Post Analysis. Post scoring may fail.");
 }
 
 
@@ -157,13 +162,13 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id'],
     optionsSuccessStatus: 204
 }));
-console.log("CORS enabled for allowed origins including *.vercel.app and staging frontend");
+moduleLogger.info("CORS enabled for allowed origins including *.vercel.app and staging frontend");
 
 // ABSOLUTE BASIC TEST - Should work 100%
 app.get('/basic-test', (req, res) => {
     res.send('BASIC ROUTE WORKING - Express is alive!');
 });
-console.log("Basic test route added at /basic-test");
+moduleLogger.info("Basic test route added at /basic-test");
 
 // Friendly root route to reduce confusion when visiting http://localhost:3001
 app.get('/', (req, res) => {
@@ -196,7 +201,7 @@ app.get('/', (req, res) => {
 // JSON DIAGNOSTIC TEST - Tests if Express/Node/Render can produce clean JSON
 app.get('/api/test/minimal-json', (req, res) => {
     // No middleware, no async, no database calls - just pure Express JSON response
-    console.log('Minimal JSON Test: Sending pure Express JSON response');
+    moduleLogger.info('Minimal JSON Test: Sending pure Express JSON response');
     res.json({ 
         test: 'minimal',
         status: 'success', 
@@ -207,7 +212,7 @@ app.get('/api/test/minimal-json', (req, res) => {
         timestamp: new Date().toISOString()
     });
 });
-console.log("JSON diagnostic test route added at /api/test/minimal-json");
+moduleLogger.info("JSON diagnostic test route added at /api/test/minimal-json");
 
 // --- ADMIN REPAIR ENDPOINT (SECURE) ---
 // Full import for repair script
@@ -342,7 +347,7 @@ app.post('/api/analyze-logs/recent', async (req, res) => {
             message: `Analyzed ${minutes} minutes of logs. Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
         });
     } catch (error) {
-        console.error('Failed to analyze recent logs:', error);
+        moduleLogger.error('Failed to analyze recent logs:', error);
         res.status(500).json({ ok: false, error: error.message });
     }
 });
@@ -375,7 +380,7 @@ app.post('/api/analyze-logs/text', async (req, res) => {
             message: `Analyzed log text. Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
         });
     } catch (error) {
-        console.error('Failed to analyze log text:', error);
+        moduleLogger.error('Failed to analyze log text:', error);
         res.status(500).json({ ok: false, error: error.message });
     }
 });
@@ -403,7 +408,7 @@ app.get('/api/production-issues', async (req, res) => {
         
         res.json({ ok: true, count: issues.length, issues });
     } catch (error) {
-        console.error('Failed to get production issues:', error);
+        moduleLogger.error('Failed to get production issues:', error);
         res.status(500).json({ ok: false, error: error.message });
     }
 });
@@ -429,7 +434,7 @@ app.post('/api/production-issues/:recordId/mark-fixed', async (req, res) => {
         
         res.json({ ok: true, message: 'Issue marked as fixed', record: updated });
     } catch (error) {
-        console.error('Failed to mark issue as fixed:', error);
+        moduleLogger.error('Failed to mark issue as fixed:', error);
         res.status(500).json({ ok: false, error: error.message });
     }
 });
@@ -450,7 +455,7 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
         const base = getMasterClientsBase();
         const table = base('Production Issues');
         
-        console.log('🔍 Verifying Production Issues table schema...');
+        moduleLogger.info('🔍 Verifying Production Issues table schema...');
         
         // Create a comprehensive test record with ALL 19 fields (except auto-generated Issue ID)
         const testRecord = {
@@ -482,15 +487,15 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
             'Last Seen': new Date().toISOString(),
         };
         
-        console.log('Creating test record with ALL 18 fields (19 total including auto-generated Issue ID)...');
+        moduleLogger.info('Creating test record with ALL 18 fields (19 total including auto-generated Issue ID)...');
         const created = await table.create([{ fields: testRecord }]);
         const recordId = created[0].id;
         
-        console.log(`✅ Test record created: ${recordId}`);
+        moduleLogger.info(`✅ Test record created: ${recordId}`);
         
         // Now delete it
         await table.destroy([recordId]);
-        console.log('✅ Test record deleted');
+        moduleLogger.info('✅ Test record deleted');
         
         res.json({
             ok: true,
@@ -525,7 +530,7 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Table verification failed:', error.message);
+        moduleLogger.error('❌ Table verification failed:', error.message);
         
         let troubleshooting = [];
         
@@ -560,22 +565,22 @@ app.get('/api/verify-production-issues-table', async (req, res) => {
     }
 });
 
-console.log("Production Issue Analysis endpoints added:");
-console.log("  POST /api/analyze-logs/recent");
-console.log("  POST /api/analyze-logs/text");
-console.log("  GET /api/production-issues");
-console.log("  POST /api/production-issues/:recordId/mark-fixed");
-console.log("  GET /api/verify-production-issues-table");
+moduleLogger.info("Production Issue Analysis endpoints added:");
+moduleLogger.info("  POST /api/analyze-logs/recent");
+moduleLogger.info("  POST /api/analyze-logs/text");
+moduleLogger.info("  GET /api/production-issues");
+moduleLogger.info("  POST /api/production-issues/:recordId/mark-fixed");
+moduleLogger.info("  GET /api/verify-production-issues-table");
 
 /* ------------------------------------------------------------------
     4) Mount All Route Handlers and Sub-APIs
 ------------------------------------------------------------------*/
-console.log("index.js: Mounting routes and APIs...");
+moduleLogger.info("index.js: Mounting routes and APIs...");
 
 // Mount existing sub-APIs
-try { require("./promptApi")(app, base); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message, e.stack); }
-try { require("./recordApi")(app, base); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message, e.stack); }
-try { require("./scoreApi")(app, base, globalGeminiModel); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message, e.stack); }
+try { require("./promptApi")(app, base); moduleLogger.info("index.js: promptApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting promptApi", e.message, e.stack); }
+try { require("./recordApi")(app, base); moduleLogger.info("index.js: recordApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting recordApi", e.message, e.stack); }
+try { require("./scoreApi")(app, base, globalGeminiModel); moduleLogger.info("index.js: scoreApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting scoreApi", e.message, e.stack); }
 
 // --- NEW: MOUNT POST SCORING APIS ---
 try {
@@ -584,58 +589,58 @@ try {
     // Mounts the API for triggering the BATCH process for ALL pending leads
     require("./postScoreBatchApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
 } catch(e) {
-    console.error("index.js: Error mounting one of the new Post Scoring APIs", e.message, e.stack);
+    moduleLogger.error("index.js: Error mounting one of the new Post Scoring APIs", e.message, e.stack);
 }
 // ------------------------------------
 
 const mountQueue = require("./queueDispatcher");
 if (mountQueue && typeof mountQueue === 'function') {
-    try { mountQueue(app, base); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message, e.stack); }
+    try { mountQueue(app, base); moduleLogger.info("index.js: Queue Dispatcher mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting queueDispatcher", e.message, e.stack); }
 } else {
-    console.error("index.js: Failed to load queueDispatcher or it's not a function.");
+    moduleLogger.error("index.js: Failed to load queueDispatcher or it's not a function.");
 }
 
-try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
+try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); moduleLogger.info("index.js: Webhook routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
 
 // Mount Apify webhook routes (for LinkedIn posts ingestion)
-try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); console.log("index.js: Apify webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
+try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); moduleLogger.info("index.js: Apify webhook routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
 // Mount Apify control routes (start runs programmatically)
-try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); console.log("index.js: Apify control routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
+try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); moduleLogger.info("index.js: Apify control routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
 // Mount Apify runs management routes (multi-tenant run tracking)
-try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); console.log("index.js: Apify runs management routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
+try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); moduleLogger.info("index.js: Apify runs management routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
 // Mount Apify process routes (batch client processing)
-try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); console.log("index.js: Apify process routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
+try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); moduleLogger.info("index.js: Apify process routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
 
 // Use authenticated LinkedIn routes instead of old non-authenticated ones
 try { 
     const linkedinRoutesWithAuth = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutesWithAuth.js'); 
     app.use('/api/linkedin', linkedinRoutesWithAuth); 
-    console.log("index.js: Authenticated LinkedIn routes mounted at /api/linkedin"); 
+    moduleLogger.info("index.js: Authenticated LinkedIn routes mounted at /api/linkedin"); 
 } catch(e) { 
-    console.error("index.js: Error mounting authenticated LinkedIn routes", e.message, e.stack); 
+    moduleLogger.error("index.js: Error mounting authenticated LinkedIn routes", e.message, e.stack); 
     // Fallback to old routes if new ones fail
     try { 
         const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); 
         app.use('/api/linkedin', linkedinRoutes); 
-        console.log("index.js: Fallback: Old LinkedIn routes mounted at /api/linkedin"); 
+        moduleLogger.info("index.js: Fallback: Old LinkedIn routes mounted at /api/linkedin"); 
     } catch(fallbackError) { 
-        console.error("index.js: Error mounting fallback LinkedIn routes", fallbackError.message, fallbackError.stack); 
+        moduleLogger.error("index.js: Error mounting fallback LinkedIn routes", fallbackError.message, fallbackError.stack); 
     }
 }
 
 // Authentication test routes
-try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/api/auth', authTestRoutes); console.log("index.js: Authentication test routes mounted at /api/auth"); } catch(e) { console.error("index.js: Error mounting authentication test routes", e.message, e.stack); }
+try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/api/auth', authTestRoutes); moduleLogger.info("index.js: Authentication test routes mounted at /api/auth"); } catch(e) { moduleLogger.error("index.js: Error mounting authentication test routes", e.message, e.stack); }
 
 // Debug routes for JSON serialization issues
-try { const debugRoutes = require('./routes/debugRoutes.js'); app.use('/api/debug', debugRoutes); console.log("index.js: Debug routes mounted at /api/debug"); } catch(e) { console.error("index.js: Error mounting debug routes", e.message, e.stack); }
+try { const debugRoutes = require('./routes/debugRoutes.js'); app.use('/api/debug', debugRoutes); moduleLogger.info("index.js: Debug routes mounted at /api/debug"); } catch(e) { moduleLogger.error("index.js: Error mounting debug routes", e.message, e.stack); }
 
 // Diagnostic routes for development and testing
 try { 
     const diagnosticRoutes = require('./routes/diagnosticRoutes.js'); 
     app.use('/api/diagnostic', diagnosticRoutes); 
-    console.log("index.js: Diagnostic routes mounted at /api/diagnostic"); 
+    moduleLogger.info("index.js: Diagnostic routes mounted at /api/diagnostic"); 
 } catch(e) { 
-    console.error("index.js: Error mounting diagnostic routes", e.message, e.stack); 
+    moduleLogger.error("index.js: Error mounting diagnostic routes", e.message, e.stack); 
 }
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
@@ -643,10 +648,10 @@ try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
     if (typeof mountTopScoringLeads === 'function') {
         mountTopScoringLeads(app, base);
-        console.log('index.js: Top Scoring Leads routes mounted at /api/top-scoring-leads');
+        moduleLogger.info('index.js: Top Scoring Leads routes mounted at /api/top-scoring-leads');
     }
 } catch(e) {
-    console.error('index.js: Error mounting Top Scoring Leads routes', e.message, e.stack);
+    moduleLogger.error('index.js: Error mounting Top Scoring Leads routes', e.message, e.stack);
 }
 
 // EMERGENCY DEBUG ROUTE - Direct in index.js
@@ -667,7 +672,7 @@ app.get('/test/linkedin/debug', (req, res) => {
     });
 });
 
-console.log("index.js: Emergency debug routes added");
+moduleLogger.info("index.js: Emergency debug routes added");
 
 // --- HELP / START HERE (PHASE 1) ---
 // Simple in-memory cache for start_here help content
@@ -807,7 +812,7 @@ function autoFormatHelpBody(raw) {
         if (out.length > original.length * 1.6) return original;
         return out;
     } catch (err) {
-        console.warn('[autoFormatHelpBody] failed', err.message);
+        moduleLogger.warn('[autoFormatHelpBody] failed', err.message);
         return raw;
     }
 }
@@ -1022,7 +1027,7 @@ app.get('/api/help/start-here', async (req, res) => {
                 cachedCopy.meta = { ...cachedCopy.meta, cached: true };
                 return res.json(cachedCopy);
             } else {
-                console.warn('[HelpStartHere] Bypassing stale cached help (unresolved media tokens detected)');
+                moduleLogger.warn('[HelpStartHere] Bypassing stale cached help (unresolved media tokens detected)');
             }
         }
 
@@ -1051,19 +1056,19 @@ app.get('/api/help/start-here', async (req, res) => {
             if (targetBaseId && defaultBaseId && targetBaseId !== defaultBaseId) {
                 if (typeof base.createBaseInstance === 'function') {
                     helpBase = base.createBaseInstance(targetBaseId);
-                    console.log(`[HelpStartHere] Using non-default help base ${targetBaseId}`);
+                    moduleLogger.info(`[HelpStartHere] Using non-default help base ${targetBaseId}`);
                 } else {
-                    console.warn('[HelpStartHere] createBaseInstance not available on base export; falling back to default base');
+                    moduleLogger.warn('[HelpStartHere] createBaseInstance not available on base export; falling back to default base');
                 }
             } else {
                 if (targetBaseId === masterClientsBaseId && targetBaseId !== defaultBaseId) {
-                    console.log('[HelpStartHere] Using MASTER_CLIENTS_BASE_ID for help content');
+                    moduleLogger.info('[HelpStartHere] Using MASTER_CLIENTS_BASE_ID for help content');
                 } else {
-                    console.log('[HelpStartHere] Using default base for help content');
+                    moduleLogger.info('[HelpStartHere] Using default base for help content');
                 }
             }
         } catch (bErr) {
-            console.error('[HelpStartHere] Failed to initialize help base', bErr.message);
+            moduleLogger.error('[HelpStartHere] Failed to initialize help base', bErr.message);
             return res.status(500).json({ ok: false, error: 'Failed to initialize help base instance' });
         }
 
@@ -1340,7 +1345,7 @@ app.get('/api/help/start-here', async (req, res) => {
                         }
                     }
                 } catch (mediaErr) {
-                    console.warn('[HelpStartHere] Media placeholder resolution failed', mediaErr.message);
+                    moduleLogger.warn('[HelpStartHere] Media placeholder resolution failed', mediaErr.message);
                 }
             }
         }
@@ -1443,12 +1448,12 @@ app.get('/api/help/start-here', async (req, res) => {
     __helpStartHereCache = { data: payload, fetchedAt: Date.now() };
     res.json(payload);
     } catch (e) {
-        try { console.error('Help Start Here endpoint error raw =>', e); } catch {}
-        try { if (e && e.stack) console.error('Stack:', e.stack); } catch {}
+        try { moduleLogger.error('Help Start Here endpoint error raw =>', e); } catch {}
+        try { if (e && e.stack) moduleLogger.error('Stack:', e.stack); } catch {}
         // Provide actionable diagnostics on NOT_AUTHORIZED
         const isAuth = (e && (e.error === 'NOT_AUTHORIZED' || e.statusCode === 403));
         if (isAuth && process.env.ENABLE_HELP_STUB === '1') {
-            console.warn('[HelpStartHere] NOT_AUTHORIZED – serving stub help data because ENABLE_HELP_STUB=1');
+            moduleLogger.warn('[HelpStartHere] NOT_AUTHORIZED – serving stub help data because ENABLE_HELP_STUB=1');
             const payload = {
                 area: 'start_here',
                 fetchedAt: new Date().toISOString(),
@@ -1496,7 +1501,7 @@ app.get('/api/help/start-here', async (req, res) => {
         res.status(500).json({ ok: false, error: msg, authError: isAuth });
     }
 });
-console.log('index.js: Help Start Here endpoint mounted at /api/help/start-here');
+moduleLogger.info('index.js: Help Start Here endpoint mounted at /api/help/start-here');
 
 // Export selected utilities for internal scripts/tests (non-breaking)
 try {
@@ -1534,19 +1539,19 @@ app.get('/api/help/context', async (req, res) => {
             if (targetBaseId && defaultBaseId && targetBaseId !== defaultBaseId) {
                 if (typeof base.createBaseInstance === 'function') {
                     helpBase = base.createBaseInstance(targetBaseId);
-                    console.log(`[HelpContext:${area}] Using non-default help base ${targetBaseId}`);
+                    moduleLogger.info(`[HelpContext:${area}] Using non-default help base ${targetBaseId}`);
                 } else {
-                    console.warn(`[HelpContext:${area}] createBaseInstance not available; using default base`);
+                    moduleLogger.warn(`[HelpContext:${area}] createBaseInstance not available; using default base`);
                 }
             } else {
                 if (targetBaseId === masterClientsBaseId && targetBaseId !== defaultBaseId) {
-                    console.log(`[HelpContext:${area}] Using MASTER_CLIENTS_BASE_ID for help content`);
+                    moduleLogger.info(`[HelpContext:${area}] Using MASTER_CLIENTS_BASE_ID for help content`);
                 } else {
-                    console.log(`[HelpContext:${area}] Using default base for help content`);
+                    moduleLogger.info(`[HelpContext:${area}] Using default base for help content`);
                 }
             }
         } catch (bErr) {
-            console.error(`[HelpContext:${area}] Failed to initialize help base`, bErr.message);
+            moduleLogger.error(`[HelpContext:${area}] Failed to initialize help base`, bErr.message);
             return res.status(500).json({ ok: false, error: 'Failed to initialize help base instance' });
         }
 
@@ -1784,7 +1789,7 @@ app.get('/api/help/context', async (req, res) => {
                         }
                     }
                 } catch (mediaErr) {
-                    console.warn(`[HelpContext:${area}] Media placeholder resolution failed`, mediaErr.message);
+                    moduleLogger.warn(`[HelpContext:${area}] Media placeholder resolution failed`, mediaErr.message);
                 }
             }
         }
@@ -1827,7 +1832,7 @@ app.get('/api/help/context', async (req, res) => {
         __helpAreaCache.set(area, { data: payload, fetchedAt: Date.now() });
         res.json(payload);
     } catch (e) {
-        console.error('Help Context endpoint error =>', e?.message || e);
+        moduleLogger.error('Help Context endpoint error =>', e?.message || e);
         res.status(500).json({ ok: false, error: e?.message || 'Failed to load help context' });
     }
 });
@@ -1966,9 +1971,9 @@ app.post('/api/environment/agent-command', async (req, res) => {
     res.json(response);
 });
 
-console.log("index.js: Environment management endpoints added");
+moduleLogger.info("index.js: Environment management endpoints added");
 
-try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
+try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); moduleLogger.info("index.js: App/API/Job routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
 // --- BROKEN PORTAL ROUTES REMOVED ---
 // The following routes were removed as they were trying to serve non-existent files:
@@ -1980,43 +1985,43 @@ try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoute
 // Frontend URL: https://pb-webhook-server.vercel.app
 // Backend APIs: Continue to work correctly on Render
 
-console.log("index.js: Attempting to mount Custom GPT support APIs...");
+moduleLogger.info("index.js: Attempting to mount Custom GPT support APIs...");
 try {
     const mountPointerApi = require("./pointerApi.js");
     const mountLatestLead = require("./latestLeadApi.js");
     const mountUpdateLead = require("./updateLeadApi.js");
 
     if (!GPT_CHAT_URL && mountPointerApi && typeof mountPointerApi === 'function') {
-        console.warn("index.js: GPT_CHAT_URL is not set; pointerApi might not function fully if it relies on it internally beyond the parameter.");
+        moduleLogger.warn("index.js: GPT_CHAT_URL is not set; pointerApi might not function fully if it relies on it internally beyond the parameter.");
     }
     
     if (mountPointerApi && typeof mountPointerApi === 'function') {
         mountPointerApi(app, base, GPT_CHAT_URL);
-        console.log("index.js: pointerApi mounted.");
-    } else { console.error("index.js: pointerApi.js not found or did not export a function."); }
+        moduleLogger.info("index.js: pointerApi mounted.");
+    } else { moduleLogger.error("index.js: pointerApi.js not found or did not export a function."); }
 
     if (mountLatestLead && typeof mountLatestLead === 'function') {
         mountLatestLead(app, base);
-        console.log("index.js: latestLeadApi mounted.");
-    } else { console.error("index.js: latestLeadApi.js not found or did not export a function."); }
+        moduleLogger.info("index.js: latestLeadApi mounted.");
+    } else { moduleLogger.error("index.js: latestLeadApi.js not found or did not export a function."); }
 
     if (mountUpdateLead && typeof mountUpdateLead === 'function') {
         mountUpdateLead(app, base);
-        console.log("index.js: updateLeadApi mounted.");
-    } else { console.error("index.js: updateLeadApi.js not found or did not export a function."); }
+        moduleLogger.info("index.js: updateLeadApi mounted.");
+    } else { moduleLogger.error("index.js: updateLeadApi.js not found or did not export a function."); }
 } catch (apiMountError) {
-    console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
+    moduleLogger.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
 }
 
 // --- WEBHOOK FOR TEXT BLAZE LINKEDIN DATA ---
 app.post('/textblaze-linkedin-webhook', async (req, res) => {
-    console.log('Received data from Text Blaze /textblaze-linkedin-webhook:');
-    console.log('Request Body:', req.body);
+    moduleLogger.info('Received data from Text Blaze /textblaze-linkedin-webhook:');
+    moduleLogger.info('Request Body:', req.body);
 
     const { linkedinMessage, profileUrl, timestamp } = req.body;
 
     if (!linkedinMessage || !profileUrl || !timestamp) {
-        console.error("Webhook Error: Missing linkedinMessage, profileUrl, or timestamp in request body.");
+        moduleLogger.error("Webhook Error: Missing linkedinMessage, profileUrl, or timestamp in request body.");
         return res.status(400).json({
             status: 'error',
             message: 'Missing required data: linkedinMessage, profileUrl, or timestamp.'
@@ -2024,14 +2029,14 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
     }
     
     if (!base) {
-        console.error("Webhook Error: Airtable base not configured on server.");
+        moduleLogger.error("Webhook Error: Airtable base not configured on server.");
         return res.status(500).json({
             status: 'error',
             message: 'Airtable integration not available on server.'
         });
     }
     if (!AIRTABLE_BASE_ID) {
-        console.error("Webhook Error: AIRTABLE_BASE_ID not configured on server.");
+        moduleLogger.error("Webhook Error: AIRTABLE_BASE_ID not configured on server.");
         return res.status(500).json({
             status: 'error',
             message: 'Airtable Base ID not configured on server.'
@@ -2043,11 +2048,11 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
     if (typeof normalizedProfileUrl === 'string' && normalizedProfileUrl.endsWith('/')) {
         normalizedProfileUrl = normalizedProfileUrl.slice(0, -1);
     }
-    console.log(`Normalized Profile URL for Airtable search: ${normalizedProfileUrl}`);
+    moduleLogger.info(`Normalized Profile URL for Airtable search: ${normalizedProfileUrl}`);
 
 
     try {
-        console.log(`Searching Airtable for Lead with URL: ${normalizedProfileUrl}`); // Use normalized URL
+        moduleLogger.info(`Searching Airtable for Lead with URL: ${normalizedProfileUrl}`); // Use normalized URL
         const records = await base(AIRTABLE_LEADS_TABLE_ID_OR_NAME).select({
             maxRecords: 1,
             // Use the normalized URL in the filter formula
@@ -2057,7 +2062,7 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
         if (records && records.length > 0) {
             const record = records[0];
             const recordId = record.id;
-            console.log(`Found Lead with Record ID: ${recordId}`);
+            moduleLogger.info(`Found Lead with Record ID: ${recordId}`);
 
             const existingNotes = record.get(AIRTABLE_NOTES_FIELD) || "";
             const newNoteEntry = `📅 ${timestamp} – Sent: ${linkedinMessage}`;
@@ -2075,7 +2080,7 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
                     }
                 }
             ]);
-            console.log(`Successfully updated Notes for Record ID: ${recordId}`);
+            moduleLogger.info(`Successfully updated Notes for Record ID: ${recordId}`);
             
             const airtableRecordUrl = `https://airtable.com/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_LEADS_TABLE_ID_OR_NAME)}/${recordId}`;
 
@@ -2086,14 +2091,14 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
                 recordId: recordId
             });
         } else {
-            console.warn(`No Lead found in Airtable with URL: ${normalizedProfileUrl}`);
+            moduleLogger.warn(`No Lead found in Airtable with URL: ${normalizedProfileUrl}`);
             return res.status(404).json({
                 status: 'error',
                 message: `No Lead found in Airtable with LinkedIn Profile URL: ${normalizedProfileUrl}`
             });
         }
     } catch (error) {
-        console.error("Error interacting with Airtable:", error);
+        moduleLogger.error("Error interacting with Airtable:", error);
         let errorMessage = "Error updating Airtable.";
         if (error.message) {
             errorMessage += ` Details: ${error.message}`;
@@ -2139,7 +2144,7 @@ app.use((req, res, next) => {
 
 // Global error handler - catches all unhandled errors
 app.use(async (err, req, res, next) => {
-    console.error('Global error handler caught error:', err);
+    moduleLogger.error('Global error handler caught error:', err);
     
     // Log critical errors to Airtable
     try {
@@ -2154,7 +2159,7 @@ app.use(async (err, req, res, next) => {
             }
         });
     } catch (loggingError) {
-        console.error('Failed to log error to Airtable:', loggingError.message);
+        moduleLogger.error('Failed to log error to Airtable:', loggingError.message);
     }
     
     // Send error response to client
@@ -2170,22 +2175,22 @@ app.use(async (err, req, res, next) => {
     4) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3001;
-console.log(
+moduleLogger.info(
     `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}.`);
+    moduleLogger.info(`Server running on port ${port}.`);
     if (!globalGeminiModel) {
-        console.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
+        moduleLogger.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
     } else if (!base) {
-        console.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
+        moduleLogger.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
     } else if (!geminiConfig || !geminiConfig.vertexAIClient) {
-        console.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
+        moduleLogger.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
     }
     else {
-        console.log("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
+        moduleLogger.info("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
     }
 });
 
@@ -2195,13 +2200,13 @@ app.listen(port, () => {
 /*
 async function getScoringData() {
   // Original content would be here. For now, a placeholder.
-  console.warn("Legacy getScoringData function called - likely obsolete.");
+  moduleLogger.warn("Legacy getScoringData function called - likely obsolete.");
   return {}; // Return a sensible default if it were ever called
 }
 
 function parseMarkdownTables(markdown) {
   // Original content would be here. For now, a placeholder.
-  console.warn("Legacy parseMarkdownTables function called - likely obsolete.");
+  moduleLogger.warn("Legacy parseMarkdownTables function called - likely obsolete.");
   return {}; // Return a sensible default
 }
 */
@@ -2211,7 +2216,7 @@ function parseMarkdownTables(markdown) {
     const PROD_BASE_ID = 'appXySOLo6V9PfMfa'; // Production fallback base (from your .env)
     const env = process.env.NODE_ENV || 'development';
     if (env !== 'production' && AIRTABLE_BASE_ID === PROD_BASE_ID) {
-        console.warn(`⚠️  SAFETY WARNING: Running in NODE_ENV=${env} while AIRTABLE_BASE_ID is set to the production base (${PROD_BASE_ID}).\n` +
+        moduleLogger.warn(`⚠️  SAFETY WARNING: Running in NODE_ENV=${env} while AIRTABLE_BASE_ID is set to the production base (${PROD_BASE_ID}).\n` +
             'If this is intentional (legacy fallback), ensure you always supply ?testClient=... so client-specific bases are used.');
     }
 })();
@@ -2225,7 +2230,7 @@ app.use((req, res, next) => {
     const isApifyWebhook = req.path.includes('/api/apify-webhook');
     
     if (!clientParam && !isApifyWebhook && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
-        console.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?testClient=CLIENT_ID to target that client base.`);
+        moduleLogger.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?testClient=CLIENT_ID to target that client base.`);
     }
     next();
 });
@@ -2245,11 +2250,11 @@ function getHelpBase() {
                 const inst = base.createBaseInstance(targetBaseId);
                 return inst;
             } catch (e) {
-                console.error('[getHelpBase] Failed to create base instance', e.message);
+                moduleLogger.error('[getHelpBase] Failed to create base instance', e.message);
                 return null;
             }
         } else {
-            console.warn('[getHelpBase] createBaseInstance not available; falling back to default base');
+            moduleLogger.warn('[getHelpBase] createBaseInstance not available; falling back to default base');
         }
     }
     return base;
@@ -2364,7 +2369,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
                 });
                 preservedBodyHtml = html;
             } catch (e) {
-                console.warn('[HelpTopic] Failed to resolve media placeholders in HTML', e.message);
+                moduleLogger.warn('[HelpTopic] Failed to resolve media placeholders in HTML', e.message);
             }
         }
 
@@ -2422,7 +2427,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
         };
         res.json(payload);
     } catch (e) {
-        console.error('Help topic endpoint error', e);
+        moduleLogger.error('Help topic endpoint error', e);
         res.status(500).json({ error: 'TOPIC_FETCH_ERROR', message: e.message });
     }
 });
@@ -2482,7 +2487,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                     next();
                 });
             } catch (relErr) {
-                console.warn('[helpQA] Related topics fetch failed', relErr.message);
+                moduleLogger.warn('[helpQA] Related topics fetch failed', relErr.message);
             }
         }
 
@@ -2571,7 +2576,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                     globalMeta = { ensure, globalHits: globalHits.length, topDocScore: top.score, bestSentenceScore: globalResult?.score || 0 };
                 }
             } catch (gErr) {
-                console.warn('[helpQA] Global help search failed', gErr.message);
+                moduleLogger.warn('[helpQA] Global help search failed', gErr.message);
             }
         }
 
@@ -2720,7 +2725,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                             });
                             const llmAnswer2 = chat2.choices?.[0]?.message?.content?.trim();
                             if (llmAnswer2) llmAnswer = llmAnswer2 + '\n\n(meta: ungrounded fallback)';
-                        } catch (fbErr) { console.warn('[helpQA] Ungrounded fallback failed', fbErr.message); }
+                        } catch (fbErr) { moduleLogger.warn('[helpQA] Ungrounded fallback failed', fbErr.message); }
                     }
                     return res.json({
                         answer: llmAnswer,
@@ -2738,7 +2743,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                     });
                 }
             } catch (llmErr) {
-                console.warn('[helpQA] LLM escalation failed, falling back to retrieval result if any', llmErr.message);
+                moduleLogger.warn('[helpQA] LLM escalation failed, falling back to retrieval result if any', llmErr.message);
             }
         }
 
@@ -2775,7 +2780,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
             }
         });
     } catch (e) {
-        console.error('QA endpoint error', e);
+        moduleLogger.error('QA endpoint error', e);
         res.status(500).json({ error: 'QA_ERROR', message: e.message });
     }
 });
@@ -2931,7 +2936,7 @@ app.post('/api/help/qa-embed', express.json(), async (req, res) => {
                     baselineSection = `\nBaseline Templates:\n${templateList}\n\nBaseline Actions:\n${actionList}\n\nSupport Actions:\n${supportList}\n\nCategories:\n${categorySummary}`;
                 }
             } catch (e) {
-                console.warn('[qa-embed] baseline load failed', e.message);
+                moduleLogger.warn('[qa-embed] baseline load failed', e.message);
             }
         }
 
@@ -3032,7 +3037,7 @@ app.post('/api/help/qa-embed', express.json(), async (req, res) => {
             }
         });
     } catch (e) {
-        console.error('[qa-embed] error', e);
+        moduleLogger.error('[qa-embed] error', e);
         res.status(500).json({ error: 'EMBED_QA_ERROR', message: e.message });
     }
 });
