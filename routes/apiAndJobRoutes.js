@@ -2131,6 +2131,8 @@ router.get("/api/json-quality-analysis", async (req, res) => {
 // Token Budget Management (TESTING - Hardcoded 15K limit)
 // ---------------------------------------------------------------
 
+// Utility logger for token calculation helpers
+const tokenUtilLogger = createLogger({ operation: 'token_utilities' });
 // Calculate tokens for attribute text fields (approximation: ~4 chars per token)
 function calculateAttributeTokens(instructions, examples, signals) {
   const instructionsText = extractPlainText(instructions) || '';
@@ -2390,10 +2392,11 @@ async function validatePostTokenBudget(attributeId, updatedData, clientId) {
 // Get current token usage status
 router.get("/api/token-usage", async (req, res) => {
   try {
-    moduleLogger.info("apiAndJobRoutes.js: GET /api/token-usage - Getting current token usage");
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'token_usage' });
+    logger.info("Getting current token usage");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -2430,10 +2433,11 @@ router.get("/api/token-usage", async (req, res) => {
 // Validate if attribute save would exceed budget
 router.post("/api/attributes/:id/validate-budget", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget - Validating token budget`);
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'validate_token_budget', attributeId: req.params.id });
+    logger.info("Validating token budget");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -2481,10 +2485,11 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
 // Get current post token usage status
 router.get("/api/post-token-usage", async (req, res) => {
   try {
-    moduleLogger.info("apiAndJobRoutes.js: GET /api/post-token-usage - Getting current post token usage");
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'post_token_usage' });
+    logger.info("Getting current post token usage");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -2522,10 +2527,11 @@ router.get("/api/post-token-usage", async (req, res) => {
 // Validate if post attribute save would exceed budget
 router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget - Validating post token budget`);
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'validate_post_token_budget', attributeId: req.params.id });
+    logger.info("Validating post token budget");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
