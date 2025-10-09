@@ -909,7 +909,7 @@ async function run(req, res, dependencies) {
                 // Process chunks for this client
                 for (const chunk of chunks) {
                     try {
-                        const chunkResult = await scoreChunk(chunk, clientId, clientBase, clientLogger);
+                        const chunkResult = await scoreChunk(chunk, clientId, clientBase, timestampOnlyRunId);
                         clientProcessed += chunkResult.processed;
                         clientSuccessful += chunkResult.successful;
                         clientFailed += chunkResult.failed;
