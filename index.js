@@ -386,6 +386,174 @@ app.post('/api/analyze-logs/text', async (req, res) => {
 });
 
 /**
+ * Auto-analyze the latest run from Job Tracking
+ * POST /api/auto-analyze-latest-run
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * 
+ * This endpoint:
+ * 1. Finds the most recent run in Job Tracking
+ * 2. Fetches Render logs for that time period
+ * 3. Analyzes the smart-resume flow
+ * 4. Checks for errors
+ * 5. Returns comprehensive diagnosis
+ */
+app.post('/api/auto-analyze-latest-run', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const autoAnalyze = require('./auto-analyze-latest-run');
+        
+        // Import required dependencies
+        const { getMasterClientsBase } = require('./config/airtableClient');
+        const RenderLogService = require('./services/renderLogService');
+        const { filterLogs, generateSummary } = require('./services/logFilterService');
+        
+        // Get latest run from Job Tracking
+        const masterBase = getMasterClientsBase();
+        const records = await masterBase('Job Tracking')
+            .select({
+                maxRecords: 1,
+                sort: [{ field: 'Start Time', direction: 'desc' }],
+                filterByFormula: "AND({Run ID} != '', {Start Time} != '')"
+            })
+            .firstPage();
+        
+        if (!records || records.length === 0) {
+            return res.status(404).json({ ok: false, error: 'No runs found in Job Tracking table' });
+        }
+        
+        const record = records[0];
+        const runId = record.get('Run ID');
+        const startTime = record.get('Start Time');
+        const endTime = record.get('End Time');
+        const status = record.get('Status');
+        
+        // Fetch Render logs
+        const renderService = new RenderLogService();
+        const serviceId = process.env.RENDER_SERVICE_ID;
+        const logEndTime = endTime || new Date().toISOString();
+        
+        const result = await renderService.getServiceLogs(serviceId, {
+            startTime,
+            endTime: logEndTime,
+            limit: 10000
+        });
+        
+        // Convert logs to text
+        const logText = result.logs
+            .map(log => {
+                if (typeof log === 'string') return log;
+                if (log.message) return `[${log.timestamp || ''}] ${log.message}`;
+                return JSON.stringify(log);
+            })
+            .join('\n');
+        
+        // Analyze smart-resume flow
+        const flowChecks = {
+            endpointCalled: false,
+            lockAcquired: false,
+            backgroundStarted: false,
+            scriptLoaded: false,
+            scriptCompleted: false,
+            autoAnalysisStarted: false,
+            autoAnalysisCompleted: false,
+            runIdExtracted: null,
+            errors: []
+        };
+        
+        const lines = logText.split('\n');
+        for (const line of lines) {
+            if (line.includes('GET request received for /smart-resume-client-by-client') || 
+                line.includes('smart_resume_get')) {
+                flowChecks.endpointCalled = true;
+            }
+            if (line.includes('Smart resume lock acquired')) {
+                flowChecks.lockAcquired = true;
+            }
+            if (line.includes('Smart resume background processing started') || line.includes('🎯')) {
+                flowChecks.backgroundStarted = true;
+            }
+            if (line.includes('Loading smart resume module') || line.includes('MODULE_DEBUG: Script loading')) {
+                flowChecks.scriptLoaded = true;
+            }
+            if (line.includes('Smart resume completed successfully') || line.includes('SCRIPT_END: Module execution completed')) {
+                flowChecks.scriptCompleted = true;
+            }
+            if (line.includes('Starting automatic log analysis') || line.includes('🔍 Analyzing logs for specific runId')) {
+                flowChecks.autoAnalysisStarted = true;
+            }
+            if (line.includes('Log analysis complete') || line.includes('errors saved to Production Issues')) {
+                flowChecks.autoAnalysisCompleted = true;
+            }
+            if (line.includes('Script returned runId:')) {
+                const match = line.match(/Script returned runId:\s*(\S+)/);
+                if (match) flowChecks.runIdExtracted = match[1];
+            }
+            if (line.includes('[ERROR]') || line.includes('ERROR:')) {
+                flowChecks.errors.push(line.substring(0, 200));
+            }
+        }
+        
+        // Analyze for errors
+        const issues = filterLogs(logText, {
+            deduplicateIssues: true,
+            contextSize: 25,
+            runIdFilter: runId
+        });
+        
+        const summary = generateSummary(issues);
+        
+        // Diagnosis
+        let diagnosis = 'Unknown';
+        if (!flowChecks.endpointCalled) {
+            diagnosis = 'Endpoint was never called or logs are missing';
+        } else if (!flowChecks.lockAcquired) {
+            diagnosis = 'Lock was not acquired (another job running?)';
+        } else if (!flowChecks.backgroundStarted) {
+            diagnosis = 'Background processing never started';
+        } else if (!flowChecks.scriptLoaded) {
+            diagnosis = 'Smart resume script failed to load';
+        } else if (!flowChecks.scriptCompleted) {
+            diagnosis = 'Script started but never completed (still running, crashed, or timeout)';
+        } else if (!flowChecks.autoAnalysisStarted) {
+            diagnosis = 'Auto-analysis never started after script completed';
+        } else if (!flowChecks.autoAnalysisCompleted) {
+            diagnosis = 'Auto-analysis started but failed';
+        } else {
+            diagnosis = 'SUCCESS - Complete flow executed!';
+        }
+        
+        res.json({
+            success: true,
+            runId,
+            startTime,
+            endTime,
+            status,
+            logLineCount: result.logs.length,
+            flowChecks,
+            errorAnalysis: {
+                totalIssues: issues.length,
+                summary,
+                issues: issues.slice(0, 5).map(i => ({
+                    severity: i.severity,
+                    patternMatched: i.patternMatched,
+                    errorMessage: i.errorMessage.substring(0, 200),
+                    timestamp: i.timestamp
+                }))
+            },
+            diagnosis
+        });
+        
+    } catch (error) {
+        moduleLogger.error('Failed to auto-analyze latest run:', error);
+        res.status(500).json({ ok: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
  * Get Production Issues from Airtable with filters
  * GET /api/production-issues
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
