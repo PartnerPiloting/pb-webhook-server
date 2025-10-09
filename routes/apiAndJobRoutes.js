@@ -355,40 +355,43 @@ router.get("/api/initiate-pb-message", async (req, res) => {
 });// ---------------------------------------------------------------
 // Manual PB Posts Sync
 // ---------------------------------------------------------------
-router.all("/api/sync-pb-posts", async (_req, res) => {
-  try {
-    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
-    res.json({
-      status: "success",
-      message: "PB posts sync completed.",
-      details: info,
-    });
-  } catch (err) {
-    moduleLogger.error("sync-pb-posts error (manual trigger):", err);
-    await logRouteError(error, req).catch(() => {});
-    res.status(500).json({ status: "error", error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------
+router.all("/api/sync-pb-posts", async (req, res) => {
+  const syncLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'sync_pb_posts' });
+  try {
+    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
+    res.json({
+      status: "success",
+      message: "PB posts sync completed.",
+      details: info,
+    });
+  } catch (err) {
+    syncLogger.error("sync-pb-posts error (manual trigger):", err);
+    await logRouteError(err, req).catch(() => {});
+    res.status(500).json({ status: "error", error: err.message });
+  }
+});// ---------------------------------------------------------------
 // PB Webhook
 // ---------------------------------------------------------------
 router.post("/api/pb-webhook", async (req, res) => {
-  try {
-    const secret = req.query.secret || req.body.secret;
-    if (secret !== process.env.PB_WEBHOOK_SECRET) {
-      logger.warn("PB Webhook: Forbidden attempt with incorrect secret.");
-      return res.status(403).json({ error: "Forbidden" });
-    }
+  const webhookLogger = createLogger({
+    runId: `pb_webhook_${Date.now()}`,
+    clientId: 'SYSTEM',
+    operation: 'pb_webhook'
+  });
+  
+  try {
+    const secret = req.query.secret || req.body.secret;
+    if (secret !== process.env.PB_WEBHOOK_SECRET) {
+      logger.warn("PB Webhook: Forbidden attempt with incorrect secret.");
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
-    moduleLogger.info(
-      "PB Webhook: Received raw payload:",
-      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
-    );
+    webhookLogger.info(
+      "Received raw payload:",
+      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
+    );
 
-    res.status(200).json({ message: "Webhook received. Processing in background." });
-
-    (async () => {
+    res.status(200).json({ message: "Webhook received. Processing in background." });    (async () => {
       try {
         let rawResultObject = req.body.resultObject;
 
@@ -426,21 +429,19 @@ router.post("/api/pb-webhook", async (req, res) => {
         }
         
         if (!Array.isArray(postsInputArray)) {
-            logger.warn("PB Webhook: Processed postsInput is not an array.");
-            return;
-        }
+            logger.warn("PB Webhook: Processed postsInput is not an array.");
+            return;
+        }
 
-        moduleLogger.info(`PB Webhook: Extracted ${postsInputArray.length} items from resultObject for background processing.`);
+        webhookLogger.info(`Extracted ${postsInputArray.length} items from resultObject for background processing.`);
 
-        const filteredPostsInput = postsInputArray.filter(item => {
-          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
-            return true;
-          }
-          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
-        });
-        moduleLogger.info(`PB Webhook: Filtered to ${filteredPostsInput.length} items after removing potential header.`);
-
-        if (filteredPostsInput.length > 0) {
+        const filteredPostsInput = postsInputArray.filter(item => {
+          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
+            return true;
+          }
+          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
+        });
+        webhookLogger.info(`Filtered to ${filteredPostsInput.length} items after removing potential header.`);        if (filteredPostsInput.length > 0) {
           // TEMP FIX: Use specific client base if auto-detection fails
           const { getClientBase } = require('../config/airtableClient');
           const clientBase = await getClientBase('Guy-Wilson'); // Fixed: Use correct client ID and await
