@@ -108,6 +108,7 @@ function extractMetadata(context) {
     runId: null,
     runType: null,
     service: null,
+    stream: null,  // Add stream field
   };
   
   // Extract client ID
@@ -117,6 +118,11 @@ function extractMetadata(context) {
   // Extract run ID
   const runMatch = context.match(/run(?:Id)?[:\s]+([a-zA-Z0-9-]+)/i);
   if (runMatch) metadata.runId = runMatch[1];
+  
+  // Extract stream parameter from URL query strings
+  // Matches: ?stream=1, &stream=2, stream=3
+  const streamMatch = context.match(/[?&]stream=(\d+)/i);
+  if (streamMatch) metadata.stream = streamMatch[1];
   
   // Detect run type from context
   if (context.includes('smart-resume') || context.includes('smartResume')) {
