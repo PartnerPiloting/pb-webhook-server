@@ -849,28 +849,9 @@ async function main() {
         // Track end timestamp for log analysis
         const runEndTimestamp = new Date();
         
-        // FIRE-AND-FORGET: Analyze logs for this run to create Production Issues
-        log(`🔍 Starting automatic log analysis for run ${runId}...`);
-        (async () => {
-            try {
-                const ProductionIssueService = require('../services/productionIssueService');
-                const productionIssueService = new ProductionIssueService();
-                
-                const analysisResult = await productionIssueService.analyzeRunLogs({
-                    runId,
-                    startTime: runStartTimestamp,
-                    endTime: runEndTimestamp,
-                    stream,
-                });
-                
-                log(`✅ Log analysis complete: ${analysisResult.createdRecords} Production Issues created`, 'INFO');
-            } catch (analysisError) {
-                log(`⚠️ Log analysis failed (non-critical): ${analysisError.message}`, 'WARN');
-                // Don't block completion if log analysis fails
-            }
-        })().catch(err => {
-            log(`⚠️ Log analysis fire-and-forget error: ${err.message}`, 'WARN');
-        });
+        // NOTE: Log analysis moved to API route's finally block
+        // This ensures analysis runs AFTER script completes and properly passes runId
+        // See routes/apiAndJobRoutes.js line ~5280 for the auto-analysis implementation
         
         log(`\n🎉 ✅ SMART RESUME FULLY COMPLETED!`);
         log(`🚀 PROGRESS: [6/6] ✅ ALL PHASES COMPLETE - Script execution finished successfully`);
