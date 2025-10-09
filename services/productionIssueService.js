@@ -87,16 +87,36 @@ class ProductionIssueService {
 
       logger.info(`Analyzing logs${runId ? ` for runId: ${runId}` : ''} (${timeSource})`);
       
-      // Fetch logs from Render
-      logger.debug('Fetching logs from Render API...');
-      const logData = await this.renderLogService.getServiceLogs(serviceId, {
-        startTime,
-        endTime,
-        limit: 10000,
-      });
+      // Fetch logs from Render with pagination (to get ALL logs, not just first 1000)
+      logger.debug('Fetching logs from Render API with pagination...');
+      
+      let allLogs = [];
+      let hasMore = true;
+      let currentStartTime = startTime;
+      let pageCount = 0;
+      const maxPages = 10; // Safety limit
+      
+      while (hasMore && pageCount < maxPages) {
+        pageCount++;
+        
+        const result = await this.renderLogService.getServiceLogs(serviceId, {
+          startTime: currentStartTime,
+          endTime,
+          limit: 1000
+        });
+        
+        allLogs = allLogs.concat(result.logs || []);
+        
+        hasMore = result.hasMore;
+        if (hasMore && result.nextStartTime) {
+          currentStartTime = result.nextStartTime;
+        }
+      }
+      
+      logger.debug(`Fetched ${allLogs.length} total logs across ${pageCount} pages`);
 
       // Convert log data to text
-      let logText = this.convertLogsToText(logData.logs || []);
+      let logText = this.convertLogsToText(allLogs);
       const totalLines = logText.split('\n').length;
       
       if (runId) {
@@ -437,16 +457,36 @@ class ProductionIssueService {
     logger.debug('analyzeRunLogs', `Time window: ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
     try {
-      // Fetch logs from Render for the exact time window
-      logger.debug( 'Fetching logs from Render API...');
-      const logData = await this.renderLogService.getServiceLogs(serviceId, {
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        limit: 10000,
-      });
+      // Fetch logs from Render with pagination
+      logger.debug( 'Fetching logs from Render API with pagination...');
+      
+      let allLogs = [];
+      let hasMore = true;
+      let currentStartTime = startTime.toISOString();
+      let pageCount = 0;
+      const maxPages = 10;
+      
+      while (hasMore && pageCount < maxPages) {
+        pageCount++;
+        
+        const result = await this.renderLogService.getServiceLogs(serviceId, {
+          startTime: currentStartTime,
+          endTime: endTime.toISOString(),
+          limit: 1000
+        });
+        
+        allLogs = allLogs.concat(result.logs || []);
+        
+        hasMore = result.hasMore;
+        if (hasMore && result.nextStartTime) {
+          currentStartTime = result.nextStartTime;
+        }
+      }
+      
+      logger.debug(`Fetched ${allLogs.length} total logs across ${pageCount} pages`);
 
       // Convert to text
-      const allLogsText = this.convertLogsToText(logData.logs || []);
+      const allLogsText = this.convertLogsToText(allLogs);
       const allLogLines = allLogsText.split('\n');
       
       logger.debug( `Fetched ${allLogLines.length} total log lines from time window`);
