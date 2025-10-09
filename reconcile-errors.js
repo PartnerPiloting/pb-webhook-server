@@ -118,8 +118,7 @@ async function reconcileErrors(runId, startTime) {
     const masterBase = getMasterClientsBase();
     const productionIssues = await masterBase('Production Issues')
         .select({
-            filterByFormula: `{Run ID} = '${runId}'`,
-            sort: [{ field: 'Created', direction: 'desc' }]
+            filterByFormula: `{Run ID} = '${runId}'`
         })
         .all();
     
