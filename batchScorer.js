@@ -82,8 +82,13 @@ async function enqueue(recs, clientId, clientBase, runId = 'UNKNOWN') {
     if (running) return;
     running = true;
     
+    // Extract timestamp-only portion for cleaner logs
+    const timestampOnlyRunId = (runId && runId !== 'UNKNOWN') 
+        ? runId.split('-').slice(0, 2).join('-') 
+        : runId;
+    
     const queueLogger = createLogger({
-        runId: runId || 'UNKNOWN',
+        runId: timestampOnlyRunId,
         clientId: 'SYSTEM',
         operation: 'batch_scorer_queue'
     });
@@ -92,8 +97,13 @@ async function enqueue(recs, clientId, clientBase, runId = 'UNKNOWN') {
     while (queue.length) {
         const { records: chunk, clientId: chunkClientId, clientBase: chunkClientBase, runId: chunkRunId } = queue.shift();
         
+        // Extract timestamp-only portion for cleaner logs
+        const chunkTimestampRunId = (chunkRunId && chunkRunId !== 'UNKNOWN') 
+            ? chunkRunId.split('-').slice(0, 2).join('-') 
+            : chunkRunId;
+        
         const chunkLogger = createLogger({
-            runId: chunkRunId || 'UNKNOWN',
+            runId: chunkTimestampRunId,
             clientId: chunkClientId || 'UNKNOWN',
             operation: 'lead_scoring'
         });
@@ -123,8 +133,13 @@ async function enqueue(recs, clientId, clientBase, runId = 'UNKNOWN') {
 
 /* ---------- FETCH LEADS FROM AIRTABLE (Client-Specific) --------- */
 async function fetchLeads(limit, clientBase, clientId, runId = 'UNKNOWN') {
+    // Extract timestamp-only portion for cleaner logs
+    const timestampOnlyRunId = (runId && runId !== 'UNKNOWN') 
+        ? runId.split('-').slice(0, 2).join('-') 
+        : runId;
+    
     const log = createLogger({
-        runId: runId,
+        runId: timestampOnlyRunId,
         clientId: clientId || 'UNKNOWN',
         operation: 'lead_scoring'
     });
@@ -257,8 +272,13 @@ async function fetchLeads(limit, clientBase, clientId, runId = 'UNKNOWN') {
     scoreChunk - Processes a chunk of leads with Gemini (Client-Aware)
 =================================================================== */
 async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
+    // Extract timestamp-only portion for cleaner logs
+    const timestampOnlyRunId = (runId && runId !== 'UNKNOWN') 
+        ? runId.split('-').slice(0, 2).join('-') 
+        : runId;
+    
     const log = createLogger({
-        runId: runId,
+        runId: timestampOnlyRunId,
         clientId: clientId || 'UNKNOWN',
         operation: 'lead_scoring'
     });
@@ -645,9 +665,14 @@ async function run(req, res, dependencies) {
     // Determine runId from request (passed by API route or generated)
     const runId = req?.query?.parentRunId || req?.query?.runId || 'UNKNOWN';
     
+    // Extract timestamp-only portion for cleaner logs
+    const timestampOnlyRunId = (runId && runId !== 'UNKNOWN') 
+        ? runId.split('-').slice(0, 2).join('-') 
+        : runId;
+    
     // Create system-level logger for multi-tenant lead scoring operations
     const systemLogger = createLogger({
-        runId: runId,
+        runId: timestampOnlyRunId,
         clientId: 'SYSTEM',
         operation: 'lead_scoring'
     });
@@ -722,7 +747,7 @@ async function run(req, res, dependencies) {
             
             // Create client-specific logger
             const clientLogger = createLogger({
-                runId: runId,
+                runId: timestampOnlyRunId,  // Use timestamp-only version from parent scope
                 clientId: clientId,
                 operation: 'lead_scoring'
             });
