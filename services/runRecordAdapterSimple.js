@@ -1069,11 +1069,11 @@ async function checkRunRecordExists(params) {
       // The "Client Run Results" table exists in the Master Clients Base, not in client bases
       const masterBase = airtableService.initialize(); // Get the Master base
       
-      // Query the master table
-      logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId} in master base`);
+      // Query the master table - MUST search by BOTH Run ID AND Client ID
+      logger.debug(`[RunRecordAdapterSimple] Checking for run ID: ${runId}, client: ${clientIdToUse} in master base`);
       
       const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
-        filterByFormula: `{Run ID} = '${runId}'`,
+        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${runId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientIdToUse}')`,
         maxRecords: 1
       }).firstPage();
       
@@ -1100,7 +1100,7 @@ async function checkRunRecordExists(params) {
         const masterBase = airtableService.initialize(); // Get the Master base
         
         const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
-          filterByFormula: `{Run ID} = '${standardRunId}'`,
+          filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${standardRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientIdToUse}')`,
           maxRecords: 1
         }).firstPage();
         
@@ -1125,7 +1125,7 @@ async function checkRunRecordExists(params) {
           // The "Client Run Results" table exists in the Master Clients Base, not in client bases
           const masterBase = airtableService.initialize(); // Get the Master base
           const records = await masterBase(MASTER_TABLES.CLIENT_RUN_RESULTS).select({
-            filterByFormula: `FIND('${datePart}', {Run ID}) > 0`,
+            filterByFormula: `AND(FIND('${datePart}', {${CLIENT_RUN_FIELDS.RUN_ID}}) > 0, {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientIdToUse}')`,
             maxRecords: 5
           }).firstPage();
           

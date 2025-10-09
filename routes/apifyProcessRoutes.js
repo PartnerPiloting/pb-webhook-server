@@ -845,8 +845,9 @@ async function processClientHandler(req, res) {
           // Just use runIdToUse exactly as-is (pure consumer pattern)
           
           // Query for the run record now that we know it exists
+          // MUST search by BOTH Run ID AND Client ID for correct record lookup
           let runRecords = await masterBase('Client Run Results').select({
-            filterByFormula: `{Run ID} = '${runIdToUse}'`,
+            filterByFormula: `AND({Run ID} = '${runIdToUse}', {Client ID} = '${clientId}')`,
             maxRecords: 1
           }).firstPage();
           
