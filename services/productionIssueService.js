@@ -258,6 +258,12 @@ class ProductionIssueService {
     }
 
     logger.info( `Creating ${issues.length} Production Issue records${runId ? ` for runId: ${runId}` : ''}`);
+    
+    // DEBUG: Log all issue error messages to trace what we're trying to save
+    logger.debug('createProductionIssues', `Issues to create (first 25 chars of each):`);
+    issues.forEach((issue, idx) => {
+      logger.debug('createProductionIssues', `  ${idx + 1}. [${issue.severity}] ${issue.errorMessage.substring(0, 80)}...`);
+    });
 
     const createdRecords = [];
     const errors = [];
@@ -266,8 +272,10 @@ class ProductionIssueService {
       try {
         const record = await this.createProductionIssue(issue, runId);
         createdRecords.push(record);
+        logger.debug('createProductionIssues', `✓ Created: ${issue.errorMessage.substring(0, 60)}...`);
       } catch (error) {
         logger.warn('createProductionIssues', `Failed to create record: ${error.message}`);
+        logger.warn('createProductionIssues', `  Issue was: ${issue.errorMessage.substring(0, 80)}...`);
         errors.push({ issue, error: error.message });
       }
     }
