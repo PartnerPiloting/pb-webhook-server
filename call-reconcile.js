@@ -85,6 +85,24 @@ async function callReconcile(runId, startTime) {
             console.log(`Run ID: ${data.runId}`);
             console.log(`Start Time (UTC): ${data.startTime}`);
             console.log('');
+            
+            // Show validation results
+            if (data.validation) {
+                console.log('🔍 RUNID VALIDATION:');
+                console.log(`  ✅ Correct runId: ${data.validation.correctRunId}`);
+                console.log(`  ⚠️  No runId:      ${data.validation.noRunId}`);
+                console.log(`  ❌ Wrong runId:    ${data.validation.wrongRunId}`);
+                
+                if (data.validation.wrongRunId > 0) {
+                    console.log('\n  ❌ FILTER BUG DETECTED: Errors with wrong runId found!');
+                    data.validation.wrongRunIdErrors.forEach((err, idx) => {
+                        console.log(`    ${idx + 1}. Found: ${err.foundRunId}`);
+                        console.log(`       ${err.message}...`);
+                    });
+                }
+                console.log('');
+            }
+            
             console.log('📊 RESULTS:');
             console.log(`  Total errors in logs:  ${data.stats.totalInLogs}`);
             console.log(`  Total errors in table: ${data.stats.totalInTable}`);
@@ -93,6 +111,9 @@ async function callReconcile(runId, startTime) {
             console.log(`  ⚠️  In table NOT logs:  ${data.stats.inTableNotInLog}`);
             console.log('');
             console.log(`📈 CAPTURE RATE: ${data.stats.captureRate}%`);
+            if (data.stats.adjustedCaptureRate) {
+                console.log(`📈 ADJUSTED RATE: ${data.stats.adjustedCaptureRate}% (real errors only)`);
+            }
             console.log('');
             
             if (data.stats.captureRate >= 95) {
