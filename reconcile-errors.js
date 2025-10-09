@@ -113,31 +113,17 @@ async function reconcileErrors(runId, startTime) {
     console.log(`  ${colors.green}✓ Found ${logErrors.length} errors in logs${colors.reset}`);
     
     // Step 2: Fetch errors from Production Issues table
-    console.log(`\n${colors.cyan}Step 2: Fetching ALL errors from Production Issues table...${colors.reset}`);
-    console.log(`  (Getting all records to see complete picture)`);
+    console.log(`\n${colors.cyan}Step 2: Fetching errors from Production Issues table for Run ID: ${runId}...${colors.reset}`);
     
     const masterBase = getMasterClientsBase();
     
     const productionIssues = await masterBase('Production Issues')
         .select({
-            // No filter - get everything
-            sort: [{ field: 'Timestamp', direction: 'desc' }],
-            maxRecords: 100 // Safety limit
+            filterByFormula: `{Run ID} = '${runId}'`
         })
         .all();
     
-    console.log(`  ${colors.green}✓ Found ${productionIssues.length} total records in Production Issues${colors.reset}`);
-    
-    // Report how many have Run ID vs empty
-    const withRunId = productionIssues.filter(r => r.get('Run ID') === runId).length;
-    const withEmptyRunId = productionIssues.filter(r => !r.get('Run ID') || r.get('Run ID') === '').length;
-    const withOtherRunId = productionIssues.length - withRunId - withEmptyRunId;
-    
-    console.log(`    - With Run ID '${runId}': ${withRunId}`);
-    console.log(`    - With empty Run ID: ${withEmptyRunId}`);
-    if (withOtherRunId > 0) {
-        console.log(`    - With other Run IDs: ${withOtherRunId}`);
-    }
+    console.log(`  ${colors.green}✓ Found ${productionIssues.length} records with Run ID '${runId}'${colors.reset}`);
     
     // Step 3: Compare and match
     console.log(`\n${colors.cyan}Step 3: Comparing errors...${colors.reset}`);
