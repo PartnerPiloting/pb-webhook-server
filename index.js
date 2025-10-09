@@ -629,6 +629,7 @@ app.post('/api/reconcile-errors', async (req, res) => {
  * - days: Filter to last N days
  * - severity: Filter by severity (ERROR, WARNING, etc.)
  * - client: Filter by client ID
+ * - status: Filter by status (default: 'unfixed' = NEW/INVESTIGATING/BLANK, or 'all', 'NEW', 'FIXED', 'IGNORED')
  * - limit: Max records to analyze (default 1000)
  * - format: 'json' or 'html' (default: json)
  * 
@@ -647,6 +648,7 @@ app.get('/api/analyze-issues', async (req, res) => {
             days: req.query.days ? parseInt(req.query.days) : null,
             severity: req.query.severity || null,
             client: req.query.client || null,
+            status: req.query.status || 'unfixed', // Default: only unfixed issues
             limit: req.query.limit ? parseInt(req.query.limit) : 1000,
             format: req.query.format || 'json'
         };
@@ -664,6 +666,16 @@ app.get('/api/analyze-issues', async (req, res) => {
         }
         if (args.severity) conditions.push(`{Severity} = '${args.severity}'`);
         if (args.client) conditions.push(`FIND('${args.client}', {Client ID})`);
+        
+        // Status filter: default to unfixed issues only
+        if (args.status === 'unfixed') {
+            // Show NEW, INVESTIGATING, and blank status (exclude FIXED and IGNORED)
+            conditions.push(`OR({Status} = 'NEW', {Status} = 'INVESTIGATING', {Status} = BLANK())`);
+        } else if (args.status !== 'all') {
+            // Specific status requested
+            conditions.push(`{Status} = '${args.status}'`);
+        }
+        // If status=all, no filter applied
         
         const filterFormula = conditions.length === 0 ? '' : 
             conditions.length === 1 ? conditions[0] : 
@@ -695,11 +707,37 @@ app.get('/api/analyze-issues', async (req, res) => {
                 examples: data.examples
             }));
         
+        // Group actionable warnings by classification reason
+        const actionableWarningsByReason = {};
+        analysis.actionableWarnings.forEach(warning => {
+            const reason = warning.classificationReason;
+            if (!actionableWarningsByReason[reason]) {
+                actionableWarningsByReason[reason] = [];
+            }
+            actionableWarningsByReason[reason].push(warning);
+        });
+        
         const result = {
             success: true,
             filters: args,
             total: analysis.total,
             bySeverity: analysis.bySeverity,
+            
+            // Warning classification
+            warningClassification: {
+                actionable: analysis.actionableWarnings.length,
+                noise: analysis.noiseWarnings.length,
+                byReason: Object.entries(actionableWarningsByReason).map(([reason, warnings]) => ({
+                    reason,
+                    count: warnings.length,
+                    examples: warnings.slice(0, 3).map(w => ({
+                        message: w.message.substring(0, 200),
+                        runId: w.runId,
+                        timestamp: w.timestamp
+                    }))
+                }))
+            },
+            
             byPattern: Object.entries(analysis.byPattern)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 10)
@@ -711,11 +749,13 @@ app.get('/api/analyze-issues', async (req, res) => {
                 .map(([runId, count]) => ({ runId, count })),
             topIssues,
             recommendations: [
-                'Review top issues by frequency to identify recurring problems',
-                'Prioritize ERROR severity over WARNING',
+                `Found ${analysis.actionableWarnings.length} actionable warnings and ${analysis.noiseWarnings.length} noise warnings`,
+                'Review actionable warnings in warningClassification.byReason',
+                'Prioritize CRITICAL and ERROR severity issues first',
                 'Focus on patterns affecting multiple runs',
                 'Use ?runId=XXX to drill down into specific runs',
-                'Use ?severity=ERROR to focus on critical issues only'
+                'Use ?severity=ERROR to focus on critical issues only',
+                'Use ?status=all to see FIXED and IGNORED issues'
             ]
         };
         

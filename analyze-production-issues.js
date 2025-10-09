@@ -112,6 +112,51 @@ async function fetchIssues(filterFormula, limit) {
 }
 
 /* ------------------------------------------------------------------
+   Classify if a warning is actionable or noise
+------------------------------------------------------------------ */
+function classifyWarning(message) {
+  const lowerMessage = message.toLowerCase();
+  
+  // Actionable patterns - these need investigation/fixing
+  const actionablePatterns = [
+    { pattern: /rate limit|too many requests|http.*429|status.*429/i, reason: 'Rate limiting' },
+    { pattern: /auth.*fail|unauthorized|forbidden|invalid.*token|access.*denied/i, reason: 'Authentication failure' },
+    { pattern: /validation.*error|invalid.*data|schema.*error|missing required/i, reason: 'Data validation error' },
+    { pattern: /timeout|timed out|ETIMEDOUT|ESOCKETTIMEDOUT/i, reason: 'Timeout issue' },
+    { pattern: /out of memory|ENOMEM|heap.*limit|memory.*exceeded/i, reason: 'Resource exhaustion' },
+    { pattern: /connection.*refused|ECONNREFUSED|network.*error|ENOTFOUND/i, reason: 'Network/connectivity issue' },
+    { pattern: /database.*error|query.*failed|deadlock/i, reason: 'Database error' },
+    { pattern: /quota.*exceeded|limit.*reached/i, reason: 'Quota/limit exceeded' }
+  ];
+  
+  // Noise patterns - safe to ignore
+  const noisePatterns = [
+    /deprecated|deprecation/i,
+    /\[DEBUG\]|\[INFO\].*debug/i,
+    /npm WARN|peer dep/i,
+    /experimental feature/i,
+    /development mode/i
+  ];
+  
+  // Check if it's noise first (early exit)
+  for (const noisePattern of noisePatterns) {
+    if (noisePattern.test(message)) {
+      return { isActionable: false, reason: 'Debug/info/deprecation noise' };
+    }
+  }
+  
+  // Check if it matches actionable patterns
+  for (const { pattern, reason } of actionablePatterns) {
+    if (pattern.test(message)) {
+      return { isActionable: true, reason };
+    }
+  }
+  
+  // Default: if no pattern matches, consider it potentially actionable (cautious approach)
+  return { isActionable: true, reason: 'Unclassified warning - review manually' };
+}
+
+/* ------------------------------------------------------------------
    Group issues by various dimensions
 ------------------------------------------------------------------ */
 function analyzeIssues(issues) {
@@ -121,7 +166,9 @@ function analyzeIssues(issues) {
     byPattern: {},
     byClient: {},
     byRunId: {},
-    uniqueMessages: new Map()
+    uniqueMessages: new Map(),
+    actionableWarnings: [],
+    noiseWarnings: []
   };
 
   issues.forEach(issue => {
@@ -136,6 +183,22 @@ function analyzeIssues(issues) {
 
     // By run ID
     analysis.byRunId[issue.runId] = (analysis.byRunId[issue.runId] || 0) + 1;
+    
+    // Classify warnings as actionable or noise
+    if (issue.severity === 'WARNING') {
+      const classification = classifyWarning(issue.message);
+      if (classification.isActionable) {
+        analysis.actionableWarnings.push({
+          ...issue,
+          classificationReason: classification.reason
+        });
+      } else {
+        analysis.noiseWarnings.push({
+          ...issue,
+          classificationReason: classification.reason
+        });
+      }
+    }
 
     // Unique messages (first 100 chars as key)
     const msgKey = issue.message.substring(0, 100);
@@ -282,4 +345,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { analyzeIssues, fetchIssues };
+module.exports = { analyzeIssues, fetchIssues, classifyWarning };

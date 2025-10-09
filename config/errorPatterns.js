@@ -91,10 +91,10 @@ const ERROR_PATTERNS = {
     /retrying/i,
     /retry attempt \d+/i,
     
-    // Rate limiting warnings
+    // Rate limiting warnings (specific patterns to avoid matching run IDs)
     /rate limit/i,
     /too many requests/i,
-    /429/,
+    /HTTP.*429|status.*429|429.*error|error.*429/i,
     
     // Data validation warnings
     /validation warning/i,
