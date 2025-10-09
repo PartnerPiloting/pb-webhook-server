@@ -243,9 +243,44 @@ Ready to investigate and fix?
 3. Analyze the error context
 4. Propose a specific fix
 5. Implement fix if user approves
+6. **After fixing:** Mark issue as FIXED in Production Issues table
+
+**Marking Issues as FIXED:**
+
+After implementing a fix and committing it, mark the issue as FIXED:
+
+```javascript
+// Use fetch_webpage to call the API
+const response = await fetch_webpage({
+  url: 'https://pb-webhook-server-staging.onrender.com/api/mark-issue-fixed',
+  method: 'POST',
+  body: {
+    pattern: 'at scoreChunk',  // Text to search in Error Message field
+    commitHash: '6203483',      // Git commit hash of the fix
+    fixNotes: 'Fixed batch scoring crash by passing runId string instead of logger object'
+  }
+});
+```
+
+This will:
+- Find all Production Issues with that pattern and Status != FIXED
+- Update them: Status → FIXED, Fixed Time → now, Fix Commit → hash, Fix Notes → description
+- Return summary of updated issues
+
+**Alternative:** Specify exact Issue IDs instead of pattern:
+```javascript
+{
+  issueIds: [123, 124],
+  commitHash: 'abc123',
+  fixNotes: 'Description of fix'
+}
+```
 
 **Key Files:**
 - Production Issues table: Master Clients Airtable base
-- API endpoint: `GET /api/analyze-issues` (public, no auth)
+- API endpoints: 
+  - `GET /api/analyze-issues` (analyze and list issues)
+  - `POST /api/mark-issue-fixed` (mark issues as fixed)
 - Helper script: `helpers/issueInvestigator.js` (for reference)
+- Standalone script: `mark-issue-fixed.js` (for CLI use on Render)
 - Analysis script: `analyze-production-issues.js` (standalone CLI tool)
