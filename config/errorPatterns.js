@@ -62,10 +62,6 @@ const ERROR_PATTERNS = {
     /status\s*[45]\d{2}/i,
     /\b(404|500|502|503|504)\b/,
     
-    // Stack traces (indicate an exception was thrown)
-    /\s+at\s+\w+.*\(.*:\d+:\d+\)/,  // "  at functionName (file.js:123:45)"
-    /\s+at\s+.*\(.*node_modules/,    // "  at ... (node_modules/...)"
-    
     // API timeouts
     /ETIMEDOUT/i,
     /Request timeout/i,
