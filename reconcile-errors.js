@@ -59,12 +59,20 @@ async function reconcileErrors(runId, startTime) {
     console.log(`\n📅 Start Time (AEST): ${startTime}`);
     console.log(`📅 Start Time (UTC):  ${utcStartTime}`);
     
+    // Use a fixed 7-minute buffer to capture the run without including later reconciliation activity
+    const bufferMinutes = 7;
+    const endTime = new Date(new Date(utcStartTime).getTime() + bufferMinutes * 60 * 1000).toISOString();
+    
+    console.log(`📅 End Time (UTC):    ${endTime} (start + ${bufferMinutes} min)`);
+    console.log(`   ${colors.cyan}(7-minute window to capture run only, excluding later activity)${colors.reset}`);
+
+    
+    
     // Step 1: Fetch errors from Render logs
-    console.log(`\n${colors.cyan}Step 1: Fetching errors from Render logs...${colors.reset}`);
+    console.log(`\n${colors.cyan}Step 1: Fetching errors from Render logs (${bufferMinutes}-minute window)...${colors.reset}`);
     
     const renderService = new RenderLogService();
     const serviceId = process.env.RENDER_SERVICE_ID;
-    const endTime = new Date().toISOString(); // Now
     
     let allLogs = [];
     let hasMore = true;
@@ -115,6 +123,7 @@ async function reconcileErrors(runId, startTime) {
     // Step 2: Fetch errors from Production Issues table
     console.log(`\n${colors.cyan}Step 2: Fetching errors from Production Issues table for Run ID: ${runId}...${colors.reset}`);
     
+    const { getMasterClientsBase } = require('./config/airtableClient');
     const masterBase = getMasterClientsBase();
     
     const productionIssues = await masterBase('Production Issues')
