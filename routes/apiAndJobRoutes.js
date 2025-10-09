@@ -97,7 +97,8 @@ async function logRouteError(error, req = null, additionalContext = {}) {
 // Health Check
 // ---------------------------------------------------------------
 router.get("/health", (_req, res) => {
-  moduleLogger.info("/health endpoint hit");
+  const healthLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'health_check' });
+  healthLogger.info("Health endpoint hit");
   res.json({
     status: "ok",
     enhanced_audit_system: "loaded",
@@ -107,7 +108,8 @@ router.get("/health", (_req, res) => {
 
 // Simple audit test route (no auth required)
 router.get("/audit-test", (_req, res) => {
-  moduleLogger.info("/audit-test endpoint hit");
+  const auditLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'audit_test' });
+  auditLogger.info("Audit test endpoint hit");
   res.json({
     status: "success", 
     message: "Enhanced audit system is loaded",
@@ -205,7 +207,8 @@ router.get("/debug-job-status", async (req, res) => {
     }
     
   } catch (error) {
-    moduleLogger.error('Error in debug-job-status:', error.message);
+    const errorLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'debug_job_status' });
+    errorLogger.error('Error in debug-job-status:', error.message);
     await logRouteError(error, req, { operation: 'debug-job-status', jobId }).catch(() => {});
     res.status(500).json({
       error: 'Internal server error',
@@ -242,7 +245,8 @@ router.get("/debug-job-status/:clientId/:operation", async (req, res) => {
     }
     
   } catch (error) {
-    moduleLogger.error('Error in debug-job-status client endpoint:', error.message);
+    const errorLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'debug_job_status_client' });
+    errorLogger.error('Error in debug-job-status client endpoint:', error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       error: 'Internal server error',
@@ -753,6 +757,12 @@ async function processClientForLeadScoring(clientId, limit, aiDependencies, runI
 // Single Lead Scorer
 // ---------------------------------------------------------------
 router.get("/score-lead", async (req, res) => {
+  const debugLogger = createLogger({
+    runId: 'SYSTEM',
+    clientId: 'SYSTEM',
+    operation: 'score_lead_debug'
+  });
+  
   try {
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
@@ -823,7 +833,7 @@ router.get("/score-lead", async (req, res) => {
       clientId,
     });
     if (!gOut) {
-        moduleLogger.error(`score-lead: singleScorer returned null for lead ID: ${id}`);
+        debugLogger.error(`singleScorer returned null for lead ID: ${id}`);
         throw new Error("singleScorer returned null.");
     }
     let {
@@ -901,16 +911,14 @@ router.get("/score-lead", async (req, res) => {
       "Exclude Details": exclude_details,
     });
 
-    res.json({ id, finalPct, aiProfileAssessment, breakdown });
-  } catch (err) {
-    moduleLogger.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
-    await logRouteError(error, req).catch(() => {});
-    if (!res.headersSent)
-      res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------
+    res.json({ id, finalPct, aiProfileAssessment, breakdown });
+  } catch (err) {
+    debugLogger.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
+    await logRouteError(err, req).catch(() => {});
+    if (!res.headersSent)
+      res.status(500).json({ error: err.message });
+  }
+});// ---------------------------------------------------------------
 // Gemini Debug
 // ---------------------------------------------------------------
 router.get("/debug-gemini-info", (_req, res) => {
@@ -1033,7 +1041,13 @@ router.get("/debug-render-api", async (_req, res) => {
  * Get the status of any running or recent Smart Resume processes
  */
 router.get("/debug-smart-resume-status", async (req, res) => {
-  moduleLogger.info("ℹ️ Smart resume status check requested");
+  const statusLogger = createLogger({
+    runId: 'SYSTEM',
+    clientId: 'SYSTEM',
+    operation: 'smart_resume_status'
+  });
+  
+  statusLogger.info("ℹ️ Smart resume status check requested");
   
   try {
     // Check webhook secret for sensitive operations
@@ -1084,7 +1098,7 @@ router.get("/debug-smart-resume-status", async (req, res) => {
       ...statusResponse
     });
   } catch (error) {
-    moduleLogger.error("❌ Failed to get smart resume status:", error);
+    statusLogger.error("❌ Failed to get smart resume status:", error);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -1102,10 +1116,19 @@ const { commitHash } = require("../versionInfo.js");
 // Multi-Tenant Post Batch Score (Admin/Batch Operation)
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score", async (req, res) => {
-  moduleLogger.info("apiAndJobRoutes.js: /run-post-batch-score endpoint hit");
+  // Generate temp runId for endpoint logging
+  const tempRunId = `postbatch_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const endpointLogger = createLogger({
+    runId: tempRunId,
+    clientId: 'SYSTEM',
+    operation: 'post_batch_score_endpoint'
+  });
+  
+  endpointLogger.info("Endpoint hit");
+  
   // Multi-tenant batch operation: processes ALL clients, no x-client-id required
   if (!vertexAIClient || !geminiModelId) {
-    moduleLogger.error("Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
+    endpointLogger.error("Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
     return res.status(503).json({
       status: 'error',
       message: "Multi-tenant post scoring unavailable (Gemini config missing)."
@@ -1134,7 +1157,7 @@ router.post("/run-post-batch-score", async (req, res) => {
         const match = activeClients.find(c => (c.clientName || '').toLowerCase() === clientNameQuery.toLowerCase());
         if (match) {
           singleClientId = match.clientId;
-          moduleLogger.info(`Resolved clientName='${clientNameQuery}' to clientId='${singleClientId}'`);
+          endpointLogger.info(`Resolved clientName='${clientNameQuery}' to clientId='${singleClientId}'`);
         } else {
           return res.status(404).json({
             status: 'error',
@@ -1142,13 +1165,13 @@ router.post("/run-post-batch-score", async (req, res) => {
           });
         }
       } catch (e) {
-        logger.warn('Client name resolution failed:', e.message);
+        endpointLogger.warn('Client name resolution failed:', e.message);
         await logRouteError(e, req).catch(() => {});
       }
     }
-    moduleLogger.info(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, tableOverride=${tableOverride || 'DEFAULT'}, markSkips=${markSkips}`);
+    endpointLogger.info(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, tableOverride=${tableOverride || 'DEFAULT'}, markSkips=${markSkips}`);
     if (singleClientId) {
-      moduleLogger.info(`Restricting run to single clientId=${singleClientId}`);
+      endpointLogger.info(`Restricting run to single clientId=${singleClientId}`);
     }
     // Use job orchestration service to start job
     try {
@@ -1163,10 +1186,10 @@ router.post("/run-post-batch-score", async (req, res) => {
       
       // Use the runId assigned by the orchestration service
       const runId = jobInfo.runId;
-      moduleLogger.info(`Using job run ID from orchestration service: ${runId}`);
-      moduleLogger.info(`Created job tracking record with ID ${runId}`);
+      endpointLogger.info(`Using job run ID from orchestration service: ${runId}`);
+      endpointLogger.info(`Created job tracking record with ID ${runId}`);
     } catch (err) {
-      moduleLogger.error(`Failed to create job tracking record: ${err.message}`);
+      endpointLogger.error(`Failed to create job tracking record: ${err.message}`);
       await logRouteError(err, req).catch(() => {});
       // Continue anyway as we want the job to run
     }
@@ -1198,9 +1221,9 @@ router.post("/run-post-batch-score", async (req, res) => {
           'Posts Successfully Scored': results.totalPostsScored
         }
       });
-      moduleLogger.info(`Updated job tracking record ${runId} with completion status`);
+      endpointLogger.info(`Updated job tracking record ${runId} with completion status`);
     } catch (err) {
-      moduleLogger.error(`Failed to update job tracking record: ${err.message}`);
+      endpointLogger.error(`Failed to update job tracking record: ${err.message}`);
       await logRouteError(error, req).catch(() => {});
     }
     
@@ -1230,7 +1253,7 @@ router.post("/run-post-batch-score", async (req, res) => {
   , commit: commitHash
     });
   } catch (error) {
-    moduleLogger.error("Multi-tenant post scoring error:", error.message, error.stack);
+    endpointLogger.error("Multi-tenant post scoring error:", error.message, error.stack);
     await logRouteError(error, req).catch(() => {});
     let errorMessage = "Multi-tenant post scoring failed";
     if (error.message) {
