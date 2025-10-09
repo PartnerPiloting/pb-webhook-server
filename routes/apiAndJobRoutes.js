@@ -2949,10 +2949,11 @@ function extractPlainText(richTextValue) {
 // List all attributes for the library view
 router.get("/api/attributes", async (req, res) => {
   try {
-    moduleLogger.info("apiAndJobRoutes.js: GET /api/attributes - Loading attribute library");
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_attributes_library' });
+    logger.info("Loading attribute library");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -3011,7 +3012,7 @@ router.get("/api/attributes", async (req, res) => {
       return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    moduleLogger.info(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} attributes for library view`);
+    logger.info(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} attributes for library view`);
     res.json({
       success: true,
       attributes,
@@ -3019,7 +3020,7 @@ router.get("/api/attributes", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("apiAndJobRoutes.js: GET /api/attributes error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/attributes error:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -3031,10 +3032,11 @@ router.get("/api/attributes", async (req, res) => {
 // Verify Active/Inactive filtering is working
 router.get("/api/attributes/verify-active-filtering", async (req, res) => {
   try {
-    moduleLogger.info("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering - Testing active/inactive filtering");
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'verify_active_filtering' });
+    logger.info("Testing active/inactive filtering");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -3127,10 +3129,11 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
 // Field-specific AI help endpoint
 router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help - Field-specific AI help`);
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'ai_field_help', attributeId: req.params.id });
+    logger.info("Field-specific AI help");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -3276,31 +3279,31 @@ Answer their question directly and conversationally. If they ask about changing 
         }
       });
 
-      moduleLogger.info(`apiAndJobRoutes.js: Sending maxPoints prompt to Gemini:`, prompt.substring(0, 200) + '...');
+      logger.info(`apiAndJobRoutes.js: Sending maxPoints prompt to Gemini:`, prompt.substring(0, 200) + '...');
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
 
-      moduleLogger.info(`apiAndJobRoutes.js: Gemini response structure:`, JSON.stringify(result.response, null, 2));
+      logger.info(`apiAndJobRoutes.js: Gemini response structure:`, JSON.stringify(result.response, null, 2));
 
       const candidate = result.response.candidates?.[0];
       if (!candidate) {
-        moduleLogger.error(`apiAndJobRoutes.js: No candidates in maxPoints response. Full response:`, JSON.stringify(result.response, null, 2));
+        logger.error(`apiAndJobRoutes.js: No candidates in maxPoints response. Full response:`, JSON.stringify(result.response, null, 2));
         throw new Error("No response from AI");
       }
 
-      moduleLogger.info(`apiAndJobRoutes.js: maxPoints candidate structure:`, JSON.stringify(candidate, null, 2));
+      logger.info(`apiAndJobRoutes.js: maxPoints candidate structure:`, JSON.stringify(candidate, null, 2));
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
-        moduleLogger.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
-        moduleLogger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        logger.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
+        logger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
         
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
 
-      moduleLogger.info(`apiAndJobRoutes.js: maxPoints AI response:`, responseText.substring(0, 100) + '...');
+      logger.info(`apiAndJobRoutes.js: maxPoints AI response:`, responseText.substring(0, 100) + '...');
 
       // Extract suggested value if present
       let suggestion = responseText;
