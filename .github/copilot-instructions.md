@@ -191,11 +191,15 @@ For deeper context:
 
 **What to do:**
 1. Call `fetch_webpage` with URL: `https://pb-webhook-server-staging.onrender.com/api/analyze-issues`
-2. Parse the JSON response to extract ERROR severity issues
+2. Parse the JSON response to extract:
+   - CRITICAL severity issues (always show)
+   - ERROR severity issues (always show)
+   - WARNING severity issues (show if actionable: rate limits, auth failures, validation errors, timeouts)
+   - Exclude: deprecation warnings, debug logs, build warnings
 3. Show prioritized list with:
    - Frequency counts (e.g., "5 occurrences, 55% of errors")
    - File locations from error messages
-   - Priority ranking (CRITICAL > HIGH > MEDIUM)
+   - Priority ranking (CRITICAL > ERROR > WARNING)
    - Actionable recommendations
 4. Ask: "Ready to investigate this issue?"
 
@@ -219,20 +223,26 @@ For deeper context:
 
 **Example Response Format:**
 ```
-📊 Found 9 ERROR issues in Production Issues
+📊 Production Issues Summary
 
-Top 3 by priority:
-1. ❌ Batch scoring crash (5x, 55%) - batchScorer.js:277
+🔴 CRITICAL & ERROR: 9 issues
+1. ❌ Batch scoring crash (5x, 55% of errors) - batchScorer.js:277
    Priority: CRITICAL 🔥
    
-2. ❌ Record not found (2x, 22%) - job tracking
-   Priority: HIGH
+2. ❌ Record not found (2x, 22% of errors) - job tracking
+   Priority: ERROR - HIGH
    
-3. ❌ Logger initialization bug (1x, 11%) - apiAndJobRoutes.js
-   Priority: HIGH
+3. ❌ Logger initialization bug (1x, 11% of errors) - apiAndJobRoutes.js
+   Priority: ERROR - HIGH
 
-I suggest we start with #1: Batch scoring crash
-This is affecting 55% of errors.
+⚠️ ACTIONABLE WARNINGS: 14 issues
+1. ⚠️ 429 Rate limiting (14x, 100% of warnings)
+   Priority: WARNING - Investigate API throttling
+   
+💡 Hidden: 0 low-priority warnings (deprecations, debug logs)
+
+I suggest we start with #1: Batch scoring crash (CRITICAL)
+This is affecting 55% of all errors.
 
 Ready to investigate and fix?
 ```
