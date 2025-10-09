@@ -247,7 +247,14 @@ Ready to investigate and fix?
 
 **Marking Issues as FIXED:**
 
-After implementing a fix and committing it, mark the issue as FIXED:
+**Trigger phrases:**
+- "Mark it off the list"
+- "Mark that as fixed"
+- "Can you mark it off"
+- "Update the Production Issues table"
+
+**What to do:**
+After implementing a fix and committing it, extract the commit hash and use the most specific pattern from the error message to mark issues as FIXED.
 
 ```javascript
 // Use fetch_webpage to call the API
@@ -256,16 +263,17 @@ const response = await fetch_webpage({
   method: 'POST',
   body: {
     pattern: 'at scoreChunk',  // Text to search in Error Message field
-    commitHash: '6203483',      // Git commit hash of the fix
+    commitHash: '6203483',      // Git commit hash from the fix commit
     fixNotes: 'Fixed batch scoring crash by passing runId string instead of logger object'
   }
 });
 ```
 
 This will:
-- Find all Production Issues with that pattern and Status != FIXED
+- Find all Production Issues with that pattern and Status != FIXED (across ALL runs)
 - Update them: Status → FIXED, Fixed Time → now, Fix Commit → hash, Fix Notes → description
 - Return summary of updated issues
+- **Note:** Marks ALL matching unfixed issues regardless of run date (self-correcting: if bug reappears tomorrow, new errors will show it wasn't actually fixed)
 
 **Alternative:** Specify exact Issue IDs instead of pattern:
 ```javascript
