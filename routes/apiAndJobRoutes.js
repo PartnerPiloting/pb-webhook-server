@@ -407,14 +407,14 @@ router.post("/api/pb-webhook", async (req, res) => {
             const cleanedString = rawResultObject.replace(/,\s*([}\]])/g, "$1");
             postsInputArray = JSON.parse(cleanedString);
           } catch (parseError) {
-            moduleLogger.error("PB Webhook: Error parsing resultObject string with JSON.parse:", parseError);
+            webhookLogger.error("PB Webhook: Error parsing resultObject string with JSON.parse:", parseError.message);
             await logRouteError(parseError, req).catch(() => {});
             // Fallback: try dirty-json
             try {
               postsInputArray = dirtyJSON.parse(rawResultObject);
-              moduleLogger.info("PB Webhook: dirty-json successfully parsed resultObject string.");
+              webhookLogger.info("PB Webhook: dirty-json successfully parsed resultObject string.");
             } catch (dirtyErr) {
-              moduleLogger.error("PB Webhook: dirty-json also failed to parse resultObject string:", dirtyErr);
+              webhookLogger.error("PB Webhook: dirty-json also failed to parse resultObject string:", dirtyErr.message);
               await logRouteError(dirtyErr, req).catch(() => {});
               return;
             }
@@ -424,12 +424,12 @@ router.post("/api/pb-webhook", async (req, res) => {
         } else if (typeof rawResultObject === 'object' && rawResultObject !== null) {
           postsInputArray = [rawResultObject];
         } else {
-          logger.warn("PB Webhook: resultObject is not a string, array, or recognized object.");
+          webhookLogger.warn("PB Webhook: resultObject is not a string, array, or recognized object.");
           return;
         }
         
         if (!Array.isArray(postsInputArray)) {
-            logger.warn("PB Webhook: Processed postsInput is not an array.");
+            webhookLogger.warn("PB Webhook: Processed postsInput is not an array.");
             return;
         }
 
@@ -447,18 +447,18 @@ router.post("/api/pb-webhook", async (req, res) => {
           const clientBase = await getClientBase('Guy-Wilson'); // Fixed: Use correct client ID and await
           
           const processed = await syncPBPostsToAirtable(filteredPostsInput, clientBase);
-          moduleLogger.info("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
+          webhookLogger.info("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
         } else {
-          moduleLogger.info("PB Webhook: No valid posts to sync after filtering.");
+          webhookLogger.info("PB Webhook: No valid posts to sync after filtering.");
         }      } catch (backgroundErr) {
-        moduleLogger.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
+        webhookLogger.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
         await logRouteError(backgroundErr, req).catch(() => {});
       }
     })();
 
   } catch (initialErr) {
-    moduleLogger.error("PB Webhook: Initial error:", initialErr.message, initialErr.stack);
-    await logRouteError(error, req).catch(() => {});
+    webhookLogger.error("PB Webhook: Initial error:", initialErr.message, initialErr.stack);
+    await logRouteError(initialErr, req).catch(() => {});
     res.status(500).json({ error: initialErr.message });
   }
 });
