@@ -392,10 +392,13 @@ app.post('/api/analyze-logs/text', async (req, res) => {
  * 
  * This endpoint:
  * 1. Finds the most recent run in Job Tracking
- * 2. Fetches Render logs for that time period
+ * 2. Fetches Render logs for that time period (or custom startTime if provided)
  * 3. Analyzes the smart-resume flow
  * 4. Checks for errors
  * 5. Returns comprehensive diagnosis
+ * 
+ * Optional body parameters:
+ * - startTime: ISO 8601 timestamp to start fetching logs from (overrides Job Tracking start time)
  */
 app.post('/api/auto-analyze-latest-run', async (req, res) => {
     try {
@@ -422,9 +425,12 @@ app.post('/api/auto-analyze-latest-run', async (req, res) => {
         
         const record = records[0];
         const runId = record.get('Run ID');
-        const startTime = record.get('Start Time');
+        const jobTrackingStartTime = record.get('Start Time');
         const endTime = record.get('End Time');
         const status = record.get('Status');
+        
+        // Allow override of start time from request body
+        const startTime = req.body?.startTime || jobTrackingStartTime;
         
         // Fetch Render logs
         const renderService = new RenderLogService();

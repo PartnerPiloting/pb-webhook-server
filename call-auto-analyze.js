@@ -3,7 +3,9 @@
  * Call the staging server to auto-analyze its own latest run
  * This triggers analysis on the server which HAS the Render credentials
  * 
- * Usage: node call-auto-analyze.js
+ * Usage: 
+ *   node call-auto-analyze.js                    (uses Job Tracking start time)
+ *   node call-auto-analyze.js "2025-10-09T06:20:00.000Z"  (uses custom start time)
  */
 
 const https = require('https');
@@ -52,16 +54,22 @@ function makeRequest(endpoint, method = 'POST', body = null) {
     });
 }
 
-async function callAutoAnalyze() {
+async function callAutoAnalyze(customStartTime) {
     console.log('\n' + '='.repeat(70));
     console.log('🚀 TRIGGERING AUTO-ANALYZE ON STAGING SERVER');
     console.log('='.repeat(70));
     
+    if (customStartTime) {
+        console.log(`\n⏰ Using custom start time: ${customStartTime}`);
+    }
+    
     console.log('\n📡 Calling /api/auto-analyze-latest-run on staging...');
     console.log('⏳ This may take 30-60 seconds...\n');
     
+    const body = customStartTime ? { startTime: customStartTime } : null;
+    
     try {
-        const result = await makeRequest('/api/auto-analyze-latest-run', 'POST');
+        const result = await makeRequest('/api/auto-analyze-latest-run', 'POST', body);
         
         console.log('=' .repeat(70));
         console.log('📋 RESPONSE:\n');
@@ -121,4 +129,7 @@ async function callAutoAnalyze() {
     }
 }
 
-callAutoAnalyze();
+// Get optional start time from command line argument
+const customStartTime = process.argv[2];
+
+callAutoAnalyze(customStartTime);
