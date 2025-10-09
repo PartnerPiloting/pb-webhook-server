@@ -4033,10 +4033,12 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
 // Comprehensive system audit - tests all "floors" of our architecture
 router.get("/api/audit/comprehensive", async (req, res) => {
   const startTime = Date.now();
-  logger.info("apiAndJobRoutes.js: Starting comprehensive system audit");
   
   // Get client ID from header
   const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation: 'comprehensive_audit' });
+  logger.info("Starting comprehensive system audit");
+  
   if (!clientId) {
     return res.status(400).json({
       success: false,
@@ -4141,7 +4143,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     auditResults.summary.totalTests++;
 
     // ============= FLOOR 2: BUSINESS LOGIC & SCORING =============
-    moduleLogger.info("Audit Floor 2: Testing business logic and scoring system");
+    logger.info("Audit Floor 2: Testing business logic and scoring system");
     auditResults.floors.floor2 = {
       name: "Business Logic & Scoring",
       status: "PASS",
@@ -4245,7 +4247,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     auditResults.summary.totalTests++;
 
     // Test 2.4: ENDPOINT TESTING - "Drive the Car" Tests
-    moduleLogger.info("Running endpoint tests - actually calling API endpoints...");
+    logger.info("Running endpoint tests - actually calling API endpoints...");
     
     // Test 2.4a: Scoring Endpoint Test
     try {
@@ -4371,7 +4373,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     auditResults.summary.totalTests++;
 
     // ============= FLOOR 3: ADVANCED FEATURES & AI =============
-    moduleLogger.info("Audit Floor 3: Testing advanced features and AI integration");
+    logger.info("Audit Floor 3: Testing advanced features and AI integration");
     auditResults.floors.floor3 = {
       name: "Advanced Features & AI",
       status: "PASS",
@@ -4472,7 +4474,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     }
 
     auditResults.duration = Date.now() - startTime;
-    moduleLogger.info(`Comprehensive audit completed in ${auditResults.duration}ms with status: ${auditResults.overallStatus}`);
+    logger.info(`Comprehensive audit completed in ${auditResults.duration}ms with status: ${auditResults.overallStatus}`);
 
     res.json({
       success: true,
@@ -4480,7 +4482,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     });
 
   } catch (error) {
-    moduleLogger.error("Comprehensive audit error:", error.message);
+    logger.error("Comprehensive audit error:", error.message);
     await logRouteError(error, req).catch(() => {});
     auditResults.overallStatus = "ERROR";
     auditResults.error = error.message;
@@ -4496,9 +4498,10 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
 // Quick health audit - lightweight version for frequent checks
 router.get("/api/audit/quick", async (req, res) => {
-  moduleLogger.info("apiAndJobRoutes.js: Running quick audit");
-  
   const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation: 'quick_audit' });
+  logger.info("Running quick audit");
+  
   if (!clientId) {
     return res.status(400).json({
       success: false,
@@ -4545,7 +4548,7 @@ router.get("/api/audit/quick", async (req, res) => {
     });
 
   } catch (error) {
-    moduleLogger.error("Quick audit error:", error.message);
+    logger.error("Quick audit error:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -4566,10 +4569,11 @@ router.get("/api/audit/quick", async (req, res) => {
 
 // Automated troubleshooting endpoint - detects issues and suggests/applies fixes
 router.post("/api/audit/auto-fix", async (req, res) => {
-  moduleLogger.info("🔧 Starting automated issue detection and resolution...");
-  
   const startTime = Date.now();
   const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation: 'auto_fix' });
+  logger.info("🔧 Starting automated issue detection and resolution");
+  
   
   if (!clientId) {
     return res.status(400).json({
@@ -4588,7 +4592,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
   };
 
   try {
-    moduleLogger.info("🔍 Running comprehensive audit to detect issues...");
+    logger.info("🔍 Running comprehensive audit to detect issues...");
     
     // First, run comprehensive audit to detect issues
   const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
@@ -4617,7 +4621,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
     const failedTests = allTests.filter(test => test.status === "FAIL");
     const warningTests = allTests.filter(test => test.status === "WARN");
     
-    moduleLogger.info(`🎯 Found ${failedTests.length} failed tests and ${warningTests.length} warnings`);
+    logger.info(`🎯 Found ${failedTests.length} failed tests and ${warningTests.length} warnings`);
     
     // Categorize and process each issue
     for (const test of failedTests) {
@@ -4637,7 +4641,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
       // Apply automated fixes where possible
       if (fixRecommendation.canAutomate) {
         try {
-          moduleLogger.info(`🔧 Attempting automated fix for: ${test.test}`);
+          logger.info(`🔧 Attempting automated fix for: ${test.test}`);
           const fixResult = await applyAutomatedFix(test.test, test.message, clientId);
           if (fixResult.success) {
             issue.fix_applied = true;
@@ -4688,7 +4692,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
       duration: `${duration}ms`
     };
 
-    moduleLogger.info(`🏁 Auto-fix completed in ${duration}ms. ${autoFix.detectedIssues.length} issues detected, ${autoFix.appliedFixes.length} fixes applied.`);
+    logger.info(`🏁 Auto-fix completed in ${duration}ms. ${autoFix.detectedIssues.length} issues detected, ${autoFix.appliedFixes.length} fixes applied.`);
     
     res.json({
       success: true,
@@ -4696,7 +4700,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
     });
 
   } catch (error) {
-    moduleLogger.error("🚨 Auto-fix error:", error);
+    logger.error("🚨 Auto-fix error:", error);
     await logRouteError(error, req).catch(() => {});
     const duration = Date.now() - startTime;
     
@@ -4904,7 +4908,8 @@ moduleLogger.info(`ℹ️ Smart resume stale lock timeout configured: ${SMART_RE
 
 // Special Guy Wilson post harvesting endpoint
 router.get("/guy-wilson-post-harvest", async (req, res) => {
-  moduleLogger.info("� SPECIAL GUY WILSON POST HARVEST ENDPOINT HIT");
+  const logger = createLogger({ clientId: 'Guy-Wilson', operation: 'guy_wilson_post_harvest' });
+  logger.info("� SPECIAL GUY WILSON POST HARVEST ENDPOINT HIT");
   
   try {
     // Direct way to trigger post harvesting for Guy Wilson
@@ -4923,13 +4928,13 @@ router.get("/guy-wilson-post-harvest", async (req, res) => {
       status: (code) => ({
         json: (data) => {
           responseData = { statusCode: code, data };
-          moduleLogger.info(`🚨 GUY WILSON POST HARVEST: Process completed with status ${code}`);
-          moduleLogger.info(JSON.stringify(data, null, 2));
+          logger.info(`🚨 GUY WILSON POST HARVEST: Process completed with status ${code}`);
+          logger.info(JSON.stringify(data, null, 2));
         }
       })
     };
     
-    moduleLogger.info("� GUY WILSON POST HARVEST: Calling process handler directly");
+    logger.info("� GUY WILSON POST HARVEST: Calling process handler directly");
     await processLevel2ClientsV2(fakeReq, fakeRes);
     
     // Send the response back to the client
@@ -4938,7 +4943,7 @@ router.get("/guy-wilson-post-harvest", async (req, res) => {
       result: responseData
     });
   } catch (error) {
-    moduleLogger.error("🚨 GUY WILSON POST HARVEST ERROR:", error);
+    logger.error("🚨 GUY WILSON POST HARVEST ERROR:", error);
     await logRouteError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
