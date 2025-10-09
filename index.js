@@ -752,7 +752,7 @@ app.get('/api/analyze-issues', async (req, res) => {
  */
 app.post('/api/mark-issue-fixed', async (req, res) => {
     try {
-        const { pattern, commitHash, fixNotes, issueIds } = req.body;
+        const { pattern, commitHash, fixNotes, issueIds, broadSearch } = req.body;
         
         // Validation
         if (!commitHash || !fixNotes) {
@@ -769,37 +769,82 @@ app.post('/api/mark-issue-fixed', async (req, res) => {
             });
         }
         
-        moduleLogger.info(`Marking issues as FIXED - Pattern: ${pattern || 'N/A'}, IDs: ${issueIds || 'N/A'}, Commit: ${commitHash}`);
+        moduleLogger.info(`[MARK-FIXED] Pattern: ${pattern || 'N/A'}, IDs: ${issueIds || 'N/A'}, Commit: ${commitHash}, Broad: ${broadSearch || false}`);
         
         const Airtable = require('airtable');
         const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
         
         let records;
+        let searchDetails = {};
         
         if (issueIds && issueIds.length > 0) {
-            // Update specific issue IDs
+            // Update specific issue IDs - GENEROUS approach, includes all specified IDs
             const issueIdConditions = issueIds.map(id => `{Issue ID} = ${id}`).join(', ');
             const filterFormula = `AND(OR(${issueIdConditions}), {Status} != "FIXED")`;
             
-            records = await base('Production Issues')
-                .select({ filterByFormula: filterFormula })
-                .all();
-        } else if (pattern) {
-            // Search by pattern in Error Message
-            const filterFormula = `AND(SEARCH("${pattern}", {Error Message}) > 0, {Status} != "FIXED")`;
+            moduleLogger.info(`[MARK-FIXED] Searching by Issue IDs: ${issueIds.join(', ')}`);
             
             records = await base('Production Issues')
                 .select({ filterByFormula: filterFormula })
                 .all();
+                
+            searchDetails = { method: 'issueIds', ids: issueIds };
+        } else if (pattern) {
+            // GENEROUS PATTERN SEARCH: 
+            // Search in Error Message, Pattern Matched, AND Stack Trace for maximum coverage
+            // This ensures we catch all related issues, relying on self-correction via future runs
+            let filterFormula;
+            
+            if (broadSearch) {
+                // Ultra-broad: search across Error Message, Pattern Matched, Stack Trace, and Context
+                filterFormula = `AND(
+                    OR(
+                        SEARCH("${pattern}", {Error Message}) > 0,
+                        SEARCH("${pattern}", {Pattern Matched}) > 0,
+                        SEARCH("${pattern}", {Stack Trace}) > 0,
+                        SEARCH("${pattern}", {Context}) > 0
+                    ),
+                    {Status} != "FIXED"
+                )`;
+                moduleLogger.info(`[MARK-FIXED] BROAD search for pattern: "${pattern}" across all text fields`);
+            } else {
+                // Standard: search Error Message and Pattern Matched
+                filterFormula = `AND(
+                    OR(
+                        SEARCH("${pattern}", {Error Message}) > 0,
+                        SEARCH("${pattern}", {Pattern Matched}) > 0
+                    ),
+                    {Status} != "FIXED"
+                )`;
+                moduleLogger.info(`[MARK-FIXED] Standard search for pattern: "${pattern}"`);
+            }
+            
+            records = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+                
+            searchDetails = { method: 'pattern', pattern, broadSearch: broadSearch || false };
         }
         
         if (!records || records.length === 0) {
+            moduleLogger.warn(`[MARK-FIXED] No unfixed issues found. Search: ${JSON.stringify(searchDetails)}`);
             return res.json({
                 success: true,
                 updated: 0,
-                message: 'No unfixed issues found matching the criteria'
+                message: 'No unfixed issues found matching the criteria',
+                searchDetails
             });
         }
+        
+        moduleLogger.info(`[MARK-FIXED] Found ${records.length} issue(s) to mark as FIXED`);
+        
+        // Log what we're about to mark for transparency
+        records.forEach(r => {
+            const issueId = r.get('Issue ID');
+            const severity = r.get('Severity');
+            const preview = (r.get('Error Message') || '').substring(0, 80);
+            moduleLogger.info(`[MARK-FIXED]   #${issueId} [${severity}] ${preview}...`);
+        });
         
         // Prepare updates
         const updates = records.map(record => ({
@@ -818,15 +863,17 @@ app.post('/api/mark-issue-fixed', async (req, res) => {
             const batch = updates.slice(i, i + 10);
             const result = await base('Production Issues').update(batch);
             updatedRecords.push(...result);
+            moduleLogger.info(`[MARK-FIXED] Updated batch ${Math.floor(i/10) + 1} (${batch.length} issues)`);
         }
         
-        moduleLogger.info(`✅ Successfully marked ${updatedRecords.length} issue(s) as FIXED`);
+        moduleLogger.info(`✅ [MARK-FIXED] Successfully marked ${updatedRecords.length} issue(s) as FIXED with commit ${commitHash}`);
         
-        // Return summary
+        // Return detailed summary
         const summary = updatedRecords.map(r => ({
             issueId: r.get('Issue ID'),
             timestamp: r.get('Timestamp'),
             severity: r.get('Severity'),
+            patternMatched: r.get('Pattern Matched'),
             message: (r.get('Error Message') || '').substring(0, 100) + '...',
             status: r.get('Status'),
             fixedTime: r.get('Fixed Time'),
@@ -838,11 +885,12 @@ app.post('/api/mark-issue-fixed', async (req, res) => {
             updated: updatedRecords.length,
             commitHash: commitHash,
             fixNotes: fixNotes,
+            searchDetails: searchDetails,
             issues: summary
         });
         
     } catch (error) {
-        moduleLogger.error('Failed to mark issues as fixed:', error);
+        moduleLogger.error('[MARK-FIXED] Failed to mark issues as fixed:', error);
         res.status(500).json({ 
             success: false, 
             error: error.message, 
