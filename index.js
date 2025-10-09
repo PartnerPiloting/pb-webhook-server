@@ -575,6 +575,50 @@ app.post('/api/auto-analyze-latest-run', async (req, res) => {
 });
 
 /**
+ * POST /api/reconcile-errors
+ * NO AUTHENTICATION REQUIRED (public endpoint like smart-resume and auto-analyze)
+ * 
+ * Reconciles errors between Render logs and Production Issues table for a specific runId
+ * 
+ * Required body parameters:
+ * - runId: The Run ID from Job Tracking table
+ * - startTime: ISO 8601 timestamp (AEST will be converted to UTC)
+ * 
+ * Returns:
+ * - stats: totalInLogs, totalInTable, matched, inLogNotInTable, inTableNotInLog, captureRate
+ * - errors: matched[], inLogNotInTable[], inTableNotInLog[]
+ */
+app.post('/api/reconcile-errors', async (req, res) => {
+    try {
+        const { reconcileErrors } = require('./reconcile-errors');
+        
+        const { runId, startTime } = req.body;
+        
+        if (!runId || !startTime) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Missing required parameters: runId and startTime' 
+            });
+        }
+        
+        console.log(`\n🔍 Starting error reconciliation for runId: ${runId}, startTime: ${startTime}`);
+        
+        const result = await reconcileErrors(runId, startTime);
+        
+        console.log(`✅ Reconciliation complete: ${result.stats.captureRate}% capture rate`);
+        
+        res.json({
+            success: true,
+            ...result
+        });
+        
+    } catch (error) {
+        moduleLogger.error('Failed to reconcile errors:', error);
+        res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
  * Get Production Issues from Airtable with filters
  * GET /api/production-issues
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
