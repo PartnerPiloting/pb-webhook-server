@@ -3542,31 +3542,31 @@ Answer their question directly and conversationally. If you have specific update
         }
       });
 
-      moduleLogger.info(`apiAndJobRoutes.js: Sending instructions prompt to Gemini:`, prompt.substring(0, 200) + '...');
+      logger.info(`apiAndJobRoutes.js: Sending instructions prompt to Gemini:`, prompt.substring(0, 200) + '...');
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
 
-      moduleLogger.info(`apiAndJobRoutes.js: Instructions Gemini response structure:`, JSON.stringify(result.response, null, 2));
+      logger.info(`apiAndJobRoutes.js: Instructions Gemini response structure:`, JSON.stringify(result.response, null, 2));
 
       const candidate = result.response.candidates?.[0];
       if (!candidate) {
-        moduleLogger.error(`apiAndJobRoutes.js: No candidates in instructions response. Full response:`, JSON.stringify(result.response, null, 2));
+        logger.error(`apiAndJobRoutes.js: No candidates in instructions response. Full response:`, JSON.stringify(result.response, null, 2));
         throw new Error("No response from AI");
       }
 
-      moduleLogger.info(`apiAndJobRoutes.js: Instructions candidate structure:`, JSON.stringify(candidate, null, 2));
+      logger.info(`apiAndJobRoutes.js: Instructions candidate structure:`, JSON.stringify(candidate, null, 2));
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
-        moduleLogger.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
-        moduleLogger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        logger.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
+        logger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
         
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
 
-      moduleLogger.info(`apiAndJobRoutes.js: Instructions AI response:`, responseText.substring(0, 100) + '...');
+      logger.info(`apiAndJobRoutes.js: Instructions AI response:`, responseText.substring(0, 100) + '...');
 
       // Extract suggested value if present
       let suggestion = responseText;
@@ -3663,7 +3663,7 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -3679,10 +3679,11 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
 // List all post attributes for the library view
 router.get("/api/post-attributes", async (req, res) => {
   try {
-    moduleLogger.info("apiAndJobRoutes.js: GET /api/post-attributes - Loading post attribute library");
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_post_attributes_library' });
+    logger.info("Loading post attribute library");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -3748,7 +3749,7 @@ router.get("/api/post-attributes", async (req, res) => {
       return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    moduleLogger.info(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} post attributes for library view`);
+    logger.info(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} post attributes for library view`);
     res.json({
       success: true,
       attributes,
@@ -3756,7 +3757,7 @@ router.get("/api/post-attributes", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("apiAndJobRoutes.js: GET /api/post-attributes error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/post-attributes error:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -3768,10 +3769,11 @@ router.get("/api/post-attributes", async (req, res) => {
 // Get post attribute for editing
 router.get("/api/post-attributes/:id/edit", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit - Loading attribute for editing`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_post_attribute_edit', attributeId: req.params.id });
+    logger.info("Loading post attribute for editing");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -3813,14 +3815,14 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
       examples: record.get("Example - High Score / Applies") || record.get("Example - Low Score / Does Not Apply") || ""
     };
 
-    moduleLogger.info(`apiAndJobRoutes.js: Successfully loaded post attribute ${req.params.id} for editing`);
+    logger.info(`apiAndJobRoutes.js: Successfully loaded post attribute ${req.params.id} for editing`);
     res.json({
       success: true,
       attribute
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -3832,10 +3834,11 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
 // Generate AI suggestions for post attribute
 router.post("/api/post-attributes/:id/ai-edit", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'ai_edit_post_attribute', attributeId: req.params.id });
+    logger.info("Generating AI suggestions for post attribute");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -3932,7 +3935,7 @@ Include a brief explanation of why this example fits this attribute.`;
     const { generateWithGemini } = require("../config/geminiClient.js");
     const suggestions = await generateWithGemini(prompt);
 
-    moduleLogger.info(`apiAndJobRoutes.js: Successfully generated AI suggestions for post attribute ${req.params.id}`);
+    logger.info(`apiAndJobRoutes.js: Successfully generated AI suggestions for post attribute ${req.params.id}`);
     res.json({
       success: true,
       suggestions,
@@ -3940,7 +3943,7 @@ Include a brief explanation of why this example fits this attribute.`;
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -3952,11 +3955,11 @@ Include a brief explanation of why this example fits this attribute.`;
 // Save post attribute changes
 router.post("/api/post-attributes/:id/save", async (req, res) => {
   try {
-    moduleLogger.info(`🔥 BACKEND HIT: POST /api/post-attributes/${req.params.id}/save - Starting...`);
-    moduleLogger.info(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save - Saving post attribute changes`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'save_post_attribute', attributeId: req.params.id });
+    logger.info("🔥 BACKEND HIT: Saving post attribute changes");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -3975,7 +3978,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
 
     const { heading, instructions, positiveIndicators, negativeIndicators, highScoreExample, lowScoreExample, active, maxPoints, scoringType } = req.body;
     
-    moduleLogger.info('Post attribute save - active field:', {
+    logger.info('Post attribute save - active field:', {
       receivedActive: active,
       typeOfActive: typeof active,
       willSaveAs: active !== undefined ? !!active : 'not updating'
@@ -4002,19 +4005,19 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     
     if (active !== undefined) updateData["Active"] = !!active; // Handle Active field updates with boolean conversion
 
-    moduleLogger.info('Update data being sent to Airtable:', updateData);
+    logger.info('Update data being sent to Airtable:', updateData);
 
     // Update the record
     await clientBase("Post Scoring Attributes").update(req.params.id, updateData);
 
-    moduleLogger.info(`apiAndJobRoutes.js: Successfully saved post attribute ${req.params.id}`);
+    logger.info(`apiAndJobRoutes.js: Successfully saved post attribute ${req.params.id}`);
     res.json({
       success: true,
       message: "Post attribute updated successfully"
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -4030,7 +4033,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
 // Comprehensive system audit - tests all "floors" of our architecture
 router.get("/api/audit/comprehensive", async (req, res) => {
   const startTime = Date.now();
-  moduleLogger.info("apiAndJobRoutes.js: Starting comprehensive system audit");
+  logger.info("apiAndJobRoutes.js: Starting comprehensive system audit");
   
   // Get client ID from header
   const clientId = req.headers['x-client-id'];
@@ -4057,7 +4060,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
   try {
     // ============= FLOOR 1: BASIC CONNECTIVITY & AUTHENTICATION =============
-    moduleLogger.info("Audit Floor 1: Testing basic connectivity and authentication");
+    logger.info("Audit Floor 1: Testing basic connectivity and authentication");
     auditResults.floors.floor1 = {
       name: "Basic Connectivity & Authentication",
       status: "PASS",
