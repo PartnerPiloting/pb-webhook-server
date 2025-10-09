@@ -1828,8 +1828,8 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
 // Debug endpoint for troubleshooting client discovery (Admin Only)
 // ---------------------------------------------------------------
 router.get("/debug-clients", async (req, res) => {
-  moduleLogger.info("Debug clients endpoint hit");
   const logger = createLogger({ operation: 'debug_clients' });
+  logger.info("Debug clients endpoint hit");
   
   // This is an admin endpoint - should require admin authentication
   // For now, we'll require a debug key to prevent unauthorized access
@@ -1897,10 +1897,10 @@ router.get("/debug-clients", async (req, res) => {
 // Debug Production Issues endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/debug-production-issues", async (req, res) => {
-  moduleLogger.info("Debug production issues endpoint hit");
+  const logger = createLogger({ operation: 'debug_production_issues' });
+  logger.info("Debug production issues endpoint hit");
   
   // This is an admin endpoint - require debug key
-  const logger = createLogger({ operation: 'debug_production_issues' });
   const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
   if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
     return res.status(401).json({
@@ -1993,7 +1993,7 @@ router.get("/debug-production-issues", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("Debug production issues error:", error);
+    logger.error("Debug production issues error:", error);
     res.status(500).json({
       error: error.message,
       stack: error.stack
@@ -2005,10 +2005,10 @@ router.get("/debug-production-issues", async (req, res) => {
 // TEMPORARY: Check Production Issues (No Auth - For Testing Only)
 // ---------------------------------------------------------------
 router.get("/check-production-issues-temp", async (req, res) => {
-  moduleLogger.info("Temporary production issues check endpoint hit (no auth)");
+  const logger = createLogger({ operation: 'check_production_issues_temp' });
+  logger.info("Temporary production issues check endpoint hit (no auth)");
   
   try {
-  const logger = createLogger({ operation: 'check_production_issues_temp' });
     const ProductionIssueService = require("../services/productionIssueService");
     const service = new ProductionIssueService();
     
@@ -2070,7 +2070,7 @@ router.get("/check-production-issues-temp", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("Temporary production issues check error:", error);
+    logger.error("Temporary production issues check error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2083,9 +2083,9 @@ router.get("/check-production-issues-temp", async (req, res) => {
 // JSON Quality Diagnostic endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/api/json-quality-analysis", async (req, res) => {
-  moduleLogger.info("JSON quality analysis endpoint hit");
-  
   const logger = createLogger({ operation: 'json_quality_analysis' });
+  logger.info("JSON quality analysis endpoint hit");
+  
   // This is an admin endpoint - should require admin authentication
   const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
   if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
@@ -2102,7 +2102,7 @@ router.get("/api/json-quality-analysis", async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const mode = req.query.mode || 'analyze'; // analyze or repair
     
-    moduleLogger.info(`Running JSON quality analysis: mode=${mode}, clientId=${clientId || 'ALL'}, limit=${limit}`);
+    logger.info(`Running JSON quality analysis: mode=${mode}, clientId=${clientId || 'ALL'}, limit=${limit}`);
     
     const results = await analyzeJsonQuality(clientId, limit, mode);
     
@@ -2117,7 +2117,7 @@ router.get("/api/json-quality-analysis", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("JSON quality analysis error:", error);
+    logger.error("JSON quality analysis error:", error);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
