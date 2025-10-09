@@ -9,17 +9,39 @@
 const { getSeverity, getMatchedPattern } = require('../config/errorPatterns');
 
 /**
- * Extract context lines around an error
+ * Extract context lines around an error with optional runId filtering
  * @param {string[]} logLines - Array of all log lines
  * @param {number} errorIndex - Index of the error line
  * @param {number} contextSize - Number of lines before/after to include (default: 25)
+ * @param {string|null} runIdFilter - Optional runId to filter context (keeps matching + no-runId lines, excludes different runIds)
  * @returns {string} - Context string with lines before and after
  */
-function extractContext(logLines, errorIndex, contextSize = 25) {
+function extractContext(logLines, errorIndex, contextSize = 25, runIdFilter = null) {
   const start = Math.max(0, errorIndex - contextSize);
   const end = Math.min(logLines.length, errorIndex + contextSize + 1);
   
-  const contextLines = logLines.slice(start, end);
+  let contextLines = logLines.slice(start, end);
+  
+  // Apply runId filtering if provided
+  if (runIdFilter) {
+    const runIdPattern = /\[(\d{6}-\d{6}(?:-[\w-]+)?)\]/; // Matches [251009-153045] or [251009-153045-Guy-Wilson]
+    const targetTimestamp = runIdFilter.split('-').slice(0, 2).join('-'); // Extract YYMMDD-HHMMSS portion
+    
+    contextLines = contextLines.filter(line => {
+      const match = line.match(runIdPattern);
+      
+      if (!match) {
+        // Line has NO runId pattern - include it (system errors, stack traces, etc.)
+        return true;
+      }
+      
+      // Line has a runId - only include if it matches our target runId
+      const lineRunId = match[1];
+      const lineTimestamp = lineRunId.split('-').slice(0, 2).join('-');
+      
+      return lineTimestamp === targetTimestamp;
+    });
+  }
   
   // Add line numbers for debugging
   const startLineNum = start + 1;
@@ -133,12 +155,16 @@ function createIssueKey(errorMessage, severity) {
  * Filter logs for issues
  * @param {string} logText - Full log output as string
  * @param {Object} options - Filtering options
+ * @param {boolean} options.deduplicateIssues - Whether to deduplicate similar issues
+ * @param {number} options.contextSize - Number of lines before/after error to include
+ * @param {string|null} options.runIdFilter - Optional runId to filter which errors to save (only saves errors with matching runId)
  * @returns {Array<Object>} - Array of detected issues
  */
 function filterLogs(logText, options = {}) {
   const {
     deduplicateIssues = true,
     contextSize = 25,
+    runIdFilter = null,
   } = options;
   
   // Split into lines
@@ -146,16 +172,40 @@ function filterLogs(logText, options = {}) {
   const issues = [];
   const seenIssues = new Set();
   
-  // Scan each line
+  // Pattern to extract runId from log line
+  const runIdPattern = /\[(\d{6}-\d{6}(?:-[\w-]+)?)\]/;
+  const targetTimestamp = runIdFilter ? runIdFilter.split('-').slice(0, 2).join('-') : null;
+  
+  // Scan each line for errors (don't pre-filter by runId - find ALL errors first)
   for (let i = 0; i < logLines.length; i++) {
     const line = logLines[i];
     const severity = getSeverity(line);
     
-    if (!severity) continue; // No pattern matched
+    if (!severity) continue; // No error pattern matched
     
-    // Extract details
+    // Check if this error line has our target runId (if filtering is enabled)
+    if (runIdFilter) {
+      const match = line.match(runIdPattern);
+      
+      if (match) {
+        // Line has a runId - check if it matches our target
+        const lineRunId = match[1];
+        const lineTimestamp = lineRunId.split('-').slice(0, 2).join('-');
+        
+        if (lineTimestamp !== targetTimestamp) {
+          // This error belongs to a DIFFERENT run - skip it
+          continue;
+        }
+      } else {
+        // Error line has NO runId pattern
+        // This could be a system error - include it for now, but mark it
+        // (We'll still save it since we can't confirm it's from another job)
+      }
+    }
+    
+    // Extract details (context will be filtered by runId)
     const errorMessage = line.trim();
-    const context = extractContext(logLines, i, contextSize);
+    const context = extractContext(logLines, i, contextSize, runIdFilter);
     const stackTrace = extractStackTrace(logLines, i);
     const timestamp = parseTimestamp(line);
     const patternMatched = getMatchedPattern(line, severity);

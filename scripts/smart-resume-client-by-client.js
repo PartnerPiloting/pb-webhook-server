@@ -878,6 +878,18 @@ async function main() {
         log(`⏰ Duration: ${Math.round(totalDuration / 1000)} seconds`);
         log(`📊 Success Rate: ${successRate}%`);
         
+        // Return success result with runId for parent to use (e.g., for log analysis)
+        return {
+            success: true,
+            runId: runId,
+            normalizedRunId: normalizedRunId,
+            stream: stream,
+            clientsProcessed: clientsNeedingWork.length,
+            jobsStarted: totalJobsStarted,
+            duration: totalDuration,
+            successRate: successRate
+        };
+        
     } catch (error) {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');
         log(`🔍 SCRIPT_DEBUG: Full error stack: ${error.stack}`, 'ERROR');

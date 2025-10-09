@@ -5131,16 +5131,18 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Has runSmartResume?: ${typeof smartResumeModule.runSmartResume === 'function'}`);
         jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Has main?: ${typeof smartResumeModule.main === 'function'}`);
         
+        let scriptResult;
+        
         if (typeof smartResumeModule === 'function') {
             jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Module is a direct function, calling it with stream=${stream}...`);
-            await smartResumeModule(stream);
+            scriptResult = await smartResumeModule(stream);
         } else if (typeof smartResumeModule.runSmartResume === 'function') {
             jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Found runSmartResume function, calling it with stream=${stream}...`);
             // Pass the stream parameter properly
-            await smartResumeModule.runSmartResume(stream);
+            scriptResult = await smartResumeModule.runSmartResume(stream);
         } else if (typeof smartResumeModule.main === 'function') {
             jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Found main function, calling it with stream=${stream}...`);
-            await smartResumeModule.main(stream);
+            scriptResult = await smartResumeModule.main(stream);
         } else {
             jobLogger.error(`❌ [SMART-RESUME-DEBUG] CRITICAL: No usable function found in module`);
             jobLogger.error(`❌ [SMART-RESUME-DEBUG] Available exports:`, Object.keys(smartResumeModule || {}));
@@ -5148,6 +5150,17 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         }
         
         jobLogger.info(`✅ [SMART-RESUME-DEBUG] Smart resume function returned successfully`);
+        
+        // Extract runId from script result for log analysis
+        const realRunId = scriptResult?.runId || scriptResult?.normalizedRunId;
+        if (realRunId) {
+            jobLogger.info(`📝 Script returned runId: ${realRunId}`);
+        } else {
+            jobLogger.warn(`⚠️ Script did not return runId in result`);
+        }
+        
+        // Store runId for finally block
+        global.smartResumeRealRunId = realRunId;
         
         jobLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
         jobLogger.info(`✅ Smart resume function called successfully`);
@@ -5243,16 +5256,38 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
       const ProductionIssueService = require('../services/productionIssueService');
       const logAnalysisService = new ProductionIssueService();
       
-      // Analyze logs from the last 10 minutes (covers the smart resume run)
-      const analysisResults = await logAnalysisService.analyzeRecentLogs({ minutes: 10 });
+      // Use the real runId from the script if available
+      const runIdForAnalysis = global.smartResumeRealRunId;
       
-      jobLogger.info(`✅ Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
-      
-      if (analysisResults.issues > 0) {
-        jobLogger.info(`📋 Errors saved to Production Issues table in Airtable`);
+      if (runIdForAnalysis) {
+        jobLogger.info(`🔍 Analyzing logs for specific runId: ${runIdForAnalysis}`);
+        // Analyze logs filtered by runId (uses Job Tracking table for time window)
+        const analysisResults = await logAnalysisService.analyzeRecentLogs({ runId: runIdForAnalysis });
+        
+        jobLogger.info(`✅ Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+        
+        if (analysisResults.issues > 0) {
+          jobLogger.info(`📋 ${analysisResults.createdRecords} errors saved to Production Issues table in Airtable (runId: ${runIdForAnalysis})`);
+        } else {
+          jobLogger.info(`🎉 No errors detected in logs for runId ${runIdForAnalysis} - clean run!`);
+        }
       } else {
-        jobLogger.info(`🎉 No errors detected in logs - clean run!`);
+        jobLogger.warn(`⚠️ Script did not return runId, falling back to time-based analysis (last 10 minutes)`);
+        // Fallback: analyze last 10 minutes without runId filtering
+        const analysisResults = await logAnalysisService.analyzeRecentLogs({ minutes: 10 });
+        
+        jobLogger.info(`✅ Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+        
+        if (analysisResults.issues > 0) {
+          jobLogger.info(`📋 Errors saved to Production Issues table in Airtable`);
+        } else {
+          jobLogger.info(`🎉 No errors detected in logs - clean run!`);
+        }
       }
+      
+      // Clean up the global runId storage
+      delete global.smartResumeRealRunId;
+      
     } catch (logAnalysisError) {
       // Log analysis failure should not break the smart resume flow
       jobLogger.error(`⚠️ Failed to analyze logs automatically:`, logAnalysisError.message);
