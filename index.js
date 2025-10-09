@@ -440,7 +440,7 @@ app.post('/api/auto-analyze-latest-run', async (req, res) => {
         const result = await renderService.getServiceLogs(serviceId, {
             startTime,
             endTime: logEndTime,
-            limit: 10000
+            limit: 1000  // Render API max limit (reduced from 10000)
         });
         
         // Convert logs to text
