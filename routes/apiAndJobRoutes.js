@@ -4776,7 +4776,8 @@ function generateFixRecommendation(testName, message) {
 }
 
 async function applyAutomatedFix(testName, message, clientId) {
-  moduleLogger.info(`🔧 Applying automated fix for: ${testName}`);
+  const logger = createLogger({ clientId, operation: 'apply_auto_fix', test: testName });
+  logger.info(`🔧 Applying automated fix for: ${testName}`);
   
   switch (testName) {
     case "Attribute Loading":
@@ -5323,7 +5324,8 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
 // SPECIAL GUY WILSON POST HARVESTING DIRECT ENDPOINT
 // ---------------------------------------------------------------
 router.get("/harvest-guy-wilson", async (req, res) => {
-  moduleLogger.info("🚨 SPECIAL GUY WILSON DIRECT HARVEST ENDPOINT HIT");
+  const logger = createLogger({ clientId: 'Guy-Wilson', operation: 'harvest_guy_wilson_direct' });
+  logger.info("🚨 SPECIAL GUY WILSON DIRECT HARVEST ENDPOINT HIT");
   
   try {
     // Use direct HTTP request to the existing endpoint
@@ -5333,7 +5335,7 @@ router.get("/harvest-guy-wilson", async (req, res) => {
     const endpointUrl = `http://localhost:${process.env.PORT || 3001}/api/apify/process-level2-v2`;
     const secret = process.env.PB_WEBHOOK_SECRET;
     
-    moduleLogger.info(`🚨 GUY WILSON DIRECT HARVEST: Calling endpoint ${endpointUrl}`);
+    logger.info(`🚨 GUY WILSON DIRECT HARVEST: Calling endpoint ${endpointUrl}`);
     
     // Make the request
     const response = await fetch(endpointUrl, {
@@ -5353,8 +5355,8 @@ router.get("/harvest-guy-wilson", async (req, res) => {
     
     const responseData = await response.json();
     
-    moduleLogger.info(`🚨 GUY WILSON DIRECT HARVEST: Response status: ${response.status}`);
-    moduleLogger.info(`🚨 GUY WILSON DIRECT HARVEST: Response data:`, JSON.stringify(responseData, null, 2));
+    logger.info(`🚨 GUY WILSON DIRECT HARVEST: Response status: ${response.status}`);
+    logger.info(`🚨 GUY WILSON DIRECT HARVEST: Response data:`, JSON.stringify(responseData, null, 2));
     
     // Send the response back to the client
     return res.json({
@@ -5363,7 +5365,7 @@ router.get("/harvest-guy-wilson", async (req, res) => {
       result: responseData
     });
   } catch (error) {
-    moduleLogger.error("🚨 GUY WILSON DIRECT HARVEST ERROR:", error);
+    logger.error("🚨 GUY WILSON DIRECT HARVEST ERROR:", error);
     await logRouteError(error, req).catch(() => {});
     return res.status(500).json({
       success: false,
@@ -5382,22 +5384,24 @@ router.get("/harvest-guy-wilson", async (req, res) => {
  * @param {object} details - Job execution details
  */
 async function sendSmartResumeReport(jobId, success, details) {
+  const logger = createLogger({ runId: jobId, operation: 'send_smart_resume_report' });
+  
   try {
-    moduleLogger.info(`📧 [${jobId}] Sending ${success ? 'success' : 'failure'} report...`);
+    logger.info(`📧 [${jobId}] Sending ${success ? 'success' : 'failure'} report...`);
     
     // Load email service dynamically
     let emailService;
     try {
       emailService = require('../services/emailReportingService');
     } catch (loadError) {
-      moduleLogger.error(`📧 [${jobId}] Could not load email service:`, loadError.message);
+      logger.error(`📧 [${jobId}] Could not load email service:`, loadError.message);
       // Email service loading error is not critical - just log and continue
       return { sent: false, reason: 'Email service not available' };
     }
     
     // Check if email service is configured
     if (!emailService || !emailService.isConfigured()) {
-      moduleLogger.info(`📧 [${jobId}] Email service not configured, skipping report`);
+      logger.info(`📧 [${jobId}] Email service not configured, skipping report`);
       return { sent: false, reason: 'Email service not configured' };
     }
     
@@ -5408,11 +5412,11 @@ async function sendSmartResumeReport(jobId, success, details) {
       success: success
     });
     
-    moduleLogger.info(`📧 [${jobId}] Email report sent successfully`);
+    logger.info(`📧 [${jobId}] Email report sent successfully`);
     return { sent: true, result };
     
   } catch (emailError) {
-    moduleLogger.error(`📧 [${jobId}] Failed to send email report:`, emailError);
+    logger.error(`📧 [${jobId}] Failed to send email report:`, emailError);
     await logRouteError(emailError, req).catch(() => {});
     return { sent: false, error: emailError.message };
   }
@@ -5422,8 +5426,9 @@ async function sendSmartResumeReport(jobId, success, details) {
 // GET HANDLER FOR SMART RESUME - Handles browser and simple curl requests
 // ---------------------------------------------------------------
 router.get("/smart-resume-client-by-client", async (req, res) => {
-  moduleLogger.info("🚨 GET request received for /smart-resume-client-by-client - processing directly");
-  moduleLogger.info("🔍 Query parameters:", req.query);
+  const logger = createLogger({ operation: 'smart_resume_get' });
+  logger.info("🚨 GET request received for /smart-resume-client-by-client - processing directly");
+  logger.info("🔍 Query parameters:", req.query);
   
   try {
     // Extract parameters from query string
@@ -5435,7 +5440,7 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
     if (smartResumeRunning && smartResumeLockTime) {
       const lockAge = Date.now() - smartResumeLockTime;
       if (lockAge > SMART_RESUME_LOCK_TIMEOUT) {
-        moduleLogger.info(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
+        logger.info(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
         smartResumeRunning = false;
         currentSmartResumeJobId = null;
         smartResumeLockTime = null;
@@ -5444,7 +5449,7 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
     
     // Check if another job is already running
     if (smartResumeRunning) {
-      moduleLogger.info(`⏳ Smart resume already running (job: ${currentSmartResumeJobId}), returning status`);
+      logger.info(`⏳ Smart resume already running (job: ${currentSmartResumeJobId}), returning status`);
       return res.json({
         success: true,
         status: getStatusString('RUNNING'),
@@ -5459,7 +5464,7 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
     currentSmartResumeJobId = jobId;
     smartResumeLockTime = Date.now();
     
-    moduleLogger.info(`🔒 [${jobId}] Smart resume lock acquired - starting processing (GET request)`);
+    logger.info(`🔒 [${jobId}] Smart resume lock acquired - starting processing (GET request)`);
     
     // Return immediate response with job ID
     res.json({ 
@@ -5480,7 +5485,7 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
     currentSmartResumeJobId = null;
     smartResumeLockTime = null;
     
-    moduleLogger.error("❌ Error in GET smart-resume processing:", error);
+    logger.error("❌ Error in GET smart-resume processing:", error);
     await logRouteError(error, req).catch(() => {});
     return res.status(500).json({
       success: false, 
@@ -5493,14 +5498,15 @@ router.get("/smart-resume-client-by-client", async (req, res) => {
 // EMERGENCY SMART RESUME LOCK RESET ENDPOINT
 // ---------------------------------------------------------------
 router.post("/reset-smart-resume-lock", async (req, res) => {
-  moduleLogger.info("🚨 Emergency reset: /reset-smart-resume-lock endpoint hit");
+  const logger = createLogger({ operation: 'emergency_reset_smart_resume' });
+  logger.info("🚨 Emergency reset: /reset-smart-resume-lock endpoint hit");
   
   // Check webhook secret
   const providedSecret = req.headers['x-webhook-secret'];
   const expectedSecret = process.env.PB_WEBHOOK_SECRET;
   
   if (!providedSecret || providedSecret !== expectedSecret) {
-    moduleLogger.info("❌ Emergency reset: Unauthorized - invalid webhook secret");
+    logger.info("❌ Emergency reset: Unauthorized - invalid webhook secret");
     return res.status(401).json({ 
       success: false, 
       error: 'Unauthorized - invalid webhook secret' 
@@ -5522,7 +5528,7 @@ router.post("/reset-smart-resume-lock", async (req, res) => {
       activeProcess = { ...global.smartResumeActiveProcess };
       
       // Set termination signal - will be detected by heartbeat
-      moduleLogger.info(`🛑 Emergency reset: Setting termination signal for job ${activeProcess.jobId}`);
+      logger.info(`🛑 Emergency reset: Setting termination signal for job ${activeProcess.jobId}`);
       global.smartResumeTerminateSignal = true;
     }
     
@@ -5531,8 +5537,8 @@ router.post("/reset-smart-resume-lock", async (req, res) => {
     currentSmartResumeJobId = null;
     smartResumeLockTime = null;
     
-    moduleLogger.info(`🔓 Emergency reset: Lock forcefully cleared`);
-    moduleLogger.info(`   Previous state: running=${wasRunning}, jobId=${previousJobId}, age=${lockAge} minutes`);
+    logger.info(`🔓 Emergency reset: Lock forcefully cleared`);
+    logger.info(`   Previous state: running=${wasRunning}, jobId=${previousJobId}, age=${lockAge} minutes`);
     
     res.json({
       success: true,
@@ -5555,7 +5561,7 @@ router.post("/reset-smart-resume-lock", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("❌ Emergency reset failed:", error.message);
+    logger.error("❌ Emergency reset failed:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -5569,14 +5575,15 @@ router.post("/reset-smart-resume-lock", async (req, res) => {
 // SMART RESUME STATUS ENDPOINT
 // ---------------------------------------------------------------
 router.get("/smart-resume-status", async (req, res) => {
-  moduleLogger.info("🔍 apiAndJobRoutes.js: /smart-resume-status endpoint hit");
+  const logger = createLogger({ operation: 'smart_resume_status' });
+  logger.info("🔍 apiAndJobRoutes.js: /smart-resume-status endpoint hit");
   
   // Check webhook secret
   const providedSecret = req.headers['x-webhook-secret'];
   const expectedSecret = process.env.PB_WEBHOOK_SECRET;
   
   if (!providedSecret || providedSecret !== expectedSecret) {
-    moduleLogger.info("❌ Smart resume status: Unauthorized - invalid webhook secret");
+    logger.info("❌ Smart resume status: Unauthorized - invalid webhook secret");
     return res.status(401).json({ 
       success: false, 
       error: 'Unauthorized - invalid webhook secret' 
@@ -5602,18 +5609,18 @@ router.get("/smart-resume-status", async (req, res) => {
     
     // If stale, add warning
     if (isStale && smartResumeRunning) {
-      moduleLogger.info(`⚠️ Stale lock detected in status check (${status.lockAgeMinutes} minutes old)`);
+      logger.info(`⚠️ Stale lock detected in status check (${status.lockAgeMinutes} minutes old)`);
       status.warning = `Lock appears stale (${status.lockAgeMinutes} min old). Consider resetting.`;
     }
     
-    moduleLogger.info(`🔍 Smart resume status check: isRunning=${status.isRunning}, jobId=${status.currentJobId}`);
+    logger.info(`🔍 Smart resume status check: isRunning=${status.isRunning}, jobId=${status.currentJobId}`);
     res.json({
       success: true,
       status: status
     });
     
   } catch (error) {
-    moduleLogger.error("❌ Smart resume status check failed:", error.message);
+    logger.error("❌ Smart resume status check failed:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
