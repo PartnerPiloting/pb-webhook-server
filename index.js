@@ -552,7 +552,8 @@ app.post('/api/auto-analyze-latest-run', async (req, res) => {
             startTime,
             endTime,
             status,
-            logLineCount: result.logs.length,
+            logLineCount: allLogs.length,
+            pagesFetched: pageCount,
             flowChecks,
             errorAnalysis: {
                 totalIssues: issues.length,
