@@ -81,14 +81,16 @@ function buildFilter(args) {
 async function fetchIssues(filterFormula, limit) {
   const issues = [];
   
-  const query = base('Production Issues').select({
+  const queryOptions = {
     maxRecords: limit,
     sort: [{ field: 'Timestamp', direction: 'desc' }]
-  });
+  };
 
   if (filterFormula) {
-    query.filterByFormula(filterFormula);
+    queryOptions.filterByFormula = filterFormula;
   }
+
+  const query = base('Production Issues').select(queryOptions);
 
   await query.eachPage((records, fetchNextPage) => {
     records.forEach(record => {
