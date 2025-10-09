@@ -6,11 +6,9 @@
  * Usage: node call-auto-analyze.js
  */
 
-require('dotenv').config();
 const https = require('https');
 
 const baseUrl = 'https://pb-webhook-server-staging.onrender.com';
-const authToken = process.env.PB_WEBHOOK_SECRET;
 
 function makeRequest(endpoint, method = 'POST', body = null) {
     return new Promise((resolve, reject) => {
@@ -21,8 +19,7 @@ function makeRequest(endpoint, method = 'POST', body = null) {
             path: url.pathname + url.search,
             method: method,
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
+                'Content-Type': 'application/json'
             }
         };
         

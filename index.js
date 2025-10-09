@@ -388,7 +388,7 @@ app.post('/api/analyze-logs/text', async (req, res) => {
 /**
  * Auto-analyze the latest run from Job Tracking
  * POST /api/auto-analyze-latest-run
- * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * NO AUTHENTICATION REQUIRED (public endpoint like smart-resume)
  * 
  * This endpoint:
  * 1. Finds the most recent run in Job Tracking
@@ -398,11 +398,6 @@ app.post('/api/analyze-logs/text', async (req, res) => {
  * 5. Returns comprehensive diagnosis
  */
 app.post('/api/auto-analyze-latest-run', async (req, res) => {
-    const auth = req.headers['authorization'];
-    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
-        return res.status(401).json({ ok: false, error: 'Unauthorized' });
-    }
-
     try {
         const autoAnalyze = require('./auto-analyze-latest-run');
         
