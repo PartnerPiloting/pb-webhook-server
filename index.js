@@ -772,7 +772,7 @@ app.post('/api/mark-issue-fixed', async (req, res) => {
         moduleLogger.info(`Marking issues as FIXED - Pattern: ${pattern || 'N/A'}, IDs: ${issueIds || 'N/A'}, Commit: ${commitHash}`);
         
         const Airtable = require('airtable');
-        const base = new Airtable({ apiKey: AIRTABLE_API_KEY }).base(MASTER_CLIENTS_BASE_ID);
+        const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
         
         let records;
         
