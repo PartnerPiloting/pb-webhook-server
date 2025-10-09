@@ -2645,10 +2645,11 @@ function validateAttributeResponse(data) {
 // Get attribute for editing
 router.get("/api/attributes/:id/edit", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit - Loading attribute for editing`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_attribute_edit', attributeId: req.params.id });
+    logger.info("Loading attribute for editing");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -2686,10 +2687,11 @@ router.get("/api/attributes/:id/edit", async (req, res) => {
 // AI-powered attribute editing (memory-based, returns improved rubric)
 router.post("/api/attributes/:id/ai-edit", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'ai_edit_attribute', attributeId: req.params.id });
+    logger.info("Generating AI suggestions for attribute");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -2721,22 +2723,22 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     
     // Call Gemini (using same model as scoring system for consistency)
     if (!vertexAIClient) {
-      moduleLogger.error("apiAndJobRoutes.js: Gemini client not available - vertexAIClient is null");
+      logger.error("apiAndJobRoutes.js: Gemini client not available - vertexAIClient is null");
       throw new Error("Gemini client not available - check config/geminiClient.js");
     }
 
     // Debug: Check what we have available
-    moduleLogger.info(`apiAndJobRoutes.js: Debug - vertexAIClient available: ${!!vertexAIClient}`);
-    moduleLogger.info(`apiAndJobRoutes.js: Debug - geminiModelId: ${geminiModelId}`);
-    moduleLogger.info(`apiAndJobRoutes.js: Debug - geminiConfig: ${JSON.stringify(geminiConfig ? Object.keys(geminiConfig) : 'null')}`);
+    logger.info(`apiAndJobRoutes.js: Debug - vertexAIClient available: ${!!vertexAIClient}`);
+    logger.info(`apiAndJobRoutes.js: Debug - geminiModelId: ${geminiModelId}`);
+    logger.info(`apiAndJobRoutes.js: Debug - geminiConfig: ${JSON.stringify(geminiConfig ? Object.keys(geminiConfig) : 'null')}`);
 
     // Use the same model that works for scoring instead of a separate editing model
     const editingModelId = geminiModelId || "gemini-2.5-pro-preview-05-06";
-    moduleLogger.info(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing (same as scoring)`);
+    logger.info(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing (same as scoring)`);
     
     // Validate model ID
     if (!editingModelId || editingModelId === 'null' || editingModelId === 'undefined') {
-      moduleLogger.error("apiAndJobRoutes.js: Invalid model ID:", editingModelId);
+      logger.error("apiAndJobRoutes.js: Invalid model ID:", editingModelId);
       throw new Error("Invalid Gemini model ID - check environment configuration");
     }
     
@@ -2757,7 +2759,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     });
     const prompt = buildAttributeEditPrompt(currentAttribute, userRequest);
     
-    moduleLogger.info(`apiAndJobRoutes.js: Sending prompt to Gemini for attribute ${req.params.id}`);
+    logger.info(`apiAndJobRoutes.js: Sending prompt to Gemini for attribute ${req.params.id}`);
     
     // Use same request structure as working scorer
     const requestPayload = {
@@ -2798,16 +2800,16 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
       throw new Error(`Gemini API call returned no text content. Finish Reason: ${finishReason || 'Unknown'}`);
     }
     
-    moduleLogger.info(`apiAndJobRoutes.js: Received response from Gemini: ${responseText.substring(0, 100)}...`);
+    logger.info(`apiAndJobRoutes.js: Received response from Gemini: ${responseText.substring(0, 100)}...`);
     
     // Parse and validate AI response
     let aiResponse;
     try {
       aiResponse = JSON.parse(responseText);
     } catch (parseError) {
-      moduleLogger.error("apiAndJobRoutes.js: AI response parsing error:", parseError.message);
+      logger.error("apiAndJobRoutes.js: AI response parsing error:", parseError.message);
       await logRouteError(parseError, req).catch(() => {});
-      moduleLogger.error("apiAndJobRoutes.js: Raw AI response:", responseText);
+      logger.error("apiAndJobRoutes.js: Raw AI response:", responseText);
       throw new Error(`AI returned invalid JSON: ${responseText.substring(0, 200)}...`);
     }
     
@@ -2834,10 +2836,11 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
 // Save improved rubric to live attribute
 router.post("/api/attributes/:id/save", async (req, res) => {
   try {
-    moduleLogger.info(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save - Saving attribute changes`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'save_attribute', attributeId: req.params.id });
+    logger.info("Saving attribute changes");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -2858,13 +2861,13 @@ router.post("/api/attributes/:id/save", async (req, res) => {
     
     // Check token budget before saving (for all active attributes)
     if (updatedData.active === true || updatedData.active === 'true') {
-      moduleLogger.info(`apiAndJobRoutes.js: Checking token budget for attribute ${attributeId} (active=true)`);
+      logger.info(`apiAndJobRoutes.js: Checking token budget for attribute ${attributeId} (active=true)`);
       
       try {
         const budgetValidation = await validateTokenBudget(attributeId, updatedData, clientId);
         
         if (!budgetValidation.isValid) {
-          moduleLogger.info(`apiAndJobRoutes.js: Token budget exceeded for attribute ${attributeId}`);
+          logger.info(`apiAndJobRoutes.js: Token budget exceeded for attribute ${attributeId}`);
           return res.status(400).json({
             success: false,
             error: "Token budget exceeded",
@@ -2880,10 +2883,10 @@ router.post("/api/attributes/:id/save", async (req, res) => {
           });
         }
         
-        moduleLogger.info(`apiAndJobRoutes.js: Token budget OK for attribute ${attributeId} (${budgetValidation.newTokens} tokens)`);
+        logger.info(`apiAndJobRoutes.js: Token budget OK for attribute ${attributeId} (${budgetValidation.newTokens} tokens)`);
         
       } catch (budgetError) {
-        moduleLogger.error(`apiAndJobRoutes.js: Token budget check failed for ${attributeId}:`, budgetError.message);
+        logger.error(`apiAndJobRoutes.js: Token budget check failed for ${attributeId}:`, budgetError.message);
         await logRouteError(budgetError, req).catch(() => {});
         // Don't block save if budget check fails - just log warning
       }
@@ -2900,14 +2903,14 @@ router.post("/api/attributes/:id/save", async (req, res) => {
 
     await updateAttributeWithClientBase(attributeId, updatedData, clientBase);
     
-    moduleLogger.info(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
+    logger.info(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
     res.json({
       success: true,
       message: "Attribute updated successfully"
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
