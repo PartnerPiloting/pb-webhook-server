@@ -432,19 +432,38 @@ app.post('/api/auto-analyze-latest-run', async (req, res) => {
         // Allow override of start time from request body
         const startTime = req.body?.startTime || jobTrackingStartTime;
         
-        // Fetch Render logs
+        // Fetch Render logs with pagination
         const renderService = new RenderLogService();
         const serviceId = process.env.RENDER_SERVICE_ID;
         const logEndTime = endTime || new Date().toISOString();
         
-        const result = await renderService.getServiceLogs(serviceId, {
-            startTime,
-            endTime: logEndTime,
-            limit: 1000  // Render API max limit (reduced from 10000)
-        });
+        let allLogs = [];
+        let hasMore = true;
+        let currentStartTime = startTime;
+        let pageCount = 0;
+        const maxPages = 10; // Safety limit to prevent infinite loops
+        
+        while (hasMore && pageCount < maxPages) {
+            pageCount++;
+            
+            const result = await renderService.getServiceLogs(serviceId, {
+                startTime: currentStartTime,
+                endTime: logEndTime,
+                limit: 1000
+            });
+            
+            allLogs = allLogs.concat(result.logs || []);
+            
+            hasMore = result.hasMore;
+            if (hasMore && result.nextStartTime) {
+                currentStartTime = result.nextStartTime;
+            }
+        }
+        
+        console.log(`📊 Fetched ${allLogs.length} total logs across ${pageCount} pages`);
         
         // Convert logs to text
-        const logText = result.logs
+        const logText = allLogs
             .map(log => {
                 if (typeof log === 'string') return log;
                 if (log.message) return `[${log.timestamp || ''}] ${log.message}`;
