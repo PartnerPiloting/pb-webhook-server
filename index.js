@@ -730,6 +730,128 @@ app.get('/api/analyze-issues', async (req, res) => {
 });
 
 /**
+ * POST /api/mark-issue-fixed
+ * NO AUTHENTICATION REQUIRED (public endpoint - for now, can add auth later)
+ * 
+ * Mark Production Issues matching a pattern as FIXED
+ * 
+ * Request body:
+ * {
+ *   "pattern": "at scoreChunk",           // Text to search in Error Message
+ *   "commitHash": "6203483",              // Git commit hash
+ *   "fixNotes": "Description of fix",     // What was fixed
+ *   "issueIds": [123, 124]                // Optional: specific Issue IDs to update
+ * }
+ * 
+ * Returns:
+ * {
+ *   "success": true,
+ *   "updated": 5,
+ *   "issues": [...details of updated issues...]
+ * }
+ */
+app.post('/api/mark-issue-fixed', async (req, res) => {
+    try {
+        const { pattern, commitHash, fixNotes, issueIds } = req.body;
+        
+        // Validation
+        if (!commitHash || !fixNotes) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Missing required fields: commitHash and fixNotes are required' 
+            });
+        }
+        
+        if (!pattern && !issueIds) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Must provide either pattern (to search) or issueIds (specific records)' 
+            });
+        }
+        
+        moduleLogger.info(`Marking issues as FIXED - Pattern: ${pattern || 'N/A'}, IDs: ${issueIds || 'N/A'}, Commit: ${commitHash}`);
+        
+        const Airtable = require('airtable');
+        const base = new Airtable({ apiKey: AIRTABLE_API_KEY }).base(MASTER_CLIENTS_BASE_ID);
+        
+        let records;
+        
+        if (issueIds && issueIds.length > 0) {
+            // Update specific issue IDs
+            const issueIdConditions = issueIds.map(id => `{Issue ID} = ${id}`).join(', ');
+            const filterFormula = `AND(OR(${issueIdConditions}), {Status} != "FIXED")`;
+            
+            records = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+        } else if (pattern) {
+            // Search by pattern in Error Message
+            const filterFormula = `AND(SEARCH("${pattern}", {Error Message}) > 0, {Status} != "FIXED")`;
+            
+            records = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+        }
+        
+        if (!records || records.length === 0) {
+            return res.json({
+                success: true,
+                updated: 0,
+                message: 'No unfixed issues found matching the criteria'
+            });
+        }
+        
+        // Prepare updates
+        const updates = records.map(record => ({
+            id: record.id,
+            fields: {
+                'Status': 'FIXED',
+                'Fixed Time': new Date().toISOString(),
+                'Fix Notes': fixNotes,
+                'Fix Commit': commitHash
+            }
+        }));
+        
+        // Update in batches of 10 (Airtable limit)
+        const updatedRecords = [];
+        for (let i = 0; i < updates.length; i += 10) {
+            const batch = updates.slice(i, i + 10);
+            const result = await base('Production Issues').update(batch);
+            updatedRecords.push(...result);
+        }
+        
+        moduleLogger.info(`✅ Successfully marked ${updatedRecords.length} issue(s) as FIXED`);
+        
+        // Return summary
+        const summary = updatedRecords.map(r => ({
+            issueId: r.get('Issue ID'),
+            timestamp: r.get('Timestamp'),
+            severity: r.get('Severity'),
+            message: (r.get('Error Message') || '').substring(0, 100) + '...',
+            status: r.get('Status'),
+            fixedTime: r.get('Fixed Time'),
+            fixCommit: r.get('Fix Commit')
+        }));
+        
+        res.json({
+            success: true,
+            updated: updatedRecords.length,
+            commitHash: commitHash,
+            fixNotes: fixNotes,
+            issues: summary
+        });
+        
+    } catch (error) {
+        moduleLogger.error('Failed to mark issues as fixed:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message, 
+            stack: error.stack 
+        });
+    }
+});
+
+/**
  * Get Production Issues from Airtable with filters
  * GET /api/production-issues
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
