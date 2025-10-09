@@ -101,6 +101,12 @@ class RenderLogService {
             const url = `${this.baseUrl}/logs?${params.toString()}`;
             
             this.logger.debug('getServiceLogs', `Fetching from: ${url.replace(this.ownerId, 'OWNER_ID')}`);
+            console.log('🔍 DEBUG: Full Render API request details:');
+            console.log(`  URL: ${url.replace(this.apiKey, 'API_KEY').replace(this.ownerId, 'OWNER_ID')}`);
+            console.log(`  serviceId: ${serviceId}`);
+            console.log(`  startTime: ${startTime} (type: ${typeof startTime})`);
+            console.log(`  endTime: ${endTime} (type: ${typeof endTime})`);
+            console.log(`  limit: ${limit}`);
 
             const response = await axios.get(url, {
                 headers: {
