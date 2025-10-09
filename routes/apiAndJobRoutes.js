@@ -4905,14 +4905,24 @@ router.get("/guy-wilson-post-harvest", async (req, res) => {
 });
 
 router.post("/smart-resume-client-by-client", async (req, res) => {
-  moduleLogger.info("🚀 apiAndJobRoutes.js: /smart-resume-client-by-client endpoint hit");
+  // Generate jobId early for consistent logging
+  const tempJobId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  
+  // Create endpoint-scoped logger (using temporary jobId before full validation)
+  const endpointLogger = createLogger({
+    runId: tempJobId,  // Using full jobId since it doesn't follow standard format
+    clientId: 'SYSTEM',
+    operation: 'smart_resume_endpoint'
+  });
+  
+  endpointLogger.info("🚀 apiAndJobRoutes.js: /smart-resume-client-by-client endpoint hit");
   
   // Check webhook secret
   const providedSecret = req.headers['x-webhook-secret'];
   const expectedSecret = process.env.PB_WEBHOOK_SECRET;
   
   if (!providedSecret || providedSecret !== expectedSecret) {
-    moduleLogger.info("❌ Smart resume: Unauthorized - invalid webhook secret");
+    endpointLogger.info("❌ Smart resume: Unauthorized - invalid webhook secret");
     return res.status(401).json({ 
       success: false, 
       error: 'Unauthorized - invalid webhook secret' 
@@ -4923,7 +4933,7 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
   if (smartResumeRunning && smartResumeLockTime) {
     const lockAge = Date.now() - smartResumeLockTime;
     if (lockAge > SMART_RESUME_LOCK_TIMEOUT) {
-      moduleLogger.info(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
+      endpointLogger.info(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
       smartResumeRunning = false;
       currentSmartResumeJobId = null;
       smartResumeLockTime = null;
@@ -4933,7 +4943,7 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
   // ⭐ CONCURRENT EXECUTION PROTECTION
   if (smartResumeRunning) {
     const lockAge = smartResumeLockTime ? Math.round((Date.now() - smartResumeLockTime)/1000/60) : 'unknown';
-    moduleLogger.info(`⚠️ Smart resume already running (jobId: ${currentSmartResumeJobId}, age: ${lockAge} minutes)`);
+    endpointLogger.info(`⚠️ Smart resume already running (jobId: ${currentSmartResumeJobId}, age: ${lockAge} minutes)`);
     return res.status(409).json({
       success: false,
       error: 'Smart resume process already running',
@@ -4946,7 +4956,7 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
   
   // ⭐ ADDITIONAL SAFETY: Check recent logs for running smart resume jobs
   try {
-    moduleLogger.info(`🔍 Checking for recent smart resume activity in logs...`);
+    endpointLogger.info(`🔍 Checking for recent smart resume activity in logs...`);
     
     // Look for recent SCRIPT_START entries without corresponding SCRIPT_END entries
     // This helps detect if an old process is still running
@@ -4955,16 +4965,16 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     
     // Check if we can find evidence of a recent start without a matching end
     // This is a simplified check - in production you might check actual log files
-    moduleLogger.info(`🔍 Process safety check completed - proceeding with new job`);
+    endpointLogger.info(`🔍 Process safety check completed - proceeding with new job`);
     
   } catch (processCheckError) {
-    moduleLogger.info(`⚠️ Could not perform process safety check (non-critical): ${processCheckError.message}`);
+    endpointLogger.info(`⚠️ Could not perform process safety check (non-critical): ${processCheckError.message}`);
     // Continue anyway - this is just an extra safety measure
   }
   
   // Check if fire-and-forget is enabled
   if (process.env.FIRE_AND_FORGET !== 'true') {
-    moduleLogger.info("⚠️ Fire-and-forget not enabled");
+    endpointLogger.info("⚠️ Fire-and-forget not enabled");
     return res.status(400).json({
       success: false,
       message: 'Fire-and-forget mode not enabled. Set FIRE_AND_FORGET=true'
@@ -4973,15 +4983,15 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
   
   try {
     const { stream, leadScoringLimit, postScoringLimit, clientFilter } = req.body;
-    const jobId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const jobId = tempJobId; // Use the jobId we generated at the start
     
     // Set the lock with timestamp
     smartResumeRunning = true;
     currentSmartResumeJobId = jobId;
     smartResumeLockTime = Date.now();
     
-    moduleLogger.info(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}${clientFilter ? `, clientFilter=${clientFilter}` : ''}`);
-    moduleLogger.info(`🔒 Smart resume lock acquired for jobId: ${jobId} at ${new Date().toISOString()}`);
+    endpointLogger.info(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}${clientFilter ? `, clientFilter=${clientFilter}` : ''}`);
+    endpointLogger.info(`🔒 Smart resume lock acquired for jobId: ${jobId} at ${new Date().toISOString()}`);
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
     res.status(202).json({
@@ -5002,7 +5012,7 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
     smartResumeRunning = false;
     currentSmartResumeJobId = null;
     
-    moduleLogger.error("❌ Smart resume startup error:", error.message);
+    endpointLogger.error("❌ Smart resume startup error:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -5016,7 +5026,14 @@ router.post("/smart-resume-client-by-client", async (req, res) => {
  * Background processing function for smart resume
  */
 async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLimit) {
-  moduleLogger.info(`🎯 [${jobId}] Smart resume background processing started`);
+  // Create job-scoped logger for background processing
+  const jobLogger = createLogger({
+    runId: jobId,  // Using full jobId (smart_resume_timestamp_random format)
+    clientId: 'SYSTEM',
+    operation: 'smart_resume_background'
+  });
+  
+  jobLogger.info(`🎯 Smart resume background processing started`);
   
   // Track current stream
   currentStreamId = stream;
@@ -5047,23 +5064,23 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     heartbeatInterval = setInterval(() => {
       // Check for termination signal
       if (global.smartResumeTerminateSignal) {
-        moduleLogger.info(`🛑 [${jobId}] Termination signal detected, stopping process`);
+        jobLogger.info(`🛑 Termination signal detected, stopping process`);
         clearInterval(heartbeatInterval);
         throw new Error('Process terminated by admin request');
       }
       
       // Regular heartbeat
       const elapsedMinutes = Math.round((Date.now() - startTime) / 1000 / 60);
-      moduleLogger.info(`💓 [${jobId}] Smart resume still running... (${elapsedMinutes} minutes elapsed)`);
+      jobLogger.info(`💓 Smart resume still running... (${elapsedMinutes} minutes elapsed)`);
     }, 15000); // Check every 15 seconds for faster termination response
     
     // Import and use the smart resume module directly
     const scriptPath = require('path').join(__dirname, '../scripts/smart-resume-client-by-client.js');
     let smartResumeModule;
     
-    moduleLogger.info(`🏃 [${jobId}] Preparing to execute smart resume module...`);
-    moduleLogger.info(`🔍 ENV_DEBUG: PB_WEBHOOK_SECRET = ${process.env.PB_WEBHOOK_SECRET ? 'SET' : 'MISSING'}`);
-    moduleLogger.info(`🔍 ENV_DEBUG: NODE_ENV = ${process.env.NODE_ENV}`);
+    jobLogger.info(`🏃 Preparing to execute smart resume module...`);
+    jobLogger.info(`🔍 ENV_DEBUG: PB_WEBHOOK_SECRET = ${process.env.PB_WEBHOOK_SECRET ? 'SET' : 'MISSING'}`);
+    jobLogger.info(`🔍 ENV_DEBUG: NODE_ENV = ${process.env.NODE_ENV}`);
     
     try {
         // Clear module from cache to ensure fresh instance
@@ -5071,48 +5088,48 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         
         // Safely load the module
         try {
-            moduleLogger.info(`🔍 [${jobId}] Loading smart resume module...`);
+            jobLogger.info(`🔍 Loading smart resume module...`);
             smartResumeModule = require(scriptPath);
         } catch (loadError) {
-            moduleLogger.error(`❌ [${jobId}] Failed to load smart resume module:`, loadError);
+            jobLogger.error(`❌ Failed to load smart resume module:`, loadError);
             await logRouteError(loadError, req).catch(() => {});
             throw new Error(`Module loading failed: ${loadError.message}`);
         }
         
         // Add detailed diagnostic logs about the module structure
-        moduleLogger.info(`🔍 DIAGNOSTIC: Module type: ${typeof smartResumeModule}`);
-        moduleLogger.info(`🔍 DIAGNOSTIC: Module exports:`, Object.keys(smartResumeModule || {}));
+        jobLogger.info(`🔍 DIAGNOSTIC: Module type: ${typeof smartResumeModule}`);
+        jobLogger.info(`🔍 DIAGNOSTIC: Module exports:`, Object.keys(smartResumeModule || {}));
         
         // Check what function is available and use the right one
-        moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] Module loaded, checking type...`);
-        moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] typeof smartResumeModule: ${typeof smartResumeModule}`);
-        moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] smartResumeModule keys: ${Object.keys(smartResumeModule || {}).join(', ')}`);
-        moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] Has runSmartResume?: ${typeof smartResumeModule.runSmartResume === 'function'}`);
-        moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] Has main?: ${typeof smartResumeModule.main === 'function'}`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Module loaded, checking type...`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] typeof smartResumeModule: ${typeof smartResumeModule}`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] smartResumeModule keys: ${Object.keys(smartResumeModule || {}).join(', ')}`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Has runSmartResume?: ${typeof smartResumeModule.runSmartResume === 'function'}`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Has main?: ${typeof smartResumeModule.main === 'function'}`);
         
         if (typeof smartResumeModule === 'function') {
-            moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] Module is a direct function, calling it with stream=${stream}...`);
+            jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Module is a direct function, calling it with stream=${stream}...`);
             await smartResumeModule(stream);
         } else if (typeof smartResumeModule.runSmartResume === 'function') {
-            moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] Found runSmartResume function, calling it with stream=${stream}...`);
+            jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Found runSmartResume function, calling it with stream=${stream}...`);
             // Pass the stream parameter properly
             await smartResumeModule.runSmartResume(stream);
         } else if (typeof smartResumeModule.main === 'function') {
-            moduleLogger.info(`🔍 [SMART-RESUME-DEBUG] Found main function, calling it with stream=${stream}...`);
+            jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Found main function, calling it with stream=${stream}...`);
             await smartResumeModule.main(stream);
         } else {
-            moduleLogger.error(`❌ [SMART-RESUME-DEBUG] CRITICAL: No usable function found in module`);
-            moduleLogger.error(`❌ [SMART-RESUME-DEBUG] Available exports:`, Object.keys(smartResumeModule || {}));
+            jobLogger.error(`❌ [SMART-RESUME-DEBUG] CRITICAL: No usable function found in module`);
+            jobLogger.error(`❌ [SMART-RESUME-DEBUG] Available exports:`, Object.keys(smartResumeModule || {}));
             throw new Error('Smart resume module does not export a usable function');
         }
         
-        moduleLogger.info(`✅ [SMART-RESUME-DEBUG] Smart resume function returned successfully`);
+        jobLogger.info(`✅ [SMART-RESUME-DEBUG] Smart resume function returned successfully`);
         
-        moduleLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
-        moduleLogger.info(`✅ [${jobId}] Smart resume function called successfully`);
+        jobLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
+        jobLogger.info(`✅ Smart resume function called successfully`);
         
-        moduleLogger.info(`✅ [${jobId}] Smart resume completed successfully`);
-        moduleLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_END: Module execution completed`);
+        jobLogger.info(`✅ Smart resume completed successfully`);
+        jobLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_END: Module execution completed`);
         
         // Update global process tracking
         if (global.smartResumeActiveProcess) {
@@ -5129,16 +5146,16 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         });
         
     } catch (moduleError) {
-        moduleLogger.error(`🚨 [${jobId}] MODULE EXECUTION FAILED - ERROR DETAILS:`);
+        jobLogger.error(`🚨 MODULE EXECUTION FAILED - ERROR DETAILS:`);
         await logRouteError(moduleError, req).catch(() => {});
-        moduleLogger.error(`🚨 Error message: ${moduleError.message}`);
-        moduleLogger.error(`🚨 Stack trace: ${moduleError.stack}`);
+        jobLogger.error(`🚨 Error message: ${moduleError.message}`);
+        jobLogger.error(`🚨 Stack trace: ${moduleError.stack}`);
         throw moduleError;
     }
     
   } catch (error) {
-    moduleLogger.error(`❌ [${jobId}] Smart resume failed:`, error.message);
-    moduleLogger.error(`🔍 SMART_RESUME_${jobId} SCRIPT_ERROR: ${error.message}`);
+    jobLogger.error(`❌ Smart resume failed:`, error.message);
+    jobLogger.error(`🔍 SMART_RESUME_${jobId} SCRIPT_ERROR: ${error.message}`);
     
     // Update global process tracking
     if (global.smartResumeActiveProcess) {
@@ -5151,7 +5168,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     // Check if this was an admin-triggered termination
     const wasTerminated = error.message === 'Process terminated by admin request';
     if (wasTerminated) {
-      moduleLogger.info(`🛑 [${jobId}] Process was terminated by admin request`);
+      jobLogger.info(`🛑 Process was terminated by admin request`);
     }
     
     // Try to send failure email if configured (but not for admin terminations)
@@ -5164,13 +5181,13 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
           timestamp: Date.now()
         });
       } catch (emailError) {
-        moduleLogger.error(`❌ [${jobId}] Failed to send error email:`, emailError.message);
+        jobLogger.error(`❌ Failed to send error email:`, emailError.message);
         await logRouteError(emailError, req).catch(() => {});
       }
     }
   } finally {
     // ⭐ ALWAYS RELEASE THE LOCK WHEN DONE (SUCCESS OR FAILURE)
-    moduleLogger.info(`🔓 [${jobId}] Releasing smart resume lock (held for ${Math.round((Date.now() - smartResumeLockTime)/1000)} seconds)`);
+    jobLogger.info(`🔓 Releasing smart resume lock (held for ${Math.round((Date.now() - smartResumeLockTime)/1000)} seconds)`);
     smartResumeRunning = false;
     currentSmartResumeJobId = null;
     smartResumeLockTime = null;
@@ -5198,24 +5215,24 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     
     // 🔍 AUTO-ANALYZE LOGS: Run System 1 to capture all errors to Production Issues table
     try {
-      moduleLogger.info(`🔍 [${jobId}] Starting automatic log analysis (System 1)...`);
+      jobLogger.info(`🔍 Starting automatic log analysis (System 1)...`);
       const ProductionIssueService = require('../services/productionIssueService');
       const logAnalysisService = new ProductionIssueService();
       
       // Analyze logs from the last 10 minutes (covers the smart resume run)
       const analysisResults = await logAnalysisService.analyzeRecentLogs({ minutes: 10 });
       
-      moduleLogger.info(`✅ [${jobId}] Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+      jobLogger.info(`✅ Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
       
       if (analysisResults.issues > 0) {
-        moduleLogger.info(`📋 [${jobId}] Errors saved to Production Issues table in Airtable`);
+        jobLogger.info(`📋 Errors saved to Production Issues table in Airtable`);
       } else {
-        moduleLogger.info(`🎉 [${jobId}] No errors detected in logs - clean run!`);
+        jobLogger.info(`🎉 No errors detected in logs - clean run!`);
       }
     } catch (logAnalysisError) {
       // Log analysis failure should not break the smart resume flow
-      moduleLogger.error(`⚠️ [${jobId}] Failed to analyze logs automatically:`, logAnalysisError.message);
-      moduleLogger.error(`⚠️ [${jobId}] You can manually analyze logs by calling /api/analyze-logs/recent`);
+      jobLogger.error(`⚠️ Failed to analyze logs automatically:`, logAnalysisError.message);
+      jobLogger.error(`⚠️ You can manually analyze logs by calling /api/analyze-logs/recent`);
     }
     
 // ---------------------------------------------------------------
