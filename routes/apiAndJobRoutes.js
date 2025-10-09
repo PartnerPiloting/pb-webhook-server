@@ -1623,6 +1623,17 @@ async function processPostScoringInBackground(jobId, stream, options) {
     jobLogger.info(`🎉 Fire-and-forget post scoring completed: ${jobId}`);
     jobLogger.info(`📊 Summary: ${totalSuccessful} successful, ${totalFailed} failed, ${totalProcessed} posts scored, ${totalDuration}`);
 
+    // Analyze logs for this post-scoring run to capture any errors
+    try {
+      jobLogger.info(`🔍 Analyzing logs for post-scoring run: ${runId}`);
+      const { analyzeRecentLogs } = require('../services/productionIssueService');
+      await analyzeRecentLogs(runId);
+      jobLogger.info(`✅ Post-scoring log analysis complete for ${runId}`);
+    } catch (analyzeError) {
+      jobLogger.error(`❌ Failed to analyze post-scoring logs for ${runId}:`, analyzeError.message);
+      // Don't throw - log analysis failure shouldn't break the run
+    }
+
   } catch (error) {
     jobLogger.error(`❌ Fatal error in background post scoring ${jobId}:`, error.message);
     jobLogger.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
