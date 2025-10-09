@@ -343,7 +343,7 @@ router.get("/api/initiate-pb-message", async (req, res) => {
       enqueueResponse: enqueueData,
     });
   } catch (e) {
-    moduleLogger.error("initiate-pb-message:", e);
+    logger.error("initiate-pb-message:", e.message);
     await logRouteError(e, req, { operation: 'initiate-pb-message', recordId }).catch(() => {});
     await alertAdmin(
       "Error /api/initiate-pb-message",
@@ -749,7 +749,7 @@ async function processClientForLeadScoring(clientId, limit, aiDependencies, runI
     await batchScorer.run(fakeReq, fakeRes, aiDependencies);
     return result;
   } catch (error) {
-    moduleLogger.error(`[processClientForLeadScoring] Error processing client ${clientId}:`, error.message);
+    logger.error(`[processClientForLeadScoring] Error processing client ${clientId}:`, error.message);
     await logRouteError(error, req).catch(() => {});
     throw error;
   }
