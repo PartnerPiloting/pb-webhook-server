@@ -349,13 +349,23 @@ async function reconcileErrors(runId, startTime) {
     return {
         runId,
         startTime: utcStartTime,
+        validation: {
+            correctRunId,
+            wrongRunId,
+            noRunId,
+            wrongRunIdErrors: wrongRunIdErrors.map(e => ({
+                foundRunId: e.foundRunId,
+                message: e.message
+            }))
+        },
         stats: {
             totalInLogs: logErrors.length,
             totalInTable: productionIssues.length,
             matched: matched.length,
             inLogNotInTable: inLogNotInTable.length,
             inTableNotInLog: inTableNotInLog.length,
-            captureRate: parseFloat(captureRate)
+            captureRate: parseFloat(captureRate),
+            adjustedCaptureRate: parseFloat(adjustedCaptureRate)
         },
         errors: {
             matched,
