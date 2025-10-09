@@ -382,7 +382,7 @@ router.post("/api/pb-webhook", async (req, res) => {
   try {
     const secret = req.query.secret || req.body.secret;
     if (secret !== process.env.PB_WEBHOOK_SECRET) {
-      logger.warn("PB Webhook: Forbidden attempt with incorrect secret.");
+      webhookLogger.warn("PB Webhook: Forbidden attempt with incorrect secret.");
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -396,7 +396,7 @@ router.post("/api/pb-webhook", async (req, res) => {
         let rawResultObject = req.body.resultObject;
 
         if (!rawResultObject) {
-            logger.warn("PB Webhook: resultObject is missing in the payload.");
+            webhookLogger.warn("PB Webhook: resultObject is missing in the payload.");
             return;
         }
 
@@ -792,12 +792,12 @@ router.get("/score-lead", async (req, res) => {
     if (!id)
       return res.status(400).json({ error: "recordId query param required" });    const record = await clientBase("Leads").find(id);
     if (!record) { 
-        logger.warn(`score-lead: Lead record not found for ID: ${id}`);
+        debugLogger.warn(`score-lead: Lead record not found for ID: ${id}`);
         return res.status(404).json({ error: `Lead record not found for ID: ${id}` });
     }
     const profileJsonString = record.get("Profile Full JSON");
     if (!profileJsonString) {
-        logger.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
+        debugLogger.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
          await clientBase("Leads").update(id, {
             "AI Score": 0,
             "Scoring Status": "Skipped – Profile JSON missing",
@@ -825,7 +825,7 @@ router.get("/score-lead", async (req, res) => {
     }
 
     if (isMissingCritical(profile)) {
-      logger.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
+      debugLogger.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
     }
 
     const gOut = await scoreLeadNow(profile, {
@@ -1361,7 +1361,7 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
       endpointLogger.info(`✅ Job tracking record created with ID ${jobId}`);
     } catch (trackingError) {
       // Continue even if tracking record creation fails (may already exist)
-      logger.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
+      endpointLogger.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
       await logRouteError(trackingError, req, { 
         clientId: singleClientId || 'SYSTEM',
         runId: jobId || null,
