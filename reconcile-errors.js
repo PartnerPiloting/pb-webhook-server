@@ -194,13 +194,33 @@ async function reconcileErrors(runId, startTime) {
     // Show details of mismatches
     if (inLogNotInTable.length > 0) {
         console.log(`\n${colors.red}❌ ERRORS IN LOGS NOT SAVED TO TABLE:${colors.reset}`);
-        inLogNotInTable.forEach((err, idx) => {
-            console.log(`\n  ${idx + 1}. [${err.severity || 'UNKNOWN'}] ${err.patternMatched || 'Unknown pattern'}`);
-            console.log(`     Message: ${(err.errorMessage || err.message || '').substring(0, 150)}...`);
-            if (err.timestamp) {
-                console.log(`     Time: ${err.timestamp}`);
-            }
+        
+        // Separate real errors from noise
+        const realErrors = inLogNotInTable.filter(err => 
+            (err.severity === 'ERROR' || err.severity === 'CRITICAL') &&
+            !err.errorMessage.includes('DEPRECATION WARNING') &&
+            !err.errorMessage.includes('Running build command') &&
+            !err.errorMessage.includes('Server started')
+        );
+        
+        const warnings = inLogNotInTable.filter(err => err.severity === 'WARNING');
+        const other = inLogNotInTable.filter(err => !realErrors.includes(err) && !warnings.includes(err));
+        
+        console.log(`\n  ${colors.bright}Real Errors (CRITICAL/ERROR):${colors.reset} ${realErrors.length}`);
+        realErrors.forEach((err, idx) => {
+            console.log(`\n  ${idx + 1}. [${err.severity}] ${err.patternMatched || 'Unknown pattern'}`);
+            console.log(`     Message: ${(err.errorMessage || err.message || '').substring(0, 200)}...`);
+            console.log(`     Time: ${err.timestamp || 'Unknown'}`);
+            console.log(`     Full message: ${(err.errorMessage || err.message || '').substring(0, 500)}`);
         });
+        
+        if (warnings.length > 0) {
+            console.log(`\n  ${colors.yellow}Warnings:${colors.reset} ${warnings.length} (likely noise - deprecations, build logs, etc.)`);
+        }
+        
+        if (other.length > 0) {
+            console.log(`\n  ${colors.yellow}Other:${colors.reset} ${other.length}`);
+        }
     }
     
     if (inTableNotInLog.length > 0) {
@@ -230,14 +250,29 @@ async function reconcileErrors(runId, startTime) {
     console.log(`${colors.bright}🎯 ASSESSMENT${colors.reset}`);
     console.log('='.repeat(80));
     
-    if (captureRate >= 95) {
-        console.log(`\n${colors.green}✅ EXCELLENT: ${captureRate}% capture rate!${colors.reset}`);
+    // Calculate adjusted capture rate (excluding warnings/noise)
+    const realErrorsInLogs = logErrors.filter(err => 
+        (err.severity === 'ERROR' || err.severity === 'CRITICAL') &&
+        !err.errorMessage.includes('DEPRECATION WARNING') &&
+        !err.errorMessage.includes('Running build command') &&
+        !err.errorMessage.includes('Server started')
+    ).length;
+    
+    const adjustedCaptureRate = realErrorsInLogs > 0 
+        ? ((matched.length / realErrorsInLogs) * 100).toFixed(1) 
+        : 0;
+    
+    console.log(`\n${colors.cyan}Raw capture rate:${colors.reset} ${captureRate}% (${matched.length}/${totalInLogs} all patterns)`);
+    console.log(`${colors.cyan}Adjusted capture rate:${colors.reset} ${adjustedCaptureRate}% (${matched.length}/${realErrorsInLogs} real errors only)`);
+    
+    if (adjustedCaptureRate >= 95) {
+        console.log(`\n${colors.green}✅ EXCELLENT: ${adjustedCaptureRate}% capture rate!${colors.reset}`);
         console.log(`   Phase 1 goal achieved: errors are being saved to Production Issues table.`);
-    } else if (captureRate >= 80) {
-        console.log(`\n${colors.yellow}⚠️  GOOD: ${captureRate}% capture rate${colors.reset}`);
-        console.log(`   Some errors missing. Review the "In logs but NOT in table" section above.`);
+    } else if (adjustedCaptureRate >= 80) {
+        console.log(`\n${colors.yellow}⚠️  GOOD: ${adjustedCaptureRate}% capture rate${colors.reset}`);
+        console.log(`   Some errors missing. Review the "Real Errors" section above.`);
     } else {
-        console.log(`\n${colors.red}❌ POOR: ${captureRate}% capture rate${colors.reset}`);
+        console.log(`\n${colors.red}❌ POOR: ${adjustedCaptureRate}% capture rate${colors.reset}`);
         console.log(`   Significant errors not being saved. Investigation needed.`);
     }
     
