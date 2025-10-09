@@ -2142,7 +2142,7 @@ function calculateAttributeTokens(instructions, examples, signals) {
   const totalText = `${instructionsText} ${examplesText} ${signalsText}`;
   const tokenCount = Math.ceil(totalText.length / 4);
   
-  moduleLogger.info(`Token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
+  tokenUtilLogger.info(`Token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
   return tokenCount;
 }
 
@@ -2205,7 +2205,7 @@ async function getCurrentTokenUsage(clientId) {
     };
     
   } catch (error) {
-    moduleLogger.error("Error calculating token usage:", error);
+    tokenUtilLogger.error("Error calculating token usage:", error);
     await logRouteError(error, req).catch(() => {});
     throw error;
   }
@@ -2247,7 +2247,7 @@ async function validateTokenBudget(attributeId, updatedData, clientId) {
     };
     
   } catch (error) {
-    moduleLogger.error("Error validating token budget:", error);
+    tokenUtilLogger.error("Error validating token budget:", error);
     await logRouteError(error, req).catch(() => {});
     throw error;
   }
@@ -2268,7 +2268,7 @@ function calculatePostAttributeTokens(detailedInstructions, positiveKeywords, ne
   const totalText = `${instructionsText} ${positiveText} ${negativeText} ${exampleHighText} ${exampleLowText}`;
   const tokenCount = Math.ceil(totalText.length / 4);
   
-  moduleLogger.info(`Post token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
+  tokenUtilLogger.info(`Post token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
   return tokenCount;
 }
 
@@ -2306,7 +2306,7 @@ async function getCurrentPostTokenUsage(clientId) {
         const exampleHigh = record.get('Example - High Score / Applies') || '';
         const exampleLow = record.get('Example - Low Score / Does Not Apply') || '';
         
-        moduleLogger.info(`Post attribute ${record.get('Attribute ID') || 'Unknown'}: instructions=${detailedInstructions.length}chars, pos=${positiveKeywords.length}chars, neg=${negativeKeywords.length}chars, high=${exampleHigh.length}chars, low=${exampleLow.length}chars`);
+        tokenUtilLogger.info(`Post attribute ${record.get('Attribute ID') || 'Unknown'}: instructions=${detailedInstructions.length}chars, pos=${positiveKeywords.length}chars, neg=${negativeKeywords.length}chars, high=${exampleHigh.length}chars, low=${exampleLow.length}chars`);
         
         const tokens = calculatePostAttributeTokens(detailedInstructions, positiveKeywords, negativeKeywords, exampleHigh, exampleLow);
         totalTokens += tokens;
@@ -2335,7 +2335,7 @@ async function getCurrentPostTokenUsage(clientId) {
     };
     
   } catch (error) {
-    moduleLogger.error("Error calculating post token usage:", error);
+    tokenUtilLogger.error("Error calculating post token usage:", error);
     await logRouteError(error, req).catch(() => {});
     throw error;
   }
@@ -2379,7 +2379,7 @@ async function validatePostTokenBudget(attributeId, updatedData, clientId) {
     };
     
   } catch (error) {
-    moduleLogger.error("Error validating post token budget:", error);
+    tokenUtilLogger.error("Error validating post token budget:", error);
     await logRouteError(error, req).catch(() => {});
     throw error;
   }
@@ -2421,7 +2421,7 @@ router.get("/api/token-usage", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("apiAndJobRoutes.js: GET /api/token-usage error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/token-usage error:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -2469,7 +2469,7 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -2515,7 +2515,7 @@ router.get("/api/post-token-usage", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("apiAndJobRoutes.js: GET /api/post-token-usage error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/post-token-usage error:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -2563,7 +2563,7 @@ router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -2675,7 +2675,7 @@ router.get("/api/attributes/:id/edit", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -2824,7 +2824,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit error:`, error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
@@ -3117,7 +3117,7 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
     });
     
   } catch (error) {
-    moduleLogger.error("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering error:", error.message);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
