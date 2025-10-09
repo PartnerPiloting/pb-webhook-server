@@ -120,6 +120,17 @@ async function reconcileErrors(runId, startTime) {
     
     console.log(`  ${colors.green}✓ Found ${logErrors.length} errors in logs${colors.reset}`);
     
+    // Show ALL errors found by filterLogs to verify runId filtering is working
+    console.log(`\n  ${colors.cyan}Errors found by filterLogs (first 20):${colors.reset}`);
+    logErrors.slice(0, 20).forEach((err, idx) => {
+        // Extract runId from the error message if present
+        const runIdMatch = (err.errorMessage || '').match(/\[(\d{6}-\d{6}(?:-[\w-]+)?)\]/);
+        const foundRunId = runIdMatch ? runIdMatch[1] : 'NO_RUNID';
+        const timestamp = err.timestamp || 'Unknown time';
+        console.log(`    ${idx + 1}. [${err.severity}] RunId: ${foundRunId} | Time: ${timestamp}`);
+        console.log(`       ${(err.errorMessage || '').substring(0, 100)}...`);
+    });
+    
     // Step 2: Fetch errors from Production Issues table
     console.log(`\n${colors.cyan}Step 2: Fetching errors from Production Issues table for Run ID: ${runId}...${colors.reset}`);
     
