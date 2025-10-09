@@ -522,8 +522,8 @@ class JobTracking {
       // Get the master base
       const masterBase = airtableClient.getMasterClientsBase();
       
-      // Only check for the standardized client run ID
-      const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
+      // Search by BOTH Run ID AND Client ID to find the correct record
+      const formula = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`;
       
       const existingRecords = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: formula,
@@ -965,8 +965,8 @@ class JobTracking {
       
       const masterBase = airtableClient.getMasterClientsBase();
       
-      // Only check for the standardized client run ID using constants
-      const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
+      // Search by BOTH Run ID AND Client ID to find the correct record
+      const formula = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${safeClientId}')`;
       
       log.debug(`Looking up client run record with standardized ID: ${clientRunId}`);
       
@@ -1140,8 +1140,8 @@ class JobTracking {
       // Get the master base
       const masterBase = airtableClient.getMasterClientsBase();
       
-      // Only check for the standardized client run ID
-      const formula = `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`;
+      // Search by BOTH Run ID AND Client ID to find the correct record
+      const formula = `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${safeClientId}')`;
       
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
         filterByFormula: formula,
