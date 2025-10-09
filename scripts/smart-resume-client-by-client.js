@@ -187,7 +187,7 @@ async function checkUnscoredPostsCount(clientId) {
             moduleLogger.info(`🚨 UNSCORED CHECK: PHASE 1 - Getting TRUE count of unscored posts using formula...`);
             const allUnscoredRecords = await clientBase('Leads').select({
                 filterByFormula: "AND({Posts Content} != '', {Date Posts Scored} = BLANK())",
-                fields: ['ID'] // Only get ID to minimize data transfer
+                maxRecords: 1 // Only need count, minimize data transfer
             }).all(); // Get ALL records, not just first page
             
             const trueCount = allUnscoredRecords.length;
