@@ -658,9 +658,9 @@ class JobTracking {
       // Get the master base
       const masterBase = airtableClient.getMasterClientsBase();
       
-      // Only check for the standardized client run ID using constants
+      // Search by BOTH Run ID AND Client ID to find the correct record
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `{${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}'`,
+        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`,
         maxRecords: 1
       }).firstPage();
       
