@@ -1750,6 +1750,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
     
     // Use the run ID assigned by the orchestration service
     const runId = jobInfo.runId;
+  const logger = createLogger({ runId, operation: 'post_batch_score_level2' });
 
     for (const c of candidates) {
       try {
@@ -1817,7 +1818,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
       commit: commitHash
     });
   } catch (error) {
-    moduleLogger.error("/run-post-batch-score-level2 error:", error.message);
+    logger.error("/run-post-batch-score-level2 error:", error.message);
     await logRouteError(error, req).catch(() => {});
     return res.status(500).json({ status: getStatusString('ERROR'), message: error.message });
   }
@@ -1828,6 +1829,7 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
 // ---------------------------------------------------------------
 router.get("/debug-clients", async (req, res) => {
   moduleLogger.info("Debug clients endpoint hit");
+  const logger = createLogger({ operation: 'debug_clients' });
   
   // This is an admin endpoint - should require admin authentication
   // For now, we'll require a debug key to prevent unauthorized access
@@ -1882,7 +1884,7 @@ router.get("/debug-clients", async (req, res) => {
     res.json(debugInfo);
     
   } catch (error) {
-    moduleLogger.error("Debug clients error:", error);
+    logger.error("Debug clients error:", error);
     await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       error: error.message,
@@ -1898,6 +1900,7 @@ router.get("/debug-production-issues", async (req, res) => {
   moduleLogger.info("Debug production issues endpoint hit");
   
   // This is an admin endpoint - require debug key
+  const logger = createLogger({ operation: 'debug_production_issues' });
   const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
   if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
     return res.status(401).json({
@@ -2005,6 +2008,7 @@ router.get("/check-production-issues-temp", async (req, res) => {
   moduleLogger.info("Temporary production issues check endpoint hit (no auth)");
   
   try {
+  const logger = createLogger({ operation: 'check_production_issues_temp' });
     const ProductionIssueService = require("../services/productionIssueService");
     const service = new ProductionIssueService();
     
@@ -2081,6 +2085,7 @@ router.get("/check-production-issues-temp", async (req, res) => {
 router.get("/api/json-quality-analysis", async (req, res) => {
   moduleLogger.info("JSON quality analysis endpoint hit");
   
+  const logger = createLogger({ operation: 'json_quality_analysis' });
   // This is an admin endpoint - should require admin authentication
   const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
   if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
