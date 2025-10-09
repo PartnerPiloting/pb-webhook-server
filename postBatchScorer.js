@@ -75,9 +75,13 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
         normalizedRunId = runId;
     }
     
+    // Extract timestamp-only portion for cleaner logs (avoids client duplication)
+    // Format: "251008-234940-Guy-Wilson" → "251008-234940"
+    const timestampOnlyRunId = normalizedRunId.split('-').slice(0, 2).join('-');
+    
     // Create system-level logger for multi-tenant operations
     const systemLogger = createLogger({ 
-        runId: normalizedRunId, 
+        runId: timestampOnlyRunId, 
         clientId: 'SYSTEM', 
         operation: 'post_batch_scorer' 
     });
@@ -118,7 +122,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
         for (const client of clientsToProcess) {
             // Create client-specific logger with runId context
             const clientLogger = createLogger({ 
-                runId: normalizedRunId, 
+                runId: timestampOnlyRunId,  // Use timestamp-only version (cleaner logs)
                 clientId: client.clientId, 
                 operation: 'post_batch_scorer' 
             });
@@ -135,7 +139,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
                 const clientResult = await processClientPostScoring(client, limit, clientLogger, { 
                     ...options, 
                     diagnosticsCollector,
-                    runId: normalizedRunId  // Ensure consistent runId usage
+                    runId: normalizedRunId,  // Keep FULL runId for data operations
+                    logRunId: timestampOnlyRunId  // Add separate timestamp-only for logging
                 });
                 results.clientResults.push(clientResult);
                 
@@ -177,7 +182,7 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
                 
             } catch (clientError) {
                 const clientLogger = createLogger({ 
-                    runId: normalizedRunId, 
+                    runId: timestampOnlyRunId,  // Use timestamp-only version (cleaner logs)
                     clientId: client.clientId, 
                     operation: 'post_batch_scorer' 
                 });
@@ -743,8 +748,9 @@ function ensureFormulaQuotes(formula) {
 
 async function getLeadsForPostScoring(clientBase, config, limit, options = {}) {
     // Create logger with context from options
+    // Use logRunId (timestamp-only) if available, fallback to full runId
     const log = createLogger({
-        runId: options.runId || 'UNKNOWN',
+        runId: options.logRunId || options.runId || 'UNKNOWN',
         clientId: options.clientId || 'UNKNOWN',
         operation: 'get_leads_for_post_scoring'
     });
@@ -1295,7 +1301,7 @@ async function analyzeAndScorePostsForLead(leadRecord, clientBase, config, clien
         
         // Prepare input for Gemini
         const geminiInput = { lead_id: leadRecord.id, posts: allPosts };
-        const aiResponse = await scorePostsWithGemini(geminiInput, configuredGeminiModel);
+        const aiResponse = await scorePostsWithGemini(geminiInput, configuredGeminiModel, logger);
         const aiResponseArray = aiResponse.results;
         const tokenUsage = aiResponse.tokenUsage || { totalTokens: 0 };
         
