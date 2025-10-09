@@ -5319,7 +5319,9 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
       jobLogger.error(`⚠️ Failed to analyze logs automatically:`, logAnalysisError.message);
       jobLogger.error(`⚠️ You can manually analyze logs by calling /api/analyze-logs/recent`);
     }
-    
+  }
+}
+
 // ---------------------------------------------------------------
 // SPECIAL GUY WILSON POST HARVESTING DIRECT ENDPOINT
 // ---------------------------------------------------------------
@@ -5374,8 +5376,6 @@ router.get("/harvest-guy-wilson", async (req, res) => {
     });
   }
 });
-  }
-}
 
 /**
  * Helper function for sending Smart Resume reports
