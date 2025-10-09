@@ -177,3 +177,75 @@ For deeper context:
 - Batch operations process clients sequentially to avoid resource conflicts
 - Use `limit` query parameter for testing large operations
 - Monitor token usage via client execution logs
+
+## Conversational Error Investigation (Phase 2)
+
+### When User Asks About Production Issues
+
+**Trigger phrases:**
+- "Can you investigate the log issues by severity?"
+- "What errors do we have?"
+- "Show me the production issues"
+- "Analyze the log issues"
+- "What are the top errors?"
+
+**What to do:**
+1. Call `fetch_webpage` with URL: `https://pb-webhook-server-staging.onrender.com/api/analyze-issues`
+2. Parse the JSON response to extract ERROR severity issues
+3. Show prioritized list with:
+   - Frequency counts (e.g., "5 occurrences, 55% of errors")
+   - File locations from error messages
+   - Priority ranking (CRITICAL > HIGH > MEDIUM)
+   - Actionable recommendations
+4. Ask: "Ready to investigate this issue?"
+
+**API Response Structure:**
+```json
+{
+  "total": 23,
+  "bySeverity": {"ERROR": 9, "WARNING": 14},
+  "topIssues": [
+    {
+      "pattern": "Error pattern name",
+      "severity": "ERROR",
+      "count": 5,
+      "percentage": "21.7",
+      "message": "Full error message with context",
+      "examples": [{"runId": "...", "timestamp": "...", "clientId": "..."}]
+    }
+  ]
+}
+```
+
+**Example Response Format:**
+```
+📊 Found 9 ERROR issues in Production Issues
+
+Top 3 by priority:
+1. ❌ Batch scoring crash (5x, 55%) - batchScorer.js:277
+   Priority: CRITICAL 🔥
+   
+2. ❌ Record not found (2x, 22%) - job tracking
+   Priority: HIGH
+   
+3. ❌ Logger initialization bug (1x, 11%) - apiAndJobRoutes.js
+   Priority: HIGH
+
+I suggest we start with #1: Batch scoring crash
+This is affecting 55% of errors.
+
+Ready to investigate and fix?
+```
+
+**Next Steps After User Agrees:**
+1. Extract file path and line number from error message
+2. Read the relevant code section
+3. Analyze the error context
+4. Propose a specific fix
+5. Implement fix if user approves
+
+**Key Files:**
+- Production Issues table: Master Clients Airtable base
+- API endpoint: `GET /api/analyze-issues` (public, no auth)
+- Helper script: `helpers/issueInvestigator.js` (for reference)
+- Analysis script: `analyze-production-issues.js` (standalone CLI tool)
