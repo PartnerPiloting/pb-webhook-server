@@ -619,6 +619,117 @@ app.post('/api/reconcile-errors', async (req, res) => {
 });
 
 /**
+ * GET /api/analyze-issues
+ * NO AUTHENTICATION REQUIRED (public endpoint)
+ * 
+ * Analyzes Production Issues table and generates comprehensive report
+ * 
+ * Query parameters (all optional):
+ * - runId: Filter to specific run ID
+ * - days: Filter to last N days
+ * - severity: Filter by severity (ERROR, WARNING, etc.)
+ * - client: Filter by client ID
+ * - limit: Max records to analyze (default 1000)
+ * - format: 'json' or 'html' (default: json)
+ * 
+ * Returns analysis with:
+ * - Total issues
+ * - Breakdown by severity, pattern, client, run ID
+ * - Top issues by frequency
+ * - Actionable recommendations
+ */
+app.get('/api/analyze-issues', async (req, res) => {
+    try {
+        const { analyzeIssues, fetchIssues } = require('./analyze-production-issues');
+        
+        const args = {
+            runId: req.query.runId || null,
+            days: req.query.days ? parseInt(req.query.days) : null,
+            severity: req.query.severity || null,
+            client: req.query.client || null,
+            limit: req.query.limit ? parseInt(req.query.limit) : 1000,
+            format: req.query.format || 'json'
+        };
+        
+        console.log(`\n📊 Analyzing Production Issues with filters:`, args);
+        
+        // Build filter formula
+        const conditions = [];
+        if (args.runId) conditions.push(`{Run ID} = '${args.runId}'`);
+        if (args.days) {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - args.days);
+            const isoDate = cutoffDate.toISOString().split('T')[0];
+            conditions.push(`IS_AFTER({Timestamp}, '${isoDate}')`);
+        }
+        if (args.severity) conditions.push(`{Severity} = '${args.severity}'`);
+        if (args.client) conditions.push(`FIND('${args.client}', {Client ID})`);
+        
+        const filterFormula = conditions.length === 0 ? '' : 
+            conditions.length === 1 ? conditions[0] : 
+            `AND(${conditions.join(', ')})`;
+        
+        const issues = await fetchIssues(filterFormula, args.limit);
+        
+        if (issues.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No issues found matching the filter criteria',
+                total: 0,
+                filters: args
+            });
+        }
+        
+        const analysis = analyzeIssues(issues);
+        
+        // Convert Map to Array for JSON serialization
+        const topIssues = Array.from(analysis.uniqueMessages.entries())
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 15)
+            .map(([msgKey, data]) => ({
+                pattern: data.pattern,
+                severity: data.severity,
+                count: data.count,
+                percentage: ((data.count / analysis.total) * 100).toFixed(1),
+                message: data.fullMessage,
+                examples: data.examples
+            }));
+        
+        const result = {
+            success: true,
+            filters: args,
+            total: analysis.total,
+            bySeverity: analysis.bySeverity,
+            byPattern: Object.entries(analysis.byPattern)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([pattern, count]) => ({ pattern, count, percentage: ((count / analysis.total) * 100).toFixed(1) })),
+            byClient: analysis.byClient,
+            byRunId: Object.entries(analysis.byRunId)
+                .sort((a, b) => b[0].localeCompare(a[0]))
+                .slice(0, 10)
+                .map(([runId, count]) => ({ runId, count })),
+            topIssues,
+            recommendations: [
+                'Review top issues by frequency to identify recurring problems',
+                'Prioritize ERROR severity over WARNING',
+                'Focus on patterns affecting multiple runs',
+                'Use ?runId=XXX to drill down into specific runs',
+                'Use ?severity=ERROR to focus on critical issues only'
+            ]
+        };
+        
+        console.log(`✅ Analysis complete: ${analysis.total} issues analyzed`);
+        
+        res.json(result);
+        
+    } catch (error) {
+        moduleLogger.error('Failed to analyze Production Issues:', error);
+        res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
  * Get Production Issues from Airtable with filters
  * GET /api/production-issues
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
