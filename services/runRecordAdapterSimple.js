@@ -1028,23 +1028,19 @@ async function checkRunRecordExists(params) {
   
   const { runId, clientId: providedClientId, options: optionsParam = {} } = params;
   
+  // Create logger FIRST before any usage
+  const safeRunId = runId ? String(runId) : 'UNKNOWN';
+  const logger = optionsParam.logger || createSafeLogger(providedClientId || 'SYSTEM', safeRunId, 'run_record');
+  const source = optionsParam.source || 'unknown';
+  
   // ROOT CAUSE FIX: Validate runId
   if (!runId) {
     const errorMsg = `Missing runId parameter in checkRunRecordExists`;
     logger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     return false; // Fail safe - return false on missing runId
   }
-
-  // Create a safe version of the runId for logging
-  const safeRunId = String(runId);
-  
-  // Use createSafeLogger to ensure proper parameter validation
-  const logger = optionsParam.logger || createSafeLogger(providedClientId || 'SYSTEM', safeRunId, 'run_record');
-  const source = optionsParam.source || 'unknown';
   
   logger.debug(`[RunRecordAdapterSimple] Checking if run record exists: ${safeRunId}, client: ${providedClientId || 'any'}`);
-  
-  logger.debug(`[RunRecordAdapterSimple] Checking if run record exists: ${runId}, client: ${providedClientId || 'any'}`);
   
   try {
     // Extract client ID from run ID if not provided
