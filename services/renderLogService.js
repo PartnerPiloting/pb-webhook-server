@@ -87,7 +87,7 @@ class RenderLogService {
             const params = new URLSearchParams({
                 ownerId: this.ownerId,
                 limit: limit.toString(),
-                direction: 'backward', // Most recent first
+                direction: 'forward', // Chronological order from startTime (changed from backward)
                 resource: serviceId, // Changed from resources[] to resource (singular)
             });
             
