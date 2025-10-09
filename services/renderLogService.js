@@ -88,10 +88,8 @@ class RenderLogService {
                 ownerId: this.ownerId,
                 limit: limit.toString(),
                 direction: 'backward', // Most recent first
+                resource: serviceId, // Changed from resources[] to resource (singular)
             });
-            
-            // Add resources[] parameter (Render API requires array notation)
-            params.append('resources[]', serviceId);
             
             // Add time range if provided
             if (startTime) params.append('startTime', startTime);
