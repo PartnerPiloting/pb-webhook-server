@@ -859,8 +859,12 @@ async function main() {
         log(`⏰ Duration: ${Math.round(totalDuration / 1000)} seconds`);
         log(`📊 Success Rate: ${successRate}%`);
         
+        // CRITICAL DEBUG: Log what we're about to return
+        log(`🔍 DEBUG: About to return result object with runId=${runId}, normalizedRunId=${normalizedRunId}`);
+        log(`🔍 DEBUG: Return object will include: success, runId, normalizedRunId, stream, clientsProcessed, jobsStarted, duration, successRate`);
+        
         // Return success result with runId for parent to use (e.g., for log analysis)
-        return {
+        const returnValue = {
             success: true,
             runId: runId,
             normalizedRunId: normalizedRunId,
@@ -870,6 +874,9 @@ async function main() {
             duration: totalDuration,
             successRate: successRate
         };
+        
+        log(`🔍 DEBUG: Returning result object: ${JSON.stringify(returnValue, null, 2)}`);
+        return returnValue;
         
     } catch (error) {
         log(`❌ Pipeline error: ${error.message}`, 'ERROR');

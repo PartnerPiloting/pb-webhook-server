@@ -5189,16 +5189,24 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
         
         jobLogger.info(`✅ [SMART-RESUME-DEBUG] Smart resume function returned successfully`);
         
+        // CRITICAL DEBUG: Log the entire scriptResult object
+        jobLogger.info(`🔍 DEBUG: scriptResult type: ${typeof scriptResult}`);
+        jobLogger.info(`🔍 DEBUG: scriptResult value: ${JSON.stringify(scriptResult, null, 2)}`);
+        jobLogger.info(`🔍 DEBUG: scriptResult?.runId = ${scriptResult?.runId}`);
+        jobLogger.info(`🔍 DEBUG: scriptResult?.normalizedRunId = ${scriptResult?.normalizedRunId}`);
+        
         // Extract runId from script result for log analysis
         const realRunId = scriptResult?.runId || scriptResult?.normalizedRunId;
         if (realRunId) {
             jobLogger.info(`📝 Script returned runId: ${realRunId}`);
         } else {
             jobLogger.warn(`⚠️ Script did not return runId in result`);
+            jobLogger.warn(`⚠️ DEBUG: Full scriptResult was: ${JSON.stringify(scriptResult)}`);
         }
         
         // Store runId for finally block
         global.smartResumeRealRunId = realRunId;
+        jobLogger.info(`🔍 DEBUG: Stored runId in global.smartResumeRealRunId = ${global.smartResumeRealRunId}`);
         
         jobLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
         jobLogger.info(`✅ Smart resume function called successfully`);
