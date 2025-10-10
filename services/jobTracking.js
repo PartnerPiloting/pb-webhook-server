@@ -916,6 +916,60 @@ class JobTracking {
   }
 
   /**
+   * Get the previous run before the specified run
+   * Used for Phase 2 catch-up logic to find missed errors
+   * @param {string|Object} currentRunId - Current run ID
+   * @param {Object} [options={}] - Additional options
+   * @returns {Promise<Object|null>} Previous job record or null if not found
+   */
+  static async getPreviousRun(currentRunId, options = {}) {
+    const log = options.logger || logger;
+    const source = 'JobTracking.getPreviousRun';
+    
+    try {
+      // First get the current run to get its start time
+      const currentRun = await JobTracking.getJobById(currentRunId, options);
+      
+      if (!currentRun || !currentRun.fields) {
+        log.warn(`[${source}] Current run ${currentRunId} not found`);
+        return null;
+      }
+      
+      const currentStartTime = currentRun.fields[JOB_TRACKING_FIELDS.START_TIME];
+      
+      if (!currentStartTime) {
+        log.warn(`[${source}] Current run ${currentRunId} has no start time`);
+        return null;
+      }
+      
+      const masterBase = airtableClient.getMasterClientsBase();
+      
+      // Find the most recent run that started before this one
+      const records = await masterBase(JOB_TRACKING_TABLE).select({
+        filterByFormula: `{${JOB_TRACKING_FIELDS.START_TIME}} < '${currentStartTime}'`,
+        maxRecords: 1,
+        sort: [{ field: JOB_TRACKING_FIELDS.START_TIME, direction: 'desc' }]
+      }).firstPage();
+      
+      if (!records || records.length === 0) {
+        log.info(`[${source}] No previous run found before ${currentRunId}`);
+        return null;
+      }
+      
+      const previousRun = records[0];
+      const previousRunId = previousRun.fields[JOB_TRACKING_FIELDS.RUN_ID];
+      
+      log.debug(`[${source}] Found previous run: ${previousRunId}`);
+      return previousRun;
+      
+    } catch (error) {
+      log.error(`[${source}] Error getting previous run: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
+      return null;
+    }
+  }
+
+  /**
    * Get client run record by client run ID
    * @param {string|Object} runId - Base run ID or object containing runId property
    * @param {string|Object} clientId - Client ID or object containing clientId property
