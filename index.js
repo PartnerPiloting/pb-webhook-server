@@ -28,6 +28,9 @@ const { getMasterClientsBase } = require('./config/airtableClient'); // For Prod
 // Initialize OpenAI client for attribute editing
 const { initializeOpenAI } = require('./config/openaiClient.js');
 let openaiClient = null;
+
+// Load production issue analysis utilities
+const { analyzeIssues, fetchIssues, classifyWarning } = require('./analyze-production-issues');
 try {
     openaiClient = initializeOpenAI();
     moduleLogger.info("index.js: OpenAI client initialized successfully for attribute editing");
@@ -641,8 +644,6 @@ app.post('/api/reconcile-errors', async (req, res) => {
  */
 app.get('/api/analyze-issues', async (req, res) => {
     try {
-        const { analyzeIssues, fetchIssues } = require('./analyze-production-issues');
-        
         const args = {
             runId: req.query.runId || null,
             days: req.query.days ? parseInt(req.query.days) : null,
