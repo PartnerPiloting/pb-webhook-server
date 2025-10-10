@@ -5300,7 +5300,7 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     // Reset termination signal
     global.smartResumeTerminateSignal = false;
     
-    // 🔍 AUTO-ANALYZE LOGS: Run System 1 to capture all errors to Production Issues table
+    // 🔍 AUTO-ANALYZE LOGS: Phase 1 + Phase 2 (Belt-and-Suspenders)
     try {
       // CRITICAL: Wait for background jobs to complete before analyzing logs
       // Background jobs (lead scoring, post harvesting, etc.) run asynchronously and may
@@ -5313,29 +5313,84 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
       if (delayMinutes > 0) {
         jobLogger.info(`⏰ Waiting ${delayMinutes} minutes for background jobs to complete before analyzing logs...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
-        jobLogger.info(`✅ Wait complete. Starting automatic log analysis (System 1)...`);
+        jobLogger.info(`✅ Wait complete. Starting automatic log analysis (Phase 1 + Phase 2)...`);
       } else {
-        jobLogger.info(`⚠️ AUTO_ANALYZER_DELAY_MINUTES=0 - Starting analysis immediately (TESTING MODE - may miss late errors)`);
+        jobLogger.info(`⚠️ AUTO_ANALYZER_DELAY_MINUTES=0 - Starting analysis immediately (TESTING MODE - Phase 2 will catch missed errors)`);
       }
       
       const ProductionIssueService = require('../services/productionIssueService');
       const logAnalysisService = new ProductionIssueService();
+      const { JOB_TRACKING_FIELDS } = require('../constants/airtableUnifiedConstants');
+      const JobTracking = require('../services/jobTracking');
       
       // Use the real runId from the script if available
       const runIdForAnalysis = global.smartResumeRealRunId;
       
       if (runIdForAnalysis) {
-        jobLogger.info(`🔍 Analyzing logs for specific runId: ${runIdForAnalysis}`);
+        // ========== PHASE 1: Analyze current run ==========
+        jobLogger.info(`🔍 PHASE 1: Analyzing logs for runId: ${runIdForAnalysis}`);
+        
         // Analyze logs filtered by runId (uses Job Tracking table for time window)
         const analysisResults = await logAnalysisService.analyzeRecentLogs({ runId: runIdForAnalysis });
         
-        jobLogger.info(`✅ Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+        jobLogger.info(`✅ PHASE 1 complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
         
         if (analysisResults.issues > 0) {
-          jobLogger.info(`📋 ${analysisResults.createdRecords} errors saved to Production Issues table in Airtable (runId: ${runIdForAnalysis})`);
+          jobLogger.info(`📋 ${analysisResults.createdRecords} errors saved to Production Issues table (runId: ${runIdForAnalysis})`);
         } else {
           jobLogger.info(`🎉 No errors detected in logs for runId ${runIdForAnalysis} - clean run!`);
         }
+        
+        // Store last analyzed log timestamp for Phase 2 catch-up
+        if (analysisResults.lastLogTimestamp) {
+          try {
+            await JobTracking.updateJob({
+              runId: runIdForAnalysis,
+              updates: {
+                [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: analysisResults.lastLogTimestamp
+              }
+            });
+            jobLogger.info(`📍 Stored last analyzed timestamp: ${analysisResults.lastLogTimestamp}`);
+          } catch (updateError) {
+            jobLogger.error(`⚠️ Failed to store last analyzed timestamp: ${updateError.message}`);
+          }
+        }
+        
+        // ========== PHASE 2: Catch-up logic for previous run ==========
+        jobLogger.info(`🔄 PHASE 2: Checking previous run for missed errors...`);
+        
+        try {
+          // Get previous run
+          const previousRun = await JobTracking.getPreviousRun(runIdForAnalysis);
+          
+          if (previousRun && previousRun.fields) {
+            const previousRunId = previousRun.fields[JOB_TRACKING_FIELDS.RUN_ID];
+            jobLogger.info(`📋 Found previous run: ${previousRunId}`);
+            
+            // Run catch-up analysis
+            const catchUpResults = await logAnalysisService.catchUpPreviousRun(
+              previousRunId,
+              runIdForAnalysis
+            );
+            
+            if (catchUpResults.success) {
+              if (catchUpResults.backFilledErrors > 0) {
+                jobLogger.info(`✅ PHASE 2 complete: Back-filled ${catchUpResults.backFilledErrors} missed errors for run ${previousRunId}`);
+              } else {
+                jobLogger.info(`✅ PHASE 2 complete: No missed errors found for run ${previousRunId} (${catchUpResults.reason})`);
+              }
+            } else {
+              jobLogger.warn(`⚠️ PHASE 2 skipped: ${catchUpResults.reason}`);
+            }
+          } else {
+            jobLogger.info(`ℹ️ PHASE 2: No previous run found - this may be the first run`);
+          }
+        } catch (catchUpError) {
+          // Catch-up failure should not break the flow
+          jobLogger.error(`⚠️ PHASE 2 failed: ${catchUpError.message}`);
+          jobLogger.info(`ℹ️ PHASE 1 still captured errors for current run`);
+        }
+        
       } else {
         jobLogger.warn(`⚠️ Script did not return runId, falling back to time-based analysis (last 10 minutes)`);
         // Fallback: analyze last 10 minutes without runId filtering

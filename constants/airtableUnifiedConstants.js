@@ -182,7 +182,10 @@ const JOB_TRACKING_FIELDS = {
   // TOTAL_API_COST: 'Total API Cost', - Removed 2025-10-02 (now calculated on-the-fly)
   
   // System fields
-  SYSTEM_NOTES: 'System Notes' // Verified against schema
+  SYSTEM_NOTES: 'System Notes', // Verified against schema
+  
+  // Phase 2 catch-up logic field (added Oct 11, 2025)
+  LAST_ANALYZED_LOG_ID: 'Last Analyzed Log ID' // Stores last log entry ID processed for catch-up
   
   // Formula fields removed as they depend on the removed aggregate fields
   // POST_SCORING_SUCCESS_RATE: 'Post Scoring Success Rate', - Removed 2025-10-02 (now calculated on-the-fly)

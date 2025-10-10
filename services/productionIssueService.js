@@ -115,6 +115,15 @@ class ProductionIssueService {
       
       logger.debug(`Fetched ${allLogs.length} total logs across ${pageCount} pages`);
 
+      // Capture last log timestamp for Phase 2 catch-up logic
+      let lastLogTimestamp = null;
+      if (allLogs.length > 0) {
+        // Get timestamp of the last log entry
+        const lastLog = allLogs[allLogs.length - 1];
+        lastLogTimestamp = lastLog.timestamp || endTime; // Fallback to endTime if no timestamp
+        logger.debug(`Last log timestamp: ${lastLogTimestamp}`);
+      }
+
       // Convert log data to text
       let logText = this.convertLogsToText(allLogs);
       const totalLines = logText.split('\n').length;
@@ -148,6 +157,7 @@ class ProductionIssueService {
         issues: issues.length,
         createdRecords: createdRecords.length,
         timeRange: { startTime, endTime, source: timeSource },
+        lastLogTimestamp, // Include for Phase 2 catch-up storage
         runId: runId || null,
       };
 
@@ -547,6 +557,112 @@ class ProductionIssueService {
 
     } catch (error) {
       logger.error('analyzeRunLogs', `Analysis failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Phase 2 Catch-Up Logic: Analyze logs from previous run for missed errors
+   * Looks up previous run's Last Analyzed Log Timestamp, fetches logs since then,
+   * and extracts errors that should have been caught in the original run.
+   * 
+   * @param {string} previousRunId - Run ID of the previous run to check for missed errors
+   * @param {string} currentRunId - Current run ID (for logging only)
+   * @returns {Promise<Object>} - Catch-up results with back-filled errors
+   */
+  async catchUpPreviousRun(previousRunId, currentRunId) {
+    logger.info(`🔄 PHASE 2 CATCH-UP: Checking previous run ${previousRunId} for missed errors...`);
+
+    try {
+      const { JOB_TRACKING_FIELDS } = require('../constants/airtableUnifiedConstants');
+      const JobTracking = require('./jobTracking');
+
+      // 1. Get previous run's Job Tracking record
+      const previousJobRecord = await JobTracking.getJobById(previousRunId);
+      
+      if (!previousJobRecord || !previousJobRecord.fields) {
+        logger.warn(`⚠️ Previous run ${previousRunId} not found in Job Tracking - skipping catch-up`);
+        return { success: false, reason: 'Previous run not found', backFilledErrors: 0 };
+      }
+
+      // 2. Check if previous run has Last Analyzed Log Timestamp
+      const lastAnalyzedTimestamp = previousJobRecord.fields[JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID];
+      
+      if (!lastAnalyzedTimestamp) {
+        logger.info(`ℹ️ Previous run ${previousRunId} has no Last Analyzed Log Timestamp - nothing to catch up`);
+        return { success: true, reason: 'No previous analysis', backFilledErrors: 0 };
+      }
+
+      logger.info(`📍 Previous run last analyzed timestamp: ${lastAnalyzedTimestamp}`);
+
+      // 3. Get previous run's time window
+      const startTime = previousJobRecord.fields[JOB_TRACKING_FIELDS.START_TIME];
+      let endTime = previousJobRecord.fields[JOB_TRACKING_FIELDS.END_TIME];
+
+      if (!startTime) {
+        logger.warn(`⚠️ Previous run ${previousRunId} missing Start Time - skipping catch-up`);
+        return { success: false, reason: 'Missing start time', backFilledErrors: 0 };
+      }
+
+      // Handle missing end time (job crashed or still running)
+      if (!endTime) {
+        logger.warn(`⚠️ Previous run ${previousRunId} missing End Time, using start + 30 minutes`);
+        const startDate = new Date(startTime);
+        endTime = new Date(startDate.getTime() + 30 * 60 * 1000).toISOString();
+      }
+
+      logger.info(`⏰ Previous run time window: ${startTime} to ${endTime}`);
+
+      // 4. Fetch logs from Render starting AFTER lastAnalyzedTimestamp
+      // Only get logs that were written after the auto-analyzer ran
+      logger.info(`🔍 Fetching logs from Render after timestamp: ${lastAnalyzedTimestamp}...`);
+      
+      const result = await this.renderLogService.getServiceLogs(process.env.RENDER_SERVICE_ID, {
+        startTime: lastAnalyzedTimestamp, // Start from last analyzed timestamp
+        endTime,
+        limit: 1000
+      });
+
+      const newLogs = result.logs || [];
+      logger.info(`📥 Fetched ${newLogs.length} new logs since last analysis`);
+
+      if (newLogs.length === 0) {
+        logger.info(`✅ No new logs found - previous run was fully analyzed`);
+        return { success: true, reason: 'No new logs', backFilledErrors: 0 };
+      }
+
+      // 5. Convert logs to text and filter for errors
+      const logText = this.convertLogsToText(newLogs);
+      
+      // Filter logs for issues matching the PREVIOUS run ID (not current run)
+      const issues = filterLogs(logText, {
+        deduplicateIssues: true,
+        contextSize: 25,
+        runIdFilter: previousRunId, // CRITICAL: Tag errors with original run ID
+      });
+
+      logger.info(`🔍 Found ${issues.length} missed errors from previous run ${previousRunId}`);
+
+      if (issues.length === 0) {
+        return { success: true, reason: 'No missed errors found', backFilledErrors: 0 };
+      }
+
+      // 6. Create Production Issue records with PREVIOUS run ID (back-fill)
+      const createdRecords = await this.createProductionIssues(issues, previousRunId);
+
+      logger.info(`✅ PHASE 2 CATCH-UP: Back-filled ${createdRecords.length} errors for previous run ${previousRunId}`);
+
+      return {
+        success: true,
+        previousRunId,
+        currentRunId,
+        backFilledErrors: createdRecords.length,
+        summary: generateSummary(issues),
+        records: createdRecords,
+      };
+
+    } catch (error) {
+      logger.error(`❌ PHASE 2 CATCH-UP FAILED: ${error.message}`);
       throw error;
     }
   }
