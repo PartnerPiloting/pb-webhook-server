@@ -792,6 +792,25 @@ async function main() {
         log(`   - Check Airtable Client table for status updates`);
         log(`   - Jobs will complete independently with timeout protection`);
         
+        // DEBUG: Comprehensive diagnostics before reportData creation
+        log(`\n🔍 DEBUG [STEP 1]: Checking all variables BEFORE creating reportData...`);
+        log(`🔍 DEBUG: runId = "${runId}" (type: ${typeof runId}, defined: ${runId !== undefined})`);
+        log(`🔍 DEBUG: normalizedRunId = "${normalizedRunId}" (type: ${typeof normalizedRunId})`);
+        log(`🔍 DEBUG: stream = "${stream}" (type: ${typeof stream})`);
+        log(`🔍 DEBUG: runStartTime = ${runStartTime} (type: ${typeof runStartTime})`);
+        log(`🔍 DEBUG: runEndTime = ${runEndTime} (type: ${typeof runEndTime})`);
+        log(`🔍 DEBUG: totalDuration = ${totalDuration} (type: ${typeof totalDuration})`);
+        log(`🔍 DEBUG: clients.length = ${clients?.length} (is array: ${Array.isArray(clients)})`);
+        log(`🔍 DEBUG: clientsSkipped.length = ${clientsSkipped?.length} (is array: ${Array.isArray(clientsSkipped)})`);
+        log(`🔍 DEBUG: clientsNeedingWork.length = ${clientsNeedingWork?.length} (is array: ${Array.isArray(clientsNeedingWork)})`);
+        log(`🔍 DEBUG: totalTriggered = ${totalTriggered} (type: ${typeof totalTriggered})`);
+        log(`🔍 DEBUG: totalJobsStarted = ${totalJobsStarted} (type: ${typeof totalJobsStarted})`);
+        log(`🔍 DEBUG: successRate = ${successRate}% (type: ${typeof successRate})`);
+        log(`🔍 DEBUG: executionResults.length = ${executionResults?.length} (is array: ${Array.isArray(executionResults)})`);
+        log(`🔍 DEBUG: errors.length = ${errors?.length} (is array: ${Array.isArray(errors)})`);
+        
+        log(`\n🔍 DEBUG [STEP 2]: Creating reportData object NOW...`);
+        
         // Send comprehensive email report
         const reportData = {
             runId,
@@ -811,6 +830,21 @@ async function main() {
             errors
         };
         
+        log(`🔍 DEBUG [STEP 3]: reportData object created SUCCESSFULLY!`);
+        log(`🔍 DEBUG: reportData has ${Object.keys(reportData).length} keys`);
+        log(`🔍 DEBUG: Keys are: ${Object.keys(reportData).join(', ')}`);
+        
+        // Test if reportData can be stringified (checks for circular references)
+        try {
+            const jsonTest = JSON.stringify(reportData);
+            log(`🔍 DEBUG: reportData JSON.stringify() SUCCESS - ${jsonTest.length} characters`);
+        } catch (stringifyErr) {
+            log(`❌ DEBUG: reportData JSON.stringify() FAILED: ${stringifyErr.message}`);
+            log(`🔍 DEBUG: This indicates circular references - likely in executionResults or errors`);
+        }
+        
+        log(`\n🔍 DEBUG [STEP 4]: Checking for special case (all clients up to date)...`);
+        
         if (clientsNeedingWork.length === 0) {
             // Special case: all clients up to date
             log(`\n🎉 ALL CLIENTS UP TO DATE!`);
@@ -824,26 +858,34 @@ async function main() {
             reportData.errors = [];
         }
         
+        log(`\n🔍 DEBUG [STEP 5]: About to trigger email send (fire-and-forget)...`);
+        
         // Send email report (fire-and-forget - don't block return for email delivery)
         log(`📧 Triggering completion report email (background)...`);
         emailService.sendExecutionReport(reportData)
             .then(emailResult => {
                 if (emailResult.sent) {
-                    log(`📧 ✅ Completion report sent successfully`);
+                    log(`📧 ✅ DEBUG: Email promise resolved - Completion report sent successfully`);
                 } else {
-                    log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
+                    log(`📧 ❌ DEBUG: Email promise resolved with failure: ${emailResult.reason}`, 'WARN');
                 }
             })
             .catch(error => {
-                log(`📧 ❌ Email send error: ${error.message}`, 'WARN');
+                log(`📧 ❌ DEBUG: Email promise rejected with error: ${error.message}`, 'WARN');
+                log(`🔍 DEBUG: Email error stack: ${error.stack}`, 'WARN');
             });
-        log(`📧 Email send triggered - continuing...`);
+        
+        log(`� DEBUG [STEP 6]: Email send triggered successfully (fire-and-forget mode)`);
+        log(`🔍 DEBUG: Script continuing without waiting for email completion...`);
+        
+        log(`\n🔍 DEBUG [STEP 7]: About to trigger job tracking update (fire-and-forget)...`);
         
         // Update aggregate metrics and complete job tracking (fire-and-forget to avoid blocking return)
         // This is non-critical metadata - the important work (job starts) already succeeded
         log(`📊 Triggering job tracking metrics update (background)...`);
         JobTracking.updateAggregateMetrics({ runId: normalizedRunId })
             .then(() => {
+                log(`🔍 DEBUG: updateAggregateMetrics completed, calling completeJob...`);
                 const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
                 return JobTracking.completeJob({
                     runId: normalizedRunId,
@@ -852,20 +894,25 @@ async function main() {
                 });
             })
             .then(() => {
-                log(`✅ Job tracking metrics updated successfully`);
+                log(`✅ DEBUG: Job tracking promise chain completed successfully`);
             })
             .catch(error => {
-                log(`⚠️ Failed to update job tracking metrics: ${error.message}`, 'WARN');
+                log(`⚠️ DEBUG: Job tracking promise rejected: ${error.message}`, 'WARN');
+                log(`🔍 DEBUG: Job tracking error stack: ${error.stack}`, 'WARN');
             });
-        log(`📊 Job tracking update triggered - continuing to return...`);
+        
+        log(`� DEBUG [STEP 8]: Job tracking update triggered successfully (fire-and-forget mode)`);
+        log(`🔍 DEBUG: Script continuing without waiting for job tracking completion...`);
         
         // Track end timestamp for log analysis
         const runEndTimestamp = new Date();
+        log(`🔍 DEBUG [STEP 9]: runEndTimestamp = ${runEndTimestamp.toISOString()}`);
         
         // NOTE: Log analysis moved to API route's finally block
         // This ensures analysis runs AFTER script completes and properly passes runId
         // See routes/apiAndJobRoutes.js line ~5280 for the auto-analysis implementation
         
+        log(`\n🔍 DEBUG [STEP 10]: Preparing return value...`);
         log(`\n🎉 ✅ SMART RESUME FULLY COMPLETED!`);
         log(`🚀 PROGRESS: [6/6] ✅ ALL PHASES COMPLETE - Script execution finished successfully`);
         log(`📝 Summary: ${clientsNeedingWork.length} clients processed, ${totalJobsStarted} operations started`);
