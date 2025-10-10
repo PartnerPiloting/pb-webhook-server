@@ -670,7 +670,7 @@ app.get('/api/analyze-issues', async (req, res) => {
         // Status filter: default to unfixed issues only
         if (args.status === 'unfixed') {
             // Show NEW, INVESTIGATING, and blank status (exclude FIXED and IGNORED)
-            conditions.push(`OR({Status} = 'NEW', {Status} = 'INVESTIGATING', {Status} = BLANK())`);
+            conditions.push(`OR({Status} = 'NEW', {Status} = 'INVESTIGATING', {Status} = '')`);
         } else if (args.status !== 'all') {
             // Specific status requested
             conditions.push(`{Status} = '${args.status}'`);
