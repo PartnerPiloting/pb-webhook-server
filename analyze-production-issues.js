@@ -124,9 +124,10 @@ function classifyWarning(message) {
     /npm WARN|peer dep/i,
     /experimental feature/i,
     /development mode/i,
-    // False positive: "429" in run IDs like "251009-121429" or timestamps
-    // These are INFO logs about run records, not rate limit errors
-    /run id.*\d{6}-\d{6}.*429|record rec\w+.*429.*run id/i
+    // False positive: "429" in timestamps like "12:45:39.663890429Z" or run IDs like "251009-121429"
+    // These are INFO/DEBUG logs, not rate limit errors
+    /\[INFO\]|\[DEBUG\]/i,  // Catch all INFO/DEBUG logs first - they're never actionable errors
+    /\d{2}:\d{2}:\d{2}\.\d+429Z|run id.*\d{6}-\d{6}.*429|record rec\w+.*429.*run id/i
   ];
   
   // Check if it's noise first (early exit to avoid false positives)
