@@ -117,9 +117,30 @@ async function fetchIssues(filterFormula, limit) {
 function classifyWarning(message) {
   const lowerMessage = message.toLowerCase();
   
+  // Noise patterns - check FIRST to catch false positives early
+  const noisePatterns = [
+    /deprecated|deprecation/i,
+    /\[DEBUG\]|\[INFO\].*debug/i,
+    /npm WARN|peer dep/i,
+    /experimental feature/i,
+    /development mode/i,
+    // False positive: "429" in run IDs like "251009-121429" or timestamps
+    // These are INFO logs about run records, not rate limit errors
+    /run id.*\d{6}-\d{6}.*429|record rec\w+.*429.*run id/i
+  ];
+  
+  // Check if it's noise first (early exit to avoid false positives)
+  for (const noisePattern of noisePatterns) {
+    if (noisePattern.test(message)) {
+      return { isActionable: false, reason: 'Debug/info/deprecation noise' };
+    }
+  }
+  
   // Actionable patterns - these need investigation/fixing
+  // IMPORTANT: These only run AFTER noise filtering above
   const actionablePatterns = [
-    { pattern: /rate limit|too many requests|http.*429|status.*429/i, reason: 'Rate limiting' },
+    // Context-aware 429 pattern - must have HTTP/status/error/rate context
+    { pattern: /(?:http|status|error|rate).*429|429.*(?:error|limit|quota|too many)/i, reason: 'Rate limiting' },
     { pattern: /auth.*fail|unauthorized|forbidden|invalid.*token|access.*denied/i, reason: 'Authentication failure' },
     { pattern: /validation.*error|invalid.*data|schema.*error|missing required/i, reason: 'Data validation error' },
     { pattern: /timeout|timed out|ETIMEDOUT|ESOCKETTIMEDOUT/i, reason: 'Timeout issue' },
@@ -127,15 +148,6 @@ function classifyWarning(message) {
     { pattern: /connection.*refused|ECONNREFUSED|network.*error|ENOTFOUND/i, reason: 'Network/connectivity issue' },
     { pattern: /database.*error|query.*failed|deadlock/i, reason: 'Database error' },
     { pattern: /quota.*exceeded|limit.*reached/i, reason: 'Quota/limit exceeded' }
-  ];
-  
-  // Noise patterns - safe to ignore
-  const noisePatterns = [
-    /deprecated|deprecation/i,
-    /\[DEBUG\]|\[INFO\].*debug/i,
-    /npm WARN|peer dep/i,
-    /experimental feature/i,
-    /development mode/i
   ];
   
   // Check if it's noise first (early exit)
