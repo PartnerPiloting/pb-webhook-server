@@ -149,6 +149,114 @@ Production errors are captured by analyzing Render logs using pattern-based dete
 ### Note on Legacy System
 Prior to Oct 9, 2025, a second system (direct error logger in `utils/errorLogger.js`) existed but has been fully removed. All error detection now uses pattern-based log analysis only.
 
+## Auto-Analyzer Testing & Validation
+
+### Auto-Analyzer Timing Configuration
+
+**Environment Variable**: `AUTO_ANALYZER_DELAY_MINUTES`
+- **Purpose**: Delay before auto-analyzer runs after job completion
+- **Default**: 6 minutes (allows background jobs to finish and write errors to logs)
+- **Location**: Set in Render environment variables
+- **Why it matters**: Background jobs (post scoring, metrics updates) continue after main script returns. Analyzer must wait for these jobs to complete and write errors to Render logs.
+
+**Background Job Timing:**
+- Typical duration: 4-6 minutes (varies by workload, API latency, rate limits)
+- Jobs run asynchronously after main endpoint returns Run ID
+- Jobs write errors to stdout/stderr with Run ID tags
+- Auto-analyzer must wait long enough to capture all background job errors
+
+**Testing Mode:**
+- Set `AUTO_ANALYZER_DELAY_MINUTES=0` to recreate original bug (misses background errors)
+- Used for Phase 2 validation (catch-up logic should back-fill missed errors)
+
+### Reconciliation API (Validation Tool)
+
+**Purpose**: Validate that auto-analyzer captured all errors for a specific run
+
+**Endpoint**: `POST /api/reconcile-errors`
+
+**Parameters:**
+```json
+{
+  "runId": "251010-192838",
+  "startTime": "2025-10-10T19:28:00.000Z"
+}
+```
+
+**Critical: Time Zone Conversion**
+- Airtable shows timestamps in **AEST** (UTC+10, Australian Eastern Standard Time)
+- Render logs are in **UTC**
+- **Conversion**: Subtract 10 hours from AEST to get UTC
+- **Example**: Oct 11 5:28am AEST = Oct 10 19:28 UTC (previous day!)
+- **Note**: AEST, not AEDT (daylight saving). Always UTC+10 offset.
+
+**Response Structure:**
+```json
+{
+  "stats": {
+    "totalInLogs": 5,
+    "totalInTable": 3,
+    "matched": 3,
+    "inLogNotInTable": 2,
+    "captureRate": 60,
+    "adjustedCaptureRate": 60
+  },
+  "errors": {
+    "matched": [...],
+    "inLogNotInTable": [...],
+    "realErrors": [...],
+    "warnings": [...]
+  }
+}
+```
+
+**Interpreting Results:**
+- **captureRate = 100%**: Auto-analyzer working perfectly
+- **captureRate < 100%**: Background jobs took longer than delay setting
+- **adjustedCaptureRate**: Excludes deprecation warnings and noise from calculation
+
+### Testing Workflow
+
+**After a run on Render:**
+1. Note the Run ID from response (e.g., `251010-192838`)
+2. Note the timestamp from Production Issues table in Airtable (in AEST)
+3. Convert AEST to UTC (subtract 10 hours)
+4. Call reconciliation API with Run ID and UTC timestamp
+5. Check `captureRate` - should be 100%
+6. If < 100%, review `inLogNotInTable` errors and their timestamps
+7. Calculate latest error timestamp minus run start time = minimum delay needed
+8. Add 1-2 minute safety margin to account for workload variability
+
+**Example Calculation:**
+- Run started: Oct 10 19:28 UTC
+- Latest error: Oct 10 19:32:19 UTC
+- Duration: 4 minutes 19 seconds
+- Recommended delay: 6 minutes (includes 1.5 min safety margin)
+
+### Phase 2: Catch-Up Logic (Planned)
+
+**Purpose**: Belt-and-suspenders approach to guarantee 100% capture even if delay is insufficient
+
+**Design:**
+1. Add "Last Analyzed Log ID" field to Job Tracking table
+2. After each auto-analyzer run, store the last log entry ID processed
+3. On next run, check previous run's record for new logs since last ID
+4. Analyze missed logs and extract errors with original Run ID (from log pattern)
+5. Save to Production Issues table with original Run ID (back-fill)
+
+**Testing Phase 2:**
+1. Set `AUTO_ANALYZER_DELAY_MINUTES=0` (recreates bug)
+2. Run job, verify capture rate < 100%
+3. Run second job (Phase 2 catches missed errors from first run)
+4. Re-run reconciliation on first run ID
+5. Should now show 100% (errors back-filled with original Run ID)
+
+**Key Files:**
+- `routes/apiAndJobRoutes.js` - Auto-analyzer invocation with delay
+- `reconcile-errors.js` - Validation utility script
+- `index.js` - API endpoint wrapper for reconciliation
+- `config/errorPatterns.js` - Error pattern matching for log analysis
+
 ## Key Integration Points
 
 ### Frontend ↔ Backend
