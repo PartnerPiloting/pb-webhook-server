@@ -831,20 +831,25 @@ async function main() {
             log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
         }
         
-        // Update aggregate metrics and complete job tracking
-        try {
-            log(`📊 Updating job tracking metrics...`);
-            await JobTracking.updateAggregateMetrics({ runId: normalizedRunId });
-            const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
-            await JobTracking.completeJob({
-                runId: normalizedRunId,
-                status: CLIENT_RUN_STATUS_VALUES.COMPLETED,
-                updates: { [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: notes }
+        // Update aggregate metrics and complete job tracking (fire-and-forget to avoid blocking return)
+        // This is non-critical metadata - the important work (job starts) already succeeded
+        log(`📊 Triggering job tracking metrics update (background)...`);
+        JobTracking.updateAggregateMetrics({ runId: normalizedRunId })
+            .then(() => {
+                const notes = `Run completed successfully. Processed ${clientsNeedingWork.length} clients with ${totalJobsStarted} operations started. Duration: ${Math.round(totalDuration / 1000)} seconds. Success Rate: ${successRate}%`;
+                return JobTracking.completeJob({
+                    runId: normalizedRunId,
+                    status: CLIENT_RUN_STATUS_VALUES.COMPLETED,
+                    updates: { [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: notes }
+                });
+            })
+            .then(() => {
+                log(`✅ Job tracking metrics updated successfully`);
+            })
+            .catch(error => {
+                log(`⚠️ Failed to update job tracking metrics: ${error.message}`, 'WARN');
             });
-            log(`✅ Job tracking metrics updated`);
-        } catch (error) {
-            log(`⚠️ Failed to update job tracking metrics: ${error.message}.`, 'WARN');
-        }
+        log(`📊 Job tracking update triggered - continuing to return...`);
         
         // Track end timestamp for log analysis
         const runEndTimestamp = new Date();
