@@ -5298,7 +5298,15 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
     
     // 🔍 AUTO-ANALYZE LOGS: Run System 1 to capture all errors to Production Issues table
     try {
-      jobLogger.info(`🔍 Starting automatic log analysis (System 1)...`);
+      // CRITICAL: Wait 2 minutes for background jobs to complete before analyzing logs
+      // Background jobs (lead scoring, post harvesting, etc.) run asynchronously and may
+      // take up to 2 minutes to finish. If we analyze immediately, we miss late errors.
+      const delayMinutes = 2;
+      const delayMs = delayMinutes * 60 * 1000;
+      jobLogger.info(`⏰ Waiting ${delayMinutes} minutes for background jobs to complete before analyzing logs...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      jobLogger.info(`✅ Wait complete. Starting automatic log analysis (System 1)...`);
+      
       const ProductionIssueService = require('../services/productionIssueService');
       const logAnalysisService = new ProductionIssueService();
       
