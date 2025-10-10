@@ -21,20 +21,80 @@ const moduleLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operati
 // NOW we can use moduleLogger safely
 moduleLogger.info(`🔍 MODULE_DEBUG: Script loading started [${new Date().toISOString()}]`);
 
-// Catch ALL errors immediately
+// Smart error handling: Continue for minor errors, exit for critical ones
 process.on('uncaughtException', (error) => {
-    moduleLogger.error(`🚨 UNCAUGHT_EXCEPTION: ${error.message}`);
-    moduleLogger.error(`🚨 STACK: ${error.stack}`);
-    process.exit(1);
+    moduleLogger.error(`🚨 UNCAUGHT EXCEPTION - CRITICAL ERROR DETECTED`);
+    moduleLogger.error(`Error Message: ${error.message}`);
+    moduleLogger.error(`Error Name: ${error.name}`);
+    moduleLogger.error(`Error Code: ${error.code || 'N/A'}`);
+    moduleLogger.error(`Error Stack: ${error.stack}`);
+    moduleLogger.error(`Process Info: PID=${process.pid}, Memory=${JSON.stringify(process.memoryUsage())}`);
+    moduleLogger.error(`Environment: NODE_ENV=${process.env.NODE_ENV}, Run ID=${process.env.SMART_RESUME_RUN_ID}`);
+    moduleLogger.error(`Timestamp: ${new Date().toISOString()}`);
+    
+    // Determine if we're running as a module (called by API) or standalone script
+    const isStandalone = require.main === module;
+    moduleLogger.error(`Running Mode: ${isStandalone ? 'STANDALONE SCRIPT' : 'MODULE (called by API)'}`);
+    
+    // Check if this is a CRITICAL error that requires immediate shutdown
+    const isCriticalError = (
+        error.code === 'ECONNREFUSED' ||      // Database/API unreachable
+        error.code === 'ENOMEM' ||            // Out of memory
+        error.code === 'ENOTFOUND' ||         // DNS/network failure
+        error.name === 'SyntaxError' ||       // Code parsing error
+        error.message?.includes('FATAL') ||    // Explicitly marked fatal
+        error.message?.includes('Cannot find module') // Missing dependency
+    );
+    
+    moduleLogger.error(`Critical Error Assessment: ${isCriticalError ? 'YES - CRITICAL' : 'NO - Recoverable'}`);
+    
+    if (isStandalone || isCriticalError) {
+        moduleLogger.error(`⚡ TERMINATING PROCESS (standalone=${isStandalone}, critical=${isCriticalError})`);
+        moduleLogger.error(`Exit code: 1`);
+        process.exit(1);
+    } else {
+        moduleLogger.error(`🔧 MODULE MODE: Non-critical error detected`);
+        moduleLogger.error(`⚠️ Background job or async operation failed, but main process will continue`);
+        moduleLogger.error(`📊 This error will be captured by auto-analyzer and saved to Production Issues table`);
+        // Don't call process.exit() - let the script continue and return Run ID
+    }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    moduleLogger.error(`🚨 UNHANDLED_REJECTION: ${reason}`);
-    moduleLogger.error(`🚨 PROMISE: ${promise}`);
-    process.exit(1);
+    moduleLogger.error(`🚨 UNHANDLED PROMISE REJECTION DETECTED`);
+    moduleLogger.error(`Rejection Reason: ${reason}`);
+    moduleLogger.error(`Rejection Stack: ${reason?.stack || 'N/A'}`);
+    moduleLogger.error(`Promise: ${promise}`);
+    moduleLogger.error(`Timestamp: ${new Date().toISOString()}`);
+    
+    // Determine if we're running as a module (called by API) or standalone script
+    const isStandalone = require.main === module;
+    moduleLogger.error(`Running Mode: ${isStandalone ? 'STANDALONE SCRIPT' : 'MODULE (called by API)'}`);
+    
+    // Check if this is a CRITICAL rejection
+    const isCriticalError = (
+        reason?.code === 'ECONNREFUSED' ||
+        reason?.code === 'ENOMEM' ||
+        reason?.code === 'ENOTFOUND' ||
+        reason?.message?.includes('FATAL') ||
+        reason?.message?.includes('Cannot find module')
+    );
+    
+    moduleLogger.error(`Critical Error Assessment: ${isCriticalError ? 'YES - CRITICAL' : 'NO - Recoverable'}`);
+    
+    if (isStandalone || isCriticalError) {
+        moduleLogger.error(`⚡ TERMINATING PROCESS (standalone=${isStandalone}, critical=${isCriticalError})`);
+        moduleLogger.error(`Exit code: 1`);
+        process.exit(1);
+    } else {
+        moduleLogger.error(`🔧 MODULE MODE: Non-critical rejection detected`);
+        moduleLogger.error(`⚠️ Background job promise failed, but main process will continue`);
+        moduleLogger.error(`📊 This error will be captured by auto-analyzer and saved to Production Issues table`);
+        // Don't call process.exit() - let the script continue and return Run ID
+    }
 });
 
-moduleLogger.info(`🔍 ERROR_HANDLERS: Installed global error handlers`);
+moduleLogger.info(`🔍 ERROR_HANDLERS: Installed smart error handlers with critical error detection`);
 moduleLogger.info(`🔍 MODULE_DEBUG: dotenv configured, NODE_ENV: ${process.env.NODE_ENV}`);
 moduleLogger.info(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_RUN_ID}`);
 
