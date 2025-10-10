@@ -1274,24 +1274,31 @@ router.post("/run-post-batch-score", async (req, res) => {
 // FIRE-AND-FORGET Post Batch Score (NEW PATTERN) 
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score-v2", async (req, res) => {
-  // Generate job ID early so we can use it in logging
-  const { generateJobId } = require('../services/clientService');
+  // CRITICAL: Consumer pattern - use parentRunId if provided, null for standalone
   const stream = req.query.stream ? parseInt(req.query.stream, 10) : (req.body?.stream || 1);
-  const tempJobId = generateJobId('post_scoring', stream);
+  const parentRunId = req.query.parentRunId || req.body?.parentRunId || null; // Master run ID (IMMUTABLE)
+  const clientRunId = req.query.clientRunId || req.body?.clientRunId || null; // Client-specific run ID from smart-resume
   const singleClientId = req.query.clientId || req.query.client_id || req.body?.clientId || null;
   
-  // Extract timestamp-only portion for cleaner logs (avoids duplicating client name)
-  // Format: "251009-153045-Guy-Wilson" → "251009-153045"
-  const timestampOnlyRunId = tempJobId.split('-').slice(0, 2).join('-');
+  // Determine mode: orchestrated (has parentRunId) vs standalone (no parentRunId)
+  const isOrchestrated = !!parentRunId;
   
-  // Create endpoint-scoped logger with timestamp-only runId
+  // For logging: use parentRunId in orchestrated mode, temp ID in standalone
+  const logRunId = isOrchestrated 
+    ? parentRunId.split('-').slice(0, 2).join('-') // Extract timestamp portion
+    : `post_scoring_standalone_${Date.now()}`;
+  
+  // Create endpoint-scoped logger
   const endpointLogger = createLogger({
-    runId: timestampOnlyRunId,
+    runId: logRunId,
     clientId: singleClientId || 'SYSTEM',
     operation: 'post_scoring_endpoint'
   });
   
   endpointLogger.info("🚀 [POST-SCORING-DEBUG] apiAndJobRoutes.js: /run-post-batch-score-v2 endpoint hit (FIRE-AND-FORGET)");
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] Mode:", isOrchestrated ? 'ORCHESTRATED' : 'STANDALONE');
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] parentRunId:", parentRunId || 'NONE');
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] clientRunId:", clientRunId || 'NONE');
   endpointLogger.info("🚀 [POST-SCORING-DEBUG] Request body:", JSON.stringify(req.body));
   endpointLogger.info("🚀 [POST-SCORING-DEBUG] Request query:", JSON.stringify(req.query));
   
@@ -1321,52 +1328,19 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     // Parse query parameters (same as original endpoint)
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : (req.body?.limit || null);
     const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true' || req.body?.dryRun === true;
-    // singleClientId already extracted above
-    // stream already extracted above
-    const parentRunId = req.query.parentRunId || req.body?.parentRunId || null; // Master run ID (IMMUTABLE)
-    const clientRunId = req.query.clientRunId || req.body?.clientRunId || null; // Client-specific run ID from smart-resume
-
-    // Use the job ID we already generated
-    let jobId = tempJobId;
     
-    // Determine if this is a standalone run or part of a parent process
-    const isStandaloneRun = !parentRunId;
+    // CRITICAL ARCHITECTURAL FIX: Consumer pattern - never generate Run ID
+    // Use parentRunId if provided (orchestrated mode), otherwise null (standalone mode)
+    const runId = parentRunId; // May be null for standalone runs
     
-    endpointLogger.info(`🎯 [POST-SCORING-DEBUG] Starting fire-and-forget post scoring: jobId=${jobId}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, ${isStandaloneRun ? 'STANDALONE MODE' : `parentRunId=${parentRunId}`}`);
+    endpointLogger.info(`🎯 [POST-SCORING-DEBUG] Starting fire-and-forget post scoring: runId=${runId || 'NONE'}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, mode=${isOrchestrated ? 'ORCHESTRATED' : 'STANDALONE'}`);
     
-    // For standalone runs, we'll skip metrics recording (simplification)
-    if (isStandaloneRun) {
-      endpointLogger.info(`ℹ️ [POST-SCORING-DEBUG] Running in standalone mode - metrics recording will be skipped (no parentRunId)`);
+    // ORCHESTRATED MODE: Job Tracking record already exists (created by smart-resume)
+    // STANDALONE MODE: No tracking - skip record creation entirely
+    if (isOrchestrated) {
+      endpointLogger.info(`ℹ️ [POST-SCORING-DEBUG] Orchestrated mode - using existing Job Tracking record: ${runId}`);
     } else {
-      endpointLogger.info(`ℹ️ [POST-SCORING-DEBUG] Running with parentRunId - metrics WILL be recorded to Client Run Results`);
-    }
-    
-    // Create a job tracking record using the orchestration service
-    try {
-      // Use job orchestration service to start job
-      const jobInfo = await jobOrchestrationService.startJob({
-        jobType: 'post_scoring',
-        clientId: singleClientId || 'SYSTEM', // Fixed: use singleClientId instead of undefined 'client'
-        initialData: {
-          [JOB_TRACKING_FIELDS.STREAM]: stream,
-          [JOB_TRACKING_FIELDS.RUN_ID]: jobId
-        },
-        options: {
-          logger: console
-        }
-      });
-      
-      // Update jobId to use the one from orchestration service
-      jobId = jobInfo.runId;
-      endpointLogger.info(`✅ Job tracking record created with ID ${jobId}`);
-    } catch (trackingError) {
-      // Continue even if tracking record creation fails (may already exist)
-      endpointLogger.warn(`⚠️ Job tracking record creation warning: ${trackingError.message}`);
-      await logRouteError(trackingError, req, { 
-        clientId: singleClientId || 'SYSTEM',
-        runId: jobId || null,
-        operation: 'create-job-tracking-post-scoring' 
-      }).catch(() => {});
+      endpointLogger.info(`ℹ️ [POST-SCORING-DEBUG] Standalone mode - no Job Tracking record will be created or updated`);
     }
     
     // FIRE-AND-FORGET: Respond immediately with 202 Accepted
@@ -1374,24 +1348,27 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
     res.status(202).json({
       status: 'accepted',
       message: 'Post scoring job started in background',
-      jobId: jobId,
+      runId: runId || 'N/A (standalone mode)',
+      mode: isOrchestrated ? 'orchestrated' : 'standalone',
       stream: stream,
       clientId: singleClientId || 'ALL',
-      mode: dryRun ? 'dryRun' : 'live',
+      dryRun: dryRun ? 'dryRun' : 'live',
       estimatedDuration: '5-30 minutes depending on client count',
-      note: 'Check job status via client tracking fields in Airtable'
+      note: isOrchestrated 
+        ? 'Check job status via Job Tracking table in Airtable'
+        : 'Standalone mode - no tracking records created, check Render logs for results'
     });
 
     // Start background processing (don't await - fire and forget!)
-    endpointLogger.info(`🔄 [POST-SCORING-DEBUG] Calling processPostScoringInBackground with jobId=${jobId}, parentRunId=${parentRunId}, clientRunId=${clientRunId}`);
-    processPostScoringInBackground(jobId, stream, {
+    endpointLogger.info(`🔄 [POST-SCORING-DEBUG] Calling processPostScoringInBackground with runId=${runId || 'null'}, parentRunId=${parentRunId || 'null'}, clientRunId=${clientRunId || 'null'}`);
+    processPostScoringInBackground(runId, stream, {
       limit,
       dryRun,
       singleClientId,
-      parentRunId, // Master run ID (IMMUTABLE)
-      clientRunId  // Client-specific run ID created by smart-resume
+      parentRunId, // Master run ID (IMMUTABLE) - may be null
+      clientRunId  // Client-specific run ID created by smart-resume - may be null
     }).catch(error => {
-      endpointLogger.error(`❌ [POST-SCORING-DEBUG] Background post scoring failed for job ${jobId}:`, error.message);
+      endpointLogger.error(`❌ [POST-SCORING-DEBUG] Background post scoring failed:`, error.message);
       endpointLogger.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
     });
 
@@ -1409,8 +1386,9 @@ router.post("/run-post-batch-score-v2", async (req, res) => {
 
 /**
  * Background processing function for fire-and-forget post scoring
+ * CRITICAL: Consumer pattern - uses provided runId (may be null for standalone mode)
  */
-async function processPostScoringInBackground(jobId, stream, options) {
+async function processPostScoringInBackground(runId, stream, options) {
   const { 
     setJobStatus, 
     setProcessingStream, 
@@ -1423,18 +1401,22 @@ async function processPostScoringInBackground(jobId, stream, options) {
   const maxJobHours = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
   const maxJobMs = maxJobHours * 60 * 60 * 1000;
   
-  // Extract timestamp-only portion for cleaner logs
-  const baseRunId = options.parentRunId || jobId;
-  const timestampOnlyRunId = baseRunId.split('-').slice(0, 2).join('-');
+  // Determine mode based on whether runId was provided
+  const isOrchestrated = !!runId;
   
-  // Create job-level logger with timestamp-only runId (avoids duplication)
+  // For logging: use runId in orchestrated mode, temp ID in standalone
+  const logRunId = isOrchestrated
+    ? runId.split('-').slice(0, 2).join('-') // Extract timestamp portion
+    : `post_scoring_bg_${Date.now()}`;
+  
+  // Create job-level logger
   const jobLogger = createLogger({
-    runId: timestampOnlyRunId,
+    runId: logRunId,
     clientId: options.singleClientId || 'MULTI-CLIENT',
     operation: 'post_scoring_batch'
   });
   
-  jobLogger.info(`🔄 [POST-SCORING-DEBUG] Background post scoring started: jobId=${jobId}, stream=${stream}, parentRunId=${options.parentRunId || 'NONE'}`);
+  jobLogger.info(`🔄 [POST-SCORING-DEBUG] Background post scoring started: runId=${runId || 'NONE'}, stream=${stream}, mode=${isOrchestrated ? 'ORCHESTRATED' : 'STANDALONE'}, parentRunId=${options.parentRunId || 'NONE'}`);
   
   try {
     // Get active clients filtered by processing stream
@@ -1469,19 +1451,26 @@ async function processPostScoringInBackground(jobId, stream, options) {
       // Check overall job timeout
       if (Date.now() - startTime > maxJobMs) {
         jobLogger.info(`⏰ Job timeout reached (${maxJobHours} hours) - stopping gracefully`);
-        await setJobStatus(client.clientId, 'post_scoring', 'JOB_TIMEOUT_KILLED', jobId, {
-          duration: formatDuration(Date.now() - startTime),
-          count: totalSuccessful
-        });
+        if (isOrchestrated) {
+          await setJobStatus(client.clientId, 'post_scoring', 'JOB_TIMEOUT_KILLED', runId, {
+            duration: formatDuration(Date.now() - startTime),
+            count: totalSuccessful
+          });
+        }
         break;
       }
 
       clientLogger.info(`🎯 [POST-SCORING-DEBUG] Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
       clientLogger.info(`🎯 [POST-SCORING-DEBUG] Client details: serviceLevel=${client.serviceLevel}, baseId=${client.airtableBaseId}`);
       
-      // Set client status (stream already set/filtered)
-      await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', jobId);
-      clientLogger.info(`✅ [POST-SCORING-DEBUG] Set job status to RUNNING for ${client.clientId}`);
+      // ORCHESTRATED MODE: Set client status in tracking tables
+      // STANDALONE MODE: Skip all status updates (no tracking)
+      if (isOrchestrated) {
+        await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', runId);
+        clientLogger.info(`✅ [POST-SCORING-DEBUG] Set job status to RUNNING for ${client.clientId}`);
+      } else {
+        clientLogger.info(`ℹ️ [POST-SCORING-DEBUG] Standalone mode - skipping job status update`);
+      }
       
       const clientStartTime = Date.now();
       
@@ -1522,11 +1511,17 @@ async function processPostScoringInBackground(jobId, stream, options) {
         clientLogger.info(`   - Errors: ${clientResult.errors || 0}`);
         clientLogger.info(`   - Duration: ${clientDuration}`);
         
-        await setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', jobId, {
-          duration: clientDuration,
-          count: postsScored
-        });
-        clientLogger.info(`✅ [POST-SCORING-DEBUG] Updated job status to COMPLETED for ${client.clientId}`);
+        // ORCHESTRATED MODE: Update job status in tracking tables
+        // STANDALONE MODE: Skip all status updates (no tracking)
+        if (isOrchestrated) {
+          await setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', runId, {
+            duration: clientDuration,
+            count: postsScored
+          });
+          clientLogger.info(`✅ [POST-SCORING-DEBUG] Updated job status to COMPLETED for ${client.clientId}`);
+        } else {
+          clientLogger.info(`ℹ️ [POST-SCORING-DEBUG] Standalone mode - skipping job status update`);
+        }
         
         // If we have a parent run ID, update the client run record with post scoring metrics
         if (options.parentRunId) {
@@ -1607,10 +1602,14 @@ async function processPostScoringInBackground(jobId, stream, options) {
         const isTimeout = error.message.includes('timeout');
         const status = isTimeout ? 'CLIENT_TIMEOUT_KILLED' : 'FAILED';
         
-        await setJobStatus(client.clientId, 'post_scoring', status, jobId, {
-          duration: clientDuration,
-          count: 0
-        });
+        // ORCHESTRATED MODE: Update job status in tracking tables
+        // STANDALONE MODE: Skip all status updates (no tracking)
+        if (isOrchestrated) {
+          await setJobStatus(client.clientId, 'post_scoring', status, runId, {
+            duration: clientDuration,
+            count: 0
+          });
+        }
         
         clientLogger.error(`❌ ${client.clientName} ${isTimeout ? 'TIMEOUT' : 'FAILED'}: ${error.message}`);
         clientLogger.error(`❌ Error stack:`, error.stack);
@@ -1620,24 +1619,29 @@ async function processPostScoringInBackground(jobId, stream, options) {
 
     // Final summary
     const totalDuration = formatDuration(Date.now() - startTime);
-    jobLogger.info(`🎉 Fire-and-forget post scoring completed: ${jobId}`);
+    jobLogger.info(`🎉 Fire-and-forget post scoring completed: ${runId || 'STANDALONE'}`);
     jobLogger.info(`📊 Summary: ${totalSuccessful} successful, ${totalFailed} failed, ${totalProcessed} posts scored, ${totalDuration}`);
 
   } catch (error) {
-    jobLogger.error(`❌ Fatal error in background post scoring ${jobId}:`, error.message);
+    jobLogger.error(`❌ Fatal error in background post scoring ${runId || 'STANDALONE'}:`, error.message);
     jobLogger.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
     await logRouteError(error).catch(() => {});
   } finally {
     // ALWAYS analyze logs, even if post-scoring failed
     // This ensures we capture ALL errors, including fatal ones
-    try {
-      jobLogger.info(`🔍 Analyzing logs for post-scoring run: ${runId}`);
-      const { analyzeRecentLogs } = require('../services/productionIssueService');
-      await analyzeRecentLogs(runId);
-      jobLogger.info(`✅ Post-scoring log analysis complete for ${runId}`);
-    } catch (analyzeError) {
-      jobLogger.error(`❌ Failed to analyze post-scoring logs for ${runId}:`, analyzeError.message);
-      // Don't throw - log analysis failure shouldn't break the run
+    // But ONLY if we have a runId (orchestrated mode)
+    if (runId) {
+      try {
+        jobLogger.info(`🔍 Analyzing logs for post-scoring run: ${runId}`);
+        const { analyzeRecentLogs } = require('../services/productionIssueService');
+        await analyzeRecentLogs(runId);
+        jobLogger.info(`✅ Post-scoring log analysis complete for ${runId}`);
+      } catch (analyzeError) {
+        jobLogger.error(`❌ Failed to analyze post-scoring logs for ${runId}:`, analyzeError.message);
+        // Don't throw - log analysis failure shouldn't break the run
+      }
+    } else {
+      jobLogger.info(`ℹ️ Standalone mode - skipping log analysis`);
     }
   }
 }
