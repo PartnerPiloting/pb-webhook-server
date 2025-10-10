@@ -824,12 +824,20 @@ async function main() {
             reportData.errors = [];
         }
         
-        const emailResult = await emailService.sendExecutionReport(reportData);
-        if (emailResult.sent) {
-            log(`📧 ✅ Completion report sent successfully`);
-        } else {
-            log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
-        }
+        // Send email report (fire-and-forget - don't block return for email delivery)
+        log(`📧 Triggering completion report email (background)...`);
+        emailService.sendExecutionReport(reportData)
+            .then(emailResult => {
+                if (emailResult.sent) {
+                    log(`📧 ✅ Completion report sent successfully`);
+                } else {
+                    log(`📧 ❌ Email report failed: ${emailResult.reason}`, 'WARN');
+                }
+            })
+            .catch(error => {
+                log(`📧 ❌ Email send error: ${error.message}`, 'WARN');
+            });
+        log(`📧 Email send triggered - continuing...`);
         
         // Update aggregate metrics and complete job tracking (fire-and-forget to avoid blocking return)
         // This is non-critical metadata - the important work (job starts) already succeeded
