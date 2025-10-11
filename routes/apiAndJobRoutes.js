@@ -5,6 +5,7 @@ const router = express.Router();
 const fetch = (...args) =>
   import("node-fetch").then(({ default: f }) => f(...args));
 const dirtyJSON = require('dirty-json');
+const { logErrorWithStackTrace } = require('../utils/errorHandler');
 
 // ---------------------------------------------------------------
 // Dependencies
@@ -1574,8 +1575,15 @@ async function processPostScoringInBackground(runId, stream, options) {
               clientLogger.error(`❌ [ERROR] Failed to update metrics: ${updateResult ? updateResult.error || 'Unknown error' : 'No update result returned'}`);
             }
           } catch (metricError) {
-            clientLogger.error(`❌ [POST-SCORING-DEBUG] METRICS UPDATE: Failed:`, metricError.message);
-            clientLogger.error(`❌ [POST-SCORING-DEBUG] METRICS UPDATE: Stack:`, metricError.stack);
+            // Log metrics update failure with stack trace capture
+            await logErrorWithStackTrace(metricError, {
+              runId: runId || 'STANDALONE',
+              clientId: client.clientId,
+              context: `Post scoring metrics update failed for ${client.clientName}`,
+              loggerName: 'POST-SCORING',
+              operation: 'metricsUpdate',
+            });
+            
             // Use standardized error handling
             handleClientError(client.clientId, 'post_scoring_metrics', metricError, {
               logger: console,
@@ -1623,8 +1631,15 @@ async function processPostScoringInBackground(runId, stream, options) {
     jobLogger.info(`📊 Summary: ${totalSuccessful} successful, ${totalFailed} failed, ${totalProcessed} posts scored, ${totalDuration}`);
 
   } catch (error) {
-    jobLogger.error(`❌ Fatal error in background post scoring ${runId || 'STANDALONE'}:`, error.message);
-    jobLogger.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
+    // Log fatal post scoring error with stack trace capture
+    await logErrorWithStackTrace(error, {
+      runId: runId || 'STANDALONE',
+      clientId: null,
+      context: `Fatal error in background post scoring ${runId || 'STANDALONE'}`,
+      loggerName: 'POST-SCORING',
+      operation: 'backgroundPostScoring',
+    });
+    
     await logRouteError(error).catch(() => {});
   } finally {
     // ALWAYS analyze logs, even if post-scoring failed
