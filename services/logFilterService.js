@@ -115,9 +115,16 @@ function extractMetadata(context) {
   const clientMatch = context.match(/client(?:Id)?[:\s]+([a-zA-Z0-9-]+)/i);
   if (clientMatch) metadata.clientId = clientMatch[1];
   
-  // Extract run ID
-  const runMatch = context.match(/run(?:Id)?[:\s]+([a-zA-Z0-9-]+)/i);
-  if (runMatch) metadata.runId = runMatch[1];
+  // Extract run ID - try multiple patterns
+  // Pattern 1: [YYMMDD-HHMMSS] format (most common in error messages)
+  const runIdBracketMatch = context.match(/\[(\d{6}-\d{6})\]/);
+  if (runIdBracketMatch) {
+    metadata.runId = runIdBracketMatch[1];
+  } else {
+    // Pattern 2: runId: format
+    const runMatch = context.match(/run(?:Id)?[:\s]+([a-zA-Z0-9-]+)/i);
+    if (runMatch) metadata.runId = runMatch[1];
+  }
   
   // Extract stream parameter from URL query strings
   // Matches: ?stream=1, &stream=2, stream=3
