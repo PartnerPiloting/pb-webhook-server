@@ -6,6 +6,7 @@
 
 const { filterLogs, generateSummary } = require('./logFilterService');
 const RenderLogService = require('./renderLogService');
+const StackTraceService = require('./stackTraceService');
 const { getMasterClientsBase } = require('../config/airtableClient');
 const { createSafeLogger } = require('../utils/loggerHelper');
 
@@ -443,6 +444,24 @@ class ProductionIssueService {
     // Optional fields
     if (issue.stackTrace) {
       fields[FIELDS.STACK_TRACE] = issue.stackTrace.substring(0, 100000);
+    }
+    
+    // Look up stack trace from Stack Traces table if timestamp marker found
+    if (issue.stackTraceTimestamp) {
+      try {
+        const stackTraceService = new StackTraceService();
+        const stackTrace = await stackTraceService.lookupStackTrace(issue.stackTraceTimestamp);
+        
+        if (stackTrace) {
+          logger.debug('createProductionIssue', `Found stack trace for timestamp: ${issue.stackTraceTimestamp}`);
+          fields[FIELDS.STACK_TRACE] = stackTrace.substring(0, 100000);
+        } else {
+          logger.debug('createProductionIssue', `No stack trace found for timestamp: ${issue.stackTraceTimestamp}`);
+        }
+      } catch (lookupError) {
+        // Stack trace lookup failed - not critical, just log and continue
+        logger.debug('createProductionIssue', `Failed to lookup stack trace: ${lookupError.message}`);
+      }
     }
 
     if (issue.runType) {

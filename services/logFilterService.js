@@ -98,6 +98,21 @@ function parseTimestamp(logLine) {
 }
 
 /**
+ * Extract stack trace timestamp marker from context
+ * Looks for STACKTRACE:2025-10-11T06:37:15.323456789Z markers
+ * @param {string} context - Log context string
+ * @returns {string|null} - Timestamp string or null
+ */
+function extractStackTraceTimestamp(context) {
+  // Pattern: STACKTRACE:YYYY-MM-DDTHH:MM:SS.NNNNNNNNNZ
+  const stackTraceMatch = context.match(/STACKTRACE:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)/);
+  if (stackTraceMatch) {
+    return stackTraceMatch[1];
+  }
+  return null;
+}
+
+/**
  * Extract metadata from context (client ID, run ID, etc.)
  * @param {string} context - Log context string
  * @returns {Object} - Extracted metadata
@@ -109,6 +124,7 @@ function extractMetadata(context) {
     runType: null,
     service: null,
     stream: null,  // Add stream field
+    stackTraceTimestamp: null,  // Add stack trace timestamp
   };
   
   // Extract client ID
@@ -130,6 +146,9 @@ function extractMetadata(context) {
   // Matches: ?stream=1, &stream=2, stream=3
   const streamMatch = context.match(/[?&]stream=(\d+)/i);
   if (streamMatch) metadata.stream = streamMatch[1];
+  
+  // Extract stack trace timestamp marker
+  metadata.stackTraceTimestamp = extractStackTraceTimestamp(context);
   
   // Detect run type from context
   if (context.includes('smart-resume') || context.includes('smartResume')) {
@@ -250,6 +269,7 @@ function filterLogs(logText, options = {}) {
       clientId: metadata.clientId,
       service: metadata.service,
       stream: metadata.stream, // Add stream number
+      stackTraceTimestamp: metadata.stackTraceTimestamp, // Add stack trace timestamp for lookup
       occurrences: 1,
       firstSeen: timestamp,
       lastSeen: timestamp,

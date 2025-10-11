@@ -444,6 +444,84 @@ async function getFieldCase(base, tableName, fieldName, defaultCase = null) {
   }
 }
 
+/**
+ * Log an error with stack trace capture to Stack Traces table
+ * Logs errors with STACKTRACE: markers for analyzer pickup
+ * @param {Error} error - The error object with stack trace
+ * @param {Object} options - Error context
+ * @param {string} options.runId - Run ID for this operation
+ * @param {string} options.clientId - Client ID (optional)
+ * @param {string} options.context - Additional context for the error
+ * @param {string} options.loggerName - Name for the logger (default: 'ERROR-HANDLER')
+ * @param {string} options.operation - Operation name (default: 'logError')
+ * @returns {Promise<string|null>} - Timestamp of saved stack trace or null
+ */
+async function logErrorWithStackTrace(error, options = {}) {
+  const {
+    runId,
+    clientId = null,
+    context = '',
+    loggerName = 'ERROR-HANDLER',
+    operation = 'logError',
+  } = options;
+
+  // Create logger
+  const errorLogger = createSafeLogger(loggerName, operation);
+
+  // Extract error details
+  const errorMessage = error?.message || String(error);
+  const stackTrace = error?.stack || new Error().stack;
+
+  try {
+    // Load StackTraceService dynamically to avoid circular dependencies
+    const StackTraceService = require('../services/stackTraceService');
+    
+    // Generate unique timestamp for stack trace lookup
+    const timestamp = StackTraceService.generateUniqueTimestamp();
+
+    // Save stack trace to Stack Traces table
+    const stackTraceService = new StackTraceService();
+    await stackTraceService.saveStackTrace({
+      timestamp,
+      runId,
+      clientId,
+      errorMessage,
+      stackTrace,
+    });
+
+    // Log error with STACKTRACE: marker for analyzer to detect
+    const contextPrefix = context ? `${context} - ` : '';
+    const runIdTag = runId ? `[${runId}] ` : '';
+    const clientIdTag = clientId ? `[Client: ${clientId}] ` : '';
+    
+    errorLogger.error(
+      operation,
+      `${runIdTag}${clientIdTag}${contextPrefix}${errorMessage} STACKTRACE:${timestamp}`
+    );
+
+    return timestamp;
+  } catch (stackTraceError) {
+    // Stack trace saving failed - still log the error without marker
+    errorLogger.error(operation, `${errorMessage}`);
+    errorLogger.debug(operation, `Failed to save stack trace: ${stackTraceError.message}`);
+    return null;
+  }
+}
+
+/**
+ * Async wrapper for logErrorWithStackTrace (fire-and-forget)
+ * Use when you don't need to wait for stack trace to be saved
+ * @param {Error} error - The error object
+ * @param {Object} options - Error context (same as logErrorWithStackTrace)
+ */
+function logErrorAsync(error, options = {}) {
+  // Fire and forget - don't wait for stack trace saving
+  logErrorWithStackTrace(error, options).catch(err => {
+    // Fallback logging if even the error handler fails
+    console.error('[ERROR-HANDLER] Critical failure:', err.message);
+  });
+}
+
 module.exports = {
   handleClientError,
   validateFields,
@@ -451,5 +529,7 @@ module.exports = {
   safeFieldUpdate,
   getFieldCase,
   getFieldTypes,
-  convertValueToType
+  convertValueToType,
+  logErrorWithStackTrace,
+  logErrorAsync,
 };

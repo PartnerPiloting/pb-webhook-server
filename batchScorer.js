@@ -4,6 +4,7 @@ require("dotenv").config();
 
 // Import structured context logger
 const { createLogger } = require('./utils/contextLogger');
+const { logErrorWithStackTrace } = require('./utils/errorHandler');
 
 // Create module-level logger for initialization
 const initLogger = createLogger({
@@ -112,7 +113,14 @@ async function enqueue(recs, clientId, clientBase, runId = 'UNKNOWN') {
         try {
             await scoreChunk(chunk, chunkClientId, chunkClientBase, chunkRunId || 'UNKNOWN');
         } catch (err) {
-            chunkLogger.error(`CHUNK FATAL ERROR for client [${chunkClientId || 'unknown'}] chunk of ${chunk.length} records: ${err.message}`, err.stack);
+            // Log error with stack trace capture
+            await logErrorWithStackTrace(err, {
+                runId: chunkTimestampRunId,
+                clientId: chunkClientId,
+                context: `CHUNK FATAL ERROR - Batch Scoring chunk of ${chunk.length} records`,
+                loggerName: 'BATCH-SCORER',
+                operation: 'scoreChunk',
+            });
             
             // Log critical batch scoring errors to Airtable
             await logCriticalError(err, {
@@ -455,8 +463,15 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
             log.warn(`Gemini API call finished with non-STOP reason: ${modelFinishReasonForBatch}. SafetyRatings: ${JSON.stringify(candidate.safetyRatings)}`);
         }
 
-    } catch (error) { 
-        log.error(`Gemini API call failed: ${error.message}`);
+    } catch (error) {
+        await logErrorWithStackTrace(error, {
+            runId: runId || 'UNKNOWN',
+            clientId: clientId,
+            context: `Gemini API call failed for chunk of ${scorable.length} leads`,
+            loggerName: 'BATCH-SCORER',
+            operation: 'geminiAPICall',
+        });
+        
         await alertAdmin("Gemini API Call Failed (batchScorer Chunk)", `Client: ${clientId || 'unknown'}\nError: ${error.message}\\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – API Error", "Date Scored": new Date().toISOString() } }));
         if (failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for API failed leads: ${e.message}`));
@@ -527,7 +542,7 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
             log.warn("Gemini batch response was not an array, attempting to wrap it.");
             outputArray = [outputArray]; 
         }
-    } catch (parseErr) { 
+    } catch (parseErr) {
         // Enhanced JSON parse error debugging
         const jsonParseFailInfo = {
             batchId: batchId,
@@ -539,8 +554,15 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
             last100Chars: rawResponseText.substring(Math.max(0, rawResponseText.length - 100))
         };
         
+        await logErrorWithStackTrace(parseErr, {
+            runId: runId || 'UNKNOWN',
+            clientId: clientId,
+            context: `JSON parse failed - ${JSON.stringify(jsonParseFailInfo)}`,
+            loggerName: 'BATCH-SCORER',
+            operation: 'parseGeminiResponse',
+        });
+        
         log.error(`🚨 JSON_PARSE_FAILED: ${JSON.stringify(jsonParseFailInfo)}`);
-        log.error(`Failed to parse Gemini JSON: ${parseErr.message}. Raw (first 500 chars): ${rawResponseText.substring(0, 500)}... Finish Reason: ${modelFinishReasonForBatch}`);
         await alertAdmin("Gemini JSON Parse Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${parseErr.message}\nRaw: ${rawResponseText.substring(0, 500)}...\nChunk Lead IDs (first 5): ${scorable.slice(0,5).map(s=>s.id).join(', ')}`);
         const failedUpdates = scorable.map(item => ({ id: item.rec.id, fields: { "Scoring Status": "Failed – Parse Error", "Date Scored": new Date().toISOString() } }));
         if (failedUpdates.length > 0 && clientBase) for (let i = 0; i < failedUpdates.length; i += 10) await clientBase("Leads").update(failedUpdates.slice(i, i+10)).catch(e => log.error(`Airtable update error for parse-failed leads: ${e.message}`));
@@ -558,6 +580,14 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         positives = attrs.positives;
         negatives = attrs.negatives;
     } catch (attrErr) {
+        await logErrorWithStackTrace(attrErr, {
+            runId: runId || 'UNKNOWN',
+            clientId: clientId,
+            context: `Failed to load attributes for client ${clientId || 'unknown'}`,
+            loggerName: 'BATCH-SCORER',
+            operation: 'loadAttributes',
+        });
+        
         log.error(`Failed to load attributes for client ${clientId || 'unknown'}: ${attrErr.message}`);
         await alertAdmin("Attribute Loading Failed (batchScorer)", `Client: ${clientId || 'unknown'}\nError: ${attrErr.message}`);
         // Mark all leads as failed due to attribute loading error
@@ -1009,7 +1039,13 @@ async function run(req, res, dependencies) {
                 clientLogger.info(`Client processing completed. Processed: ${clientProcessed}, Successful: ${clientSuccessful}, Failed: ${clientFailed}, Tokens: ${clientTokensUsed}`);
 
             } catch (clientError) {
-                clientLogger.error(`Fatal client processing error:`, clientError);
+                await logErrorWithStackTrace(clientError, {
+                    runId: runId,
+                    clientId: clientId,
+                    context: `Fatal client processing error for ${clientId}`,
+                    loggerName: 'BATCH-SCORER',
+                    operation: 'processClientLeads',
+                });
                 
                 // Log critical client processing errors to Airtable
                 await logCriticalError(clientError, {

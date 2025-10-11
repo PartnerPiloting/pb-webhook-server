@@ -12,6 +12,7 @@
  */
 
 const { createLogger } = require('../utils/contextLogger');
+const { logErrorWithStackTrace } = require('../utils/errorHandler');
 // Old error logger removed - now using Render log analysis
 const logCriticalError = async () => {}; // No-op
 const { validateString, validateRequiredParams } = require('../utils/simpleValidator');
@@ -321,7 +322,14 @@ class JobTracking {
         startTime
       };
     } catch (error) {
-      log.error(`Error creating job tracking record: ${error.message}`);
+      await logErrorWithStackTrace(error, {
+        runId: safeRunId,
+        clientId: null,
+        context: `Error creating job tracking record for ${safeRunId}`,
+        loggerName: 'JOB-TRACKING',
+        operation: 'createJobRecord',
+      });
+      
       await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
@@ -458,7 +466,14 @@ class JobTracking {
         ...updates
       };
     } catch (error) {
-      log.error(`Error updating job tracking record: ${error.message}`);
+      await logErrorWithStackTrace(error, {
+        runId: safeRunId,
+        clientId: null,
+        context: `Error updating job tracking record for ${safeRunId}`,
+        loggerName: 'JOB-TRACKING',
+        operation: 'updateJobRecord',
+      });
+      
       await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
@@ -574,7 +589,14 @@ class JobTracking {
         startTime
       };
     } catch (error) {
-      log.error(`Error creating client run record: ${error.message}`);
+      await logErrorWithStackTrace(error, {
+        runId: standardRunId,
+        clientId: safeClientId,
+        context: `Error creating client run record for ${safeClientId} with run ID ${standardRunId}`,
+        loggerName: 'JOB-TRACKING',
+        operation: 'createClientRun',
+      });
+      
       await logCriticalError(error, { context: 'Service error (before throw)', service: 'jobTracking.js' }).catch(() => {});
       throw error;
     }
@@ -667,8 +689,16 @@ class JobTracking {
       // CRITICAL FIX: Never create records in update paths
       // Removed the createIfMissing option entirely to enforce the pattern
       if (!records || records.length === 0) {
-        // Record not found - log error but don't throw to prevent breaking flows
-        log.error(`Client run record not found for ${clientRunId} - cannot update non-existent record`);
+        // Record not found - log with stack trace capture
+        const recordNotFoundError = new Error(`Client run record not found for ${clientRunId} - cannot update non-existent record`);
+        await logErrorWithStackTrace(recordNotFoundError, {
+          runId: safeRunId,
+          clientId,
+          context: `[RECORD_NOT_FOUND] Update client run failed - record not found for ${clientRunId}`,
+          loggerName: 'JOB-TRACKING',
+          operation: 'updateClientRun',
+        });
+        
         return {
           success: false,
           error: 'record_not_found',
@@ -1081,7 +1111,16 @@ class JobTracking {
         source: `${source}_metrics_existence_check`
       }
     });    if (!recordExists) {
-      log.error(`[RECORD_NOT_FOUND] Client run record does not exist for ${safeRunId}/${safeClientId}. Cannot update metrics.`);
+      // Log with stack trace capture for debugging
+      const recordNotFoundError = new Error(`Client run record does not exist for ${safeRunId}/${safeClientId}. Cannot update metrics.`);
+      await logErrorWithStackTrace(recordNotFoundError, {
+        runId: safeRunId,
+        clientId: safeClientId,
+        context: '[RECORD_NOT_FOUND] Update metrics failed - record not found',
+        loggerName: 'JOB-TRACKING',
+        operation: 'updateClientMetrics',
+      });
+      
       return {
         success: false,
         error: 'record_not_found',
