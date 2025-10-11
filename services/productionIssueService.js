@@ -424,6 +424,20 @@ class ProductionIssueService {
     const finalRunId = issue.runId || runId;
     if (finalRunId) {
       fields[FIELDS.RUN_ID] = finalRunId;
+      
+      // Look up Stream from Job Tracking table if Run ID is available
+      try {
+        const JobTracking = require('./jobTracking');
+        const { JOB_TRACKING_FIELDS } = require('../constants/airtableUnifiedConstants');
+        const jobRecord = await JobTracking.getJobById(finalRunId);
+        
+        if (jobRecord && jobRecord.fields && jobRecord.fields[JOB_TRACKING_FIELDS.STREAM]) {
+          fields[FIELDS.STREAM] = jobRecord.fields[JOB_TRACKING_FIELDS.STREAM];
+        }
+      } catch (lookupError) {
+        // Stream lookup failed - not critical, just log and continue
+        logger.debug(`Could not look up Stream for Run ID ${finalRunId}: ${lookupError.message}`);
+      }
     }
 
     // Optional fields
@@ -435,7 +449,8 @@ class ProductionIssueService {
       fields[FIELDS.RUN_TYPE] = issue.runType;
     }
 
-    if (issue.stream) {
+    // Only set stream from issue if we didn't already get it from Job Tracking
+    if (!fields[FIELDS.STREAM] && issue.stream) {
       fields[FIELDS.STREAM] = parseInt(issue.stream, 10);
     }
 
