@@ -389,6 +389,128 @@ app.post('/api/analyze-logs/text', async (req, res) => {
 });
 
 /**
+ * TEST ENDPOINT: Verify STACKTRACE markers are written to Render logs
+ * GET /api/test-stacktrace-markers
+ * NO AUTH - Quick test endpoint
+ * 
+ * This endpoint:
+ * 1. Triggers an error with stack trace
+ * 2. Waits 3 seconds for Render to capture logs
+ * 3. Fetches recent Render logs
+ * 4. Searches for STACKTRACE markers
+ * 5. Returns PASS/FAIL with details
+ */
+app.get('/api/test-stacktrace-markers', async (req, res) => {
+    const testLogger = createLogger({ runId: 'TEST', clientId: 'STACKTRACE-TEST', operation: 'test_stacktrace' });
+    
+    try {
+        testLogger.info('🧪 Starting STACKTRACE marker test...');
+        
+        // Step 1: Trigger an error with stack trace
+        const { logErrorWithStackTrace } = require('./utils/errorHandler');
+        const testError = new Error('TEST ERROR: STACKTRACE marker verification test');
+        const testRunId = 'TEST-' + Date.now();
+        
+        testLogger.info(`Triggering test error with Run ID: ${testRunId}`);
+        
+        const timestamp = await logErrorWithStackTrace(testError, {
+            runId: testRunId,
+            clientId: 'STACKTRACE-TEST',
+            context: '[TEST] Verifying STACKTRACE markers',
+            loggerName: 'TEST',
+            operation: 'testStackTrace'
+        });
+        
+        testLogger.info(`✅ Error logged with timestamp: ${timestamp}`);
+        
+        // Step 2: Wait for Render to capture logs
+        testLogger.info('Waiting 3 seconds for Render to capture logs...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Step 3: Fetch recent Render logs directly from Render API
+        testLogger.info('Fetching recent Render logs from Render API...');
+        const https = require('https');
+        const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
+        const RENDER_API_KEY = process.env.RENDER_API_KEY;
+        
+        if (!RENDER_SERVICE_ID || !RENDER_API_KEY) {
+            throw new Error('RENDER_SERVICE_ID or RENDER_API_KEY not configured');
+        }
+        
+        // Fetch logs from last 5 minutes
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        const now = new Date().toISOString();
+        
+        const logText = await new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.render.com',
+                path: `/v1/services/${RENDER_SERVICE_ID}/logs?startTime=${fiveMinutesAgo}&endTime=${now}&limit=10000`,
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${RENDER_API_KEY}`,
+                    'Accept': 'application/json'
+                }
+            };
+            
+            https.get(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        const logs = parsed.map(entry => entry.message || entry.log || '').join('\n');
+                        resolve(logs);
+                    } catch (e) {
+                        resolve(data); // Return raw if not JSON
+                    }
+                });
+            }).on('error', reject);
+        });
+        
+        // Step 4: Search for STACKTRACE markers
+        const foundTimestamp = logText.includes(`STACKTRACE:${timestamp}`);
+        const debugBefore = logText.includes('[DEBUG-STACKTRACE] About to log STACKTRACE marker');
+        const debugAfter = logText.includes('[DEBUG-STACKTRACE] STACKTRACE marker logged successfully');
+        
+        const allStacktraceMarkers = (logText.match(/STACKTRACE:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z/g) || []).length;
+        
+        // Step 5: Return results
+        const passed = foundTimestamp && debugBefore && debugAfter;
+        
+        res.json({
+            ok: true,
+            testPassed: passed,
+            timestamp: timestamp,
+            runId: testRunId,
+            checks: {
+                specificTimestampFound: foundTimestamp,
+                debugMarkerBefore: debugBefore,
+                debugMarkerAfter: debugAfter
+            },
+            stats: {
+                totalStacktraceMarkers: allStacktraceMarkers,
+                logLength: logText.length
+            },
+            verdict: passed 
+                ? '🎉 SUCCESS! STACKTRACE markers ARE being written to Render logs!' 
+                : '❌ FAIL: STACKTRACE markers NOT found in Render logs',
+            nextSteps: passed
+                ? 'System is working! Stack traces will be linked to Production Issues.'
+                : 'Check errorHandler.js - console.log may not be writing to Render stdout'
+        });
+        
+    } catch (error) {
+        testLogger.error('Test failed:', error);
+        res.status(500).json({
+            ok: false,
+            testPassed: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+});
+
+/**
  * Auto-analyze the latest run from Job Tracking
  * POST /api/auto-analyze-latest-run
  * NO AUTHENTICATION REQUIRED (public endpoint like smart-resume)
