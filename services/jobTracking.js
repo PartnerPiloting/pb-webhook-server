@@ -690,10 +690,13 @@ class JobTracking {
       // Removed the createIfMissing option entirely to enforce the pattern
       if (!records || records.length === 0) {
         // Record not found - log with stack trace capture
+        // Extract base run ID (first 13 chars: YYMMDD-HHMMSS) from potentially combined run ID
+        const baseRunId = clientRunId.substring(0, 13);
+        
         const recordNotFoundError = new Error(`Client run record not found for ${clientRunId} - cannot update non-existent record`);
         await logErrorWithStackTrace(recordNotFoundError, {
-          runId: safeRunId,
-          clientId,
+          runId: baseRunId,  // Use base run ID, not client run ID
+          clientId: safeClientId,  // Use the validated client ID
           context: `[RECORD_NOT_FOUND] Update client run failed - record not found for ${clientRunId}`,
           loggerName: 'JOB-TRACKING',
           operation: 'updateClientRun',
@@ -1112,9 +1115,12 @@ class JobTracking {
       }
     });    if (!recordExists) {
       // Log with stack trace capture for debugging
+      // Extract base run ID (first 13 chars: YYMMDD-HHMMSS) from potentially combined run ID
+      const baseRunId = safeRunId.substring(0, 13);
+      
       const recordNotFoundError = new Error(`Client run record does not exist for ${safeRunId}/${safeClientId}. Cannot update metrics.`);
       await logErrorWithStackTrace(recordNotFoundError, {
-        runId: safeRunId,
+        runId: baseRunId,  // Use base run ID only
         clientId: safeClientId,
         context: '[RECORD_NOT_FOUND] Update metrics failed - record not found',
         loggerName: 'JOB-TRACKING',
