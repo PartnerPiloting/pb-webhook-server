@@ -5305,9 +5305,9 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
       // CRITICAL: Wait for background jobs to complete before analyzing logs
       // Background jobs (lead scoring, post harvesting, etc.) run asynchronously and may
       // take up to 2 minutes to finish. If we analyze immediately, we miss late errors.
-      // Default: 2 minutes (safe buffer for 20-second background jobs)
-      // Testing: Set AUTO_ANALYZER_DELAY_MINUTES=0 to recreate original bug for Phase 2 testing
-      const delayMinutes = parseInt(process.env.AUTO_ANALYZER_DELAY_MINUTES) || 2;
+      // Set AUTO_ANALYZER_DELAY_MINUTES environment variable (recommended: 6 minutes)
+      // Set to 0 for immediate analysis (testing Phase 2 catch-up logic)
+      const delayMinutes = parseInt(process.env.AUTO_ANALYZER_DELAY_MINUTES) || 0;
       const delayMs = delayMinutes * 60 * 1000;
       
       if (delayMinutes > 0) {
