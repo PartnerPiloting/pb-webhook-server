@@ -5327,68 +5327,77 @@ async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLi
       const runIdForAnalysis = global.smartResumeRealRunId;
       
       if (runIdForAnalysis) {
-        // ========== PHASE 1: Analyze current run ==========
-        jobLogger.info(`🔍 PHASE 1: Analyzing logs for runId: ${runIdForAnalysis}`);
-        
-        // Analyze logs filtered by runId (uses Job Tracking table for time window)
-        const analysisResults = await logAnalysisService.analyzeRecentLogs({ runId: runIdForAnalysis });
-        
-        jobLogger.info(`✅ PHASE 1 complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
-        
-        if (analysisResults.issues > 0) {
-          jobLogger.info(`📋 ${analysisResults.createdRecords} errors saved to Production Issues table (runId: ${runIdForAnalysis})`);
-        } else {
-          jobLogger.info(`🎉 No errors detected in logs for runId ${runIdForAnalysis} - clean run!`);
-        }
-        
-        // Store last analyzed log timestamp for Phase 2 catch-up
-        if (analysisResults.lastLogTimestamp) {
-          try {
-            await JobTracking.updateJob({
-              runId: runIdForAnalysis,
-              updates: {
-                [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: analysisResults.lastLogTimestamp
-              }
-            });
-            jobLogger.info(`📍 Stored last analyzed timestamp: ${analysisResults.lastLogTimestamp}`);
-          } catch (updateError) {
-            jobLogger.error(`⚠️ Failed to store last analyzed timestamp: ${updateError.message}`);
-          }
-        }
-        
-        // ========== PHASE 2: Catch-up logic for previous run ==========
-        jobLogger.info(`🔄 PHASE 2: Checking previous run for missed errors...`);
+        // ========== CONTINUOUS STREAMING LOG ANALYSIS ==========
+        // Analyzes logs from last checkpoint (Last Analyzed Log ID) to now
+        // This catches both current run's errors AND any missed errors from previous runs
+        jobLogger.info(`🔍 Starting continuous streaming log analysis for runId: ${runIdForAnalysis}`);
         
         try {
-          // Get previous run
+          // Get previous run to find where we left off
           const previousRun = await JobTracking.getPreviousRun(runIdForAnalysis);
           
+          let startTimestamp;
+          let isFirstRun = false;
+          
           if (previousRun && previousRun.fields) {
+            // Continue from where previous run left off
             const previousRunId = previousRun.fields[JOB_TRACKING_FIELDS.RUN_ID];
-            jobLogger.info(`📋 Found previous run: ${previousRunId}`);
+            startTimestamp = previousRun.fields[JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID];
             
-            // Run catch-up analysis
-            const catchUpResults = await logAnalysisService.catchUpPreviousRun(
-              previousRunId,
-              runIdForAnalysis
-            );
-            
-            if (catchUpResults.success) {
-              if (catchUpResults.backFilledErrors > 0) {
-                jobLogger.info(`✅ PHASE 2 complete: Back-filled ${catchUpResults.backFilledErrors} missed errors for run ${previousRunId}`);
-              } else {
-                jobLogger.info(`✅ PHASE 2 complete: No missed errors found for run ${previousRunId} (${catchUpResults.reason})`);
-              }
+            if (startTimestamp) {
+              jobLogger.info(`📍 Found previous run ${previousRunId} - continuing from ${startTimestamp}`);
             } else {
-              jobLogger.warn(`⚠️ PHASE 2 skipped: ${catchUpResults.reason}`);
+              // Previous run exists but has no timestamp, use its start time
+              startTimestamp = previousRun.fields[JOB_TRACKING_FIELDS.START_TIME];
+              jobLogger.info(`� Previous run ${previousRunId} has no Last Analyzed timestamp - starting from its start time: ${startTimestamp}`);
             }
           } else {
-            jobLogger.info(`ℹ️ PHASE 2: No previous run found - this may be the first run`);
+            // First run ever - analyze from current run's start time
+            isFirstRun = true;
+            const currentRunRecord = await JobTracking.getJobById(runIdForAnalysis);
+            if (currentRunRecord && currentRunRecord.fields) {
+              startTimestamp = currentRunRecord.fields[JOB_TRACKING_FIELDS.START_TIME];
+              jobLogger.info(`� First run detected - starting analysis from current run start time: ${startTimestamp}`);
+            } else {
+              // Fallback to current time minus 1 hour
+              const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+              startTimestamp = oneHourAgo;
+              jobLogger.warn(`⚠️ Could not find current run record - starting from 1 hour ago: ${startTimestamp}`);
+            }
           }
-        } catch (catchUpError) {
-          // Catch-up failure should not break the flow
-          jobLogger.error(`⚠️ PHASE 2 failed: ${catchUpError.message}`);
-          jobLogger.info(`ℹ️ PHASE 1 still captured errors for current run`);
+          
+          // Analyze logs from startTimestamp to now (continuous streaming)
+          const analysisResults = await logAnalysisService.analyzeLogsFromTimestamp({
+            startTimestamp,
+            runId: runIdForAnalysis
+          });
+          
+          jobLogger.info(`✅ Log analysis complete: Found ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+          
+          if (analysisResults.issues > 0) {
+            jobLogger.info(`📋 ${analysisResults.createdRecords} errors saved to Production Issues table`);
+          } else {
+            jobLogger.info(`🎉 No errors detected in logs - clean run!`);
+          }
+          
+          // Store last analyzed log timestamp for next run to continue from
+          if (analysisResults.lastLogTimestamp) {
+            try {
+              await JobTracking.updateJob({
+                runId: runIdForAnalysis,
+                updates: {
+                  [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: analysisResults.lastLogTimestamp
+                }
+              });
+              jobLogger.info(`📍 Stored last analyzed timestamp: ${analysisResults.lastLogTimestamp}`);
+            } catch (updateError) {
+              jobLogger.error(`⚠️ Failed to store last analyzed timestamp: ${updateError.message}`);
+            }
+          }
+          
+        } catch (analysisError) {
+          jobLogger.error(`⚠️ Log analysis failed: ${analysisError.message}`);
+          jobLogger.error(`Stack trace: ${analysisError.stack}`);
         }
         
       } else {

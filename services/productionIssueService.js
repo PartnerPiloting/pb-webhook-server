@@ -214,6 +214,108 @@ class ProductionIssueService {
   }
 
   /**
+   * Analyze logs from a specific timestamp (continuous streaming approach)
+   * This method replaces the Phase 1 + Phase 2 approach with a single continuous scan
+   * @param {Object} options - Analysis options
+   * @param {string} options.startTimestamp - ISO timestamp to start from (where previous run left off)
+   * @param {string} options.runId - Current run ID (for logging purposes)
+   * @returns {Promise<Object>} - Analysis results
+   */
+  async analyzeLogsFromTimestamp(options = {}) {
+    const {
+      startTimestamp,
+      runId = null,
+      serviceId = process.env.RENDER_SERVICE_ID,
+    } = options;
+
+    if (!startTimestamp) {
+      throw new Error('startTimestamp is required for analyzeLogsFromTimestamp');
+    }
+
+    try {
+      const endTime = new Date().toISOString(); // Analyze up to now
+      
+      logger.info(`Continuous streaming analysis: ${startTimestamp} → ${endTime}${runId ? ` (current run: ${runId})` : ''}`);
+      
+      // Fetch logs from Render with pagination
+      logger.debug('Fetching logs from Render API with pagination...');
+      
+      let allLogs = [];
+      let hasMore = true;
+      let currentStartTime = startTimestamp;
+      let pageCount = 0;
+      const maxPages = 10; // Safety limit
+      
+      while (hasMore && pageCount < maxPages) {
+        pageCount++;
+        
+        const result = await this.renderLogService.getServiceLogs(serviceId, {
+          startTime: currentStartTime,
+          endTime,
+          limit: 1000
+        });
+        
+        allLogs = allLogs.concat(result.logs || []);
+        
+        hasMore = result.hasMore;
+        if (hasMore && result.nextStartTime) {
+          currentStartTime = result.nextStartTime;
+        }
+      }
+      
+      logger.debug(`Fetched ${allLogs.length} total logs across ${pageCount} pages`);
+
+      // Capture last log timestamp for next run to continue from
+      let lastLogTimestamp = null;
+      if (allLogs.length > 0) {
+        const lastLog = allLogs[allLogs.length - 1];
+        lastLogTimestamp = lastLog.timestamp || endTime;
+        logger.debug(`Last log timestamp: ${lastLogTimestamp}`);
+      }
+
+      // Convert log data to text
+      let logText = this.convertLogsToText(allLogs);
+      const totalLines = logText.split('\n').length;
+      
+      logger.debug(`Processing ${totalLines} log lines (no runId filter - will extract from errors)`);
+      
+      // Filter logs for issues WITHOUT runId filtering
+      // This allows us to catch errors from ALL runs in this time window
+      // Each error will be tagged with its own Run ID extracted from the log message
+      const issues = filterLogs(logText, {
+        deduplicateIssues: true,
+        contextSize: 25,
+        runIdFilter: null, // No filter - catch all errors and extract their Run IDs
+      });
+
+      logger.debug(`Found ${issues.length} unique issues across all runs in time window`);
+
+      // Create Airtable records
+      // Note: createProductionIssues will use the Run ID extracted from each error message
+      const createdRecords = await this.createProductionIssues(issues, null);
+
+      // Generate summary
+      const summary = generateSummary(issues);
+
+      logger.info('analyzeLogsFromTimestamp', `Analysis complete: ${summary.critical} critical, ${summary.error} errors, ${summary.warning} warnings`);
+
+      return {
+        success: true,
+        summary,
+        issues: issues.length,
+        createdRecords: createdRecords.length,
+        timeRange: { startTime: startTimestamp, endTime, source: 'continuous-streaming' },
+        lastLogTimestamp, // Store this for next run to continue from
+        runId: runId || null,
+      };
+
+    } catch (error) {
+      logger.error('analyzeLogsFromTimestamp', `Analysis failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Filter log text to only include lines with the specified runId
    * Uses hybrid approach: includes matching runId + lines without ANY runId pattern
    * @param {string} logText - Raw log text
