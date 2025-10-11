@@ -1444,7 +1444,7 @@ async function processPostScoringInBackground(runId, stream, options) {
       // Extract timestamp-only portion for client logger (cleaner logs)
       // Create client-specific logger with timestamp-only runId
       const clientLogger = createLogger({
-        runId: timestampOnlyRunId,  // Reuse the timestamp from job logger
+        runId: logRunId,  // Reuse the timestamp from job logger
         clientId: client.clientId,
         operation: 'post_scoring_client'
       });
