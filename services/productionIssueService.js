@@ -420,9 +420,10 @@ class ProductionIssueService {
       [FIELDS.LAST_SEEN]: issue.lastSeen.toISOString(),
     };
 
-    // Add Run ID if provided
-    if (runId) {
-      fields[FIELDS.RUN_ID] = runId;
+    // Add Run ID - prioritize issue.runId (extracted from error message), fall back to parameter
+    const finalRunId = issue.runId || runId;
+    if (finalRunId) {
+      fields[FIELDS.RUN_ID] = finalRunId;
     }
 
     // Optional fields

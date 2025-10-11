@@ -239,8 +239,10 @@ function filterLogs(logText, options = {}) {
       context,
       stackTrace,
       runType: metadata.runType,
+      runId: metadata.runId, // Extract Run ID from error message/context
       clientId: metadata.clientId,
       service: metadata.service,
+      stream: metadata.stream, // Add stream number
       occurrences: 1,
       firstSeen: timestamp,
       lastSeen: timestamp,
