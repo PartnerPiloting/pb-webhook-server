@@ -494,9 +494,19 @@ async function logErrorWithStackTrace(error, options = {}) {
     const runIdTag = runId ? `[${runId}] ` : '';
     const clientIdTag = clientId ? `[Client: ${clientId}] ` : '';
     
+    // Debug: Confirm function is called
+    console.log(`[DEBUG-STACKTRACE] About to log STACKTRACE marker: ${timestamp}`);
+    
+    // Use direct console.log to ensure marker appears in Render logs (contextLogger may not write to stdout)
+    console.log(`[ERROR] ${runIdTag}${clientIdTag}${contextPrefix}${errorMessage} STACKTRACE:${timestamp}`);
+    
+    // Also log via contextLogger for consistency
     errorLogger.error(
       `${runIdTag}${clientIdTag}${contextPrefix}${errorMessage} STACKTRACE:${timestamp}`
     );
+    
+    // Debug: Confirm marker was logged
+    console.log(`[DEBUG-STACKTRACE] STACKTRACE marker logged successfully`);
 
     return timestamp;
   } catch (stackTraceError) {
