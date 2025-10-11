@@ -495,15 +495,14 @@ async function logErrorWithStackTrace(error, options = {}) {
     const clientIdTag = clientId ? `[Client: ${clientId}] ` : '';
     
     errorLogger.error(
-      operation,
       `${runIdTag}${clientIdTag}${contextPrefix}${errorMessage} STACKTRACE:${timestamp}`
     );
 
     return timestamp;
   } catch (stackTraceError) {
     // Stack trace saving failed - still log the error without marker
-    errorLogger.error(operation, `${errorMessage}`);
-    errorLogger.debug(operation, `Failed to save stack trace: ${stackTraceError.message}`);
+    errorLogger.error(`${errorMessage}`);
+    errorLogger.debug(`Failed to save stack trace: ${stackTraceError.message}`);
     return null;
   }
 }
