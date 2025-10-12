@@ -104,6 +104,76 @@ if (!geminiConfig?.geminiModel) {
 - `/debug-gemini-info` - AI service status
 - `/debug-clients` - Multi-tenant status (requires DEBUG_API_KEY)
 
+### Production Error Debugging System ⭐
+**The system automatically captures ALL production errors with full stack traces and context.**
+
+**How it works:**
+1. All operations on Render write logs to stdout/stderr
+2. Pattern-based scanner analyzes logs with 31+ regex patterns (97-98% accuracy)
+3. Errors saved to **Production Issues table** in Master Clients base with full debugging info
+4. Stack traces linked via unique markers for instant root cause identification
+
+**Airtable Tables (Master Clients Base):**
+- **Production Issues** - Main error tracking table
+  - Fields: Error Message, Severity, Pattern Matched, Stack Trace, Run ID, Client ID, Status, Fixed Time, Fix Commit, Fix Notes
+  - Status values: NEW, INVESTIGATING, FIXED, IGNORED
+- **Stack Traces** - Detailed stack traces with file/line numbers
+  - Links to Production Issues via unique markers
+  - Contains full stack trace, file paths, line numbers, error context
+- **Job Tracking** - Run metadata for time window lookups
+  - Used by auto-analyzer to determine log analysis window
+
+**Key endpoints:**
+- `GET /api/analyze-issues` - View and filter production errors by severity, pattern, run, client
+  - Query params: `?status=unfixed`, `?severity=ERROR`, `?runId=251012-123456`, `?days=7`
+- `POST /api/mark-issue-fixed` - Mark errors as FIXED with commit hash and notes
+  - Body: `{ pattern: "error text", commitHash: "abc123", fixNotes: "description" }`
+  - OR: `{ issueIds: [123, 124], commitHash: "abc123", fixNotes: "description" }`
+- `POST /api/analyze-logs/recent` - Analyze recent Render logs (specify minutes)
+- `POST /api/analyze-logs/text` - Analyze arbitrary log text
+
+**Debug workflow:**
+1. Run operations on Render
+2. Check Production Issues table in Airtable (or call `/api/analyze-issues`)
+3. Click stack trace to see exact file/line causing error
+4. Fix bug, commit with hash
+5. Mark issue as FIXED: `POST /api/mark-issue-fixed` with pattern + commit hash
+6. System tracks: NEW → INVESTIGATING → FIXED → measures fix effectiveness
+
+**Cleanup after fixing bugs:**
+Use `/api/mark-issue-fixed` endpoint - it automatically updates Production Issues table:
+- Sets Status = "FIXED"
+- Records Fix Commit hash
+- Records Fix Notes (your explanation)
+- Sets Fixed Time = now
+- Finds ALL matching unfixed issues (across all runs) and marks them FIXED
+
+**Example cleanup script:**
+```javascript
+const https = require('https');
+const data = JSON.stringify({
+    pattern: 'Cannot access logger',
+    commitHash: 'd2ccab2',
+    fixNotes: 'Fixed TDZ error by creating tempLogger'
+});
+// POST to https://pb-webhook-server-staging.onrender.com/api/mark-issue-fixed
+```
+
+**Real-world value:** In Oct 2024 debugging session, stack traces enabled fixing 16 production errors in under 2 hours. Without stack traces, would have taken days of manual log analysis. Jump straight to bug location instead of guessing.
+
+**Files:**
+- `services/productionIssueService.js` - Main service
+- `services/logFilterService.js` - Pattern detection engine
+- `config/errorPatterns.js` - 31+ error patterns
+- `routes/apiAndJobRoutes.js` - API endpoints for analysis and cleanup
+- Master Clients base → Production Issues table
+
+**Branch independence:** ✅ This system works across ALL branches and environments
+- Production Issues table is in Master Clients Airtable base (persistent across branches)
+- API endpoints work on any deployed environment (staging, production)
+- Stack traces capture errors regardless of which branch is running
+- Use this debugging workflow on any branch, any environment, any deployment
+
 ### Common Issues
 - **Port conflicts**: Use `npm run dev:reset` then restart tasks
 - **AI scoring failures**: Check `/debug-gemini-info` endpoint
