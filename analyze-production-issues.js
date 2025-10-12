@@ -27,9 +27,16 @@ if (!process.env.AIRTABLE_API_KEY) {
 }
 
 const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
-console.log(`[analyze-production-issues.js] DEBUG [${new Date().toISOString()}]: MASTER_CLIENTS_BASE_ID = "${process.env.MASTER_CLIENTS_BASE_ID}"`);
-console.log(`[analyze-production-issues.js] DEBUG [${new Date().toISOString()}]: Using base ID: ${MASTER_BASE_ID}`);
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
+console.log(`[analyze-production-issues.js] MODULE LOAD [${new Date().toISOString()}]: MASTER_CLIENTS_BASE_ID = "${process.env.MASTER_CLIENTS_BASE_ID}"`);
+console.log(`[analyze-production-issues.js] MODULE LOAD [${new Date().toISOString()}]: Creating Airtable connection to base: ${MASTER_BASE_ID}`);
+
+// Create base connection fresh each time (avoid module-level caching issues)
+function getBase() {
+  console.log(`[analyze-production-issues.js] getBase() [${new Date().toISOString()}]: Connecting to ${MASTER_BASE_ID}`);
+  return new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
+}
+
+const base = getBase();
 
 /* ------------------------------------------------------------------
    Parse command-line arguments
@@ -91,6 +98,9 @@ function buildFilter(args) {
 async function fetchIssues(filterFormula, limit) {
   const issues = [];
   
+  // Get fresh base connection each time to avoid stale cached connections
+  const freshBase = getBase();
+  
   const queryOptions = {
     maxRecords: limit,
     sort: [{ field: 'Timestamp', direction: 'desc' }],
@@ -102,7 +112,7 @@ async function fetchIssues(filterFormula, limit) {
     queryOptions.filterByFormula = filterFormula;
   }
 
-  const query = base('Production Issues').select(queryOptions);
+  const query = freshBase('Production Issues').select(queryOptions);
 
   await query.eachPage((records, fetchNextPage) => {
     records.forEach(record => {
