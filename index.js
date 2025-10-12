@@ -815,6 +815,19 @@ app.get('/api/analyze-issues', async (req, res) => {
             });
         }
         
+        // If format=raw, return raw issues array without analysis
+        if (args.format === 'raw') {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            return res.json({
+                success: true,
+                total: issues.length,
+                filters: args,
+                issues: issues
+            });
+        }
+        
         const analysis = analyzeIssues(issues);
         
         // Convert Map to Array for JSON serialization
