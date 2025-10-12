@@ -1063,6 +1063,132 @@ app.post('/api/mark-issue-fixed', async (req, res) => {
 });
 
 /**
+ * POST /api/delete-production-issues
+ * AUTH REQUIRED
+ * 
+ * Permanently DELETE Production Issues matching a pattern (and their stack traces)
+ * Use this for cleanup instead of marking as FIXED when you want to remove false positives
+ * 
+ * Request body:
+ * {
+ *   "pattern": "error text to search",    // Text to search in Error Message
+ *   "issueIds": [123, 124],               // OR: specific Issue IDs to delete
+ *   "reason": "Why deleting"              // Required: explanation
+ * }
+ * 
+ * Returns:
+ * {
+ *   "success": true,
+ *   "deleted": { "productionIssues": 5, "stackTraces": 3 }
+ * }
+ */
+app.post('/api/delete-production-issues', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    
+    try {
+        const { pattern, issueIds, reason } = req.body;
+        
+        if (!reason) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Reason is required for deletion' 
+            });
+        }
+        
+        if (!pattern && !issueIds) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Must provide either pattern or issueIds' 
+            });
+        }
+        
+        moduleLogger.info(`[DELETE-ISSUES] Pattern: ${pattern || 'N/A'}, IDs: ${issueIds || 'N/A'}, Reason: ${reason}`);
+        
+        const Airtable = require('airtable');
+        const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+        
+        let productionIssueRecords;
+        
+        // Find Production Issues to delete
+        if (issueIds && issueIds.length > 0) {
+            const issueIdConditions = issueIds.map(id => `{Issue ID} = ${id}`).join(', ');
+            const filterFormula = `OR(${issueIdConditions})`;
+            
+            productionIssueRecords = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+        } else if (pattern) {
+            const filterFormula = `OR(
+                SEARCH("${pattern}", {Error Message}) > 0,
+                SEARCH("${pattern}", {Pattern Matched}) > 0
+            )`;
+            
+            productionIssueRecords = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+        }
+        
+        if (!productionIssueRecords || productionIssueRecords.length === 0) {
+            return res.json({
+                success: true,
+                deleted: { productionIssues: 0, stackTraces: 0 },
+                message: 'No issues found matching criteria'
+            });
+        }
+        
+        moduleLogger.info(`[DELETE-ISSUES] Found ${productionIssueRecords.length} Production Issues to delete`);
+        
+        // Collect stack trace IDs linked to these issues
+        const stackTraceIds = productionIssueRecords
+            .map(r => r.get('Stack Trace'))
+            .flat()
+            .filter(id => id);
+        
+        // Delete Production Issues (in batches of 10)
+        let deletedIssues = 0;
+        for (let i = 0; i < productionIssueRecords.length; i += 10) {
+            const batch = productionIssueRecords.slice(i, i + 10).map(r => r.id);
+            await base('Production Issues').destroy(batch);
+            deletedIssues += batch.length;
+            moduleLogger.info(`[DELETE-ISSUES] Deleted batch ${Math.floor(i/10) + 1} (${batch.length} Production Issues)`);
+        }
+        
+        // Delete linked Stack Traces (in batches of 10)
+        let deletedStackTraces = 0;
+        if (stackTraceIds.length > 0) {
+            for (let i = 0; i < stackTraceIds.length; i += 10) {
+                const batch = stackTraceIds.slice(i, i + 10);
+                await base('Stack Traces').destroy(batch);
+                deletedStackTraces += batch.length;
+                moduleLogger.info(`[DELETE-ISSUES] Deleted batch ${Math.floor(i/10) + 1} (${batch.length} Stack Traces)`);
+            }
+        }
+        
+        moduleLogger.info(`✅ [DELETE-ISSUES] Deleted ${deletedIssues} Production Issues and ${deletedStackTraces} Stack Traces. Reason: ${reason}`);
+        
+        res.json({
+            success: true,
+            deleted: {
+                productionIssues: deletedIssues,
+                stackTraces: deletedStackTraces
+            },
+            reason: reason
+        });
+        
+    } catch (error) {
+        moduleLogger.error('[DELETE-ISSUES] Failed to delete issues:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message, 
+            stack: error.stack 
+        });
+    }
+});
+
+/**
  * POST /api/cleanup-record-not-found-errors
  * AUTH REQUIRED
  * 
