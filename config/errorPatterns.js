@@ -58,9 +58,10 @@ const ERROR_PATTERNS = {
     /scoring failed/i,
     /batch.*failed/i,
     
-    // HTTP error codes (4xx, 5xx)
+    // HTTP error codes (4xx, 5xx) - require context to avoid false positives
     /status\s*[45]\d{2}/i,
-    /\b(404|500|502|503|504)\b/,
+    /(?:http|error|status|code|response).*?\b(404|500|502|503|504)\b/i,
+    /\b(404|500|502|503|504)\b.*?(?:error|status|code|response|http)/i,
     
     // API timeouts
     /ETIMEDOUT/i,
