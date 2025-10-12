@@ -1457,7 +1457,6 @@ class JobTracking {
       // CRITICAL FIX: Check for existing status in finalMetrics using both legacy and standardized field names
       // Determine final status based on metrics using constants
       let status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
-      const hasErrors = finalMetrics[CLIENT_RUN_FIELDS.ERRORS] && finalMetrics[CLIENT_RUN_FIELDS.ERRORS] > 0;
       const noLeadsProcessed = (!finalMetrics[CLIENT_RUN_FIELDS.PROFILES_EXAMINED_FOR_SCORING] || 
                                 finalMetrics[CLIENT_RUN_FIELDS.PROFILES_EXAMINED_FOR_SCORING] === 0) &&
                               (!finalMetrics[CLIENT_RUN_FIELDS.POSTS_EXAMINED_FOR_SCORING] || 
@@ -1488,9 +1487,6 @@ class JobTracking {
       
       // Build comprehensive system notes
       const notes = [];
-      if (hasErrors) {
-        notes.push(`Completed with ${finalMetrics[CLIENT_RUN_FIELDS.ERRORS]} errors`);
-      }
       if (finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SCORED]) {
         notes.push(`Scored ${finalMetrics[CLIENT_RUN_FIELDS.PROFILES_SCORED]} profiles`);
       }

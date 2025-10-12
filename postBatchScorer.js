@@ -592,8 +592,7 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         const finalMetrics = {
             [FIELD_NAMES.POSTS_EXAMINED]: clientResult.postsProcessed || 0,
             [FIELD_NAMES.POSTS_SCORED]: clientResult.postsScored || 0,
-            [FIELD_NAMES.POST_SCORING_TOKENS]: clientResult.totalTokensUsed || 0,
-            [FIELD_NAMES.ERRORS]: clientResult.errors || 0
+            [FIELD_NAMES.POST_SCORING_TOKENS]: clientResult.totalTokensUsed || 0
         };
         
         // Use the validator to ensure all field names are correct
