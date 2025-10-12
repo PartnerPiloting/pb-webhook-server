@@ -659,12 +659,10 @@ class JobTracking {
         };
       }
       
-      // CRITICAL: In orchestrated runs, the runId passed here is ALREADY the complete 
-      // client run ID (e.g., "251007-041822-Guy-Wilson") created by the orchestrator.
-      // We use it EXACTLY as-is with NO reconstruction or suffix manipulation.
-      const clientRunId = standardRunId;
-      
-      log.debug(`Using client run ID exactly as passed: ${clientRunId}`);
+      // CRITICAL FIX: Add client suffix to match how records are created
+      // CREATE uses: JobTracking.addClientSuffix(standardRunId, clientId)
+      // UPDATE must use the SAME format to find the record
+      const clientRunId = JobTracking.addClientSuffix(standardRunId, safeClientId);
       
       if (!clientRunId) {
         log.error(`Failed to create client run ID for ${standardRunId} and ${safeClientId}`);
@@ -682,7 +680,7 @@ class JobTracking {
       
       // Search by BOTH Run ID AND Client ID to find the correct record
       const records = await masterBase(CLIENT_RUN_RESULTS_TABLE).select({
-        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${clientId}')`,
+        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = '${clientRunId}', {${CLIENT_RUN_FIELDS.CLIENT_ID}} = '${safeClientId}')`,
         maxRecords: 1
       }).firstPage();
       
