@@ -38,8 +38,20 @@ const FIELDS = {
 
 class ProductionIssueService {
   constructor() {
-    this.renderLogService = new RenderLogService();
+    // Lazy initialization - only create RenderLogService when needed
+    // This prevents crashes when RENDER_API_KEY is missing but service isn't used
+    this._renderLogService = null;
     this.masterBase = getMasterClientsBase();
+  }
+
+  /**
+   * Get or create RenderLogService instance (lazy initialization)
+   */
+  get renderLogService() {
+    if (!this._renderLogService) {
+      this._renderLogService = new RenderLogService();
+    }
+    return this._renderLogService;
   }
 
   /**
