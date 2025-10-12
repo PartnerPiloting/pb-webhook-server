@@ -1482,8 +1482,8 @@ class JobTracking {
       const updates = {
         ...finalMetrics,
         [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
-        [CLIENT_RUN_FIELDS.STATUS]: status,
-        [CLIENT_RUN_FIELDS.PROCESSING_COMPLETED]: true
+        [CLIENT_RUN_FIELDS.STATUS]: status
+        // Note: PROCESSING_COMPLETED field removed - doesn't exist in Airtable schema
       };
       
       // Build comprehensive system notes
