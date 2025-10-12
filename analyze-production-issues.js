@@ -18,8 +18,15 @@
 
 const Airtable = require('airtable');
 
-// Initialize Airtable
-const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID || 'appuSM90MqrdM1e4U';
+// Initialize Airtable - FAIL LOUDLY if not configured
+if (!process.env.MASTER_CLIENTS_BASE_ID) {
+  throw new Error('FATAL: MASTER_CLIENTS_BASE_ID environment variable not set');
+}
+if (!process.env.AIRTABLE_API_KEY) {
+  throw new Error('FATAL: AIRTABLE_API_KEY environment variable not set');
+}
+
+const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
 
 /* ------------------------------------------------------------------
