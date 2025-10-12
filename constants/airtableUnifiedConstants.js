@@ -278,6 +278,19 @@ const CLIENT_EXECUTION_LOG_FIELDS = {
   NEXT_ACTION: 'Next Action'
 };
 
+// Property keys for execution data objects passed to formatExecutionLog()
+// These are lowercase to match JavaScript camelCase naming conventions
+const EXECUTION_DATA_KEYS = {
+  STATUS: 'status',
+  LEADS_PROCESSED: 'leadsProcessed',
+  POST_SCORING: 'postScoring',
+  DURATION: 'duration',
+  TOKENS_USED: 'tokensUsed',
+  ERRORS: 'errors',
+  PERFORMANCE: 'performance',
+  NEXT_ACTION: 'nextAction'
+};
+
 // Field names for the Apify table in Master Clients Base
 const APIFY_FIELDS = {
   APIFY_RUN_ID: 'Apify Run ID', // Primary field - Apify run identifier
@@ -367,6 +380,7 @@ module.exports = {
   CONNECTION_STATUS_VALUES,
   LEAD_STATUS_VALUES,
   CLIENT_EXECUTION_LOG_FIELDS,
+  EXECUTION_DATA_KEYS,
   APIFY_FIELDS,
   APIFY_STATUS_VALUES,
   POST_FIELDS,

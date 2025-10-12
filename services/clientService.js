@@ -14,7 +14,7 @@ const logger = createLogger({
 });
 // Removed old error logger - now using production issue tracking
 const logCriticalError = async () => {};
-const { MASTER_TABLES, CLIENT_EXECUTION_LOG_FIELDS } = require('../constants/airtableUnifiedConstants');
+const { MASTER_TABLES, CLIENT_EXECUTION_LOG_FIELDS, EXECUTION_DATA_KEYS } = require('../constants/airtableUnifiedConstants');
 const { parseServiceLevel } = require('../utils/serviceLevel');
 const { safeFieldUpdate } = require('../utils/errorHandler');
 
@@ -320,16 +320,16 @@ function formatExecutionLog(executionData) {
         return `=== EXECUTION: ${new Date().toISOString()} ===\nStatus: Error - Invalid execution data\n`;
     }
     
-    // Destructure with simple property names (not using constants as keys)
+    // Destructure using constants for property keys
     const {
-        status = 'Unknown',
-        leadsProcessed = { successful: 0, failed: 0, total: 0 },
-        postScoring = { successful: 0, failed: 0, total: 0 },
-        duration = 'Unknown',
-        tokensUsed = 0,
-        errors = [],
-        performance = {},
-        nextAction = ''
+        [EXECUTION_DATA_KEYS.STATUS]: status = 'Unknown',
+        [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: leadsProcessed = { successful: 0, failed: 0, total: 0 },
+        [EXECUTION_DATA_KEYS.POST_SCORING]: postScoring = { successful: 0, failed: 0, total: 0 },
+        [EXECUTION_DATA_KEYS.DURATION]: duration = 'Unknown',
+        [EXECUTION_DATA_KEYS.TOKENS_USED]: tokensUsed = 0,
+        [EXECUTION_DATA_KEYS.ERRORS]: errors = [],
+        [EXECUTION_DATA_KEYS.PERFORMANCE]: performance = {},
+        [EXECUTION_DATA_KEYS.NEXT_ACTION]: nextAction = ''
     } = executionData;
 
     const timestamp = new Date().toISOString();
@@ -379,16 +379,16 @@ async function logExecution(clientId, executionData) {
         if (executionData.type === 'POST_SCORING') {
             // For post scoring, format the log appropriately
             const formattedData = {
-                [CLIENT_EXECUTION_LOG_FIELDS.STATUS]: executionData.status || 'Unknown',
-                leadsProcessed: { successful: 0, failed: 0, total: 0 }, // No leads processed in post scoring
-                postScoring: { 
+                [EXECUTION_DATA_KEYS.STATUS]: executionData.status || 'Unknown',
+                [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: { successful: 0, failed: 0, total: 0 }, // No leads processed in post scoring
+                [EXECUTION_DATA_KEYS.POST_SCORING]: { 
                     successful: executionData.postsScored || 0, 
                     failed: (executionData.postsProcessed || 0) - (executionData.postsScored || 0),
                     total: executionData.postsProcessed || 0
                 },
-                duration: `${executionData.duration || 0}s`,
-                tokensUsed: 0, // We don't track tokens in post scoring yet
-                errors: executionData.errorDetails || []
+                [EXECUTION_DATA_KEYS.DURATION]: `${executionData.duration || 0}s`,
+                [EXECUTION_DATA_KEYS.TOKENS_USED]: 0, // We don't track tokens in post scoring yet
+                [EXECUTION_DATA_KEYS.ERRORS]: executionData.errorDetails || []
             };
             logEntry = formatExecutionLog(formattedData);
         } else {
