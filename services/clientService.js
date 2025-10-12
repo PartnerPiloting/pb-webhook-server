@@ -335,32 +335,32 @@ function formatExecutionLog(executionData) {
     const timestamp = new Date().toISOString();
     
     let logEntry = `=== EXECUTION: ${timestamp} ===\n`;
-    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.STATUS}: ${status}\n`;
-    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.LEADS_PROCESSED}: ${leadsProcessed.successful}/${leadsProcessed.total} successful\n`;
+    logEntry += `Status: ${status}\n`;
+    logEntry += `Leads Processed: ${leadsProcessed.successful}/${leadsProcessed.total} successful\n`;
     
     if (postScoring.total > 0) {
-        logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.POSTS_SCORED}: ${postScoring.successful}/${postScoring.total} successful\n`;
+        logEntry += `Posts Scored: ${postScoring.successful}/${postScoring.total} successful\n`;
     }
     
-    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.DURATION}: ${duration}\n`;
-    logEntry += `${CLIENT_EXECUTION_LOG_FIELDS.TOKENS_USED}: ${tokensUsed}\n`;
+    logEntry += `Duration: ${duration}\n`;
+    logEntry += `Tokens Used: ${tokensUsed}\n`;
 
     if (errors.length > 0) {
-        logEntry += `\n${CLIENT_EXECUTION_LOG_FIELDS.ERRORS}:\n`;
+        logEntry += `\nErrors:\n`;
         errors.forEach(error => {
             logEntry += `- ${error}\n`;
         });
     }
 
     if (Object.keys(performance).length > 0) {
-        logEntry += `\n${CLIENT_EXECUTION_LOG_FIELDS.PERFORMANCE}:\n`;
+        logEntry += `\nPerformance:\n`;
         Object.entries(performance).forEach(([key, value]) => {
             logEntry += `- ${key}: ${value}\n`;
         });
     }
 
     if (nextAction) {
-        logEntry += `\n${CLIENT_EXECUTION_LOG_FIELDS.NEXT_ACTION}: ${nextAction}`;
+        logEntry += `\nNext Action: ${nextAction}`;
     }
 
     return logEntry;
