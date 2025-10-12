@@ -28,15 +28,8 @@ if (!process.env.AIRTABLE_API_KEY) {
 
 const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
 console.log(`[analyze-production-issues.js] MODULE LOAD [${new Date().toISOString()}]: MASTER_CLIENTS_BASE_ID = "${process.env.MASTER_CLIENTS_BASE_ID}"`);
-console.log(`[analyze-production-issues.js] MODULE LOAD [${new Date().toISOString()}]: Creating Airtable connection to base: ${MASTER_BASE_ID}`);
 
-// Create base connection fresh each time (avoid module-level caching issues)
-function getBase() {
-  console.log(`[analyze-production-issues.js] getBase() [${new Date().toISOString()}]: Connecting to ${MASTER_BASE_ID}`);
-  return new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
-}
-
-const base = getBase();
+// NO module-level base connection - each function creates fresh connection to avoid caching
 
 /* ------------------------------------------------------------------
    Parse command-line arguments
@@ -94,17 +87,18 @@ function buildFilter(args) {
 /* ------------------------------------------------------------------
    Fetch all Production Issues matching filter
    GUARANTEED FRESH DATA - no caching, matches Airtable UI exactly
+   Uses .all() instead of .eachPage() to prevent iterator caching
 ------------------------------------------------------------------ */
 async function fetchIssues(filterFormula, limit) {
-  const issues = [];
+  // Create completely fresh Airtable connection every single time
+  const freshAirtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
+  const freshBase = freshAirtable.base(process.env.MASTER_CLIENTS_BASE_ID);
   
-  // Get fresh base connection each time to avoid stale cached connections
-  const freshBase = getBase();
+  console.log(`[fetchIssues] Creating fresh connection to base: ${process.env.MASTER_CLIENTS_BASE_ID}`);
   
   const queryOptions = {
     maxRecords: limit,
     sort: [{ field: 'Timestamp', direction: 'desc' }],
-    // Force fresh data by using view that shows all records
     view: 'All Issues'  // This ensures we see exactly what the Airtable UI shows
   };
 
@@ -112,24 +106,22 @@ async function fetchIssues(filterFormula, limit) {
     queryOptions.filterByFormula = filterFormula;
   }
 
-  const query = freshBase('Production Issues').select(queryOptions);
+  // Use .all() instead of .eachPage() to get fresh results
+  const records = await freshBase('Production Issues').select(queryOptions).all();
+  
+  console.log(`[fetchIssues] Fresh query returned ${records.length} records`);
 
-  await query.eachPage((records, fetchNextPage) => {
-    records.forEach(record => {
-      issues.push({
-        id: record.id,
-        runId: record.get('Run ID') || 'N/A',
-        timestamp: record.get('Timestamp'),
-        severity: record.get('Severity') || 'UNKNOWN',
-        pattern: record.get('Pattern Matched') || 'UNKNOWN',
-        message: record.get('Error Message') || '',
-        stream: record.get('Stream') || '',
-        clientId: record.get('Client ID') || 'N/A',
-        stackTrace: record.get('Stack Trace') || null
-      });
-    });
-    fetchNextPage();
-  });
+  const issues = records.map(record => ({
+    id: record.id,
+    runId: record.get('Run ID') || 'N/A',
+    timestamp: record.get('Timestamp'),
+    severity: record.get('Severity') || 'UNKNOWN',
+    pattern: record.get('Pattern Matched') || 'UNKNOWN',
+    message: record.get('Error Message') || '',
+    stream: record.get('Stream') || '',
+    clientId: record.get('Client ID') || 'N/A',
+    stackTrace: record.get('Stack Trace') || null
+  }));
 
   return issues;
 }
