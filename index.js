@@ -389,6 +389,43 @@ app.post('/api/analyze-logs/text', async (req, res) => {
 });
 
 /**
+ * POST /api/run-daily-log-analyzer
+ * TEST ENDPOINT: Runs the daily-log-analyzer utility on demand
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: { runId?: "251013-100000" } (optional - if omitted, runs in auto mode from last checkpoint)
+ */
+app.post('/api/run-daily-log-analyzer', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { runId } = req.body || {};
+        
+        moduleLogger.info(`🔍 Running daily-log-analyzer via API${runId ? ` for runId: ${runId}` : ' (auto mode - from last checkpoint)'}`);
+        
+        // Import and run the daily log analyzer
+        const { runDailyLogAnalysis } = require('./daily-log-analyzer');
+        
+        // Pass runId as option parameter instead of command line arg
+        const results = await runDailyLogAnalysis({ runId });
+        
+        res.json({ 
+            ok: true, 
+            ...results,
+            message: runId 
+                ? `Analyzed logs for run ${runId}. Found ${results.issues} issues.`
+                : `Analyzed from last checkpoint. Found ${results.issues} issues.`
+        });
+        
+    } catch (error) {
+        moduleLogger.error('Failed to run daily-log-analyzer:', error);
+        res.status(500).json({ ok: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
  * TEST ENDPOINT: Verify STACKTRACE markers are written to Render logs
  * GET /api/test-stacktrace-markers
  * NO AUTH - Quick test endpoint

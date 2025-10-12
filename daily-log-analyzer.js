@@ -48,17 +48,18 @@ const JobTracking = require('./services/jobTracking');
 const { JOB_TRACKING_FIELDS } = require('./constants/airtableUnifiedConstants');
 const logger = require('./utils/structuredLogger');
 
-// Parse command line arguments
-const args = process.argv.slice(2);
-let specificRunId = null;
+async function runDailyLogAnalysis(options = {}) {
+  // Parse command line arguments OR use options parameter
+  const args = process.argv.slice(2);
+  let specificRunId = options.runId || null;
 
-for (const arg of args) {
-  if (arg.startsWith('--runId=')) {
-    specificRunId = arg.split('=')[1];
+  // Command line takes precedence over options parameter
+  for (const arg of args) {
+    if (arg.startsWith('--runId=')) {
+      specificRunId = arg.split('=')[1];
+    }
   }
-}
 
-async function runDailyLogAnalysis() {
   logger.info('🔍 DAILY LOG ANALYZER: Starting...');
   
   try {
