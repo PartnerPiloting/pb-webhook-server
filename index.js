@@ -393,6 +393,11 @@ app.post('/api/analyze-logs/text', async (req, res) => {
  * TEST ENDPOINT: Runs the daily-log-analyzer utility on demand
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
  * Body: { runId?: "251013-100000" } (optional - if omitted, runs in auto mode from last checkpoint)
+ * 
+ * REQUIREMENTS:
+ * - RENDER_API_KEY environment variable must be set
+ * - RENDER_OWNER_ID environment variable must be set
+ * - RENDER_SERVICE_ID environment variable (optional - defaults to current service)
  */
 app.post('/api/run-daily-log-analyzer', async (req, res) => {
     const auth = req.headers['authorization'];
@@ -401,6 +406,21 @@ app.post('/api/run-daily-log-analyzer', async (req, res) => {
     }
 
     try {
+        // Check required environment variables
+        if (!process.env.RENDER_API_KEY) {
+            return res.status(500).json({ 
+                ok: false, 
+                error: 'RENDER_API_KEY environment variable is not set on Render. Please add it in Environment settings.' 
+            });
+        }
+        
+        if (!process.env.RENDER_OWNER_ID) {
+            return res.status(500).json({ 
+                ok: false, 
+                error: 'RENDER_OWNER_ID environment variable is not set on Render. Please add it in Environment settings.' 
+            });
+        }
+        
         const { runId } = req.body || {};
         
         moduleLogger.info(`🔍 Running daily-log-analyzer via API${runId ? ` for runId: ${runId}` : ' (auto mode - from last checkpoint)'}`);

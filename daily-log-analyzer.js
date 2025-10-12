@@ -155,11 +155,14 @@ async function runDailyLogAnalysis(options = {}) {
   } catch (error) {
     log.error(`❌ Daily log analysis failed: ${error.message}`);
     log.error(`Stack trace: ${error.stack}`);
-    process.exit(1);
+    
+    // When called via API, throw error instead of process.exit
+    // When called as CLI, the CLI wrapper below will handle process.exit
+    throw error;
   }
 }
 
-// Run if executed directly
+// Run if executed directly (CLI mode)
 if (require.main === module) {
   runDailyLogAnalysis()
     .then(results => {
