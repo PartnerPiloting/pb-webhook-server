@@ -911,6 +911,35 @@ app.get('/api/analyze-issues', async (req, res) => {
 });
 
 /**
+ * GET /api/fresh-check-production-issues
+ * Run fresh check on Production Issues table (bypass all existing code)
+ */
+app.get('/api/fresh-check-production-issues', async (req, res) => {
+    try {
+        const Airtable = require('airtable');
+        const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
+        
+        const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
+        const records = await base('Production Issues').select({ maxRecords: 100, view: 'All Issues' }).all();
+        
+        res.json({
+            success: true,
+            baseId: MASTER_BASE_ID,
+            recordCount: records.length,
+            isEmpty: records.length === 0,
+            records: records.map(r => ({
+                id: r.id,
+                runId: r.fields['Run ID'],
+                severity: r.fields.Severity,
+                timestamp: r.fields.Timestamp
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/mark-issue-fixed
  * NO AUTHENTICATION REQUIRED (public endpoint - for now, can add auth later)
  * 
