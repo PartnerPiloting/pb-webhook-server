@@ -45,9 +45,6 @@ const ERROR_PATTERNS = {
    * These break functionality and need fixing soon, but service continues
    */
   ERROR: [
-    // TEMPORARY: Test pattern for stack trace verification (REMOVE AFTER TESTING)
-    /TEST ERROR/i,
-    
     // Airtable API errors (common in your system)
     /Unknown field name:/i,
     /INVALID_REQUEST_BODY/i,

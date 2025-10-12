@@ -102,7 +102,8 @@ async function fetchIssues(filterFormula, limit) {
         pattern: record.get('Pattern Matched') || 'UNKNOWN',
         message: record.get('Error Message') || '',
         stream: record.get('Stream') || '',
-        clientId: record.get('Client ID') || 'N/A'
+        clientId: record.get('Client ID') || 'N/A',
+        stackTrace: record.get('Stack Trace') || null
       });
     });
     fetchNextPage();
