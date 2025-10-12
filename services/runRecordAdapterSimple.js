@@ -55,13 +55,13 @@ function getLoggerFromOptions(options, clientId, runId, context = 'general') {
 
 // CRITICAL: Verify constants are properly imported
 if (!JOB_TRACKING_FIELDS || !CLIENT_RUN_FIELDS || !MASTER_TABLES) {
-  logger.error('CRITICAL: Constants not properly imported from airtableUnifiedConstants.js');
+  console.error('[runRecordAdapterSimple] CRITICAL: Constants not properly imported from airtableUnifiedConstants.js');
   throw new Error('Missing required constants');
 }
 
 // CRITICAL: Verify status values are properly imported
 if (!CLIENT_RUN_STATUS_VALUES || typeof CLIENT_RUN_STATUS_VALUES !== 'object') {
-  logger.error('CRITICAL: CLIENT_RUN_STATUS_VALUES not properly imported from airtableUnifiedConstants.js');
+  console.error('[runRecordAdapterSimple] CRITICAL: CLIENT_RUN_STATUS_VALUES not properly imported from airtableUnifiedConstants.js');
   throw new Error('Missing required status constants');
 }
 
