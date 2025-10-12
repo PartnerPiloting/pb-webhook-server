@@ -36,7 +36,7 @@ const runRecordService = require('./services/runRecordAdapterSimple');
 
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
-const { CLIENT_RUN_STATUS_VALUES, LEAD_FIELDS, SCORING_STATUS_VALUES } = require('./constants/airtableUnifiedConstants');
+const { CLIENT_RUN_STATUS_VALUES, LEAD_FIELDS, SCORING_STATUS_VALUES, EXECUTION_DATA_KEYS } = require('./constants/airtableUnifiedConstants');
 // Import the consistent field names for direct use when needed
 const { CLIENT_RUN_FIELDS } = require('./constants/airtableUnifiedConstants');
 
@@ -824,11 +824,11 @@ async function run(req, res, dependencies) {
                     // Log execution for this client
                     const duration = Date.now() - clientStartTime;
                     const logEntry = clientService.formatExecutionLog({
-                        status: 'Completed successfully',
-                        leadsProcessed: { successful: 0, failed: 0, total: 0 },
-                        duration: `${Math.round(duration / 1000)} seconds`,
-                        tokensUsed: 0,
-                        errors: []
+                        [EXECUTION_DATA_KEYS.STATUS]: 'Completed successfully',
+                        [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: { successful: 0, failed: 0, total: 0 },
+                        [EXECUTION_DATA_KEYS.DURATION]: `${Math.round(duration / 1000)} seconds`,
+                        [EXECUTION_DATA_KEYS.TOKENS_USED]: 0,
+                        [EXECUTION_DATA_KEYS.ERRORS]: []
                     });
                     await clientService.updateExecutionLog(clientId, logEntry);
                     
@@ -1012,15 +1012,15 @@ async function run(req, res, dependencies) {
                 // Log execution for this client
                 const clientStatus = clientErrors.length > 0 ? 'Completed with errors' : 'Completed successfully';
                 const logEntry = clientService.formatExecutionLog({
-                    status: clientStatus,
-                    leadsProcessed: {
+                    [EXECUTION_DATA_KEYS.STATUS]: clientStatus,
+                    [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: {
                         successful: clientSuccessful,
                         failed: clientFailed,
                         total: clientProcessed
                     },
-                    duration: `${Math.round(clientDuration / 1000)}s`,
-                    tokensUsed: clientTokensUsed,
-                    errors: clientErrors
+                    [EXECUTION_DATA_KEYS.DURATION]: `${Math.round(clientDuration / 1000)}s`,
+                    [EXECUTION_DATA_KEYS.TOKENS_USED]: clientTokensUsed,
+                    [EXECUTION_DATA_KEYS.ERRORS]: clientErrors
                 });
                 await clientService.updateExecutionLog(clientId, logEntry);
 
@@ -1062,15 +1062,15 @@ async function run(req, res, dependencies) {
                 const errorReason = `Failed to process client: ${clientError.message}`;
                 
                 const logEntry = clientService.formatExecutionLog({
-                    status: 'Failed',
-                    leadsProcessed: {
+                    [EXECUTION_DATA_KEYS.STATUS]: 'Failed',
+                    [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: {
                         successful: 0,
                         failed: 0,
                         total: 0
                     },
-                    duration: `${Math.round(clientDuration / 1000)}s`,
-                    tokensUsed: 0,
-                    errors: [`Fatal error: ${clientError.message}`]
+                    [EXECUTION_DATA_KEYS.DURATION]: `${Math.round(clientDuration / 1000)}s`,
+                    [EXECUTION_DATA_KEYS.TOKENS_USED]: 0,
+                    [EXECUTION_DATA_KEYS.ERRORS]: [`Fatal error: ${clientError.message}`]
                 });
                 await clientService.updateExecutionLog(clientId, logEntry);
                 
