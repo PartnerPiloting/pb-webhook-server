@@ -267,6 +267,12 @@ async function updateExecutionLog(clientId, logEntry) {
     try {
         const base = initializeClientsBase();
         
+        // Validate logEntry before proceeding
+        if (!logEntry || typeof logEntry !== 'string') {
+            logger.warn(`Invalid log entry for client ${clientId}: ${typeof logEntry}`);
+            return false; // Skip update instead of crashing
+        }
+        
         // First, get the client's Airtable record ID
         const client = await getClientById(clientId);
         if (!client) {
@@ -308,8 +314,15 @@ async function updateExecutionLog(clientId, logEntry) {
  * @returns {string} Formatted log entry
  */
 function formatExecutionLog(executionData) {
+    // Validate input
+    if (!executionData || typeof executionData !== 'object') {
+        logger.warn('formatExecutionLog called with invalid executionData:', typeof executionData);
+        return `=== EXECUTION: ${new Date().toISOString()} ===\nStatus: Error - Invalid execution data\n`;
+    }
+    
+    // Destructure with simple property names (not using constants as keys)
     const {
-        [CLIENT_EXECUTION_LOG_FIELDS.STATUS]: status = 'Unknown',
+        status = 'Unknown',
         leadsProcessed = { successful: 0, failed: 0, total: 0 },
         postScoring = { successful: 0, failed: 0, total: 0 },
         duration = 'Unknown',
