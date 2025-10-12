@@ -170,18 +170,23 @@ class ProductionIssueService {
 
   /**
    * Get time window from Job Tracking table for a given runId
-   * @param {string} runId - Run ID to look up
+   * @param {string} runId - Run ID to look up (may include client suffix)
    * @returns {Promise<Object>} - Object with startTime and endTime (ISO format)
    */
   async getTimeWindowFromJobTracking(runId) {
     try {
       const { JobTracking } = require('./jobTracking');
+      const runIdSystem = require('./runIdSystem');
       
-      // Look up job record
-      const jobRecord = await JobTracking.getJobById(runId);
+      // Strip client suffix if present - Job Tracking uses base Run ID only
+      // Example: "251012-085512-Guy-Wilson" → "251012-085512"
+      const baseRunId = runIdSystem.getBaseRunId(runId);
+      
+      // Look up job record using base Run ID
+      const jobRecord = await JobTracking.getJobById(baseRunId);
       
       if (!jobRecord || !jobRecord.fields) {
-        throw new Error(`Job Tracking record not found for runId: ${runId}`);
+        throw new Error(`Job Tracking record not found for runId: ${baseRunId} (original: ${runId})`);
       }
 
       const { JOB_TRACKING_FIELDS } = require('../constants/airtableUnifiedConstants');
