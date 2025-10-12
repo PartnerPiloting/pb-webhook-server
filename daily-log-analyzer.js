@@ -46,7 +46,12 @@
 const ProductionIssueService = require('./services/productionIssueService');
 const JobTracking = require('./services/jobTracking');
 const { JOB_TRACKING_FIELDS } = require('./constants/airtableUnifiedConstants');
-const logger = require('./utils/structuredLogger');
+
+// Simple logging that works everywhere (console instead of structured logger)
+const log = {
+  info: (...args) => console.log(...args),
+  error: (...args) => console.error(...args)
+};
 
 async function runDailyLogAnalysis(options = {}) {
   // Parse command line arguments OR use options parameter
@@ -60,34 +65,34 @@ async function runDailyLogAnalysis(options = {}) {
     }
   }
 
-  logger.info('🔍 DAILY LOG ANALYZER: Starting...');
+  log.info('🔍 DAILY LOG ANALYZER: Starting...');
   
   try {
     const logAnalysisService = new ProductionIssueService();
     
     if (specificRunId) {
       // MANUAL MODE: Analyze specific run
-      logger.info(`📋 Manual mode: Analyzing logs for run ${specificRunId}`);
+      log.info(`📋 Manual mode: Analyzing logs for run ${specificRunId}`);
       
       const analysisResults = await logAnalysisService.analyzeRecentLogs({
         minutes: 1440, // 24 hours
         runId: specificRunId
       });
       
-      logger.info(`✅ Analysis complete for run ${specificRunId}`);
-      logger.info(`   Found: ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+      log.info(`✅ Analysis complete for run ${specificRunId}`);
+      log.info(`   Found: ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
       
       if (analysisResults.issues > 0) {
-        logger.info(`   Saved: ${analysisResults.createdRecords} errors to Production Issues table`);
+        log.info(`   Saved: ${analysisResults.createdRecords} errors to Production Issues table`);
       } else {
-        logger.info(`   🎉 No errors detected - clean run!`);
+        log.info(`   🎉 No errors detected - clean run!`);
       }
       
       return analysisResults;
       
     } else {
       // AUTO MODE: Continuous streaming from last checkpoint
-      logger.info(`🔄 Auto mode: Analyzing from last checkpoint to now`);
+      log.info(`🔄 Auto mode: Analyzing from last checkpoint to now`);
       
       // Get the most recent run to find where we left off
       const latestRun = await JobTracking.getLatestRun();
@@ -100,17 +105,17 @@ async function runDailyLogAnalysis(options = {}) {
         startTimestamp = latestRun.fields[JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID];
         
         if (startTimestamp) {
-          logger.info(`📍 Found latest run ${runIdForContext} - continuing from ${startTimestamp}`);
+          log.info(`📍 Found latest run ${runIdForContext} - continuing from ${startTimestamp}`);
         } else {
           // Latest run exists but has no timestamp, use its start time
           startTimestamp = latestRun.fields[JOB_TRACKING_FIELDS.START_TIME];
-          logger.info(`⚠️ Latest run ${runIdForContext} has no Last Analyzed timestamp - starting from its start time: ${startTimestamp}`);
+          log.info(`⚠️ Latest run ${runIdForContext} has no Last Analyzed timestamp - starting from its start time: ${startTimestamp}`);
         }
       } else {
         // No previous run found - analyze last 24 hours
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         startTimestamp = oneDayAgo;
-        logger.info(`⚠️ No previous runs found - starting from 24 hours ago: ${startTimestamp}`);
+        log.info(`⚠️ No previous runs found - starting from 24 hours ago: ${startTimestamp}`);
       }
       
       // Analyze logs from startTimestamp to now (continuous streaming)
@@ -119,14 +124,14 @@ async function runDailyLogAnalysis(options = {}) {
         runId: null // Don't filter by runId - analyze ALL logs in time window
       });
       
-      logger.info(`✅ Analysis complete`);
-      logger.info(`   Time range: ${startTimestamp} → now`);
-      logger.info(`   Found: ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
+      log.info(`✅ Analysis complete`);
+      log.info(`   Time range: ${startTimestamp} → now`);
+      log.info(`   Found: ${analysisResults.issues} issues (${analysisResults.summary.critical} critical, ${analysisResults.summary.error} errors, ${analysisResults.summary.warning} warnings)`);
       
       if (analysisResults.issues > 0) {
-        logger.info(`   Saved: ${analysisResults.createdRecords} errors to Production Issues table`);
+        log.info(`   Saved: ${analysisResults.createdRecords} errors to Production Issues table`);
       } else {
-        logger.info(`   🎉 No errors detected in logs - clean run!`);
+        log.info(`   🎉 No errors detected in logs - clean run!`);
       }
       
       // Store last analyzed log timestamp for next run to continue from
@@ -138,9 +143,9 @@ async function runDailyLogAnalysis(options = {}) {
               [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: analysisResults.lastLogTimestamp
             }
           });
-          logger.info(`📍 Stored last analyzed timestamp: ${analysisResults.lastLogTimestamp}`);
+          log.info(`📍 Stored last analyzed timestamp: ${analysisResults.lastLogTimestamp}`);
         } catch (updateError) {
-          logger.error(`⚠️ Failed to store last analyzed timestamp: ${updateError.message}`);
+          log.error(`⚠️ Failed to store last analyzed timestamp: ${updateError.message}`);
         }
       }
       
@@ -148,8 +153,8 @@ async function runDailyLogAnalysis(options = {}) {
     }
     
   } catch (error) {
-    logger.error(`❌ Daily log analysis failed: ${error.message}`);
-    logger.error(`Stack trace: ${error.stack}`);
+    log.error(`❌ Daily log analysis failed: ${error.message}`);
+    log.error(`Stack trace: ${error.stack}`);
     process.exit(1);
   }
 }
@@ -158,11 +163,11 @@ async function runDailyLogAnalysis(options = {}) {
 if (require.main === module) {
   runDailyLogAnalysis()
     .then(results => {
-      logger.info(`✅ Daily log analyzer completed successfully`);
+      log.info(`✅ Daily log analyzer completed successfully`);
       process.exit(0);
     })
     .catch(error => {
-      logger.error(`❌ Daily log analyzer failed: ${error.message}`);
+      log.error(`❌ Daily log analyzer failed: ${error.message}`);
       process.exit(1);
     });
 }
