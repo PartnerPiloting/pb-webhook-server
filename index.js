@@ -1063,6 +1063,84 @@ app.post('/api/mark-issue-fixed', async (req, res) => {
 });
 
 /**
+ * POST /api/cleanup-record-not-found-errors
+ * AUTH REQUIRED
+ * 
+ * Deletes "Record not found" errors from Production Issues and Stack Traces
+ * These are false errors caused by the Run ID mismatch bug (fixed in commit 1939c80)
+ */
+app.post('/api/cleanup-record-not-found-errors', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    
+    try {
+        const masterBase = airtableClient.getMasterClientsBase();
+        
+        // Step 1: Find and delete from Production Issues
+        const productionIssues = await masterBase('Production Issues')
+            .select({
+                filterByFormula: `AND(
+                    OR(
+                        FIND('Client run record not found', {Error Message}),
+                        FIND('Record not found for 251012-', {Error Message})
+                    ),
+                    FIND('jobTracking.js', {Stack Trace})
+                )`
+            })
+            .all();
+        
+        const deletedIssueIds = [];
+        if (productionIssues.length > 0) {
+            for (let i = 0; i < productionIssues.length; i += 10) {
+                const batch = productionIssues.slice(i, i + 10);
+                const ids = batch.map(r => r.id);
+                await masterBase('Production Issues').destroy(ids);
+                deletedIssueIds.push(...ids);
+            }
+        }
+        
+        // Step 2: Find and delete from Stack Traces
+        const stackTraces = await masterBase('Stack Traces')
+            .select({
+                filterByFormula: `AND(
+                    FIND('Client run record not found', {Error Message}),
+                    FIND('updateClientRun', {Stack Trace})
+                )`
+            })
+            .all();
+        
+        const deletedTraceIds = [];
+        if (stackTraces.length > 0) {
+            for (let i = 0; i < stackTraces.length; i += 10) {
+                const batch = stackTraces.slice(i, i + 10);
+                const ids = batch.map(r => r.id);
+                await masterBase('Stack Traces').destroy(ids);
+                deletedTraceIds.push(...ids);
+            }
+        }
+        
+        res.json({
+            success: true,
+            deleted: {
+                productionIssues: deletedIssueIds.length,
+                stackTraces: deletedTraceIds.length,
+                total: deletedIssueIds.length + deletedTraceIds.length
+            },
+            message: `Cleaned up ${deletedIssueIds.length + deletedTraceIds.length} false error records caused by Run ID mismatch bug (fixed in commit 1939c80)`
+        });
+        
+    } catch (error) {
+        moduleLogger.error('[CLEANUP] Failed to cleanup records:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+/**
  * Get Production Issues from Airtable with filters
  * GET /api/production-issues
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
