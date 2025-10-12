@@ -884,6 +884,11 @@ app.get('/api/analyze-issues', async (req, res) => {
         
         console.log(`✅ Analysis complete: ${analysis.total} issues analyzed`);
         
+        // Add no-cache headers to force fresh data every time
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        
         res.json(result);
         
     } catch (error) {
