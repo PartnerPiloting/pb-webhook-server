@@ -1076,7 +1076,7 @@ app.post('/api/cleanup-record-not-found-errors', async (req, res) => {
     }
     
     try {
-        const masterBase = airtableClient.getMasterClientsBase();
+        const masterBase = getMasterClientsBase();
         
         // Step 1: Find and delete from Production Issues
         const productionIssues = await masterBase('Production Issues')
