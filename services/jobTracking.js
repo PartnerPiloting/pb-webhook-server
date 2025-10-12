@@ -782,6 +782,7 @@ class JobTracking {
       log.debug(`Updated client run record for ${clientRunId}`);
       
       return {
+        success: true,
         id: record.id,
         runId: clientRunId,
         baseRunId: safeRunId,
