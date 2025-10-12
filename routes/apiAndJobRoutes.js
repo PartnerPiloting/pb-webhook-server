@@ -1648,8 +1648,9 @@ async function processPostScoringInBackground(runId, stream, options) {
     if (runId) {
       try {
         jobLogger.info(`🔍 Analyzing logs for post-scoring run: ${runId}`);
-        const { analyzeRecentLogs } = require('../services/productionIssueService');
-        await analyzeRecentLogs(runId);
+        const ProductionIssueService = require('../services/productionIssueService');
+        const service = new ProductionIssueService();
+        await service.analyzeRecentLogs({ runId });
         jobLogger.info(`✅ Post-scoring log analysis complete for ${runId}`);
       } catch (analyzeError) {
         jobLogger.error(`❌ Failed to analyze post-scoring logs for ${runId}:`, analyzeError.message);

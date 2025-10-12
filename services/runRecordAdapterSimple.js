@@ -309,15 +309,18 @@ async function updateRunRecord(params) {
 async function completeRunRecord(params) {
   const source = 'RunRecordAdapterSimple.completeRunRecord';
   
+  // Create a temporary logger for early validation (before we have runId/clientId)
+  const tempLogger = createSafeLogger('SYSTEM', 'validation', 'run_record');
+  
   // ROOT CAUSE FIX: Validate params is an object
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    logger.error(`[${source}] ${errMsg}`);
+    tempLogger.error(`[${source}] ${errMsg}`);
     throw new Error(errMsg);
   }
   
   // DEBUG: Log params structure to diagnose undefined issues
-  logger.info(`[${source}] Received params with keys: ${Object.keys(params).map(k => k === undefined ? 'UNDEFINED' : `"${k}"`).join(', ')}`);
+  tempLogger.info(`[${source}] Received params with keys: ${Object.keys(params).map(k => k === undefined ? 'UNDEFINED' : `"${k}"`).join(', ')}`);
   
   // Extract values using standardized field names
   const runId = params.runId;
@@ -327,7 +330,7 @@ async function completeRunRecord(params) {
   const status = params[statusKey] || params.status || params.Status;
   
   // DEBUG: Log what status value we extracted
-  logger.info(`[${source}] Extracted status: ${status} (type: ${typeof status}), statusKey used: ${statusKey}`);
+  tempLogger.info(`[${source}] Extracted status: ${status} (type: ${typeof status}), statusKey used: ${statusKey}`);
   const notesKey = FIELD_NAMES?.SYSTEM_NOTES || 'System Notes';
   const notes = params[notesKey] || params.systemNotes || params.notes || '';
   const options = params.options || {};
