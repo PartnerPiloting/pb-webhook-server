@@ -1189,6 +1189,56 @@ app.post('/api/delete-production-issues', async (req, res) => {
 });
 
 /**
+ * GET /api/cleanup-old-production-issues
+ * Simple endpoint to delete old production issues from runs before bug fixes
+ * Just visit in browser: https://pb-webhook-server-staging.onrender.com/api/cleanup-old-production-issues
+ */
+app.get('/api/cleanup-old-production-issues', async (req, res) => {
+    try {
+        moduleLogger.info('🗑️ Starting cleanup of old production issues...');
+        
+        const runIds = ['251012-005615', '251012-010957', '251012-072642'];
+        const reason = 'Old errors from runs before bug fixes deployed (commits d2ccab2, a843e39, 1939c80). All root causes already fixed.';
+        
+        const masterBase = getMasterClientsBase();
+        
+        // Find all issues from these runs
+        const filter = `OR(${runIds.map(id => `{Run ID} = '${id}'`).join(',')})`;
+        const issues = await masterBase('Production Issues')
+            .select({ filterByFormula: filter })
+            .all();
+        
+        moduleLogger.info(`Found ${issues.length} issues to delete from runs: ${runIds.join(', ')}`);
+        
+        // Delete in batches of 10
+        let deleted = 0;
+        for (let i = 0; i < issues.length; i += 10) {
+            const batch = issues.slice(i, i + 10);
+            await masterBase('Production Issues').destroy(batch.map(r => r.id));
+            deleted += batch.length;
+            moduleLogger.info(`Deleted ${deleted}/${issues.length} issues...`);
+        }
+        
+        moduleLogger.info(`✅ Cleanup complete. Deleted ${deleted} old production issues.`);
+        
+        res.json({
+            success: true,
+            deleted: deleted,
+            runIds: runIds,
+            reason: reason,
+            message: `Successfully deleted ${deleted} old production issues`
+        });
+        
+    } catch (error) {
+        moduleLogger.error('[CLEANUP-OLD-ISSUES] Failed:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message
+        });
+    }
+});
+
+/**
  * POST /api/cleanup-record-not-found-errors
  * AUTH REQUIRED
  * 
