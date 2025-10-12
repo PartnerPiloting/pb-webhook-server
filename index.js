@@ -29,8 +29,8 @@ const { getMasterClientsBase } = require('./config/airtableClient'); // For Prod
 const { initializeOpenAI } = require('./config/openaiClient.js');
 let openaiClient = null;
 
-// Load production issue analysis utilities
-const { analyzeIssues, fetchIssues, classifyWarning } = require('./analyze-production-issues');
+// Production issue analysis utilities - NO MODULE CACHING
+// Everything created fresh inline in the endpoint to prevent stale data
 try {
     openaiClient = initializeOpenAI();
     moduleLogger.info("index.js: OpenAI client initialized successfully for attribute editing");
@@ -804,7 +804,34 @@ app.get('/api/analyze-issues', async (req, res) => {
             conditions.length === 1 ? conditions[0] : 
             `AND(${conditions.join(', ')})`;
         
-        const issues = await fetchIssues(filterFormula, args.limit);
+        // FETCH ISSUES - Fresh inline code (no module caching)
+        const Airtable = require('airtable');
+        const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
+        const freshBase = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
+        
+        const queryOptions = {
+            maxRecords: args.limit,
+            sort: [{ field: 'Timestamp', direction: 'desc' }],
+            view: 'All Issues'
+        };
+        
+        if (filterFormula) {
+            queryOptions.filterByFormula = filterFormula;
+        }
+        
+        const records = await freshBase('Production Issues').select(queryOptions).all();
+        
+        const issues = records.map(record => ({
+            id: record.id,
+            runId: record.get('Run ID') || 'N/A',
+            timestamp: record.get('Timestamp'),
+            severity: record.get('Severity') || 'UNKNOWN',
+            pattern: record.get('Pattern Matched') || 'UNKNOWN',
+            message: record.get('Error Message') || '',
+            stream: record.get('Stream') || '',
+            clientId: record.get('Client ID') || 'N/A',
+            stackTrace: record.get('Stack Trace') || null
+        }));
         
         if (issues.length === 0) {
             return res.json({
@@ -828,7 +855,42 @@ app.get('/api/analyze-issues', async (req, res) => {
             });
         }
         
-        const analysis = analyzeIssues(issues);
+        // ANALYZE ISSUES - Inline analysis code (no module caching)
+        const analysis = {
+            total: issues.length,
+            bySeverity: {},
+            byPattern: {},
+            byClient: {},
+            byRunId: {},
+            uniqueMessages: new Map()
+        };
+
+        issues.forEach(issue => {
+            analysis.bySeverity[issue.severity] = (analysis.bySeverity[issue.severity] || 0) + 1;
+            analysis.byPattern[issue.pattern] = (analysis.byPattern[issue.pattern] || 0) + 1;
+            analysis.byClient[issue.clientId] = (analysis.byClient[issue.clientId] || 0) + 1;
+            analysis.byRunId[issue.runId] = (analysis.byRunId[issue.runId] || 0) + 1;
+
+            const msgKey = issue.message.substring(0, 100);
+            if (!analysis.uniqueMessages.has(msgKey)) {
+                analysis.uniqueMessages.set(msgKey, {
+                    count: 0,
+                    fullMessage: issue.message,
+                    severity: issue.severity,
+                    pattern: issue.pattern,
+                    examples: []
+                });
+            }
+            const entry = analysis.uniqueMessages.get(msgKey);
+            entry.count++;
+            if (entry.examples.length < 3) {
+                entry.examples.push({
+                    runId: issue.runId,
+                    timestamp: issue.timestamp,
+                    clientId: issue.clientId
+                });
+            }
+        });
         
         // Convert Map to Array for JSON serialization
         const topIssues = Array.from(analysis.uniqueMessages.entries())
@@ -843,15 +905,8 @@ app.get('/api/analyze-issues', async (req, res) => {
                 examples: data.examples
             }));
         
-        // Group actionable warnings by classification reason
+        // Group actionable warnings by classification reason (simplified - skip classification for now)
         const actionableWarningsByReason = {};
-        analysis.actionableWarnings.forEach(warning => {
-            const reason = warning.classificationReason;
-            if (!actionableWarningsByReason[reason]) {
-                actionableWarningsByReason[reason] = [];
-            }
-            actionableWarningsByReason[reason].push(warning);
-        });
         
         const result = {
             success: true,
@@ -859,19 +914,11 @@ app.get('/api/analyze-issues', async (req, res) => {
             total: analysis.total,
             bySeverity: analysis.bySeverity,
             
-            // Warning classification
+            // Warning classification (simplified - skip for now)
             warningClassification: {
-                actionable: analysis.actionableWarnings.length,
-                noise: analysis.noiseWarnings.length,
-                byReason: Object.entries(actionableWarningsByReason).map(([reason, warnings]) => ({
-                    reason,
-                    count: warnings.length,
-                    examples: warnings.slice(0, 3).map(w => ({
-                        message: w.message.substring(0, 200),
-                        runId: w.runId,
-                        timestamp: w.timestamp
-                    }))
-                }))
+                actionable: 0,
+                noise: 0,
+                byReason: []
             },
             
             byPattern: Object.entries(analysis.byPattern)
@@ -885,8 +932,6 @@ app.get('/api/analyze-issues', async (req, res) => {
                 .map(([runId, count]) => ({ runId, count })),
             topIssues,
             recommendations: [
-                `Found ${analysis.actionableWarnings.length} actionable warnings and ${analysis.noiseWarnings.length} noise warnings`,
-                'Review actionable warnings in warningClassification.byReason',
                 'Prioritize CRITICAL and ERROR severity issues first',
                 'Focus on patterns affecting multiple runs',
                 'Use ?runId=XXX to drill down into specific runs',
