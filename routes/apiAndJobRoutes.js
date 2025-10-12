@@ -1538,6 +1538,14 @@ async function processPostScoringInBackground(runId, stream, options) {
             const duration = formatDuration(Date.now() - (options.startTime || Date.now()));
             
             // Prepare metrics updates
+            // DEBUG: Log field constant values to catch any undefined constants
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] Field constants:`, {
+              POSTS_EXAMINED: CLIENT_RUN_FIELDS.POSTS_EXAMINED,
+              POSTS_SCORED: CLIENT_RUN_FIELDS.POSTS_SCORED,
+              POST_SCORING_TOKENS: CLIENT_RUN_FIELDS.POST_SCORING_TOKENS,
+              SYSTEM_NOTES: CLIENT_RUN_FIELDS.SYSTEM_NOTES
+            });
+            
             const metricsUpdates = {
               [CLIENT_RUN_FIELDS.POSTS_EXAMINED]: postsExamined,
               [CLIENT_RUN_FIELDS.POSTS_SCORED]: postsScored,
