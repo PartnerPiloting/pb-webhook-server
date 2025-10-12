@@ -27,6 +27,7 @@ if (!process.env.AIRTABLE_API_KEY) {
 }
 
 const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
+console.log(`[analyze-production-issues.js] DEBUG: Using base ID: ${MASTER_BASE_ID}`);
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
 
 /* ------------------------------------------------------------------
