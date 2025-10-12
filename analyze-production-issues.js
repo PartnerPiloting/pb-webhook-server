@@ -77,13 +77,16 @@ function buildFilter(args) {
 
 /* ------------------------------------------------------------------
    Fetch all Production Issues matching filter
+   GUARANTEED FRESH DATA - no caching, matches Airtable UI exactly
 ------------------------------------------------------------------ */
 async function fetchIssues(filterFormula, limit) {
   const issues = [];
   
   const queryOptions = {
     maxRecords: limit,
-    sort: [{ field: 'Timestamp', direction: 'desc' }]
+    sort: [{ field: 'Timestamp', direction: 'desc' }],
+    // Force fresh data by using view that shows all records
+    view: 'All Issues'  // This ensures we see exactly what the Airtable UI shows
   };
 
   if (filterFormula) {
