@@ -118,26 +118,45 @@ class ProductionIssueService {
       logger.info(`⏰ Time window: ${startTime} to ${endTime}`);
       logger.info(`📋 Checkpoint type: ${checkpoint}, source: ${checkpointSource}`);
       
-      // 2. Fetch logs from Render
+      // 2. Fetch logs from Render with pagination
       logger.info('📥 Fetching logs from Render...');
       logger.info(`📋 Render Service ID: ${process.env.RENDER_SERVICE_ID}`);
       
-      let logs = [];
+      let allLogs = [];
+      let hasMore = true;
+      let currentStartTime = startTime;
+      let pageCount = 0;
+      const maxPages = 10; // Safety limit
+      
       try {
-        const result = await this.renderLogService.getServiceLogs(process.env.RENDER_SERVICE_ID, {
-          startTime,
-          endTime,
-          limit: 10000 // Get lots of logs
-        });
+        while (hasMore && pageCount < maxPages) {
+          pageCount++;
+          logger.debug(`Fetching page ${pageCount}...`);
+          
+          const result = await this.renderLogService.getServiceLogs(process.env.RENDER_SERVICE_ID, {
+            startTime: currentStartTime,
+            endTime,
+            limit: 1000 // Render API max limit
+          });
+          
+          allLogs = allLogs.concat(result.logs || []);
+          
+          hasMore = result.hasMore;
+          if (hasMore && result.nextStartTime) {
+            currentStartTime = result.nextStartTime;
+            logger.debug(`Has more logs, continuing from: ${currentStartTime}`);
+          }
+        }
         
-        logs = result.logs || [];
-        logger.info(`📦 Fetched ${logs.length} logs`);
+        logger.info(`📦 Fetched ${allLogs.length} total logs across ${pageCount} pages`);
       } catch (renderError) {
         logger.error(`❌ Render API error: ${renderError.message}`);
         logger.error(`   Status: ${renderError.response?.status}`);
         logger.error(`   Data: ${JSON.stringify(renderError.response?.data)}`);
         throw renderError;
       }
+      
+      const logs = allLogs;
       
       if (logs.length === 0) {
         logger.info(`✅ No new logs to analyze`);
@@ -152,10 +171,15 @@ class ProductionIssueService {
       
       // 3. Convert logs to text and filter for errors
       const logText = this.convertLogsToText(logs);
-      logger.info(`📝 Converted ${logs.length} log entries to text`);
+      const totalLines = logText.split('\n').length;
+      logger.info(`📝 Converted ${logs.length} log entries to ${totalLines} text lines`);
       
-      // 4. Filter logs for errors
-      const filteredResults = filterLogs(logText);
+      // 4. Filter logs for errors (with deduplication and context)
+      const filteredResults = filterLogs(logText, {
+        deduplicateIssues: true,
+        contextSize: 25,
+        runIdFilter: null, // No specific runId filter for checkpoint analyzer
+      });
       const summary = generateSummary(filteredResults);
       
       logger.info(`🔍 Pattern matching found ${filteredResults.length} issues`);
@@ -164,8 +188,8 @@ class ProductionIssueService {
       // 5. Save errors to Production Issues table
       if (filteredResults.length > 0) {
         logger.info('💾 Saving issues to Airtable...');
-        await this.saveIssuesToAirtable(filteredResults);
-        logger.info(`✅ Saved ${filteredResults.length} issues to Production Issues table`);
+        const createdRecords = await this.createProductionIssues(filteredResults, null);
+        logger.info(`✅ Created ${createdRecords.length} of ${filteredResults.length} records in Production Issues table`);
       }
       
       // 6. Update checkpoint with last log timestamp (always update LATEST record)
