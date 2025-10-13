@@ -116,17 +116,28 @@ class ProductionIssueService {
       }
       
       logger.info(`⏰ Time window: ${startTime} to ${endTime}`);
+      logger.info(`📋 Checkpoint type: ${checkpoint}, source: ${checkpointSource}`);
       
       // 2. Fetch logs from Render
       logger.info('📥 Fetching logs from Render...');
-      const result = await this.renderLogService.getServiceLogs(process.env.RENDER_SERVICE_ID, {
-        startTime,
-        endTime,
-        limit: 10000 // Get lots of logs
-      });
+      logger.info(`📋 Render Service ID: ${process.env.RENDER_SERVICE_ID}`);
       
-      const logs = result.logs || [];
-      logger.info(`📦 Fetched ${logs.length} logs`);
+      let logs = [];
+      try {
+        const result = await this.renderLogService.getServiceLogs(process.env.RENDER_SERVICE_ID, {
+          startTime,
+          endTime,
+          limit: 10000 // Get lots of logs
+        });
+        
+        logs = result.logs || [];
+        logger.info(`📦 Fetched ${logs.length} logs`);
+      } catch (renderError) {
+        logger.error(`❌ Render API error: ${renderError.message}`);
+        logger.error(`   Status: ${renderError.response?.status}`);
+        logger.error(`   Data: ${JSON.stringify(renderError.response?.data)}`);
+        throw renderError;
+      }
       
       if (logs.length === 0) {
         logger.info(`✅ No new logs to analyze`);
