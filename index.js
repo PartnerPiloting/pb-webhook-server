@@ -328,10 +328,10 @@ app.post('/admin/repair-all-bad-json', async (req, res) => {
 const ProductionIssueService = require('./services/productionIssueService');
 
 /**
- * Analyze recent Render logs and create Production Issue records
+ * Analyze Render logs using checkpoint-based system
  * POST /api/analyze-logs/recent
  * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
- * Body (optional): { minutes: 60 }
+ * Body: none required (uses checkpoint automatically)
  */
 app.post('/api/analyze-logs/recent', async (req, res) => {
     const auth = req.headers['authorization'];
@@ -340,17 +340,16 @@ app.post('/api/analyze-logs/recent', async (req, res) => {
     }
 
     try {
-        const { minutes = 60 } = req.body || {};
         const service = new ProductionIssueService();
-        const results = await service.analyzeRecentLogs({ minutes });
+        const results = await service.analyzeFromCheckpoint();
         
         res.json({ 
             ok: true, 
             ...results,
-            message: `Analyzed ${minutes} minutes of logs. Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
+            message: `Analyzed logs from checkpoint (${results.checkpoint}). Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
         });
     } catch (error) {
-        moduleLogger.error('Failed to analyze recent logs:', error);
+        moduleLogger.error('Failed to analyze logs from checkpoint:', error);
         res.status(500).json({ ok: false, error: error.message });
     }
 });

@@ -55,7 +55,126 @@ class ProductionIssueService {
   }
 
   /**
-   * Analyze recent logs and create Production Issue records
+   * Analyze logs using checkpoint-based system
+   * Automatically continues from where previous analysis left off
+   * @param {Object} options - Analysis options
+   * @returns {Promise<Object>} - Analysis results
+   */
+  async analyzeFromCheckpoint(options = {}) {
+    const { JOB_TRACKING_FIELDS } = require('../constants/airtableUnifiedConstants');
+    const JobTracking = require('./jobTracking');
+    
+    try {
+      logger.info('🔍 Starting checkpoint-based log analysis...');
+      
+      // 1. Get latest Job Tracking record
+      const latestJob = await JobTracking.getLatestRun();
+      
+      let startTime, endTime, checkpoint, jobRecordId;
+      
+      if (latestJob && latestJob.fields) {
+        jobRecordId = latestJob.id;
+        const lastAnalyzedLogId = latestJob.fields[JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID];
+        
+        if (lastAnalyzedLogId) {
+          // Continue from checkpoint
+          startTime = lastAnalyzedLogId;
+          endTime = new Date().toISOString();
+          checkpoint = 'continuing';
+          logger.info(`📍 Found checkpoint: ${lastAnalyzedLogId}`);
+          logger.info(`📊 Analyzing logs from checkpoint to now`);
+        } else {
+          // No checkpoint - use last 24 hours
+          endTime = new Date().toISOString();
+          startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          checkpoint = 'first-run';
+          logger.info(`🆕 No checkpoint found - analyzing last 24 hours`);
+        }
+      } else {
+        // No Job Tracking records at all - analyze last 24 hours
+        endTime = new Date().toISOString();
+        startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        checkpoint = 'no-jobs';
+        logger.info(`⚠️ No Job Tracking records found - analyzing last 24 hours`);
+      }
+      
+      logger.info(`⏰ Time window: ${startTime} to ${endTime}`);
+      
+      // 2. Fetch logs from Render
+      logger.info('📥 Fetching logs from Render...');
+      const result = await this.renderLogService.getServiceLogs(process.env.RENDER_SERVICE_ID, {
+        startTime,
+        endTime,
+        limit: 10000 // Get lots of logs
+      });
+      
+      const logs = result.logs || [];
+      logger.info(`📦 Fetched ${logs.length} logs`);
+      
+      if (logs.length === 0) {
+        logger.info(`✅ No new logs to analyze`);
+        return {
+          success: true,
+          checkpoint,
+          issues: 0,
+          summary: { critical: 0, error: 0, warning: 0 },
+          message: 'No new logs found'
+        };
+      }
+      
+      // 3. Convert logs to text and filter for errors
+      const logText = this.convertLogsToText(logs);
+      logger.info(`📝 Converted ${logs.length} log entries to text`);
+      
+      // 4. Filter logs for errors
+      const filteredResults = filterLogs(logText);
+      const summary = generateSummary(filteredResults);
+      
+      logger.info(`🔍 Pattern matching found ${filteredResults.length} issues`);
+      logger.info(`📊 Summary: ${summary.critical} critical, ${summary.error} errors, ${summary.warning} warnings`);
+      
+      // 5. Save errors to Production Issues table
+      if (filteredResults.length > 0) {
+        logger.info('💾 Saving issues to Airtable...');
+        await this.saveIssuesToAirtable(filteredResults);
+        logger.info(`✅ Saved ${filteredResults.length} issues to Production Issues table`);
+      }
+      
+      // 6. Update checkpoint with last log timestamp
+      if (jobRecordId) {
+        const lastLogTimestamp = logs[logs.length - 1]?.timestamp || endTime;
+        logger.info(`📍 Updating checkpoint to: ${lastLogTimestamp}`);
+        
+        const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
+        
+        await this.masterBase(MASTER_TABLES.JOB_TRACKING).update([{
+          id: jobRecordId,
+          fields: {
+            [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: lastLogTimestamp
+          }
+        }]);
+        
+        logger.info(`✅ Checkpoint updated successfully`);
+      }
+      
+      logger.info('✅ Checkpoint-based analysis complete');
+      
+      return {
+        success: true,
+        checkpoint,
+        issues: filteredResults.length,
+        summary,
+        lastLogTimestamp: logs[logs.length - 1]?.timestamp || endTime
+      };
+      
+    } catch (error) {
+      logger.error('analyzeFromCheckpoint', `Analysis failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Analyze recent logs and create Production Issue records (Legacy time-based method)
    * @param {Object} options - Analysis options
    * @param {string} options.runId - Optional run ID to filter logs and look up time window from Job Tracking
    * @param {number} options.minutes - Minutes to analyze (fallback if no runId or Job Tracking lookup fails)
