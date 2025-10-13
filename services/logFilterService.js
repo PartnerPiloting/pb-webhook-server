@@ -261,6 +261,15 @@ function filterLogs(logText, options = {}) {
     
     if (!severity) continue; // No error pattern matched
     
+    // Filter out analyzer's own infrastructure errors (not application bugs)
+    // Keep rate limit errors (actionable for ops)
+    if (line.includes('[SESSION:LOG-SERVICE]')) {
+      // Keep rate limit warnings - they're actionable
+      if (!line.includes('rate limit') && !line.includes('429')) {
+        continue; // Skip log-fetching infrastructure errors
+      }
+    }
+    
     // Check if this error line has our target runId (if filtering is enabled)
     if (runIdFilter) {
       const match = line.match(runIdPattern);
