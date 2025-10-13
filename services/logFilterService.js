@@ -150,6 +150,9 @@ function extractMetadata(context) {
     if (baseRunIdMatch) {
       metadata.runId = baseRunIdMatch[1];
     }
+  } else {
+    // No Run ID found - mark as system/external error
+    metadata.runId = 'SYSTEM';
   }
   
   // Extract stream parameter from URL query strings
