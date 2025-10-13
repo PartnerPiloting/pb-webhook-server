@@ -1,8 +1,14 @@
 # Node modules
 node_modules/
 
-# Environment variables
+# Environment variables - CRITICAL: Never commit secrets!
 .env
+.env.*
+!.env.example
+*.env
+.env.local
+.env.staging
+.env.production
 
 # Logs
 *.log
