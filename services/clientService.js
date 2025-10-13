@@ -294,6 +294,15 @@ async function updateExecutionLog(clientId, logEntry) {
 
         logger.info(`[UPDATE-LOG-DEBUG] Current log length: ${currentLog.length}, Updated log length: ${updatedLog.length}`);
         logger.info(`[UPDATE-LOG-DEBUG] updatedLog type: ${typeof updatedLog}, is undefined? ${updatedLog === undefined}`);
+        logger.info(`[UPDATE-LOG-DEBUG] 🔍 FIELD SIZE CHECK: Airtable long text fields have 100,000 char limit`);
+        if (updatedLog.length > 100000) {
+            logger.error(`[UPDATE-LOG-DEBUG] ❌ CRITICAL: updatedLog exceeds Airtable limit! Length: ${updatedLog.length}`);
+            logger.error(`[UPDATE-LOG-DEBUG] This will cause INVALID_VALUE_FOR_COLUMN error!`);
+        } else if (updatedLog.length > 90000) {
+            logger.warn(`[UPDATE-LOG-DEBUG] ⚠️ WARNING: updatedLog approaching limit (${updatedLog.length}/100000)`);
+        } else {
+            logger.info(`[UPDATE-LOG-DEBUG] ✅ Field size OK (${updatedLog.length}/100000)`);
+        }
         
         // CRITICAL DEBUG: Check updatedLog before Airtable call
         if (updatedLog === undefined) {
