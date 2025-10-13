@@ -61,40 +61,57 @@ class ProductionIssueService {
    * @returns {Promise<Object>} - Analysis results
    */
   async analyzeFromCheckpoint(options = {}) {
-    const { JOB_TRACKING_FIELDS } = require('../constants/airtableUnifiedConstants');
+    const { JOB_TRACKING_FIELDS, MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
     const JobTracking = require('./jobTracking');
+    const airtableClient = require('../config/airtableClient');
     
     try {
       logger.info('🔍 Starting checkpoint-based log analysis...');
       
-      // 1. Get latest Job Tracking record
+      // 1. Get latest Job Tracking record (this will be updated with new checkpoint)
       const latestJob = await JobTracking.getLatestRun();
       
-      let startTime, endTime, checkpoint, jobRecordId;
+      let startTime, endTime, checkpoint, latestJobRecordId, checkpointSource;
       
       if (latestJob && latestJob.fields) {
-        jobRecordId = latestJob.id;
-        const lastAnalyzedLogId = latestJob.fields[JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID];
+        latestJobRecordId = latestJob.id;
         
-        if (lastAnalyzedLogId) {
-          // Continue from checkpoint
+        // 2. Look for the first record WITH a checkpoint (may not be the latest)
+        logger.info('🔎 Searching for most recent checkpoint...');
+        const masterBase = airtableClient.getMasterClientsBase();
+        const recentJobs = await masterBase(MASTER_TABLES.JOB_TRACKING).select({
+          maxRecords: 10,
+          sort: [{ field: JOB_TRACKING_FIELDS.START_TIME, direction: 'desc' }],
+          filterByFormula: `NOT({${JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID}} = '')`
+        }).firstPage();
+        
+        if (recentJobs && recentJobs.length > 0) {
+          // Found a checkpoint - use it!
+          const checkpointJob = recentJobs[0];
+          const lastAnalyzedLogId = checkpointJob.fields[JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID];
+          const checkpointRunId = checkpointJob.fields[JOB_TRACKING_FIELDS.RUN_ID];
+          
           startTime = lastAnalyzedLogId;
           endTime = new Date().toISOString();
           checkpoint = 'continuing';
-          logger.info(`📍 Found checkpoint: ${lastAnalyzedLogId}`);
+          checkpointSource = checkpointRunId;
+          
+          logger.info(`📍 Found checkpoint from run ${checkpointRunId}: ${lastAnalyzedLogId}`);
           logger.info(`📊 Analyzing logs from checkpoint to now`);
         } else {
-          // No checkpoint - use last 24 hours
+          // No checkpoint found anywhere - use last 24 hours
           endTime = new Date().toISOString();
           startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           checkpoint = 'first-run';
-          logger.info(`🆕 No checkpoint found - analyzing last 24 hours`);
+          checkpointSource = 'none';
+          logger.info(`🆕 No checkpoint found in any Job Tracking record - analyzing last 24 hours`);
         }
       } else {
         // No Job Tracking records at all - analyze last 24 hours
         endTime = new Date().toISOString();
         startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         checkpoint = 'no-jobs';
+        checkpointSource = 'none';
         logger.info(`⚠️ No Job Tracking records found - analyzing last 24 hours`);
       }
       
@@ -140,21 +157,21 @@ class ProductionIssueService {
         logger.info(`✅ Saved ${filteredResults.length} issues to Production Issues table`);
       }
       
-      // 6. Update checkpoint with last log timestamp
-      if (jobRecordId) {
+      // 6. Update checkpoint with last log timestamp (always update LATEST record)
+      if (latestJobRecordId) {
         const lastLogTimestamp = logs[logs.length - 1]?.timestamp || endTime;
-        logger.info(`📍 Updating checkpoint to: ${lastLogTimestamp}`);
+        logger.info(`📍 Updating checkpoint on latest run to: ${lastLogTimestamp}`);
         
         const { MASTER_TABLES } = require('../constants/airtableUnifiedConstants');
         
         await this.masterBase(MASTER_TABLES.JOB_TRACKING).update([{
-          id: jobRecordId,
+          id: latestJobRecordId,
           fields: {
             [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: lastLogTimestamp
           }
         }]);
         
-        logger.info(`✅ Checkpoint updated successfully`);
+        logger.info(`✅ Checkpoint updated successfully on latest Job Tracking record`);
       }
       
       logger.info('✅ Checkpoint-based analysis complete');
@@ -162,6 +179,7 @@ class ProductionIssueService {
       return {
         success: true,
         checkpoint,
+        checkpointSource,
         issues: filteredResults.length,
         summary,
         lastLogTimestamp: logs[logs.length - 1]?.timestamp || endTime
