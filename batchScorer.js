@@ -1049,6 +1049,17 @@ async function run(req, res, dependencies) {
                 clientLogger.info(`Client processing completed. Processed: ${clientProcessed}, Successful: ${clientSuccessful}, Failed: ${clientFailed}, Tokens: ${clientTokensUsed}`);
 
             } catch (clientError) {
+                // DIAGNOSTIC: Log error state immediately when caught
+                clientLogger.error(`🔍 CATCH BLOCK ENTERED: Caught error for client ${clientId}`);
+                clientLogger.error(`🔍 Error has .message? ${!!clientError.message}`);
+                clientLogger.error(`🔍 Error.message value: ${clientError.message}`);
+                clientLogger.error(`🔍 Error.stack exists? ${!!clientError.stack}`);
+                
+                // CRITICAL: Capture stack trace NOW before it's lost
+                // If error doesn't have .stack, capture current call stack
+                const capturedStack = clientError.stack || new Error('Stack capture').stack;
+                clientLogger.error(`🔍 CAPTURED STACK TRACE:\n${capturedStack}`);
+                
                 await logErrorWithStackTrace(clientError, {
                     runId: runId,
                     clientId: clientId,
@@ -1080,7 +1091,19 @@ async function run(req, res, dependencies) {
                     },
                     [EXECUTION_DATA_KEYS.DURATION]: `${Math.round(clientDuration / 1000)}s`,
                     [EXECUTION_DATA_KEYS.TOKENS_USED]: 0,
-                    [EXECUTION_DATA_KEYS.ERRORS]: [`Fatal error: ${clientError.message}`]
+                    [EXECUTION_DATA_KEYS.ERRORS]: (() => {
+                        // DIAGNOSTIC: Detect malformed errors without .message property
+                        if (!clientError.message) {
+                            clientLogger.error(`🔍 MALFORMED ERROR DETECTED: Error object missing .message property!`);
+                            clientLogger.error(`🔍 Error type: ${typeof clientError}`);
+                            clientLogger.error(`🔍 Error constructor: ${clientError.constructor?.name}`);
+                            clientLogger.error(`🔍 Error keys: ${Object.keys(clientError).join(', ')}`);
+                            clientLogger.error(`🔍 Error value: ${JSON.stringify(clientError)?.substring(0, 500)}`);
+                            clientLogger.error(`🔍 Error toString: ${clientError.toString()}`);
+                            clientLogger.error(`🔍 Stack trace:`, new Error().stack);
+                        }
+                        return [`Fatal error: ${clientError.message || clientError.toString() || 'Unknown error'}`];
+                    })()
                 });
                 await clientService.updateExecutionLog(clientId, logEntry);
                 
@@ -1116,9 +1139,14 @@ async function run(req, res, dependencies) {
                     failed: 0,
                     tokensUsed: 0,
                     duration: Math.round(clientDuration / 1000),
-                    status: `Failed: ${clientError.message}`,
+                    status: (() => {
+                        if (!clientError.message) {
+                            clientLogger.error(`🔍 MALFORMED ERROR in clientResults: missing .message property`);
+                        }
+                        return `Failed: ${clientError.message || clientError.toString() || 'Unknown error'}`;
+                    })(),
                     reason: errorReason,
-                    errorDetails: [`Fatal error: ${clientError.message}`]  // ADD: Include fatal error details
+                    errorDetails: [`Fatal error: ${clientError.message || clientError.toString() || 'Unknown error'}`]
                 });
 
                 // Alert admin but continue with other clients

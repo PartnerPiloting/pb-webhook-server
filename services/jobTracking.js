@@ -721,6 +721,15 @@ class JobTracking {
       const { createValidatedObject } = require('../utils/airtableFieldValidator');
       const normalizedUpdates = createValidatedObject(updates, { log: false });
       
+      // DEBUG: Log what's in normalizedUpdates to find Status field issue
+      log.debug(`🔍 DEBUG-STATUS-UPDATE: Original updates keys: ${Object.keys(updates).join(', ')}`);
+      log.debug(`🔍 DEBUG-STATUS-UPDATE: Normalized updates keys: ${Object.keys(normalizedUpdates).join(', ')}`);
+      log.debug(`🔍 DEBUG-STATUS-UPDATE: CLIENT_RUN_FIELDS.STATUS = "${CLIENT_RUN_FIELDS.STATUS}"`);
+      log.debug(`🔍 DEBUG-STATUS-UPDATE: Status in normalized? ${CLIENT_RUN_FIELDS.STATUS in normalizedUpdates}`);
+      if (CLIENT_RUN_FIELDS.STATUS in normalizedUpdates) {
+        log.debug(`🔍 DEBUG-STATUS-UPDATE: Status value = "${normalizedUpdates[CLIENT_RUN_FIELDS.STATUS]}"`);
+      }
+      
       // Prepare update fields using constants
       const updateFields = {};
       

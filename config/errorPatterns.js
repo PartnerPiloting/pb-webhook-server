@@ -107,6 +107,7 @@ const ERROR_PATTERNS = {
     
     // TEMPORARY: Client Run Results debugging (remove after bug fix)
     /DEBUG-CRR/i,
+    /DEBUG-STATUS-UPDATE/i,
   ],
 };
 
