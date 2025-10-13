@@ -143,6 +143,15 @@ function extractMetadata(context) {
     if (runIdExactMatch) metadata.runId = runIdExactMatch[1];
   }
   
+  // Strip client suffix to get base Run ID (for consistency in Production Issues table)
+  // Example: "251013-045332-Guy-Wilson" → "251013-045332"
+  if (metadata.runId) {
+    const baseRunIdMatch = metadata.runId.match(/^(\d{6}-\d{6})/);
+    if (baseRunIdMatch) {
+      metadata.runId = baseRunIdMatch[1];
+    }
+  }
+  
   // Extract stream parameter from URL query strings
   // Matches: ?stream=1, &stream=2, stream=3
   const streamMatch = context.match(/[?&]stream=(\d+)/i);
