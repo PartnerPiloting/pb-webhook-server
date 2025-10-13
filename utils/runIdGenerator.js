@@ -8,14 +8,8 @@
  * Format: YYMMDD-HHMMSS
  */
 
-// Log deprecation warning when this module is required
-console.warn(`
-  =======================================================================
-  DEPRECATION WARNING: utils/runIdGenerator.js is deprecated.
-  Please use services/runIdSystem.js for all run ID operations.
-  This utility will be removed in a future version.
-  =======================================================================
-`);
+// Note: Deprecation warning removed to prevent Production Issues noise
+// TODO: Update all imports to use services/runIdSystem.js directly
 
 /**
  * Generates a timestamp-based run ID
