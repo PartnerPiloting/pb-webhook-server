@@ -219,25 +219,41 @@ Production errors are captured by analyzing Render logs using pattern-based dete
 ### Note on Legacy System
 Prior to Oct 9, 2025, a second system (direct error logger in `utils/errorLogger.js`) existed but has been fully removed. All error detection now uses pattern-based log analysis only.
 
-## Auto-Analyzer Testing & Validation
+## Log Analyzer (Standalone - No Longer Auto-Runs)
 
-### Auto-Analyzer Timing Configuration
+### ⚠️ IMPORTANT: Analyzer is Now Standalone
 
-**Environment Variable**: `AUTO_ANALYZER_DELAY_MINUTES`
-- **Purpose**: Delay before auto-analyzer runs after job completion
-- **Default**: 6 minutes (allows background jobs to finish and write errors to logs)
-- **Location**: Set in Render environment variables
-- **Why it matters**: Background jobs (post scoring, metrics updates) continue after main script returns. Analyzer must wait for these jobs to complete and write errors to Render logs.
+**The auto-analyzer was REMOVED from the batch scoring endpoint.** It is now a **standalone checkpoint-based system** that runs separately.
+
+**How to Run the Analyzer:**
+
+1. **Manual API Call** (preferred for testing):
+   ```bash
+   POST https://pb-webhook-server-staging.onrender.com/api/analyze-logs/recent
+   Body: { "minutes": 30 }  # Analyze last 30 minutes of logs
+   ```
+
+2. **Helper Script** (local development):
+   ```bash
+   node run-analyzer-now.js
+   ```
+
+3. **Daily Cron Job** (production - automated):
+   - Runs once daily via `daily-log-analyzer.js`
+   - Uses checkpoint system (Last Analyzed Log ID from Job Tracking table)
+   - Picks up from where it left off, no duplicates
+
+**Why the Change:**
+- Keeps batch scoring endpoint fast (no analyzer overhead)
+- Avoids duplicate error detection
+- Checkpoint system ensures 100% coverage with no gaps
+- Allows on-demand analysis without waiting for next batch run
 
 **Background Job Timing:**
 - Typical duration: 4-6 minutes (varies by workload, API latency, rate limits)
 - Jobs run asynchronously after main endpoint returns Run ID
 - Jobs write errors to stdout/stderr with Run ID tags
-- Auto-analyzer must wait long enough to capture all background job errors
-
-**Testing Mode:**
-- Set `AUTO_ANALYZER_DELAY_MINUTES=0` to recreate original bug (misses background errors)
-- Used for Phase 2 validation (catch-up logic should back-fill missed errors)
+- **Wait 15+ minutes after job completion** before running analyzer manually to ensure all background jobs have finished writing to logs
 
 ### Reconciliation API (Validation Tool)
 
@@ -281,51 +297,36 @@ Prior to Oct 9, 2025, a second system (direct error logger in `utils/errorLogger
 ```
 
 **Interpreting Results:**
-- **captureRate = 100%**: Auto-analyzer working perfectly
-- **captureRate < 100%**: Background jobs took longer than delay setting
+- **captureRate = 100%**: Analyzer captured all errors successfully
+- **captureRate < 100%**: Some errors may have been missed or logged after analysis window
 - **adjustedCaptureRate**: Excludes deprecation warnings and noise from calculation
 
 ### Testing Workflow
 
 **After a run on Render:**
-1. Note the Run ID from response (e.g., `251010-192838`)
-2. Note the timestamp from Production Issues table in Airtable (in AEST)
-3. Convert AEST to UTC (subtract 10 hours)
-4. Call reconciliation API with Run ID and UTC timestamp
-5. Check `captureRate` - should be 100%
-6. If < 100%, review `inLogNotInTable` errors and their timestamps
-7. Calculate latest error timestamp minus run start time = minimum delay needed
-8. Add 1-2 minute safety margin to account for workload variability
+1. Wait 15+ minutes for all background jobs to finish writing logs
+2. Trigger analyzer: `POST /api/analyze-logs/recent` with `{ "minutes": 30 }`
+3. Check Production Issues table for new errors
+4. (Optional) Run reconciliation to validate 100% capture
+5. Note the Run ID from response (e.g., `251010-192838`)
+6. Note the timestamp from Production Issues table in Airtable (in AEST)
+7. Convert AEST to UTC (subtract 10 hours)
+8. Call reconciliation API with Run ID and UTC timestamp
+9. Check `captureRate` - should be 100%
 
 **Example Calculation:**
 - Run started: Oct 10 19:28 UTC
 - Latest error: Oct 10 19:32:19 UTC
 - Duration: 4 minutes 19 seconds
-- Recommended delay: 6 minutes (includes 1.5 min safety margin)
-
-### Phase 2: Catch-Up Logic (Planned)
-
-**Purpose**: Belt-and-suspenders approach to guarantee 100% capture even if delay is insufficient
-
-**Design:**
-1. Add "Last Analyzed Log ID" field to Job Tracking table
-2. After each auto-analyzer run, store the last log entry ID processed
-3. On next run, check previous run's record for new logs since last ID
-4. Analyze missed logs and extract errors with original Run ID (from log pattern)
-5. Save to Production Issues table with original Run ID (back-fill)
-
-**Testing Phase 2:**
-1. Set `AUTO_ANALYZER_DELAY_MINUTES=0` (recreates bug)
-2. Run job, verify capture rate < 100%
-3. Run second job (Phase 2 catches missed errors from first run)
-4. Re-run reconciliation on first run ID
-5. Should now show 100% (errors back-filled with original Run ID)
+- Recommended wait time: 15 minutes (includes safety margin for all background jobs)
 
 **Key Files:**
-- `routes/apiAndJobRoutes.js` - Auto-analyzer invocation with delay
+- `routes/apiAndJobRoutes.js` - Manual analyzer API endpoints
+- `daily-log-analyzer.js` - Daily cron job for automated analysis
+- `run-analyzer-now.js` - Helper script for manual analysis
+- `services/productionIssueService.js` - Checkpoint-based analyzer with Last Analyzed Log ID
 - `reconcile-errors.js` - Validation utility script
-- `index.js` - API endpoint wrapper for reconciliation
-- `config/errorPatterns.js` - Error pattern matching for log analysis
+- `config/errorPatterns.js` - Error pattern matching for log analysis (31+ patterns)
 
 ## Key Integration Points
 
