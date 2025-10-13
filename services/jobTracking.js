@@ -948,6 +948,43 @@ class JobTracking {
   }
 
   /**
+   * Get the most recent (latest) run from Job Tracking table
+   * Used by daily-log-analyzer to find checkpoint for continuous streaming
+   * @param {Object} [options={}] - Additional options
+   * @returns {Promise<Object|null>} Latest job record or null if not found
+   */
+  static async getLatestRun(options = {}) {
+    const log = options.logger || logger;
+    const source = 'JobTracking.getLatestRun';
+    
+    try {
+      const masterBase = airtableClient.getMasterClientsBase();
+      
+      // Find the most recent run by start time
+      const records = await masterBase(JOB_TRACKING_TABLE).select({
+        maxRecords: 1,
+        sort: [{ field: JOB_TRACKING_FIELDS.START_TIME, direction: 'desc' }]
+      }).firstPage();
+      
+      if (!records || records.length === 0) {
+        log.info(`[${source}] No runs found in Job Tracking table`);
+        return null;
+      }
+      
+      const latestRun = records[0];
+      const runId = latestRun.fields[JOB_TRACKING_FIELDS.RUN_ID];
+      
+      log.debug(`[${source}] Found latest run: ${runId}`);
+      return latestRun;
+      
+    } catch (error) {
+      log.error(`[${source}] Error getting latest run: ${error.message}`);
+      await logCriticalError(error, { context: 'Service error (swallowed)', service: 'jobTracking.js' }).catch(() => {});
+      return null;
+    }
+  }
+
+  /**
    * Get the previous run before the specified run
    * Used for Phase 2 catch-up logic to find missed errors
    * @param {string|Object} currentRunId - Current run ID
