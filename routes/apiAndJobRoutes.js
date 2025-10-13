@@ -487,8 +487,9 @@ router.get("/run-batch-score", async (req, res) => {
     });
   }
   
+  // STANDALONE RUN: Not called from orchestrator, so skip all metrics/record creation
   batchScorer
-    .run(req, res, { vertexAIClient, geminiModelId, limit })
+    .run(req, res, { vertexAIClient, geminiModelId, limit, isStandalone: true })
     .catch((e) => {
       if (!res.headersSent)
         res.status(500).send("Batch scoring error: " + e.message);

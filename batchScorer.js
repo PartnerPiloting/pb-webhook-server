@@ -700,6 +700,10 @@ async function run(req, res, dependencies) {
         ? runId.split('-').slice(0, 2).join('-') 
         : runId;
     
+    // STANDALONE MODE: Detect if this is a standalone run (not from orchestrator)
+    // If no parentRunId and dependencies.isStandalone is set, skip all metrics/records
+    const isStandalone = dependencies?.isStandalone === true;
+    
     // Create system-level logger for multi-tenant lead scoring operations
     const systemLogger = createLogger({
         runId: timestampOnlyRunId,
@@ -707,7 +711,11 @@ async function run(req, res, dependencies) {
         operation: 'lead_scoring'
     });
     
-    systemLogger.info("=== STARTING MULTI-TENANT LEAD SCORING ===");
+    if (isStandalone) {
+        systemLogger.info("=== STARTING STANDALONE LEAD SCORING (no metrics/records will be created) ===");
+    } else {
+        systemLogger.info("=== STARTING MULTI-TENANT LEAD SCORING ===");
+    }
 
     if (!dependencies || !dependencies.vertexAIClient || !dependencies.geminiModelId) {
         const errorMsg = "Critical dependencies (vertexAIClient, geminiModelId) not provided";
@@ -857,7 +865,8 @@ async function run(req, res, dependencies) {
                                     [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `No action taken: ${reason}`,
                                     options: {
                                         logger: clientLogger,
-                                        source: 'batchScorer_skip'
+                                        source: 'batchScorer_skip',
+                                        isStandalone: isStandalone  // Pass standalone flag
                                     }
                                 });
                             } else {
@@ -995,7 +1004,8 @@ async function run(req, res, dependencies) {
                             [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: reason,
                             options: {
                                 logger: clientLogger,
-                                source: 'batchScorer_complete'
+                                source: 'batchScorer_complete',
+                                isStandalone: isStandalone  // Pass standalone flag
                             }
                         });
                     } catch (error) {
@@ -1090,7 +1100,8 @@ async function run(req, res, dependencies) {
                             [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: errorReason,
                             [CLIENT_RUN_FIELDS.ERROR_DETAILS]: errorReason,
                             options: {
-                                source: 'batchScorer_error'
+                                source: 'batchScorer_error',
+                                isStandalone: isStandalone  // Pass standalone flag
                             }
                         });
                     } catch (error) {
