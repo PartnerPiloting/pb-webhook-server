@@ -346,7 +346,8 @@ async function completeRunRecord(params) {
     throw new Error(errorMsg);
   }
   
-  // Initialize logger AFTER we have validated runId and clientId
+  // CRITICAL FIX: Initialize logger IMMEDIATELY AFTER validation (BEFORE any logger.* calls)
+  // This fixes the "Cannot access 'logger' before initialization" TDZ error
   const logger = getLoggerFromOptions(options, validatedClientId, validatedRunId, 'run_record');
   // Use our own source value if options.source is not provided
   const sourceContext = options.source || source;
@@ -1023,25 +1024,28 @@ async function checkRunRecordExists(params) {
   }
   
   // ROOT CAUSE FIX: Validate params is an object
+  // CRITICAL: Create temp logger IMMEDIATELY for early validation errors (before we have runId/clientId)
+  const tempLogger = createSafeLogger('SYSTEM', 'UNKNOWN', 'run_record');
+  
   if (!params || typeof params !== 'object') {
     const errMsg = `Invalid params: ${JSON.stringify(params)}`;
-    logger.error(`[RunRecordAdapterSimple] ${errMsg}`);
+    tempLogger.error(`[RunRecordAdapterSimple] ${errMsg}`);
     return false; // Fail safe - return false on validation errors
   }
   
   const { runId, clientId: providedClientId, options: optionsParam = {} } = params;
   
-  // Create logger FIRST before any usage
-  const safeRunId = runId ? String(runId) : 'UNKNOWN';
-  const logger = optionsParam.logger || createSafeLogger(providedClientId || 'SYSTEM', safeRunId, 'run_record');
-  const source = optionsParam.source || 'unknown';
-  
-  // ROOT CAUSE FIX: Validate runId
+  // ROOT CAUSE FIX: Validate runId BEFORE creating logger (since logger needs runId)
   if (!runId) {
     const errorMsg = `Missing runId parameter in checkRunRecordExists`;
-    logger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
+    tempLogger.error(`[RunRecordAdapterSimple] ${errorMsg}`);
     return false; // Fail safe - return false on missing runId
   }
+  
+  // TDZ FIX: Create logger AFTER we've validated we have a runId (otherwise we can't create a proper logger)
+  const safeRunId = String(runId);
+  const logger = optionsParam.logger || createSafeLogger(providedClientId || 'SYSTEM', safeRunId, 'run_record');
+  const source = optionsParam.source || 'unknown';
   
   logger.debug(`[RunRecordAdapterSimple] Checking if run record exists: ${safeRunId}, client: ${providedClientId || 'any'}`);
   

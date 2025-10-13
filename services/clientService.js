@@ -267,11 +267,18 @@ async function updateExecutionLog(clientId, logEntry) {
     try {
         const base = initializeClientsBase();
         
+        // DEBUG: Log entry point
+        logger.info(`[UPDATE-LOG-DEBUG] updateExecutionLog called for client ${clientId}`);
+        logger.info(`[UPDATE-LOG-DEBUG] logEntry type: ${typeof logEntry}, value: ${JSON.stringify(logEntry)?.substring(0, 200)}`);
+        
         // Validate logEntry before proceeding
         if (!logEntry || typeof logEntry !== 'string') {
-            logger.warn(`Invalid log entry for client ${clientId}: ${typeof logEntry}`);
+            logger.warn(`[UPDATE-LOG-DEBUG] ⚠️ Validation FAILED - Invalid log entry for client ${clientId}: ${typeof logEntry}`);
+            logger.warn(`[UPDATE-LOG-DEBUG] Returning false to skip update`);
             return false; // Skip update instead of crashing
         }
+        
+        logger.info(`[UPDATE-LOG-DEBUG] ✅ Validation PASSED - logEntry is valid string`);
         
         // First, get the client's Airtable record ID
         const client = await getClientById(clientId);
@@ -279,11 +286,26 @@ async function updateExecutionLog(clientId, logEntry) {
             throw new Error(`Client ${clientId} not found`);
         }
 
+        logger.info(`[UPDATE-LOG-DEBUG] Client record found, ID: ${client.id}`);
+
         // Get current log and append new entry
         const currentLog = client.executionLog || '';
         const updatedLog = currentLog ? `${logEntry}\n\n${currentLog}` : logEntry;
 
+        logger.info(`[UPDATE-LOG-DEBUG] Current log length: ${currentLog.length}, Updated log length: ${updatedLog.length}`);
+        logger.info(`[UPDATE-LOG-DEBUG] updatedLog type: ${typeof updatedLog}, is undefined? ${updatedLog === undefined}`);
+        
+        // CRITICAL DEBUG: Check updatedLog before Airtable call
+        if (updatedLog === undefined) {
+            logger.error(`[UPDATE-LOG-DEBUG] 🔴 CRITICAL: updatedLog is UNDEFINED before Airtable update!`);
+            logger.error(`[UPDATE-LOG-DEBUG] logEntry was: ${typeof logEntry}, currentLog was: ${typeof currentLog}`);
+            logger.error(`[UPDATE-LOG-DEBUG] Stack trace:`, new Error().stack);
+            throw new Error('updatedLog is undefined - cannot update Airtable');
+        }
+
         // Update the record
+        logger.info(`[UPDATE-LOG-DEBUG] Calling Airtable update with field: ${CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG}`);
+        
         await base('Clients').update([
             {
                 id: client.id,
@@ -293,6 +315,7 @@ async function updateExecutionLog(clientId, logEntry) {
             }
         ]);
 
+        logger.info(`[UPDATE-LOG-DEBUG] ✅ Airtable update successful!`);
         logger.info(`Execution log updated for client ${clientId}`);
         
         // Invalidate cache to force refresh on next read
@@ -303,6 +326,8 @@ async function updateExecutionLog(clientId, logEntry) {
 
     } catch (error) {
         logger.error(`Error updating execution log for client ${clientId}:`, error);
+        logger.error(`[UPDATE-LOG-DEBUG] 🔴 Error in updateExecutionLog - logEntry type was: ${typeof logEntry}`);
+        logger.error(`[UPDATE-LOG-DEBUG] Error stack:`, error.stack);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -374,6 +399,10 @@ function formatExecutionLog(executionData) {
  */
 async function logExecution(clientId, executionData) {
     try {
+        // DEBUG: Log input parameters to diagnose undefined logEntry bug
+        logger.info(`[EXEC-LOG-DEBUG] logExecution called for client ${clientId}`);
+        logger.info(`[EXEC-LOG-DEBUG] executionData type: ${typeof executionData}, value: ${JSON.stringify(executionData)?.substring(0, 200)}`);
+        
         let logEntry;
         
         if (executionData.type === 'POST_SCORING') {
@@ -390,10 +419,28 @@ async function logExecution(clientId, executionData) {
                 [EXECUTION_DATA_KEYS.TOKENS_USED]: 0, // We don't track tokens in post scoring yet
                 [EXECUTION_DATA_KEYS.ERRORS]: executionData.errorDetails || []
             };
+            logger.info(`[EXEC-LOG-DEBUG] POST_SCORING path - formatted data created`);
             logEntry = formatExecutionLog(formattedData);
+            logger.info(`[EXEC-LOG-DEBUG] POST_SCORING logEntry type: ${typeof logEntry}, length: ${logEntry?.length}, preview: ${logEntry?.substring(0, 100)}`);
         } else {
             // For lead scoring or other types, use the existing format
+            logger.info(`[EXEC-LOG-DEBUG] Non-POST_SCORING path (type: ${executionData.type})`);
             logEntry = formatExecutionLog(executionData);
+            logger.info(`[EXEC-LOG-DEBUG] Default logEntry type: ${typeof logEntry}, length: ${logEntry?.length}, preview: ${logEntry?.substring(0, 100)}`);
+        }
+        
+        // CRITICAL DEBUG: Check logEntry value before passing to updateExecutionLog
+        if (logEntry === undefined) {
+            logger.error(`[EXEC-LOG-DEBUG] 🔴 CRITICAL: logEntry is UNDEFINED! This will cause Airtable error!`);
+            logger.error(`[EXEC-LOG-DEBUG] Stack trace:`, new Error().stack);
+        } else if (logEntry === null) {
+            logger.error(`[EXEC-LOG-DEBUG] 🔴 CRITICAL: logEntry is NULL! This will cause Airtable error!`);
+            logger.error(`[EXEC-LOG-DEBUG] Stack trace:`, new Error().stack);
+        } else if (typeof logEntry !== 'string') {
+            logger.error(`[EXEC-LOG-DEBUG] 🔴 CRITICAL: logEntry is not a string! Type: ${typeof logEntry}`);
+            logger.error(`[EXEC-LOG-DEBUG] Stack trace:`, new Error().stack);
+        } else {
+            logger.info(`[EXEC-LOG-DEBUG] ✅ logEntry is valid string (${logEntry.length} chars)`);
         }
         
         try {
@@ -405,11 +452,18 @@ async function logExecution(clientId, executionData) {
             const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(2, 14); // YYMMDD-HHMMSS
             const runId = `${timestamp}-${clientId}`;
             
+            // DEBUG: Log before calling updateExecutionLog
+            logger.info(`[EXEC-LOG-DEBUG] Calling updateExecutionLog with logEntry type: ${typeof logEntry}`);
+            
             // First try to update execution log directly
             const updateResult = await updateExecutionLog(clientId, logEntry);
+            
+            logger.info(`[EXEC-LOG-DEBUG] updateExecutionLog returned: ${updateResult}`);
             return updateResult;
         } catch (innerError) {
             logger.error(`Airtable Service ERROR: Failed to update client run: ${innerError.message}`);
+            logger.error(`[EXEC-LOG-DEBUG] 🔴 Inner error caught! logEntry was: ${typeof logEntry}, ${logEntry?.substring(0, 100)}`);
+            logger.error(`[EXEC-LOG-DEBUG] Full error stack:`, innerError.stack);
             await logCriticalError(innerError, { context: 'Service error (swallowed)', service: 'clientService.js' }).catch(() => {});
             return false;
         }
