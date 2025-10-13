@@ -22,6 +22,33 @@ function extractContext(logLines, errorIndex, contextSize = 25, runIdFilter = nu
   
   let contextLines = logLines.slice(start, end);
   
+  // Expand context to include debug logs near the error
+  // Look for debug markers within a reasonable range before the error
+  const debugMarkers = ['[EXEC-LOG-DEBUG]', '[UPDATE-LOG-DEBUG]', '[DEBUG]'];
+  const debugSearchStart = Math.max(0, errorIndex - 100); // Look back up to 100 lines
+  const debugSearchEnd = Math.min(logLines.length, errorIndex + 50); // Look forward up to 50 lines
+  
+  const debugLines = [];
+  for (let i = debugSearchStart; i < debugSearchEnd; i++) {
+    const line = logLines[i];
+    // Check if line contains any debug marker
+    if (debugMarkers.some(marker => line.includes(marker))) {
+      debugLines.push({ index: i, line });
+    }
+  }
+  
+  // If we found debug logs, expand context to include them
+  if (debugLines.length > 0) {
+    const firstDebugIndex = Math.min(...debugLines.map(d => d.index));
+    const lastDebugIndex = Math.max(...debugLines.map(d => d.index));
+    
+    // Expand to include all debug logs
+    const expandedStart = Math.min(start, firstDebugIndex);
+    const expandedEnd = Math.max(end, lastDebugIndex + 1);
+    
+    contextLines = logLines.slice(expandedStart, expandedEnd);
+  }
+  
   // Apply runId filtering if provided
   if (runIdFilter) {
     const runIdPattern = /\[(\d{6}-\d{6}(?:-[\w-]+)?)\]/; // Matches [251009-153045] or [251009-153045-Guy-Wilson]
@@ -31,7 +58,7 @@ function extractContext(logLines, errorIndex, contextSize = 25, runIdFilter = nu
       const match = line.match(runIdPattern);
       
       if (!match) {
-        // Line has NO runId pattern - include it (system errors, stack traces, etc.)
+        // Line has NO runId pattern - include it (system errors, stack traces, debug logs, etc.)
         return true;
       }
       
@@ -43,12 +70,18 @@ function extractContext(logLines, errorIndex, contextSize = 25, runIdFilter = nu
     });
   }
   
-  // Add line numbers for debugging
+  // Add line numbers for debugging and highlight debug lines
   const startLineNum = start + 1;
   return contextLines
     .map((line, idx) => {
       const lineNum = startLineNum + idx;
-      const marker = lineNum === errorIndex + 1 ? '>>> ' : '    ';
+      const isError = lineNum === errorIndex + 1;
+      const isDebug = debugMarkers.some(marker => line.includes(marker));
+      
+      let marker = '    ';
+      if (isError) marker = '>>> ';
+      else if (isDebug) marker = '[D] ';
+      
       return `${marker}${lineNum.toString().padStart(6)}: ${line}`;
     })
     .join('\n');
