@@ -3252,6 +3252,110 @@ app.use(async (err, req, res, next) => {
 });
 
 /* ------------------------------------------------------------------
+    SECURE ENV VAR EXPORT ENDPOINT (For Local Development Only)
+    
+    This endpoint allows local dev machines to fetch current env vars from Render.
+    SECURITY: Protected by PB_WEBHOOK_SECRET (same as other admin endpoints)
+    
+    Usage: curl -H "Authorization: Bearer Diamond9753!!@@pb" https://pb-webhook-server-staging.onrender.com/export-env-vars
+------------------------------------------------------------------*/
+app.get('/export-env-vars', (req, res) => {
+    const endpointLogger = createLogger({ runId: 'EXPORT_ENV', clientId: 'SYSTEM', operation: 'export_env_vars' });
+    
+    // Security check - require same secret as other admin endpoints
+    const authHeader = req.headers.authorization;
+    const expectedAuth = `Bearer ${process.env.PB_WEBHOOK_SECRET}`;
+    
+    if (!authHeader || authHeader !== expectedAuth) {
+        endpointLogger.warn('Unauthorized attempt to export env vars');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    endpointLogger.info('Exporting environment variables for local development');
+    
+    // Export all env vars in .env file format
+    const envVars = Object.entries(process.env)
+        .filter(([key]) => {
+            // Only export our custom env vars, skip Node.js system vars
+            return !key.startsWith('npm_') && 
+                   !key.startsWith('NODE_') &&
+                   key !== 'PATH' &&
+                   key !== 'HOME' &&
+                   key !== 'USER' &&
+                   key !== 'SHELL' &&
+                   key !== 'PWD';
+        })
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+    
+    res.type('text/plain').send(envVars);
+    endpointLogger.info(`Exported ${Object.keys(process.env).length} environment variables`);
+});
+
+/* ------------------------------------------------------------------
+    SECURE ENDPOINT: Export Environment Variables (For Local Development)
+------------------------------------------------------------------*/
+app.get('/api/export-env-vars', (req, res) => {
+    // CRITICAL SECURITY: This endpoint exposes ALL secrets!
+    // It's protected by BOOTSTRAP_SECRET which must be set on Render
+    
+    const authHeader = req.headers['authorization'];
+    const expectedAuth = `Bearer ${process.env.BOOTSTRAP_SECRET}`;
+    
+    if (!process.env.BOOTSTRAP_SECRET) {
+        moduleLogger.error('[export-env-vars] BOOTSTRAP_SECRET not set - endpoint disabled for security');
+        return res.status(503).json({ 
+            error: 'ENDPOINT_DISABLED',
+            message: 'BOOTSTRAP_SECRET environment variable not configured on server'
+        });
+    }
+    
+    if (!authHeader || authHeader !== expectedAuth) {
+        moduleLogger.warn('[export-env-vars] Unauthorized access attempt');
+        return res.status(401).json({ 
+            error: 'UNAUTHORIZED',
+            message: 'Invalid or missing authorization header'
+        });
+    }
+    
+    // Authenticated! Export env vars as .env file format
+    moduleLogger.info('[export-env-vars] Authorized request - exporting environment variables');
+    
+    const envVars = [];
+    
+    // Export all env vars in .env format
+    for (const [key, value] of Object.entries(process.env)) {
+        // Skip system/internal variables that shouldn't be in .env
+        if (key.startsWith('npm_') || 
+            key.startsWith('NODE_') ||
+            key === 'PATH' ||
+            key === 'PWD' ||
+            key === 'HOME' ||
+            key === 'USER' ||
+            key === 'SHELL' ||
+            key === 'TMPDIR' ||
+            key === 'LANG') {
+            continue;
+        }
+        
+        // Escape values that contain special characters
+        const escapedValue = value.includes('\n') || value.includes('"') 
+            ? `"${value.replace(/"/g, '\\"')}"` 
+            : value;
+        
+        envVars.push(`${key}=${escapedValue}`);
+    }
+    
+    const envFileContent = envVars.join('\n');
+    
+    moduleLogger.info(`[export-env-vars] Exported ${envVars.length} environment variables`);
+    
+    // Return as plain text (ready to write to .env file)
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(envFileContent);
+});
+
+/* ------------------------------------------------------------------
     4) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3001;
