@@ -377,13 +377,18 @@ class JobTracking {
         throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
       }
       
-      log.debug(`Updating job with standardized run ID: ${standardRunId}`);
+      // BANDAID FIX: Strip client suffix for Job Tracking table lookups
+      // Job Tracking table uses base Run ID format (YYMMDD-HHMMSS) only
+      // Client Run Results table uses full format (YYMMDD-HHMMSS-ClientName)
+      const baseRunId = standardRunId.match(/^(\d{6}-\d{6})/)?.[1] || standardRunId;
+      
+      log.debug(`Updating job with base run ID: ${baseRunId} (from ${standardRunId})`);
       
       // Get the master base
       const masterBase = airtableClient.getMasterClientsBase();
       
-      // Only check for the standardized run ID
-      const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${standardRunId}'`;
+      // Only check for the base run ID (without client suffix)
+      const formula = `{${JOB_TRACKING_FIELDS.RUN_ID}} = '${baseRunId}'`;
       
       const records = await masterBase(JOB_TRACKING_TABLE).select({
         filterByFormula: formula,
@@ -391,8 +396,8 @@ class JobTracking {
       }).firstPage();
       
       if (!records || records.length === 0) {
-        log.error(`Job tracking record not found for standardized run ID: ${standardRunId}`);
-        throw new Error(`Job tracking record not found for standardized run ID: ${standardRunId}`);
+        log.error(`Job tracking record not found for base run ID: ${baseRunId}`);
+        throw new Error(`Job tracking record not found for base run ID: ${baseRunId}`);
       }
       
       const record = records[0];
