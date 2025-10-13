@@ -104,6 +104,9 @@ const ERROR_PATTERNS = {
     // Resource usage warnings
     /high memory usage/i,
     /CPU usage above/i,
+    
+    // TEMPORARY: Client Run Results debugging (remove after bug fix)
+    /DEBUG-CRR/i,
   ],
 };
 
