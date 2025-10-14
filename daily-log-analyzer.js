@@ -70,11 +70,16 @@ async function runDailyLogAnalysis(options = {}) {
   try {
     const logAnalysisService = new ProductionIssueService();
     
+    let analysisResults;
+    let runIdForContext;
+    
     if (specificRunId) {
       // MANUAL MODE: Analyze specific run
       log.info(`📋 Manual mode: Analyzing logs for run ${specificRunId}`);
       
-      const analysisResults = await logAnalysisService.analyzeRecentLogs({
+      runIdForContext = specificRunId;
+      
+      analysisResults = await logAnalysisService.analyzeRecentLogs({
         minutes: 1440, // 24 hours
         runId: specificRunId
       });
@@ -88,8 +93,6 @@ async function runDailyLogAnalysis(options = {}) {
         log.info(`   🎉 No errors detected - clean run!`);
       }
       
-      return analysisResults;
-      
     } else {
       // AUTO MODE: Continuous streaming from last checkpoint
       log.info(`🔄 Auto mode: Analyzing from last checkpoint to now`);
@@ -98,7 +101,6 @@ async function runDailyLogAnalysis(options = {}) {
       const latestRun = await JobTracking.getLatestRun();
       
       let startTimestamp;
-      let runIdForContext;
       
       if (latestRun && latestRun.fields) {
         runIdForContext = latestRun.fields[JOB_TRACKING_FIELDS.RUN_ID];
@@ -116,10 +118,11 @@ async function runDailyLogAnalysis(options = {}) {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         startTimestamp = oneDayAgo;
         log.info(`⚠️ No previous runs found - starting from 24 hours ago: ${startTimestamp}`);
+        // Note: runIdForContext remains undefined - checkpoint won't update until a Job Tracking record exists
       }
       
       // Analyze logs from startTimestamp to now (continuous streaming)
-      const analysisResults = await logAnalysisService.analyzeLogsFromTimestamp({
+      analysisResults = await logAnalysisService.analyzeLogsFromTimestamp({
         startTimestamp,
         runId: null // Don't filter by runId - analyze ALL logs in time window
       });
@@ -133,24 +136,24 @@ async function runDailyLogAnalysis(options = {}) {
       } else {
         log.info(`   🎉 No errors detected in logs - clean run!`);
       }
-      
-      // Store last analyzed log timestamp for next run to continue from
-      if (analysisResults.lastLogTimestamp && runIdForContext) {
-        try {
-          await JobTracking.updateJob({
-            runId: runIdForContext,
-            updates: {
-              [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: analysisResults.lastLogTimestamp
-            }
-          });
-          log.info(`📍 Stored last analyzed timestamp: ${analysisResults.lastLogTimestamp}`);
-        } catch (updateError) {
-          log.error(`⚠️ Failed to store last analyzed timestamp: ${updateError.message}`);
-        }
-      }
-      
-      return analysisResults;
     }
+    
+    // Store last analyzed log timestamp for next run to continue from
+    if (analysisResults.lastLogTimestamp && runIdForContext) {
+      try {
+        await JobTracking.updateJob({
+          runId: runIdForContext,
+          updates: {
+            [JOB_TRACKING_FIELDS.LAST_ANALYZED_LOG_ID]: analysisResults.lastLogTimestamp
+          }
+        });
+        log.info(`📍 Stored last analyzed timestamp: ${analysisResults.lastLogTimestamp}`);
+      } catch (updateError) {
+        log.error(`⚠️ Failed to store last analyzed timestamp: ${updateError.message}`);
+      }
+    }
+    
+    return analysisResults;
     
   } catch (error) {
     log.error(`❌ Daily log analysis failed: ${error.message}`);
