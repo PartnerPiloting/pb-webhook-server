@@ -523,7 +523,7 @@ class JobTracking {
       
       // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        const errorMsg = `Failed to standardize run ID "${safeRunId}" - validateAndStandardizeRunId returned ${standardRunId}`;
+        const errorMsg = `Failed to standardize run ID "${safeRunId}" - validateAndStandardizeRunId returned ${String(standardRunId)}`;
         log.error(`[${source}] ${errorMsg}`);
         throw new Error(errorMsg);
       }
