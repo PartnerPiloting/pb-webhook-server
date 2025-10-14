@@ -158,8 +158,8 @@ function getNormalizedRunId(originalRunId) {
     // Otherwise return the original to maintain the single source of truth
     if (typeof runIdToNormalize === 'string' && 
         !runIdToNormalize.match(/^\d{6}-\d{6}$/)) {  // Standard YYMMDD-HHMMSS format
-      // Only in this case do we normalize
-      return runIdSystem.normalizeRunId(runIdToNormalize);
+      // Only in this case do we normalize (use validateAndStandardizeRunId, not normalizeRunId which doesn't exist)
+      return runIdSystem.validateAndStandardizeRunId(runIdToNormalize);
     }
     
     // In all other cases, return the original unchanged
