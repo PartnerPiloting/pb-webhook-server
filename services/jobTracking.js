@@ -1575,7 +1575,7 @@ async function appendToProgressLog(runId, clientId, message) {
   const log = createLogger({ runId, clientId, operation: 'progress_log' });
   
   try {
-    const masterBase = airtableClient.getClientBase('MASTER');
+    const masterBase = airtableClient.getMasterClientsBase();
     
     // Find the CRR record
     const records = await masterBase(CLIENT_RUN_RESULTS_TABLE)

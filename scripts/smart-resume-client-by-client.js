@@ -790,7 +790,6 @@ async function main() {
                     runId: normalizedRunId,
                     clientId: workflow.clientId,
                     updates: { 
-                        [CLIENT_RUN_FIELDS.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
                         [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: notes 
                     }
                 });
