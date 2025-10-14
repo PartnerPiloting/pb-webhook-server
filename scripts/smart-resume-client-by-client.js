@@ -104,7 +104,7 @@ moduleLogger.info(`🔍 FORCE_DEBUG: About to force-call main() directly [${new 
 moduleLogger.info(`🔍 TRACE: About to load remaining dependencies`);
 // Updated imports based on newer versions
 const airtableService = require('../services/airtableService');
-const { JobTracking } = require('../services/jobTracking');
+const { JobTracking, appendToProgressLog, getAESTTime } = require('../services/jobTracking');
 const runIdSystem = require('../services/runIdSystem');
 const { 
   CLIENT_RUN_STATUS_VALUES,
@@ -692,15 +692,9 @@ async function main() {
             log(`\n🚀 PROGRESS: Processing client [${i + 1}/${clientsNeedingWork.length}] ${workflow.clientName}:`);
             log(`   Operations needed: ${workflow.operationsToRun.join(', ')}`);
             
-            log(`🔍 DEBUG-CRR-START: Client ${workflow.clientName} entered processing loop`);
-            log(`🔍 DEBUG-CRR-START: clientId=${workflow.clientId}`);
-            log(`🔍 DEBUG-CRR-START: operationsToRun=${JSON.stringify(workflow.operationsToRun)}`);
-            log(`🔍 DEBUG-CRR-START: needsProcessing=${workflow.needsProcessing}`);
-            
             // Create client run record in Airtable
             try {
                 log(`   📊 Creating run tracking record for ${workflow.clientName}...`);
-                log(`🔍 DEBUG-CRR-CREATE: About to call createClientRun for ${workflow.clientName}`);
                 const clientRunRecord = await JobTracking.createClientRun({
                     runId: normalizedRunId,
                     clientId: workflow.clientId,
@@ -709,8 +703,6 @@ async function main() {
                     }
                 });
                 log(`   ✅ Run tracking record created (ID: ${clientRunRecord?.recordId || 'unknown'})`);
-                log(`✅ DEBUG-CRR-CREATE: Record created successfully`);
-                log(`🔍 DEBUG-CRR-CREATE: recordId=${clientRunRecord?.recordId}, runId=${clientRunRecord?.runId}`);
                 
                 // Store client run ID for passing to operations
                 workflow.clientRunId = clientRunRecord?.runId;
@@ -718,9 +710,6 @@ async function main() {
             } catch (error) {
                 log(`   ⚠️ Failed to create run tracking record: ${error.message}. Continuing execution.`, 'WARN');
                 log(`   🔍 Error details: ${error.stack || 'No stack trace'}`, 'DEBUG');
-                log(`❌ DEBUG-CRR-CREATE: FAILED to create record for ${workflow.clientName}`, 'ERROR');
-                log(`❌ DEBUG-CRR-CREATE: Error: ${error.message}`, 'ERROR');
-                log(`❌ DEBUG-CRR-CREATE: Stack: ${error.stack}`, 'ERROR');
             }
             
             // Log more details about post_scoring status if it's going to be executed
@@ -737,13 +726,9 @@ async function main() {
             const params = { stream, limit: leadScoringLimit };
             const clientJobs = [];
             
-            log(`🔍 DEBUG-CRR-OPS: Starting operations loop for ${workflow.clientName}`);
-            log(`🔍 DEBUG-CRR-OPS: Number of operations to run: ${workflow.operationsToRun.length}`);
-            
             for (let opIndex = 0; opIndex < workflow.operationsToRun.length; opIndex++) {
                 const operation = workflow.operationsToRun[opIndex];
                 log(`   🚀 Starting operation [${opIndex + 1}/${workflow.operationsToRun.length}] ${operation}...`);
-                log(`🔍 DEBUG-CRR-OPS: About to trigger operation ${operation} for ${workflow.clientName}`);
                 moduleLogger.info(`🔍 [TRIGGER-DEBUG] About to trigger ${operation} for ${workflow.clientId}`);
                 
                 if (operation === 'post_scoring') {
@@ -767,26 +752,14 @@ async function main() {
                 moduleLogger.info(`🔍 [TRIGGER-DEBUG] Calling triggerOperation for ${operation}...`);
                 const result = await triggerOperation(baseUrl, workflow.clientId, operation, operationParams, headers);
                 
-                log(`🔍 DEBUG-CRR-OPS: triggerOperation returned for ${operation}`);
-                log(`🔍 DEBUG-CRR-OPS: result.success=${result.success}, result.jobId=${result.jobId || 'none'}`);
-                
-                if (operation === 'post_scoring') {
-                }
-                
                 moduleLogger.info(`🔍 [TRIGGER-DEBUG] Result for ${operation}:`, JSON.stringify(result));
                 totalTriggered++;
                 
                 if (result.success) {
-                    if (operation === 'post_scoring') {
-                    }
                     log(`   ✅ ${operation} triggered successfully`);
-                    log(`✅ DEBUG-CRR-OPS: ${operation} triggered successfully with jobId=${result.jobId}`);
                     totalJobsStarted++;
                 } else {
-                    if (operation === 'post_scoring') {
-                    }
                     log(`   ❌ ${operation} failed: ${result.error}`);
-                    log(`❌ DEBUG-CRR-OPS: ${operation} FAILED: ${result.error}`, 'ERROR');
                 }
                 
                 if (result.success) {
@@ -800,9 +773,6 @@ async function main() {
                 }
             }
             
-            log(`🔍 DEBUG-CRR-OPS: Operations loop finished for ${workflow.clientName}`);
-            log(`🔍 DEBUG-CRR-OPS: clientJobs array has ${clientJobs.length} entries: ${JSON.stringify(clientJobs.map(j => j.operation))}`);
-            
             executionResults.push({
                 clientId: workflow.clientId,
                 clientName: workflow.clientName,
@@ -811,18 +781,10 @@ async function main() {
             });
             
             // Update client run record on completion
-            log(`🔍 DEBUG-CRR: About to mark ${workflow.clientName} as complete`);
-            log(`🔍 DEBUG-CRR: runId=${normalizedRunId}, clientId=${workflow.clientId}`);
-            log(`🔍 DEBUG-CRR: clientJobs.length=${clientJobs.length}, operationsToRun.length=${workflow.operationsToRun.length}`);
-            log(`🔍 DEBUG-CRR: operationsToRun=${JSON.stringify(workflow.operationsToRun)}`);
-            
             try {
                 log(`   📊 Updating run tracking for ${workflow.clientName}...`);
                 const success = clientJobs.length === workflow.operationsToRun.length;
                 const notes = `Executed operations: ${workflow.operationsToRun.join(', ')}\nJobs started: ${clientJobs.length}/${workflow.operationsToRun.length}`;
-                
-                log(`🔍 DEBUG-CRR: Calling completeClientRun with success=${success}`);
-                log(`🔍 DEBUG-CRR: STATUS will be set to: ${success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED}`);
                 
                 await JobTracking.completeClientRun({
                     runId: normalizedRunId,
@@ -833,12 +795,8 @@ async function main() {
                     }
                 });
                 log(`   ✅ Run tracking updated`);
-                log(`✅ DEBUG-CRR: completeClientRun() succeeded for ${workflow.clientName}`);
             } catch (error) {
                 log(`   ⚠️ Failed to update run tracking: ${error.message}.`, 'WARN');
-                log(`❌ DEBUG-CRR: completeClientRun() FAILED for ${workflow.clientName}`, 'ERROR');
-                log(`❌ DEBUG-CRR: Error message: ${error.message}`, 'ERROR');
-                log(`❌ DEBUG-CRR: Error stack: ${error.stack}`, 'ERROR');
             }
             
             log(`   ✅ ${workflow.clientName}: ${clientJobs.length}/${workflow.operationsToRun.length} jobs started`);
