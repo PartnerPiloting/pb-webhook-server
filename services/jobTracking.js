@@ -1577,16 +1577,20 @@ async function appendToProgressLog(runId, clientId, message) {
   try {
     const masterBase = airtableClient.getMasterClientsBase();
     
-    // Find the CRR record
+    // CRITICAL FIX: Add client suffix to match how records are created
+    // Records are stored as "251014-050426-Guy-Wilson" not "251014-050426"
+    const clientRunId = JobTracking.addClientSuffix(runId, clientId);
+    
+    // Find the CRR record using the FULL client run ID
     const records = await masterBase(CLIENT_RUN_RESULTS_TABLE)
       .select({
-        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = "${runId}", {${CLIENT_RUN_FIELDS.CLIENT_ID}} = "${clientId}")`,
+        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = "${clientRunId}", {${CLIENT_RUN_FIELDS.CLIENT_ID}} = "${clientId}")`,
         maxRecords: 1
       })
       .firstPage();
     
     if (records.length === 0) {
-      log.error(`CRR record not found for runId=${runId}, clientId=${clientId}`);
+      log.error(`CRR record not found for clientRunId=${clientRunId}, clientId=${clientId}`);
       return false;
     }
     
