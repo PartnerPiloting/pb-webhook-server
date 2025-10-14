@@ -632,8 +632,7 @@ async function updateAggregateMetrics(runId) {
     // Status/Time fields removed (replaced by Progress Log)
     // All metrics are calculated on-the-fly from Client Run Results when needed
     
-    // No aggregates to update anymore - just return success
-    logger.info(`Airtable Service: Skipping aggregate metrics update (Status/Time fields deprecated)`);
+    // No aggregates to update anymore - just return success silently
     return { success: true, message: 'Aggregate metrics update skipped (Status/Time fields deprecated)' };
   } catch (error) {
     logger.error(`Airtable Service ERROR: Failed to update aggregate metrics: ${error.message}`);
