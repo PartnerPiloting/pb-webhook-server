@@ -523,8 +523,9 @@ class JobTracking {
       
       // This should never happen in strict mode (would throw instead), but as extra protection:
       if (!standardRunId) {
-        log.error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
-        throw new Error(`[${source}] Failed to normalize run ID: ${safeRunId}`);
+        const errorMsg = `Failed to standardize run ID "${safeRunId}" - validateAndStandardizeRunId returned ${standardRunId}`;
+        log.error(`[${source}] ${errorMsg}`);
+        throw new Error(errorMsg);
       }
       
       log.debug(`Creating client run with standardized run ID: ${standardRunId}`);
