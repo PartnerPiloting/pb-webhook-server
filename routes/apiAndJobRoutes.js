@@ -1652,26 +1652,24 @@ async function processPostScoringInBackground(runId, stream, options) {
     await logRouteError(error).catch(() => {});
   } finally {
     // ALWAYS analyze logs, even if post-scoring failed
-    // This ensures we capture ALL errors, including fatal ones
-    // But ONLY if we have a runId (orchestrated mode)
-    if (runId) {
-      try {
-        // Use parentRunId for Job Tracking lookups (base format without client suffix)
-        // runId is client-suffixed (251012-085512-Guy-Wilson)
-        // parentRunId is base format (251012-085512) which matches Job Tracking records
-        const baseRunId = options.parentRunId || runId;
-        jobLogger.info(`🔍 Analyzing logs for post-scoring run: ${runId} (base: ${baseRunId})`);
-        const ProductionIssueService = require('../services/productionIssueService');
-        const service = new ProductionIssueService();
-        await service.analyzeRecentLogs({ runId: baseRunId });
-        jobLogger.info(`✅ Post-scoring log analysis complete for ${runId}`);
-      } catch (analyzeError) {
-        jobLogger.error(`❌ Failed to analyze post-scoring logs for ${runId}:`, analyzeError.message);
-        // Don't throw - log analysis failure shouldn't break the run
-      }
-    } else {
-      jobLogger.info(`ℹ️ Standalone mode - skipping log analysis`);
-    }
+    // 🔍 LOG ANALYSIS: DISABLED - Use standalone analyzer instead
+    // Analyzer moved to manual trigger (node analyze-now.js) or daily cron job
+    // This keeps post-scoring endpoint fast and avoids duplicate error detection
+    // if (runId) {
+    //   try {
+    //     const baseRunId = options.parentRunId || runId;
+    //     jobLogger.info(`🔍 Analyzing logs for post-scoring run: ${runId} (base: ${baseRunId})`);
+    //     const ProductionIssueService = require('../services/productionIssueService');
+    //     const service = new ProductionIssueService();
+    //     await service.analyzeRecentLogs({ runId: baseRunId });
+    //     jobLogger.info(`✅ Post-scoring log analysis complete for ${runId}`);
+    //   } catch (analyzeError) {
+    //     jobLogger.error(`❌ Failed to analyze post-scoring logs for ${runId}:`, analyzeError.message);
+    //   }
+    // } else {
+    //   jobLogger.info(`ℹ️ Standalone mode - skipping log analysis`);
+    // }
+    jobLogger.info(`ℹ️ Log analysis disabled - use manual analyzer (node analyze-now.js) or daily cron job`);
   }
 }
 
