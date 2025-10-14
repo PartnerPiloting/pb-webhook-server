@@ -56,7 +56,12 @@ const ERROR_PATTERNS = {
     /Client run record not found/i,
     /Failed to (create|update|fetch|delete)/i,
     /scoring failed/i,
-    /batch.*failed/i,
+    // Match actual batch failures, not "0 failed" success summaries
+    // Matches: "batch failed", "batch run failed", "Batch Failed Critically", "Failed: batch operation", "Failed batch processing"
+    // Excludes: "0 failed", "Summary: 1 successful, 0 failed in batch"
+    /batch\s+(?:run\s+)?failed/i,  // "batch failed" or "batch run failed"
+    /\b(?:failed|error):\s*.*batch/i,  // "failed: batch" or "error: batch" (colon required)
+    /\bfailed\s+batch/i,  // "failed batch" (at word boundary to avoid "0 failed")
     
     // HTTP error codes (4xx, 5xx) - require context to avoid false positives
     /status\s*[45]\d{2}/i,
