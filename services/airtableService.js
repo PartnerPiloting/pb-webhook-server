@@ -165,8 +165,7 @@ async function createJobTrackingRecord(runId, stream) {
       {
         fields: {
           [JOB_TRACKING_FIELDS.RUN_ID]: baseRunId, // Use the base run ID without client suffix
-          [JOB_TRACKING_FIELDS.START_TIME]: new Date().toISOString(),
-          [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
+          // CRR REDESIGN: Removed START_TIME and STATUS fields (replaced by Progress Log)
           [JOB_TRACKING_FIELDS.STREAM]: Number(stream), // Ensure stream is a number for Airtable's number field
           // NOTE: Job Tracking table stores minimal data. Most metrics are in Client Run Results table.
           // Removed fields (2025-10-02): Total Profiles Examined, Successful Profiles, Total Posts Harvested,
@@ -260,8 +259,7 @@ async function createClientRunRecord(runId, clientId, clientName) {
         [CLIENT_RUN_FIELDS.RUN_ID]: standardRunId, // Always use our standardized timestamp format
         [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
         [CLIENT_RUN_FIELDS.CLIENT_NAME]: clientName,
-        [CLIENT_RUN_FIELDS.START_TIME]: startTimestamp,
-        [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
+        // CRR REDESIGN: Removed START_TIME and STATUS fields (replaced by Progress Log)
         [CLIENT_RUN_FIELDS.PROFILES_EXAMINED]: 0,
         [CLIENT_RUN_FIELDS.PROFILES_SCORED]: 0,
         [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
@@ -342,10 +340,10 @@ async function updateJobTracking(runId, updates) {
     if (records.length > 1) {
       logger.warn(`WARNING: Found ${records.length} records with the same Run ID: ${baseRunId}. Updating the most recent one.`);
       
-      // Sort by creation time and update the most recent one
+      // CRR REDESIGN: Sort by creation time (Airtable's createdTime) instead of Start Time
       records.sort((a, b) => {
-        const aTime = a.get('Start Time') ? new Date(a.get('Start Time')) : new Date(0);
-        const bTime = b.get('Start Time') ? new Date(b.get('Start Time')) : new Date(0);
+        const aTime = a._rawJson?.createdTime ? new Date(a._rawJson.createdTime) : new Date(0);
+        const bTime = b._rawJson?.createdTime ? new Date(b._rawJson.createdTime) : new Date(0);
         return bTime - aTime; // Descending order (most recent first)
       });
     }
@@ -510,13 +508,16 @@ async function updateClientRun(runId, clientId, updates) {
  * @returns {Promise<Object>} The updated record
  */
 async function completeJobRun(runId, success = true, notes = '') {
-  const updates = {
-    [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
-    [JOB_TRACKING_FIELDS.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED
-  };
+  // CRR REDESIGN: Removed END_TIME and STATUS updates (replaced by Progress Log)
+  const updates = {};
   
   if (notes) {
     updates[JOB_TRACKING_FIELDS.SYSTEM_NOTES] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+  }
+  
+  // If no updates, just return success without calling Airtable
+  if (Object.keys(updates).length === 0) {
+    return { success: true, message: 'No updates needed (Status/Time fields deprecated)' };
   }
   
   return await updateJobTracking(runId, updates);
@@ -533,13 +534,16 @@ async function completeJobRun(runId, success = true, notes = '') {
  * @returns {Promise<Object>} The updated record
  */
 async function completeClientRun(runId, clientId, success = true, notes = '') {
-  const updates = {
-    [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
-    [CLIENT_RUN_FIELDS.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED
-  };
+  // CRR REDESIGN: Removed END_TIME and STATUS updates (replaced by Progress Log)
+  const updates = {};
   
   if (notes) {
     updates[CLIENT_RUN_FIELDS.SYSTEM_NOTES] = `${notes}\nRun ${success ? 'completed' : 'failed'} at ${new Date().toISOString()}`;
+  }
+  
+  // If no updates, just return success without calling Airtable
+  if (Object.keys(updates).length === 0) {
+    return { success: true, message: 'No updates needed (Status/Time fields deprecated)' };
   }
   
   // Generate a standardized run ID - reuse timestamp if possible
@@ -624,14 +628,13 @@ async function updateAggregateMetrics(runId) {
     // Posts Examined for Scoring, Posts Successfully Scored, Profile Scoring Tokens, Post Scoring Tokens
     // (not in Job Tracking schema - only in Client Run Results)
     
-    // Job Tracking only stores: Status, Stream, Start Time, End Time, System Notes
+    // CRR REDESIGN: Job Tracking only stores: Stream, System Notes
+    // Status/Time fields removed (replaced by Progress Log)
     // All metrics are calculated on-the-fly from Client Run Results when needed
-    const aggregates = {
-      [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.COMPLETED
-    };
     
-    // Update the job tracking record using the base run ID (without client suffix)
-    return await updateJobTracking(baseRunId, aggregates);
+    // No aggregates to update anymore - just return success
+    logger.info(`Airtable Service: Skipping aggregate metrics update (Status/Time fields deprecated)`);
+    return { success: true, message: 'Aggregate metrics update skipped (Status/Time fields deprecated)' };
   } catch (error) {
     logger.error(`Airtable Service ERROR: Failed to update aggregate metrics: ${error.message}`);
     await logCriticalError(error, { context: 'Service error (before throw)', service: 'airtableService.js' }).catch(() => {});

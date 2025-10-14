@@ -562,14 +562,12 @@ class JobTracking {
       }
       
       // Default values
-      const startTime = new Date().toISOString();
+      // CRR REDESIGN: Removed STATUS and START_TIME (replaced by Progress Log)
       
       // Prepare record data using constants
       const recordData = {
         [CLIENT_RUN_FIELDS.RUN_ID]: clientRunId,
         [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId,
-        [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.RUNNING,
-        [CLIENT_RUN_FIELDS.START_TIME]: startTime,
         [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: initialData[CLIENT_RUN_FIELDS.SYSTEM_NOTES] || ''
       };
       
@@ -735,25 +733,9 @@ class JobTracking {
       
       // Use the globally defined list of formula fields
       
-      // CRITICAL: Handle status update with special logic - always use constants for field names
-      // Now using normalized field names from validator
-      const statusValue = CLIENT_RUN_FIELDS.STATUS in normalizedUpdates ? normalizedUpdates[CLIENT_RUN_FIELDS.STATUS] : null;
-      if (statusValue !== null) {
-        updateFields[CLIENT_RUN_FIELDS.STATUS] = statusValue;
-        
-        // Always validate status values are uppercase and match constants
-        const safeStatusValue = getStatusString(statusValue);
-        log.debug(`Status update ${statusValue} -> ${safeStatusValue}`);
-        
-        // If status is transitioning to a completed state, set end time if not provided
-        const isCompletedState = ['completed', 'failed', 'completed with errors', 'no leads to score'].includes(safeStatusValue);
-        const hasEndTime = CLIENT_RUN_FIELDS.END_TIME in normalizedUpdates;
-        if (isCompletedState && !hasEndTime) {
-          const endTime = new Date().toISOString();
-          updateFields[CLIENT_RUN_FIELDS.END_TIME] = endTime;
-          log.debug(`Auto-setting end time to ${endTime}`);
-        }
-      }
+      // CRR REDESIGN: Removed STATUS and END_TIME handling (replaced by Progress Log)
+      // Operations now self-report completion via appendToProgressLog()
+      
       if ('leadsProcessed' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.LEADS_PROCESSED] = normalizedUpdates.leadsProcessed;
       if ('postsProcessed' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.POSTS_PROCESSED] = normalizedUpdates.postsProcessed;
       if ('errors' in normalizedUpdates) updateFields[CLIENT_RUN_FIELDS.ERROR_DETAILS] = normalizedUpdates.errors;
@@ -850,11 +832,10 @@ class JobTracking {
   static async completeClientRun(params) {
     const { runId, clientId, status = 'Completed', updates = {}, options = {} } = params;
     
-    // Add completion details to updates - use proper field constants
+    // CRR REDESIGN: Removed STATUS and END_TIME (replaced by Progress Log)
+    // Operations now self-report completion via appendToProgressLog()
     const completeUpdates = {
-      ...updates,
-      [CLIENT_RUN_FIELDS.STATUS]: status, // Using proper constant for Status field
-      [CLIENT_RUN_FIELDS.END_TIME]: updates[CLIENT_RUN_FIELDS.END_TIME] || new Date().toISOString()
+      ...updates
     };
     
     // Update the record with completion details
@@ -1529,11 +1510,10 @@ class JobTracking {
         }
       }
       
-      // Create updates object using constants
+      // CRR REDESIGN: Removed STATUS and END_TIME (replaced by Progress Log)
+      // Operations now self-report completion via appendToProgressLog()
       const updates = {
-        ...finalMetrics,
-        [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
-        [CLIENT_RUN_FIELDS.STATUS]: status
+        ...finalMetrics
         // Note: PROCESSING_COMPLETED field removed - doesn't exist in Airtable schema
       };
       
@@ -1578,8 +1558,119 @@ class JobTracking {
   }
 }
 
+/**
+ * Progress Log Helper Functions for CRR Redesign
+ * These functions support the new Progress Log field that replaces
+ * Status, Start Time, End Time, and Duration fields.
+ */
+
+/**
+ * Append a message to the Progress Log for a specific client run
+ * @param {string} runId - The run ID (e.g., "251014-153000-Guy-Wilson")
+ * @param {string} clientId - The client ID (e.g., "Guy-Wilson")
+ * @param {string} message - The message to append (with timestamp and icon)
+ * @returns {Promise<boolean>} True if successful
+ */
+async function appendToProgressLog(runId, clientId, message) {
+  const log = createLogger({ runId, clientId, operation: 'progress_log' });
+  
+  try {
+    const masterBase = airtableClient.getClientBase('MASTER');
+    
+    // Find the CRR record
+    const records = await masterBase(CLIENT_RUN_RESULTS_TABLE)
+      .select({
+        filterByFormula: `AND({${CLIENT_RUN_FIELDS.RUN_ID}} = "${runId}", {${CLIENT_RUN_FIELDS.CLIENT_ID}} = "${clientId}")`,
+        maxRecords: 1
+      })
+      .firstPage();
+    
+    if (records.length === 0) {
+      log.error(`CRR record not found for runId=${runId}, clientId=${clientId}`);
+      return false;
+    }
+    
+    const record = records[0];
+    const currentLog = record.get(CLIENT_RUN_FIELDS.PROGRESS_LOG) || '';
+    
+    // Initialize log if empty
+    let updatedLog;
+    if (!currentLog) {
+      updatedLog = `=== RUN: ${runId} ===\n\n${message}\n`;
+    } else {
+      updatedLog = `${currentLog}${message}\n`;
+    }
+    
+    // Check Airtable long text field limit (100,000 characters)
+    if (updatedLog.length > 100000) {
+      log.error(`Progress Log exceeds Airtable limit! Length: ${updatedLog.length}`);
+      // Truncate old entries to make room
+      const lines = updatedLog.split('\n');
+      updatedLog = lines.slice(-500).join('\n');  // Keep last 500 lines
+      log.warn(`Truncated Progress Log to ${updatedLog.length} characters`);
+    }
+    
+    // Update the record
+    await masterBase(CLIENT_RUN_RESULTS_TABLE).update([
+      {
+        id: record.id,
+        fields: {
+          [CLIENT_RUN_FIELDS.PROGRESS_LOG]: updatedLog
+        }
+      }
+    ]);
+    
+    log.info(`Progress Log updated: ${message.substring(0, 100)}...`);
+    return true;
+    
+  } catch (error) {
+    log.error(`Error appending to Progress Log:`, error);
+    await logErrorWithStackTrace(error, {
+      context: 'appendToProgressLog',
+      runId,
+      clientId,
+      messagePreview: message.substring(0, 100)
+    });
+    return false;
+  }
+}
+
+/**
+ * Get current AEST timestamp formatted for Progress Log
+ * @returns {string} Formatted timestamp like "[15:30:45]"
+ */
+function getAESTTime() {
+  const now = new Date();
+  // Convert to AEST (UTC+10)
+  const aestTime = new Date(now.getTime() + (10 * 60 * 60 * 1000));
+  const hours = String(aestTime.getUTCHours()).padStart(2, '0');
+  const minutes = String(aestTime.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(aestTime.getUTCSeconds()).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+/**
+ * Format error array for Progress Log display
+ * @param {Array<string|Error>} errors - Array of error messages
+ * @returns {string} Formatted error list
+ */
+function formatErrors(errors) {
+  if (!Array.isArray(errors) || errors.length === 0) {
+    return '';
+  }
+  
+  return errors.slice(0, 10).map(err => {
+    const msg = typeof err === 'string' ? err : (err.message || String(err));
+    return `  • ${msg}`;
+  }).join('\n');
+}
+
 // Export directly to support both import styles
 // This allows both require('../jobTracking') and const { JobTracking } = require('../jobTracking')
 module.exports = JobTracking;
 // Also export as a property for destructured imports
 module.exports.JobTracking = JobTracking;
+// Export new Progress Log helper functions
+module.exports.appendToProgressLog = appendToProgressLog;
+module.exports.getAESTTime = getAESTTime;
+module.exports.formatErrors = formatErrors;

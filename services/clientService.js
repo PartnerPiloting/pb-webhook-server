@@ -263,84 +263,9 @@ async function validateClient(clientId) {
  * @param {string} logEntry - The log entry to append
  * @returns {Promise<boolean>} True if update was successful
  */
-async function updateExecutionLog(clientId, logEntry) {
-    try {
-        const base = initializeClientsBase();
-        
-        // DEBUG: Log entry point
-        logger.info(`[UPDATE-LOG-DEBUG] updateExecutionLog called for client ${clientId}`);
-        logger.info(`[UPDATE-LOG-DEBUG] logEntry type: ${typeof logEntry}, value: ${JSON.stringify(logEntry)?.substring(0, 200)}`);
-        
-        // Validate logEntry before proceeding
-        if (!logEntry || typeof logEntry !== 'string') {
-            logger.warn(`[UPDATE-LOG-DEBUG] ⚠️ Validation FAILED - Invalid log entry for client ${clientId}: ${typeof logEntry}`);
-            logger.warn(`[UPDATE-LOG-DEBUG] Returning false to skip update`);
-            return false; // Skip update instead of crashing
-        }
-        
-        logger.info(`[UPDATE-LOG-DEBUG] ✅ Validation PASSED - logEntry is valid string`);
-        
-        // First, get the client's Airtable record ID
-        const client = await getClientById(clientId);
-        if (!client) {
-            throw new Error(`Client ${clientId} not found`);
-        }
-
-        logger.info(`[UPDATE-LOG-DEBUG] Client record found, ID: ${client.id}`);
-
-        // Get current log and append new entry
-        const currentLog = client.executionLog || '';
-        const updatedLog = currentLog ? `${logEntry}\n\n${currentLog}` : logEntry;
-
-        logger.info(`[UPDATE-LOG-DEBUG] Current log length: ${currentLog.length}, Updated log length: ${updatedLog.length}`);
-        logger.info(`[UPDATE-LOG-DEBUG] updatedLog type: ${typeof updatedLog}, is undefined? ${updatedLog === undefined}`);
-        logger.info(`[UPDATE-LOG-DEBUG] 🔍 FIELD SIZE CHECK: Airtable long text fields have 100,000 char limit`);
-        if (updatedLog.length > 100000) {
-            logger.error(`[UPDATE-LOG-DEBUG] ❌ CRITICAL: updatedLog exceeds Airtable limit! Length: ${updatedLog.length}`);
-            logger.error(`[UPDATE-LOG-DEBUG] This will cause INVALID_VALUE_FOR_COLUMN error!`);
-        } else if (updatedLog.length > 90000) {
-            logger.warn(`[UPDATE-LOG-DEBUG] ⚠️ WARNING: updatedLog approaching limit (${updatedLog.length}/100000)`);
-        } else {
-            logger.info(`[UPDATE-LOG-DEBUG] ✅ Field size OK (${updatedLog.length}/100000)`);
-        }
-        
-        // CRITICAL DEBUG: Check updatedLog before Airtable call
-        if (updatedLog === undefined) {
-            logger.error(`[UPDATE-LOG-DEBUG] 🔴 CRITICAL: updatedLog is UNDEFINED before Airtable update!`);
-            logger.error(`[UPDATE-LOG-DEBUG] logEntry was: ${typeof logEntry}, currentLog was: ${typeof currentLog}`);
-            logger.error(`[UPDATE-LOG-DEBUG] Stack trace:`, new Error().stack);
-            throw new Error('updatedLog is undefined - cannot update Airtable');
-        }
-
-        // Update the record
-        logger.info(`[UPDATE-LOG-DEBUG] Calling Airtable update with field: ${CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG}`);
-        
-        await base('Clients').update([
-            {
-                id: client.id,
-                fields: {
-                    [CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG]: updatedLog
-                }
-            }
-        ]);
-
-        logger.info(`[UPDATE-LOG-DEBUG] ✅ Airtable update successful!`);
-        logger.info(`Execution log updated for client ${clientId}`);
-        
-        // Invalidate cache to force refresh on next read
-        clientsCache = null;
-        clientsCacheTimestamp = null;
-
-        return true;
-
-    } catch (error) {
-        logger.error(`Error updating execution log for client ${clientId}:`, error);
-        logger.error(`[UPDATE-LOG-DEBUG] 🔴 Error in updateExecutionLog - logEntry type was: ${typeof logEntry}`);
-        logger.error(`[UPDATE-LOG-DEBUG] Error stack:`, error.stack);
-        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
-        throw error;
-    }
-}
+// CRR REDESIGN: updateExecutionLog function removed (replaced by Progress Log in jobTracking.js)
+// Old function logged to "Execution Log" field in Clients table (deprecated)
+// New system uses "Progress Log" field in Client Run Results table for honest completion reporting
 
 /**
  * Create a formatted execution log entry
@@ -453,22 +378,12 @@ async function logExecution(clientId, executionData) {
         }
         
         try {
-            // Get client name for record creation if needed
-            const client = await getClientById(clientId);
-            const clientName = client?.clientName || clientId;
+            // CRR REDESIGN: updateExecutionLog removed (replaced by Progress Log)
+            // Operations now log directly to Progress Log field in Client Run Results table
+            // This provides honest completion timestamps instead of premature "Completed" status
             
-            // Generate a unique run ID based on current time
-            const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(2, 14); // YYMMDD-HHMMSS
-            const runId = `${timestamp}-${clientId}`;
-            
-            // DEBUG: Log before calling updateExecutionLog
-            logger.info(`[EXEC-LOG-DEBUG] Calling updateExecutionLog with logEntry type: ${typeof logEntry}`);
-            
-            // First try to update execution log directly
-            const updateResult = await updateExecutionLog(clientId, logEntry);
-            
-            logger.info(`[EXEC-LOG-DEBUG] updateExecutionLog returned: ${updateResult}`);
-            return updateResult;
+            logger.info(`[EXEC-LOG-DEBUG] logExecution called but updateExecutionLog deprecated - operations log to Progress Log instead`);
+            return true; // Return success without updating Execution Log
         } catch (innerError) {
             logger.error(`Airtable Service ERROR: Failed to update client run: ${innerError.message}`);
             logger.error(`[EXEC-LOG-DEBUG] 🔴 Inner error caught! logEntry was: ${typeof logEntry}, ${logEntry?.substring(0, 100)}`);
@@ -1122,7 +1037,7 @@ module.exports = {
     getClientById,
     getClientByWpUserId, // Add the new WP User ID lookup function
     validateClient,
-    updateExecutionLog,
+    // CRR REDESIGN: updateExecutionLog removed (replaced by Progress Log in jobTracking.js)
     logExecution,     // Add the new logging function
     formatExecutionLog,
     clearCache,
