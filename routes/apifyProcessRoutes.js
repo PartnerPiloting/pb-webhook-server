@@ -770,8 +770,7 @@ async function processClientHandler(req, res) {
           runId: runIdToUse,
           clientId,
           updates: {
-            'System Notes': `Apify webhook received at ${new Date().toISOString()}`,
-            'Status': 'Running',
+            'System Notes': `Apify webhook received at ${new Date().toISOString()}`
           },
           options: {
             source: 'post_harvesting_webhook',
