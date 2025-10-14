@@ -650,10 +650,9 @@ async function completeRunRecord(runId, clientId, status, notes = '', options = 
   
   // Update with completion info, removing problematic fields
   const updates = {
-    [CLIENT_RUN_FIELDS.STATUS]: status,
     [CLIENT_RUN_FIELDS.END_TIME]: endTimestamp,
     // Notes added directly to System Notes instead of using Completion Notes field
-    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Completed at ${endTimestamp} with status ${status} from ${source}. ${notes || ''}`
+    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Completed at ${endTimestamp} from ${source}. ${notes || ''}`
   };
   
   // Source info is already added to System Notes - don't try to use the Source field at all
@@ -809,16 +808,18 @@ function countRecordTypes() {
   const counts = { running: 0, completed: 0, error: 0, other: 0 };
   
   for (const [_, record] of runRecordRegistry.entries()) {
-    // Use the safe status utility function instead of directly calling toLowerCase()
-    // This prevents "Cannot read properties of undefined (reading 'toLowerCase')" errors
-    const rawStatus = record.fields?.[CLIENT_RUN_FIELDS.STATUS] || '';
-    // Default to empty string if status is undefined
-    const status = typeof rawStatus === 'string' ? rawStatus.toLowerCase() : '';
+    // Status field deprecated - check Progress Log for completion status instead
+    const progressLog = record.fields?.[CLIENT_RUN_FIELDS.PROGRESS_LOG] || '';
+    const hasCompletion = progressLog.includes('✅') || progressLog.includes('Completed');
+    const hasError = progressLog.includes('❌') || progressLog.includes('Error');
+    
+    // Derive status from Progress Log
+    const status = hasError ? 'failed' : (hasCompletion ? 'completed' : 'running');
     
     // Safety: Use fallback strings if constants are undefined
-    const runningStr = CLIENT_RUN_STATUS_VALUES.RUNNING ? CLIENT_RUN_STATUS_VALUES.RUNNING.toLowerCase() : 'running';
-    const completedStr = CLIENT_RUN_STATUS_VALUES.COMPLETED ? CLIENT_RUN_STATUS_VALUES.COMPLETED.toLowerCase() : 'completed';
-    const failedStr = CLIENT_RUN_STATUS_VALUES.FAILED ? CLIENT_RUN_STATUS_VALUES.FAILED.toLowerCase() : 'failed';
+    const runningStr = 'running';
+    const completedStr = 'completed';
+    const failedStr = 'failed';
     
     if (status === runningStr) {
       counts.running++;

@@ -287,7 +287,6 @@ function createRecoveryRecord(error, runId, clientId = null, baseRecord = {}) {
   
   const recoveryData = {
     [CLIENT_RUN_FIELDS.RUN_ID]: standardizedRunId,
-    [CLIENT_RUN_FIELDS.STATUS]: 'Recovery',
     [CLIENT_RUN_FIELDS.START_TIME]: timestamp,
     [CLIENT_RUN_FIELDS.ERROR_DETAILS]: error.message,
     [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Recovery record created at ${timestamp} due to ${error.type} error`,
