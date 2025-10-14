@@ -361,11 +361,8 @@ async function completeRunRecord(params) {
       return { skipped: true, reason: 'standalone_run' };
     }
     
-    // ROOT CAUSE FIX: Handle null or undefined status
-    if (status === null || status === undefined) {
-      logger.error(`[${source}] Invalid status: ${status}`);
-      throw new Error(`Cannot complete run record with invalid status: ${status}`);
-    }
+    // Status field deprecated - no validation needed
+    // Progress Log field is used instead for tracking completion
     
     // Handle status as string or boolean - safely
     let success = false;
@@ -469,7 +466,6 @@ async function completeRunRecord(params) {
     const updateData = {
       [FIELD_NAMES.RUN_ID]: standardRunId,
       [FIELD_NAMES.CLIENT_ID]: validatedClientId,
-      [FIELD_NAMES.STATUS]: success ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
       [FIELD_NAMES.SYSTEM_NOTES]: notes
     };
     
@@ -946,26 +942,12 @@ async function completeClientProcessing(params) {
     }
     
     // All processes are complete or check failed - proceed with completion
-    // Determine final status based on metrics
-    let status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
+    // Status field deprecated - completion tracked via Progress Log instead
     const hasErrors = finalMetrics.errors && finalMetrics.errors > 0;
-    const noLeadsProcessed = (!finalMetrics['Profiles Examined for Scoring'] || finalMetrics['Profiles Examined for Scoring'] === 0) &&
-                             (!finalMetrics['Posts Examined for Scoring'] || finalMetrics['Posts Examined for Scoring'] === 0);
-    
-    if (noLeadsProcessed) {
-      status = CLIENT_RUN_STATUS_VALUES.NO_LEADS;
-    } else if (finalMetrics.failed) {
-      status = CLIENT_RUN_STATUS_VALUES.FAILED;
-    } else if (hasErrors) {
-      // If there are errors but process completed, still mark as Completed
-      // but note the errors in System Notes
-      status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
-    }
     
     const updates = {
       ...finalMetrics,
-      [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString(),
-      [CLIENT_RUN_FIELDS.STATUS]: status
+      [CLIENT_RUN_FIELDS.END_TIME]: new Date().toISOString()
       // Note: 'Metrics Updated' field removed - not present in Airtable schema
     };
     

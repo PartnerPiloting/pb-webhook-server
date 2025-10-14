@@ -301,9 +301,10 @@ function aggregateMetrics(records, options = {}) {
   
   // Add derived metrics
   aggregated['Clients Processed'] = records.length;
+  // Status field deprecated - count errors from metrics instead
   aggregated['Clients With Errors'] = records.filter(r => {
-    const status = typeof r.get === 'function' ? r.get(CLIENT_RUN_FIELDS.STATUS) : r.Status;
-    return status === CLIENT_RUN_STATUS_VALUES.FAILED;
+    const errors = typeof r.get === 'function' ? r.get('Errors') : r.Errors;
+    return errors && errors > 0;
   }).length;
   
   return aggregated;
