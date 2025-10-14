@@ -203,7 +203,6 @@ async function completeRunRecord(params) {
     return await runRecordService.completeRunRecord({
       clientId,
       runId,
-      [FIELD_NAMES.STATUS]: status || CLIENT_RUN_STATUS_VALUES.COMPLETED,
       ...metrics, // Include any metrics as fields
       options: options
     });
