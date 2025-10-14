@@ -348,59 +348,20 @@ async function determineClientWorkflow(client) {
     for (const operation of operations) {
         moduleLogger.info(`🔍 [WORKFLOW-DEBUG] Checking operation: ${operation}`);
         
-        // Skip post_harvesting for service level < 2
-        if (operation === 'post_harvesting' && Number(client.serviceLevel) < 2) {
-            moduleLogger.info(`⚠️ [WORKFLOW-DEBUG] Skipping ${operation} - service level ${client.serviceLevel} < 2`);
-            workflow.statusSummary[operation] = { 
-                completed: true, 
-                reason: `Skipped (service level ${client.serviceLevel} < 2)` 
-            };
-            continue;
-        }
-        
         const status = await checkOperationStatus(client.clientId, operation);
         moduleLogger.info(`🔍 [WORKFLOW-DEBUG] Operation ${operation} status:`, JSON.stringify(status));
         workflow.statusSummary[operation] = status;
         
-        // Special handling for post_scoring - check if there are unscored posts regardless of last run time
-        if (operation === 'post_scoring' && status.completed) {
-            const testingMode = process.env.FIRE_AND_FORGET_BATCH_PROCESS_TESTING === 'true';
-            const testingModeLimit = parseInt(process.env.POST_SCORING_TESTING_LIMIT) || 10;
-            
-            moduleLogger.info(`�🚨 POST SCORING CHECK: Client ${client.clientName} (${client.clientId}) has completed post_scoring recently`);
-            moduleLogger.info(`🚨 POST SCORING CHECK: Last run: ${status.lastRun}, Status: ${status.status}, Testing mode = ${testingMode}`);
-            
-            // In testing mode, always run post scoring regardless of recent completion (with limit)
-            if (testingMode) {
-                moduleLogger.info(`🧪 POST SCORING TESTING MODE: FORCE RUNNING post_scoring despite recent completion (limit: ${testingModeLimit})`);
-                status.completed = false;
-                status.overrideReason = `Testing mode active - forcing execution (max ${testingModeLimit} posts)`;
-                status.testingModeLimit = testingModeLimit;
-                workflow.statusSummary[operation] = status;
-            } else {
-                // In normal mode, check for unscored posts
-                moduleLogger.info(`🚨 POST SCORING CHECK: Checking for unscored posts...`);
-                const unscoredPostsStatus = await checkUnscoredPostsCount(client.clientId);
-                
-                moduleLogger.info(`🚨 POST SCORING DECISION: Client ${client.clientName} - Unscored posts check results:`, JSON.stringify(unscoredPostsStatus));
-                
-                // If we have unscored posts, we should run post_scoring even if it was recent
-                if (unscoredPostsStatus.hasUnscoredPosts) {
-                    moduleLogger.info(`✅ POST SCORING OVERRIDE: Found ${unscoredPostsStatus.count} unscored posts for ${client.clientName} - WILL RUN post_scoring even though last run was recent`);
-                    
-                    // Override the completed status and add a reason
-                    status.completed = false;
-                    status.overrideReason = `Found ${unscoredPostsStatus.count} unscored posts`;
-                    status.originalStatus = { ...status }; // Keep original status for reference
-                    
-                    // Update in the workflow summary
-                    workflow.statusSummary[operation] = status;
-                } else {
-                    moduleLogger.info(`🚨 POST SCORING SKIPPED: No unscored posts found for ${client.clientName} - skipping post_scoring as it ran recently`);
-                }
-            }
+        // SIMPLIFIED LOGIC: Always run post operations (post_harvesting, post_scoring)
+        // They will handle their own service level checks and log to Progress Log
+        if (operation === 'post_harvesting' || operation === 'post_scoring') {
+            moduleLogger.info(`✅ [WORKFLOW-DEBUG] ${operation} will always run (handles own eligibility + Progress Log)`);
+            workflow.needsProcessing = true;
+            workflow.operationsToRun.push(operation);
+            continue;
         }
         
+        // For lead_scoring, check if it needs to run based on completion status
         if (!status.completed) {
             moduleLogger.info(`✅ [WORKFLOW-DEBUG] Operation ${operation} will be executed (status.completed=false)`);
             workflow.needsProcessing = true;
