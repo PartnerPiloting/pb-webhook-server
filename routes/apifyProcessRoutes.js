@@ -17,6 +17,7 @@ const Airtable = require('airtable');
 const { getClientBase, createBaseInstance } = require('../config/airtableClient');
 const clientService = require('../services/clientService');
 const { getClientById } = clientService;
+const { JobTracking, appendToProgressLog, getAESTTime } = require('../services/jobTracking');
 const { StructuredLogger } = require('../utils/structuredLogger');
 const { createSafeLogger, getLoggerFromOptions } = require('../utils/loggerHelper');
 const { getFetch } = require('../utils/safeFetch');
@@ -491,6 +492,18 @@ async function processClientHandler(req, res) {
       }
       if (Number(client.serviceLevel) < 2) {
         logger.info(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
+        
+        // Log to Progress Log if we have a clientRunId (means this is part of an orchestrated run)
+        if (clientRunId) {
+          try {
+            await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] 🚀 Post Harvesting: Started`);
+            await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] ⏭️ Post Harvesting: Client not eligible (service level: ${client.serviceLevel}, requires level 2+)`);
+            await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] ✅ Post Harvesting: Skipped`);
+          } catch (logError) {
+            logger.error(`[apify/process-client] Failed to log eligibility skip to Progress Log: ${logError.message}`);
+          }
+        }
+        
         if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
         throw new Error(`Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
       }
@@ -523,6 +536,15 @@ async function processClientHandler(req, res) {
     // running tally
     postsToday = await computeTodaysPosts(base);
     logger.info(`[apify/process-client] Client ${clientId} postsToday: ${postsToday}, target: ${postsTarget}`);
+    
+    // Log "Started" to Progress Log if we have a clientRunId (orchestrated run)
+    if (clientRunId) {
+      try {
+        await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] 🚀 Post Harvesting: Started`);
+      } catch (logError) {
+        logger.error(`[apify/process-client] Failed to log start to Progress Log: ${logError.message}`);
+      }
+    }
     
     batches = 0;
     
@@ -1019,6 +1041,18 @@ async function processClientHandler(req, res) {
       // Continue execution even if metrics update fails
     }
     
+    // Log completion to Progress Log if we have a clientRunId (orchestrated run)
+    if (clientRunId) {
+      try {
+        const statsMessage = postsToday > 0 
+          ? `${postsToday} posts harvested from ${batches} batch${batches !== 1 ? 'es' : ''}`
+          : 'No posts harvested';
+        await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] ✅ Post Harvesting: Completed (${statsMessage})`);
+      } catch (logError) {
+        logger.error(`[apify/process-client] Failed to log completion to Progress Log: ${logError.message}`);
+      }
+    }
+    
     const payload = { ok: true, clientId, postsToday, postsTarget, batches, runs };
     if (debugMode) payload.debug = { batches: debugBatches };
     
@@ -1035,6 +1069,15 @@ async function processClientHandler(req, res) {
     let endpoint = req.path && req.path.includes('smart-resume') ? 'smart-resume' : 'apify';
     logger.error(`[${endpoint}/process-client] error:`, e.message);
     await logCriticalError(e, { operation: 'process_client_handler', req }).catch(() => {});
+    
+    // Log error to Progress Log if we have a clientRunId (orchestrated run)
+    if (clientRunId) {
+      try {
+        await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] ❌ Post Harvesting: Error - ${e.message}`);
+      } catch (logError) {
+        logger.error(`[apify/process-client] Failed to log error to Progress Log: ${logError.message}`);
+      }
+    }
     
     // Check if response object exists (will be null in fire-and-forget mode)
     if (res) {

@@ -33,6 +33,8 @@ const airtableService = require('./services/airtableService');
 const runIdSystem = require('./services/runIdSystem');
 // Using the adapter that enforces the Single Creation Point pattern
 const runRecordService = require('./services/runRecordAdapterSimple');
+// CRR REDESIGN: Progress Log helpers for new logging system
+const { appendToProgressLog, getAESTTime, formatErrors } = require('./services/jobTracking');
 
 // --- Field Validation ---
 const { FIELD_NAMES, createValidatedObject } = require('./utils/airtableFieldValidator');
@@ -829,16 +831,24 @@ async function run(req, res, dependencies) {
                     
                     clientLogger.info(reason);
                     
-                    // Log execution for this client
+                    // CRR REDESIGN: Log to Progress Log instead of Execution Log
                     const duration = Date.now() - clientStartTime;
-                    const logEntry = clientService.formatExecutionLog({
-                        [EXECUTION_DATA_KEYS.STATUS]: 'Completed successfully',
-                        [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: { successful: 0, failed: 0, total: 0 },
-                        [EXECUTION_DATA_KEYS.DURATION]: `${Math.round(duration / 1000)} seconds`,
-                        [EXECUTION_DATA_KEYS.TOKENS_USED]: 0,
-                        [EXECUTION_DATA_KEYS.ERRORS]: []
-                    });
-                    await clientService.updateExecutionLog(clientId, logEntry);
+                    const durationSec = Math.round(duration / 1000);
+                    
+                    // Log start (just discovered there's nothing to do)
+                    await appendToProgressLog(runId, clientId, 
+                        `[${getAESTTime()}] 🚀 Lead Scoring: Started`
+                    );
+                    
+                    // Log "nothing to do" reason
+                    await appendToProgressLog(runId, clientId,
+                        `[${getAESTTime()}] ⏭️ Lead Scoring: No leads to score (0 leads found)`
+                    );
+                    
+                    // Log completion
+                    await appendToProgressLog(runId, clientId,
+                        `[${getAESTTime()}] ✅ Lead Scoring: Completed (0/0, ${durationSec}s, 0 tokens)`
+                    );
                     
                     // ARCHITECTURAL FIX: Only update existing records, never create
                     if (runId) {
@@ -859,9 +869,8 @@ async function run(req, res, dependencies) {
                                 await runRecordService.completeRunRecord({
                                     runId, 
                                     clientId, 
+                                    // CRR REDESIGN: Removed STATUS field (replaced by Progress Log)
                                     // Use CLIENT_RUN_FIELDS directly to ensure consistent field naming
-                                    [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.NO_LEADS, 
-                                    // Also use proper field name for notes
                                     [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `No action taken: ${reason}`,
                                     options: {
                                         logger: clientLogger,
@@ -892,6 +901,11 @@ async function run(req, res, dependencies) {
                 }
 
                 clientLogger.info(`Fetched ${leads.length} leads. Chunk size: ${CHUNK_SIZE}`);
+
+                // CRR REDESIGN: Log start of lead scoring
+                await appendToProgressLog(runId, clientId,
+                    `[${getAESTTime()}] 🚀 Lead Scoring: Started (${leads.length} leads to score)`
+                );
 
                 // Create chunks for this client
                 const chunks = [];
@@ -999,8 +1013,8 @@ async function run(req, res, dependencies) {
                         await runRecordService.completeRunRecord({
                             runId,
                             clientId,
+                            // CRR REDESIGN: Removed STATUS field (replaced by Progress Log)
                             // Use CLIENT_RUN_FIELDS directly to ensure consistent field naming
-                            [CLIENT_RUN_FIELDS.STATUS]: status === 'Success' ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.FAILED,
                             [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: reason,
                             options: {
                                 logger: clientLogger,
@@ -1019,20 +1033,22 @@ async function run(req, res, dependencies) {
                 totalFailed += clientFailed;
                 totalTokensUsed += clientTokensUsed;
 
-                // Log execution for this client
+                // CRR REDESIGN: Log completion to Progress Log instead of Execution Log
                 const clientStatus = clientErrors.length > 0 ? 'Completed with errors' : 'Completed successfully';
-                const logEntry = clientService.formatExecutionLog({
-                    [EXECUTION_DATA_KEYS.STATUS]: clientStatus,
-                    [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: {
-                        successful: clientSuccessful,
-                        failed: clientFailed,
-                        total: clientProcessed
-                    },
-                    [EXECUTION_DATA_KEYS.DURATION]: `${Math.round(clientDuration / 1000)}s`,
-                    [EXECUTION_DATA_KEYS.TOKENS_USED]: clientTokensUsed,
-                    [EXECUTION_DATA_KEYS.ERRORS]: clientErrors
-                });
-                await clientService.updateExecutionLog(clientId, logEntry);
+                const durationSec = Math.round(clientDuration / 1000);
+                
+                // Log completion with stats
+                await appendToProgressLog(runId, clientId,
+                    `[${getAESTTime()}] ✅ Lead Scoring: Completed (${clientSuccessful}/${clientProcessed} successful, ${durationSec}s, ${clientTokensUsed} tokens)`
+                );
+                
+                // If there were errors, log them
+                if (clientErrors.length > 0) {
+                    const errorSummary = formatErrors(clientErrors);
+                    await appendToProgressLog(runId, clientId,
+                        `[${getAESTTime()}] ❌ Lead Scoring: ${clientErrors.length} errors\n${errorSummary}`
+                    );
+                }
 
                 clientResults.push({
                     clientId,
@@ -1082,30 +1098,19 @@ async function run(req, res, dependencies) {
                 const clientDuration = Date.now() - clientStartTime;
                 const errorReason = `Failed to process client: ${clientError.message}`;
                 
-                const logEntry = clientService.formatExecutionLog({
-                    [EXECUTION_DATA_KEYS.STATUS]: 'Failed',
-                    [EXECUTION_DATA_KEYS.LEADS_PROCESSED]: {
-                        successful: 0,
-                        failed: 0,
-                        total: 0
-                    },
-                    [EXECUTION_DATA_KEYS.DURATION]: `${Math.round(clientDuration / 1000)}s`,
-                    [EXECUTION_DATA_KEYS.TOKENS_USED]: 0,
-                    [EXECUTION_DATA_KEYS.ERRORS]: (() => {
-                        // DIAGNOSTIC: Detect malformed errors without .message property
-                        if (!clientError.message) {
-                            clientLogger.error(`🔍 MALFORMED ERROR DETECTED: Error object missing .message property!`);
-                            clientLogger.error(`🔍 Error type: ${typeof clientError}`);
-                            clientLogger.error(`🔍 Error constructor: ${clientError.constructor?.name}`);
-                            clientLogger.error(`🔍 Error keys: ${Object.keys(clientError).join(', ')}`);
-                            clientLogger.error(`🔍 Error value: ${JSON.stringify(clientError)?.substring(0, 500)}`);
-                            clientLogger.error(`🔍 Error toString: ${clientError.toString()}`);
-                            clientLogger.error(`🔍 Stack trace:`, new Error().stack);
-                        }
-                        return [`Fatal error: ${clientError.message || clientError.toString() || 'Unknown error'}`];
-                    })()
-                });
-                await clientService.updateExecutionLog(clientId, logEntry);
+                // CRR REDESIGN: Log failure to Progress Log instead of Execution Log
+                const durationSec = Math.round(clientDuration / 1000);
+                const errorMsg = clientError.message || clientError.toString() || 'Unknown error';
+                
+                // Log the fatal error
+                await appendToProgressLog(runId, clientId,
+                    `[${getAESTTime()}] ❌ Lead Scoring: FAILED - ${errorMsg}`
+                );
+                
+                // Log completion with zero counts
+                await appendToProgressLog(runId, clientId,
+                    `[${getAESTTime()}] ✅ Lead Scoring: Completed (0/0, ${durationSec}s) - No leads scored due to error`
+                );
                 
                 // Complete client run record if runId is provided
                 if (runId) {
@@ -1118,8 +1123,8 @@ async function run(req, res, dependencies) {
                         await runRecordService.completeRunRecord({
                             runId: safeRunId,
                             clientId: safeClientId,
+                            // CRR REDESIGN: Removed STATUS field (replaced by Progress Log)
                             // Use CLIENT_RUN_FIELDS directly to ensure consistent field naming
-                            [CLIENT_RUN_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.FAILED,
                             [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: errorReason,
                             [CLIENT_RUN_FIELDS.ERROR_DETAILS]: errorReason,
                             options: {

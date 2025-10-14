@@ -108,6 +108,17 @@ const CLIENT_RUN_FIELDS = {
   RUN_ID: 'Run ID',
   CLIENT_ID: 'Client ID',
   CLIENT_NAME: 'Client Name',
+  
+  // CRR REDESIGN (Oct 14, 2025): New Progress Log replaces Status/Time fields
+  PROGRESS_LOG: 'Progress Log', // NEW - Single source of truth for run progress
+  
+  // DEPRECATED (Oct 14, 2025): These fields being removed in CRR redesign
+  // STATUS: 'Status',           // DEPRECATED - causes bugs (stuck at "Running")
+  // START_TIME: 'Start Time',   // DEPRECATED - redundant with Created At
+  // END_TIME: 'End Time',       // DEPRECATED - meaningless for fire-and-forget operations
+  // DURATION: 'Duration',       // DEPRECATED - formula based on wrong End Time
+  
+  // Temporary: Keep for backward compatibility during migration
   STATUS: 'Status',
   START_TIME: 'Start Time',
   END_TIME: 'End Time',
@@ -212,13 +223,15 @@ const FORMULA_FIELDS = [
   LEAD_FIELDS.SCORE_CATEGORY
 ];
 
-// Client Run Result status values
+// CRR REDESIGN (Oct 14, 2025): Status field being removed, Progress Log is new approach
+// Client Run Result status values - DEPRECATED
+// These are kept temporarily for backward compatibility during migration
 const CLIENT_RUN_STATUS_VALUES = {
-  RUNNING: 'Running',
-  COMPLETED: 'Completed',
-  FAILED: 'Failed',
-  NO_LEADS: 'No Leads To Score',
-  COMPLETED_WITH_ERRORS: 'Completed with Errors'
+  RUNNING: 'Running',            // DEPRECATED - causes bugs (stuck at "Running")
+  COMPLETED: 'Completed',        // DEPRECATED - meaningless for fire-and-forget ops
+  FAILED: 'Failed',              // DEPRECATED - moving to Progress Log
+  NO_LEADS: 'No Leads To Score', // DEPRECATED - Progress Log shows this better
+  COMPLETED_WITH_ERRORS: 'Completed with Errors' // DEPRECATED
 };
 
 // Scoring status values

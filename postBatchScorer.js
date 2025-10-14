@@ -16,6 +16,7 @@ const { getClientBase } = require('./config/airtableClient');
 
 // --- Repository Layer Dependencies ---
 const JobTracking = require('./services/jobTracking');
+const { appendToProgressLog, getAESTTime, formatErrors } = require('./services/jobTracking');
 const runIdSystem = require('./services/runIdSystem');
 
 // --- Post Scoring Dependencies ---
@@ -168,17 +169,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
                     clientLogger.error(`COMPLETED WITH ERRORS - Errors: ${clientResult.errors}, Details: ${clientResult.errorDetails?.join('; ')}`);
                 }
                 
-                // Log execution for this client
-                await clientService.logExecution(client.clientId, {
-                    type: 'POST_SCORING',
-                    status: clientResult.status,
-                    postsProcessed: clientResult.postsProcessed || 0,
-                    postsScored: clientResult.postsScored || 0,
-                    leadsSkipped: clientResult.leadsSkipped || 0,
-                    errors: clientResult.errors || 0,
-                    duration: clientResult.duration,
-                    errorDetails: clientResult.errorDetails || []
-                });
+                // Note: Progress Log is written inside processClientPostScoring()
+                // No need to log execution here anymore (removed clientService.logExecution call)
                 
             } catch (clientError) {
                 const clientLogger = createLogger({ 
@@ -203,16 +195,8 @@ async function runMultiTenantPostScoring(geminiClient, geminiModelId, runId, cli
                 results.failedClients++;
                 results.totalErrors++;
                 
-                // Log failure for this client
-                await clientService.logExecution(client.clientId, {
-                    type: 'POST_SCORING',
-                    status: 'failed',
-                    postsProcessed: 0,
-                    postsScored: 0,
-                    errors: 1,
-                    duration: 0,
-                    errorDetails: [clientError.message]
-                });
+                // Note: Progress Log error is written inside processClientPostScoring()
+                // No need to log execution here anymore (removed clientService.logExecution call)
             }
         }
         
@@ -286,6 +270,36 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         // ROOT CAUSE FIX: Extract runId from options - it was previously undefined
         const inputRunId = options.runId || null;
         logger.debug(`Received runId from options: ${inputRunId}`);
+        
+        // Log "Started" to Progress Log
+        if (inputRunId) {
+          try {
+            await appendToProgressLog(inputRunId, client.clientId, `[${getAESTTime()}] 🚀 Post Scoring: Started`);
+          } catch (logError) {
+            logger.error(`Failed to log start to Progress Log: ${logError.message}`);
+          }
+        }
+        
+        // Check service level eligibility (post operations require level 2+)
+        const serviceLevel = Number(client.serviceLevel) || 0;
+        if (serviceLevel < 2) {
+          logger.info(`Client ${client.clientId} service level ${serviceLevel} < 2, skipping post scoring`);
+          
+          // Log eligibility skip to Progress Log
+          if (inputRunId) {
+            try {
+              await appendToProgressLog(inputRunId, client.clientId, `[${getAESTTime()}] ⏭️ Post Scoring: Client not eligible (service level: ${serviceLevel}, requires level 2+)`);
+              await appendToProgressLog(inputRunId, client.clientId, `[${getAESTTime()}] ✅ Post Scoring: Skipped`);
+            } catch (logError) {
+              logger.error(`Failed to log eligibility skip to Progress Log: ${logError.message}`);
+            }
+          }
+          
+          // Return success with 0 posts (not an error, just ineligible)
+          clientResult.status = 'success';
+          clientResult.duration = Math.round((new Date() - clientStartTime) / 1000);
+          return clientResult;
+        }
         
         // Use the validated runId passed from the parent function to ensure consistency
         // This ensures we use the same runId throughout the system
@@ -396,6 +410,16 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         if (leadsToProcess.length === 0) {
             // No leads to process, complete with success but 0 scored
             logger.info(`No posts to score for client ${client.clientId} (${client.clientName})`);
+            
+            // Log to Progress Log
+            if (normalizedRunId) {
+              try {
+                await appendToProgressLog(normalizedRunId, client.clientId, `[${getAESTTime()}] ⏭️ Post Scoring: No posts to score`);
+                await appendToProgressLog(normalizedRunId, client.clientId, `[${getAESTTime()}] ✅ Post Scoring: Completed (0 posts scored)`);
+              } catch (logError) {
+                logger.error(`Failed to log to Progress Log: ${logError.message}`);
+              }
+            }
             
             if (process.env.VERBOSE_POST_SCORING === "true") {
             }
@@ -557,6 +581,15 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         clientResult.errors++;
         clientResult.errorDetails.push(error.message);
         logger.error(`Failed to process client ${client.clientId}: ${error.message}`);
+        
+        // Log error to Progress Log
+        if (options.runId) {
+          try {
+            await appendToProgressLog(options.runId, client.clientId, `[${getAESTTime()}] ❌ Post Scoring: Error - ${error.message}`);
+          } catch (logError) {
+            logger.error(`Failed to log error to Progress Log: ${logError.message}`);
+          }
+        }
     }
     
     // Calculate duration
@@ -626,6 +659,23 @@ async function processClientPostScoring(client, limit, logger, options = {}) {
         }
     } catch (jobError) {
         logger.warn(`Could not update job status: ${jobError.message}`);
+    }
+    
+    // Log completion to Progress Log
+    if (options.runId) {
+      try {
+        const duration = clientResult.duration;
+        const stats = `${clientResult.postsScored}/${clientResult.postsProcessed} posts, ${duration}s`;
+        const tokens = clientResult.totalTokensUsed > 0 ? `, ${clientResult.totalTokensUsed} tokens` : '';
+        
+        if (clientResult.status === 'success') {
+          await appendToProgressLog(options.runId, client.clientId, `[${getAESTTime()}] ✅ Post Scoring: Completed (${stats}${tokens})`);
+        } else if (clientResult.errors > 0) {
+          await appendToProgressLog(options.runId, client.clientId, `[${getAESTTime()}] ⚠️ Post Scoring: Completed with ${clientResult.errors} error(s) (${stats}${tokens})`);
+        }
+      } catch (logError) {
+        logger.error(`Failed to log completion to Progress Log: ${logError.message}`);
+      }
     }
     
     return clientResult;

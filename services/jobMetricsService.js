@@ -389,25 +389,17 @@ async function completeClientMetrics(params) {
     // First validate the metrics
     const { validMetrics } = validateMetrics(metrics, { logger: log });
     
-    // Add end time and status - ensure status is one of the allowed values
-    let status = CLIENT_RUN_STATUS_VALUES.COMPLETED;
-    if (!success) {
-      status = CLIENT_RUN_STATUS_VALUES.FAILED;
-    } else if (validMetrics['Leads Processed'] === 0 && validMetrics['Posts Processed'] === 0) {
-      status = CLIENT_RUN_STATUS_VALUES.NO_LEADS;
-    }
-    
+    // CRR REDESIGN: Removed Status and End Time (replaced by Progress Log)
+    // Operations now self-report completion via appendToProgressLog()
     const finalMetrics = {
-      ...validMetrics,
-      'End Time': new Date().toISOString(),
-      'Status': status
+      ...validMetrics
     };
     
     // Complete the client run record
     return await JobTracking.completeClientRun({
       runId,
       clientId,
-      metrics: finalMetrics,
+      updates: finalMetrics, // Changed from 'metrics' to 'updates' to match function signature
       options: { 
         logger: log,
         source: 'job_metrics_service' 
