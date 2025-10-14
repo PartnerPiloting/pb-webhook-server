@@ -85,9 +85,8 @@ const ERROR_PATTERNS = {
    * These don't break functionality but indicate problems building up
    */
   WARNING: [
-    // Deprecated code (will break in future)
-    /deprecated/i,
-    /DeprecationWarning/i,
+    // Node.js deprecation warnings (not our INFO logs about deprecated fields)
+    /DeprecationWarning/,  // Case-sensitive: matches real Node.js warnings, not "deprecated" in logs
     
     // Slow operations (not timeout yet, but slow)
     /slow query/i,
