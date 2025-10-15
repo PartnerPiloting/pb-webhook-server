@@ -167,48 +167,61 @@ Provide a JSON response with:
 
 Keep it simple and practical. Focus on what a developer needs to know.`;
 
-        try {
-            const result = await this.geminiModel.generateContent(prompt);
-            const response = result.response.text();
-            
-            // Try to parse JSON from response
-            const jsonMatch = response.match(/\{[\s\S]*\}/);
-            const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {
-                description: response.split('\n')[0],
-                effect: 'Unknown',
-                recommended: 'See documentation',
-                category: 'other'
-            };
+        // Retry logic for Gemini API calls (3 attempts with exponential backoff)
+        let lastError;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const result = await this.geminiModel.generateContent(prompt);
+                const response = result.response.text();
+                
+                // Try to parse JSON from response
+                const jsonMatch = response.match(/\{[\s\S]*\}/);
+                const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {
+                    description: response.split('\n')[0],
+                    effect: 'Unknown',
+                    recommended: 'See documentation',
+                    category: 'other'
+                };
 
-            const output = {
-                name: varName,
-                currentValue: this.getCurrentValue(varName),
-                description: analysis.description,
-                effect: analysis.effect,
-                recommended: analysis.recommended,
-                category: analysis.category,
-                usage: usageLocations.map(u => `${u.file}:${u.line}`)
-            };
+                const output = {
+                    name: varName,
+                    currentValue: this.getCurrentValue(varName),
+                    description: analysis.description,
+                    effect: analysis.effect,
+                    recommended: analysis.recommended,
+                    category: analysis.category,
+                    usage: usageLocations.map(u => `${u.file}:${u.line}`)
+                };
 
-            // Cache result
-            this.varCache.set(varName, {
-                data: output,
-                timestamp: Date.now()
-            });
+                // Cache result
+                this.varCache.set(varName, {
+                    data: output,
+                    timestamp: Date.now()
+                });
 
-            return output;
-        } catch (error) {
-            console.error(`Failed to generate description for ${varName}:`, error.message);
-            return {
-                name: varName,
-                currentValue: this.getCurrentValue(varName),
-                description: `Used in ${usageLocations.length} locations`,
-                effect: 'See code for details',
-                recommended: 'Unknown',
-                category: 'other',
-                usage: usageLocations.slice(0, 5).map(u => `${u.file}:${u.line}`)
-            };
+                return output;
+            } catch (error) {
+                lastError = error;
+                console.error(`Attempt ${attempt}/3 failed for ${varName}: ${error.message}`);
+                
+                // Wait before retry (exponential backoff: 1s, 2s, 4s)
+                if (attempt < 3) {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+                }
+            }
         }
+        
+        // All retries failed, return fallback
+        console.error(`All retries failed for ${varName}:`, lastError.message);
+        return {
+            name: varName,
+            currentValue: this.getCurrentValue(varName),
+            description: `Used in ${usageLocations.length} locations`,
+            effect: 'See code for details',
+            recommended: 'Unknown',
+            category: 'other',
+            usage: usageLocations.slice(0, 5).map(u => `${u.file}:${u.line}`)
+        };
     }
 
     /**
@@ -301,6 +314,7 @@ Keep it simple and practical. Focus on what a developer needs to know.`;
 
     /**
      * Analyze all env vars in current codebase
+     * Process in small batches with delays to avoid rate limits
      * @param {string} branch - Optional branch to analyze
      * @returns {Promise<Array>} Array of analyzed variables
      */
@@ -310,9 +324,37 @@ Keep it simple and practical. Focus on what a developer needs to know.`;
         
         console.log(`Analyzing ${varNames.length} environment variables...`);
         
-        for (const varName of varNames) {
-            const analysis = await this.generateDescription(varName);
-            results.push(analysis);
+        // Process in batches of 5 with 2 second delays between batches
+        const BATCH_SIZE = 5;
+        const DELAY_MS = 2000;
+        
+        for (let i = 0; i < varNames.length; i += BATCH_SIZE) {
+            const batch = varNames.slice(i, i + BATCH_SIZE);
+            console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(varNames.length / BATCH_SIZE)}...`);
+            
+            // Process batch in parallel
+            const batchPromises = batch.map(varName => 
+                this.generateDescription(varName).catch(err => {
+                    console.error(`Failed to analyze ${varName}: ${err.message}`);
+                    return {
+                        name: varName,
+                        currentValue: this.getCurrentValue(varName),
+                        description: `Analysis failed: ${err.message}`,
+                        effect: 'See code for details',
+                        recommended: 'Unknown',
+                        category: 'other',
+                        usage: this.findVarUsage(varName).slice(0, 5).map(u => `${u.file}:${u.line}`)
+                    };
+                })
+            );
+            
+            const batchResults = await Promise.all(batchPromises);
+            results.push(...batchResults);
+            
+            // Delay between batches (except for last batch)
+            if (i + BATCH_SIZE < varNames.length) {
+                await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+            }
         }
         
         return results;
@@ -320,3 +362,4 @@ Keep it simple and practical. Focus on what a developer needs to know.`;
 }
 
 module.exports = EnvVarAnalyzer;
+
