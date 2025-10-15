@@ -1722,6 +1722,15 @@ try {
     moduleLogger.error("index.js: Error mounting diagnostic routes", e.message, e.stack); 
 }
 
+// Environment Variable Analysis routes (AI-powered documentation)
+try { 
+    const envVarRoutes = require('./routes/envVarRoutes.js'); 
+    app.use('/api/env-vars', envVarRoutes); 
+    moduleLogger.info("index.js: Environment variable analysis routes mounted at /api/env-vars"); 
+} catch(e) { 
+    moduleLogger.error("index.js: Error mounting env var routes", e.message, e.stack); 
+}
+
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
