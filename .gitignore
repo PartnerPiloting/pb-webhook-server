@@ -14,3 +14,4 @@ node_modules/
 *.log
 # Ignore Windows reserved device name that can appear accidentally
 NUL.env.test*
+env-var-analysis.json
