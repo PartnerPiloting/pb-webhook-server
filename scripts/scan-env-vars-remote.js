@@ -77,28 +77,51 @@ async function triggerRemoteScan() {
     console.log('\n🚀 Remote Environment Variable Scanner');
     console.log('=====================================\n');
     console.log(`📡 Connecting to: https://${STAGING_URL}`);
-    console.log('⏳ This will take 5-10 minutes to complete...\n');
+    console.log('⏳ This will take 5-10 minutes to complete...');
+    console.log('📊 Progress updates every 30 seconds...\n');
+
+    // Show progress indicator while waiting
+    const startTime = Date.now();
+    const progressInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        process.stdout.write(`\r⏱️  Elapsed: ${minutes}m ${seconds}s - Scanning code and generating AI descriptions...`);
+    }, 1000);
 
     try {
         const response = await makeRequest('/api/scan-env-vars', 'POST', {
             includeAiDescriptions: true
         });
 
+        clearInterval(progressInterval);
+        const totalTime = Math.floor((Date.now() - startTime) / 1000);
+        console.log(`\n\n✅ Scan completed in ${totalTime}s!\n`);
+
         if (response.statusCode === 200 || response.statusCode === 202) {
-            console.log('✅ Scan initiated successfully!\n');
             console.log('📊 Results:');
             console.log(JSON.stringify(response.data, null, 2));
+            console.log('\n💡 What happened:');
+            console.log('   ✅ Scanned all .js files in your codebase');
+            console.log('   ✅ Found all process.env.VARIABLE_NAME references');
+            console.log('   ✅ Generated plain English descriptions with AI');
+            console.log('   ✅ Synced to Airtable Environment Variables table');
+            console.log('   ✅ Created new records for new variables');
+            console.log('   ✅ Updated existing records (preserved your manual edits)');
+            console.log('   ℹ️  Kept obsolete variables (you can review/delete later)');
             console.log('\n💡 Next steps:');
             console.log('   1. Check your Airtable Environment Variables table');
             console.log('   2. Fill in Production Values manually');
             console.log('   3. Assign Render Groups for organization');
-            console.log('   4. Run: node scripts/document-env-vars.js export\n');
+            console.log('   4. Run: npm run doc-env-vars export\n');
         } else {
             console.error('❌ Scan failed');
             console.error('Status:', response.statusCode);
             console.error('Response:', response.data);
         }
     } catch (error) {
+        clearInterval(progressInterval);
+        console.log('\n');
         console.error('❌ Error connecting to staging server:');
         console.error(error.message);
         console.log('\n💡 Troubleshooting:');
