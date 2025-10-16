@@ -2156,18 +2156,17 @@ router.post("/api/scan-env-vars", async (req, res) => {
       onlySetVariables: onlySetVariables
     });
     
-    logger.info(`Scan complete: ${results.created} created, ${results.updated} updated, ${results.errors.length} errors`);
+    logger.info(`Scan complete: ${results.stats.created} created, ${results.stats.updated} updated, ${results.obsoleteRecords.length} obsolete`);
     
     res.json({
       success: true,
       message: 'Environment variable scan completed',
       results: {
-        variablesFound: results.total,
-        created: results.created,
-        updated: results.updated,
-        skipped: results.skipped,
-        errors: results.errors,
-        duration: results.duration
+        created: results.stats.created,
+        updated: results.stats.updated,
+        unchanged: results.stats.unchanged,
+        obsolete: results.obsoleteRecords.length,
+        obsoleteVariables: results.obsoleteRecords.map(r => r.fields['Variable Name'])
       },
       nextSteps: [
         'Check your Airtable Environment Variables table',
