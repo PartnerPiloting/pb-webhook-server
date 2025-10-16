@@ -35,9 +35,13 @@ class EnvVarDocumenter {
     /**
      * Scan entire codebase and sync to Airtable
      * This is the main function you'll call
+     * @param {Object} options - Scan options
+     * @param {boolean} options.includeAi - Whether to generate AI descriptions (default: false for speed)
      */
-    async scanAndSync() {
-        logger.info('🔍 Starting comprehensive environment variable scan...');
+    async scanAndSync(options = {}) {
+        const { includeAi = false } = options;
+        
+        logger.info(`🔍 Starting environment variable scan (AI mode: ${includeAi ? 'ON' : 'OFF'})...`);
         
         await this.initialize();
 
@@ -49,11 +53,28 @@ class EnvVarDocumenter {
         const existingRecords = await this.getExistingRecords();
         const existingVarNames = new Set(existingRecords.map(r => r.fields['Variable Name']));
         
-        logger.info(`Found ${existingRecords.size} existing records in Airtable`);
+        logger.info(`Found ${existingRecords.length} existing records in Airtable`);
 
-        // Step 3: Analyze all variables (with AI descriptions)
-        logger.info('🤖 Generating AI descriptions (this may take several minutes)...');
-        const analyses = await this.analyzer.analyzeAll();
+        // Step 3: Analyze all variables
+        let analyses;
+        if (includeAi) {
+            logger.info('🤖 Generating AI descriptions (this will take 5-10 minutes)...');
+            analyses = await this.analyzer.analyzeAll();
+        } else {
+            logger.info('⚡ Fast mode: Creating basic records (AI descriptions can be added later)');
+            analyses = varNames.map(varName => {
+                const usage = this.analyzer.findVarUsage(varName);
+                return {
+                    name: varName,
+                    description: `Used in ${usage.length} location(s) - AI description pending`,
+                    category: 'Configuration',
+                    currentValue: process.env[varName] || '',
+                    usageLocations: usage,
+                    effect: 'See code for usage details',
+                    recommended: 'Set appropriate value for environment'
+                };
+            });
+        }
 
         // Step 4: Sync to Airtable
         const stats = {

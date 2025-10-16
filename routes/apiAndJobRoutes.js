@@ -2149,8 +2149,8 @@ router.post("/api/scan-env-vars", async (req, res) => {
     
     logger.info(`Starting environment variable scan (AI descriptions: ${includeAiDescriptions})`);
     
-    // Run the scan
-    const results = await documenter.scanAndSync();
+    // Run the scan with options
+    const results = await documenter.scanAndSync({ includeAi: includeAiDescriptions });
     
     logger.info(`Scan complete: ${results.created} created, ${results.updated} updated, ${results.errors.length} errors`);
     
