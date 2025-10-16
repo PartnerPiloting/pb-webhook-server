@@ -168,11 +168,12 @@ class EnvVarDocumenter {
     needsUpdate(existingFields, analysis) {
         // Always update if key fields changed
         const currentValue = this.analyzer.getCurrentValue(analysis.name);
+        const usageList = analysis.usage || analysis.usageLocations || [];
         
         return (
             existingFields['Staging Value'] !== currentValue ||
             existingFields['AI Description'] !== analysis.description ||
-            existingFields['Used In Files'] !== analysis.usage.join(', ')
+            existingFields['Used In Files'] !== usageList.join(', ')
         );
     }
 
