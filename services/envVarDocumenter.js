@@ -214,7 +214,8 @@ class EnvVarDocumenter {
         const fields = {
             'AI Description': analysis.description,
             'Business Purpose': this.generateBusinessPurpose(analysis),
-            'Category': this.mapCategory(analysis.category),
+            // Skip Category - causes Airtable permission errors with new select options
+            // 'Category': this.mapCategory(analysis.category),
             'Staging Value': currentValue || '',
             'Used In Files': Array.isArray(usageList) ? usageList.join(', ') : String(usageList),
             'Status': currentValue ? 'Active' : 'Not Set',
