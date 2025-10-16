@@ -2146,11 +2146,15 @@ router.post("/api/scan-env-vars", async (req, res) => {
     const documenter = new EnvVarDocumenter();
     
     const includeAiDescriptions = req.body.includeAiDescriptions !== false; // default true
+    const onlySetVariables = req.body.onlySetVariables === true; // default false
     
-    logger.info(`Starting environment variable scan (AI descriptions: ${includeAiDescriptions})`);
+    logger.info(`Starting environment variable scan (AI: ${includeAiDescriptions}, Filter: ${onlySetVariables ? 'REAL ONLY' : 'ALL'})`);
     
     // Run the scan with options
-    const results = await documenter.scanAndSync({ includeAi: includeAiDescriptions });
+    const results = await documenter.scanAndSync({ 
+      includeAi: includeAiDescriptions,
+      onlySetVariables: onlySetVariables
+    });
     
     logger.info(`Scan complete: ${results.created} created, ${results.updated} updated, ${results.errors.length} errors`);
     

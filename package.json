@@ -29,6 +29,7 @@
     "ports:free": "node scripts/killPorts.js --kill 3000 3001",
     "doc-env-vars": "node scripts/document-env-vars.js",
     "doc-env-vars:remote": "node scripts/scan-env-vars-remote.js",
+    "doc-env-vars:real": "node scripts/scan-only-real-env-vars.js",
     "show-env-vars": "node scripts/show-env-vars.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

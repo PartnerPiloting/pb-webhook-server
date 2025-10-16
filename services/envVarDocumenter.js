@@ -37,17 +37,28 @@ class EnvVarDocumenter {
      * This is the main function you'll call
      * @param {Object} options - Scan options
      * @param {boolean} options.includeAi - Whether to generate AI descriptions (default: false for speed)
+     * @param {boolean} options.onlySetVariables - Only include variables that have values (default: false)
      */
     async scanAndSync(options = {}) {
-        const { includeAi = false } = options;
+        const { includeAi = false, onlySetVariables = false } = options;
         
-        logger.info(`🔍 Starting environment variable scan (AI mode: ${includeAi ? 'ON' : 'OFF'})...`);
+        logger.info(`🔍 Starting environment variable scan (AI mode: ${includeAi ? 'ON' : 'OFF'}, Filter: ${onlySetVariables ? 'REAL ONLY' : 'ALL'})...`);
         
         await this.initialize();
 
         // Step 1: Scan codebase for all env vars
-        const varNames = this.analyzer.scanCodeForEnvVars();
+        let varNames = this.analyzer.scanCodeForEnvVars();
         logger.info(`Found ${varNames.length} environment variables in code`);
+        
+        // Filter to only variables that are actually set (if requested)
+        if (onlySetVariables) {
+            const originalCount = varNames.length;
+            varNames = varNames.filter(varName => {
+                const value = process.env[varName];
+                return value && value.trim() !== '';
+            });
+            logger.info(`Filtered to ${varNames.length} variables that are actually set (removed ${originalCount - varNames.length} unset variables)`);
+        }
 
         // Step 2: Get existing records from Airtable
         const existingRecords = await this.getExistingRecords();
