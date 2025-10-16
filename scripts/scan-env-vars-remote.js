@@ -77,8 +77,8 @@ async function triggerRemoteScan() {
     console.log('\n🚀 Remote Environment Variable Scanner');
     console.log('=====================================\n');
     console.log(`📡 Connecting to: https://${STAGING_URL}`);
-    console.log('⏳ This will take 5-10 minutes to complete...');
-    console.log('📊 Progress updates every 30 seconds...\n');
+    console.log('⚡ FAST MODE: Skipping AI descriptions for speed (30-60 seconds)');
+    console.log('   (You can add AI descriptions later with: npm run doc-env-vars scan --ai)\n');
 
     // Show progress indicator while waiting
     const startTime = Date.now();
@@ -86,12 +86,12 @@ async function triggerRemoteScan() {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
-        process.stdout.write(`\r⏱️  Elapsed: ${minutes}m ${seconds}s - Scanning code and generating AI descriptions...`);
+        process.stdout.write(`\r⏱️  Elapsed: ${minutes}m ${seconds}s - Cataloging variables...`);
     }, 1000);
 
     try {
         const response = await makeRequest('/api/scan-env-vars', 'POST', {
-            includeAiDescriptions: true
+            includeAiDescriptions: false  // FAST MODE - skip AI
         });
 
         clearInterval(progressInterval);
