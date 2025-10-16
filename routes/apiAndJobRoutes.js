@@ -2129,9 +2129,12 @@ router.post("/api/scan-env-vars", async (req, res) => {
   const logger = createLogger({ operation: 'scan_env_vars' });
   logger.info("Environment variable scan endpoint hit");
   
-  // This is an admin endpoint - require debug key
+  // This is an admin endpoint - require debug key or webhook secret
   const debugKey = req.headers['x-debug-api-key'] || req.headers['x-debug-key'] || req.query.debugKey;
-  if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
+  const webhookSecret = req.headers['x-webhook-secret'] || req.query.webhookSecret;
+  const validDebugKey = process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET;
+  
+  if ((!debugKey || debugKey !== validDebugKey) && (!webhookSecret || webhookSecret !== process.env.PB_WEBHOOK_SECRET)) {
     return res.status(401).json({
       error: 'Unauthorized',
       message: 'Admin authentication required for environment variable scan'
