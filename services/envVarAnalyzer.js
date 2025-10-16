@@ -172,7 +172,8 @@ Keep it simple and practical. Focus on what a developer needs to know.`;
         for (let attempt = 1; attempt <= 3; attempt++) {
             try {
                 const result = await this.geminiModel.generateContent(prompt);
-                const response = result.response.text();
+                // Access text as property, not function (Vertex AI SDK)
+                const response = result.response.candidates[0].content.parts[0].text;
                 
                 // Try to parse JSON from response
                 const jsonMatch = response.match(/\{[\s\S]*\}/);
