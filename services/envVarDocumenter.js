@@ -170,6 +170,7 @@ class EnvVarDocumenter {
      */
     async createRecord(analysis) {
         const currentValue = this.analyzer.getCurrentValue(analysis.name);
+        const usageList = analysis.usage || analysis.usageLocations || [];
         
         const fields = {
             'Variable Name': analysis.name,
@@ -178,7 +179,7 @@ class EnvVarDocumenter {
             'Category': this.mapCategory(analysis.category),
             'Staging Value': currentValue || '',
             'Production Value': '', // Leave empty - you'll fill this from Render
-            'Used In Files': analysis.usage.join(', '),
+            'Used In Files': Array.isArray(usageList) ? usageList.join(', ') : String(usageList),
             'Status': currentValue ? 'Active' : 'Not Set',
             'Last Synced': new Date().toISOString()
         };
@@ -196,13 +197,14 @@ class EnvVarDocumenter {
      */
     async updateRecord(recordId, analysis) {
         const currentValue = this.analyzer.getCurrentValue(analysis.name);
+        const usageList = analysis.usage || analysis.usageLocations || [];
         
         const fields = {
             'AI Description': analysis.description,
             'Business Purpose': this.generateBusinessPurpose(analysis),
             'Category': this.mapCategory(analysis.category),
             'Staging Value': currentValue || '',
-            'Used In Files': analysis.usage.join(', '),
+            'Used In Files': Array.isArray(usageList) ? usageList.join(', ') : String(usageList),
             'Status': currentValue ? 'Active' : 'Not Set',
             'Last Synced': new Date().toISOString()
         };
