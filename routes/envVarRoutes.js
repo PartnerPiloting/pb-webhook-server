@@ -44,10 +44,12 @@ router.get('/list', async (req, res) => {
  * Query params:
  *   - branch: Git branch to analyze (optional)
  *   - var: Specific variable to analyze (optional, analyzes all if not provided)
+ *   - ai: Set to 'false' to skip AI and just return usage info (default: true)
  */
 router.get('/analyze', async (req, res) => {
     try {
         const branch = req.query.branch || null;
+        const useAI = req.query.ai !== 'false'; // Default to true unless explicitly false
         const specificVar = req.query.var || null;
         const analyzer = new EnvVarAnalyzer();
         

@@ -2123,6 +2123,63 @@ router.get("/check-production-issues-temp", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Environment Variable Documentation Scan (Admin Only)
+// ---------------------------------------------------------------
+router.post("/api/scan-env-vars", async (req, res) => {
+  const logger = createLogger({ operation: 'scan_env_vars' });
+  logger.info("Environment variable scan endpoint hit");
+  
+  // This is an admin endpoint - require debug key
+  const debugKey = req.headers['x-debug-api-key'] || req.headers['x-debug-key'] || req.query.debugKey;
+  if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for environment variable scan'
+    });
+  }
+  
+  try {
+    const EnvVarDocumenter = require("../services/envVarDocumenter");
+    const documenter = new EnvVarDocumenter();
+    
+    const includeAiDescriptions = req.body.includeAiDescriptions !== false; // default true
+    
+    logger.info(`Starting environment variable scan (AI descriptions: ${includeAiDescriptions})`);
+    
+    // Run the scan
+    const results = await documenter.scanAndSync();
+    
+    logger.info(`Scan complete: ${results.created} created, ${results.updated} updated, ${results.errors.length} errors`);
+    
+    res.json({
+      success: true,
+      message: 'Environment variable scan completed',
+      results: {
+        variablesFound: results.total,
+        created: results.created,
+        updated: results.updated,
+        skipped: results.skipped,
+        errors: results.errors,
+        duration: results.duration
+      },
+      nextSteps: [
+        'Check your Airtable Environment Variables table',
+        'Fill in Production Values manually',
+        'Assign Render Groups for organization',
+        'Export documentation with: npm run doc-env-vars export'
+      ]
+    });
+    
+  } catch (error) {
+    logger.error("Environment variable scan error:", error);
+    res.status(500).json({
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // JSON Quality Diagnostic endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/api/json-quality-analysis", async (req, res) => {
