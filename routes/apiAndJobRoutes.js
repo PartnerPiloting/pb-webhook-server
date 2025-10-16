@@ -2186,6 +2186,122 @@ router.post("/api/scan-env-vars", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Environment Variable AI Enhancement endpoint (Admin Only)
+// Processes one variable at a time with progress updates
+// ---------------------------------------------------------------
+router.post("/api/enhance-env-descriptions", async (req, res) => {
+  const logger = createLogger({ operation: 'enhance_env_descriptions' });
+  logger.info("Environment variable AI enhancement endpoint hit");
+  
+  // This is an admin endpoint - require debug key or webhook secret
+  const debugKey = req.headers['x-debug-api-key'] || req.headers['x-debug-key'] || req.query.debugKey;
+  const webhookSecret = req.headers['x-webhook-secret'] || req.query.webhookSecret;
+  const validDebugKey = process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET;
+  
+  if ((!debugKey || debugKey !== validDebugKey) && (!webhookSecret || webhookSecret !== process.env.PB_WEBHOOK_SECRET)) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for environment variable enhancement'
+    });
+  }
+  
+  try {
+    const EnvVarDocumenter = require("../services/envVarDocumenter");
+    const documenter = new EnvVarDocumenter();
+    
+    await documenter.initialize();
+    
+    // Get all records that need AI enhancement
+    const existingRecords = await documenter.getExistingRecords();
+    const recordsToEnhance = existingRecords.filter(r => {
+      const desc = r.fields['AI Description'] || '';
+      const status = r.fields['Status'] || 'Active';
+      return (status === 'Active' || status === 'Deprecated') && 
+             (desc.includes('AI description pending') || desc === '');
+    });
+    
+    logger.info(`Found ${recordsToEnhance.length} variables to enhance`);
+    
+    // Set up SSE (Server-Sent Events) for progress updates
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    const sendProgress = (data) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+    
+    sendProgress({ type: 'start', total: recordsToEnhance.length });
+    
+    let processed = 0;
+    let updated = 0;
+    let errors = 0;
+    
+    for (const record of recordsToEnhance) {
+      const varName = record.fields['Variable Name'];
+      processed++;
+      
+      try {
+        sendProgress({ 
+          type: 'progress', 
+          current: processed,
+          total: recordsToEnhance.length,
+          varName,
+          status: 'analyzing'
+        });
+        
+        // Generate AI description
+        const analysis = await documenter.analyzer.generateDescription(varName);
+        
+        // Update the record
+        await documenter.updateRecord(record.id, analysis);
+        
+        updated++;
+        
+        sendProgress({ 
+          type: 'progress', 
+          current: processed,
+          total: recordsToEnhance.length,
+          varName,
+          status: 'completed',
+          description: analysis.description
+        });
+        
+        // Small delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        errors++;
+        logger.error(`Error enhancing ${varName}:`, error);
+        
+        sendProgress({ 
+          type: 'progress', 
+          current: processed,
+          total: recordsToEnhance.length,
+          varName,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+    
+    sendProgress({ 
+      type: 'complete', 
+      processed,
+      updated,
+      errors
+    });
+    
+    res.end();
+    
+  } catch (error) {
+    logger.error("Enhancement error:", error);
+    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+// ---------------------------------------------------------------
 // JSON Quality Diagnostic endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/api/json-quality-analysis", async (req, res) => {
