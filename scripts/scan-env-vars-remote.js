@@ -16,8 +16,8 @@ const https = require('https');
 const STAGING_URL = 'pb-webhook-server-staging.onrender.com';
 
 // Debug API key (required for this endpoint)
-// You can set this as an environment variable or hard-code it temporarily
-const DEBUG_API_KEY = process.env.DEBUG_API_KEY || 'Diamond9753!!@@pb';
+// Using the standard PB webhook secret for admin authentication
+const AUTH_SECRET = process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
 
 /**
  * Make HTTPS request to staging server
@@ -31,7 +31,8 @@ function makeRequest(path, method = 'POST', body = null) {
             method: method,
             headers: {
                 'Content-Type': 'application/json',
-                'x-debug-api-key': DEBUG_API_KEY
+                'x-debug-api-key': AUTH_SECRET,
+                'x-webhook-secret': AUTH_SECRET
             }
         };
 
