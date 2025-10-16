@@ -2216,8 +2216,11 @@ router.post("/api/enhance-env-descriptions", async (req, res) => {
     const recordsToEnhance = existingRecords.filter(r => {
       const desc = r.fields['AI Description'] || '';
       const status = r.fields['Status'] || 'Active';
+      // Enhance if: empty, pending, or just showing usage count (fallback description)
       return (status === 'Active' || status === 'Deprecated') && 
-             (desc.includes('AI description pending') || desc === '');
+             (desc.includes('AI description pending') || 
+              desc === '' || 
+              desc.match(/^Used in \d+ location/));
     });
     
     logger.info(`Found ${recordsToEnhance.length} variables to enhance`);
