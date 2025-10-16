@@ -4,9 +4,9 @@
 
 const EnvVarAnalyzer = require('./envVarAnalyzer');
 const { getMasterClientsBase } = require('../config/airtableClient');
-const { createLogger } = require('../utils/structuredLogger');
+const { createLogger } = require('../utils/contextLogger');
 
-const logger = createLogger('env-var-documenter');
+const logger = createLogger({ operation: 'env-var-documenter' });
 
 /**
  * Extended environment variable analyzer with Airtable integration
