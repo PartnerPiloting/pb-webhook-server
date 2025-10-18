@@ -108,51 +108,40 @@ async function checkUserMembership(wpUserId) {
 
         logger.info(`Checking PMPro membership for WordPress User ID: ${wpUserId}`);
 
-        // First, check if the user exists in WordPress
-        const userUrl = `${wpBaseUrl}/wp-json/wp/v2/users/${wpUserId}`;
-        
-        let wpUser;
-        try {
-            const userResponse = await axios.get(userUrl, { headers, timeout: 10000 });
-            wpUser = userResponse.data;
-            logger.info(`WordPress user found: ${wpUser.name} (ID: ${wpUser.id})`);
-        } catch (userError) {
-            if (userError.response?.status === 404) {
-                logger.error(`WordPress User ID ${wpUserId} does not exist in WordPress`);
-                return {
-                    hasValidMembership: false,
-                    levelId: null,
-                    levelName: null,
-                    error: `WordPress User ID ${wpUserId} not found`
-                };
-            }
-            throw userError;
-        }
-
-        // Now check PMPro membership using PMPro REST API
+        // Check PMPro membership directly - don't bother checking if user exists first
+        // PMPro REST API will handle that for us
         // PMPro typically adds endpoints like: /wp-json/pmpro/v1/get_membership_level_for_user
-        // Or we can use: /wp-json/wp/v2/users/{id} and check meta fields
         
-        // Option 1: Try PMPro REST API endpoint (if available)
+        // Option 1: Try PMPro REST API endpoint (preferred method)
         let membershipLevel = null;
         try {
             const pmproUrl = `${wpBaseUrl}/wp-json/pmpro/v1/get_membership_level_for_user?user_id=${wpUserId}`;
+            logger.info(`Trying PMPro API: ${pmproUrl}`);
             const pmproResponse = await axios.get(pmproUrl, { headers, timeout: 10000 });
+            
+            logger.info(`PMPro API response:`, pmproResponse.data);
             
             if (pmproResponse.data && pmproResponse.data.id) {
                 membershipLevel = {
                     id: parseInt(pmproResponse.data.id, 10),
                     name: pmproResponse.data.name || 'Unknown'
                 };
-                logger.info(`PMPro membership found via API: Level ${membershipLevel.id} (${membershipLevel.name})`);
+                logger.info(`✅ PMPro membership found via API: Level ${membershipLevel.id} (${membershipLevel.name})`);
+            } else if (pmproResponse.data === false || pmproResponse.data === null) {
+                // PMPro returns false/null when user has no membership
+                logger.info(`PMPro API returned no membership for user ${wpUserId}`);
             }
         } catch (pmproError) {
-            // PMPro API might not be available, try user meta approach
-            logger.info('PMPro REST API not available, trying user meta approach...');
+            // Log the error but continue - PMPro API might not be available
+            logger.warn(`PMPro API error (will try fallback): ${pmproError.message}`);
+            if (pmproError.response?.status === 404) {
+                logger.info(`PMPro API endpoint not found - this site may not have PMPro REST API enabled`);
+            }
         }
 
-        // Option 2: If PMPro API not available, check user meta fields
+        // Option 2: If PMPro API not available, try WordPress user meta (less reliable)
         if (!membershipLevel) {
+            logger.info('Trying fallback method: WordPress user meta...');
             try {
                 // Get user with context=edit to see meta fields
                 const userMetaUrl = `${wpBaseUrl}/wp-json/wp/v2/users/${wpUserId}?context=edit`;
@@ -167,10 +156,31 @@ async function checkUserMembership(wpUserId) {
                         id: parseInt(levelId, 10),
                         name: 'Member' // We can't get the name from meta easily
                     };
-                    logger.info(`PMPro membership found via user meta: Level ${membershipLevel.id}`);
+                    logger.info(`✅ PMPro membership found via user meta: Level ${membershipLevel.id}`);
+                } else {
+                    logger.info(`User meta checked but no membership level found`);
                 }
             } catch (metaError) {
-                logger.warn('Could not retrieve user meta fields:', metaError.message);
+                logger.warn(`User meta fallback failed: ${metaError.message}`);
+                // If both methods fail, we'll treat it as no membership
+                // Don't throw error - just log it
+                if (metaError.response?.status === 401) {
+                    logger.error(`401 Unauthorized - WordPress API credentials may lack permission to view user ${wpUserId}`);
+                    return {
+                        hasValidMembership: false,
+                        levelId: null,
+                        levelName: null,
+                        error: `WordPress API permission error (401) - cannot verify membership for user ${wpUserId}`
+                    };
+                } else if (metaError.response?.status === 404) {
+                    logger.error(`WordPress User ID ${wpUserId} not found (404)`);
+                    return {
+                        hasValidMembership: false,
+                        levelId: null,
+                        levelName: null,
+                        error: `WordPress User ID ${wpUserId} not found in WordPress`
+                    };
+                }
             }
         }
 
