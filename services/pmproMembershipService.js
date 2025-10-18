@@ -199,7 +199,8 @@ async function checkUserMembership(wpUserId) {
         const validLevels = await getValidPMProLevels();
         const isValid = validLevels.includes(membershipLevel.id);
 
-        logger.info(`Membership validation: Level ${membershipLevel.id} is ${isValid ? 'VALID' : 'INVALID'}`);
+        logger.info(`Membership validation: Level ${membershipLevel.id} (type: ${typeof membershipLevel.id}) is ${isValid ? 'VALID' : 'INVALID'}`);
+        logger.info(`Valid levels: ${JSON.stringify(validLevels)} (types: ${validLevels.map(l => typeof l).join(', ')})`);
 
         return {
             hasValidMembership: isValid,
