@@ -51,8 +51,9 @@ async function getValidPMProLevels() {
         // Accepts: numeric fields, string numbers, single-selects, arrays, or objects
         const levels = records
             .map(record => {
-                // Try multiple possible field names
-                let raw = record.get('Level ID') ||
+                // Try multiple possible field names (check "Membership Level" first)
+                let raw = record.get('Membership Level') ||
+                          record.get('Level ID') ||
                           record.get('PMPro Level ID') ||
                           record.get('ID') ||
                           record.get('Level') ||
