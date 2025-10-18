@@ -33,11 +33,11 @@ async function updateClientStatus(recordId, newStatus, reason) {
         Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
         const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
         
-        const comment = `[${new Date().toISOString()}] Membership sync: ${reason}`;
+        // Log the reason to console instead of trying to write to Comment field
+        console.log(`[MEMBERSHIP_SYNC] Updating client ${recordId}: Status → ${newStatus} (${reason})`);
         
         await base(MASTER_TABLES.CLIENTS).update(recordId, {
-            [CLIENT_FIELDS.STATUS]: newStatus,
-            [CLIENT_FIELDS.COMMENT]: comment
+            [CLIENT_FIELDS.STATUS]: newStatus
         });
         
         return true;
