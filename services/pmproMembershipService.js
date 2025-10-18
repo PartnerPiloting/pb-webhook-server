@@ -47,20 +47,38 @@ async function getValidPMProLevels() {
             .select()
             .all();
 
-        // Extract level IDs (assuming field is named "Level ID" or similar)
-        // Adjust field name if needed based on your actual Airtable schema
+        // Extract level IDs (handle a variety of Airtable field formats)
+        // Accepts: numeric fields, string numbers, single-selects, arrays, or objects
         const levels = records
             .map(record => {
                 // Try multiple possible field names
-                const levelId = record.get('Level ID') || 
-                               record.get('PMPro Level ID') || 
-                               record.get('ID') ||
-                               record.get('Level');
-                
-                // Convert to number if it's a string
-                return typeof levelId === 'string' ? parseInt(levelId, 10) : levelId;
+                let raw = record.get('Level ID') ||
+                          record.get('PMPro Level ID') ||
+                          record.get('ID') ||
+                          record.get('Level') ||
+                          record.get('Level ID (Number)');
+
+                // If raw is an array (linked records or multi-select), try first element
+                if (Array.isArray(raw) && raw.length > 0) {
+                    raw = raw[0];
+                }
+
+                // If raw is an object (e.g., { id, name } or Airtable linked record), try common properties
+                if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                    if (raw.id) raw = raw.id;
+                    else if (raw.name) raw = raw.name;
+                    else if (raw.fields && raw.fields['Level ID']) raw = raw.fields['Level ID'];
+                    else raw = undefined;
+                }
+
+                // Normalize strings by trimming
+                if (typeof raw === 'string') raw = raw.trim();
+
+                // Convert to integer when possible
+                const parsed = raw != null ? parseInt(raw, 10) : NaN;
+                return Number.isInteger(parsed) ? parsed : NaN;
             })
-            .filter(level => !isNaN(level) && level > 0);
+            .filter(level => Number.isInteger(level) && level > 0);
 
         logger.info(`Found ${levels.length} valid PMPro levels: ${levels.join(', ')}`);
         
