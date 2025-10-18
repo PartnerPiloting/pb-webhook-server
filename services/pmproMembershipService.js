@@ -247,11 +247,11 @@ async function testWordPressConnection() {
         const wpResponse = await axios.get(wpApiUrl, { headers, timeout: 5000 });
 
         // Test PMPro API endpoint
-        let pmproAvailable = false;
+        let pmproApiAvailable = false;
         try {
             const pmproUrl = `${wpBaseUrl}/wp-json/pmpro/v1`;
             await axios.get(pmproUrl, { headers, timeout: 5000 });
-            pmproAvailable = true;
+            pmproApiAvailable = true;
         } catch (e) {
             // PMPro API might not be available
         }
@@ -259,7 +259,7 @@ async function testWordPressConnection() {
         return {
             success: true,
             wpApiAvailable: wpResponse.status === 200,
-            pmproApiAvailable,
+            pmproApiAvailable: pmproApiAvailable,
             baseUrl: wpBaseUrl
         };
 
