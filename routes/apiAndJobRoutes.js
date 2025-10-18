@@ -922,6 +922,17 @@ router.get("/score-lead", async (req, res) => {
       res.status(500).json({ error: err.message });
   }
 });// ---------------------------------------------------------------
+// Debug: return normalized Valid PMPro Levels (safe to expose in staging)
+router.get('/debug/valid-pmpro-levels', async (_req, res) => {
+  try {
+    const { getValidPMProLevels } = require('../services/pmproMembershipService');
+    const levels = await getValidPMProLevels();
+    res.json({ success: true, levels });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Gemini Debug
 // ---------------------------------------------------------------
 router.get("/debug-gemini-info", (_req, res) => {
