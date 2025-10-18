@@ -5830,4 +5830,298 @@ router.get("/smart-resume-status", async (req, res) => {
   }
 });
 
+// ========================================================================
+// PMPro Membership Sync Endpoints
+// ========================================================================
+
+const pmproService = require('../services/pmproMembershipService');
+const clientService = require('../services/clientService');
+const { MASTER_TABLES, CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
+
+/**
+ * POST /api/sync-client-statuses
+ * Sync all client statuses based on WordPress PMPro memberships
+ * Updates Status field to Active or Paused based on membership validity
+ */
+router.post("/api/sync-client-statuses", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'membership-sync', 
+    clientId: 'SYSTEM', 
+    operation: 'sync-client-statuses' 
+  });
+
+  try {
+    logger.info('🔄 Starting client status sync based on PMPro memberships...');
+
+    // Get all clients from Master Clients base
+    const allClients = await clientService.getAllClients();
+    logger.info(`📋 Found ${allClients.length} clients to check`);
+
+    const results = {
+      total: allClients.length,
+      processed: 0,
+      activated: 0,
+      paused: 0,
+      errors: 0,
+      skipped: 0,
+      details: []
+    };
+
+    // Process each client
+    for (const client of allClients) {
+      const clientId = client.clientId;
+      const clientName = client.clientName;
+      const wpUserId = client.wpUserId;
+      const currentStatus = client.status;
+
+      logger.info(`\n--- Processing: ${clientName} (${clientId}) ---`);
+
+      // Check if WordPress User ID exists
+      if (!wpUserId || wpUserId === 0) {
+        logger.error(`❌ ERROR: ${clientName} has no WordPress User ID`);
+        console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) has no WordPress User ID - setting Status to Paused`);
+        
+        // Update status to Paused
+        await updateClientStatus(client.recordId, 'Paused', 'No WordPress User ID configured');
+        
+        results.paused++;
+        results.errors++;
+        results.processed++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'paused',
+          reason: 'No WordPress User ID',
+          error: true
+        });
+        continue;
+      }
+
+      logger.info(`🔍 WordPress User ID: ${wpUserId} - checking membership...`);
+
+      // Check PMPro membership
+      const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+
+      if (membershipCheck.error) {
+        logger.error(`❌ ERROR checking membership for ${clientName}: ${membershipCheck.error}`);
+        console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) - ${membershipCheck.error} - setting Status to Paused`);
+        
+        // Update status to Paused
+        await updateClientStatus(client.recordId, 'Paused', membershipCheck.error);
+        
+        results.paused++;
+        results.errors++;
+        results.processed++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'paused',
+          reason: membershipCheck.error,
+          error: true
+        });
+        continue;
+      }
+
+      // Determine what the status should be
+      const shouldBeActive = membershipCheck.hasValidMembership;
+      const newStatus = shouldBeActive ? 'Active' : 'Paused';
+      
+      // Log membership info
+      if (membershipCheck.hasValidMembership) {
+        logger.info(`✅ Valid membership: Level ${membershipCheck.levelId} (${membershipCheck.levelName})`);
+      } else {
+        logger.warn(`⚠️ Invalid or no membership - Level: ${membershipCheck.levelId || 'none'}`);
+      }
+
+      // Update if status changed
+      if (currentStatus !== newStatus) {
+        logger.info(`🔄 Updating status: ${currentStatus} → ${newStatus}`);
+        
+        const reason = shouldBeActive 
+          ? `Valid PMPro membership (Level ${membershipCheck.levelId})`
+          : (membershipCheck.levelId 
+              ? `Invalid PMPro level ${membershipCheck.levelId}` 
+              : 'No active PMPro membership');
+        
+        await updateClientStatus(client.recordId, newStatus, reason);
+        
+        if (newStatus === 'Active') {
+          results.activated++;
+          console.log(`[MEMBERSHIP_SYNC] ✅ Client "${clientName}" (${clientId}) activated - has valid PMPro membership (Level ${membershipCheck.levelId})`);
+        } else {
+          results.paused++;
+          console.log(`[MEMBERSHIP_SYNC] ⏸️ Client "${clientName}" (${clientId}) paused - ${reason}`);
+        }
+        
+        results.details.push({
+          clientId,
+          clientName,
+          action: newStatus.toLowerCase(),
+          previousStatus: currentStatus,
+          newStatus: newStatus,
+          reason: reason,
+          membershipLevel: membershipCheck.levelId
+        });
+      } else {
+        logger.info(`✓ Status unchanged: ${currentStatus}`);
+        results.skipped++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'unchanged',
+          status: currentStatus,
+          membershipLevel: membershipCheck.levelId
+        });
+      }
+
+      results.processed++;
+    }
+
+    logger.info('\n✅ Client status sync complete!');
+    logger.info(`📊 Summary: ${results.activated} activated, ${results.paused} paused, ${results.skipped} unchanged, ${results.errors} errors`);
+
+    res.json({
+      success: true,
+      message: 'Client status sync completed',
+      results: results
+    });
+
+  } catch (error) {
+    logger.error('❌ Client status sync failed:', {
+      error: error.message,
+      stack: error.stack
+    });
+    console.error('[MEMBERSHIP_SYNC_ERROR] Fatal error during client status sync:', error.message);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Client status sync failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Helper function to update client status in Airtable
+ */
+async function updateClientStatus(recordId, newStatus, reason) {
+  try {
+    const Airtable = require('airtable');
+    Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+    const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    const comment = `[${new Date().toISOString()}] Membership sync: ${reason}`;
+    
+    await base(MASTER_TABLES.CLIENTS).update(recordId, {
+      [CLIENT_FIELDS.STATUS]: newStatus,
+      [CLIENT_FIELDS.COMMENT]: comment
+    });
+    
+    return true;
+  } catch (error) {
+    console.error(`[MEMBERSHIP_SYNC_ERROR] Failed to update client status in Airtable:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * GET /api/test-wordpress-connection
+ * Test WordPress connection and PMPro API availability
+ */
+router.get("/api/test-wordpress-connection", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'wp-test', 
+    clientId: 'SYSTEM', 
+    operation: 'test-wordpress' 
+  });
+
+  try {
+    logger.info('🔍 Testing WordPress connection...');
+    
+    const testResult = await pmproService.testWordPressConnection();
+    
+    if (testResult.success) {
+      logger.info('✅ WordPress connection successful');
+      res.json({
+        success: true,
+        message: 'WordPress connection successful',
+        details: testResult
+      });
+    } else {
+      logger.error('❌ WordPress connection failed:', testResult.error);
+      res.status(500).json({
+        success: false,
+        error: 'WordPress connection failed',
+        details: testResult
+      });
+    }
+  } catch (error) {
+    logger.error('❌ WordPress connection test failed:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Test failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/check-client-membership/:clientId
+ * Check membership status for a specific client (for testing)
+ */
+router.post("/api/check-client-membership/:clientId", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'membership-check', 
+    clientId: req.params.clientId, 
+    operation: 'check-membership' 
+  });
+
+  try {
+    const clientId = req.params.clientId;
+    logger.info(`🔍 Checking membership for client: ${clientId}`);
+    
+    // Get client info
+    const client = await clientService.getClientById(clientId);
+    
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        error: 'Client not found'
+      });
+    }
+
+    const wpUserId = client.wpUserId;
+    
+    if (!wpUserId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Client has no WordPress User ID'
+      });
+    }
+
+    // Check membership
+    const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+    
+    res.json({
+      success: true,
+      client: {
+        clientId: client.clientId,
+        clientName: client.clientName,
+        wpUserId: wpUserId,
+        currentStatus: client.status
+      },
+      membership: membershipCheck,
+      recommendation: membershipCheck.hasValidMembership ? 'Active' : 'Paused'
+    });
+
+  } catch (error) {
+    logger.error('❌ Membership check failed:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Membership check failed',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;
