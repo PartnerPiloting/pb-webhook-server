@@ -5882,7 +5882,7 @@ router.post("/api/sync-client-statuses", async (req, res) => {
         console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) has no WordPress User ID - setting Status to Paused`);
         
         // Update status to Paused
-        await updateClientStatus(client.recordId, 'Paused', 'No WordPress User ID configured');
+        await updateClientStatus(client.id, 'Paused', 'No WordPress User ID configured');
         
         results.paused++;
         results.errors++;
@@ -5907,7 +5907,7 @@ router.post("/api/sync-client-statuses", async (req, res) => {
         console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) - ${membershipCheck.error} - setting Status to Paused`);
         
         // Update status to Paused
-        await updateClientStatus(client.recordId, 'Paused', membershipCheck.error);
+        await updateClientStatus(client.id, 'Paused', membershipCheck.error);
         
         results.paused++;
         results.errors++;
@@ -5943,7 +5943,7 @@ router.post("/api/sync-client-statuses", async (req, res) => {
               ? `Invalid PMPro level ${membershipCheck.levelId}` 
               : 'No active PMPro membership');
         
-        await updateClientStatus(client.recordId, newStatus, reason);
+        await updateClientStatus(client.id, newStatus, reason);
         
         if (newStatus === 'Active') {
           results.activated++;
