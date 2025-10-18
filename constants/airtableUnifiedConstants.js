@@ -16,7 +16,8 @@ const MASTER_TABLES = {
   JOB_TRACKING: 'Job Tracking',
   CLIENT_EXECUTION_LOG: 'Client Execution Log',
   APIFY: 'Apify',
-  PRODUCTION_ISSUES: 'Production Issues' // Replaced Error Log table
+  PRODUCTION_ISSUES: 'Production Issues', // Replaced Error Log table
+  VALID_PMPRO_LEVELS: 'Valid PMPro Levels' // PMPro membership levels
 };
 
 // Table names in individual client bases

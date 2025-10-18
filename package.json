@@ -31,6 +31,7 @@
     "doc-env-vars:remote": "node scripts/scan-env-vars-remote.js",
     "doc-env-vars:real": "node scripts/scan-only-real-env-vars.js",
     "show-env-vars": "node scripts/show-env-vars.js",
+    "sync-memberships": "node sync-client-memberships.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
