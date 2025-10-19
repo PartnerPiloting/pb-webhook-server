@@ -142,12 +142,19 @@ async function checkUserMembership(wpUserId) {
             
             if (pmproResponse.data && pmproResponse.data.id) {
                 // Try multiple possible field names for expiry date
-                const expiryDate = pmproResponse.data.enddate || 
+                let expiryDate = pmproResponse.data.enddate || 
                                    pmproResponse.data.end_date || 
                                    pmproResponse.data.expiration_date || 
                                    pmproResponse.data.expiration || 
                                    pmproResponse.data.expires ||
                                    null;
+                
+                // Convert Unix timestamp to date string if needed
+                if (expiryDate && typeof expiryDate === 'string' && /^\d+$/.test(expiryDate)) {
+                    // It's a Unix timestamp (string of digits)
+                    const timestamp = parseInt(expiryDate, 10) * 1000; // Convert to milliseconds
+                    expiryDate = new Date(timestamp).toISOString().split('T')[0]; // Format as YYYY-MM-DD
+                }
                 
                 membershipLevel = {
                     id: parseInt(pmproResponse.data.id, 10),
