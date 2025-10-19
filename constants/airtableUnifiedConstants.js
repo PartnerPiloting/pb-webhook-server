@@ -33,6 +33,8 @@ const CLIENT_FIELDS = {
   CLIENT_ID: 'Client ID',
   CLIENT_NAME: 'Client Name',
   STATUS: 'Status',
+  STATUS_MANAGEMENT: 'Status Management', // Controls whether sync script manages Status automatically or manually
+  EXPIRY_DATE: 'Expiry Date', // PMPro membership expiry date
   AIRTABLE_BASE_ID: 'Airtable Base ID',
   WORDPRESS_USER_ID: 'WordPress User ID',
   SERVICE_LEVEL: 'Service Level',

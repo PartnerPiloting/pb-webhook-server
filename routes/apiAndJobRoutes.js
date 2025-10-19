@@ -5884,8 +5884,23 @@ router.post("/api/sync-client-statuses", async (req, res) => {
       const clientName = client.clientName;
       const wpUserId = client.wpUserId;
       const currentStatus = client.status;
+      const statusManagement = client.statusManagement || 'Automatic'; // Default to Automatic if not set
 
       logger.info(`\n--- Processing: ${clientName} (${clientId}) ---`);
+
+      // Skip if Status Management is set to "Manual"
+      if (statusManagement === 'Manual') {
+        logger.info(`⏭️ SKIPPING: ${clientName} has Status Management set to "Manual"`);
+        results.skipped++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'skipped',
+          reason: 'Status Management set to Manual',
+          status: currentStatus
+        });
+        continue;
+      }
 
       // Check if WordPress User ID exists
       if (!wpUserId || wpUserId === 0) {
@@ -5893,7 +5908,7 @@ router.post("/api/sync-client-statuses", async (req, res) => {
         console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) has no WordPress User ID - setting Status to Paused`);
         
         // Update status to Paused
-        await updateClientStatus(client.id, 'Paused', 'No WordPress User ID configured');
+        await updateClientStatus(client.id, 'Paused', 'No WordPress User ID configured', null);
         
         results.paused++;
         results.errors++;
@@ -5918,7 +5933,7 @@ router.post("/api/sync-client-statuses", async (req, res) => {
         console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) - ${membershipCheck.error} - setting Status to Paused`);
         
         // Update status to Paused
-        await updateClientStatus(client.id, 'Paused', membershipCheck.error);
+        await updateClientStatus(client.id, 'Paused', membershipCheck.error, null);
         
         results.paused++;
         results.errors++;
@@ -5954,7 +5969,8 @@ router.post("/api/sync-client-statuses", async (req, res) => {
               ? `Invalid PMPro level ${membershipCheck.levelId}` 
               : 'No active PMPro membership');
         
-        await updateClientStatus(client.id, newStatus, reason);
+        // Include expiry date in the update
+        await updateClientStatus(client.id, newStatus, reason, membershipCheck.expiryDate);
         
         if (newStatus === 'Active') {
           results.activated++;
@@ -6015,18 +6031,25 @@ router.post("/api/sync-client-statuses", async (req, res) => {
 /**
  * Helper function to update client status in Airtable
  */
-async function updateClientStatus(recordId, newStatus, reason) {
+async function updateClientStatus(recordId, newStatus, reason, expiryDate = null) {
   try {
     const Airtable = require('airtable');
     Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
     const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
     
     // Log the reason to console/Render logs instead of trying to write to Comment field
-    console.log(`[MEMBERSHIP_SYNC] Updating client ${recordId}: Status → ${newStatus} (${reason})`);
+    console.log(`[MEMBERSHIP_SYNC] Updating client ${recordId}: Status → ${newStatus} (${reason})${expiryDate ? `, Expiry → ${expiryDate}` : ''}`);
     
-    await base(MASTER_TABLES.CLIENTS).update(recordId, {
+    const updateFields = {
       [CLIENT_FIELDS.STATUS]: newStatus
-    });
+    };
+    
+    // Add expiry date if provided (null will clear the field)
+    if (expiryDate !== undefined) {
+      updateFields[CLIENT_FIELDS.EXPIRY_DATE] = expiryDate;
+    }
+    
+    await base(MASTER_TABLES.CLIENTS).update(recordId, updateFields);
     
     return true;
   } catch (error) {
