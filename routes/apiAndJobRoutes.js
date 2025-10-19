@@ -5963,6 +5963,8 @@ router.post("/api/sync-client-statuses", async (req, res) => {
       const statusChanged = currentStatus !== newStatus;
       const expiryNeedsUpdate = membershipCheck.expiryDate !== undefined; // Always update expiry if we have it
       
+      logger.info(`🔍 Update check: statusChanged=${statusChanged}, expiryNeedsUpdate=${expiryNeedsUpdate}, expiryDate=${membershipCheck.expiryDate}`);
+      
       if (statusChanged || expiryNeedsUpdate) {
         if (statusChanged) {
           logger.info(`🔄 Updating status: ${currentStatus} → ${newStatus}`);
