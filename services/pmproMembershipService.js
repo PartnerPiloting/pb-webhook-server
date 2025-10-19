@@ -242,6 +242,7 @@ async function checkUserMembership(wpUserId) {
             hasValidMembership: isValid,
             levelId: membershipLevel.id,
             levelName: membershipLevel.name,
+            expiryDate: membershipLevel.expiryDate, // Include expiry date for Airtable sync
             error: isValid ? null : `Membership level ${membershipLevel.id} is not in valid levels list`
         };
 
