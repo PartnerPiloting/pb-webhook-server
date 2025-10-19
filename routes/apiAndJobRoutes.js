@@ -5959,9 +5959,17 @@ router.post("/api/sync-client-statuses", async (req, res) => {
         logger.warn(`⚠️ Invalid or no membership - Level: ${membershipCheck.levelId || 'none'}`);
       }
 
-      // Update if status changed
-      if (currentStatus !== newStatus) {
-        logger.info(`🔄 Updating status: ${currentStatus} → ${newStatus}`);
+      // Check if status changed OR if we need to update expiry date
+      const statusChanged = currentStatus !== newStatus;
+      const expiryNeedsUpdate = membershipCheck.expiryDate !== undefined; // Always update expiry if we have it
+      
+      if (statusChanged || expiryNeedsUpdate) {
+        if (statusChanged) {
+          logger.info(`🔄 Updating status: ${currentStatus} → ${newStatus}`);
+        }
+        if (expiryNeedsUpdate && !statusChanged) {
+          logger.info(`📅 Updating expiry date: ${membershipCheck.expiryDate || 'None'}`);
+        }
         
         const reason = shouldBeActive 
           ? `Valid PMPro membership (Level ${membershipCheck.levelId})`
@@ -5969,26 +5977,39 @@ router.post("/api/sync-client-statuses", async (req, res) => {
               ? `Invalid PMPro level ${membershipCheck.levelId}` 
               : 'No active PMPro membership');
         
-        // Include expiry date in the update
+        // Always include expiry date in the update
         await updateClientStatus(client.id, newStatus, reason, membershipCheck.expiryDate);
         
-        if (newStatus === 'Active') {
-          results.activated++;
-          console.log(`[MEMBERSHIP_SYNC] ✅ Client "${clientName}" (${clientId}) activated - has valid PMPro membership (Level ${membershipCheck.levelId})`);
+        if (statusChanged) {
+          if (newStatus === 'Active') {
+            results.activated++;
+            console.log(`[MEMBERSHIP_SYNC] ✅ Client "${clientName}" (${clientId}) activated - has valid PMPro membership (Level ${membershipCheck.levelId})`);
+          } else {
+            results.paused++;
+            console.log(`[MEMBERSHIP_SYNC] ⏸️ Client "${clientName}" (${clientId}) paused - ${reason}`);
+          }
+          
+          results.details.push({
+            clientId,
+            clientName,
+            action: newStatus.toLowerCase(),
+            previousStatus: currentStatus,
+            newStatus: newStatus,
+            reason: reason,
+            membershipLevel: membershipCheck.levelId
+          });
         } else {
-          results.paused++;
-          console.log(`[MEMBERSHIP_SYNC] ⏸️ Client "${clientName}" (${clientId}) paused - ${reason}`);
+          // Status unchanged but expiry updated
+          results.skipped++;
+          results.details.push({
+            clientId,
+            clientName,
+            action: 'unchanged',
+            status: currentStatus,
+            membershipLevel: membershipCheck.levelId,
+            expiryUpdated: true
+          });
         }
-        
-        results.details.push({
-          clientId,
-          clientName,
-          action: newStatus.toLowerCase(),
-          previousStatus: currentStatus,
-          newStatus: newStatus,
-          reason: reason,
-          membershipLevel: membershipCheck.levelId
-        });
       } else {
         logger.info(`✓ Status unchanged: ${currentStatus}`);
         results.skipped++;
