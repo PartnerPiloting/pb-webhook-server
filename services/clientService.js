@@ -95,6 +95,8 @@ async function getAllClients() {
                 const airtableBaseId = record.get('Airtable Base ID');
                 const executionLog = record.get(CLIENT_EXECUTION_LOG_FIELDS.EXECUTION_LOG) || '';
                 const wpUserId = record.get('WordPress User ID');
+                const statusManagement = record.get(CLIENT_FIELDS.STATUS_MANAGEMENT) || 'Automatic';
+                const expiryDate = record.get(CLIENT_FIELDS.EXPIRY_DATE) || null;
                 const serviceLevelRaw = record.get(CLIENT_FIELDS.SERVICE_LEVEL) || 1;
                 const serviceLevel = parseServiceLevel(serviceLevelRaw); // Parse "2-Lead Scoring + Post Scoring" → 2
                 const comment = record.get('Comment') || '';
@@ -120,6 +122,8 @@ async function getAllClients() {
                     clientId: clientId,
                     clientName: clientName,
                     status: status,
+                    statusManagement: statusManagement,
+                    expiryDate: expiryDate,
                     airtableBaseId: airtableBaseId,
                     executionLog: executionLog,
                     wpUserId: wpUserId,

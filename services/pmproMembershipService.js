@@ -143,9 +143,10 @@ async function checkUserMembership(wpUserId) {
             if (pmproResponse.data && pmproResponse.data.id) {
                 membershipLevel = {
                     id: parseInt(pmproResponse.data.id, 10),
-                    name: pmproResponse.data.name || 'Unknown'
+                    name: pmproResponse.data.name || 'Unknown',
+                    expiryDate: pmproResponse.data.enddate || null // Capture expiry date from PMPro
                 };
-                logger.info(`✅ PMPro membership found via API: Level ${membershipLevel.id} (${membershipLevel.name})`);
+                logger.info(`✅ PMPro membership found via API: Level ${membershipLevel.id} (${membershipLevel.name}), Expiry: ${membershipLevel.expiryDate || 'None'}`);
             } else if (pmproResponse.data === false || pmproResponse.data === null) {
                 // PMPro returns false/null when user has no membership
                 logger.info(`PMPro API returned no membership for user ${wpUserId}`);
