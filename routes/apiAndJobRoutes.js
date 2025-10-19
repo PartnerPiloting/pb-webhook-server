@@ -6007,6 +6007,9 @@ router.post("/api/sync-client-statuses", async (req, res) => {
     logger.info('\n✅ Client status sync complete!');
     logger.info(`📊 Summary: ${results.activated} activated, ${results.paused} paused, ${results.skipped} unchanged, ${results.errors} errors`);
 
+    // Invalidate client cache to ensure next read gets fresh data
+    clientService.clearCache();
+
     res.json({
       success: true,
       message: 'Client status sync completed',
