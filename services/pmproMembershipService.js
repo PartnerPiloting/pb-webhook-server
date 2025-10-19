@@ -138,15 +138,24 @@ async function checkUserMembership(wpUserId) {
             logger.info(`Trying PMPro API: ${pmproUrl}`);
             const pmproResponse = await axios.get(pmproUrl, { headers, timeout: 10000 });
             
-            logger.info(`PMPro API response:`, pmproResponse.data);
+            logger.info(`PMPro API response:`, JSON.stringify(pmproResponse.data, null, 2));
             
             if (pmproResponse.data && pmproResponse.data.id) {
+                // Try multiple possible field names for expiry date
+                const expiryDate = pmproResponse.data.enddate || 
+                                   pmproResponse.data.end_date || 
+                                   pmproResponse.data.expiration_date || 
+                                   pmproResponse.data.expiration || 
+                                   pmproResponse.data.expires ||
+                                   null;
+                
                 membershipLevel = {
                     id: parseInt(pmproResponse.data.id, 10),
                     name: pmproResponse.data.name || 'Unknown',
-                    expiryDate: pmproResponse.data.enddate || null // Capture expiry date from PMPro
+                    expiryDate: expiryDate
                 };
-                logger.info(`✅ PMPro membership found via API: Level ${membershipLevel.id} (${membershipLevel.name}), Expiry: ${membershipLevel.expiryDate || 'None'}`);
+                logger.info(`✅ PMPro membership found via API: Level ${membershipLevel.id} (${membershipLevel.name}), Expiry: ${membershipLevel.expiryDate || 'None (lifetime)'}`);
+                logger.info(`📋 Full PMPro response fields: ${Object.keys(pmproResponse.data).join(', ')}`);
             } else if (pmproResponse.data === false || pmproResponse.data === null) {
                 // PMPro returns false/null when user has no membership
                 logger.info(`PMPro API returned no membership for user ${wpUserId}`);
