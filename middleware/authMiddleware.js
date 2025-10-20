@@ -2,6 +2,7 @@
 // Simple authentication middleware for WordPress user validation and client lookup
 
 const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'auth' });
 const clientService = require('../services/clientService');
 const { getCurrentWordPressUser } = require('../utils/wordpressAuth');
 const { parseServiceLevel, hasServiceLevelAccess } = require('../utils/serviceLevel');
