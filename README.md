@@ -31,4 +31,4 @@ npm run dev:simple     # Both concurrently
 # Debug/restart
 npm run dev:reset      # Kill stray node processes
 npm run ports:free 3000 3001  # Force-kill ports
-```
+```# Force rebuild
