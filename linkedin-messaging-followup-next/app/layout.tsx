@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "LinkedIn Lead Workspace",
-  description: "Score leads. Start conversations. Close deals.",
+  description: "Score leads — Start conversations — Close deals",
 };
 
 export default function RootLayout({

@@ -213,7 +213,7 @@ const Layout = ({ children }) => {
                           : `LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
                       </div>
                       <div className="text-base text-gray-600 mt-2">
-                        Score leads. Start conversations. Close deals.
+                        Score leads — Start conversations — Close deals
                       </div>
                     </div>
                   );
