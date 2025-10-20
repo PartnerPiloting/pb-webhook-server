@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * MembershipGate.js
  * 
@@ -14,10 +16,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+import { useSearchParams } from 'next/navigation';
 
 export default function MembershipGate({ children }) {
-  const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [accessGranted, setAccessGranted] = useState(false);
   const [verificationData, setVerificationData] = useState(null);
@@ -30,7 +32,7 @@ export default function MembershipGate({ children }) {
 
   useEffect(() => {
     verifyAccess();
-  }, [router.query]);
+  }, [searchParams]);
 
   async function verifyAccess() {
     try {
@@ -38,7 +40,7 @@ export default function MembershipGate({ children }) {
       setError(null);
 
       // Check for clientId parameter (prefer clientId, fallback to testClient for backward compatibility)
-      const clientId = router.query.clientId || router.query.testClient;
+      const clientId = searchParams.get('clientId') || searchParams.get('testClient');
 
       // Case 1: No clientId parameter
       if (!clientId) {
