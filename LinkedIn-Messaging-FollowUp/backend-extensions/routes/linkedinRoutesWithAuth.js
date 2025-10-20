@@ -2,6 +2,8 @@ const express = require('express');
 const { createLogger } = require('../../../utils/contextLogger');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
+console.log('✅ linkedinRoutesWithAuth.js loaded - logger initialized:', typeof logger);
+
 const router = express.Router();
 
 // Import authentication middleware
