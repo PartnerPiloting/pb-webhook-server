@@ -7,6 +7,9 @@ export const metadata = {
   description: "Find the right people. Start the right conversations.",
 };
 
+// Force dynamic rendering for all pages since we use searchParams
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({
   children,
 }: Readonly<{
