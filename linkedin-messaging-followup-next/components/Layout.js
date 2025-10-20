@@ -209,13 +209,22 @@ const Layout = ({ children }) => {
                     displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
                     isTestMode = true;
                   }
-                  return envLabel && displayName
-                    ? `${envLabel} - ${displayName}${isTestMode ? ' (' + envLabel + ' Mode)' : ''}'s LinkedIn Follow-Up Portal`
-                    : envLabel
-                      ? `${envLabel} - LinkedIn Follow-Up Portal`
-                      : displayName
-                        ? `${displayName}'s LinkedIn Follow-Up Portal`
-                        : 'LinkedIn Follow-Up Portal';
+                  return (
+                    <div>
+                      <div className="text-2xl font-bold">
+                        {envLabel && displayName
+                          ? `${envLabel} - LinkedIn Lead Workspace - ${displayName}${isTestMode ? ' (' + envLabel + ' Mode)' : ''}`
+                          : envLabel
+                            ? `${envLabel} - LinkedIn Lead Workspace`
+                            : displayName
+                              ? `LinkedIn Lead Workspace - ${displayName}`
+                              : 'LinkedIn Lead Workspace'}
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">
+                        Find the right people. Start the right conversations.
+                      </div>
+                    </div>
+                  );
                 })()}
               </h1>
             </div>
