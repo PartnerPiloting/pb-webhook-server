@@ -21,10 +21,10 @@ const { safeFieldUpdate } = require('../utils/errorHandler');
 // Constants for fields - import from unified constants
 const { CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
 
-// Cache for client data to avoid repeated API calls
+// Cache DISABLED - always fetch fresh data for accurate status checks
 let clientsCache = null;
 let clientsCacheTimestamp = null;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION_MS = 0; // 0 = disabled, always fetch fresh
 
 // In-memory job lock tracking to prevent duplicate jobs
 const runningJobs = new Map();
@@ -1033,12 +1033,50 @@ function formatDuration(durationMs) {
     }
 }
 
+/**
+ * Get a specific client by ID with fresh data (bypasses cache)
+ * Use this for security-sensitive operations like membership verification
+ * @param {string} clientId - The client ID to search for
+ * @returns {Promise<Object|null>} Client record or null if not found
+ */
+async function getClientByIdFresh(clientId) {
+    try {
+        logger.info(`Fetching fresh client data for ${clientId} (bypassing cache)`);
+        
+        // Force cache refresh by clearing it first
+        const originalTimestamp = clientsCacheTimestamp;
+        clientsCacheTimestamp = 0; // Force refresh
+        
+        const allClients = await getAllClients();
+        
+        // Restore original timestamp if fetch failed
+        if (!allClients || allClients.length === 0) {
+            clientsCacheTimestamp = originalTimestamp;
+        }
+        
+        const client = allClients.find(c => c.clientId === clientId);
+        
+        if (client) {
+            logger.info(`Found fresh client data: ${client.clientName}, Status: ${client.status}`);
+        } else {
+            logger.info(`Client not found (fresh fetch): ${clientId}`);
+        }
+
+        return client || null;
+
+    } catch (error) {
+        logger.error(`Error fetching fresh client ${clientId}:`, error);
+        throw error;
+    }
+}
+
 module.exports = {
     getAllClients,
     getAllActiveClients,
     getActiveClients,  // Add the new function
     getActiveClientsByStream,  // Add stream filtering function
     getClientById,
+    getClientByIdFresh, // Add fresh fetch function for security checks
     getClientByWpUserId, // Add the new WP User ID lookup function
     validateClient,
     // CRR REDESIGN: updateExecutionLog removed (replaced by Progress Log in jobTracking.js)

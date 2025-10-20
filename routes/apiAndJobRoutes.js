@@ -6209,8 +6209,8 @@ router.get("/api/verify-client-access/:clientId", async (req, res) => {
     const clientId = req.params.clientId;
     logger.info(`🔍 Verifying access for client: ${clientId}`);
     
-    // Get client info from Airtable
-    const client = await clientService.getClientById(clientId);
+    // Get FRESH client info from Airtable (bypass cache for security check)
+    const client = await clientService.getClientByIdFresh(clientId);
     
     if (!client) {
       logger.warn(`❌ Client not found: ${clientId}`);
