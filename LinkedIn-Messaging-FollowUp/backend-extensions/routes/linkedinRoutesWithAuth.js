@@ -118,7 +118,21 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       maxRecords: 50  // Limit to 50 records for Load More pattern
     }).all();
 
-    logger.info(`LinkedIn Routes: Found ${records.length} top scoring posts leads`);
+    logger.info(`LinkedIn Routes: Found ${records.length} top scoring posts leads (limited to 50)`);
+
+    // Get total count without limit for display purposes
+    let totalCount = records.length;
+    try {
+      const countRecords = await airtableBase('Leads').select({
+        filterByFormula: filterFormula,
+        fields: [FIELD_NAMES.FIRST_NAME] // Minimal field to speed up count query
+      }).all();
+      totalCount = countRecords.length;
+      logger.info(`LinkedIn Routes: Total matching records: ${totalCount}`);
+    } catch (countError) {
+      logger.warn('LinkedIn Routes: Could not get total count:', countError.message);
+      // Fall back to returned count if total count fails
+    }
 
     // Transform records to expected format and include computed helpers
     const transformedLeads = records.map(record => ({
@@ -146,7 +160,11 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       ...record.fields
     }));
 
-    res.json(transformedLeads);
+    res.json({
+      leads: transformedLeads,
+      total: totalCount,
+      displayed: transformedLeads.length
+    });
 
   } catch (error) {
     logger.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
