@@ -1,5 +1,6 @@
 import "./globals.css";
 import MembershipGate from "@/components/MembershipGate";
+import { Suspense } from "react";
 
 export const metadata = {
   title: "LinkedIn Lead Workspace",
@@ -14,9 +15,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <MembershipGate>
-          {children}
-        </MembershipGate>
+        <Suspense fallback={<div>Loading...</div>}>
+          <MembershipGate>
+            {children}
+          </MembershipGate>
+        </Suspense>
       </body>
     </html>
   );
