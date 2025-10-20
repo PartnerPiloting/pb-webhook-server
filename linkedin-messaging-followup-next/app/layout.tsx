@@ -1,4 +1,5 @@
 import "./globals.css";
+import MembershipGate from "@/components/MembershipGate";
 
 export const metadata = {
   title: "LinkedIn Follow-Up Portal",
@@ -13,7 +14,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        {children}
+        <MembershipGate>
+          {children}
+        </MembershipGate>
       </body>
     </html>
   );

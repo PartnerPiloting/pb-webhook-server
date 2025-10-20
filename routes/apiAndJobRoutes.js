@@ -6184,4 +6184,129 @@ router.post("/api/check-client-membership/:clientId", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/verify-client-access/:clientId
+ * Verify if a client has valid access to the portal
+ * Used by frontend to gate access based on membership status
+ * 
+ * Returns:
+ * - isAllowed: boolean - whether client can access portal
+ * - status: string - client's current status (Active/Paused)
+ * - expiryDate: string|null - membership expiry date (YYYY-MM-DD) or null for lifetime
+ * - expiryWarning: boolean - true if expiry is within warning period
+ * - daysUntilExpiry: number|null - days remaining until expiry
+ * - message: string - user-friendly message to display
+ * - renewalUrl: string|null - URL to renew membership if needed
+ */
+router.get("/api/verify-client-access/:clientId", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'verify-access', 
+    clientId: req.params.clientId, 
+    operation: 'verify-access' 
+  });
+
+  try {
+    const clientId = req.params.clientId;
+    logger.info(`🔍 Verifying access for client: ${clientId}`);
+    
+    // Get client info from Airtable
+    const client = await clientService.getClientById(clientId);
+    
+    if (!client) {
+      logger.warn(`❌ Client not found: ${clientId}`);
+      return res.status(404).json({
+        success: false,
+        isAllowed: false,
+        message: 'Unable to find your client record. Please contact support and we\'ll investigate.',
+        errorType: 'CLIENT_NOT_FOUND'
+      });
+    }
+
+    logger.info(`✅ Found client: ${client.clientName}, Status: ${client.status}`);
+    
+    // Check if client is Active
+    if (client.status !== 'Active') {
+      logger.warn(`⚠️ Client is not active: ${client.status}`);
+      return res.json({
+        success: true,
+        isAllowed: false,
+        status: client.status,
+        message: 'Your membership is not yet active. Please check your membership status or contact support.',
+        errorType: 'NOT_ACTIVE'
+      });
+    }
+
+    // Client is Active - check expiry date
+    const expiryDate = client.expiryDate;
+    let expiryWarning = false;
+    let daysUntilExpiry = null;
+    let renewalUrl = null;
+
+    if (expiryDate) {
+      // Parse expiry date
+      const expiry = new Date(expiryDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Normalize to start of day
+      
+      daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+      
+      logger.info(`📅 Expiry date: ${expiryDate}, Days until expiry: ${daysUntilExpiry}`);
+
+      // Check if expired
+      if (daysUntilExpiry < 0) {
+        logger.warn(`❌ Membership expired ${Math.abs(daysUntilExpiry)} days ago`);
+        return res.json({
+          success: true,
+          isAllowed: false,
+          status: 'Expired',
+          expiryDate: expiryDate,
+          daysUntilExpiry: daysUntilExpiry,
+          message: 'Your membership has expired. Please renew to continue accessing the portal.',
+          renewalUrl: process.env.RENEWAL_URL || null,
+          errorType: 'EXPIRED'
+        });
+      }
+
+      // Check if expiring soon (within warning period - default 4 weeks = 28 days)
+      const warningDays = parseInt(process.env.EXPIRY_WARNING_DAYS || '28', 10);
+      if (daysUntilExpiry <= warningDays) {
+        expiryWarning = true;
+        renewalUrl = process.env.RENEWAL_URL || null;
+        logger.info(`⚠️ Expiry warning: ${daysUntilExpiry} days remaining (threshold: ${warningDays} days)`);
+      }
+    } else {
+      logger.info(`✅ Lifetime membership (no expiry date)`);
+    }
+
+    // Grant access
+    return res.json({
+      success: true,
+      isAllowed: true,
+      status: client.status,
+      expiryDate: expiryDate,
+      expiryWarning: expiryWarning,
+      daysUntilExpiry: daysUntilExpiry,
+      renewalUrl: renewalUrl,
+      message: expiryWarning 
+        ? `Your membership expires in ${daysUntilExpiry} days. Renew now and get 1-month free!`
+        : 'Access granted',
+      client: {
+        clientId: client.clientId,
+        clientName: client.clientName
+      }
+    });
+
+  } catch (error) {
+    logger.error('❌ Access verification failed:', error.message);
+    res.status(500).json({
+      success: false,
+      isAllowed: false,
+      error: 'Access verification failed',
+      message: 'An error occurred while verifying your access. Please try again.',
+      errorType: 'SERVER_ERROR',
+      details: error.message
+    });
+  }
+});
+
 module.exports = router;
