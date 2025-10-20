@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Layout from "../components/Layout";
 import LeadSearchUpdate from "../components/LeadSearchUpdate";
@@ -9,7 +9,7 @@ import EnvironmentValidator from "../components/EnvironmentValidator";
 // Force dynamic rendering for pages that use search parameters
 export const dynamic = 'force-dynamic'
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -31,5 +31,13 @@ export default function Home() {
         </Layout>
       </ErrorBoundary>
     </EnvironmentValidator>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
