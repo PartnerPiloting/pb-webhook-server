@@ -232,8 +232,8 @@ function requireServiceLevel(requiredLevel) {
  */
 async function authenticateUserWithTestMode(req, res, next) {
     try {
-        // Check for test mode
-        const testClientId = req.query.testClient;
+        // Check for test mode - accept both testClient (legacy) and clientId parameters
+        const testClientId = req.query.testClient || req.query.clientId;
         if (testClientId) {
             logger.info(`AuthMiddleware: Test mode activated for client: ${testClientId}`);
             const client = await clientService.getClientById(testClientId);
