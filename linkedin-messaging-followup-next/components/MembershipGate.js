@@ -31,7 +31,10 @@ export default function MembershipGate({ children }) {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 
   useEffect(() => {
-    verifyAccess();
+    // Only run on client side, not during SSR/build
+    if (typeof window !== 'undefined') {
+      verifyAccess();
+    }
   }, [searchParams]);
 
   async function verifyAccess() {
