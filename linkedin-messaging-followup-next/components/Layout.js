@@ -203,22 +203,14 @@ const Layout = ({ children }) => {
                 {(() => {
                   const envLabel = getEnvLabel();
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
-                  let displayName = clientName || '';
-                  let isTestMode = false;
-                  if (clientName && envLabel && clientName.includes('(' + envLabel + ' Mode)')) {
-                    displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
-                    isTestMode = true;
-                  }
+                  const isProduction = process.env.NODE_ENV === 'production' && !envLabel;
+                  
                   return (
                     <div>
                       <div className="text-2xl font-bold">
-                        {envLabel && displayName
-                          ? `${envLabel} - LinkedIn Lead Workspace - ${displayName}${isTestMode ? ' (' + envLabel + ' Mode)' : ''}`
-                          : envLabel
-                            ? `${envLabel} - LinkedIn Lead Workspace`
-                            : displayName
-                              ? `LinkedIn Lead Workspace - ${displayName}`
-                              : 'LinkedIn Lead Workspace'}
+                        {clientName
+                          ? `${clientName}'s LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`
+                          : `LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
                       </div>
                       <div className="text-sm text-gray-600 mt-1">
                         Find the right people. Start the right conversations.
