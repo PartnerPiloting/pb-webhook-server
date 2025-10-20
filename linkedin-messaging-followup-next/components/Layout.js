@@ -212,8 +212,8 @@ const Layout = ({ children }) => {
                           ? `${clientName}'s LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`
                           : `LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
                       </div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        Find the right people. Start the right conversations.
+                      <div className="text-base text-gray-600 mt-2">
+                        Score leads. Start conversations. Close deals.
                       </div>
                     </div>
                   );
