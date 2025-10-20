@@ -1696,15 +1696,9 @@ try {
     app.use('/api/linkedin', linkedinRoutesWithAuth); 
     moduleLogger.info("index.js: Authenticated LinkedIn routes mounted at /api/linkedin"); 
 } catch(e) { 
-    moduleLogger.error("index.js: Error mounting authenticated LinkedIn routes", e.message, e.stack); 
-    // Fallback to old routes if new ones fail
-    try { 
-        const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); 
-        app.use('/api/linkedin', linkedinRoutes); 
-        moduleLogger.info("index.js: Fallback: Old LinkedIn routes mounted at /api/linkedin"); 
-    } catch(fallbackError) { 
-        moduleLogger.error("index.js: Error mounting fallback LinkedIn routes", fallbackError.message, fallbackError.stack); 
-    }
+    moduleLogger.error("index.js: Error mounting authenticated LinkedIn routes - NO FALLBACK", e.message, e.stack); 
+    // OLD FALLBACK REMOVED - authenticated routes should always work
+    // If they don't, we want to see the error, not silently fall back to old routes
 }
 
 // Authentication test routes
