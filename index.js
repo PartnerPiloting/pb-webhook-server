@@ -3415,14 +3415,22 @@ function parseMarkdownTables(markdown) {
 
 // Middleware to warn per-request if no client specified and production base fallback is in use
 app.use((req, res, next) => {
-    const clientParam = req.query.testClient || req.query.clientId || req.headers['x-client-id'];
+    // Accept both clientId (preferred) and testClient (legacy) parameters
+    const clientParam = req.query.clientId || req.query.testClient || req.headers['x-client-id'];
     const PROD_BASE_ID = 'appXySOLo6V9PfMfa';
+    
+    // Log parameter source for debugging
+    if (req.query.clientId) {
+        moduleLogger.info(`Using clientId parameter: ${req.query.clientId}`);
+    } else if (req.query.testClient) {
+        moduleLogger.warn(`Using legacy testClient parameter: ${req.query.testClient} (consider migrating to clientId)`);
+    }
     
     // Skip warning for Apify webhooks - we now handle client resolution there separately
     const isApifyWebhook = req.path.includes('/api/apify-webhook');
     
     if (!clientParam && !isApifyWebhook && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
-        moduleLogger.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?testClient=CLIENT_ID to target that client base.`);
+        moduleLogger.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?clientId=CLIENT_ID to target that client base.`);
     }
     next();
 });

@@ -181,7 +181,7 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
     
     const params = { 
       q: query,
-      testClient: clientId,
+      clientId: clientId, // Updated from testClient to clientId
       limit: limit,
       offset: offset
     };

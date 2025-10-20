@@ -69,25 +69,25 @@ function parseJSONWithFix(jsonText) {
  */
 export async function getCurrentClientProfile() {
   try {
-    // Check for test client parameter in URL
+    // Check for client parameter in URL (prefer clientId, fallback to testClient for backward compatibility)
     const urlParams = new URLSearchParams(window.location.search);
     console.log('ClientUtils: Current URL:', window.location.href);
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-  const testClient = urlParams.get('testClient');
+  const clientId = urlParams.get('clientId') || urlParams.get('testClient');
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
     
-    console.log('ClientUtils: Extracted testClient:', testClient);
+    console.log('ClientUtils: Extracted clientId:', clientId);
     console.log('ClientUtils: Extracted wpUserId:', wpUserId);
     
     let apiUrl = '/api/auth/test';
     
-    // If test client specified, use test mode
-    if (testClient) {
-      console.log(`ClientUtils: Using test client from URL: ${testClient}`);
-  apiUrl += `?testClient=${encodeURIComponent(testClient)}`;
+    // If client ID specified, use test mode
+    if (clientId) {
+      console.log(`ClientUtils: Using client ID from URL: ${clientId}`);
+  apiUrl += `?clientId=${encodeURIComponent(clientId)}`;
     } 
     // If WordPress User ID provided, use that for authentication
     else if (wpUserId) {
@@ -104,7 +104,7 @@ export async function getCurrentClientProfile() {
       method: 'GET',
       headers: {
   'Content-Type': 'application/json',
-  'x-client-id': testClient,
+  'x-client-id': clientId,
       }
     });
 
@@ -141,18 +141,18 @@ export async function getCurrentClientProfile() {
   } catch (error) {
     console.error('ClientUtils: Error fetching client profile:', error);
     
-    // Check for test client parameter in URL
+    // Check for client parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
-  const testClient = urlParams.get('testClient');
+  const clientId = urlParams.get('clientId') || urlParams.get('testClient');
     
-    // Only allow fallback if testClient parameter is explicitly provided
-  if (testClient) {
-    console.warn(`ClientUtils: Using fallback profile for testClient: ${testClient}`);
-      currentClientId = testClient;
+    // Only allow fallback if client parameter is explicitly provided
+  if (clientId) {
+    console.warn(`ClientUtils: Using fallback profile for clientId: ${clientId}`);
+      currentClientId = clientId;
       clientProfile = {
         client: {
-          clientId: testClient,
-      clientName: `${testClient} (${getEnvLabel()} Mode)`,
+          clientId: clientId,
+      clientName: `${clientId} (${getEnvLabel()} Mode)`,
           status: 'Active',
           serviceLevel: 2
         },
@@ -169,8 +169,8 @@ export async function getCurrentClientProfile() {
       
       return clientProfile;
     } else {
-      // No testClient parameter - authentication failed, provide specific error messages
-      console.error('ClientUtils: Authentication failed and no testClient parameter provided');
+      // No client parameter - authentication failed, provide specific error messages
+      console.error('ClientUtils: Authentication failed and no clientId parameter provided');
       
       // Try to parse error response for better error messages
       if (error.message.includes('401')) {
