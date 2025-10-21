@@ -237,13 +237,13 @@ const CLIENT_RUN_STATUS_VALUES = {
   COMPLETED_WITH_ERRORS: 'Completed with Errors' // DEPRECATED
 };
 
-// Scoring status values
+// Scoring status values - MUST match Airtable field options exactly
 const SCORING_STATUS_VALUES = {
-  NOT_SCORED: 'Not Scored',
-  PENDING: 'Pending',
+  NOT_SCORED: 'To Be Scored',  // Changed from 'Not Scored' to match Airtable
+  PENDING: 'To Be Scored',      // Using same as NOT_SCORED for consistency
   SCORED: 'Scored',
-  ERROR: 'Error',
-  EXCLUDED: 'Excluded'
+  ERROR: 'Failed – API Error',  // Changed to match Airtable
+  EXCLUDED: 'Manually Excluded' // Changed to match Airtable
 };
 
 // LinkedIn connection status values
