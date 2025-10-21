@@ -169,12 +169,14 @@ async function upsertLead(
         if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
             fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
         }
-        if (!fields[LEAD_FIELDS.SYSTEM_NOTES]) { 
-            // Note: "1st" is from LinkedIn API, not a field constant we control
-            fields[LEAD_FIELDS.SYSTEM_NOTES] = connectionDegree === "1st" ? "Existing Connection Added by PB" : "SalesNav + LH Scrape";
-        }
+        // REMOVED: System Notes field - not all client bases have this field (e.g., Dean Hobin)
+        // This was causing "Unknown field name: 'System Notes'" errors
+        // The field is not critical for lead creation, so we're omitting it for compatibility
         logger.info(`leadService/upsertLead: Creating new lead ${finalUrl}`);
-        const createdRecords = await airtableBase(CLIENT_TABLES.LEADS).create([{ fields }]);
+        
+        // Validate field names before sending to Airtable (filters out fields that don't exist in client's base)
+        const validatedFields = createValidatedObject(fields);
+        const createdRecords = await airtableBase(CLIENT_TABLES.LEADS).create([{ fields: validatedFields }]);
         recordId = createdRecords[0].id; 
     }
     
