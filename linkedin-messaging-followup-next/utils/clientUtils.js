@@ -38,11 +38,11 @@ export function getEnvLabel() {
       if (host.includes('staging')) return 'Staging';
       if (host.includes('hotfix')) return 'Hotfix';
       if (host.includes('dev')) return 'Development';
-      if (host.includes('vercel.app')) return 'Production'; // Vercel production build
+      if (host.includes('vercel.app')) return ''; // Production - no badge
     }
   } catch (_) {}
 
-  return 'Development';
+  return ''; // Production default - no badge
 }
 
 /**
