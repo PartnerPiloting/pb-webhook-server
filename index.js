@@ -2584,6 +2584,7 @@ app.get('/api/help/start-here', async (req, res) => {
     }
 });
 moduleLogger.info('index.js: Help Start Here endpoint mounted at /api/help/start-here');
+moduleLogger.info('[DEBUG] Continuing index.js execution after Help Start Here...');
 
 // Export selected utilities for internal scripts/tests (non-breaking)
 try {
@@ -3361,25 +3362,6 @@ app.get('/api/export-env-vars', (req, res) => {
     4) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3001;
-moduleLogger.info(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
-    } – ${new Date().toISOString()}`
-);
-
-app.listen(port, () => {
-    moduleLogger.info(`Server running on port ${port}.`);
-    if (!globalGeminiModel) {
-        moduleLogger.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
-    } else if (!base) {
-        moduleLogger.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
-    } else if (!geminiConfig || !geminiConfig.vertexAIClient) {
-        moduleLogger.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
-    }
-    else {
-        moduleLogger.info("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
-    }
-});
-
 /* ------------------------------------------------------------------
     LEGACY SECTION (Properly Commented Out)
 ------------------------------------------------------------------*/
@@ -4260,5 +4242,32 @@ app.post('/admin/help/reindex-all', async (req, res) => {
         res.json({ ok:true, global: globalIdx.status(), embedding: embedIdx.status(), ensure: { globalEnsure, embedReady: !!embedEnsure } });
     } catch (e) {
         res.status(500).json({ ok:false, error:e.message });
+    }
+});
+
+/* ============================================================================
+   START SERVER - THIS MUST BE THE LAST CODE IN THIS FILE
+   
+   ⚠️  CRITICAL: All routes MUST be defined ABOVE this line!
+   
+   Routes defined after app.listen() will NOT be registered.
+   Always add new routes BEFORE this section.
+   ============================================================================ */
+
+moduleLogger.info(
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"} – ${new Date().toISOString()}`
+);
+
+app.listen(port, () => {
+    moduleLogger.info(`Server running on port ${port}.`);
+    if (!globalGeminiModel) {
+        moduleLogger.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
+    } else if (!base) {
+        moduleLogger.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
+    } else if (!geminiConfig || !geminiConfig.vertexAIClient) {
+        moduleLogger.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
+    }
+    else {
+        moduleLogger.info("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
     }
 });
