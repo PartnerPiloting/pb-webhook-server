@@ -23,7 +23,7 @@ const { getClientBase, getClientById } = require('../services/clientService.js')
 
 // --- Structured Logging ---
 // FIXED: Using unified logger factory to prevent "Object passed as sessionId" errors
-const { createLogger } = require('../utils/contextLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID – Linked Helper Webhook
