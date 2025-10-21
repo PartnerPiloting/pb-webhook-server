@@ -3216,44 +3216,6 @@ app.get('/debug-linkedin-files', (req, res) => {
 // Old error logger removed - now using Render log analysis
 const logCriticalError = async () => {}; // No-op
 
-// 404 handler - must come before error handler
-app.use((req, res, next) => {
-    res.status(404).json({ 
-        error: 'Not Found', 
-        message: `Cannot ${req.method} ${req.path}`,
-        path: req.path 
-    });
-});
-
-// Global error handler - catches all unhandled errors
-app.use(async (err, req, res, next) => {
-    moduleLogger.error('Global error handler caught error:', err);
-    
-    // Log critical errors to Airtable
-    try {
-        await logCriticalError(err, {
-            endpoint: `${req.method} ${req.path}`,
-            clientId: req.headers['x-client-id'],
-            requestBody: req.body,
-            queryParams: req.query,
-            headers: {
-                'user-agent': req.headers['user-agent'],
-                'content-type': req.headers['content-type']
-            }
-        });
-    } catch (loggingError) {
-        moduleLogger.error('Failed to log error to Airtable:', loggingError.message);
-    }
-    
-    // Send error response to client
-    const statusCode = err.statusCode || err.status || 500;
-    res.status(statusCode).json({
-        error: err.name || 'Internal Server Error',
-        message: err.message || 'An unexpected error occurred',
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-    });
-});
-
 /* ------------------------------------------------------------------
     SECURE ENV VAR EXPORT ENDPOINT (For Local Development Only)
     
@@ -4243,6 +4205,51 @@ app.post('/admin/help/reindex-all', async (req, res) => {
     } catch (e) {
         res.status(500).json({ ok:false, error:e.message });
     }
+});
+
+/* ============================================================================
+   FINAL MIDDLEWARE - Error Handler and 404
+   
+   These MUST come after all routes but before app.listen()
+   Order matters: Error handler first, then 404 handler
+   ============================================================================ */
+
+// Global error handler - catches all unhandled errors from routes
+app.use(async (err, req, res, next) => {
+    moduleLogger.error('Global error handler caught error:', err);
+    
+    // Log critical errors to Airtable
+    try {
+        await logCriticalError(err, {
+            endpoint: `${req.method} ${req.path}`,
+            clientId: req.headers['x-client-id'],
+            requestBody: req.body,
+            queryParams: req.query,
+            headers: {
+                'user-agent': req.headers['user-agent'],
+                'content-type': req.headers['content-type']
+            }
+        });
+    } catch (loggingError) {
+        moduleLogger.error('Failed to log error to Airtable:', loggingError.message);
+    }
+    
+    // Send error response to client
+    const statusCode = err.statusCode || err.status || 500;
+    res.status(statusCode).json({
+        error: err.name || 'Internal Server Error',
+        message: err.message || 'An unexpected error occurred',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
+});
+
+// 404 handler - catches requests that don't match any route
+app.use((req, res, next) => {
+    res.status(404).json({ 
+        error: 'Not Found', 
+        message: `Cannot ${req.method} ${req.path}`,
+        path: req.path 
+    });
 });
 
 /* ============================================================================
