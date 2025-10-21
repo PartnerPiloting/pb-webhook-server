@@ -6466,7 +6466,7 @@ router.get("/api/test-membership-sync", async (req, res) => {
     for (const client of clients) {
       const clientId = client.clientId;
       const clientName = client.clientName;
-      const wordpressUserId = client.wordpressUserId;
+      const wordpressUserId = client.wpUserId; // Fixed: clientService returns wpUserId, not wordpressUserId
       const currentStatus = client.status;
       
       console.log(`🔍 Checking: ${clientName} (${clientId})`);
