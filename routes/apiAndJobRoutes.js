@@ -6428,4 +6428,169 @@ router.get("/api/test-airtable-warm", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// TEST: Run membership sync script manually
+// ---------------------------------------------------------------
+router.get("/api/test-membership-sync", async (req, res) => {
+  try {
+    console.log("🧪 Manual test of membership sync script starting...");
+    
+    // Import dependencies
+    const pmproService = require('../services/pmproMembershipService');
+    const clientService = require('../services/clientService');
+    const Airtable = require('airtable');
+    const { MASTER_TABLES, CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
+    
+    console.log('========================================');
+    console.log('🔄 Starting Client Membership Sync');
+    console.log('========================================\n');
+    
+    const results = {
+      total: 0,
+      processed: 0,
+      activated: 0,
+      paused: 0,
+      skipped: 0,
+      errors: 0,
+      details: []
+    };
+    
+    // Get all clients
+    console.log('📋 Fetching all clients from Airtable...\n');
+    const clients = await clientService.getAllClients();
+    results.total = clients.length;
+    
+    console.log(`Found ${clients.length} clients\n`);
+    
+    // Process each client
+    for (const client of clients) {
+      const clientId = client.clientId;
+      const clientName = client.clientName;
+      const wordpressUserId = client.wordpressUserId;
+      const currentStatus = client.status;
+      
+      console.log(`🔍 Checking: ${clientName} (${clientId})`);
+      console.log(`   WordPress User ID: ${wordpressUserId || 'Not set'}`);
+      console.log(`   Current Status: ${currentStatus}`);
+      
+      if (!wordpressUserId) {
+        console.log(`   ⚠️ Skipping: No WordPress User ID\n`);
+        results.skipped++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'skipped',
+          reason: 'No WordPress User ID',
+          status: currentStatus
+        });
+        continue;
+      }
+      
+      try {
+        // Check membership
+        const membershipCheck = await pmproService.checkMembershipByUserId(wordpressUserId);
+        console.log(`   Membership: ${membershipCheck.hasAccess ? 'Valid' : 'Invalid'} (Level: ${membershipCheck.levelId || 'None'})`);
+        
+        // Determine new status
+        const shouldBeActive = membershipCheck.hasAccess;
+        const newStatus = shouldBeActive ? 'Active' : 'Paused';
+        
+        // Update if status changed
+        if (currentStatus !== newStatus) {
+          console.log(`   🔄 Updating status: ${currentStatus} → ${newStatus}`);
+          
+          const reason = shouldBeActive 
+            ? `Valid PMPro membership (Level ${membershipCheck.levelId})`
+            : (membershipCheck.levelId 
+                ? `Invalid PMPro level ${membershipCheck.levelId}` 
+                : 'No active PMPro membership');
+          
+          // Update Airtable
+          Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+          const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+          
+          const updateFields = {
+            [CLIENT_FIELDS.STATUS]: newStatus
+          };
+          
+          if (membershipCheck.expiryDate) {
+            updateFields[CLIENT_FIELDS.EXPIRY_DATE] = membershipCheck.expiryDate;
+          }
+          
+          await base(MASTER_TABLES.CLIENTS).update(client.id, updateFields);
+          
+          if (newStatus === 'Active') {
+            results.activated++;
+            console.log(`   ✅ Status updated to Active`);
+          } else {
+            results.paused++;
+            console.log(`   ⏸️ Status updated to Paused`);
+          }
+          
+          results.details.push({
+            clientId,
+            clientName,
+            action: newStatus.toLowerCase(),
+            previousStatus: currentStatus,
+            newStatus: newStatus,
+            reason: reason,
+            membershipLevel: membershipCheck.levelId
+          });
+        } else {
+          console.log(`   ✓ Status unchanged: ${currentStatus}`);
+          results.skipped++;
+          results.details.push({
+            clientId,
+            clientName,
+            action: 'unchanged',
+            status: currentStatus,
+            membershipLevel: membershipCheck.levelId
+          });
+        }
+        
+        results.processed++;
+        console.log('');
+        
+      } catch (error) {
+        console.error(`   ❌ Error: ${error.message}\n`);
+        results.errors++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'error',
+          reason: error.message,
+          error: true
+        });
+      }
+    }
+    
+    console.log('========================================');
+    console.log('✅ Membership Sync Complete!');
+    console.log('========================================');
+    console.log("✅ Membership sync script completed successfully");
+    
+    res.json({
+      success: true,
+      message: "Membership sync executed successfully",
+      summary: {
+        total: results.total,
+        processed: results.processed,
+        activated: results.activated,
+        paused: results.paused,
+        unchanged: results.skipped,
+        errors: results.errors
+      },
+      details: results.details
+    });
+    
+  } catch (error) {
+    console.error("❌ Membership sync script failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 module.exports = router;
