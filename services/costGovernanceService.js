@@ -1,6 +1,9 @@
 // services/costGovernanceService.js - Cost governance and token budgeting for multi-tenant scoring
 
 const airtable = require('../config/airtableClient');
+const { createLogger } = require('../utils/contextLogger');
+
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'system' });
 
 /* ============================================================================
    TOKEN LIMITS AND COST CALCULATIONS
@@ -69,7 +72,7 @@ class CostGovernanceService {
         try {
             const clientBase = airtable.getClientBase(clientId);
             if (!clientBase) {
-                console.warn(`costGovernanceService: No base found for client ${clientId}, using defaults`);
+                logger.warn(`costGovernanceService: No base found for client ${clientId}, using defaults`);
                 return DEFAULT_BUDGETS;
             }
 
@@ -91,12 +94,14 @@ class CostGovernanceService {
                     };
                 }
             } catch (settingsError) {
-                console.log(`costGovernanceService: No Client Settings table for ${clientId}, using defaults`);
+                logger.info(`costGovernanceService: No Client Settings table for ${clientId}, using defaults`);
+    logCriticalError(settingsError, { operation: 'unknown', isSearch: true }).catch(() => {});
             }
 
             return DEFAULT_BUDGETS;
         } catch (error) {
-            console.error(`costGovernanceService: Error loading budgets for ${clientId}:`, error.message);
+            logger.error(`costGovernanceService: Error loading budgets for ${clientId}:`, error.message);
+    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
             return DEFAULT_BUDGETS;
         }
     }
@@ -149,7 +154,8 @@ class CostGovernanceService {
                     }
                 }
             } catch (usageError) {
-                console.log(`costGovernanceService: No Usage Tracking table for ${clientId}`);
+                logger.info(`costGovernanceService: No Usage Tracking table for ${clientId}`);
+    logCriticalError(usageError, { operation: 'unknown', isSearch: true }).catch(() => {});
             }
 
             const usage = { dailyTokens, monthlyTokens, dailyCost, monthlyCost };
@@ -162,7 +168,8 @@ class CostGovernanceService {
 
             return usage;
         } catch (error) {
-            console.error(`costGovernanceService: Error loading usage for ${clientId}:`, error.message);
+            logger.error(`costGovernanceService: Error loading usage for ${clientId}:`, error.message);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
             return { dailyTokens: 0, monthlyTokens: 0, dailyCost: 0, monthlyCost: 0 };
         }
     }
@@ -171,7 +178,7 @@ class CostGovernanceService {
      * Pre-flight validation before batch scoring
      */
     async validateBatchRequest(clientId, systemPrompt, leadData, requestedBatchSize) {
-        console.log(`costGovernanceService: Validating batch request for client ${clientId}`);
+        logger.info(`costGovernanceService: Validating batch request for client ${clientId}`);
 
         const budgets = await this.getClientBudgets(clientId);
         const usage = await this.getClientUsage(clientId);
@@ -288,7 +295,7 @@ class CostGovernanceService {
         try {
             const clientBase = airtable.getClientBase(clientId);
             if (!clientBase) {
-                console.warn(`costGovernanceService: Cannot record usage for ${clientId} - no base`);
+                logger.warn(`costGovernanceService: Cannot record usage for ${clientId} - no base`);
                 return;
             }
 
@@ -304,18 +311,20 @@ class CostGovernanceService {
                     "Timestamp": new Date().toISOString()
                 });
 
-                console.log(`costGovernanceService: Recorded usage for ${clientId}: ${inputTokens}+${outputTokens} tokens, $${cost.toFixed(4)}`);
+                logger.info(`costGovernanceService: Recorded usage for ${clientId}: ${inputTokens}+${outputTokens} tokens, $${cost.toFixed(4)}`);
 
                 // Clear cache for this client
                 const cacheKeys = Array.from(this.usageCache.keys()).filter(key => key.startsWith(clientId));
                 cacheKeys.forEach(key => this.usageCache.delete(key));
 
             } catch (trackingError) {
-                console.warn(`costGovernanceService: Could not record usage for ${clientId}:`, trackingError.message);
+                logger.warn(`costGovernanceService: Could not record usage for ${clientId}:`, trackingError.message);
+    logCriticalError(trackingError, { operation: 'unknown' }).catch(() => {});
             }
 
         } catch (error) {
-            console.error(`costGovernanceService: Error recording usage for ${clientId}:`, error.message);
+            logger.error(`costGovernanceService: Error recording usage for ${clientId}:`, error.message);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         }
     }
 

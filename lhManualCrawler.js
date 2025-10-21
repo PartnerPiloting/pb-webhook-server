@@ -1,4 +1,7 @@
 // Linked Helper Manual Crawler (MVP Scaffold)
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 // Fills manuals/lh-snapshot/segments.jsonl then triggers index rebuild.
 // Configure seeds & limits in lhManual.config.js
 
@@ -61,7 +64,7 @@ async function crawl() {
         const stream = fs.createWriteStream(SEGMENTS_FILE, { encoding:'utf8' });
         for (const seg of segmentsOut) stream.write(JSON.stringify(seg)+'\n');
         stream.end();
-        try { rebuildIndex(); } catch(e) { console.warn('[crawler] rebuildIndex error', e.message); }
+        try { rebuildIndex(); } catch(e) { logger.warn('[crawler] rebuildIndex error', e.message); }
   return resolve({ ok:true, pages:fetched, segments:segmentsOut.length, ms: Date.now()-start, file: SEGMENTS_FILE, seedsUsed: effectiveSeeds });
       }
       while (active<concurrency && queue.length && fetched<maxPages) {
@@ -80,7 +83,7 @@ async function crawl() {
               if (n && !seen.has(n) && allowedHostPattern.test(n) && (queue.length + fetched) < maxPages) queue.push(n);
             });
         }).catch(err=>{
-          console.warn('[crawler] fetch failed', norm, err.message);
+          logger.warn('[crawler] fetch failed', norm, err.message);
           fetched++;
         }).finally(()=>{ active--; setTimeout(pump, paceMs); });
       }

@@ -1,4 +1,6 @@
 // File: postScoreTestApi.js
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
 const express = require('express');
 const router = express.Router();
@@ -23,11 +25,11 @@ let modulePostAnalysisConfig;
  */
 router.post('/test-post-score/:leadId', async (req, res) => {
     const { leadId } = req.params;
-    console.log(`PostScoreTestApi: POST /api/test-post-score hit for leadId: ${leadId}`);
+    logger.info(`PostScoreTestApi: POST /api/test-post-score hit for leadId: ${leadId}`);
 
     // Check if the service has been properly initialized with dependencies from index.js
     if (!moduleBase || !moduleVertexAIClient || !modulePostAnalysisConfig) {
-        console.error("PostScoreTestApi: Service not configured. Missing base, vertexAIClient, or config.");
+        logger.error("PostScoreTestApi: Service not configured. Missing base, vertexAIClient, or config.");
         return res.status(503).json({ error: "Service temporarily unavailable due to internal configuration error." });
     }
 
@@ -52,7 +54,7 @@ router.post('/test-post-score/:leadId', async (req, res) => {
 
     } catch (err) {
         // Catch any unexpected errors that weren't handled by the service function
-        console.error(`PostScoreTestApi: Unhandled error for leadId ${leadId}:`, err.message, err.stack);
+        logger.error(`PostScoreTestApi: Unhandled error for leadId ${leadId}:`, err.message, err.stack);
         return res.status(500).json({ error: "An unexpected server error occurred." });
     }
 });
@@ -65,7 +67,7 @@ router.post('/test-post-score/:leadId', async (req, res) => {
  */
 module.exports = function mountPostScoreTestApi(app, base, vertexAIClient, postAnalysisConfig) {
     if (!base || !vertexAIClient || !postAnalysisConfig) {
-        console.error("postScoreTestApi.js: mount function called without base, vertexAIClient, or postAnalysisConfig. API will not function.");
+        logger.error("postScoreTestApi.js: mount function called without base, vertexAIClient, or postAnalysisConfig. API will not function.");
         return;
     }
     // Make dependencies available to our router
@@ -75,5 +77,5 @@ module.exports = function mountPostScoreTestApi(app, base, vertexAIClient, postA
 
     // Mounts the router. The full path becomes /api/test-post-score/:leadId
     app.use('/api', router);
-    console.log("postScoreTestApi.js: /api/test-post-score route mounted.");
+    logger.info("postScoreTestApi.js: /api/test-post-score route mounted.");
 };

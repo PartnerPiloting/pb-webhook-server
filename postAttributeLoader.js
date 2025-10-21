@@ -1,6 +1,6 @@
 // File: postAttributeLoader.js
 
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/contextLogger');
 
 /**
  * Fetches and structures the post scoring configuration from Airtable.
@@ -9,7 +9,7 @@ const { StructuredLogger } = require('./utils/structuredLogger');
  *
  * @param {object} base - The initialized Airtable base instance.
  * @param {object} config - The postAnalysisConfig object from index.js, containing table names.
- * @param {object} logger - Optional StructuredLogger instance (will create one if not provided)
+ * @param {object} logger - Optional contextLogger instance (will create one if not provided)
  * @returns {Promise<object>} A promise that resolves to an object containing structured data.
  * e.g., { promptComponents: [...], attributesById: {...} }
  * @throws {Error} If fetching from Airtable fails or data is missing.
@@ -21,14 +21,14 @@ async function loadPostScoringAirtableConfig(base, config, logger = null) {
     }
 
     // Create logger if not provided (fallback for direct calls)
-    const log = logger || new StructuredLogger('CONFIG');
+    const log = logger || createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'post_attribute_loader' });
 
     const tableNames = {
         attributes: config.attributesTableName,
         promptComponents: config.promptComponentsTableName
     };
 
-    log.setup(`Loading data from Airtable tables: Attributes ('${tableNames.attributes}'), PromptComponents ('${tableNames.promptComponents}')`);
+    log.info(`Loading data from Airtable tables: Attributes ('${tableNames.attributes}'), PromptComponents ('${tableNames.promptComponents}')`);
 
     try {
         // --- 1. Fetch General Prompt Components (from Table 2) ---
@@ -83,7 +83,7 @@ async function loadPostScoringAirtableConfig(base, config, logger = null) {
         // Note: Removed global keyword filtering to support true multi-tenancy
         // Each client's scoring attributes handle content relevance through their own keywords
         
-        log.setup(`Loaded ${promptComponents.length} prompt components and ${Object.keys(attributesById).length} scoring attributes`);
+        log.info(`Loaded ${promptComponents.length} prompt components and ${Object.keys(attributesById).length} scoring attributes`);
 
         // Return all loaded configuration in one structured object
         return {
@@ -92,7 +92,7 @@ async function loadPostScoringAirtableConfig(base, config, logger = null) {
         };
 
     } catch (error) {
-        log.error(`Error loading configuration from Airtable. Error: ${error.message}`, error.stack);
+        log.error(`Error loading configuration from Airtable. Error: ${error.message}`, { stack: error.stack });
         throw new Error(`Failed to load post scoring configuration from Airtable: ${error.message}`);
     }
 }

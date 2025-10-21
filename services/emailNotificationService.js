@@ -3,6 +3,14 @@
 // Handles sending templated emails to clients with admin BCC
 
 require('dotenv').config();
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for email notification service
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'email-notification-service' 
+});
 const emailTemplateService = require('./emailTemplateService');
 const https = require('https');
 const querystring = require('querystring');
@@ -47,6 +55,7 @@ async function sendMailgunEmail(emailData) {
                         resolve(parsedData);
                     } catch (error) {
                         resolve({ id: 'unknown', message: responseData });
+    logCriticalError(error, { operation: 'unknown', isSearch: true }).catch(() => {});
                     }
                 } else {
                     reject(new Error(`Mailgun API error: ${res.statusCode} - ${responseData}`));
@@ -85,7 +94,7 @@ async function sendTemplatedEmail(clientData, templateId, options = {}) {
             throw new Error("Template ID is required");
         }
 
-        console.log(`Preparing templated email for client ${clientData.clientId} using template ${templateId}`);
+        logger.info(`Preparing templated email for client ${clientData.clientId} using template ${templateId}`);
 
         // Process the email template with client data
         const processedTemplate = await emailTemplateService.processTemplate(templateId, clientData);
@@ -105,15 +114,15 @@ async function sendTemplatedEmail(clientData, templateId, options = {}) {
             'h:X-Client-ID': clientData.clientId || 'unknown'
         };
 
-        console.log(`Sending email to ${clientData.clientEmailAddress} with BCC to ${adminEmail}`);
-        console.log(`Subject: ${processedTemplate.subject}`);
+        logger.info(`Sending email to ${clientData.clientEmailAddress} with BCC to ${adminEmail}`);
+        logger.info(`Subject: ${processedTemplate.subject}`);
 
         // Send the email via Mailgun REST API
         const result = await sendMailgunEmail(emailData);
 
-        console.log(`✅ Email sent successfully to ${clientData.clientEmailAddress}`);
-        console.log(`Mailgun ID: ${result.id}`);
-        console.log(`Message: ${result.message}`);
+        logger.info(`✅ Email sent successfully to ${clientData.clientEmailAddress}`);
+        logger.info(`Mailgun ID: ${result.id}`);
+        logger.info(`Message: ${result.message}`);
 
         return {
             success: true,
@@ -127,7 +136,8 @@ async function sendTemplatedEmail(clientData, templateId, options = {}) {
         };
 
     } catch (error) {
-        console.error(`❌ Error sending templated email to ${clientData.clientEmailAddress || 'unknown'}:`, error);
+        logger.error(`❌ Error sending templated email to ${clientData.clientEmailAddress || 'unknown'}:`, error);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
         
         return {
             success: false,
@@ -147,7 +157,7 @@ async function sendTemplatedEmail(clientData, templateId, options = {}) {
  * @returns {Promise<Object>} Bulk sending results summary
  */
 async function sendBulkTemplatedEmails(clientDataList, templateId, options = {}) {
-    console.log(`Starting bulk email send to ${clientDataList.length} clients using template ${templateId}`);
+    logger.info(`Starting bulk email send to ${clientDataList.length} clients using template ${templateId}`);
     
     const results = {
         total: clientDataList.length,
@@ -165,7 +175,7 @@ async function sendBulkTemplatedEmails(clientDataList, templateId, options = {})
             
             if (result.success) {
                 results.successful++;
-                console.log(`✅ ${results.successful}/${results.total}: Sent to ${clientData.clientEmailAddress}`);
+                logger.info(`✅ ${results.successful}/${results.total}: Sent to ${clientData.clientEmailAddress}`);
             } else {
                 results.failed++;
                 results.errors.push({
@@ -173,7 +183,7 @@ async function sendBulkTemplatedEmails(clientDataList, templateId, options = {})
                     email: clientData.clientEmailAddress,
                     error: result.error
                 });
-                console.log(`❌ ${results.failed}/${results.total}: Failed for ${clientData.clientEmailAddress}: ${result.error}`);
+                logger.info(`❌ ${results.failed}/${results.total}: Failed for ${clientData.clientEmailAddress}: ${result.error}`);
             }
             
             // Add delay between emails to avoid rate limiting
@@ -188,11 +198,11 @@ async function sendBulkTemplatedEmails(clientDataList, templateId, options = {})
                 email: clientData.clientEmailAddress,
                 error: error.message
             });
-            console.error(`❌ Unexpected error for ${clientData.clientEmailAddress}:`, error);
+            logger.error(`Unexpected error for ${clientData.clientEmailAddress}:`, { error: error.message, stack: error.stack });
         }
     }
 
-    console.log(`📊 Bulk email complete: ${results.successful} successful, ${results.failed} failed`);
+    logger.info(`📊 Bulk email complete: ${results.successful} successful, ${results.failed} failed`);
     return results;
 }
 
@@ -217,12 +227,13 @@ async function sendAlertEmail(subject, htmlBody, recipient = null) {
 
         const result = await sendMailgunEmail(emailData);
 
-        console.log(`✅ Alert email sent: ${subject}`);
+        logger.info(`✅ Alert email sent: ${subject}`);
         return { success: true, mailgunId: result.id, message: result.message };
 
     } catch (error) {
-        console.error(`❌ Error sending alert email:`, error);
+        logger.error(`❌ Error sending alert email:`, error);
         return { success: false, error: error.message };
+    await logCriticalError(error, { operation: 'unknown' }).catch(() => {});
     }
 }
 

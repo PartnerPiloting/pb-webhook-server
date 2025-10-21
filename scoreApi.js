@@ -1,4 +1,6 @@
 // scoreApi.js – UPDATED to use passed-in 'base' and 'globalGeminiModel'
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
 require("dotenv").config();
 const express = require("express");
@@ -8,7 +10,7 @@ const express = require("express");
 const { buildPrompt, slimLead } = require("./promptBuilder"); // slimLead is used by scoreLeadNow internally
 const { loadAttributes } = require("./attributeLoader");
 const { computeFinalScore } = require("./scoring");
-const { buildAttributeBreakdown } = require("./breakdown");
+const { buildAttributeBreakdown } = require("./scripts/analysis/breakdown");
 const { scoreLeadNow } = require("./singleScorer");
 
 const router = express.Router();
@@ -23,10 +25,10 @@ let moduleBase;
 let moduleGlobalGeminiModel;
 
 router.post("/test-score", async (req, res) => { // Path is just /test-score as /api is prefixed by app.use
-    console.log("scoreApi.js: POST /api/test-score hit. Processing lead data...");
+    logger.info("scoreApi.js: POST /api/test-score hit. Processing lead data...");
 
     if (!moduleBase || !moduleGlobalGeminiModel) {
-        console.error("scoreApi.js - /api/test-score: Airtable base or Gemini model not provided to mountScoreApi. Endpoint will fail.");
+        logger.error("scoreApi.js - /api/test-score: Airtable base or Gemini model not provided to mountScoreApi. Endpoint will fail.");
         return res.status(503).json({ error: "Service temporarily unavailable due to internal configuration error." });
     }
 
@@ -92,7 +94,7 @@ router.post("/test-score", async (req, res) => { // Path is just /test-score as 
         );
 
         if (req.query.recordId) {
-            console.log(`scoreApi.js: Updating Airtable record ${req.query.recordId} from /api/test-score.`);
+            logger.info(`scoreApi.js: Updating Airtable record ${req.query.recordId} from /api/test-score.`);
             // Use the passed-in 'moduleBase'
             await moduleBase("Leads").update(req.query.recordId, {
                 "AI Score": Math.round(percentage * 100) / 100, 
@@ -105,7 +107,7 @@ router.post("/test-score", async (req, res) => { // Path is just /test-score as 
             });
         }
 
-        console.log(`scoreApi.js: /api/test-score successful. Final Pct: ${Math.round(percentage * 100) / 100}`);
+        logger.info(`scoreApi.js: /api/test-score successful. Final Pct: ${Math.round(percentage * 100) / 100}`);
         res.json({
             finalPct: Math.round(percentage * 100) / 100,
             breakdown,
@@ -113,19 +115,19 @@ router.post("/test-score", async (req, res) => { // Path is just /test-score as 
         });
 
     } catch (err) {
-        console.error("scoreApi.js - Error in /api/test-score:", err.message, err.stack);
+        logger.error("scoreApi.js - Error in /api/test-score:", err.message, err.stack);
         res.status(500).json({ error: err.message });
     }
 });
 
 module.exports = function mountScoreApi(app, base, globalGeminiModel) { // <-- Now accepts 'base' and 'globalGeminiModel'
   if (!base || !globalGeminiModel) {
-    console.error("scoreApi.js: mountScoreApi called without base or globalGeminiModel. API will not function.");
+    logger.error("scoreApi.js: mountScoreApi called without base or globalGeminiModel. API will not function.");
     return;
   }
   moduleBase = base; // Make base available to route handlers
   moduleGlobalGeminiModel = globalGeminiModel; // Make model available
 
   app.use("/api", router); // Mounts the router at /api, so route is /api/test-score
-  console.log("scoreApi.js: /api/test-score route mounted.");
+  logger.info("scoreApi.js: /api/test-score route mounted.");
 };

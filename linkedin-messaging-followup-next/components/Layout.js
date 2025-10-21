@@ -203,19 +203,20 @@ const Layout = ({ children }) => {
                 {(() => {
                   const envLabel = getEnvLabel();
                   const clientName = clientProfile?.clientName || clientProfile?.client?.clientName;
-                  let displayName = clientName || '';
-                  let isTestMode = false;
-                  if (clientName && envLabel && clientName.includes('(' + envLabel + ' Mode)')) {
-                    displayName = clientName.replace(' (' + envLabel + ' Mode)', '');
-                    isTestMode = true;
-                  }
-                  return envLabel && displayName
-                    ? `${envLabel} - ${displayName}${isTestMode ? ' (' + envLabel + ' Mode)' : ''}'s LinkedIn Follow-Up Portal`
-                    : envLabel
-                      ? `${envLabel} - LinkedIn Follow-Up Portal`
-                      : displayName
-                        ? `${displayName}'s LinkedIn Follow-Up Portal`
-                        : 'LinkedIn Follow-Up Portal';
+                  const isProduction = process.env.NODE_ENV === 'production' && !envLabel;
+                  
+                  return (
+                    <div>
+                      <div className="text-2xl font-bold">
+                        {clientName
+                          ? `${clientName}'s LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`
+                          : `LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
+                      </div>
+                      <div className="text-base text-gray-600 mt-2">
+                        Score leads — Start conversations — Close deals
+                      </div>
+                    </div>
+                  );
                 })()}
               </h1>
             </div>

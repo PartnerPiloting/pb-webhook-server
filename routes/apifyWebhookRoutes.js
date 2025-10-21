@@ -1,333 +1,841 @@
 // routes/apifyWebhookRoutes.js
-// Webhook endpoint for Apify actor runs that scrape LinkedIn profile posts.
-// Secured with a Bearer token and requires x-client-id for multi-tenant routing.
+// Completely rewritten for clean architecture with JobTracking.js
+// No legacy code fallbacks, single source of truth for job tracking
+// Updated to use jobOrchestrationService for proper service boundaries
 
 const express = require('express');
 const router = express.Router();
-const dirtyJSON = require('dirty-json');
-const syncPBPostsToAirtable = require('../utils/pbPostsSync');
-const { getFetch } = require('../utils/safeFetch');
-const fetchDynamic = getFetch();
-
-// Multi-tenant base resolver
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const { getClientBase } = require('../config/airtableClient');
+const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
+const { createLogger } = require('../utils/contextLogger');
+const JobTracking = require('../services/jobTracking');
+const jobOrchestrationService = require('../services/jobOrchestrationService');
+const { createPost } = require('../services/postService');
+const { handleClientError } = require('../utils/errorHandler');
+const clientService = require('../services/clientService');
+const runIdSystem = require('../services/runIdSystem');
+// Import the validator utility
+const { validateAndNormalizeRunId, validateAndNormalizeClientId } = require('../utils/runIdValidator');
+// Import Airtable field constants
+const { JOB_TRACKING_FIELDS, CLIENT_RUN_FIELDS, CLIENT_RUN_STATUS_VALUES } = require('../constants/airtableUnifiedConstants');
 
-// Apify runs service for multi-tenant webhook handling
-const { getClientIdForRun, extractRunIdFromPayload, updateApifyRun } = require('../services/apifyRunsService');
+// Constants
+const WEBHOOK_SECRET = process.env.PB_WEBHOOK_SECRET || 'Diamond9753!!@@pb';
 
-// Helper: normalize LinkedIn profile URL from author input (string or object)
-function toProfileUrl(author) {
-  try {
-    if (!author) return null;
-    if (typeof author === 'string') {
-      if (author.startsWith('http')) return author.replace(/\/$/, '');
-      // Sometimes just the publicIdentifier is provided
-      return `https://www.linkedin.com/in/${author.replace(/\/$/, '')}`;
+// Default logger - using safe logger creation
+const logger = createSafeLogger('SYSTEM', null, 'apify_webhook');
+
+// Module-level logger for utility functions
+const moduleLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'apify_webhook_utils' });
+
+/**
+ * Webhook authentication middleware
+ * Ensures requests have proper authorization
+ */
+function authenticateWebhook(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    
+    if (!authHeader || authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
+        logger.error("Authentication failed - invalid token");
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
-    if (typeof author === 'object') {
-      if (author.url && typeof author.url === 'string') return author.url.replace(/\/$/, '');
-      if (author.linkedinUrl && typeof author.linkedinUrl === 'string') return author.linkedinUrl.replace(/\/$/, '');
-      if (author.publicIdentifier && typeof author.publicIdentifier === 'string') {
-        return `https://www.linkedin.com/in/${author.publicIdentifier.replace(/\/$/, '')}`;
-      }
-    }
-  } catch {}
-  return null;
+    
+    next();
 }
 
-// Helper: robustly parse/normalize Apify webhook payload body (dataset id discovery)
-function extractDatasetId(body) {
-  if (!body) return null;
-  // Common Apify webhook payload shapes
-  // - { resource: { defaultDatasetId: 'xxxx' }, ... }
-  // - { datasetId: 'xxxx' }
-  // - { detail: { datasetId: 'xxxx' } }
-  // - direct stringified JSON
-  try {
-    if (typeof body === 'string') {
-      try { body = JSON.parse(body); }
-      catch { try { body = dirtyJSON.parse(body); } catch { /* keep as string */ } }
+/**
+ * The main webhook handler for Apify post harvesting
+ * Receives webhook data, extracts posts, saves to Airtable
+ */
+/**
+ * Validate that a run record exists before processing webhook
+ * This is critical to ensure we don't try to update non-existent records
+ * @param {string} runId - The run ID to check
+ * @param {string} clientId - The client ID
+ * @returns {Promise<boolean>} - Whether the record exists
+ */
+async function validateRunRecordExists(runId, clientId) {
+    try {
+        if (!runId || !clientId) {
+            logger.error(`Cannot validate run record: missing runId=${runId} or clientId=${clientId}`);
+            return false;
+        }
+        
+        // First standardize the run ID using JobTracking's standardization function
+        const standardizedRunId = JobTracking.standardizeRunId(runId);
+        
+        if (!standardizedRunId) {
+            logger.error(`Failed to standardize run ID: ${runId}`);
+            return false;
+        }
+        
+        // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+        const runIdSystem = require('../services/runIdSystem');
+        const completeClientRunId = runIdSystem.createClientRunId(standardizedRunId, clientId);
+        
+        // Check if a corresponding job record exists in the tracking system using standardized run ID
+        return await JobTracking.checkClientRunExists({
+            runId: completeClientRunId, // Pass COMPLETE client run ID
+            clientId,
+            options: {
+                source: 'apify_webhook_validation'
+            }
+        });
+    } catch (error) {
+        logger.error(`Error validating run record existence: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown', clientId: clientId, runId: runId }).catch(() => {});
+        return false;
     }
-    if (body && typeof body === 'object') {
-      if (body.resource && body.resource.defaultDatasetId) return body.resource.defaultDatasetId;
-      if (body.datasetId) return body.datasetId;
-      if (body.detail && body.detail.datasetId) return body.detail.datasetId;
-    }
-  } catch {}
-  return null;
 }
 
-// Transform Apify dataset items into the PB posts input shape used by syncPBPostsToAirtable
-function mapApifyItemsToPBPosts(items = []) {
-  if (!Array.isArray(items)) {
-    return [];
-  }
-
-  const out = [];
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (!it || typeof it !== 'object') continue;
+async function apifyWebhookHandler(req, res) {
+    const startTime = new Date();
+    let clientId = null;
+    let apifyRunId = null;
+    let jobRunId = null;
     
     try {
-      const p = it.post || {};
-      const originalAuthorUrl = toProfileUrl(it.author || it.profileUrl || it.profile || it.authorUrl || it.authorProfileUrl || p.author)
-        || (p.profileUrl || null);
-      const postUrl = it.url || it.postUrl || it.shareUrl || it.link || it.linkedinUrl || p.url || p.postUrl || null;
-      const postContent = it.text || it.content || it.caption || it.title || it.body || p.text || p.content || '';
-      
-      let postTimestamp = it.publishedAt || it.time || it.date || it.createdAt || p.publishedAt || p.time || p.date || p.createdAt || null;
-      if (!postTimestamp && it.postedAt) {
-        if (typeof it.postedAt === 'object') {
-          postTimestamp = it.postedAt.timestamp || it.postedAt.date || null;
-        } else if (typeof it.postedAt === 'string') {
-          postTimestamp = it.postedAt;
+        const payload = req.body;
+        
+        // First, look for our system-generated jobRunId which is the most important identifier
+        // This is what our code should be using for processing
+        jobRunId = payload.jobRunId || payload.data?.jobRunId || null;
+        
+        if (jobRunId) {
+            logger.info(`Found system-generated job run ID in webhook payload: ${jobRunId}`);
         }
-      }
-      
-      const engagement = it.engagement || p.engagement || {};
-      const likeCount = engagement.likes ?? engagement.reactions ?? it.likes ?? null;
-      const commentCount = engagement.comments ?? it.comments ?? null;
-      const repostCount = engagement.shares ?? it.shares ?? null;
-      const imgUrl = (Array.isArray(it.postImages) && it.postImages.length ? (it.postImages[0].url || it.postImages[0]) : null)
-        || (Array.isArray(it.images) && it.images.length ? it.images[0] : null)
-        || (Array.isArray(p.images) && p.images.length ? p.images[0] : null);
-
-      if (!originalAuthorUrl || !postUrl) continue;
-
-      // Determine origin label for UI/processing clarity
-      const isRepost = (String(it.postType || it.type || '').toLowerCase().includes('repost'));
-      const originLabel = isRepost
-        ? `REPOST - ORIGINAL AUTHOR: ${originalAuthorUrl || '(unknown) '}`.trim()
-        : 'ORIGINAL';
-
-      out.push({
-        profileUrl: originalAuthorUrl,
-        postUrl,
-        postContent,
-        postTimestamp,
-        timestamp: new Date().toISOString(),
-        type: it.postType || it.type || 'post',
-        imgUrl,
-        author: (typeof it.author === 'object' ? it.author?.name : null) || null,
-        authorUrl: originalAuthorUrl,
-        likeCount,
-        commentCount,
-        repostCount,
-        action: 'apify_ingest',
-        pbMeta: {
-          authorUrl: originalAuthorUrl,
-          authorName: (typeof it.author === 'object' ? it.author?.name : null) || null,
-          action: (it.postType || it.type || 'post'),
-          originLabel
+        
+        // Extract Apify run ID (only as a fallback or for logging)
+        apifyRunId = extractRunIdFromPayload(payload);
+        if (!apifyRunId) {
+            if (!jobRunId) {
+                // Only error if we don't have either ID
+                logger.error("No Apify run ID or job run ID found in payload");
+                return res.status(400).json({ success: false, error: 'No run ID found in payload' });
+            } else {
+                // Log but continue if we have jobRunId
+                logger.warn("No Apify run ID found in payload, but we have jobRunId so continuing");
+            }
         }
-      });
-    } catch (error) {
-      console.warn(`[ApifyWebhook] Error processing item ${i}: ${error.message}`);
-    }
-  }
-  
-  return out;
-}
-
-// POST /api/apify-webhook
-// Header requirements:
-//   Authorization: Bearer <APIFY_WEBHOOK_TOKEN>
-//   x-client-id: <ClientId>
-
-// GET handler for webhook endpoint testing (Apify uses GET requests to test webhook availability)
-router.get('/api/apify-webhook', (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  res.status(200).json({ 
-    success: true,
-    message: 'Apify webhook endpoint is accessible',
-    method: 'GET',
-    timestamp: new Date().toISOString(),
-    status: 'ready'
-  });
-});
-
-router.post('/api/apify-webhook', async (req, res) => {
-  try {
-    // Auth check
-    const auth = req.headers['authorization'];
-    const expected = process.env.APIFY_WEBHOOK_TOKEN;
-    if (!expected) {
-      return res.status(500).json({ error: 'Server not configured: APIFY_WEBHOOK_TOKEN missing' });
-    }
-    if (!auth || auth !== `Bearer ${expected}`) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    // Extract run ID from webhook payload for multi-tenant lookup
-    const runId = extractRunIdFromPayload(req.body);
-    if (!runId) {
-      return res.status(400).json({ error: 'Missing run ID in webhook payload' });
-    }
-
-    // Get client ID for this run
-    let clientId = await getClientIdForRun(runId);
-    // Optional test override via query param (non-production only)
-    if (!clientId) {
-      const override = req.query.client || req.query.clientId;
-      if (override && process.env.NODE_ENV !== 'production') {
-        clientId = override;
-        console.warn(`[ApifyWebhook] Using non-production client override from query: ${clientId}`);
-      }
-    }
-    if (!clientId) {
-      return res.status(404).json({ error: `No client mapping found for run: ${runId}` });
-    }
-
-    console.log(`[ApifyWebhook] Processing webhook for run ${runId} -> client ${clientId}`);
-
-    // Get client base using the mapped client ID
-    let clientBase;
-    try {
-      clientBase = await getClientBase(clientId);
-    } catch (e) {
-      return res.status(401).json({ error: 'Invalid client', details: e.message });
-    }
-    if (!clientBase) {
-      return res.status(503).json({ error: 'Client base unavailable' });
-    }
-
-    // Discover dataset id
-    const datasetId = extractDatasetId(req.body);
-    if (!datasetId) {
-      // If actor posts items directly (rare), accept payload.items
-      const items = (req.body && Array.isArray(req.body.items)) ? req.body.items : [];
-      if (!items.length) {
-        return res.status(400).json({ error: 'Missing datasetId in payload and no inline items' });
-      }
-      // Inline items flow – transform and sync now
-      const posts = mapApifyItemsToPBPosts(items);
-      if (!posts.length) return res.json({ ok: true, message: 'No valid posts', items: items.length });
-      const result = await syncPBPostsToAirtable(posts, clientBase);
-      
-      // Update run status
-      try {
-        await updateApifyRun(runId, { status: 'SUCCEEDED' });
-      } catch (updateError) {
-        console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
-      }
-      
-      return res.json({ ok: true, mode: 'inline', result });
-    }
-
-    // Update run status with dataset ID
-    try {
-      await updateApifyRun(runId, { 
-        status: 'SUCCEEDED', 
-        datasetId: datasetId 
-      });
-    } catch (updateError) {
-      console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
-    }
-
-    // Fetch items from Apify dataset
-    const apiToken = process.env.APIFY_API_TOKEN;
-    if (!apiToken) {
-      return res.status(500).json({ error: 'Server not configured: APIFY_API_TOKEN missing' });
-    }
-
-    // Quick ack before fetch to keep webhook latency low
-    res.status(200).json({ ok: true, mode: 'dataset', runId, clientId, datasetId });
-
-    // Background processing with error handling
-    (async () => {
-      try {
-        const url = `https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?clean=true`;
-        const resp = await fetchDynamic(url, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${apiToken}` }
+        
+        // Determine client ID (from query param, header, or payload)
+        clientId = req.query.clientId || req.query.testClient || req.headers['x-client-id'];
+        
+        // If not provided in query or header, try to find in payload
+        if (!clientId) {
+            clientId = extractClientIdFromPayload(payload);
+        }
+        
+        // CRITICAL FIX: If still no client ID, try to resolve it from the Apify run record
+        if (!clientId && apifyRunId) {
+            try {
+                logger.info(`Attempting to resolve client ID from Apify run: ${apifyRunId}`);
+                // Import the apifyRunsService to look up the client ID
+                const apifyRunsService = require('../services/apifyRunsService');
+                
+                // Get the run record which contains clientId
+                const runRecord = await apifyRunsService.getApifyRun(apifyRunId);
+                
+                if (runRecord && runRecord.clientId) {
+                    clientId = runRecord.clientId;
+                    logger.info(`Successfully resolved client ID ${clientId} from Apify run ${apifyRunId}`);
+                }
+            } catch (err) {
+                logger.error(`Failed to resolve client ID from Apify run: ${err.message}`);
+    logCriticalError(err, { operation: 'unknown', isSearch: true, clientId: clientId }).catch(() => {});
+            }
+        }
+        
+        if (!clientId) {
+            logger.error(`No client ID found for Apify run ${apifyRunId}`);
+            return res.status(400).json({ success: false, error: 'Client ID is required' });
+        }
+        
+        // Create scoped logger with runId and clientId for proper tracking
+        const webhookLogger = createLogger({ 
+            runId: jobRunId || apifyRunId || 'UNKNOWN', 
+            clientId, 
+            operation: 'apify_webhook_handler' 
         });
         
-        if (!resp.ok) {
-          console.error('[ApifyWebhook] Failed to fetch dataset items', datasetId, resp.status);
-          // Update run status to failed
-          try {
-            await updateApifyRun(runId, { 
-              status: 'FAILED', 
-              error: `Failed to fetch dataset: ${resp.status}` 
+        webhookLogger.info(`Processing webhook for Apify run ${apifyRunId}, client ${clientId}`);
+        
+        // Send immediate 200 response to avoid Apify retries
+        // This is important as Apify will retry failed webhooks
+        res.status(200).json({ 
+            success: true, 
+            message: `Processing webhook for Apify run ${apifyRunId}, client ${clientId}` 
+        });
+        
+        // We already extracted jobRunId at the beginning, now we just need to validate it exists
+        // and is properly formatted
+        
+        if (jobRunId) {
+            // Validate that the referenced job record actually exists
+            const recordExists = await validateRunRecordExists(jobRunId, clientId);
+            
+            if (!recordExists) {
+                webhookLogger.error(`Job run record referenced in webhook (${jobRunId}) does not exist for client ${clientId}`);
+                
+                // Instead of failing, try to find the record by Apify Run ID as a fallback
+                if (apifyRunId) {
+                    webhookLogger.info(`Attempting to find job run record by Apify run ID: ${apifyRunId}`);
+                    
+                    // Try to get system run ID from apifyRunsService by Apify run ID
+                    try {
+                        const apifyRunsService = require('../services/apifyRunsService');
+                        const apifyRecord = await apifyRunsService.getApifyRun(apifyRunId);
+                        
+                        if (apifyRecord && apifyRecord.runId) {
+                            // If we found the record, use its Run ID instead
+                            jobRunId = apifyRecord.runId;
+                            webhookLogger.info(`Found system run ID ${jobRunId} from Apify record for ${apifyRunId}`);
+                            
+                            // Re-validate with the found ID
+                            const refetchedRecordExists = await validateRunRecordExists(jobRunId, clientId);
+                            if (!refetchedRecordExists) {
+                                webhookLogger.error(`Found system run ID ${jobRunId} but it still doesn't exist in job tracking`);
+                                return res.status(404).json({ 
+                                    success: false, 
+                                    error: 'Job record not found even after Apify lookup',
+                                    message: `No active run found for client ${clientId} with any available run ID`
+                                });
+                            }
+                        } else {
+                            webhookLogger.error(`No Apify record found for Apify run ID: ${apifyRunId}`);
+                        }
+                    } catch (lookupError) {
+                        webhookLogger.error(`Error looking up Apify record: ${lookupError.message}`);
+    logCriticalError(lookupError, { operation: 'unknown' }).catch(() => {});
+                    }
+                }
+                
+                // If we still don't have a valid jobRunId, return error
+                if (!jobRunId || !(await validateRunRecordExists(jobRunId, clientId))) {
+                    return res.status(404).json({ 
+                        success: false, 
+                        error: 'Job record not found',
+                        message: `No active run found for client ${clientId} with run ID ${jobRunId}`
+                    });
+                }
+            }
+            
+            webhookLogger.info(`Using validated job run ID from webhook: ${jobRunId}`);
+        } else {
+            // Start a new job using the orchestration service if no job ID was provided
+            const jobInfo = await jobOrchestrationService.startJob({
+                jobType: 'apify_post_harvesting',
+                clientId,
+                initialData: {
+                    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Processing Apify webhook for run ${apifyRunId}, client ${clientId}`,
+                    [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId
+                }
             });
-          } catch (updateError) {
-            console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
-          }
-          return;
+            
+            // Use the run ID generated by the orchestration service
+            jobRunId = jobInfo.runId;
+            webhookLogger.info(`Using newly created job run ID: ${jobRunId} from orchestration service`);
         }
         
-        // Use dirty-json for safer parsing
-        let raw;
+        // CRITICAL FIX: Enforce strict run ID handling - no normalization, preserve exact format
+        // This maintains the single-source-of-truth principle for run IDs
+        let validatedJobRunId;
+        
+        if (typeof jobRunId === 'string') {
+            // Use string value directly without any transformation
+            validatedJobRunId = jobRunId;
+            webhookLogger.info(`Using string job run ID as-is: ${validatedJobRunId}`);
+        } else if (jobRunId && jobRunId.runId) {
+            // Extract runId property
+            validatedJobRunId = jobRunId.runId;
+            webhookLogger.info(`Extracted job run ID from object: ${validatedJobRunId}`);
+        } else {
+            // Convert to string but log a warning about non-standard input
+            validatedJobRunId = String(jobRunId);
+            webhookLogger.warn(`Converted non-standard job run ID to string: ${validatedJobRunId} (original type: ${typeof jobRunId})`);
+        }
+        
+        webhookLogger.info(`Using validated job run ID: ${validatedJobRunId} for webhook processing`);
+        
+        // Track profiles submitted for harvesting
         try {
-          const text = await resp.text();
-          try {
-            raw = JSON.parse(text);
-          } catch (jsonError) {
-            raw = dirtyJSON.parse(text);
-          }
-        } catch (parseError) {
-          console.error('[ApifyWebhook] JSON parsing failed:', parseError.message);
-          // Update run status to failed
-          try {
-            await updateApifyRun(runId, { 
-              status: 'FAILED', 
-              error: `JSON parsing failed: ${parseError.message}` 
+            // Update client metrics for Apify run initialization
+            const profilesSubmitted = payload.targetUrls ? payload.targetUrls.length : 
+                                      (payload.data?.targetUrls ? payload.data.targetUrls.length : 0);
+            
+            // Get specific logger for this operation
+            const metricsLogger = createSafeLogger(clientId, validatedJobRunId, 'apify_metrics');
+            
+            metricsLogger.info(`Updating metrics for ${profilesSubmitted} profiles submitted to Apify run ${apifyRunId}`);
+            
+            // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+            const runIdSystem = require('../services/runIdSystem');
+            const completeClientRunId = runIdSystem.createClientRunId(validatedJobRunId, clientId);
+            
+            // Use JobTracking service to update client metrics
+            await JobTracking.updateClientMetrics({
+                runId: completeClientRunId, // Pass COMPLETE client run ID
+                clientId,
+                metrics: {
+                    [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted,
+                    [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId,
+                    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Apify run ${apifyRunId} started for ${profilesSubmitted} profiles at ${new Date().toISOString()}`
+                },
+                options: {
+                    source: 'apify_webhook_start',
+                    logger: metricsLogger
+                }
             });
-          } catch (updateError) {
-            console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
-          }
-          return;
+            
+            metricsLogger.info(`Successfully updated metrics for Apify run initialization`);
+        } catch (metricsError) {
+            webhookLogger.error(`Failed to update initial Apify metrics: ${metricsError.message}`);
+            // Continue processing even if metrics update fails
+    logCriticalError(metricsError, { operation: 'unknown' }).catch(() => {});
         }
-        
-        const items = Array.isArray(raw) ? raw : (Array.isArray(raw.items) ? raw.items : (Array.isArray(raw.data) ? raw.data : []));
-        
-        console.log(`[ApifyWebhook] Dataset ${datasetId} fetched. ${items.length} items found for client ${clientId}`);
-        
-        const posts = mapApifyItemsToPBPosts(items);
-        
-        if (!posts.length) {
-          console.log(`[ApifyWebhook] No valid posts mapped from dataset ${datasetId} for client ${clientId}`);
-          return;
-        }
-        
-        const result = await syncPBPostsToAirtable(posts, clientBase);
-        console.log(`[ApifyWebhook] Successfully synced ${posts.length} posts from dataset ${datasetId} for client ${clientId}`);
-        
-      } catch (e) {
-        console.error('[ApifyWebhook] Background processing error:', e.message);
-        // Update run status to failed
-        try {
-          await updateApifyRun(runId, { 
-            status: 'FAILED', 
-            error: `Processing failed: ${e.message}` 
-          });
-        } catch (updateError) {
-          console.warn(`[ApifyWebhook] Failed to update run status for ${runId}:`, updateError.message);
-        }
-      }
-    })();
-  } catch (e) {
-    console.error('[ApifyWebhook] Handler error:', e.message);
-    if (!res.headersSent) res.status(500).json({ error: e.message });
-  }
-});
 
-// Development-only debug endpoint to verify webhook env is loaded
-if (process.env.NODE_ENV === 'development') {
-  router.get('/api/_debug/apify-webhook-config', (req, res) => {
-    const hasToken = Boolean(process.env.APIFY_WEBHOOK_TOKEN);
-    const hasApiToken = Boolean(process.env.APIFY_API_TOKEN);
-    return res.json({
-      ok: true,
-      env: {
-        APIFY_WEBHOOK_TOKEN: hasToken ? 'present' : 'missing',
-        APIFY_API_TOKEN: hasApiToken ? 'present' : 'missing'
-      }
-    });
-  });
+        // Process the webhook in background with validated runId
+        processWebhook(payload, apifyRunId, clientId, validatedJobRunId).catch(error => {
+            webhookLogger.error(`Background processing failed: ${error.message}`, { error });
+        });
+        
+    } catch (error) {
+        webhookLogger.error(`Error in webhook handler: ${error.message}`, { error });
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
+        
+        // Only send response if not already sent
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+        
+        // Update job tracking record if it was created
+        if (jobRunId) {
+            // Additional validation to ensure the jobRunId is properly defined
+            const normalizedRunId = jobRunId; // Run ID is already in correct format
+            if (!normalizedRunId) {
+                webhookLogger.error("Cannot update job status: runId is not valid");
+            } else {
+                await JobTracking.updateJob({
+                    runId: normalizedRunId,
+                    updates: {
+                        [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.FAILED,  // FIXED: Using field constant instead of hard-coded name
+                        endTime: new Date().toISOString(),
+                        error: error.message
+                    }
+                }).catch(updateError => {
+                    webhookLogger.error(`Failed to update job record: ${updateError.message}`);
+                });
+            }
+        }
+    }
 }
+
+/**
+ * Normalize LinkedIn profile URL to ensure consistent format
+ * @param {string} url - The URL to normalize
+ * @returns {string} - Normalized URL
+ */
+function normalizeLinkedInProfileURL(url) {
+    try {
+        if (!url) return '';
+        
+        // Remove query parameters
+        const baseUrl = url.split('?')[0];
+        
+        // Remove trailing slash if present
+        const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        
+        // Parse the path components
+        const parts = cleanUrl.split('/').filter(p => p);
+        // Get the last two parts (usually 'in' and the profile ID)
+        const lastParts = parts.slice(-2);
+        
+        if (parts.length >= 2 && ['in', 'company'].includes(parts[0])) {
+            // Reconstruct in recent-activity format
+            return `https://www.linkedin.com/${parts[0]}/${parts[1]}/recent-activity/all/`;
+        }
+        return url;
+    } catch (e) {
+        moduleLogger.error(`Error normalizing LinkedIn URL ${url}: ${e.message}`);
+        return url;
+    }
+}
+
+/**
+ * Extract Apify run ID from webhook payload
+ * @param {Object} payload - Webhook payload
+ * @returns {string|null} - Extracted run ID or null
+ */
+function extractRunIdFromPayload(payload) {
+    try {
+        if (!payload) return null;
+        
+        // Try standard Apify webhook format
+        if (payload.resource && payload.resource.actorRunId) {
+            return payload.resource.actorRunId;
+        }
+        
+        // Try custom payload format
+        if (payload.actorRunId) {
+            return payload.actorRunId;
+        }
+        
+        // Try webhook data object format
+        if (payload.data && payload.data.actorRunId) {
+            return payload.data.actorRunId;
+        }
+        
+        // Try legacy webhook format
+        if (payload.webhookData && payload.webhookData.actorRunId) {
+            return payload.webhookData.actorRunId;
+        }
+        
+        // Try even more nested formats
+        if (payload.data && payload.data.resource && payload.data.resource.actorRunId) {
+            return payload.data.resource.actorRunId;
+        }
+        
+        // Last resort: check eventData
+        if (payload.eventData && payload.eventData.actorRunId) {
+            return payload.eventData.actorRunId;
+        }
+        
+        return null;
+    } catch (error) {
+        moduleLogger.error(`Error extracting Apify run ID: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
+        return null;
+    }
+}
+
+/**
+ * Extract client ID from webhook payload
+ * @param {Object} payload - Webhook payload
+ * @returns {string|null} - Extracted client ID or null
+ */
+function extractClientIdFromPayload(payload) {
+    try {
+        if (!payload) return null;
+        
+        // Try standard payload client ID fields
+        if (payload.clientId) return payload.clientId;
+        if (payload.data && payload.data.clientId) return payload.data.clientId;
+        if (payload.userData && payload.userData.clientId) return payload.userData.clientId;
+        if (payload.meta && payload.meta.clientId) return payload.meta.clientId;
+        
+        // Try to extract from URLs if present
+        if (payload.requestUrl) {
+            const urlParams = new URL(payload.requestUrl).searchParams;
+            const clientId = urlParams.get('clientId');
+            if (clientId) return clientId;
+        }
+        
+        // Try custom payload paths
+        if (payload.data && payload.data.userData && payload.data.userData.clientId) {
+            return payload.data.userData.clientId;
+        }
+        
+        return null;
+    } catch (error) {
+        moduleLogger.error(`Error extracting client ID: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown', isSearch: true, clientId: clientId }).catch(() => {});
+        return null;
+    }
+}
+
+/**
+ * Extract posts from webhook payload
+ * @param {Object} payload - Webhook payload
+ * @returns {Array} - Extracted posts array
+ */
+function extractPostsFromPayload(payload) {
+    try {
+        if (!payload) return [];
+        
+        // Check different possible locations for posts data
+        if (Array.isArray(payload)) {
+            return payload;
+        }
+        
+        if (payload.data && Array.isArray(payload.data)) {
+            return payload.data;
+        }
+        
+        if (payload.posts && Array.isArray(payload.posts)) {
+            return payload.posts;
+        }
+        
+        if (payload.result && Array.isArray(payload.result)) {
+            return payload.result;
+        }
+        
+        if (payload.result && payload.result.posts && Array.isArray(payload.result.posts)) {
+            return payload.result.posts;
+        }
+        
+        if (payload.data && payload.data.posts && Array.isArray(payload.data.posts)) {
+            return payload.data.posts;
+        }
+        
+        if (payload.data && payload.data.result && Array.isArray(payload.data.result)) {
+            return payload.data.result;
+        }
+        
+        if (payload.items && Array.isArray(payload.items)) {
+            return payload.items;
+        }
+        
+        moduleLogger.warn('No posts array found in payload structure');
+        return [];
+    } catch (error) {
+        moduleLogger.error(`Error extracting posts: ${error.message}`);
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
+        return [];
+    }
+}
+
+/**
+ * Process the webhook payload
+ * @param {Object} payload - The webhook payload
+ * @param {string} apifyRunId - The Apify run ID
+ * @param {string} clientId - The client ID
+ * @param {string} jobRunId - The job run ID
+ * @returns {Promise<void>} - Processing promise
+ */
+async function processWebhook(payload, apifyRunId, clientId, jobRunId) {
+    // Use the safe logger helper to avoid object-as-string errors
+    const clientLogger = createSafeLogger(clientId, jobRunId, 'apify_webhook');
+    
+    try {
+        clientLogger.info(`Starting background processing for Apify run ${apifyRunId}`);
+        
+        // Get client's Airtable base
+        const client = await clientService.getClientById(clientId);
+        if (!client) {
+            throw new Error(`Client ${clientId} not found`);
+        }
+        
+        const clientBase = await getClientBase(clientId);
+        if (!clientBase) {
+            throw new Error(`Airtable base not found for client ${clientId}`);
+        }
+        
+        // Extract posts from payload
+        const posts = extractPostsFromPayload(payload);
+        clientLogger.info(`Extracted ${posts.length} posts from payload`);
+        
+        // Determine profiles submitted count from payload
+        const profilesSubmitted = payload.targetUrls ? payload.targetUrls.length : 
+                               (payload.data?.targetUrls ? payload.data.targetUrls.length : 0);
+        
+        // If no posts found, update tracking and exit
+        if (!posts || posts.length === 0) {
+            clientLogger.warn(`No posts found in payload for Apify run ${apifyRunId}`);
+            
+            // Check if this is a standalone run
+            const isStandalone = !jobRunId.includes('-');
+            
+            // Prepare metrics
+            const harvestMetrics = {
+                [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+                [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || '',
+                [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted,
+                [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Completed Apify run ${apifyRunId} with no posts found at ${new Date().toISOString()}`
+            };
+            
+            // Update client metrics with harvest results
+            clientLogger.info(`Updating client metrics with harvest results: 0 posts harvested from ${profilesSubmitted} profiles`);
+            
+            try {
+                // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+                const runIdSystem = require('../services/runIdSystem');
+                const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+                
+                // Update client metrics with standardized field names from constants
+                await JobTracking.updateClientMetrics({
+                    runId: completeClientRunId, // Pass COMPLETE client run ID
+                    clientId,
+                    metrics: harvestMetrics,
+                    options: {
+                        source: 'apify_webhook_complete',
+                        logger: clientLogger
+                    }
+                });
+                clientLogger.info(`Successfully updated client metrics for harvest results`);
+            } catch (metricsError) {
+                clientLogger.error(`Failed to update harvest metrics: ${metricsError.message}`);
+                // Continue processing even if metrics update fails
+    logCriticalError(metricsError, { operation: 'unknown' }).catch(() => {});
+            }
+            
+            // Use job orchestration service to handle completion
+            await jobOrchestrationService.completeJob({
+                jobType: 'apify_post_harvesting',
+                runId: jobRunId,
+                finalMetrics: harvestMetrics
+            });
+            
+            // PURE CONSUMER ARCHITECTURE FIX: Construct complete client run ID before passing
+            // to completeClientProcessing (consumer function expects complete ID)
+            const runIdSystem = require('../services/runIdSystem');
+            const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+            
+            // Still update client-specific metrics
+            await JobTracking.completeClientProcessing({
+                runId: completeClientRunId, // Pass COMPLETE client run ID
+                clientId,
+                finalMetrics: {
+                    [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: 0,
+                    [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || '',
+                    [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: payload.targetUrls ? payload.targetUrls.length : 0,
+                    [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: 'Completed with no posts found'
+                },
+                options: {
+                    source: 'apify_webhook_handler_no_posts',
+                    isStandalone: isStandalone
+                }
+            });
+            
+            // Update job tracking record
+            // Additional validation to ensure the jobRunId is properly defined
+            const normalizedMainRunId = jobRunId;
+            if (!normalizedMainRunId) {
+                clientLogger.error("Cannot update job status: normalized runId is not valid");
+            } else {
+                await JobTracking.updateJob({
+                    runId: normalizedMainRunId,
+                    updates: {
+                        [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.COMPLETED,
+                        [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
+                        [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: 'Completed with no posts found'
+                    }
+                });
+            }
+            
+            return;
+        }
+        
+        clientLogger.info(`Found ${posts.length} posts to process`);
+        
+        // Save posts to Airtable
+        const result = await syncPBPostsToAirtable(posts, clientBase, clientId, clientLogger);
+                               
+        // Prepare harvest metrics
+        const harvestMetrics = {
+            [CLIENT_RUN_FIELDS.TOTAL_POSTS_HARVESTED]: posts.length,
+            [CLIENT_RUN_FIELDS.APIFY_API_COSTS]: posts.length * 0.02, // Estimated cost: $0.02 per post
+            [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || '',
+            [CLIENT_RUN_FIELDS.PROFILES_SUBMITTED]: profilesSubmitted,
+            [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Successfully processed ${posts.length} posts (${result.success} saved, ${result.errors} errors) at ${new Date().toISOString()}`
+        };
+        
+        // Update client metrics with harvest results
+        clientLogger.info(`Updating client metrics with harvest results: ${posts.length} posts harvested from ${profilesSubmitted} profiles`);
+        
+        try {
+            // PURE CONSUMER ARCHITECTURE FIX: Ensure we pass complete client run ID
+            const runIdSystem = require('../services/runIdSystem');
+            const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+            
+            // Update client metrics with standardized field names
+            await JobTracking.updateClientMetrics({
+                runId: completeClientRunId, // Pass COMPLETE client run ID
+                clientId,
+                metrics: harvestMetrics,
+                options: {
+                    source: 'apify_webhook_complete',
+                    logger: clientLogger
+                }
+            });
+            clientLogger.info(`Successfully updated client metrics for harvest results`);
+        } catch (metricsError) {
+            clientLogger.error(`Failed to update harvest metrics: ${metricsError.message}`);
+            // Continue processing even if metrics update fails
+    logCriticalError(metricsError, { operation: 'unknown' }).catch(() => {});
+        }
+        
+        // Use job orchestration service to handle completion
+        await jobOrchestrationService.completeJob({
+            jobType: 'apify_post_harvesting',
+            runId: jobRunId,
+            finalMetrics: harvestMetrics
+        });
+        
+        // PURE CONSUMER ARCHITECTURE FIX: Construct complete client run ID before passing
+        // to completeClientProcessing (consumer function expects complete ID)
+        const runIdSystem = require('../services/runIdSystem');
+        const completeClientRunId = runIdSystem.createClientRunId(jobRunId, clientId);
+        
+        // Complete client processing
+        await JobTracking.completeClientProcessing({
+            runId: completeClientRunId, // Pass COMPLETE client run ID
+            clientId,
+            finalMetrics: harvestMetrics
+        });
+        
+        // Update job tracking record
+        // Additional validation to ensure the jobRunId is properly defined
+        const normalizedMainRunId = jobRunId;
+        if (!normalizedMainRunId) {
+            clientLogger.error("Cannot update job status: normalized runId is not valid");
+        } else {
+            await JobTracking.updateJob({
+                runId: normalizedMainRunId,
+                updates: {
+                    [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.COMPLETED,
+                    [JOB_TRACKING_FIELDS.END_TIME]: new Date().toISOString(),
+                    'Items Processed': posts.length, // This field seems specific to this context
+                    [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Successfully processed ${posts.length} posts for client ${clientId}`
+                }
+            });
+        }
+        
+        clientLogger.info(`Processing complete: ${result.success} posts saved, ${result.errors} errors`);
+    } catch (error) {
+        clientLogger.error(`Error processing webhook: ${error.message}`, { error });
+    logCriticalError(error, { operation: 'unknown' }).catch(() => {});
+        
+        // Check if this is a standalone run or part of a workflow
+        const isStandalone = !jobRunId.includes('-');  // Simple heuristic - parent runs typically have format like YYMMDD-HHMMSS
+        
+        // Complete client processing with failure status
+        // FIXED: Validate and normalize the jobRunId using our utility
+        const safeRunId = validateAndNormalizeRunId(jobRunId);
+        
+        // Now use our utility to ensure we have a valid string
+        let normalizedRunId;
+        try {
+            normalizedRunId = safeRunId;
+            if (!normalizedRunId) {
+                clientLogger.error(`Unable to normalize run ID: ${safeRunId}. Using original run ID.`);
+            }
+        } catch (normError) {
+            clientLogger.error(`Error normalizing run ID: ${normError.message}. Using original run ID.`);
+    logCriticalError(normError, { operation: 'unknown' }).catch(() => {});
+        }
+        
+        // PURE CONSUMER ARCHITECTURE FIX: Construct complete client run ID before passing
+        // to completeClientProcessing (consumer function expects complete ID)
+        const runIdSystem = require('../services/runIdSystem');
+        const bestRunId = normalizedRunId || safeRunId || jobRunId;
+        const completeClientRunId = runIdSystem.createClientRunId(bestRunId, clientId);
+        
+        await JobTracking.completeClientProcessing({
+            runId: completeClientRunId, // Pass COMPLETE client run ID
+            clientId,
+            finalMetrics: {
+                failed: true,
+                errors: 1,
+                [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Failed: ${error.message}`,
+                [CLIENT_RUN_FIELDS.APIFY_RUN_ID]: apifyRunId || ''
+            },
+            options: {
+                source: 'apify_webhook_handler_error',
+                isStandalone: isStandalone
+            }
+        }).catch(updateError => {
+            clientLogger.error(`Failed to complete client processing: ${updateError.message}`);
+        });
+        
+        // Update job tracking record with error
+        // Additional validation to ensure the jobRunId is properly defined
+        const normalizedMainRunId = jobRunId;
+        if (!normalizedMainRunId) {
+            clientLogger.error("Cannot update job status: normalized runId is not valid");
+        } else {
+            await JobTracking.updateJob({
+                runId: normalizedMainRunId,
+                updates: {
+                    [JOB_TRACKING_FIELDS.STATUS]: CLIENT_RUN_STATUS_VALUES.FAILED,  // FIXED: Using field constant instead of hard-coded name
+                    endTime: new Date().toISOString(),
+                    [JOB_TRACKING_FIELDS.SYSTEM_NOTES]: `Error: ${error.message}`
+                }
+            }).catch(updateError => {
+                clientLogger.error(`Failed to update job tracking record: ${updateError.message}`);
+            });
+        }
+        
+        throw error; // Re-throw for caller handling
+    }
+}
+
+/**
+ * Sync posts to Airtable
+ * @param {Array} posts - Posts to sync
+ * @param {Object} clientBase - Client Airtable base
+ * @param {string} clientId - Client ID
+ * @param {Object} logger - Logger instance
+ * @returns {Promise<Object>} - Result statistics
+ */
+async function syncPBPostsToAirtable(posts, clientBase, clientId, logger = null) {
+    const log = logger || createSafeLogger(clientId, null, 'sync_posts');
+    
+    if (!posts || posts.length === 0) {
+        log.warn('No posts to sync');
+        return { success: 0, errors: 0 };
+    }
+    
+    log.info(`Syncing ${posts.length} posts to Airtable`);
+    
+    let success = 0;
+    let errors = 0;
+    
+    // Process each post
+    for (const post of posts) {
+        try {
+            // Normalize fields for consistency
+            const normalizedPost = {
+                // Core post data
+                'Post ID': post.postId || post.id || `pb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                'Post URL': post.postUrl || post.url || '',
+                'Post Date': post.postDate || post.date || post.timestamp || new Date().toISOString(),
+                'Post Text': post.text || post.content || post.postContent || '',
+                
+                // Author data
+                'Author Name': post.authorName || (post.author && post.author.name) || '',
+                'Author URL': normalizeLinkedInProfileURL(post.authorUrl || (post.author && post.author.url) || ''),
+                'Author ID': post.authorId || (post.author && post.author.id) || '',
+                'Profile URL': normalizeLinkedInProfileURL(post.profileUrl || post.authorUrl || (post.author && post.author.url) || ''),
+                
+                // Media data
+                'Has Image': !!post.hasImage || !!(post.images && post.images.length > 0),
+                'Image URLs': Array.isArray(post.images) ? post.images.join(', ') : (post.imageUrl || ''),
+                
+                // Engagement metrics
+                'Like Count': post.likeCount || post.likes || 0,
+                'Comment Count': post.commentCount || post.comments || 0,
+                'Share Count': post.shareCount || post.shares || 0,
+                
+                // Metadata
+                'Created At': new Date().toISOString(),
+                'Source': 'Apify API',
+                [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Imported via Apify webhook`
+            };
+            
+            // Create post in Airtable
+            await clientBase('Posts').create(normalizedPost);
+            success++;
+            log.debug(`Successfully created post: ${normalizedPost['Post ID']}`);
+        } catch (error) {
+            errors++;
+            log.error(`Error creating post: ${error.message}`, { error });
+    logCriticalError(error, { operation: 'unknown', postId: postId }).catch(() => {});
+        }
+    }
+    
+    log.info(`Sync complete: ${success} posts created, ${errors} errors`);
+    return { success, errors };
+}
+
+// Register routes
+router.post('/webhook', authenticateWebhook, apifyWebhookHandler);
+
+// Debug endpoint
+router.get('/webhook/status', (req, res) => {
+    res.json({ status: 'active', version: '2.0' });
+});
 
 module.exports = router;

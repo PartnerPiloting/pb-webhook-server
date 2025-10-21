@@ -4,6 +4,14 @@
 require('dotenv').config();
 
 const Airtable = require('airtable');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for config initialization
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'airtable-config' 
+});
 
 let airtableBaseInstance = null; // This will hold our initialized Airtable base
 
@@ -28,10 +36,10 @@ try {
     // Get the specific base you want to use with your Base ID
     airtableBaseInstance = Airtable.base(process.env.AIRTABLE_BASE_ID);
 
-    console.log("Airtable Client Initialized successfully in config/airtableClient.js.");
+    logger.info("Airtable Client Initialized successfully in config/airtableClient.js.");
 
 } catch (error) {
-    console.error("CRITICAL ERROR: Failed to initialize Airtable Client in config/airtableClient.js:", error.message);
+    logger.error("CRITICAL ERROR: Failed to initialize Airtable Client in config/airtableClient.js:", { error: error.message });
     // airtableBaseInstance will remain null if an error occurs
     // The main application (index.js) will need to handle this possibility.
 }
@@ -42,13 +50,13 @@ try {
  * @returns {Object} Airtable base instance
  */
 function createBaseInstance(baseId) {
+    
     if (!baseId) {
         throw new Error("Base ID is required to create base instance");
     }
 
     // Check cache first
     if (baseInstanceCache.has(baseId)) {
-        console.log(`Using cached base instance for: ${baseId}`);
         return baseInstanceCache.get(baseId);
     }
 
@@ -69,11 +77,10 @@ function createBaseInstance(baseId) {
         // Cache the instance
         baseInstanceCache.set(baseId, baseInstance);
         
-        console.log(`Created new base instance for: ${baseId}`);
         return baseInstance;
 
     } catch (error) {
-        console.error(`Error creating base instance for ${baseId}:`, error.message);
+        logger.error(`Error creating base instance for ${baseId}:`, { error: error.message });
         throw error;
     }
 }
@@ -84,12 +91,14 @@ function createBaseInstance(baseId) {
  * @returns {Promise<Object>} Airtable base instance for the client
  */
 async function getClientBase(clientId) {
+    
     try {
         // Import client service here to avoid circular dependencies
         const clientService = require('../services/clientService');
         
         // Get client configuration
         const client = await clientService.getClientById(clientId);
+        
         if (!client) {
             throw new Error(`Client not found: ${clientId}`);
         }
@@ -98,11 +107,10 @@ async function getClientBase(clientId) {
             throw new Error(`No Airtable base ID configured for client: ${clientId}`);
         }
 
-        console.log(`Getting base for client ${clientId}: ${client.airtableBaseId}`);
-        return createBaseInstance(client.airtableBaseId);
-
+        const baseInstance = createBaseInstance(client.airtableBaseId);
+        return baseInstance;
     } catch (error) {
-        console.error(`Error getting base for client ${clientId}:`, error.message);
+        logger.error(`Error getting base for client ${clientId}:`, { error: error.message });
         throw error;
     }
 }
@@ -112,7 +120,7 @@ async function getClientBase(clientId) {
  */
 function clearBaseCache() {
     baseInstanceCache.clear();
-    console.log("Base instance cache cleared");
+    logger.info("Base instance cache cleared");
 }
 
 /**
@@ -123,6 +131,17 @@ function getDefaultBase() {
     return airtableBaseInstance;
 }
 
+/**
+ * Get the Master Clients base instance
+ * @returns {Object} Airtable base instance for Master Clients base
+ */
+function getMasterClientsBase() {
+    if (!process.env.MASTER_CLIENTS_BASE_ID) {
+        throw new Error("MASTER_CLIENTS_BASE_ID environment variable is not set");
+    }
+    return createBaseInstance(process.env.MASTER_CLIENTS_BASE_ID);
+}
+
 // Export the initialized base instance (UNCHANGED - maintains backward compatibility)
 module.exports = airtableBaseInstance;
 
@@ -131,3 +150,4 @@ module.exports.createBaseInstance = createBaseInstance;
 module.exports.getClientBase = getClientBase;
 module.exports.clearBaseCache = clearBaseCache;
 module.exports.getDefaultBase = getDefaultBase;
+module.exports.getMasterClientsBase = getMasterClientsBase;

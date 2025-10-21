@@ -181,7 +181,7 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
     
     const params = { 
       q: query,
-      testClient: clientId,
+      clientId: clientId, // Updated from testClient to clientId
       limit: limit,
       offset: offset
     };
@@ -621,8 +621,13 @@ export const getTopScoringPosts = async (opts = {}) => {
       timeout: 30000 // 30 seconds to handle larger datasets
     });
     
+    // Handle new response format with total count
+    const responseData = response.data;
+    const leadsArray = responseData.leads || responseData; // Support both old and new format
+    const totalCount = responseData.total;
+    
     // Backend returns data in correct format, just map to frontend field names
-    return response.data.map(lead => ({
+    const mappedLeads = (Array.isArray(leadsArray) ? leadsArray : []).map(lead => ({
       'Profile Key': lead.id || '',
       'First Name': lead.firstName || '',
       'Last Name': lead.lastName || '',
@@ -645,6 +650,12 @@ export const getTopScoringPosts = async (opts = {}) => {
       // Include raw backend data for compatibility
       ...lead
     }));
+    
+    // Return leads with total count metadata
+    return {
+      leads: mappedLeads,
+      total: totalCount || mappedLeads.length
+    };
   } catch (error) {
     console.error('Get top scoring posts error:', error.response?.data || error.message);
     throw new Error(error.response?.data?.message || 'Failed to load top scoring posts');

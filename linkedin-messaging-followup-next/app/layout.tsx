@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "LinkedIn Follow-Up Portal",
-  description: "Multi-Tenant Lead Management System",
+  title: "LinkedIn Lead Workspace",
+  description: "Score leads — Start conversations — Close deals",
 };
 
 export default function RootLayout({

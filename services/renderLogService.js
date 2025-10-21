@@ -3,15 +3,21 @@
 
 const axios = require('axios');
 const { StructuredLogger } = require('../utils/structuredLogger');
+const { createSafeLogger } = require('../utils/loggerHelper');
 
 class RenderLogService {
     constructor() {
         this.apiKey = process.env.RENDER_API_KEY;
+        this.ownerId = process.env.RENDER_OWNER_ID; // Workspace ID
         this.baseUrl = 'https://api.render.com/v1';
-        this.logger = new StructuredLogger('RENDER-API', 'LOG-SERVICE');
+        this.logger = createSafeLogger('RENDER-API', 'LOG-SERVICE');
         
         if (!this.apiKey) {
             throw new Error('RENDER_API_KEY environment variable is required');
+        }
+        
+        if (!this.ownerId) {
+            throw new Error('RENDER_OWNER_ID environment variable is required');
         }
     }
 
@@ -19,7 +25,7 @@ class RenderLogService {
      * Get all services for the account
      */
     async getAllServices() {
-        this.logger.setup('getAllServices', 'Fetching all Render services');
+        this.logger.info( 'Fetching all Render services');
         
         try {
             const response = await axios.get(`${this.baseUrl}/services`, {
@@ -47,7 +53,7 @@ class RenderLogService {
                 throw new Error('Services response is not an array');
             }
             
-            this.logger.summary('getAllServices', `Found ${services.length} services`);
+            this.logger.info('getAllServices', `Found ${services.length} services`);
             
             return services.map(service => ({
                 id: service.id || service.serviceId || service.service?.id,
@@ -64,6 +70,7 @@ class RenderLogService {
 
     /**
      * Get logs for a specific service
+     * Using the correct Render API v1 logs endpoint
      */
     async getServiceLogs(serviceId, options = {}) {
         const {
@@ -73,14 +80,31 @@ class RenderLogService {
             cursor = null
         } = options;
 
-        this.logger.setup('getServiceLogs', `Fetching logs for service ${serviceId}`);
+        this.logger.info( `Fetching logs for service ${serviceId}`);
 
         try {
-            let url = `${this.baseUrl}/services/${serviceId}/logs?limit=${limit}`;
+            // Build query parameters for the correct /v1/logs endpoint
+            const params = new URLSearchParams({
+                ownerId: this.ownerId,
+                limit: limit.toString(),
+                direction: 'forward', // Chronological order from startTime (changed from backward)
+                resource: serviceId, // Changed from resources[] to resource (singular)
+            });
             
-            if (startTime) url += `&startTime=${startTime}`;
-            if (endTime) url += `&endTime=${endTime}`;
-            if (cursor) url += `&cursor=${cursor}`;
+            // Add time range if provided
+            if (startTime) params.append('startTime', startTime);
+            if (endTime) params.append('endTime', endTime);
+            
+            // Build final URL
+            const url = `${this.baseUrl}/logs?${params.toString()}`;
+            
+            this.logger.debug('getServiceLogs', `Fetching from: ${url.replace(this.ownerId, 'OWNER_ID')}`);
+            console.log('🔍 DEBUG: Full Render API request details:');
+            console.log(`  URL: ${url.replace(this.apiKey, 'API_KEY').replace(this.ownerId, 'OWNER_ID')}`);
+            console.log(`  serviceId: ${serviceId}`);
+            console.log(`  startTime: ${startTime} (type: ${typeof startTime})`);
+            console.log(`  endTime: ${endTime} (type: ${typeof endTime})`);
+            console.log(`  limit: ${limit}`);
 
             const response = await axios.get(url, {
                 headers: {
@@ -90,11 +114,31 @@ class RenderLogService {
             });
 
             const data = response.data;
-            this.logger.process('getServiceLogs', `Retrieved ${data.logs?.length || 0} log entries for service ${serviceId}`);
             
-            return data;
+            // Render API v1 returns: { logs: [...], hasMore: bool, nextStartTime, nextEndTime }
+            const logCount = data.logs?.length || 0;
+            this.logger.debug( `Retrieved ${logCount} log entries for service ${serviceId}`);
+            
+            if (data.hasMore) {
+                this.logger.debug('getServiceLogs', `More logs available. Use nextStartTime: ${data.nextStartTime}, nextEndTime: ${data.nextEndTime}`);
+            }
+            
+            return {
+                logs: data.logs || [],
+                hasMore: data.hasMore || false,
+                nextStartTime: data.nextStartTime,
+                nextEndTime: data.nextEndTime,
+            };
         } catch (error) {
             this.logger.error('getServiceLogs', `Failed to fetch logs for service ${serviceId}: ${error.message}`);
+            
+            // Add helpful debugging info
+            if (error.response?.status === 404) {
+                this.logger.error('getServiceLogs', 'API returned 404. Check that RENDER_OWNER_ID is set correctly.');
+            } else if (error.response?.status === 403) {
+                this.logger.error('getServiceLogs', 'API returned 403. Check that RENDER_API_KEY has correct permissions.');
+            }
+            
             throw error;
         }
     }
@@ -103,7 +147,7 @@ class RenderLogService {
      * Search logs across multiple services for specific patterns
      */
     async searchLogsAcrossServices(searchTerms, timeRange = '1h') {
-        this.logger.setup('searchLogsAcrossServices', `Searching for: ${searchTerms.join(', ')} in last ${timeRange}`);
+        this.logger.info( `Searching for: ${searchTerms.join(', ')} in last ${timeRange}`);
 
         try {
             // Get all services first
@@ -137,7 +181,7 @@ class RenderLogService {
                 }
             }
 
-            this.logger.summary('searchLogsAcrossServices', `Found matches in ${results.length} services`);
+            this.logger.info('searchLogsAcrossServices', `Found matches in ${results.length} services`);
             return results;
         } catch (error) {
             this.logger.error('searchLogsAcrossServices', `Search failed: ${error.message}`);
@@ -149,7 +193,7 @@ class RenderLogService {
      * Analyze logs for common error patterns
      */
     async analyzeErrorPatterns(timeRange = '1h') {
-        this.logger.setup('analyzeErrorPatterns', `Analyzing error patterns in last ${timeRange}`);
+        this.logger.info( `Analyzing error patterns in last ${timeRange}`);
 
         const errorPatterns = [
             'ERROR',
@@ -168,7 +212,7 @@ class RenderLogService {
             // Group and analyze patterns
             const analysis = this.categorizeErrors(results);
             
-            this.logger.summary('analyzeErrorPatterns', `Analysis complete - found ${analysis.totalErrors} errors across ${analysis.affectedServices} services`);
+            this.logger.info('analyzeErrorPatterns', `Analysis complete - found ${analysis.totalErrors} errors across ${analysis.affectedServices} services`);
             return analysis;
         } catch (error) {
             this.logger.error('analyzeErrorPatterns', `Error analysis failed: ${error.message}`);

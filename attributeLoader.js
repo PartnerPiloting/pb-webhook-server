@@ -1,7 +1,7 @@
 // attributeLoader.js - MULTI-TENANT SUPPORT: Updated to use client-specific bases
 
 require("dotenv").config();
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/contextLogger');
 
 // Import multi-tenant Airtable client functions
 const { getClientBase } = require('./config/airtableClient.js');
@@ -31,10 +31,10 @@ let cacheUntil = 0;
 async function loadAttributes(logger = null, clientId = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = new StructuredLogger('SYSTEM', 'ATTR');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attribute_loader' });
   }
 
-  logger.setup('loadAttributes', `Starting attribute loading from Airtable${clientId ? ` for client: ${clientId}` : ''}`);
+  logger.info( `Starting attribute loading from Airtable${clientId ? ` for client: ${clientId}` : ''}`);
 
   // Get the appropriate base instance
   let attributeBase;
@@ -63,7 +63,7 @@ async function loadAttributes(logger = null, clientId = null) {
   }
 
   try {
-    logger.process('loadAttributes', `Fetching attributes from Airtable table: ${TABLE_NAME}`);
+    logger.debug( `Fetching attributes from Airtable table: ${TABLE_NAME}`);
     const rows = await attributeBase(TABLE_NAME).select().all(); // Uses the client-specific base
     const positives = {};
     const negatives = {};
@@ -127,7 +127,7 @@ async function loadAttributes(logger = null, clientId = null) {
     cache[cacheKey] = result;
     cacheUntil = now + 10 * 60 * 1000;          // 10-minute cache
     
-    logger.summary('loadAttributes', 
+    logger.info('loadAttributes', 
       `Loaded ${rows.length} rows → ${Object.keys(positives).length} positives, ` +
       `${Object.keys(negatives).length} negatives. Cached for 10 minutes for ${cacheKey}.`
     );
@@ -146,11 +146,11 @@ async function loadAttributes(logger = null, clientId = null) {
 async function loadAttributeForEditing(attributeId, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = new StructuredLogger('ATTR-EDIT');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_edit' });
   }
 
   try {
-    logger.setup('loadAttributeForEditing', `Loading attribute ${attributeId} for editing`);
+    logger.info( `Loading attribute ${attributeId} for editing`);
     
     if (!base) {
       logger.error('loadAttributeForEditing', 'Airtable base not available from config/airtableClient.js');
@@ -175,7 +175,7 @@ async function loadAttributeForEditing(attributeId, logger = null) {
       active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
     };
     
-    logger.summary('loadAttributeForEditing', `Successfully loaded attribute ${attributeId}`);
+    logger.info('loadAttributeForEditing', `Successfully loaded attribute ${attributeId}`);
     return attribute;
   } catch (error) {
     logger.error('loadAttributeForEditing', `Error loading attribute ${attributeId}: ${error.message}`);
@@ -189,11 +189,11 @@ async function loadAttributeForEditing(attributeId, logger = null) {
 async function updateAttribute(attributeId, data, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = new StructuredLogger('ATTR-UPDATE');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_update' });
   }
 
   try {
-    logger.setup('updateAttribute', `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
+    logger.info( `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
     
     if (!base) {
       logger.error('updateAttribute', 'Airtable base not available from config/airtableClient.js');
@@ -220,7 +220,7 @@ async function updateAttribute(attributeId, data, logger = null) {
     cache = null;
     cacheUntil = 0;
     
-    logger.summary('updateAttribute', `Successfully updated attribute ${attributeId}`);
+    logger.info('updateAttribute', `Successfully updated attribute ${attributeId}`);
     return { success: true, id: record.id };
   } catch (error) {
     logger.error('updateAttribute', `Error updating attribute ${attributeId}: ${error.message}`);
@@ -234,11 +234,11 @@ async function updateAttribute(attributeId, data, logger = null) {
 async function listAttributesForEditing(logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = new StructuredLogger('ATTR-LIST');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_list' });
   }
 
   try {
-    logger.setup('listAttributesForEditing', 'Loading all attributes for editing');
+    logger.info( 'Loading all attributes for editing');
     
     if (!base) {
       logger.error('listAttributesForEditing', 'Airtable base not available from config/airtableClient.js');
@@ -268,7 +268,7 @@ async function listAttributesForEditing(logger = null) {
       isEmpty: !record.get("Heading") && !record.get("Instructions")
     }));
     
-    logger.summary('listAttributesForEditing', `Successfully loaded ${attributes.length} attributes for editing`);
+    logger.info('listAttributesForEditing', `Successfully loaded ${attributes.length} attributes for editing`);
     return attributes;
   } catch (error) {
     logger.error('listAttributesForEditing', `Error loading attributes for editing: ${error.message}`);
@@ -284,11 +284,11 @@ async function listAttributesForEditing(logger = null) {
 async function loadAttributeForEditingWithClientBase(attributeId, clientBase, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = new StructuredLogger('ATTR-EDIT-CLIENT');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_edit_client' });
   }
 
   try {
-    logger.setup('loadAttributeForEditingWithClientBase', `Loading attribute ${attributeId} for editing from client base`);
+    logger.info( `Loading attribute ${attributeId} for editing from client base`);
     
     if (!clientBase) {
       logger.error('loadAttributeForEditingWithClientBase', 'Client-specific Airtable base not provided');
@@ -313,7 +313,7 @@ async function loadAttributeForEditingWithClientBase(attributeId, clientBase, lo
       active: !!record.get("Active") // Convert to boolean: unchecked = false, checked = true
     };
     
-    logger.summary('loadAttributeForEditingWithClientBase', `Successfully loaded attribute ${attributeId} from client base`);
+    logger.info('loadAttributeForEditingWithClientBase', `Successfully loaded attribute ${attributeId} from client base`);
     return attribute;
   } catch (error) {
     logger.error('loadAttributeForEditingWithClientBase', `Error loading attribute ${attributeId}: ${error.message}`);
@@ -327,11 +327,11 @@ async function loadAttributeForEditingWithClientBase(attributeId, clientBase, lo
 async function updateAttributeWithClientBase(attributeId, data, clientBase, logger = null) {
   // Initialize logger if not provided (backward compatibility)
   if (!logger) {
-    logger = new StructuredLogger('ATTR-UPDATE-CLIENT');
+    logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'attr_update_client' });
   }
 
   try {
-    logger.setup('updateAttributeWithClientBase', `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
+    logger.info( `Updating attribute ${attributeId} with fields: ${Object.keys(data).join(', ')}`);
     
     if (!clientBase) {
       logger.error('updateAttributeWithClientBase', 'Client-specific Airtable base not provided');
@@ -357,7 +357,7 @@ async function updateAttributeWithClientBase(attributeId, data, clientBase, logg
     // Clear cache since live data changed
     cache = null;
     
-    logger.summary('updateAttributeWithClientBase', `Successfully updated attribute ${attributeId}`);
+    logger.info('updateAttributeWithClientBase', `Successfully updated attribute ${attributeId}`);
     return record;
   } catch (error) {
     logger.error('updateAttributeWithClientBase', `Error updating attribute ${attributeId}: ${error.message}`);

@@ -9,6 +9,7 @@ import { getCurrentClientId } from '../utils/clientUtils.js';
 // Component that uses useSearchParams wrapped in Suspense
 const TopScoringPostsWithParams = () => {
   const [leads, setLeads] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [minPerc, setMinPerc] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -46,8 +47,12 @@ const TopScoringPostsWithParams = () => {
       const eff = Number.isFinite(Number(minPerc)) && minPerc !== '' ? Number(minPerc) : undefined;
       const results = await getTopScoringPosts(eff !== undefined ? { minPerc: eff } : {});
       
+      // Handle new response format with total count
+      const leadsArray = results.leads || results; // Support both old and new format
+      const total = results.total || (Array.isArray(leadsArray) ? leadsArray.length : 0);
+      
       // Filter client-side as backup for API filtering
-      const filteredLeads = (results || []).filter(lead => {
+      const filteredLeads = (Array.isArray(leadsArray) ? leadsArray : []).filter(lead => {
         const okActioned = !lead[FIELD_NAMES.POSTS_ACTIONED];
         if (!okActioned) return false;
         if (eff === undefined) return true;
@@ -71,7 +76,8 @@ const TopScoringPostsWithParams = () => {
       });
       
       setLeads(filteredLeads);
-      console.log(`🎯 Loaded ${filteredLeads.length} top scoring posts`);
+      setTotalCount(total);
+      console.log(`🎯 Loaded ${filteredLeads.length} top scoring posts (${total} total matching)`);
       
       // Auto-select first lead if any
       if (filteredLeads.length > 0) {
@@ -193,7 +199,9 @@ const TopScoringPostsWithParams = () => {
               </div>
               <div>
                 <h3 className="text-lg font-medium text-gray-900">Top Scoring Posts</h3>
-                <div className="text-sm text-blue-600 font-medium">{leads.length}</div>
+                <div className="text-sm text-blue-600 font-medium">
+                  {leads.length}{totalCount > leads.length ? `/${totalCount}` : ''}
+                </div>
               </div>
             </div>
             <div className="flex items-center space-x-3">

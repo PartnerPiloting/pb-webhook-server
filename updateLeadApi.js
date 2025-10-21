@@ -1,4 +1,8 @@
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 /****************************************************************
+
   POST /update-lead
   Body: { nextMessage: string, sendAt?: string, messageStatus?: string }
   - Reads the record ID stored in Credentials → Record ID for Chat
@@ -45,7 +49,7 @@ module.exports = function updateLeadApi(app, base) {
 
       res.json({ success: true });
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       res.status(500).json({ error: err.message });
     }
   });

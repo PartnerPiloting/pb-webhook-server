@@ -1,25 +1,41 @@
 // PB Webhook Server
-// touch: force reload for nodemon - 2025-08-16
+// touch: force reload for nodemon - 2025-10-03
 // Main server file for handling Airtable webhooks and API endpoints
 // Force redeploy for follow-ups endpoint - 2024-12-xx
+// 
+// MAJOR BUG FIX - 2025-10-03
+// Fixed run ID consistency issues that were causing "job tracking record not found" errors
+// by implementing a strict single-source-of-truth pattern for run IDs. Run IDs are now
+// generated exactly once and passed unchanged through the entire request chain.
+// This is a clean architectural fix that eliminates the root cause of tracking failures.
+// See commits for feature/comprehensive-field-standardization for full implementation details.
 
 // index.js
-// Load environment variables from .env file
+// Load environment variables from .env file FIRST
 require("dotenv").config();
+
+// Import structured logging
+const { createLogger } = require('./utils/contextLogger');
+// Create module-level logger for server initialization and requests
+const moduleLogger = createLogger({ runId: 'SERVER', clientId: 'SYSTEM', operation: 'server_init' });
 
 // --- CONFIGURATIONS ---
 const geminiConfig = require('./config/geminiClient.js');
 const globalGeminiModel = geminiConfig ? geminiConfig.geminiModel : null;
 const base = require('./config/airtableClient.js'); // Your Airtable base connection
+const { getMasterClientsBase } = require('./config/airtableClient'); // For Production Issues table
 
 // Initialize OpenAI client for attribute editing
 const { initializeOpenAI } = require('./config/openaiClient.js');
 let openaiClient = null;
+
+// Production issue analysis utilities - NO MODULE CACHING
+// Everything created fresh inline in the endpoint to prevent stale data
 try {
     openaiClient = initializeOpenAI();
-    console.log("index.js: OpenAI client initialized successfully for attribute editing");
+    moduleLogger.info("index.js: OpenAI client initialized successfully for attribute editing");
 } catch (openaiError) {
-    console.warn("index.js: OpenAI client initialization failed - attribute editing will not work:", openaiError.message);
+    moduleLogger.warn("index.js: OpenAI client initialization failed - attribute editing will not work:", openaiError.message);
 }
 
 // --- Potentially import your update function ---
@@ -31,36 +47,45 @@ const express = require("express");
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-console.log("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>"); // Your existing log
+moduleLogger.info("<<<<< INDEX.JS - REFACTOR 8.4 - AFTER CORE REQUIRES >>>>>"); // Your existing log
 
 // --- INITIALIZATION CHECKS ---
 if (!globalGeminiModel) {
-    console.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize. Scoring will not work. Check logs in config/geminiClient.js.");
+    moduleLogger.error("FATAL ERROR in index.js: Gemini Model (default instance) failed to initialize. Scoring will not work. Check logs in config/geminiClient.js.");
 } else {
-    console.log("index.js: Gemini Model (default instance) loaded successfully from config.");
+    moduleLogger.info("index.js: Gemini Model (default instance) loaded successfully from config.");
 }
 if (!geminiConfig || !geminiConfig.vertexAIClient) {
-    console.error("FATAL ERROR in index.js: VertexAI Client is not available from geminiConfig. Batch scoring might fail. Check logs in config/geminiClient.js.");
+    moduleLogger.error("FATAL ERROR in index.js: VertexAI Client is not available from geminiConfig. Batch scoring might fail. Check logs in config/geminiClient.js.");
 }
 if (!base) {
-    console.error("FATAL ERROR in index.js: Airtable Base failed to initialize. Airtable operations will fail. Check logs in config/airtableClient.js.");
+    moduleLogger.error("FATAL ERROR in index.js: Airtable Base failed to initialize. Airtable operations will fail. Check logs in config/airtableClient.js.");
 } else {
-    console.log("index.js: Airtable Base loaded successfully from config.");
+    moduleLogger.info("index.js: Airtable Base loaded successfully from config.");
+}
+
+// Initialize the run record service (Single Creation Point pattern implementation)
+const runRecordService = require('./services/runRecordAdapter');
+try {
+    runRecordService.initialize();
+    moduleLogger.info("index.js: Run Record Service initialized successfully - Single Creation Point pattern active");
+} catch (runRecordError) {
+    moduleLogger.error("FATAL ERROR in index.js: Run Record Service failed to initialize:", runRecordError.message);
 }
 
 /* ---------- APP-LEVEL ENV CONFIGURATION & CONSTANTS --- */
 const GPT_CHAT_URL = process.env.GPT_CHAT_URL;
 if (!GPT_CHAT_URL) {
-    console.error("CRITICAL WARNING: Missing GPT_CHAT_URL environment variable. pointerApi may not function correctly.");
+    moduleLogger.error("CRITICAL WARNING: Missing GPT_CHAT_URL environment variable. pointerApi may not function correctly.");
 }
 
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID; // Corrected line from bug fix
 const AIRTABLE_LEADS_TABLE_ID_OR_NAME = "Leads";
 const AIRTABLE_LINKEDIN_URL_FIELD = "LinkedIn Profile URL";
-const AIRTABLE_NOTES_FIELD = "Notes";
+const AIRTABLE_NOTES_FIELD = "System Notes"; // Changed from "Notes" to match Airtable schema
 
 if (!AIRTABLE_BASE_ID) {
-    console.error("CRITICAL WARNING: Missing AIRTABLE_BASE_ID environment variable. Airtable operations will fail for textblaze-linkedin-webhook.");
+    moduleLogger.error("CRITICAL WARNING: Missing AIRTABLE_BASE_ID environment variable. Airtable operations will fail for textblaze-linkedin-webhook.");
 }
 
 // --- NEW: CONSTANTS FOR POST SCORING ---
@@ -97,7 +122,7 @@ const postAnalysisConfig = {
 
 // Check for critical Post Analysis configurations
 if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptComponentsTableName) {
-    console.error("CRITICAL WARNING: Missing essential Airtable table name configurations for Post Analysis. Post scoring may fail.");
+    moduleLogger.error("CRITICAL WARNING: Missing essential Airtable table name configurations for Post Analysis. Post scoring may fail.");
 }
 
 
@@ -105,6 +130,7 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
     1)  Express App Setup
 ------------------------------------------------------------------*/
 const app = express();
+
 app.use(express.json({ limit: "10mb" }));
 
 // Add CORS configuration to allow frontend requests
@@ -139,13 +165,13 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id'],
     optionsSuccessStatus: 204
 }));
-console.log("CORS enabled for allowed origins including *.vercel.app and staging frontend");
+moduleLogger.info("CORS enabled for allowed origins including *.vercel.app and staging frontend");
 
 // ABSOLUTE BASIC TEST - Should work 100%
 app.get('/basic-test', (req, res) => {
     res.send('BASIC ROUTE WORKING - Express is alive!');
 });
-console.log("Basic test route added at /basic-test");
+moduleLogger.info("Basic test route added at /basic-test");
 
 // Friendly root route to reduce confusion when visiting http://localhost:3001
 app.get('/', (req, res) => {
@@ -178,7 +204,7 @@ app.get('/', (req, res) => {
 // JSON DIAGNOSTIC TEST - Tests if Express/Node/Render can produce clean JSON
 app.get('/api/test/minimal-json', (req, res) => {
     // No middleware, no async, no database calls - just pure Express JSON response
-    console.log('Minimal JSON Test: Sending pure Express JSON response');
+    moduleLogger.info('Minimal JSON Test: Sending pure Express JSON response');
     res.json({ 
         test: 'minimal',
         status: 'success', 
@@ -189,7 +215,7 @@ app.get('/api/test/minimal-json', (req, res) => {
         timestamp: new Date().toISOString()
     });
 });
-console.log("JSON diagnostic test route added at /api/test/minimal-json");
+moduleLogger.info("JSON diagnostic test route added at /api/test/minimal-json");
 
 // --- ADMIN REPAIR ENDPOINT (SECURE) ---
 // Full import for repair script
@@ -297,14 +323,1343 @@ app.post('/admin/repair-all-bad-json', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-    2) Mount All Route Handlers and Sub-APIs
+    3) Production Issue Analysis Endpoints
 ------------------------------------------------------------------*/
-console.log("index.js: Mounting routes and APIs...");
+const ProductionIssueService = require('./services/productionIssueService');
+
+/**
+ * Analyze Render logs using checkpoint-based system
+ * POST /api/analyze-logs/recent
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: none required (uses checkpoint automatically)
+ */
+app.post('/api/analyze-logs/recent', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const service = new ProductionIssueService();
+        const results = await service.analyzeFromCheckpoint();
+        
+        res.json({ 
+            ok: true, 
+            ...results,
+            message: `Analyzed logs from checkpoint (${results.checkpoint}). Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
+        });
+    } catch (error) {
+        moduleLogger.error('Failed to analyze logs from checkpoint:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * Analyze provided log text and create Production Issue records
+ * POST /api/analyze-logs/text
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: { logText: "...full log text..." }
+ */
+app.post('/api/analyze-logs/text', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { logText } = req.body || {};
+        
+        if (!logText || typeof logText !== 'string') {
+            return res.status(400).json({ ok: false, error: 'Missing or invalid logText in request body' });
+        }
+
+        const service = new ProductionIssueService();
+        const results = await service.analyzeLogText(logText);
+        
+        res.json({ 
+            ok: true, 
+            ...results,
+            message: `Analyzed log text. Found ${results.issues} issues (${results.summary.critical} critical, ${results.summary.error} errors, ${results.summary.warning} warnings)`
+        });
+    } catch (error) {
+        moduleLogger.error('Failed to analyze log text:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/run-daily-log-analyzer
+ * TEST ENDPOINT: Runs the daily-log-analyzer utility on demand
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: { runId?: "251013-100000" } (optional - if omitted, runs in auto mode from last checkpoint)
+ * 
+ * REQUIREMENTS:
+ * - RENDER_API_KEY environment variable must be set
+ * - RENDER_OWNER_ID environment variable must be set
+ * - RENDER_SERVICE_ID environment variable (optional - defaults to current service)
+ */
+app.post('/api/run-daily-log-analyzer', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        // Check required environment variables
+        if (!process.env.RENDER_API_KEY) {
+            return res.status(500).json({ 
+                ok: false, 
+                error: 'RENDER_API_KEY environment variable is not set on Render. Please add it in Environment settings.' 
+            });
+        }
+        
+        if (!process.env.RENDER_OWNER_ID) {
+            return res.status(500).json({ 
+                ok: false, 
+                error: 'RENDER_OWNER_ID environment variable is not set on Render. Please add it in Environment settings.' 
+            });
+        }
+        
+        const { runId } = req.body || {};
+        
+        moduleLogger.info(`🔍 Running daily-log-analyzer via API${runId ? ` for runId: ${runId}` : ' (auto mode - from last checkpoint)'}`);
+        
+        // Import and run the daily log analyzer
+        const { runDailyLogAnalysis } = require('./daily-log-analyzer');
+        
+        // Pass runId as option parameter instead of command line arg
+        const results = await runDailyLogAnalysis({ runId });
+        
+        res.json({ 
+            ok: true, 
+            ...results,
+            message: runId 
+                ? `Analyzed logs for run ${runId}. Found ${results.issues} issues.`
+                : `Analyzed from last checkpoint. Found ${results.issues} issues.`
+        });
+        
+    } catch (error) {
+        moduleLogger.error('Failed to run daily-log-analyzer:', error);
+        res.status(500).json({ ok: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
+ * TEST ENDPOINT: Verify STACKTRACE markers are written to Render logs
+ * GET /api/test-stacktrace-markers
+ * NO AUTH - Quick test endpoint
+ * 
+ * This endpoint:
+ * 1. Triggers an error with stack trace
+ * 2. Waits 3 seconds for Render to capture logs
+ * 3. Fetches recent Render logs
+ * 4. Searches for STACKTRACE markers
+ * 5. Returns PASS/FAIL with details
+ */
+app.get('/api/test-stacktrace-markers', async (req, res) => {
+    const testLogger = createLogger({ runId: 'TEST', clientId: 'STACKTRACE-TEST', operation: 'test_stacktrace' });
+    
+    try {
+        testLogger.info('🧪 Starting STACKTRACE marker test...');
+        
+        // Step 1: Trigger an error with stack trace
+        const { logErrorWithStackTrace } = require('./utils/errorHandler');
+        const testError = new Error('TEST ERROR: STACKTRACE marker verification test');
+        const testRunId = 'TEST-' + Date.now();
+        
+        testLogger.info(`Triggering test error with Run ID: ${testRunId}`);
+        
+        const timestamp = await logErrorWithStackTrace(testError, {
+            runId: testRunId,
+            clientId: 'STACKTRACE-TEST',
+            context: '[TEST] Verifying STACKTRACE markers',
+            loggerName: 'TEST',
+            operation: 'testStackTrace'
+        });
+        
+        testLogger.info(`✅ Error logged with timestamp: ${timestamp}`);
+        
+        // Step 2: Wait for Render to capture logs
+        testLogger.info('Waiting 3 seconds for Render to capture logs...');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Step 3: Fetch recent Render logs directly from Render API
+        testLogger.info('Fetching recent Render logs from Render API...');
+        const https = require('https');
+        const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
+        const RENDER_API_KEY = process.env.RENDER_API_KEY;
+        
+        if (!RENDER_SERVICE_ID || !RENDER_API_KEY) {
+            throw new Error('RENDER_SERVICE_ID or RENDER_API_KEY not configured');
+        }
+        
+        // Fetch logs from last 5 minutes
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        const now = new Date().toISOString();
+        
+        const logText = await new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.render.com',
+                path: `/v1/services/${RENDER_SERVICE_ID}/logs?startTime=${fiveMinutesAgo}&endTime=${now}&limit=10000`,
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${RENDER_API_KEY}`,
+                    'Accept': 'application/json'
+                }
+            };
+            
+            https.get(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        const logs = parsed.map(entry => entry.message || entry.log || '').join('\n');
+                        resolve(logs);
+                    } catch (e) {
+                        resolve(data); // Return raw if not JSON
+                    }
+                });
+            }).on('error', reject);
+        });
+        
+        // Step 4: Search for STACKTRACE markers
+        const foundTimestamp = logText.includes(`STACKTRACE:${timestamp}`);
+        const debugBefore = logText.includes('[DEBUG-STACKTRACE] About to log STACKTRACE marker');
+        const debugAfter = logText.includes('[DEBUG-STACKTRACE] STACKTRACE marker logged successfully');
+        
+        const allStacktraceMarkers = (logText.match(/STACKTRACE:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z/g) || []).length;
+        
+        // Step 5: Return results
+        const passed = foundTimestamp && debugBefore && debugAfter;
+        
+        res.json({
+            ok: true,
+            testPassed: passed,
+            timestamp: timestamp,
+            runId: testRunId,
+            checks: {
+                specificTimestampFound: foundTimestamp,
+                debugMarkerBefore: debugBefore,
+                debugMarkerAfter: debugAfter
+            },
+            stats: {
+                totalStacktraceMarkers: allStacktraceMarkers,
+                logLength: logText.length
+            },
+            verdict: passed 
+                ? '🎉 SUCCESS! STACKTRACE markers ARE being written to Render logs!' 
+                : '❌ FAIL: STACKTRACE markers NOT found in Render logs',
+            nextSteps: passed
+                ? 'System is working! Stack traces will be linked to Production Issues.'
+                : 'Check errorHandler.js - console.log may not be writing to Render stdout'
+        });
+        
+    } catch (error) {
+        testLogger.error('Test failed:', error);
+        res.status(500).json({
+            ok: false,
+            testPassed: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+});
+
+/**
+ * Auto-analyze the latest run from Job Tracking
+ * POST /api/auto-analyze-latest-run
+ * NO AUTHENTICATION REQUIRED (public endpoint like smart-resume)
+ * 
+ * This endpoint:
+ * 1. Finds the most recent run in Job Tracking
+ * 2. Fetches Render logs for that time period (or custom startTime if provided)
+ * 3. Analyzes the smart-resume flow
+ * 4. Checks for errors
+ * 5. Returns comprehensive diagnosis
+ * 
+ * Optional body parameters:
+ * - startTime: ISO 8601 timestamp to start fetching logs from (overrides Job Tracking start time)
+ */
+app.post('/api/auto-analyze-latest-run', async (req, res) => {
+    try {
+        const autoAnalyze = require('./auto-analyze-latest-run');
+        
+        // Import required dependencies
+        const { getMasterClientsBase } = require('./config/airtableClient');
+        const RenderLogService = require('./services/renderLogService');
+        const { filterLogs, generateSummary } = require('./services/logFilterService');
+        
+        // Get latest run from Job Tracking
+        const masterBase = getMasterClientsBase();
+        const records = await masterBase('Job Tracking')
+            .select({
+                maxRecords: 1,
+                sort: [{ field: 'Start Time', direction: 'desc' }],
+                filterByFormula: "AND({Run ID} != '', {Start Time} != '')"
+            })
+            .firstPage();
+        
+        if (!records || records.length === 0) {
+            return res.status(404).json({ ok: false, error: 'No runs found in Job Tracking table' });
+        }
+        
+        const record = records[0];
+        const runId = record.get('Run ID');
+        const jobTrackingStartTime = record.get('Start Time');
+        const endTime = record.get('End Time');
+        const status = record.get('Status');
+        
+        // Allow override of start time from request body
+        const startTime = req.body?.startTime || jobTrackingStartTime;
+        
+        // Fetch Render logs with pagination
+        const renderService = new RenderLogService();
+        const serviceId = process.env.RENDER_SERVICE_ID;
+        const logEndTime = endTime || new Date().toISOString();
+        
+        let allLogs = [];
+        let hasMore = true;
+        let currentStartTime = startTime;
+        let pageCount = 0;
+        const maxPages = 10; // Safety limit to prevent infinite loops
+        
+        while (hasMore && pageCount < maxPages) {
+            pageCount++;
+            
+            const result = await renderService.getServiceLogs(serviceId, {
+                startTime: currentStartTime,
+                endTime: logEndTime,
+                limit: 1000
+            });
+            
+            allLogs = allLogs.concat(result.logs || []);
+            
+            hasMore = result.hasMore;
+            if (hasMore && result.nextStartTime) {
+                currentStartTime = result.nextStartTime;
+            }
+        }
+        
+        console.log(`📊 Fetched ${allLogs.length} total logs across ${pageCount} pages`);
+        
+        // Convert logs to text
+        const logText = allLogs
+            .map(log => {
+                if (typeof log === 'string') return log;
+                if (log.message) return `[${log.timestamp || ''}] ${log.message}`;
+                return JSON.stringify(log);
+            })
+            .join('\n');
+        
+        // Analyze smart-resume flow
+        const flowChecks = {
+            endpointCalled: false,
+            lockAcquired: false,
+            backgroundStarted: false,
+            scriptLoaded: false,
+            scriptCompleted: false,
+            autoAnalysisStarted: false,
+            autoAnalysisCompleted: false,
+            runIdExtracted: null,
+            errors: []
+        };
+        
+        const lines = logText.split('\n');
+        for (const line of lines) {
+            if (line.includes('GET request received for /smart-resume-client-by-client') || 
+                line.includes('smart_resume_get')) {
+                flowChecks.endpointCalled = true;
+            }
+            if (line.includes('Smart resume lock acquired')) {
+                flowChecks.lockAcquired = true;
+            }
+            if (line.includes('Smart resume background processing started') || line.includes('🎯')) {
+                flowChecks.backgroundStarted = true;
+            }
+            if (line.includes('Loading smart resume module') || line.includes('MODULE_DEBUG: Script loading')) {
+                flowChecks.scriptLoaded = true;
+            }
+            if (line.includes('Smart resume completed successfully') || line.includes('SCRIPT_END: Module execution completed')) {
+                flowChecks.scriptCompleted = true;
+            }
+            if (line.includes('Starting automatic log analysis') || line.includes('🔍 Analyzing logs for specific runId')) {
+                flowChecks.autoAnalysisStarted = true;
+            }
+            if (line.includes('Log analysis complete') || line.includes('errors saved to Production Issues')) {
+                flowChecks.autoAnalysisCompleted = true;
+            }
+            if (line.includes('Script returned runId:')) {
+                const match = line.match(/Script returned runId:\s*(\S+)/);
+                if (match) flowChecks.runIdExtracted = match[1];
+            }
+            if (line.includes('[ERROR]') || line.includes('ERROR:')) {
+                flowChecks.errors.push(line.substring(0, 200));
+            }
+        }
+        
+        // Analyze for errors
+        const issues = filterLogs(logText, {
+            deduplicateIssues: true,
+            contextSize: 25,
+            runIdFilter: runId
+        });
+        
+        const summary = generateSummary(issues);
+        
+        // Diagnosis
+        let diagnosis = 'Unknown';
+        if (!flowChecks.endpointCalled) {
+            diagnosis = 'Endpoint was never called or logs are missing';
+        } else if (!flowChecks.lockAcquired) {
+            diagnosis = 'Lock was not acquired (another job running?)';
+        } else if (!flowChecks.backgroundStarted) {
+            diagnosis = 'Background processing never started';
+        } else if (!flowChecks.scriptLoaded) {
+            diagnosis = 'Smart resume script failed to load';
+        } else if (!flowChecks.scriptCompleted) {
+            diagnosis = 'Script started but never completed (still running, crashed, or timeout)';
+        } else if (!flowChecks.autoAnalysisStarted) {
+            diagnosis = 'Auto-analysis never started after script completed';
+        } else if (!flowChecks.autoAnalysisCompleted) {
+            diagnosis = 'Auto-analysis started but failed';
+        } else {
+            diagnosis = 'SUCCESS - Complete flow executed!';
+        }
+        
+        res.json({
+            success: true,
+            runId,
+            startTime,
+            endTime,
+            status,
+            logLineCount: allLogs.length,
+            pagesFetched: pageCount,
+            flowChecks,
+            errorAnalysis: {
+                totalIssues: issues.length,
+                summary,
+                issues: issues.slice(0, 5).map(i => ({
+                    severity: i.severity,
+                    patternMatched: i.patternMatched,
+                    errorMessage: i.errorMessage.substring(0, 200),
+                    timestamp: i.timestamp
+                }))
+            },
+            diagnosis
+        });
+        
+    } catch (error) {
+        moduleLogger.error('Failed to auto-analyze latest run:', error);
+        res.status(500).json({ ok: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
+ * POST /api/reconcile-errors
+ * NO AUTHENTICATION REQUIRED (public endpoint like smart-resume and auto-analyze)
+ * 
+ * Reconciles errors between Render logs and Production Issues table for a specific runId
+ * 
+ * Required body parameters:
+ * - runId: The Run ID from Job Tracking table
+ * - startTime: ISO 8601 timestamp (AEST will be converted to UTC)
+ * 
+ * Returns:
+ * - stats: totalInLogs, totalInTable, matched, inLogNotInTable, inTableNotInLog, captureRate
+ * - errors: matched[], inLogNotInTable[], inTableNotInLog[]
+ */
+app.post('/api/reconcile-errors', async (req, res) => {
+    try {
+        const { reconcileErrors } = require('./reconcile-errors');
+        
+        const { runId, startTime } = req.body;
+        
+        if (!runId || !startTime) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Missing required parameters: runId and startTime' 
+            });
+        }
+        
+        console.log(`\n🔍 Starting error reconciliation for runId: ${runId}, startTime: ${startTime}`);
+        
+        const result = await reconcileErrors(runId, startTime);
+        
+        console.log(`✅ Reconciliation complete: ${result.stats.captureRate}% capture rate`);
+        
+        res.json({
+            success: true,
+            ...result
+        });
+        
+    } catch (error) {
+        moduleLogger.error('Failed to reconcile errors:', error);
+        res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
+ * GET /api/analyze-issues
+ * NO AUTHENTICATION REQUIRED (public endpoint)
+ * 
+ * Analyzes Production Issues table and generates comprehensive report
+ * 
+ * Query parameters (all optional):
+ * - runId: Filter to specific run ID
+ * - days: Filter to last N days
+ * - severity: Filter by severity (ERROR, WARNING, etc.)
+ * - client: Filter by client ID
+ * - status: Filter by status (default: 'unfixed' = NEW/INVESTIGATING/BLANK, or 'all', 'NEW', 'FIXED', 'IGNORED')
+ * - limit: Max records to analyze (default 1000)
+ * - format: 'json' or 'html' (default: json)
+ * 
+ * Returns analysis with:
+ * - Total issues
+ * - Breakdown by severity, pattern, client, run ID
+ * - Top issues by frequency
+ * - Actionable recommendations
+ */
+app.get('/api/analyze-issues', async (req, res) => {
+    try {
+        const args = {
+            runId: req.query.runId || null,
+            days: req.query.days ? parseInt(req.query.days) : null,
+            severity: req.query.severity || null,
+            client: req.query.client || null,
+            status: req.query.status || 'unfixed', // Default: only unfixed issues
+            limit: req.query.limit ? parseInt(req.query.limit) : 1000,
+            format: req.query.format || 'json'
+        };
+        
+        console.log(`\n📊 Analyzing Production Issues with filters:`, args);
+        
+        // Build filter formula
+        const conditions = [];
+        if (args.runId) conditions.push(`{Run ID} = '${args.runId}'`);
+        if (args.days) {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - args.days);
+            const isoDate = cutoffDate.toISOString().split('T')[0];
+            conditions.push(`IS_AFTER({Timestamp}, '${isoDate}')`);
+        }
+        if (args.severity) conditions.push(`{Severity} = '${args.severity}'`);
+        if (args.client) conditions.push(`FIND('${args.client}', {Client ID})`);
+        
+        // Status filter: default to unfixed issues only
+        if (args.status === 'unfixed') {
+            // Show NEW, INVESTIGATING, and blank status (exclude FIXED and IGNORED)
+            conditions.push(`OR({Status} = 'NEW', {Status} = 'INVESTIGATING', {Status} = '')`);
+        } else if (args.status !== 'all') {
+            // Specific status requested
+            conditions.push(`{Status} = '${args.status}'`);
+        }
+        // If status=all, no filter applied
+        
+        const filterFormula = conditions.length === 0 ? '' : 
+            conditions.length === 1 ? conditions[0] : 
+            `AND(${conditions.join(', ')})`;
+        
+        // FETCH ISSUES - Fresh inline code (no module caching)
+        const Airtable = require('airtable');
+        const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
+        const freshBase = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
+        
+        const queryOptions = {
+            maxRecords: args.limit,
+            sort: [{ field: 'Timestamp', direction: 'desc' }],
+            view: 'All Issues'
+        };
+        
+        if (filterFormula) {
+            queryOptions.filterByFormula = filterFormula;
+        }
+        
+        const records = await freshBase('Production Issues').select(queryOptions).all();
+        
+        const issues = records.map(record => ({
+            id: record.id,
+            runId: record.get('Run ID') || 'N/A',
+            timestamp: record.get('Timestamp'),
+            severity: record.get('Severity') || 'UNKNOWN',
+            pattern: record.get('Pattern Matched') || 'UNKNOWN',
+            message: record.get('Error Message') || '',
+            stream: record.get('Stream') || '',
+            clientId: record.get('Client ID') || 'N/A',
+            stackTrace: record.get('Stack Trace') || null
+        }));
+        
+        if (issues.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No issues found matching the filter criteria',
+                total: 0,
+                filters: args
+            });
+        }
+        
+        // If format=raw, return raw issues array without analysis
+        if (args.format === 'raw') {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            return res.json({
+                success: true,
+                total: issues.length,
+                filters: args,
+                issues: issues
+            });
+        }
+        
+        // ANALYZE ISSUES - Inline analysis code (no module caching)
+        const analysis = {
+            total: issues.length,
+            bySeverity: {},
+            byPattern: {},
+            byClient: {},
+            byRunId: {},
+            uniqueMessages: new Map()
+        };
+
+        issues.forEach(issue => {
+            analysis.bySeverity[issue.severity] = (analysis.bySeverity[issue.severity] || 0) + 1;
+            analysis.byPattern[issue.pattern] = (analysis.byPattern[issue.pattern] || 0) + 1;
+            analysis.byClient[issue.clientId] = (analysis.byClient[issue.clientId] || 0) + 1;
+            analysis.byRunId[issue.runId] = (analysis.byRunId[issue.runId] || 0) + 1;
+
+            const msgKey = issue.message.substring(0, 100);
+            if (!analysis.uniqueMessages.has(msgKey)) {
+                analysis.uniqueMessages.set(msgKey, {
+                    count: 0,
+                    fullMessage: issue.message,
+                    severity: issue.severity,
+                    pattern: issue.pattern,
+                    examples: []
+                });
+            }
+            const entry = analysis.uniqueMessages.get(msgKey);
+            entry.count++;
+            if (entry.examples.length < 3) {
+                entry.examples.push({
+                    runId: issue.runId,
+                    timestamp: issue.timestamp,
+                    clientId: issue.clientId
+                });
+            }
+        });
+        
+        // Convert Map to Array for JSON serialization
+        const topIssues = Array.from(analysis.uniqueMessages.entries())
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 15)
+            .map(([msgKey, data]) => ({
+                pattern: data.pattern,
+                severity: data.severity,
+                count: data.count,
+                percentage: ((data.count / analysis.total) * 100).toFixed(1),
+                message: data.fullMessage,
+                examples: data.examples
+            }));
+        
+        // Group actionable warnings by classification reason (simplified - skip classification for now)
+        const actionableWarningsByReason = {};
+        
+        const result = {
+            success: true,
+            filters: args,
+            total: analysis.total,
+            bySeverity: analysis.bySeverity,
+            
+            // Warning classification (simplified - skip for now)
+            warningClassification: {
+                actionable: 0,
+                noise: 0,
+                byReason: []
+            },
+            
+            byPattern: Object.entries(analysis.byPattern)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([pattern, count]) => ({ pattern, count, percentage: ((count / analysis.total) * 100).toFixed(1) })),
+            byClient: analysis.byClient,
+            byRunId: Object.entries(analysis.byRunId)
+                .sort((a, b) => b[0].localeCompare(a[0]))
+                .slice(0, 10)
+                .map(([runId, count]) => ({ runId, count })),
+            topIssues,
+            recommendations: [
+                'Prioritize CRITICAL and ERROR severity issues first',
+                'Focus on patterns affecting multiple runs',
+                'Use ?runId=XXX to drill down into specific runs',
+                'Use ?severity=ERROR to focus on critical issues only',
+                'Use ?status=all to see FIXED and IGNORED issues'
+            ]
+        };
+        
+        console.log(`✅ Analysis complete: ${analysis.total} issues analyzed`);
+        
+        // Add no-cache headers to force fresh data every time
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        
+        res.json(result);
+        
+    } catch (error) {
+        moduleLogger.error('Failed to analyze Production Issues:', error);
+        res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    }
+});
+
+/**
+ * GET /api/fresh-check-production-issues
+ * Run fresh check on Production Issues table (bypass all existing code)
+ */
+app.get('/api/fresh-check-production-issues', async (req, res) => {
+    try {
+        const Airtable = require('airtable');
+        const MASTER_BASE_ID = process.env.MASTER_CLIENTS_BASE_ID;
+        
+        const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(MASTER_BASE_ID);
+        const records = await base('Production Issues').select({ maxRecords: 100, view: 'All Issues' }).all();
+        
+        res.json({
+            success: true,
+            baseId: MASTER_BASE_ID,
+            recordCount: records.length,
+            isEmpty: records.length === 0,
+            records: records.map(r => ({
+                id: r.id,
+                runId: r.fields['Run ID'],
+                severity: r.fields.Severity,
+                timestamp: r.fields.Timestamp
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/mark-issue-fixed
+ * NO AUTHENTICATION REQUIRED (public endpoint - for now, can add auth later)
+ * 
+ * Mark Production Issues matching a pattern as FIXED
+ * 
+ * Request body:
+ * {
+ *   "pattern": "at scoreChunk",           // Text to search in Error Message
+ *   "commitHash": "6203483",              // Git commit hash
+ *   "fixNotes": "Description of fix",     // What was fixed
+ *   "issueIds": [123, 124]                // Optional: specific Issue IDs to update
+ * }
+ * 
+ * Returns:
+ * {
+ *   "success": true,
+ *   "updated": 5,
+ *   "issues": [...details of updated issues...]
+ * }
+ */
+app.post('/api/mark-issue-fixed', async (req, res) => {
+    try {
+        const { pattern, commitHash, fixNotes, issueIds, broadSearch } = req.body;
+        
+        // Validation
+        if (!commitHash || !fixNotes) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Missing required fields: commitHash and fixNotes are required' 
+            });
+        }
+        
+        if (!pattern && !issueIds) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Must provide either pattern (to search) or issueIds (specific records)' 
+            });
+        }
+        
+        moduleLogger.info(`[MARK-FIXED] Pattern: ${pattern || 'N/A'}, IDs: ${issueIds || 'N/A'}, Commit: ${commitHash}, Broad: ${broadSearch || false}`);
+        
+        const Airtable = require('airtable');
+        const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+        
+        let records;
+        let searchDetails = {};
+        
+        if (issueIds && issueIds.length > 0) {
+            // Update specific issue IDs - GENEROUS approach, includes all specified IDs
+            const issueIdConditions = issueIds.map(id => `{Issue ID} = ${id}`).join(', ');
+            const filterFormula = `AND(OR(${issueIdConditions}), {Status} != "FIXED")`;
+            
+            moduleLogger.info(`[MARK-FIXED] Searching by Issue IDs: ${issueIds.join(', ')}`);
+            
+            records = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+                
+            searchDetails = { method: 'issueIds', ids: issueIds };
+        } else if (pattern) {
+            // GENEROUS PATTERN SEARCH: 
+            // Search in Error Message, Pattern Matched, AND Stack Trace for maximum coverage
+            // This ensures we catch all related issues, relying on self-correction via future runs
+            let filterFormula;
+            
+            if (broadSearch) {
+                // Ultra-broad: search across Error Message, Pattern Matched, Stack Trace, and Context
+                filterFormula = `AND(
+                    OR(
+                        SEARCH("${pattern}", {Error Message}) > 0,
+                        SEARCH("${pattern}", {Pattern Matched}) > 0,
+                        SEARCH("${pattern}", {Stack Trace}) > 0,
+                        SEARCH("${pattern}", {Context}) > 0
+                    ),
+                    {Status} != "FIXED"
+                )`;
+                moduleLogger.info(`[MARK-FIXED] BROAD search for pattern: "${pattern}" across all text fields`);
+            } else {
+                // Standard: search Error Message and Pattern Matched
+                filterFormula = `AND(
+                    OR(
+                        SEARCH("${pattern}", {Error Message}) > 0,
+                        SEARCH("${pattern}", {Pattern Matched}) > 0
+                    ),
+                    {Status} != "FIXED"
+                )`;
+                moduleLogger.info(`[MARK-FIXED] Standard search for pattern: "${pattern}"`);
+            }
+            
+            records = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+                
+            searchDetails = { method: 'pattern', pattern, broadSearch: broadSearch || false };
+        }
+        
+        if (!records || records.length === 0) {
+            moduleLogger.warn(`[MARK-FIXED] No unfixed issues found. Search: ${JSON.stringify(searchDetails)}`);
+            return res.json({
+                success: true,
+                updated: 0,
+                message: 'No unfixed issues found matching the criteria',
+                searchDetails
+            });
+        }
+        
+        moduleLogger.info(`[MARK-FIXED] Found ${records.length} issue(s) to mark as FIXED`);
+        
+        // Log what we're about to mark for transparency
+        records.forEach(r => {
+            const issueId = r.get('Issue ID');
+            const severity = r.get('Severity');
+            const preview = (r.get('Error Message') || '').substring(0, 80);
+            moduleLogger.info(`[MARK-FIXED]   #${issueId} [${severity}] ${preview}...`);
+        });
+        
+        // Prepare updates
+        const updates = records.map(record => ({
+            id: record.id,
+            fields: {
+                'Status': 'FIXED',
+                'Fixed Time': new Date().toISOString(),
+                'Fix Notes': fixNotes,
+                'Fix Commit': commitHash
+            }
+        }));
+        
+        // Update in batches of 10 (Airtable limit)
+        const updatedRecords = [];
+        for (let i = 0; i < updates.length; i += 10) {
+            const batch = updates.slice(i, i + 10);
+            const result = await base('Production Issues').update(batch);
+            updatedRecords.push(...result);
+            moduleLogger.info(`[MARK-FIXED] Updated batch ${Math.floor(i/10) + 1} (${batch.length} issues)`);
+        }
+        
+        moduleLogger.info(`✅ [MARK-FIXED] Successfully marked ${updatedRecords.length} issue(s) as FIXED with commit ${commitHash}`);
+        
+        // Return detailed summary
+        const summary = updatedRecords.map(r => ({
+            issueId: r.get('Issue ID'),
+            timestamp: r.get('Timestamp'),
+            severity: r.get('Severity'),
+            patternMatched: r.get('Pattern Matched'),
+            message: (r.get('Error Message') || '').substring(0, 100) + '...',
+            status: r.get('Status'),
+            fixedTime: r.get('Fixed Time'),
+            fixCommit: r.get('Fix Commit')
+        }));
+        
+        res.json({
+            success: true,
+            updated: updatedRecords.length,
+            commitHash: commitHash,
+            fixNotes: fixNotes,
+            searchDetails: searchDetails,
+            issues: summary
+        });
+        
+    } catch (error) {
+        moduleLogger.error('[MARK-FIXED] Failed to mark issues as fixed:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message, 
+            stack: error.stack 
+        });
+    }
+});
+
+/**
+ * POST /api/delete-production-issues
+ * AUTH REQUIRED
+ * 
+ * Permanently DELETE Production Issues matching a pattern (and their stack traces)
+ * Use this for cleanup instead of marking as FIXED when you want to remove false positives
+ * 
+ * Request body:
+ * {
+ *   "pattern": "error text to search",    // Text to search in Error Message
+ *   "issueIds": [123, 124],               // OR: specific Issue IDs to delete
+ *   "reason": "Why deleting"              // Required: explanation
+ * }
+ * 
+ * Returns:
+ * {
+ *   "success": true,
+ *   "deleted": { "productionIssues": 5, "stackTraces": 3 }
+ * }
+ */
+app.post('/api/delete-production-issues', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    
+    try {
+        const { pattern, issueIds, reason } = req.body;
+        
+        if (!reason) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Reason is required for deletion' 
+            });
+        }
+        
+        if (!pattern && !issueIds) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Must provide either pattern or issueIds' 
+            });
+        }
+        
+        moduleLogger.info(`[DELETE-ISSUES] Pattern: ${pattern || 'N/A'}, IDs: ${issueIds || 'N/A'}, Reason: ${reason}`);
+        
+        const Airtable = require('airtable');
+        const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+        
+        let productionIssueRecords;
+        
+        // Find Production Issues to delete
+        if (issueIds && issueIds.length > 0) {
+            const issueIdConditions = issueIds.map(id => `{Issue ID} = ${id}`).join(', ');
+            const filterFormula = `OR(${issueIdConditions})`;
+            
+            productionIssueRecords = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+        } else if (pattern) {
+            const filterFormula = `OR(
+                SEARCH("${pattern}", {Error Message}) > 0,
+                SEARCH("${pattern}", {Pattern Matched}) > 0
+            )`;
+            
+            productionIssueRecords = await base('Production Issues')
+                .select({ filterByFormula: filterFormula })
+                .all();
+        }
+        
+        if (!productionIssueRecords || productionIssueRecords.length === 0) {
+            return res.json({
+                success: true,
+                deleted: { productionIssues: 0, stackTraces: 0 },
+                message: 'No issues found matching criteria'
+            });
+        }
+        
+        moduleLogger.info(`[DELETE-ISSUES] Found ${productionIssueRecords.length} Production Issues to delete`);
+        
+        // Collect stack trace IDs linked to these issues
+        const stackTraceIds = productionIssueRecords
+            .map(r => r.get('Stack Trace'))
+            .flat()
+            .filter(id => id);
+        
+        // Delete Production Issues (in batches of 10)
+        let deletedIssues = 0;
+        for (let i = 0; i < productionIssueRecords.length; i += 10) {
+            const batch = productionIssueRecords.slice(i, i + 10).map(r => r.id);
+            await base('Production Issues').destroy(batch);
+            deletedIssues += batch.length;
+            moduleLogger.info(`[DELETE-ISSUES] Deleted batch ${Math.floor(i/10) + 1} (${batch.length} Production Issues)`);
+        }
+        
+        // Delete linked Stack Traces (in batches of 10)
+        let deletedStackTraces = 0;
+        if (stackTraceIds.length > 0) {
+            for (let i = 0; i < stackTraceIds.length; i += 10) {
+                const batch = stackTraceIds.slice(i, i + 10);
+                await base('Stack Traces').destroy(batch);
+                deletedStackTraces += batch.length;
+                moduleLogger.info(`[DELETE-ISSUES] Deleted batch ${Math.floor(i/10) + 1} (${batch.length} Stack Traces)`);
+            }
+        }
+        
+        moduleLogger.info(`✅ [DELETE-ISSUES] Deleted ${deletedIssues} Production Issues and ${deletedStackTraces} Stack Traces. Reason: ${reason}`);
+        
+        res.json({
+            success: true,
+            deleted: {
+                productionIssues: deletedIssues,
+                stackTraces: deletedStackTraces
+            },
+            reason: reason
+        });
+        
+    } catch (error) {
+        moduleLogger.error('[DELETE-ISSUES] Failed to delete issues:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message, 
+            stack: error.stack 
+        });
+    }
+});
+
+/**
+ * GET /api/cleanup-old-production-issues
+ * Simple endpoint to delete old production issues from runs before bug fixes
+ * Just visit in browser: https://pb-webhook-server-staging.onrender.com/api/cleanup-old-production-issues
+ */
+app.get('/api/cleanup-old-production-issues', async (req, res) => {
+    try {
+        moduleLogger.info('🗑️ Starting cleanup of old production issues...');
+        
+        const runIds = ['251012-005615', '251012-010957', '251012-072642'];
+        const reason = 'Old errors from runs before bug fixes deployed (commits d2ccab2, a843e39, 1939c80). All root causes already fixed.';
+        
+        const masterBase = getMasterClientsBase();
+        
+        // Find all issues from these runs
+        const filter = `OR(${runIds.map(id => `{Run ID} = '${id}'`).join(',')})`;
+        const issues = await masterBase('Production Issues')
+            .select({ filterByFormula: filter })
+            .all();
+        
+        moduleLogger.info(`Found ${issues.length} issues to delete from runs: ${runIds.join(', ')}`);
+        
+        // Delete in batches of 10
+        let deleted = 0;
+        for (let i = 0; i < issues.length; i += 10) {
+            const batch = issues.slice(i, i + 10);
+            await masterBase('Production Issues').destroy(batch.map(r => r.id));
+            deleted += batch.length;
+            moduleLogger.info(`Deleted ${deleted}/${issues.length} issues...`);
+        }
+        
+        moduleLogger.info(`✅ Cleanup complete. Deleted ${deleted} old production issues.`);
+        
+        res.json({
+            success: true,
+            deleted: deleted,
+            runIds: runIds,
+            reason: reason,
+            message: `Successfully deleted ${deleted} old production issues`
+        });
+        
+    } catch (error) {
+        moduleLogger.error('[CLEANUP-OLD-ISSUES] Failed:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/cleanup-record-not-found-errors
+ * AUTH REQUIRED
+ * 
+ * Deletes "Record not found" errors from Production Issues and Stack Traces
+ * These are false errors caused by the Run ID mismatch bug (fixed in commit 1939c80)
+ */
+app.post('/api/cleanup-record-not-found-errors', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    
+    try {
+        const masterBase = getMasterClientsBase();
+        
+        // Step 1: Find and delete from Production Issues
+        const productionIssues = await masterBase('Production Issues')
+            .select({
+                filterByFormula: `AND(
+                    OR(
+                        FIND('Client run record not found', {Error Message}),
+                        FIND('Record not found for 251012-', {Error Message})
+                    ),
+                    FIND('jobTracking.js', {Stack Trace})
+                )`
+            })
+            .all();
+        
+        const deletedIssueIds = [];
+        if (productionIssues.length > 0) {
+            for (let i = 0; i < productionIssues.length; i += 10) {
+                const batch = productionIssues.slice(i, i + 10);
+                const ids = batch.map(r => r.id);
+                await masterBase('Production Issues').destroy(ids);
+                deletedIssueIds.push(...ids);
+            }
+        }
+        
+        // Step 2: Find and delete from Stack Traces
+        const stackTraces = await masterBase('Stack Traces')
+            .select({
+                filterByFormula: `AND(
+                    FIND('Client run record not found', {Error Message}),
+                    FIND('updateClientRun', {Stack Trace})
+                )`
+            })
+            .all();
+        
+        const deletedTraceIds = [];
+        if (stackTraces.length > 0) {
+            for (let i = 0; i < stackTraces.length; i += 10) {
+                const batch = stackTraces.slice(i, i + 10);
+                const ids = batch.map(r => r.id);
+                await masterBase('Stack Traces').destroy(ids);
+                deletedTraceIds.push(...ids);
+            }
+        }
+        
+        res.json({
+            success: true,
+            deleted: {
+                productionIssues: deletedIssueIds.length,
+                stackTraces: deletedTraceIds.length,
+                total: deletedIssueIds.length + deletedTraceIds.length
+            },
+            message: `Cleaned up ${deletedIssueIds.length + deletedTraceIds.length} false error records caused by Run ID mismatch bug (fixed in commit 1939c80)`
+        });
+        
+    } catch (error) {
+        moduleLogger.error('[CLEANUP] Failed to cleanup records:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+/**
+ * Get Production Issues from Airtable with filters
+ * GET /api/production-issues
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Query params: ?status=NEW&severity=CRITICAL&limit=50
+ */
+app.get('/api/production-issues', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { status, severity, limit } = req.query;
+        const service = new ProductionIssueService();
+        const issues = await service.getProductionIssues({ 
+            status, 
+            severity, 
+            limit: limit ? parseInt(limit) : 100 
+        });
+        
+        res.json({ ok: true, count: issues.length, issues });
+    } catch (error) {
+        moduleLogger.error('Failed to get production issues:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * Mark a Production Issue as fixed
+ * POST /api/production-issues/:recordId/mark-fixed
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Body: { fixNotes: "...", commitHash: "a3b2c1d" }
+ */
+app.post('/api/production-issues/:recordId/mark-fixed', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const { recordId } = req.params;
+        const { fixNotes, commitHash } = req.body || {};
+        
+        const service = new ProductionIssueService();
+        const updated = await service.markAsFixed(recordId, { fixNotes, commitHash });
+        
+        res.json({ ok: true, message: 'Issue marked as fixed', record: updated });
+    } catch (error) {
+        moduleLogger.error('Failed to mark issue as fixed:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * Verify Production Issues table schema
+ * GET /api/verify-production-issues-table
+ * Header: Authorization: Bearer <PB_WEBHOOK_SECRET>
+ * Tests field names and single select options by creating/deleting a test record
+ */
+app.get('/api/verify-production-issues-table', async (req, res) => {
+    const auth = req.headers['authorization'];
+    if (!auth || auth !== `Bearer ${REPAIR_SECRET}`) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const base = getMasterClientsBase();
+        const table = base('Production Issues');
+        
+        moduleLogger.info('🔍 Verifying Production Issues table schema...');
+        
+        // Create a comprehensive test record with ALL 19 fields (except auto-generated Issue ID)
+        const testRecord = {
+            // Core Fields (7)
+            'Timestamp': new Date().toISOString(),
+            'Severity': 'WARNING', // Test single select
+            'Pattern Matched': 'Test Pattern - Verification Script',
+            'Error Message': 'This is a comprehensive test record to verify ALL field names match code',
+            'Context': 'Test context - created by verification endpoint. Will be deleted immediately. This tests the long text field.',
+            'Status': 'NEW', // Test single select
+            
+            // Metadata Fields (4)
+            'Stack Trace': 'Test stack trace\n  at testFunction (test.js:123:45)\n  at main (index.js:789:10)',
+            'Run Type': 'api-endpoint', // Test single select
+            'Client ID': 'Guy Wilson', // Single line text field
+            'Service/Function': 'verifyProductionIssuesTable',
+            
+            // Tracking Fields (4) - test with placeholder values
+            'Fixed Time': new Date().toISOString(), // DateTime field
+            'Fix Notes': 'Test fix notes - this field stores resolution details',
+            'Fix Commit': 'abc123def456', // Test commit hash format
+            
+            // Reference Fields (1)
+            'Render Log URL': 'https://dashboard.render.com/test/logs?start=1234567890',
+            
+            // Optional Fields (3)
+            'Occurrences': 1,
+            'First Seen': new Date().toISOString(),
+            'Last Seen': new Date().toISOString(),
+        };
+        
+        moduleLogger.info('Creating test record with ALL 18 fields (19 total including auto-generated Issue ID)...');
+        const created = await table.create([{ fields: testRecord }]);
+        const recordId = created[0].id;
+        
+        moduleLogger.info(`✅ Test record created: ${recordId}`);
+        
+        // Now delete it
+        await table.destroy([recordId]);
+        moduleLogger.info('✅ Test record deleted');
+        
+        res.json({
+            ok: true,
+            message: 'Table verification successful - ALL fields tested!',
+            verified: {
+                table_name: 'Production Issues',
+                fields_tested_count: Object.keys(testRecord).length,
+                fields_tested: Object.keys(testRecord),
+                single_select_values_tested: {
+                    Status: 'NEW',
+                    Severity: 'WARNING',
+                    'Run Type': 'api-endpoint'
+                },
+                field_types_tested: {
+                    datetime: 4,
+                    single_select: 3,
+                    long_text: 4,
+                    single_line_text: 7,
+                    url: 1,
+                    number: 1
+                },
+                total_expected_fields: 19,
+                all_fields_tested: true,
+                test_record_created_and_deleted: true
+            },
+            next_steps: [
+                'All core field names match ✓',
+                'Single select options match ✓',
+                'Ready to analyze production logs!',
+                'Try: POST /api/analyze-logs/text with sample logs'
+            ]
+        });
+        
+    } catch (error) {
+        moduleLogger.error('❌ Table verification failed:', error.message);
+        
+        let troubleshooting = [];
+        
+        if (error.message.includes('Unknown field name')) {
+            const match = error.message.match(/Unknown field name: "(.+)"/);
+            troubleshooting = [
+                `Field name mismatch detected: "${match ? match[1] : 'unknown'}"`,
+                'Check that field exists in Airtable with exact spelling and capitalization',
+                'Expected fields: Timestamp, Severity, Pattern Matched, Error Message, Context, Status, Occurrences, First Seen, Last Seen'
+            ];
+        } else if (error.message.toLowerCase().includes('invalid') || error.message.toLowerCase().includes('value')) {
+            troubleshooting = [
+                'Invalid single select value detected',
+                'Check these options match exactly:',
+                '  • Status: NEW, INVESTIGATING, FIXED, IGNORED',
+                '  • Severity: CRITICAL, ERROR, WARNING',
+                '  • Run Type: smart-resume, batch-score, apify-webhook, api-endpoint, scheduled-job, other'
+            ];
+        } else if (error.message.includes('Could not find table')) {
+            troubleshooting = [
+                'Table "Production Issues" not found in Master Clients base',
+                'Please create the table first'
+            ];
+        }
+        
+        res.status(500).json({
+            ok: false,
+            error: error.message,
+            troubleshooting,
+            failed_at: 'Table verification'
+        });
+    }
+});
+
+moduleLogger.info("Production Issue Analysis endpoints added:");
+moduleLogger.info("  POST /api/analyze-logs/recent");
+moduleLogger.info("  POST /api/analyze-logs/text");
+moduleLogger.info("  GET /api/production-issues");
+moduleLogger.info("  POST /api/production-issues/:recordId/mark-fixed");
+moduleLogger.info("  GET /api/verify-production-issues-table");
+
+/* ------------------------------------------------------------------
+    4) Mount All Route Handlers and Sub-APIs
+------------------------------------------------------------------*/
+moduleLogger.info("index.js: Mounting routes and APIs...");
 
 // Mount existing sub-APIs
-try { require("./promptApi")(app, base); console.log("index.js: promptApi mounted."); } catch(e) { console.error("index.js: Error mounting promptApi", e.message, e.stack); }
-try { require("./recordApi")(app, base); console.log("index.js: recordApi mounted."); } catch(e) { console.error("index.js: Error mounting recordApi", e.message, e.stack); }
-try { require("./scoreApi")(app, base, globalGeminiModel); console.log("index.js: scoreApi mounted."); } catch(e) { console.error("index.js: Error mounting scoreApi", e.message, e.stack); }
+try { require("./promptApi")(app, base); moduleLogger.info("index.js: promptApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting promptApi", e.message, e.stack); }
+try { require("./recordApi")(app, base); moduleLogger.info("index.js: recordApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting recordApi", e.message, e.stack); }
+try { require("./scoreApi")(app, base, globalGeminiModel); moduleLogger.info("index.js: scoreApi mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting scoreApi", e.message, e.stack); }
 
 // --- NEW: MOUNT POST SCORING APIS ---
 try {
@@ -313,60 +1668,72 @@ try {
     // Mounts the API for triggering the BATCH process for ALL pending leads
     require("./postScoreBatchApi")(app, base, geminiConfig.vertexAIClient, postAnalysisConfig);
 } catch(e) {
-    console.error("index.js: Error mounting one of the new Post Scoring APIs", e.message, e.stack);
+    moduleLogger.error("index.js: Error mounting one of the new Post Scoring APIs", e.message, e.stack);
 }
 // ------------------------------------
 
 const mountQueue = require("./queueDispatcher");
 if (mountQueue && typeof mountQueue === 'function') {
-    try { mountQueue(app, base); console.log("index.js: Queue Dispatcher mounted."); } catch(e) { console.error("index.js: Error mounting queueDispatcher", e.message, e.stack); }
+    try { mountQueue(app, base); moduleLogger.info("index.js: Queue Dispatcher mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting queueDispatcher", e.message, e.stack); }
 } else {
-    console.error("index.js: Failed to load queueDispatcher or it's not a function.");
+    moduleLogger.error("index.js: Failed to load queueDispatcher or it's not a function.");
 }
 
-try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); console.log("index.js: Webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
+try { const webhookRoutes = require('./routes/webhookHandlers.js'); app.use(webhookRoutes); moduleLogger.info("index.js: Webhook routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting webhookRoutes", e.message, e.stack); }
 
 // Mount Apify webhook routes (for LinkedIn posts ingestion)
-try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); console.log("index.js: Apify webhook routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
+try { const apifyWebhookRoutes = require('./routes/apifyWebhookRoutes.js'); app.use(apifyWebhookRoutes); moduleLogger.info("index.js: Apify webhook routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyWebhookRoutes", e.message, e.stack); }
 // Mount Apify control routes (start runs programmatically)
-try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); console.log("index.js: Apify control routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
+try { const apifyControlRoutes = require('./routes/apifyControlRoutes.js'); app.use(apifyControlRoutes); moduleLogger.info("index.js: Apify control routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyControlRoutes", e.message, e.stack); }
 // Mount Apify runs management routes (multi-tenant run tracking)
-try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); console.log("index.js: Apify runs management routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
+try { const apifyRunsRoutes = require('./routes/apifyRunsRoutes.js'); app.use(apifyRunsRoutes); moduleLogger.info("index.js: Apify runs management routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyRunsRoutes", e.message, e.stack); }
 // Mount Apify process routes (batch client processing)
-try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); console.log("index.js: Apify process routes mounted."); } catch(e) { console.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
+try { const apifyProcessRoutes = require('./routes/apifyProcessRoutes.js'); app.use(apifyProcessRoutes); moduleLogger.info("index.js: Apify process routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting apifyProcessRoutes", e.message, e.stack); }
 
 // Use authenticated LinkedIn routes instead of old non-authenticated ones
 try { 
     const linkedinRoutesWithAuth = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutesWithAuth.js'); 
     app.use('/api/linkedin', linkedinRoutesWithAuth); 
-    console.log("index.js: Authenticated LinkedIn routes mounted at /api/linkedin"); 
+    moduleLogger.info("index.js: Authenticated LinkedIn routes mounted at /api/linkedin"); 
 } catch(e) { 
-    console.error("index.js: Error mounting authenticated LinkedIn routes", e.message, e.stack); 
-    // Fallback to old routes if new ones fail
-    try { 
-        const linkedinRoutes = require('./LinkedIn-Messaging-FollowUp/backend-extensions/routes/linkedinRoutes.js'); 
-        app.use('/api/linkedin', linkedinRoutes); 
-        console.log("index.js: Fallback: Old LinkedIn routes mounted at /api/linkedin"); 
-    } catch(fallbackError) { 
-        console.error("index.js: Error mounting fallback LinkedIn routes", fallbackError.message, fallbackError.stack); 
-    }
+    moduleLogger.error("index.js: Error mounting authenticated LinkedIn routes - NO FALLBACK", e.message, e.stack); 
+    // OLD FALLBACK REMOVED - authenticated routes should always work
+    // If they don't, we want to see the error, not silently fall back to old routes
 }
 
 // Authentication test routes
-try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/api/auth', authTestRoutes); console.log("index.js: Authentication test routes mounted at /api/auth"); } catch(e) { console.error("index.js: Error mounting authentication test routes", e.message, e.stack); }
+try { const authTestRoutes = require('./routes/authTestRoutes.js'); app.use('/api/auth', authTestRoutes); moduleLogger.info("index.js: Authentication test routes mounted at /api/auth"); } catch(e) { moduleLogger.error("index.js: Error mounting authentication test routes", e.message, e.stack); }
 
 // Debug routes for JSON serialization issues
-try { const debugRoutes = require('./routes/debugRoutes.js'); app.use('/api/debug', debugRoutes); console.log("index.js: Debug routes mounted at /api/debug"); } catch(e) { console.error("index.js: Error mounting debug routes", e.message, e.stack); }
+try { const debugRoutes = require('./routes/debugRoutes.js'); app.use('/api/debug', debugRoutes); moduleLogger.info("index.js: Debug routes mounted at /api/debug"); } catch(e) { moduleLogger.error("index.js: Error mounting debug routes", e.message, e.stack); }
+
+// Diagnostic routes for development and testing
+try { 
+    const diagnosticRoutes = require('./routes/diagnosticRoutes.js'); 
+    app.use('/api/diagnostic', diagnosticRoutes); 
+    moduleLogger.info("index.js: Diagnostic routes mounted at /api/diagnostic"); 
+} catch(e) { 
+    moduleLogger.error("index.js: Error mounting diagnostic routes", e.message, e.stack); 
+}
+
+// Environment Variable Analysis routes (AI-powered documentation)
+try { 
+    const envVarRoutes = require('./routes/envVarRoutes.js'); 
+    app.use('/api/env-vars', envVarRoutes); 
+    moduleLogger.info("index.js: Environment variable analysis routes mounted at /api/env-vars"); 
+} catch(e) { 
+    moduleLogger.error("index.js: Error mounting env var routes", e.message, e.stack); 
+}
 
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
     if (typeof mountTopScoringLeads === 'function') {
         mountTopScoringLeads(app, base);
-        console.log('index.js: Top Scoring Leads routes mounted at /api/top-scoring-leads');
+        moduleLogger.info('index.js: Top Scoring Leads routes mounted at /api/top-scoring-leads');
     }
 } catch(e) {
-    console.error('index.js: Error mounting Top Scoring Leads routes', e.message, e.stack);
+    moduleLogger.error('index.js: Error mounting Top Scoring Leads routes', e.message, e.stack);
 }
 
 // EMERGENCY DEBUG ROUTE - Direct in index.js
@@ -387,7 +1754,7 @@ app.get('/test/linkedin/debug', (req, res) => {
     });
 });
 
-console.log("index.js: Emergency debug routes added");
+moduleLogger.info("index.js: Emergency debug routes added");
 
 // --- HELP / START HERE (PHASE 1) ---
 // Simple in-memory cache for start_here help content
@@ -527,7 +1894,7 @@ function autoFormatHelpBody(raw) {
         if (out.length > original.length * 1.6) return original;
         return out;
     } catch (err) {
-        console.warn('[autoFormatHelpBody] failed', err.message);
+        moduleLogger.warn('[autoFormatHelpBody] failed', err.message);
         return raw;
     }
 }
@@ -742,7 +2109,7 @@ app.get('/api/help/start-here', async (req, res) => {
                 cachedCopy.meta = { ...cachedCopy.meta, cached: true };
                 return res.json(cachedCopy);
             } else {
-                console.warn('[HelpStartHere] Bypassing stale cached help (unresolved media tokens detected)');
+                moduleLogger.warn('[HelpStartHere] Bypassing stale cached help (unresolved media tokens detected)');
             }
         }
 
@@ -771,19 +2138,19 @@ app.get('/api/help/start-here', async (req, res) => {
             if (targetBaseId && defaultBaseId && targetBaseId !== defaultBaseId) {
                 if (typeof base.createBaseInstance === 'function') {
                     helpBase = base.createBaseInstance(targetBaseId);
-                    console.log(`[HelpStartHere] Using non-default help base ${targetBaseId}`);
+                    moduleLogger.info(`[HelpStartHere] Using non-default help base ${targetBaseId}`);
                 } else {
-                    console.warn('[HelpStartHere] createBaseInstance not available on base export; falling back to default base');
+                    moduleLogger.warn('[HelpStartHere] createBaseInstance not available on base export; falling back to default base');
                 }
             } else {
                 if (targetBaseId === masterClientsBaseId && targetBaseId !== defaultBaseId) {
-                    console.log('[HelpStartHere] Using MASTER_CLIENTS_BASE_ID for help content');
+                    moduleLogger.info('[HelpStartHere] Using MASTER_CLIENTS_BASE_ID for help content');
                 } else {
-                    console.log('[HelpStartHere] Using default base for help content');
+                    moduleLogger.info('[HelpStartHere] Using default base for help content');
                 }
             }
         } catch (bErr) {
-            console.error('[HelpStartHere] Failed to initialize help base', bErr.message);
+            moduleLogger.error('[HelpStartHere] Failed to initialize help base', bErr.message);
             return res.status(500).json({ ok: false, error: 'Failed to initialize help base instance' });
         }
 
@@ -1060,7 +2427,7 @@ app.get('/api/help/start-here', async (req, res) => {
                         }
                     }
                 } catch (mediaErr) {
-                    console.warn('[HelpStartHere] Media placeholder resolution failed', mediaErr.message);
+                    moduleLogger.warn('[HelpStartHere] Media placeholder resolution failed', mediaErr.message);
                 }
             }
         }
@@ -1163,12 +2530,12 @@ app.get('/api/help/start-here', async (req, res) => {
     __helpStartHereCache = { data: payload, fetchedAt: Date.now() };
     res.json(payload);
     } catch (e) {
-        try { console.error('Help Start Here endpoint error raw =>', e); } catch {}
-        try { if (e && e.stack) console.error('Stack:', e.stack); } catch {}
+        try { moduleLogger.error('Help Start Here endpoint error raw =>', e); } catch {}
+        try { if (e && e.stack) moduleLogger.error('Stack:', e.stack); } catch {}
         // Provide actionable diagnostics on NOT_AUTHORIZED
         const isAuth = (e && (e.error === 'NOT_AUTHORIZED' || e.statusCode === 403));
         if (isAuth && process.env.ENABLE_HELP_STUB === '1') {
-            console.warn('[HelpStartHere] NOT_AUTHORIZED – serving stub help data because ENABLE_HELP_STUB=1');
+            moduleLogger.warn('[HelpStartHere] NOT_AUTHORIZED – serving stub help data because ENABLE_HELP_STUB=1');
             const payload = {
                 area: 'start_here',
                 fetchedAt: new Date().toISOString(),
@@ -1216,7 +2583,7 @@ app.get('/api/help/start-here', async (req, res) => {
         res.status(500).json({ ok: false, error: msg, authError: isAuth });
     }
 });
-console.log('index.js: Help Start Here endpoint mounted at /api/help/start-here');
+moduleLogger.info('index.js: Help Start Here endpoint mounted at /api/help/start-here');
 
 // Export selected utilities for internal scripts/tests (non-breaking)
 try {
@@ -1254,19 +2621,19 @@ app.get('/api/help/context', async (req, res) => {
             if (targetBaseId && defaultBaseId && targetBaseId !== defaultBaseId) {
                 if (typeof base.createBaseInstance === 'function') {
                     helpBase = base.createBaseInstance(targetBaseId);
-                    console.log(`[HelpContext:${area}] Using non-default help base ${targetBaseId}`);
+                    moduleLogger.info(`[HelpContext:${area}] Using non-default help base ${targetBaseId}`);
                 } else {
-                    console.warn(`[HelpContext:${area}] createBaseInstance not available; using default base`);
+                    moduleLogger.warn(`[HelpContext:${area}] createBaseInstance not available; using default base`);
                 }
             } else {
                 if (targetBaseId === masterClientsBaseId && targetBaseId !== defaultBaseId) {
-                    console.log(`[HelpContext:${area}] Using MASTER_CLIENTS_BASE_ID for help content`);
+                    moduleLogger.info(`[HelpContext:${area}] Using MASTER_CLIENTS_BASE_ID for help content`);
                 } else {
-                    console.log(`[HelpContext:${area}] Using default base for help content`);
+                    moduleLogger.info(`[HelpContext:${area}] Using default base for help content`);
                 }
             }
         } catch (bErr) {
-            console.error(`[HelpContext:${area}] Failed to initialize help base`, bErr.message);
+            moduleLogger.error(`[HelpContext:${area}] Failed to initialize help base`, bErr.message);
             return res.status(500).json({ ok: false, error: 'Failed to initialize help base instance' });
         }
 
@@ -1504,7 +2871,7 @@ app.get('/api/help/context', async (req, res) => {
                         }
                     }
                 } catch (mediaErr) {
-                    console.warn(`[HelpContext:${area}] Media placeholder resolution failed`, mediaErr.message);
+                    moduleLogger.warn(`[HelpContext:${area}] Media placeholder resolution failed`, mediaErr.message);
                 }
             }
         }
@@ -1547,7 +2914,7 @@ app.get('/api/help/context', async (req, res) => {
         __helpAreaCache.set(area, { data: payload, fetchedAt: Date.now() });
         res.json(payload);
     } catch (e) {
-        console.error('Help Context endpoint error =>', e?.message || e);
+        moduleLogger.error('Help Context endpoint error =>', e?.message || e);
         res.status(500).json({ ok: false, error: e?.message || 'Failed to load help context' });
     }
 });
@@ -1686,9 +3053,9 @@ app.post('/api/environment/agent-command', async (req, res) => {
     res.json(response);
 });
 
-console.log("index.js: Environment management endpoints added");
+moduleLogger.info("index.js: Environment management endpoints added");
 
-try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); console.log("index.js: App/API/Job routes mounted."); } catch(e) { console.error("index.js: Error mounting appRoutes", e.message, e.stack); }
+try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoutes); moduleLogger.info("index.js: App/API/Job routes mounted."); } catch(e) { moduleLogger.error("index.js: Error mounting appRoutes", e.message, e.stack); }
 
 // --- BROKEN PORTAL ROUTES REMOVED ---
 // The following routes were removed as they were trying to serve non-existent files:
@@ -1700,43 +3067,43 @@ try { const appRoutes = require('./routes/apiAndJobRoutes.js'); app.use(appRoute
 // Frontend URL: https://pb-webhook-server.vercel.app
 // Backend APIs: Continue to work correctly on Render
 
-console.log("index.js: Attempting to mount Custom GPT support APIs...");
+moduleLogger.info("index.js: Attempting to mount Custom GPT support APIs...");
 try {
     const mountPointerApi = require("./pointerApi.js");
     const mountLatestLead = require("./latestLeadApi.js");
     const mountUpdateLead = require("./updateLeadApi.js");
 
     if (!GPT_CHAT_URL && mountPointerApi && typeof mountPointerApi === 'function') {
-        console.warn("index.js: GPT_CHAT_URL is not set; pointerApi might not function fully if it relies on it internally beyond the parameter.");
+        moduleLogger.warn("index.js: GPT_CHAT_URL is not set; pointerApi might not function fully if it relies on it internally beyond the parameter.");
     }
     
     if (mountPointerApi && typeof mountPointerApi === 'function') {
         mountPointerApi(app, base, GPT_CHAT_URL);
-        console.log("index.js: pointerApi mounted.");
-    } else { console.error("index.js: pointerApi.js not found or did not export a function."); }
+        moduleLogger.info("index.js: pointerApi mounted.");
+    } else { moduleLogger.error("index.js: pointerApi.js not found or did not export a function."); }
 
     if (mountLatestLead && typeof mountLatestLead === 'function') {
         mountLatestLead(app, base);
-        console.log("index.js: latestLeadApi mounted.");
-    } else { console.error("index.js: latestLeadApi.js not found or did not export a function."); }
+        moduleLogger.info("index.js: latestLeadApi mounted.");
+    } else { moduleLogger.error("index.js: latestLeadApi.js not found or did not export a function."); }
 
     if (mountUpdateLead && typeof mountUpdateLead === 'function') {
         mountUpdateLead(app, base);
-        console.log("index.js: updateLeadApi mounted.");
-    } else { console.error("index.js: updateLeadApi.js not found or did not export a function."); }
+        moduleLogger.info("index.js: updateLeadApi mounted.");
+    } else { moduleLogger.error("index.js: updateLeadApi.js not found or did not export a function."); }
 } catch (apiMountError) {
-    console.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
+    moduleLogger.error("index.js: Error mounting one of the Custom GPT support APIs (pointer, latestLead, updateLead):", apiMountError.message, apiMountError.stack);
 }
 
 // --- WEBHOOK FOR TEXT BLAZE LINKEDIN DATA ---
 app.post('/textblaze-linkedin-webhook', async (req, res) => {
-    console.log('Received data from Text Blaze /textblaze-linkedin-webhook:');
-    console.log('Request Body:', req.body);
+    moduleLogger.info('Received data from Text Blaze /textblaze-linkedin-webhook:');
+    moduleLogger.info('Request Body:', req.body);
 
     const { linkedinMessage, profileUrl, timestamp } = req.body;
 
     if (!linkedinMessage || !profileUrl || !timestamp) {
-        console.error("Webhook Error: Missing linkedinMessage, profileUrl, or timestamp in request body.");
+        moduleLogger.error("Webhook Error: Missing linkedinMessage, profileUrl, or timestamp in request body.");
         return res.status(400).json({
             status: 'error',
             message: 'Missing required data: linkedinMessage, profileUrl, or timestamp.'
@@ -1744,14 +3111,14 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
     }
     
     if (!base) {
-        console.error("Webhook Error: Airtable base not configured on server.");
+        moduleLogger.error("Webhook Error: Airtable base not configured on server.");
         return res.status(500).json({
             status: 'error',
             message: 'Airtable integration not available on server.'
         });
     }
     if (!AIRTABLE_BASE_ID) {
-        console.error("Webhook Error: AIRTABLE_BASE_ID not configured on server.");
+        moduleLogger.error("Webhook Error: AIRTABLE_BASE_ID not configured on server.");
         return res.status(500).json({
             status: 'error',
             message: 'Airtable Base ID not configured on server.'
@@ -1763,11 +3130,11 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
     if (typeof normalizedProfileUrl === 'string' && normalizedProfileUrl.endsWith('/')) {
         normalizedProfileUrl = normalizedProfileUrl.slice(0, -1);
     }
-    console.log(`Normalized Profile URL for Airtable search: ${normalizedProfileUrl}`);
+    moduleLogger.info(`Normalized Profile URL for Airtable search: ${normalizedProfileUrl}`);
 
 
     try {
-        console.log(`Searching Airtable for Lead with URL: ${normalizedProfileUrl}`); // Use normalized URL
+        moduleLogger.info(`Searching Airtable for Lead with URL: ${normalizedProfileUrl}`); // Use normalized URL
         const records = await base(AIRTABLE_LEADS_TABLE_ID_OR_NAME).select({
             maxRecords: 1,
             // Use the normalized URL in the filter formula
@@ -1777,7 +3144,7 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
         if (records && records.length > 0) {
             const record = records[0];
             const recordId = record.id;
-            console.log(`Found Lead with Record ID: ${recordId}`);
+            moduleLogger.info(`Found Lead with Record ID: ${recordId}`);
 
             const existingNotes = record.get(AIRTABLE_NOTES_FIELD) || "";
             const newNoteEntry = `📅 ${timestamp} – Sent: ${linkedinMessage}`;
@@ -1795,7 +3162,7 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
                     }
                 }
             ]);
-            console.log(`Successfully updated Notes for Record ID: ${recordId}`);
+            moduleLogger.info(`Successfully updated Notes for Record ID: ${recordId}`);
             
             const airtableRecordUrl = `https://airtable.com/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_LEADS_TABLE_ID_OR_NAME)}/${recordId}`;
 
@@ -1806,14 +3173,14 @@ app.post('/textblaze-linkedin-webhook', async (req, res) => {
                 recordId: recordId
             });
         } else {
-            console.warn(`No Lead found in Airtable with URL: ${normalizedProfileUrl}`);
+            moduleLogger.warn(`No Lead found in Airtable with URL: ${normalizedProfileUrl}`);
             return res.status(404).json({
                 status: 'error',
                 message: `No Lead found in Airtable with LinkedIn Profile URL: ${normalizedProfileUrl}`
             });
         }
     } catch (error) {
-        console.error("Error interacting with Airtable:", error);
+        moduleLogger.error("Error interacting with Airtable:", error);
         let errorMessage = "Error updating Airtable.";
         if (error.message) {
             errorMessage += ` Details: ${error.message}`;
@@ -1843,25 +3210,173 @@ app.get('/debug-linkedin-files', (req, res) => {
 });
 
 /* ------------------------------------------------------------------
-    3) Start server
+    3) Global Error Handling Middleware
+------------------------------------------------------------------*/
+// Old error logger removed - now using Render log analysis
+const logCriticalError = async () => {}; // No-op
+
+// 404 handler - must come before error handler
+app.use((req, res, next) => {
+    res.status(404).json({ 
+        error: 'Not Found', 
+        message: `Cannot ${req.method} ${req.path}`,
+        path: req.path 
+    });
+});
+
+// Global error handler - catches all unhandled errors
+app.use(async (err, req, res, next) => {
+    moduleLogger.error('Global error handler caught error:', err);
+    
+    // Log critical errors to Airtable
+    try {
+        await logCriticalError(err, {
+            endpoint: `${req.method} ${req.path}`,
+            clientId: req.headers['x-client-id'],
+            requestBody: req.body,
+            queryParams: req.query,
+            headers: {
+                'user-agent': req.headers['user-agent'],
+                'content-type': req.headers['content-type']
+            }
+        });
+    } catch (loggingError) {
+        moduleLogger.error('Failed to log error to Airtable:', loggingError.message);
+    }
+    
+    // Send error response to client
+    const statusCode = err.statusCode || err.status || 500;
+    res.status(statusCode).json({
+        error: err.name || 'Internal Server Error',
+        message: err.message || 'An unexpected error occurred',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
+});
+
+/* ------------------------------------------------------------------
+    SECURE ENV VAR EXPORT ENDPOINT (For Local Development Only)
+    
+    This endpoint allows local dev machines to fetch current env vars from Render.
+    SECURITY: Protected by PB_WEBHOOK_SECRET (same as other admin endpoints)
+    
+    Usage: curl -H "Authorization: Bearer Diamond9753!!@@pb" https://pb-webhook-server-staging.onrender.com/export-env-vars
+------------------------------------------------------------------*/
+app.get('/export-env-vars', (req, res) => {
+    const endpointLogger = createLogger({ runId: 'EXPORT_ENV', clientId: 'SYSTEM', operation: 'export_env_vars' });
+    
+    // Security check - require same secret as other admin endpoints
+    const authHeader = req.headers.authorization;
+    const expectedAuth = `Bearer ${process.env.PB_WEBHOOK_SECRET}`;
+    
+    if (!authHeader || authHeader !== expectedAuth) {
+        endpointLogger.warn('Unauthorized attempt to export env vars');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    endpointLogger.info('Exporting environment variables for local development');
+    
+    // Export all env vars in .env file format
+    const envVars = Object.entries(process.env)
+        .filter(([key]) => {
+            // Only export our custom env vars, skip Node.js system vars
+            return !key.startsWith('npm_') && 
+                   !key.startsWith('NODE_') &&
+                   key !== 'PATH' &&
+                   key !== 'HOME' &&
+                   key !== 'USER' &&
+                   key !== 'SHELL' &&
+                   key !== 'PWD';
+        })
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+    
+    res.type('text/plain').send(envVars);
+    endpointLogger.info(`Exported ${Object.keys(process.env).length} environment variables`);
+});
+
+/* ------------------------------------------------------------------
+    SECURE ENDPOINT: Export Environment Variables (For Local Development)
+------------------------------------------------------------------*/
+app.get('/api/export-env-vars', (req, res) => {
+    // CRITICAL SECURITY: This endpoint exposes ALL secrets!
+    // It's protected by BOOTSTRAP_SECRET which must be set on Render
+    
+    const authHeader = req.headers['authorization'];
+    const expectedAuth = `Bearer ${process.env.BOOTSTRAP_SECRET}`;
+    
+    if (!process.env.BOOTSTRAP_SECRET) {
+        moduleLogger.error('[export-env-vars] BOOTSTRAP_SECRET not set - endpoint disabled for security');
+        return res.status(503).json({ 
+            error: 'ENDPOINT_DISABLED',
+            message: 'BOOTSTRAP_SECRET environment variable not configured on server'
+        });
+    }
+    
+    if (!authHeader || authHeader !== expectedAuth) {
+        moduleLogger.warn('[export-env-vars] Unauthorized access attempt');
+        return res.status(401).json({ 
+            error: 'UNAUTHORIZED',
+            message: 'Invalid or missing authorization header'
+        });
+    }
+    
+    // Authenticated! Export env vars as .env file format
+    moduleLogger.info('[export-env-vars] Authorized request - exporting environment variables');
+    
+    const envVars = [];
+    
+    // Export all env vars in .env format
+    for (const [key, value] of Object.entries(process.env)) {
+        // Skip system/internal variables that shouldn't be in .env
+        if (key.startsWith('npm_') || 
+            key.startsWith('NODE_') ||
+            key === 'PATH' ||
+            key === 'PWD' ||
+            key === 'HOME' ||
+            key === 'USER' ||
+            key === 'SHELL' ||
+            key === 'TMPDIR' ||
+            key === 'LANG') {
+            continue;
+        }
+        
+        // Escape values that contain special characters
+        const escapedValue = value.includes('\n') || value.includes('"') 
+            ? `"${value.replace(/"/g, '\\"')}"` 
+            : value;
+        
+        envVars.push(`${key}=${escapedValue}`);
+    }
+    
+    const envFileContent = envVars.join('\n');
+    
+    moduleLogger.info(`[export-env-vars] Exported ${envVars.length} environment variables`);
+    
+    // Return as plain text (ready to write to .env file)
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(envFileContent);
+});
+
+/* ------------------------------------------------------------------
+    4) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3001;
-console.log(
+moduleLogger.info(
     `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
     } – ${new Date().toISOString()}`
 );
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}.`);
+    moduleLogger.info(`Server running on port ${port}.`);
     if (!globalGeminiModel) {
-        console.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
+        moduleLogger.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
     } else if (!base) {
-        console.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
+        moduleLogger.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
     } else if (!geminiConfig || !geminiConfig.vertexAIClient) {
-        console.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
+        moduleLogger.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
     }
     else {
-        console.log("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
+        moduleLogger.info("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
     }
 });
 
@@ -1871,13 +3386,13 @@ app.listen(port, () => {
 /*
 async function getScoringData() {
   // Original content would be here. For now, a placeholder.
-  console.warn("Legacy getScoringData function called - likely obsolete.");
+  moduleLogger.warn("Legacy getScoringData function called - likely obsolete.");
   return {}; // Return a sensible default if it were ever called
 }
 
 function parseMarkdownTables(markdown) {
   // Original content would be here. For now, a placeholder.
-  console.warn("Legacy parseMarkdownTables function called - likely obsolete.");
+  moduleLogger.warn("Legacy parseMarkdownTables function called - likely obsolete.");
   return {}; // Return a sensible default
 }
 */
@@ -1887,17 +3402,29 @@ function parseMarkdownTables(markdown) {
     const PROD_BASE_ID = 'appXySOLo6V9PfMfa'; // Production fallback base (from your .env)
     const env = process.env.NODE_ENV || 'development';
     if (env !== 'production' && AIRTABLE_BASE_ID === PROD_BASE_ID) {
-        console.warn(`⚠️  SAFETY WARNING: Running in NODE_ENV=${env} while AIRTABLE_BASE_ID is set to the production base (${PROD_BASE_ID}).\n` +
+        moduleLogger.warn(`⚠️  SAFETY WARNING: Running in NODE_ENV=${env} while AIRTABLE_BASE_ID is set to the production base (${PROD_BASE_ID}).\n` +
             'If this is intentional (legacy fallback), ensure you always supply ?testClient=... so client-specific bases are used.');
     }
 })();
 
 // Middleware to warn per-request if no client specified and production base fallback is in use
 app.use((req, res, next) => {
-    const clientParam = req.query.testClient || req.query.clientId || req.headers['x-client-id'];
+    // Accept both clientId (preferred) and testClient (legacy) parameters
+    const clientParam = req.query.clientId || req.query.testClient || req.headers['x-client-id'];
     const PROD_BASE_ID = 'appXySOLo6V9PfMfa';
-    if (!clientParam && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
-        console.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?testClient=CLIENT_ID to target that client base.`);
+    
+    // Log parameter source for debugging
+    if (req.query.clientId) {
+        moduleLogger.info(`Using clientId parameter: ${req.query.clientId}`);
+    } else if (req.query.testClient) {
+        moduleLogger.warn(`Using legacy testClient parameter: ${req.query.testClient} (consider migrating to clientId)`);
+    }
+    
+    // Skip warning for Apify webhooks - we now handle client resolution there separately
+    const isApifyWebhook = req.path.includes('/api/apify-webhook');
+    
+    if (!clientParam && !isApifyWebhook && AIRTABLE_BASE_ID === PROD_BASE_ID && (process.env.NODE_ENV !== 'production')) {
+        moduleLogger.warn(`⚠️  Request ${req.method} ${req.path} used DEFAULT production base (no clientId/testClient provided). Add ?clientId=CLIENT_ID to target that client base.`);
     }
     next();
 });
@@ -1917,11 +3444,11 @@ function getHelpBase() {
                 const inst = base.createBaseInstance(targetBaseId);
                 return inst;
             } catch (e) {
-                console.error('[getHelpBase] Failed to create base instance', e.message);
+                moduleLogger.error('[getHelpBase] Failed to create base instance', e.message);
                 return null;
             }
         } else {
-            console.warn('[getHelpBase] createBaseInstance not available; falling back to default base');
+            moduleLogger.warn('[getHelpBase] createBaseInstance not available; falling back to default base');
         }
     }
     return base;
@@ -2036,7 +3563,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
                 });
                 preservedBodyHtml = html;
             } catch (e) {
-                console.warn('[HelpTopic] Failed to resolve media placeholders in HTML', e.message);
+                moduleLogger.warn('[HelpTopic] Failed to resolve media placeholders in HTML', e.message);
             }
         }
 
@@ -2094,7 +3621,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
         };
         res.json(payload);
     } catch (e) {
-        console.error('Help topic endpoint error', e);
+        moduleLogger.error('Help topic endpoint error', e);
         res.status(500).json({ error: 'TOPIC_FETCH_ERROR', message: e.message });
     }
 });
@@ -2154,7 +3681,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                     next();
                 });
             } catch (relErr) {
-                console.warn('[helpQA] Related topics fetch failed', relErr.message);
+                moduleLogger.warn('[helpQA] Related topics fetch failed', relErr.message);
             }
         }
 
@@ -2243,7 +3770,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                     globalMeta = { ensure, globalHits: globalHits.length, topDocScore: top.score, bestSentenceScore: globalResult?.score || 0 };
                 }
             } catch (gErr) {
-                console.warn('[helpQA] Global help search failed', gErr.message);
+                moduleLogger.warn('[helpQA] Global help search failed', gErr.message);
             }
         }
 
@@ -2392,7 +3919,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                             });
                             const llmAnswer2 = chat2.choices?.[0]?.message?.content?.trim();
                             if (llmAnswer2) llmAnswer = llmAnswer2 + '\n\n(meta: ungrounded fallback)';
-                        } catch (fbErr) { console.warn('[helpQA] Ungrounded fallback failed', fbErr.message); }
+                        } catch (fbErr) { moduleLogger.warn('[helpQA] Ungrounded fallback failed', fbErr.message); }
                     }
                     return res.json({
                         answer: llmAnswer,
@@ -2410,7 +3937,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
                     });
                 }
             } catch (llmErr) {
-                console.warn('[helpQA] LLM escalation failed, falling back to retrieval result if any', llmErr.message);
+                moduleLogger.warn('[helpQA] LLM escalation failed, falling back to retrieval result if any', llmErr.message);
             }
         }
 
@@ -2447,7 +3974,7 @@ app.post('/api/help/qa', express.json(), async (req, res) => {
             }
         });
     } catch (e) {
-        console.error('QA endpoint error', e);
+        moduleLogger.error('QA endpoint error', e);
         res.status(500).json({ error: 'QA_ERROR', message: e.message });
     }
 });
@@ -2603,7 +4130,7 @@ app.post('/api/help/qa-embed', express.json(), async (req, res) => {
                     baselineSection = `\nBaseline Templates:\n${templateList}\n\nBaseline Actions:\n${actionList}\n\nSupport Actions:\n${supportList}\n\nCategories:\n${categorySummary}`;
                 }
             } catch (e) {
-                console.warn('[qa-embed] baseline load failed', e.message);
+                moduleLogger.warn('[qa-embed] baseline load failed', e.message);
             }
         }
 
@@ -2704,7 +4231,7 @@ app.post('/api/help/qa-embed', express.json(), async (req, res) => {
             }
         });
     } catch (e) {
-        console.error('[qa-embed] error', e);
+        moduleLogger.error('[qa-embed] error', e);
         res.status(500).json({ error: 'EMBED_QA_ERROR', message: e.message });
     }
 });

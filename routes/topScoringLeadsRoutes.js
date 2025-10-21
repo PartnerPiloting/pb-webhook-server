@@ -4,7 +4,19 @@
 // - POST /api/top-scoring-leads/dev/sanity-check: admin-only field existence checks
 
 const express = require('express');
+const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'top_scoring_leads' });
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const airtableClient = require('../config/airtableClient.js');
+
+// Helper for route error logging
+async function logRouteError(error, req, context = {}) {
+  await logCriticalError(error, {
+    endpoint: req ? `${req.method} ${req.path}` : 'unknown',
+    ...context
+  }).catch(() => {});
+}
 
 function parseBoolFlag(val, defaultValue = false) {
   if (val === undefined || val === null || val === '') return defaultValue;
@@ -19,7 +31,7 @@ module.exports = function mountTopScoringLeads(app, base) {
   const REPAIR_SECRET = process.env.PB_WEBHOOK_SECRET || 'changeme-please-update-this!';
 
   // Mount diagnostics
-  console.log(`[TopScoringLeads] Mounted. ENABLED=${ENABLED}`);
+  logger.info(`[TopScoringLeads] Mounted. ENABLED=${ENABLED}`);
 
   // Resolve Airtable base per-request (multi-tenant) with fallback to default
   async function getBaseForRequest(req) {
@@ -29,7 +41,8 @@ module.exports = function mountTopScoringLeads(app, base) {
         return await airtableClient.getClientBase(clientId);
       } catch (e) {
         // Fall through to default base
-        console.warn(`topScoringLeads: getClientBase failed for ${clientId}: ${e?.message || e}`);
+        logger.warn(`topScoringLeads: getClientBase failed for ${clientId}: ${e?.message || e}`);
+        await logRouteError(e, req).catch(() => {});
       }
     }
     return base;
@@ -204,6 +217,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       }
       res.json({ ok: true, routes: list });
     } catch (e) {
+      logRouteError(e, req, { operation: 'list_routes' }); // Fire-and-forget (non-async handler)
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -359,6 +373,7 @@ module.exports = function mountTopScoringLeads(app, base) {
 
       res.json({ ok: true, common, endpoints });
     } catch (e) {
+      logRouteError(e, req, { operation: 'get_params_metadata' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -517,6 +532,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(html);
     } catch (e) {
+      logRouteError(e, req, { operation: 'render_homepage' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -559,6 +575,7 @@ module.exports = function mountTopScoringLeads(app, base) {
     await b(tableName).select({ maxRecords: 1 }).firstPage();
         result.tables[tableName] = true;
       } catch (e) {
+        await logRouteError(e, req, { operation: 'check_table_exists', table: tableName, expectedBehavior: true });
         result.tables[tableName] = false;
         result.notes.push(`Table check failed for "${tableName}": ${e?.message || e}`);
       }
@@ -571,6 +588,7 @@ module.exports = function mountTopScoringLeads(app, base) {
     await b(tableName).select({ fields: [fieldName], maxRecords: 1 }).firstPage();
         result.fields[key] = true;
       } catch (e) {
+        await logRouteError(e, req, { operation: 'check_field_exists', table: tableName, field: fieldName, expectedBehavior: true });
         result.fields[key] = false;
         result.notes.push(`Field check failed for ${key}: ${e?.message || e}`);
       }
@@ -624,6 +642,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       const value = raw === undefined || raw === null || raw === '' ? null : Number(raw);
       res.json({ ok: true, value, recordId: row ? row.id : null });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'get_threshold' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -646,6 +665,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       await b('Credentials').update(row.id, { 'AI Score Threshold Input': clamped });
       res.json({ ok: true, value: clamped, recordId: row.id });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'update_threshold', value: req.body.value });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -675,6 +695,7 @@ module.exports = function mountTopScoringLeads(app, base) {
 
       res.json({ ok: true, appliedThreshold: threshold, count: items.length, items, page, pageSize, hasMore });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'get_eligible_leads', page, pageSize });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -695,6 +716,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       // If total == limit, caller should assume there may be more beyond cap
       res.json({ ok: true, appliedThreshold: threshold, total, limit });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'count_eligible_leads', limit });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -713,6 +735,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       const at = raw ? new Date(raw).getTime() : null;
       res.json({ ok: true, at });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'get_last_export_timestamp' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -739,10 +762,12 @@ module.exports = function mountTopScoringLeads(app, base) {
         await b('Credentials').update(row.id, { [FIELD_NEW]: atDate });
         updatedField = FIELD_NEW;
       } catch (err1) {
+        await logRouteError(err1, req, { operation: 'update_export_timestamp_new_field', field: FIELD_NEW, value: atDate });
         try {
           await b('Credentials').update(row.id, { [FIELD_OLD]: atDate });
           updatedField = FIELD_OLD;
         } catch (err2) {
+          await logRouteError(err2, req, { operation: 'update_export_timestamp_old_field', field: FIELD_OLD, value: atDate });
           return res.status(400).json({
             ok: false,
             error: `Update failed: ${err1?.message || err1}. Ensure a Date field named "${FIELD_NEW}" exists on the Credentials table.`,
@@ -752,6 +777,7 @@ module.exports = function mountTopScoringLeads(app, base) {
 
       res.json({ ok: true, at: atDate.getTime(), recordId: row.id, field: updatedField });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'set_last_export_timestamp' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -799,7 +825,9 @@ module.exports = function mountTopScoringLeads(app, base) {
       
       return res.json(allLeads);
     } catch (e) {
-      console.error('Error in /eligible/all:', e);
+      logger.error('Error in /eligible/all:', e);
+      await logRouteError(e, req, { operation: 'get_all_eligible_leads', count: allLeads?.length || 0 });
+      await logCriticalError(error, req).catch(() => {});
       res.status(500).json({ error: e?.message || String(e) });
     }
   });
@@ -866,7 +894,8 @@ module.exports = function mountTopScoringLeads(app, base) {
       
       return res.json(allLeads);
     } catch (e) {
-      console.error('Error in /eligible/all:', e);
+      logger.error('Error in /eligible/all:', e);
+      await logRouteError(e, req, { operation: 'get_all_eligible_leads_batch', count: allLeads?.length || 0 });
       res.status(500).json({ error: e?.message || String(e) });
     }
   });
@@ -946,6 +975,7 @@ module.exports = function mountTopScoringLeads(app, base) {
 
       res.json({ ok: true, count: items.length, items });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'get_current_batch' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -1074,6 +1104,7 @@ module.exports = function mountTopScoringLeads(app, base) {
 
       res.json({ ok: true, cleared, set: setCount });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'batch_select', recordCount: req.body?.recordIds?.length || 0 });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -1119,6 +1150,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       const updated = updates.length ? await updateInChunks(b, 'Leads', updates) : 0;
       res.json({ ok: true, updated });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'batch_finalize', recordCount: ids?.length || 0 });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -1155,6 +1187,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       const cleared = updates.length ? await updateInChunks(b, 'Leads', updates) : 0;
       res.json({ ok: true, cleared });
     } catch (e) {
+      await logRouteError(e, req, { operation: 'batch_reset', recordCount: ids?.length || 0 });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -1174,6 +1207,7 @@ module.exports = function mountTopScoringLeads(app, base) {
       }
       res.json({ ok: true, routes: list });
     } catch (e) {
+      logRouteError(e, req, { operation: 'debug_list_routes' });
       res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
   });
@@ -1184,7 +1218,7 @@ module.exports = function mountTopScoringLeads(app, base) {
     const summary = stack
       .filter((layer) => layer && layer.route)
       .map((layer) => ({ path: layer.route.path, methods: Object.keys(layer.route.methods || {}).filter(Boolean) }));
-    console.log(`[TopScoringLeads] Routes registered:`, summary);
+    logger.info(`[TopScoringLeads] Routes registered:`, summary);
   } catch (_) {}
   app.use('/api/top-scoring-leads', router);
 };

@@ -1,7 +1,15 @@
 // utils/appHelpers.js
 
 // We need fetch for the alertAdmin function
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
+const fetch = require('node-fetch');
+const { createLogger } = require('./contextLogger');
+
+// Create module-level logger for app helpers
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'app-helpers' 
+});
 
 /* ------------------------------------------------------------------
     helper: alertAdmin  (Mailgun)
@@ -9,7 +17,7 @@ const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...ar
 async function alertAdmin(subject, text) {
     try {
         if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN || !process.env.ALERT_EMAIL || !process.env.FROM_EMAIL) {
-            console.warn("Mailgun not fully configured, admin alert skipped for:", subject);
+            logger.warn("Mailgun not fully configured, admin alert skipped for:", { subject });
             return;
         }
         const mgUrl = `https://api.mailgun.net/v3/${process.env.MAILGUN_DOMAIN}/messages`;
@@ -28,9 +36,9 @@ async function alertAdmin(subject, text) {
             },
             body
         });
-        console.log("Admin alert sent from appHelpers:", subject); // Added 'from appHelpers' for clarity
+        logger.info("Admin alert sent from appHelpers:", { subject });
     } catch (err) {
-        console.error("alertAdmin error in appHelpers:", err.message); // Added 'in appHelpers'
+        logger.error("alertAdmin error in appHelpers:", { error: err.message });
     }
 }
 

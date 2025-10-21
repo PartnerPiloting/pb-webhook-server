@@ -79,15 +79,15 @@ function slimLead(profile = {}) {
 async function buildPrompt(logger = null, clientId = null) {
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
-        logger = new StructuredLogger('SYSTEM', 'PROMPT');
+        logger = require('./utils/contextLogger').createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'prompt_builder' });
     }
 
-    logger.setup('buildPrompt', `Starting lead scoring prompt construction${clientId ? ` for client: ${clientId}` : ''}`);
+    logger.info(`Starting lead scoring prompt construction${clientId ? ` for client: ${clientId}` : ''}`);
 
     // Pass clientId to loadAttributes for multi-tenant support
     const { preamble, positives, negatives } = await loadAttributes(logger, clientId);
 
-    logger.process('buildPrompt', `Loaded attributes: ${Object.keys(positives).length} positive, ${Object.keys(negatives).length} negative`);
+    logger.debug(`Loaded attributes: ${Object.keys(positives).length} positive, ${Object.keys(negatives).length} negative`);
 
     // This schema defines the structure for EACH lead object within the JSON array
     // that Gemini is instructed to return.
@@ -155,7 +155,7 @@ ${rulesAndOutputFormat}
         logger.debug('buildPrompt', 'Dumped DEBUG_PROMPT_GEMINI.txt for debugging');
     }
 
-    logger.summary('buildPrompt', `Successfully built prompt with ${systemPrompt.length} characters`);
+    logger.info('buildPrompt', `Successfully built prompt with ${systemPrompt.length} characters`);
     return systemPrompt;
 }
 

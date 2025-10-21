@@ -1,4 +1,7 @@
 // Lightweight manual store + keyword search for Linked Helper / AI manuals
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 // Looks for an environment override (LH_MANUAL_PATH) or a local manuals/linked-helper.txt file.
 // Falls back to a stub if no file present so the system keeps working.
 const fs = require('fs');
@@ -21,7 +24,7 @@ function loadManual() {
     // Split into reasonably sized segments (paragraph blocks). Remove empty.
     segments = manualRaw.split(/\n{2,}/).map(s=>s.trim()).filter(Boolean);
   } catch (e) {
-    console.error('[helpManualStore] Failed to load manual', e.message);
+    logger.error('[helpManualStore] Failed to load manual', e.message);
     segments = []; manualRaw='';
   }
 }

@@ -1,4 +1,6 @@
 // File: postScoreBatchApi.js
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
 const express = require('express');
 const router = express.Router();
@@ -19,7 +21,7 @@ let modulePostAnalysisConfig;
  * It is secured with your existing PB_WEBHOOK_SECRET.
  */
 router.post('/trigger-post-scoring-batch', (req, res) => {
-    console.log("PostScoreBatchApi: POST /api/internal/trigger-post-scoring-batch hit.");
+    logger.info("PostScoreBatchApi: POST /api/internal/trigger-post-scoring-batch hit.");
 
     // --- Security Check REMOVED ---
     // The endpoint is now open for internal or manual triggering without a secret key.
@@ -27,7 +29,7 @@ router.post('/trigger-post-scoring-batch', (req, res) => {
 
     // Check if the service has been properly initialized
     if (!moduleBase || !moduleVertexAIClient || !modulePostAnalysisConfig) {
-        console.error("PostScoreBatchApi: Service not configured. Missing base, vertexAIClient, or config.");
+        logger.error("PostScoreBatchApi: Service not configured. Missing base, vertexAIClient, or config.");
         return res.status(503).json({ error: "Service is not ready to process batch job." });
     }
 
@@ -47,10 +49,10 @@ router.post('/trigger-post-scoring-batch', (req, res) => {
     // batch job runs in the background.
     processAllPendingLeadPosts(moduleBase, moduleVertexAIClient, modulePostAnalysisConfig, limit, forceRescore, viewName)
         .then(() => {
-            console.log("PostScoreBatchApi: Background task 'processAllPendingLeadPosts' has completed.");
+            logger.info("PostScoreBatchApi: Background task 'processAllPendingLeadPosts' has completed.");
         })
         .catch(err => {
-            console.error("PostScoreBatchApi: Background task 'processAllPendingLeadPosts' finished with an error.", err);
+            logger.error("PostScoreBatchApi: Background task 'processAllPendingLeadPosts' finished with an error.", err);
         });
     // ---------------------------------
 
@@ -67,7 +69,7 @@ router.post('/trigger-post-scoring-batch', (req, res) => {
  */
 module.exports = function mountPostScoreBatchApi(app, base, vertexAIClient, postAnalysisConfig) {
     if (!base || !vertexAIClient || !postAnalysisConfig) {
-        console.error("postScoreBatchApi.js: mount function called without base, vertexAIClient, or postAnalysisConfig. API will not function.");
+        logger.error("postScoreBatchApi.js: mount function called without base, vertexAIClient, or postAnalysisConfig. API will not function.");
         return;
     }
     // Make dependencies available to our router
@@ -77,5 +79,5 @@ module.exports = function mountPostScoreBatchApi(app, base, vertexAIClient, post
 
     // Mounts the router. The full path becomes /api/internal/trigger-post-scoring-batch
     app.use('/api/internal', router);
-    console.log("postScoreBatchApi.js: /api/internal/trigger-post-scoring-batch route mounted.");
+    logger.info("postScoreBatchApi.js: /api/internal/trigger-post-scoring-batch route mounted.");
 };

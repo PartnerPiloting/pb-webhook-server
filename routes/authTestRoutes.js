@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'route' });
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { testWordPressConnection } = require('../utils/wordpressAuth');
 
@@ -21,10 +25,10 @@ const { testWordPressConnection } = require('../utils/wordpressAuth');
  * Headers: Authorization: Basic <base64(username:password)>
  */
 
-router.get('/test', authenticateUserWithTestMode, (req, res) => {
+router.get('/test', authenticateUserWithTestMode, async (req, res) => {
   try {
-    console.log('Auth Test: Building response for client:', req.client.clientName);
-    console.log('Auth Test: Client object:', JSON.stringify(req.client, null, 2));
+    logger.info('Auth Test: Building response for client:', req.client.clientName);
+    logger.info('Auth Test: Client object:', JSON.stringify(req.client, null, 2));
     
     const response = {
       status: 'success',
@@ -48,12 +52,13 @@ router.get('/test', authenticateUserWithTestMode, (req, res) => {
       }
     };
 
-    console.log('Auth Test: Response object constructed:', JSON.stringify(response, null, 2));
-    console.log('Auth Test: Sending response for', req.client.clientName);
+    logger.info('Auth Test: Response object constructed:', JSON.stringify(response, null, 2));
+    logger.info('Auth Test: Sending response for', req.client.clientName);
     res.json(response);
 
   } catch (error) {
-    console.error('Auth Test: Error', error);
+    logger.error('Auth Test: Error', error);
+    await logCriticalError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       message: 'Test endpoint error',
@@ -77,7 +82,8 @@ router.get('/wordpress-test', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('WordPress Test: Error', error);
+    logger.error('WordPress Test: Error', error);
+    await logCriticalError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       connected: false,
@@ -90,7 +96,7 @@ router.get('/wordpress-test', async (req, res) => {
 /**
  * Service level test endpoint
  */
-router.get('/service-level-test/:level', authenticateUserWithTestMode, (req, res) => {
+router.get('/service-level-test/:level', authenticateUserWithTestMode, async (req, res) => {
   try {
     const requiredLevel = parseInt(req.params.level, 10);
     const hasAccess = req.client.serviceLevel >= requiredLevel;
@@ -109,7 +115,8 @@ router.get('/service-level-test/:level', authenticateUserWithTestMode, (req, res
     });
 
   } catch (error) {
-    console.error('Service Level Test: Error', error);
+    logger.error('Service Level Test: Error', error);
+    await logCriticalError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       message: 'Service level test error',
@@ -134,13 +141,13 @@ router.get('/health', (req, res) => {
  * This will help us identify where the JSON corruption is happening
  */
 router.get('/simple', (req, res) => {
-  console.log('Auth Simple Test: Creating simple response');
+  logger.info('Auth Simple Test: Creating simple response');
   const response = {
     status: 'success',
     message: 'Simple test successful!',
     test: true
   };
-  console.log('Auth Simple Test: Response object:', JSON.stringify(response));
+  logger.info('Auth Simple Test: Response object:', JSON.stringify(response));
   res.json(response);
 });
 
