@@ -6466,34 +6466,104 @@ router.get("/api/test-membership-sync", async (req, res) => {
     for (const client of clients) {
       const clientId = client.clientId;
       const clientName = client.clientName;
-      const wordpressUserId = client.wpUserId; // Fixed: clientService returns wpUserId, not wordpressUserId
+      const wpUserId = client.wpUserId;
       const currentStatus = client.status;
+      const statusManagement = client.statusManagement || 'Automatic';
       
       console.log(`🔍 Checking: ${clientName} (${clientId})`);
-      console.log(`   WordPress User ID: ${wordpressUserId || 'Not set'}`);
+      console.log(`   WordPress User ID: ${wpUserId || 'Not set'}`);
       console.log(`   Current Status: ${currentStatus}`);
+      console.log(`   Status Management: ${statusManagement}`);
       
-      if (!wordpressUserId) {
-        console.log(`   ⚠️ Skipping: No WordPress User ID\n`);
+      // Skip if Status Management is set to "Manual"
+      if (statusManagement === 'Manual') {
+        console.log(`   ⏭️ Skipping: Status Management set to "Manual"\n`);
         results.skipped++;
         results.details.push({
           clientId,
           clientName,
           action: 'skipped',
-          reason: 'No WordPress User ID',
+          reason: 'Status Management set to Manual',
           status: currentStatus
         });
         continue;
       }
       
+      if (!wpUserId || wpUserId === 0) {
+        console.log(`   ❌ ERROR: No WordPress User ID configured`);
+        console.log(`   → Setting Status to Paused\n`);
+        
+        // Update Airtable to Paused
+        try {
+          Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+          const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+          await base(MASTER_TABLES.CLIENTS).update(client.id, {
+            [CLIENT_FIELDS.STATUS]: 'Paused'
+          });
+          
+          results.paused++;
+          results.errors++;
+          results.processed++;
+          results.details.push({
+            clientId,
+            clientName,
+            action: 'paused',
+            reason: 'No WordPress User ID',
+            error: true
+          });
+        } catch (error) {
+          console.error(`   ❌ Failed to update status: ${error.message}\n`);
+          results.errors++;
+        }
+        continue;
+      }
+      
       try {
-        // Check membership - use correct function name from pmproService
-        const membershipCheck = await pmproService.checkUserMembership(wordpressUserId);
-        console.log(`   Membership: ${membershipCheck.hasAccess ? 'Valid' : 'Invalid'} (Level: ${membershipCheck.levelId || 'None'})`);
+        // Check membership
+        const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+        
+        // Handle errors from membership check
+        if (membershipCheck.error) {
+          console.log(`   ❌ ERROR: ${membershipCheck.error}`);
+          console.log(`   → Setting Status to Paused\n`);
+          
+          Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+          const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+          await base(MASTER_TABLES.CLIENTS).update(client.id, {
+            [CLIENT_FIELDS.STATUS]: 'Paused'
+          });
+          
+          results.paused++;
+          results.errors++;
+          results.processed++;
+          results.details.push({
+            clientId,
+            clientName,
+            action: 'paused',
+            reason: membershipCheck.error,
+            error: true
+          });
+          continue;
+        }
         
         // Determine new status
-        const shouldBeActive = membershipCheck.hasAccess;
+        const shouldBeActive = membershipCheck.hasValidMembership;
         const newStatus = shouldBeActive ? 'Active' : 'Paused';
+        
+        // Log membership info
+        if (membershipCheck.hasValidMembership) {
+          console.log(`   ✅ Valid membership: Level ${membershipCheck.levelId} (${membershipCheck.levelName})`);
+          if (membershipCheck.expiryDate) {
+            console.log(`   📅 Expiry Date: ${membershipCheck.expiryDate}`);
+          }
+        } else {
+          console.log(`   ⚠️ Invalid or no membership`);
+          if (membershipCheck.levelId) {
+            console.log(`   → Has Level ${membershipCheck.levelId} but not in valid levels list`);
+          } else {
+            console.log(`   → No active PMPro membership found`);
+          }
+        }
         
         // Update if status changed
         if (currentStatus !== newStatus) {
@@ -6513,7 +6583,7 @@ router.get("/api/test-membership-sync", async (req, res) => {
             [CLIENT_FIELDS.STATUS]: newStatus
           };
           
-          if (membershipCheck.expiryDate) {
+          if (membershipCheck.expiryDate !== undefined) {
             updateFields[CLIENT_FIELDS.EXPIRY_DATE] = membershipCheck.expiryDate;
           }
           
