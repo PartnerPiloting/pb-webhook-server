@@ -6487,8 +6487,8 @@ router.get("/api/test-membership-sync", async (req, res) => {
       }
       
       try {
-        // Check membership
-        const membershipCheck = await pmproService.checkMembershipByUserId(wordpressUserId);
+        // Check membership - use correct function name from pmproService
+        const membershipCheck = await pmproService.checkUserMembership(wordpressUserId);
         console.log(`   Membership: ${membershipCheck.hasAccess ? 'Valid' : 'Invalid'} (Level: ${membershipCheck.levelId || 'None'})`);
         
         // Determine new status
