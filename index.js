@@ -3459,6 +3459,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
     const start = Date.now();
     const topicId = req.params.id;
     const includeInstructions = (req.query.include_instructions === '1');
+    moduleLogger.info(`[HELP DEBUG] GET /api/help/topic/${topicId} - Request received`);
     try {
         const helpBase = getHelpBase();
         if (!helpBase) return res.status(500).json({ error: 'HELP_BASE_UNRESOLVED' });
@@ -3625,6 +3626,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
         res.status(500).json({ error: 'TOPIC_FETCH_ERROR', message: e.message });
     }
 });
+moduleLogger.info('index.js: Help Topic endpoint mounted at /api/help/topic/:id');
 
 // --- Simple QA endpoint (Phase 0 stub) ---
 // POST { topicId, question, includeInstructions? } => basic keyword scan answer
