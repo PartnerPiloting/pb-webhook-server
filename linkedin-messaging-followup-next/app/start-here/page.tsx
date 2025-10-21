@@ -47,6 +47,29 @@ const StartHereContent: React.FC = () => {
       if (b.type === 'media') {
         const m = b.media;
         if ((m.type || '').toLowerCase().includes('image') && m.url) {
+          // Check if it's an SVG - render as large scrollable image
+          const isSvg = m.url.toLowerCase().endsWith('.svg') || (m.type || '').toLowerCase().includes('svg');
+          
+          if (isSvg) {
+            return (
+              <figure key={id + '::m::' + i} className="space-y-2 my-4">
+                <div className="border rounded-lg overflow-auto max-h-[600px] bg-white p-4">
+                  <img 
+                    src={m.url} 
+                    alt={m.caption || 'diagram'} 
+                    className="max-w-none"
+                    style={{ minWidth: '100%', height: 'auto' }}
+                  />
+                </div>
+                <figcaption className="text-[11px] text-gray-500 italic">
+                  {m.caption || `Diagram ${m.media_id}`}
+                  <span className="ml-2 text-gray-400">(scroll to view full diagram)</span>
+                </figcaption>
+              </figure>
+            );
+          }
+          
+          // Regular image rendering
           return (
             <figure key={id + '::m::' + i} className="space-y-1">
               <img src={m.url} alt={m.caption || 'media'} className="rounded border" />
