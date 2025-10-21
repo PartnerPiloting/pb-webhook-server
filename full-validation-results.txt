@@ -1,0 +1,2966 @@
+==========================================
+COMPREHENSIVE CODEBASE BUG DETECTION
+==========================================
+
+======================================
+CHECK 1: Logger Variable Name Mismatches (ALL FILES)
+======================================
+Looking for 'logger.' calls where variable is named differently...
+
+--- ROUTE FILES ---
+Checking: routes/apiAndJobRoutes.js
+
+Checking: routes/apifyWebhookRoutes.js
+  ❌ Line 42: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 63: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 71: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 88: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 108: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 116: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 120: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 135: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 144: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 147: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+  ❌ Line 153: Using 'logger' but variable is 'moduleLogger' (endpoint at line )
+
+Checking: routes/apifyControlRoutes.js
+
+Checking: routes/apifyProcessRoutes.js
+
+Checking: routes/apifyRunsRoutes.js
+
+Checking: routes/diagnosticRoutes.js
+
+Checking: routes/debugRoutes.js
+
+Checking: routes/authTestRoutes.js
+
+Checking: routes/topScoringLeadsRoutes.js
+
+Checking: routes/webhookHandlers.js
+
+--- CRITICAL FILES (scorers, services, index) ---
+Found in: batchScorer.js
+  ⚠️  Line 1133: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1134: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1135: Using 'logger' but variable is 'clientLogger'
+
+Found in: postBatchScorer.js
+  ⚠️  Line 288: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 295: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 297: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 326: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 328: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 338: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 344: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 379: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 387: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 398: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 425: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 427: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 433: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 439: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 443: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 461: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 478: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 494: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 498: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 505: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 517: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 537: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 539: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 542: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 549: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 551: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 559: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 583: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 613: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 618: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 629: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1092: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1104: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1114: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1149: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1168: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1173: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1200: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1213: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1216: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1217: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1218: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1242: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1255: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1284: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1445: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1463: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1537: Using 'logger' but variable is 'clientLogger'
+  ⚠️  Line 1545: Using 'logger' but variable is 'clientLogger'
+
+--- ALL SERVICE FILES ---
+======================================
+CHECK 2: Unreplaced moduleLogger in Endpoints
+======================================
+Looking for moduleLogger usage in route handlers (should use scoped logger)...
+
+  ❌ Found moduleLogger in: routes/apifyWebhookRoutes.js
+362:         moduleLogger.error(`Error normalizing LinkedIn URL ${url}: ${e.message}`);
+408:         moduleLogger.error(`Error extracting Apify run ID: ${error.message}`);
+443:         moduleLogger.error(`Error extracting client ID: ${error.message}`);
+491:         moduleLogger.warn('No posts array found in payload structure');
+494:         moduleLogger.error(`Error extracting posts: ${error.message}`);
+
+======================================
+CHECK 3: Logger Typos (ALL FILES)
+======================================
+Looking for common typos: loger, loggers, joblogger...
+
+  ❌ Found typos in: ./routes/apiAndJobRoutes.js
+1437:  jobLogger.info(`🔄 [POST-SCORING-DEBUG] Background post scoring started: jobId=${jobId}, stream=${stream}, parentRunId=${options.parentRunId || 'NONE'}`);
+1442:    jobLogger.info(`📊 [POST-SCORING-DEBUG] Getting active clients for stream ${stream}, singleClientId=${options.singleClientId || 'ALL'}`);
+1445:    jobLogger.info(`📊 [POST-SCORING-DEBUG] Found ${clients.length} clients in stream ${stream}`);
+1447:      jobLogger.info(`📊 [POST-SCORING-DEBUG] Client list:`, clients.map(c => `${c.clientName} (${c.clientId})`).join(', '));
+1449:      jobLogger.info(`⚠️ [POST-SCORING-DEBUG] No clients found to process - exiting`);
+
+  ❌ Found typos in: ./utils/contextLogger.js
+17: *   - Child loggers inherit context
+
+  ❌ Found typos in: ./utils/structuredLogger.js
+8: * Use the unifiedLoggerFactory.js to create loggers:
+
+  ❌ Found typos in: ./utils/unifiedLoggerFactory.js
+6: * into a unified, consistent API for creating properly validated loggers.
+14: * This is the primary function for creating loggers throughout the codebase
+
+======================================
+CHECK 4: Missing createLogger Import
+======================================
+Looking for files using createLogger without importing it...
+
+
+======================================
+CHECK 5: Async Functions Without try-catch
+======================================
+Looking for async route handlers without error handling...
+
+Checking: routes/apiAndJobRoutes.js
+  ⚠️  Line 471: Async handler without try-catch
+  Found 1 async handlers without try-catch
+
+Checking: routes/apifyWebhookRoutes.js
+
+Checking: routes/apifyControlRoutes.js
+
+Checking: routes/apifyProcessRoutes.js
+
+Checking: routes/apifyRunsRoutes.js
+
+Checking: routes/diagnosticRoutes.js
+
+Checking: routes/debugRoutes.js
+
+Checking: routes/authTestRoutes.js
+
+Checking: routes/topScoringLeadsRoutes.js
+
+Checking: routes/webhookHandlers.js
+
+======================================
+CHECK 6: Logger Usage Before Declaration
+======================================
+Looking for logger calls before createLogger...
+
+Found in: routes/apiAndJobRoutes.js
+  ⚠️  Line 385: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 389: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 399: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 410: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 415: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 417: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 427: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 432: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 436: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 444: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 450: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 452: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 454: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 460: logger used before createLogger (endpoint at line 375)
+  ⚠️  Line 795: logger used before createLogger (endpoint at line 760)
+  ⚠️  Line 800: logger used before createLogger (endpoint at line 760)
+  ⚠️  Line 828: logger used before createLogger (endpoint at line 760)
+  ⚠️  Line 837: logger used before createLogger (endpoint at line 760)
+  ⚠️  Line 917: logger used before createLogger (endpoint at line 760)
+  ⚠️  Line 1128: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1132: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1161: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1169: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1173: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1175: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1190: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1191: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1193: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1225: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1227: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1257: logger used before createLogger (endpoint at line 1119)
+  ⚠️  Line 1294: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1295: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1296: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1300: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1303: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1310: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1313: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1335: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1339: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1341: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1361: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1364: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1373: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1386: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1394: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1395: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 1399: logger used before createLogger (endpoint at line 1276)
+  ⚠️  Line 4968: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 4975: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 4986: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 4996: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 5009: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 5018: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 5021: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 5027: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 5043: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 5044: logger used before createLogger (endpoint at line 4957)
+  ⚠️  Line 5065: logger used before createLogger (endpoint at line 4957)
+
+Found in: routes/apifyControlRoutes.js
+  ⚠️  Line 326: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 359: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 369: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 388: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 393: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 407: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 465: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 467: logger used before createLogger (endpoint at line 183)
+  ⚠️  Line 474: logger used before createLogger (endpoint at line 183)
+
+Found in: routes/apifyProcessRoutes.js
+  ⚠️  Line 253: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 254: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 255: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 256: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 259: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 260: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 261: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 262: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 263: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 264: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 265: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 266: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 270: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 282: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 284: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 293: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 297: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 304: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 312: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 323: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 350: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 351: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 352: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 357: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 358: logger used before createLogger (endpoint at line 251)
+  ⚠️  Line 1091: logger used before createLogger (endpoint at line 1050)
+
+Found in: routes/apifyRunsRoutes.js
+  ⚠️  Line 37: logger used before createLogger (endpoint at line 19)
+  ⚠️  Line 65: logger used before createLogger (endpoint at line 44)
+
+Found in: routes/diagnosticRoutes.js
+  ⚠️  Line 99: logger used before createLogger (endpoint at line 64)
+  ⚠️  Line 160: logger used before createLogger (endpoint at line 113)
+
+Found in: routes/debugRoutes.js
+  ⚠️  Line 34: logger used before createLogger (endpoint at line 9)
+  ⚠️  Line 38: logger used before createLogger (endpoint at line 9)
+
+Found in: routes/authTestRoutes.js
+  ⚠️  Line 30: logger used before createLogger (endpoint at line 28)
+  ⚠️  Line 31: logger used before createLogger (endpoint at line 28)
+  ⚠️  Line 55: logger used before createLogger (endpoint at line 28)
+  ⚠️  Line 56: logger used before createLogger (endpoint at line 28)
+  ⚠️  Line 60: logger used before createLogger (endpoint at line 28)
+  ⚠️  Line 85: logger used before createLogger (endpoint at line 73)
+  ⚠️  Line 118: logger used before createLogger (endpoint at line 99)
+  ⚠️  Line 144: logger used before createLogger (endpoint at line 143)
+  ⚠️  Line 150: logger used before createLogger (endpoint at line 143)
+
+======================================
+CHECK 7: Inconsistent Error Logging
+======================================
+Looking for catch blocks without logger.error...
+
+Found in: routes/apiAndJobRoutes.js
+  ⚠️  Line 90: catch block without logger.error
+  ⚠️  Line 163: catch block without logger.error
+  ⚠️  Line 170: catch block without logger.error
+  ⚠️  Line 182: catch block without logger.error
+  ⚠️  Line 189: catch block without logger.error
+  ⚠️  Line 209: catch block without logger.error
+  ⚠️  Line 212: catch block without logger.error
+  ⚠️  Line 247: catch block without logger.error
+  ⚠️  Line 250: catch block without logger.error
+  ⚠️  Line 335: catch block without logger.error
+  ⚠️  Line 337: catch block without logger.error
+  ⚠️  Line 345: catch block without logger.error
+  ⚠️  Line 347: catch block without logger.error
+  ⚠️  Line 367: catch block without logger.error
+  ⚠️  Line 369: catch block without logger.error
+  ⚠️  Line 409: catch block without logger.error
+  ⚠️  Line 416: catch block without logger.error
+  ⚠️  Line 418: catch block without logger.error
+  ⚠️  Line 453: catch block without logger.error
+  ⚠️  Line 455: catch block without logger.error
+  ⚠️  Line 459: catch block without logger.error
+  ⚠️  Line 461: catch block without logger.error
+  ⚠️  Line 491: catch block without logger.error
+  ⚠️  Line 553: catch block without logger.error
+  ⚠️  Line 556: catch block without logger.error
+  ⚠️  Line 659: catch block without logger.error
+  ⚠️  Line 689: catch block without logger.error
+  ⚠️  Line 692: catch block without logger.error
+  ⚠️  Line 751: catch block without logger.error
+  ⚠️  Line 753: catch block without logger.error
+  ⚠️  Line 916: catch block without logger.error
+  ⚠️  Line 918: catch block without logger.error
+  ⚠️  Line 1014: catch block without logger.error
+  ⚠️  Line 1101: catch block without logger.error
+  ⚠️  Line 1103: catch block without logger.error
+  ⚠️  Line 1168: catch block without logger.error
+  ⚠️  Line 1170: catch block without logger.error
+  ⚠️  Line 1192: catch block without logger.error
+  ⚠️  Line 1194: catch block without logger.error
+  ⚠️  Line 1226: catch block without logger.error
+  ⚠️  Line 1228: catch block without logger.error
+  ⚠️  Line 1256: catch block without logger.error
+  ⚠️  Line 1258: catch block without logger.error
+  ⚠️  Line 1362: catch block without logger.error
+  ⚠️  Line 1369: catch block without logger.error
+  ⚠️  Line 1393: catch block without logger.error
+  ⚠️  Line 1398: catch block without logger.error
+  ⚠️  Line 1400: catch block without logger.error
+  ⚠️  Line 1581: catch block without logger.error
+  ⚠️  Line 1598: catch block without logger.error
+  ⚠️  Line 1604: catch block without logger.error
+  ⚠️  Line 1626: catch block without logger.error
+  ⚠️  Line 1629: catch block without logger.error
+  ⚠️  Line 1692: catch block without logger.error
+  ⚠️  Line 1693: catch block without logger.error
+  ⚠️  Line 1798: catch block without logger.error
+  ⚠️  Line 1802: catch block without logger.error
+  ⚠️  Line 1820: catch block without logger.error
+  ⚠️  Line 1822: catch block without logger.error
+  ⚠️  Line 1871: catch block without logger.error
+  ⚠️  Line 1886: catch block without logger.error
+  ⚠️  Line 1888: catch block without logger.error
+  ⚠️  Line 1995: catch block without logger.error
+  ⚠️  Line 2072: catch block without logger.error
+  ⚠️  Line 2119: catch block without logger.error
+  ⚠️  Line 2121: catch block without logger.error
+  ⚠️  Line 2207: catch block without logger.error
+  ⚠️  Line 2209: catch block without logger.error
+  ⚠️  Line 2249: catch block without logger.error
+  ⚠️  Line 2251: catch block without logger.error
+  ⚠️  Line 2337: catch block without logger.error
+  ⚠️  Line 2339: catch block without logger.error
+  ⚠️  Line 2381: catch block without logger.error
+  ⚠️  Line 2383: catch block without logger.error
+  ⚠️  Line 2423: catch block without logger.error
+  ⚠️  Line 2425: catch block without logger.error
+  ⚠️  Line 2471: catch block without logger.error
+  ⚠️  Line 2473: catch block without logger.error
+  ⚠️  Line 2517: catch block without logger.error
+  ⚠️  Line 2519: catch block without logger.error
+  ⚠️  Line 2565: catch block without logger.error
+  ⚠️  Line 2567: catch block without logger.error
+  ⚠️  Line 2677: catch block without logger.error
+  ⚠️  Line 2679: catch block without logger.error
+  ⚠️  Line 2809: catch block without logger.error
+  ⚠️  Line 2826: catch block without logger.error
+  ⚠️  Line 2828: catch block without logger.error
+  ⚠️  Line 2888: catch block without logger.error
+  ⚠️  Line 2890: catch block without logger.error
+  ⚠️  Line 2912: catch block without logger.error
+  ⚠️  Line 2914: catch block without logger.error
+  ⚠️  Line 3022: catch block without logger.error
+  ⚠️  Line 3024: catch block without logger.error
+  ⚠️  Line 3119: catch block without logger.error
+  ⚠️  Line 3121: catch block without logger.error
+  ⚠️  Line 3665: catch block without logger.error
+  ⚠️  Line 3667: catch block without logger.error
+  ⚠️  Line 3759: catch block without logger.error
+  ⚠️  Line 3761: catch block without logger.error
+  ⚠️  Line 3824: catch block without logger.error
+  ⚠️  Line 3826: catch block without logger.error
+  ⚠️  Line 3945: catch block without logger.error
+  ⚠️  Line 3947: catch block without logger.error
+  ⚠️  Line 4019: catch block without logger.error
+  ⚠️  Line 4021: catch block without logger.error
+  ⚠️  Line 4084: catch block without logger.error
+  ⚠️  Line 4108: catch block without logger.error
+  ⚠️  Line 4134: catch block without logger.error
+  ⚠️  Line 4169: catch block without logger.error
+  ⚠️  Line 4200: catch block without logger.error
+  ⚠️  Line 4238: catch block without logger.error
+  ⚠️  Line 4296: catch block without logger.error
+  ⚠️  Line 4330: catch block without logger.error
+  ⚠️  Line 4364: catch block without logger.error
+  ⚠️  Line 4395: catch block without logger.error
+  ⚠️  Line 4419: catch block without logger.error
+  ⚠️  Line 4452: catch block without logger.error
+  ⚠️  Line 4484: catch block without logger.error
+  ⚠️  Line 4486: catch block without logger.error
+  ⚠️  Line 4550: catch block without logger.error
+  ⚠️  Line 4552: catch block without logger.error
+  ⚠️  Line 4654: catch block without logger.error
+  ⚠️  Line 4656: catch block without logger.error
+  ⚠️  Line 4702: catch block without logger.error
+  ⚠️  Line 4704: catch block without logger.error
+  ⚠️  Line 4795: catch block without logger.error
+  ⚠️  Line 4808: catch block without logger.error
+  ⚠️  Line 4946: catch block without logger.error
+  ⚠️  Line 4948: catch block without logger.error
+  ⚠️  Line 5020: catch block without logger.error
+  ⚠️  Line 5060: catch block without logger.error
+  ⚠️  Line 5066: catch block without logger.error
+  ⚠️  Line 5143: catch block without logger.error
+  ⚠️  Line 5145: catch block without logger.error
+  ⚠️  Line 5211: catch block without logger.error
+  ⚠️  Line 5219: catch block without logger.error
+  ⚠️  Line 5246: catch block without logger.error
+  ⚠️  Line 5248: catch block without logger.error
+  ⚠️  Line 5317: catch block without logger.error
+  ⚠️  Line 5369: catch block without logger.error
+  ⚠️  Line 5371: catch block without logger.error
+  ⚠️  Line 5396: catch block without logger.error
+  ⚠️  Line 5418: catch block without logger.error
+  ⚠️  Line 5420: catch block without logger.error
+  ⚠️  Line 5482: catch block without logger.error
+  ⚠️  Line 5489: catch block without logger.error
+  ⚠️  Line 5563: catch block without logger.error
+  ⚠️  Line 5565: catch block without logger.error
+  ⚠️  Line 5622: catch block without logger.error
+  ⚠️  Line 5624: catch block without logger.error
+
+Found in: routes/apifyWebhookRoutes.js
+  ⚠️  Line 87: catch block without logger.error
+  ⚠️  Line 89: catch block without logger.error
+  ⚠️  Line 146: catch block without logger.error
+  ⚠️  Line 148: catch block without logger.error
+  ⚠️  Line 210: catch block without logger.error
+  ⚠️  Line 212: catch block without logger.error
+  ⚠️  Line 294: catch block without logger.error
+  ⚠️  Line 297: catch block without logger.error
+  ⚠️  Line 305: catch block without logger.error
+  ⚠️  Line 307: catch block without logger.error
+  ⚠️  Line 328: catch block without logger.error
+  ⚠️  Line 361: catch block without logger.error
+  ⚠️  Line 407: catch block without logger.error
+  ⚠️  Line 409: catch block without logger.error
+  ⚠️  Line 442: catch block without logger.error
+  ⚠️  Line 444: catch block without logger.error
+  ⚠️  Line 493: catch block without logger.error
+  ⚠️  Line 495: catch block without logger.error
+  ⚠️  Line 568: catch block without logger.error
+  ⚠️  Line 571: catch block without logger.error
+  ⚠️  Line 654: catch block without logger.error
+  ⚠️  Line 657: catch block without logger.error
+  ⚠️  Line 697: catch block without logger.error
+  ⚠️  Line 699: catch block without logger.error
+  ⚠️  Line 715: catch block without logger.error
+  ⚠️  Line 717: catch block without logger.error
+  ⚠️  Line 739: catch block without logger.error
+  ⚠️  Line 756: catch block without logger.error
+  ⚠️  Line 822: catch block without logger.error
+  ⚠️  Line 825: catch block without logger.error
+
+Found in: routes/apifyControlRoutes.js
+  ⚠️  Line 31: catch block without logger.error
+  ⚠️  Line 56: catch block without logger.error
+  ⚠️  Line 60: catch block without logger.error
+  ⚠️  Line 82: catch block without logger.error
+  ⚠️  Line 87: catch block without logger.error
+  ⚠️  Line 97: catch block without logger.error
+  ⚠️  Line 167: catch block without logger.error
+  ⚠️  Line 169: catch block without logger.error
+  ⚠️  Line 325: catch block without logger.error
+  ⚠️  Line 327: catch block without logger.error
+  ⚠️  Line 358: catch block without logger.error
+  ⚠️  Line 360: catch block without logger.error
+  ⚠️  Line 368: catch block without logger.error
+  ⚠️  Line 370: catch block without logger.error
+  ⚠️  Line 387: catch block without logger.error
+  ⚠️  Line 389: catch block without logger.error
+  ⚠️  Line 466: catch block without logger.error
+  ⚠️  Line 468: catch block without logger.error
+  ⚠️  Line 473: catch block without logger.error
+  ⚠️  Line 475: catch block without logger.error
+
+Found in: routes/apifyProcessRoutes.js
+  ⚠️  Line 41: catch block without logger.error
+  ⚠️  Line 121: catch block without logger.error
+  ⚠️  Line 123: catch block without logger.error
+  ⚠️  Line 142: catch block without logger.error
+  ⚠️  Line 144: catch block without logger.error
+  ⚠️  Line 177: catch block without logger.error
+  ⚠️  Line 179: catch block without logger.error
+  ⚠️  Line 283: catch block without logger.error
+  ⚠️  Line 285: catch block without logger.error
+  ⚠️  Line 567: catch block without logger.error
+  ⚠️  Line 569: catch block without logger.error
+  ⚠️  Line 602: catch block without logger.error
+  ⚠️  Line 604: catch block without logger.error
+  ⚠️  Line 663: catch block without logger.error
+  ⚠️  Line 759: catch block without logger.error
+  ⚠️  Line 760: catch block without logger.error
+  ⚠️  Line 813: catch block without logger.error
+  ⚠️  Line 814: catch block without logger.error
+  ⚠️  Line 904: catch block without logger.error
+  ⚠️  Line 906: catch block without logger.error
+  ⚠️  Line 923: catch block without logger.error
+  ⚠️  Line 945: catch block without logger.error
+  ⚠️  Line 946: catch block without logger.error
+  ⚠️  Line 974: catch block without logger.error
+  ⚠️  Line 976: catch block without logger.error
+  ⚠️  Line 980: catch block without logger.error
+  ⚠️  Line 1006: catch block without logger.error
+  ⚠️  Line 1008: catch block without logger.error
+  ⚠️  Line 1011: catch block without logger.error
+  ⚠️  Line 1033: catch block without logger.error
+  ⚠️  Line 1036: catch block without logger.error
+  ⚠️  Line 1090: catch block without logger.error
+  ⚠️  Line 1092: catch block without logger.error
+  ⚠️  Line 1122: catch block without logger.error
+  ⚠️  Line 1124: catch block without logger.error
+  ⚠️  Line 1217: catch block without logger.error
+  ⚠️  Line 1219: catch block without logger.error
+  ⚠️  Line 1241: catch block without logger.error
+  ⚠️  Line 1243: catch block without logger.error
+  ⚠️  Line 1247: catch block without logger.error
+  ⚠️  Line 1249: catch block without logger.error
+
+Found in: routes/apifyRunsRoutes.js
+  ⚠️  Line 36: catch block without logger.error
+  ⚠️  Line 38: catch block without logger.error
+  ⚠️  Line 64: catch block without logger.error
+  ⚠️  Line 66: catch block without logger.error
+  ⚠️  Line 109: catch block without logger.error
+  ⚠️  Line 111: catch block without logger.error
+  ⚠️  Line 129: catch block without logger.error
+  ⚠️  Line 131: catch block without logger.error
+
+Found in: routes/diagnosticRoutes.js
+  ⚠️  Line 86: catch block without logger.error
+  ⚠️  Line 88: catch block without logger.error
+  ⚠️  Line 98: catch block without logger.error
+  ⚠️  Line 100: catch block without logger.error
+  ⚠️  Line 148: catch block without logger.error
+  ⚠️  Line 152: catch block without logger.error
+  ⚠️  Line 159: catch block without logger.error
+  ⚠️  Line 161: catch block without logger.error
+
+Found in: routes/debugRoutes.js
+  ⚠️  Line 37: catch block without logger.error
+  ⚠️  Line 39: catch block without logger.error
+
+Found in: routes/authTestRoutes.js
+  ⚠️  Line 59: catch block without logger.error
+  ⚠️  Line 61: catch block without logger.error
+  ⚠️  Line 84: catch block without logger.error
+  ⚠️  Line 86: catch block without logger.error
+  ⚠️  Line 117: catch block without logger.error
+  ⚠️  Line 119: catch block without logger.error
+
+Found in: routes/topScoringLeadsRoutes.js
+  ⚠️  Line 18: catch block without logger.error
+  ⚠️  Line 42: catch block without logger.error
+  ⚠️  Line 45: catch block without logger.error
+  ⚠️  Line 219: catch block without logger.error
+  ⚠️  Line 375: catch block without logger.error
+  ⚠️  Line 534: catch block without logger.error
+  ⚠️  Line 577: catch block without logger.error
+  ⚠️  Line 590: catch block without logger.error
+  ⚠️  Line 644: catch block without logger.error
+  ⚠️  Line 667: catch block without logger.error
+  ⚠️  Line 697: catch block without logger.error
+  ⚠️  Line 718: catch block without logger.error
+  ⚠️  Line 737: catch block without logger.error
+  ⚠️  Line 764: catch block without logger.error
+  ⚠️  Line 769: catch block without logger.error
+  ⚠️  Line 779: catch block without logger.error
+  ⚠️  Line 827: catch block without logger.error
+  ⚠️  Line 830: catch block without logger.error
+  ⚠️  Line 896: catch block without logger.error
+  ⚠️  Line 977: catch block without logger.error
+  ⚠️  Line 1106: catch block without logger.error
+  ⚠️  Line 1152: catch block without logger.error
+  ⚠️  Line 1189: catch block without logger.error
+  ⚠️  Line 1209: catch block without logger.error
+  ⚠️  Line 1222: catch block without logger.error
+
+Found in: routes/webhookHandlers.js
+  ⚠️  Line 63: catch block without logger.error
+  ⚠️  Line 65: catch block without logger.error
+  ⚠️  Line 91: catch block without logger.error
+  ⚠️  Line 93: catch block without logger.error
+  ⚠️  Line 108: catch block without logger.error
+  ⚠️  Line 113: catch block without logger.error
+  ⚠️  Line 126: catch block without logger.error
+  ⚠️  Line 131: catch block without logger.error
+  ⚠️  Line 133: catch block without logger.error
+  ⚠️  Line 148: catch block without logger.error
+  ⚠️  Line 152: catch block without logger.error
+  ⚠️  Line 247: catch block without logger.error
+  ⚠️  Line 250: catch block without logger.error
+  ⚠️  Line 258: catch block without logger.error
+  ⚠️  Line 269: catch block without logger.error
+
+======================================
+CHECK 8: Duplicate Route Definitions
+======================================
+Looking for routes defined multiple times...
+
+======================================
+CHECK 9: Missing await on Async Calls
+======================================
+Looking for async function calls without await...
+
+⚠️  Possible missing await in: routes/apiAndJobRoutes.js
+62:async function logRouteError(error, req = null, additionalContext = {}) {
+546:    processLeadScoringInBackground(jobId, stream, limit, singleClientId, { 
+562:async function processLeadScoringInBackground(jobId, stream, limit, singleClientId, aiDependencies) {
+
+⚠️  Possible missing await in: routes/apifyControlRoutes.js
+16:async function logRouteError(error, req = null, additionalContext = {}) {
+169:      logRouteError(err, req).catch(() => {});
+
+⚠️  Possible missing await in: routes/apifyProcessRoutes.js
+26:async function logRouteError(error, req = null, additionalContext = {}) {
+
+⚠️  Possible missing await in: routes/topScoringLeadsRoutes.js
+14:async function logRouteError(error, req, context = {}) {
+220:      logRouteError(e, req, { operation: 'list_routes' }); // Fire-and-forget (non-async handler)
+376:      logRouteError(e, req, { operation: 'get_params_metadata' });
+535:      logRouteError(e, req, { operation: 'render_homepage' });
+1210:      logRouteError(e, req, { operation: 'debug_list_routes' });
+
+======================================
+CHECK 10: Console.log Still in Code (ALL FILES)
+======================================
+Looking for debug console.log statements...
+
+⚠️  Found console statements in: ./af-test.js
+3:console.log('--- OUTPUT START ---');
+4:console.log(autoFormatHelpBody(sample));
+5:console.log('--- OUTPUT END ---');
+
+⚠️  Found console statements in: ./airtableFieldExtractor.js
+17:        console.log(`Starting field extraction for table: ${tableName}`);
+36:        console.log(`✅ Connected to base: ${targetBaseId}`);
+39:        console.log(`Fetching records from table: ${tableName}`);
+52:            console.log(`Analyzing record ${recordIndex + 1}/${records.length}`);
+125:        console.log(`✅ Field extraction complete!`);
+126:        console.log(`📊 Analyzed ${records.length} records`);
+127:        console.log(`🔍 Found ${fieldInfo.size} fields`);
+128:        console.log(`💾 Results saved to: ${outputFile}`);
+133:        console.error(`❌ Error extracting fields:`, error.message);
+243:        console.log(`
+
+⚠️  Found console statements in: ./analyze-recent-logs.js
+22:  console.error('❌ ERROR: PB_WEBHOOK_SECRET environment variable not set');
+23:  console.error('   Set it in your .env file or run: export PB_WEBHOOK_SECRET=your_secret');
+27:console.log(`\n🔍 Analyzing last ${minutes} minutes of Render logs...`);
+28:console.log(`📍 Target: ${isProd ? 'PRODUCTION' : 'STAGING'} (${hostname})`);
+29:console.log(`⏰ Started at: ${new Date().toISOString()}\n`);
+53:    console.log(`📡 Response status: ${res.statusCode}\n`);
+59:        console.log('✅ LOG ANALYSIS COMPLETE\n');
+60:        console.log(`📊 Results:`);
+61:        console.log(`   - Total issues found: ${result.issues}`);
+62:        console.log(`   - Critical: ${result.summary.critical}`);
+
+⚠️  Found console statements in: ./Backup Prior to using Gemini/batchScorer.js
+17:console.log("▶︎ batchScorer module loaded");
+113:      console.error("Chunk fatal:", err);
+229:    console.warn("⛑  Initial parse failed – firing re-ask");
+252:    console.warn(`⚠️ GPT returned ${output.length} of ${scorable.length}`);
+275:        console.warn(`Lean-mode parse error on lead ${rec.id}`);
+302:      console.warn(`⚠️ Lead ${rec.id} – parser error: ${err.message}`);
+349:    console.log(`Queued ${leads.length} leads in ${chunks.length} chunk(s) of ${CHUNK_SIZE} (verbose=${VERBOSE})`);
+355:    console.error("Batch fatal:", err);
+
+⚠️  Found console statements in: ./check-production-issues-local.js
+6:console.log('=' .repeat(80));
+7:console.log('CHECKING PRODUCTION ISSUES TABLE (via Service)');
+8:console.log('=' .repeat(80));
+16:      console.log('\n❌ NO ERRORS FOUND in Production Issues table');
+17:      console.log('\nThis means:');
+18:      console.log('  1. Either no errors have occurred yet');
+19:      console.log('  2. OR errors are NOT being logged to the table (Phase 1 incomplete)');
+20:      console.log('\n💡 Check if the error logging service is working.');
+33:      console.log(`\n⚠️  Found ${records.length} total errors, but NONE in the last 2 hours`);
+34:      console.log(`\nMost recent error was at: ${records[0].get('Timestamp')}`);
+
+⚠️  Found console statements in: ./check-production-issues-staging.js
+12:    console.log(`\nFetching: ${url}\n`);
+40:    console.log('=' .repeat(80));
+41:    console.log('CHECKING PRODUCTION ISSUES TABLE ON STAGING');
+42:    console.log('=' .repeat(80));
+49:      console.log(`\n❌ NO ERRORS FOUND in Production Issues table from the last ${hours} hours`);
+50:      console.log(`\n   Total errors in database: ${result.summary?.totalInDatabase || 0}`);
+51:      console.log('\nThis means:');
+52:      console.log('  1. Either no errors occurred in the last 2 hours');
+53:      console.log('  2. OR errors are NOT being logged to the table (Phase 1 incomplete)');
+54:      console.log('\n💡 Expected errors from Render log:');
+
+⚠️  Found console statements in: ./check-production-issues.js
+6:console.log('Fetching recent Production Issues from last hour...\n');
+17:      console.log('❌ NO ERRORS FOUND in Production Issues table from the last hour');
+18:      console.log('\nThis means Phase 1 bugs prevented errors from being logged.');
+19:      console.log('OR the error logging system is not working yet.');
+23:    console.log(`✅ Found ${records.length} errors in the last hour:\n`);
+24:    console.log('='.repeat(80));
+27:      console.log(`\n${i+1}. [${record.get('Status') || 'NEW'}] ${record.get('Error Type') || 'Unknown Type'}`);
+28:      console.log(`   Severity: ${record.get('Severity') || 'N/A'}`);
+29:      console.log(`   Message: ${(record.get('Error Message') || 'N/A').substring(0, 100)}...`);
+30:      console.log(`   Client: ${record.get('Client ID') || 'N/A'}`);
+
+⚠️  Found console statements in: ./compare-failing-successful-leads.js
+4:    console.log('🔍 COMPARING FAILING VS SUCCESSFUL LEADS');
+5:    console.log('='.repeat(50));
+6:    console.log('Goal: Find what makes the 10 failing leads different from the 86 successful ones\n');
+10:        console.log('1. 📊 Getting failing leads...');
+15:        console.log(`   Found ${failingLeads.length} failing leads`);
+18:        console.log('\n2. 📊 Getting successful leads for comparison...');
+23:        console.log(`   Found ${successfulLeads.length} successful leads`);
+26:            console.log('❌ Not enough leads to compare');
+30:        console.log('\n3. 🔍 ANALYZING DIFFERENCES...');
+34:            console.log(`\n   📊 ${type.toUpperCase()} LEADS ANALYSIS:`);
+
+⚠️  Found console statements in: ./comprehensive-gemini-test.js
+20:    console.log('🧪 COMPREHENSIVE GEMINI TRUNCATION TEST');
+21:    console.log('=' .repeat(80));
+27:        console.log('\n📊 Fetching test lead data...');
+32:        console.log(`   ✅ Lead: ${name}`);
+33:        console.log(`   📏 Original JSON Length: ${profileJSON ? profileJSON.length : 0} characters`);
+36:            console.log('   ❌ No Profile Full JSON found!');
+42:        console.log(`📊 Test Data Stats:`);
+43:        console.log(`   Characters: ${jsonString.length}`);
+44:        console.log(`   Lines: ${jsonString.split('\n').length}`);
+45:        console.log(`   Approximate tokens: ${Math.ceil(jsonString.length / 4)}`);
+
+⚠️  Found console statements in: ./conflict-checker.js
+32:  console.log('🔍 Environment Variable Conflict Check');
+33:  console.log('======================================\n');
+45:    console.log('✅ NO CONFLICTS FOUND!');
+46:    console.log('All variable names are unique between platforms.\n');
+48:    console.log('❌ CONFLICTS DETECTED:');
+50:      console.log(`   • ${conflict} exists in both Render and Vercel`);
+52:    console.log('');
+59:  console.log('📋 CURRENT VARIABLE INVENTORY:');
+60:  console.log('------------------------------');
+62:  console.log('\n🖥️  RENDER (Backend) Variables:');
+
+⚠️  Found console statements in: ./debug_index.js
+2:console.log("<<<<< STARTING debug_index.js - Version H - Adding Airtable & Gemini Init >>>>>");
+17:console.log("Express app created in debug_index.js (Version H).");
+26:console.log("Attempting to initialize Global Google Vertex AI Client...");
+42:        console.error("Failed to parse GCP_SERVICE_ACCOUNT_CREDENTIALS_JSON. Ensure it's valid JSON string.", parseError);
+48:    console.log(`Global Google Vertex AI Client Initialized in debug_index.js. Default Model: ${MODEL_ID}`);
+50:    console.error("CRITICAL: Failed to initialize Global Google Vertex AI Client in debug_index.js:", error.message);
+51:    if (error.stack) console.error("Gemini Init Stack Trace:", error.stack);
+56:console.log("Attempting to configure Airtable...");
+64:    console.log("Airtable configured successfully in debug_index.js.");
+66:    console.error("CRITICAL: Failed to configure Airtable in debug_index.js:", error.message);
+
+⚠️  Found console statements in: ./dev-workflow.js
+13:  console.log('🔄 Your Current Development Workflow');
+14:  console.log('====================================\n');
+16:  console.log('📋 CURRENT (Cloud-Only) WORKFLOW:');
+17:  console.log('1. Edit code in VS Code');
+18:  console.log('2. git add . && git commit -m "description"');
+19:  console.log('3. git push origin main');
+20:  console.log('4. Render auto-deploys backend (1-3 minutes)');
+21:  console.log('5. Vercel auto-deploys frontend (1-3 minutes)');
+22:  console.log('6. Test on live sites');
+23:  console.log('');
+
+⚠️  Found console statements in: ./diagnose-failed-leads.js
+44:        console.error('❌ RENDER_API_KEY not found in environment variables');
+49:        console.log('🔍 DIAGNOSTIC: Extracting Failed Lead Details from Render Logs');
+50:        console.log('='.repeat(80));
+75:        console.log('\n🔍 Available services:');
+77:            console.log(`   - ${service.name} (${service.type})`);
+100:            console.error('❌ Could not find Daily Batch Lead Scoring service');
+101:            console.log('Available services:');
+103:                console.log(`   ${service.name} (${service.type})`);
+108:        console.log(`📋 Found service: ${leadScoringService.name}`);
+109:        console.log(`🆔 Service ID: ${leadScoringService.id}`);
+
+⚠️  Found console statements in: ./diagnose-post-scoring.js
+16:    console.log('='.repeat(80));
+17:    console.log('POST SCORING DIAGNOSTIC TOOL');
+18:    console.log('='.repeat(80));
+19:    console.log('');
+22:    console.log('1. FIRE_AND_FORGET Environment Variable:');
+23:    console.log(`   Value: ${process.env.FIRE_AND_FORGET || 'NOT SET'}`);
+24:    console.log(`   Status: ${process.env.FIRE_AND_FORGET === 'true' ? '✅ ENABLED' : '❌ DISABLED - POST SCORING WILL FAIL WITH 501'}`);
+25:    console.log('');
+28:    console.log('2. Checking Guy-Wilson Client Configuration:');
+34:        console.log('   ❌ Could not find Guy-Wilson client');
+
+⚠️  Found console statements in: ./examine-corrupted-lead.js
+7:    console.log('🔍 EXAMINING SPECIFIC CORRUPTED LEAD');
+8:    console.log('='.repeat(80));
+9:    console.log('Target: recHkqPSMfdQWyqus (corrected record ID)');
+14:        console.log('\n1. 📊 Fetching the corrupted lead...');
+19:        console.log(`   ✅ Found: ${record.get('Name')} (${record.get('Company')})`);
+20:        console.log(`   📈 Status: "${record.get('Scoring Status')}"`);
+21:        console.log(`   📊 Score: ${record.get('Lead Score') || 'None'}`);
+23:        console.log('\n2. 🧬 Analyzing Profile Full JSON...');
+28:            console.log('   ❌ No Profile Full JSON found!');
+32:        console.log(`   📏 JSON Length: ${profileJSON.length} characters`);
+
+⚠️  Found console statements in: ./examples/fieldValidationExample.js
+98:  console.log('\nExample 1: Field name case issues');
+104:  console.log('Result:', result1);
+114:  console.log('\nExample 2: Unknown fields');
+120:  console.log('Result:', result2);
+129:  console.log('\nExample 3: Correct field names');
+135:  console.log('Result:', result3);
+146:    .then(() => console.log('Example completed'))
+147:    .catch(err => console.error('Example error:', err));
+
+⚠️  Found console statements in: ./examples/jobMetricsExample.js
+131:      console.log(`Example completed successfully with run ID: ${runId}`);
+135:      console.error(`Example failed: ${error.message}`);
+
+⚠️  Found console statements in: ./exploreAirtable.js
+8:    console.log("🔍 Discovering all tables in your Airtable base...");
+13:            console.error("❌ Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID environment variables");
+23:        console.log(`✅ Connected to base: ${process.env.AIRTABLE_BASE_ID}`);
+65:        console.log("\n🔍 Testing table names...");
+81:                console.log(`✅ Found: "${tableName}" ${records.length > 0 ? '(has data)' : '(empty)'}`);
+89:            console.log('\n❌ No tables found with standard names.');
+90:            console.log('This might indicate:');
+91:            console.log('1. Permission issues with your API key');
+92:            console.log('2. Incorrect base ID');
+93:            console.log('3. Tables have non-standard names');
+
+⚠️  Found console statements in: ./exploreMasterClients.js
+7:console.log('🔍 Exploring Master Clients Base...');
+8:console.log('Base ID:', MASTER_CLIENTS_BASE_ID);
+11:  console.error('❌ Missing environment variables:');
+12:  console.error('  MASTER_CLIENTS_BASE_ID:', !!MASTER_CLIENTS_BASE_ID);
+13:  console.error('  AIRTABLE_API_KEY:', !!AIRTABLE_API_KEY);
+20:  console.log('\n🔍 Trying different table names...');
+26:      console.log(`\n📋 Trying table: "${tableName}"`);
+34:        console.log(`⚠️  No records found in ${tableName} table`);
+38:      console.log(`✅ Found ${records.length} sample records in "${tableName}"`);
+48:      console.log(`\n📋 ALL FIELD NAMES IN ${tableName} TABLE:`);
+
+⚠️  Found console statements in: ./exportTableData.js
+9:    console.log('📊 Exporting Scoring Attributes table data...');
+14:            console.error("❌ Missing AIRTABLE_API_KEY or AIRTABLE_BASE_ID environment variables");
+25:        console.log(`✅ Connected to base: ${process.env.AIRTABLE_BASE_ID}`);
+26:        console.log(`📋 Reading table: "${tableName}"`);
+35:        console.log(`📄 Found ${records.length} records`);
+38:            console.log('❌ No records found in table');
+175:        console.log(`✅ Export complete!`);
+176:        console.log(`📁 Data saved to: ${filename}`);
+177:        console.log(`📊 Exported ${records.length} records with ${fieldNames.length} fields`);
+178:        console.log(`\n🎯 Next step: Attach "${filename}" to your chat message`);
+
+⚠️  Found console statements in: ./finalTest.js
+25:console.log("Final test of your sample:");
+26:console.log("Length:", yourExactSample.length);
+29:console.log("Starts with [:", yourExactSample.trim().startsWith('['));
+30:console.log("Ends with ]:", yourExactSample.trim().endsWith(']'));
+35:    console.log("✅ SUCCESS: Your sample actually WORKS!");
+36:    console.log("Parsed successfully, array length:", parsed.length);
+37:    console.log("Post content preview:", parsed[0].postContent.substring(0, 100));
+39:    console.log("❌ FAILED: Your sample fails");
+40:    console.log("Error:", error.message);
+46:        console.log("Problem at position:", pos);
+
+⚠️  Found console statements in: ./fire-and-forget-endpoint.js
+9:  console.log("🚀 apiAndJobRoutes.js: /run-post-batch-score-v2 endpoint hit (FIRE-AND-FORGET)");
+14:    console.log("⚠️ Fire-and-forget not enabled, falling back to synchronous processing");
+23:    console.error("❌ Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
+51:    console.log(`🎯 Starting fire-and-forget post scoring: jobId=${jobId}, stream=${stream}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}`);
+76:      console.error(`❌ Background post scoring failed for job ${jobId}:`, error.message);
+80:    console.error("❌ Fire-and-forget post scoring startup error:", error.message);
+105:  console.log(`🔄 Background post scoring started: ${jobId}`);
+116:        console.log(`✅ Resolved clientName='${options.clientNameQuery}' to clientId='${match.clientId}'`);
+122:    console.log(`📊 Processing ${clients.length} clients in stream ${stream}`);
+134:        console.log(`⏰ Job timeout reached (${maxJobHours} hours) - stopping gracefully`);
+
+⚠️  Found console statements in: ./fix-ai-response-formatting.js
+6:    console.log('🧹 Cleaning AI response...');
+7:    console.log(`📏 Raw response length: ${rawResponse.length} characters`);
+13:        console.log('🔍 Detected markdown JSON code block');
+16:        console.log('✅ Removed markdown formatting');
+18:        console.log('🔍 Detected generic markdown code block');
+21:        console.log('✅ Removed markdown formatting');
+27:    console.log(`📏 Cleaned response length: ${cleaned.length} characters`);
+28:    console.log(`📄 Cleaned response preview: "${cleaned.substring(0, 100)}..."`);
+41:console.log('🔍 TESTING JSON RESPONSE CLEANER');
+42:console.log('='.repeat(60));
+
+⚠️  Found console statements in: ./fix-json-structure-issue.js
+14:    console.log('🔧 FLATTENING NESTED JSON STRUCTURE...');
+21:            console.log(`   📋 Processing ${fieldName} (${flattened[fieldName].length} chars)`);
+33:                console.log(`   ✅ ${fieldName}: Reduced from ${leadData[fieldName].length} to ${simplified.length} chars`);
+36:                console.log(`   ⚠️  ${fieldName}: Could not parse as JSON, treating as text`);
+171:    console.log('🔍 VALIDATING JSON STRUCTURE...');
+196:        console.log('   ⚠️  POTENTIAL ISSUES FOUND:');
+197:        issues.forEach(issue => console.log(`      • ${issue}`));
+200:        console.log('   ✅ JSON structure looks clean');
+207:    console.log('🚀 PROCESSING LEAD FOR AI COMPATIBILITY...');
+208:    console.log('='.repeat(60));
+
+⚠️  Found console statements in: ./harvest-guy-wilson.js
+21:  console.log('🚀 Starting direct post harvesting for Guy Wilson...');
+30:      console.error('❌ ERROR: Missing PB_WEBHOOK_SECRET environment variable');
+34:    console.log(`🔍 Calling endpoint: ${endpointUrl}`);
+56:    console.log(`✅ Response status: ${response.status}`);
+57:    console.log(`✅ Response data: ${JSON.stringify(data, null, 2)}`);
+58:    console.log('🎉 Post harvesting completed for Guy Wilson!');
+61:    console.error(`❌ ERROR: ${error.message}`);
+63:      console.error(`Stack trace: ${error.stack}`);
+
+⚠️  Found console statements in: ./identify-failing-leads.js
+5:    console.log('🔍 LOCAL BATCH TEST: Identifying the 10 failing leads');
+6:    console.log('='.repeat(80));
+18:            console.log('   📡 Fetching leads from Airtable...');
+30:            console.log(`   📊 Fetched ${records.length} total leads from Airtable`);
+46:        console.log('1. 📊 Loading all leads from Airtable...');
+48:        console.log(`   ✅ Loaded ${allLeads.length} total leads`);
+60:        console.log(`\n2. 📋 Found ${Object.keys(leadsByClient).length} clients:`);
+62:            console.log(`   ${clientId}: ${leads.length} leads`);
+66:        console.log('\n3. 🧪 Testing each lead individually...');
+81:                console.log(`   Processing ${processedCount}/${totalLeads}: ${leadId} (Client: ${clientId})`);
+
+⚠️  Found console statements in: ./investigate-leads-status.js
+7:    console.log('🔍 INVESTIGATING LEAD STATUSES');
+8:    console.log('='.repeat(80));
+14:        console.log('\n1. 📊 Checking ALL lead statuses in Guy Wilson base...');
+26:        console.log(`   📋 Total leads found: ${allLeads.length}`);
+38:        console.log('\n2. 📈 Status Distribution:');
+40:            console.log(`   ${status}: ${records.length} leads`);
+44:                console.log(`      Examples:`);
+46:                    console.log(`         • ${record.get('Name')} (${record.get('Company')})`);
+49:                    console.log(`         ... and ${records.length - 3} more`);
+55:        console.log('\n3. 🎯 Looking for specific failing leads...');
+
+⚠️  Found console statements in: ./production-auth-setup.js
+13:    console.log('🔍 DIAGNOSING LOCAL VERTEX AI AUTHENTICATION SETUP');
+14:    console.log('='.repeat(80));
+24:    console.log('\n📋 LOCAL ENVIRONMENT VARIABLES:');
+27:            console.log(`   ✅ ${key}: ${value.substring(0, 50)}${value.length > 50 ? '...' : ''}`);
+29:            console.log(`   ❌ ${key}: NOT SET`);
+36:        console.log(`\n🔍 CHECKING SERVICE ACCOUNT FILE:`);
+40:                console.log(`   ✅ File exists: ${credentialsPath}`);
+41:                console.log(`   📊 File size: ${stats.size} bytes`);
+42:                console.log(`   📅 Modified: ${stats.mtime.toLocaleString()}`);
+49:                    console.log(`   ✅ Valid JSON format`);
+
+⚠️  Found console statements in: ./quick-airtable-test.js
+11:  console.log('🔍 Testing Airtable connectivity on staging...');
+19:    console.log('✅ Run lookup result:', result);
+21:    console.log('❌ Run lookup failed:', error.message);
+30:    console.log('✅ Client runs result:', result);
+32:    console.log('❌ Client runs failed:', error.message);
+
+⚠️  Found console statements in: ./raw-log-viewer-final.js
+35:    console.log('🔍 Fetching service list to find target service...');
+59:    console.log(`✅ Found service: ${targetService.service.name} (ID: ${targetService.service.id})`);
+68:        console.error('❌ RENDER_API_KEY not found in .env file.');
+75:        console.log(`🔍 Fetching raw logs for service: ${serviceId}`);
+76:        console.log('='.repeat(80));
+88:            console.log(`\n--- FETCHING PAGE ${pageCount} ---`);
+89:            console.log(`Requesting logs from ${startTime} to ${endTime}`);
+107:                    console.error(`❌ API Error: Status Code ${response.statusCode}`);
+108:                    console.error('Response:', response.data);
+116:                console.log(`✅ Received ${logCount} log entries in this page.`);
+
+⚠️  Found console statements in: ./raw-log-viewer-fixed.js
+38:    console.log('🔍 Fetching service list to find target service...');
+62:    console.log(`✅ Found service: ${targetService.service.name} (ID: ${targetService.service.id})`);
+72:        console.error('❌ RENDER_API_KEY not found in .env file.');
+79:        console.log(`🔍 Fetching raw logs for service: ${serviceId}`);
+80:        console.log('='.repeat(80));
+92:            console.log(`\n--- FETCHING PAGE ${pageCount} ---`);
+93:            console.log(`Requesting logs from ${startTime} to ${endTime}`);
+112:                console.error(`❌ API Error: Status Code ${response.statusCode}`);
+113:                console.error('Response:', response.data);
+121:            console.log(`✅ Received ${logCount} log entries in this page.`);
+
+⚠️  Found console statements in: ./raw-log-viewer.js
+35:        console.error('❌ RENDER_API_KEY not found in .env file.');
+39:    console.log(`🔍 Fetching raw logs for service: ${SERVICE_ID}`);
+40:    console.log('='.repeat(80));
+52:        console.log(`\n--- FETCHING PAGE ${pageCount} ---`);
+53:        console.log(`Requesting logs from ${startTime} to ${endTime}`);
+70:                console.error(`❌ API Error: Status Code ${response.statusCode}`);
+71:                console.error('Response:', response.data);
+79:            console.log(`✅ Received ${logCount} log entries in this page.`);
+82:                console.log('--- SAMPLE LOGS FROM THIS PAGE ---');
+85:                    console.log(`  [Sample ${index + 1}] Timestamp: ${log.timestamp}`);
+
+⚠️  Found console statements in: ./remote-env-test.js
+43:  console.log('🔍 Testing Backend (Render)...');
+44:  console.log('------------------------------');
+50:      console.log('✅ Backend is responding');
+51:      console.log(`📋 Response preview: ${response.body.substring(0, 100)}...`);
+55:        console.log('🔧 Backend appears to be loading configuration');
+58:      console.log(`⚠️  Backend responded with status: ${response.statusCode}`);
+61:    console.log(`❌ Backend test failed: ${error.message}`);
+62:    console.log('💡 This could indicate environment variable issues');
+67:  console.log('\n🔍 Testing Backend API Endpoints...');
+68:  console.log('-----------------------------------');
+
+⚠️  Found console statements in: ./reset-stuck-jobs.js
+6:    console.log('🔄 Attempting to reset stuck post scoring jobs...');
+10:        console.log('🔄 Resetting Guy Wilson post scoring job status...');
+12:        console.log('✅ Successfully reset Guy Wilson job status');
+15:        console.log('🔄 Resetting Dean Hobin post scoring job status...');
+17:        console.log('✅ Successfully reset Dean Hobin job status');
+19:        console.log('✅ All job statuses reset successfully');
+21:        console.error('❌ Error resetting job status:', error);
+25:    console.log('\nNOTE: In-memory locks will be cleared when you restart the server.');
+26:    console.log('If you\'re running locally, restart your server after running this script.');
+
+⚠️  Found console statements in: ./run-smart-resume.js
+6:    console.log('Triggering Smart Resume process...');
+19:    console.log('Response:', JSON.stringify(data, null, 2));
+22:    console.error('Error triggering Smart Resume:', error.message);
+29:    console.log('Smart Resume triggered successfully!');
+32:    console.error('Failed to trigger Smart Resume:', error);
+
+⚠️  Found console statements in: ./scripts/add-error-logging.js
+11:  console.log(`Processing: ${filePath}`);
+41:    if (inCatchBlock && (line.includes('console.error') || line.includes('log.error'))) {
+71:    console.log(`✅ Added error logging to ${addedCount} catch blocks in ${path.basename(filePath)}`);
+73:    console.log(`⏭️  No changes needed for ${path.basename(filePath)}`);
+82:  console.error('Usage: node add-error-logging.js <file-path>');
+87:  console.error(`File not found: ${filePath}`);
+92:console.log(`\nTotal catch blocks updated: ${count}`);
+
+⚠️  Found console statements in: ./scripts/add-remaining-error-logging.js
+128:  console.log(`\nProcessing: ${filePath}`);
+131:    console.log(`  SKIP: File not found`);
+194:    console.log(`  ✅ Added ${added} log statements`);
+196:    console.log(`  ✓ All catches already logged`);
+203:console.log('=== ADDING ERROR LOGGING TO REMAINING CATCH BLOCKS ===\n');
+215:console.log(`\n=== SUMMARY ===`);
+216:console.log(`Total added: ${totalAdded}`);
+217:console.log(`Total skipped (already logged): ${totalSkipped}`);
+218:console.log(`\nIMPORTANT: Review the changes and fix any async/await issues manually!`);
+
+⚠️  Found console statements in: ./scripts/add-route-error-logging-smart.js
+4: * Adds logRouteError to catch blocks with console.error/warn but no error logging
+11:  console.log(`Processing: ${filePath}`);
+46:        if (scanLine.includes('console.error') || scanLine.includes('console.warn')) {
+86:    console.log(`✅ Added error logging to ${addedCount} catch blocks in ${path.basename(filePath)}`);
+88:    console.log(`⏭️  No changes needed for ${path.basename(filePath)}`);
+91:  console.log(`Total catch blocks updated: ${addedCount}\n`);
+98:  console.error('Usage: node add-route-error-logging-smart.js <file-path>');
+106:  console.error('Error:', error.message);
+
+⚠️  Found console statements in: ./scripts/add-service-error-logging.js
+11:  console.log(`Processing: ${filePath}`);
+24:    if ((lines[i].includes('log.error') || lines[i].includes('logger.error') || lines[i].includes('console.error')) && 
+63:    console.log(`✅ Added error logging to ${addedCount} catch blocks in ${path.basename(filePath)}`);
+65:    console.log(`⏭️  No changes needed for ${path.basename(filePath)}`);
+74:  console.error('Usage: node add-service-error-logging.js <file-path>');
+79:  console.error(`File not found: ${filePath}`);
+84:console.log(`\nTotal catch blocks updated: ${count}`);
+
+⚠️  Found console statements in: ./scripts/airtable-warm/index.js
+45:  console.log('[warm] Starting Airtable warm ping via Client Master');
+58:    console.log(`[warm] Active clients: ${clients.length}, unique base IDs: ${baseIds.length}`);
+65:        console.log(`[warm] Ping success base=${baseId} table=${tableName} records=${count} timeMs=${ms}`);
+67:        console.error(`[warm] Ping failed base=${baseId} table=${tableName} error=${e.message}`);
+71:    console.log('[warm] Done');
+73:    console.error('[warm] Fatal error initializing warm pinger:', e.message);
+
+⚠️  Found console statements in: ./scripts/analysis/analyze-json-length.js
+7:    console.log('🔍 ANALYZING JSON LENGTH VS AI MODEL LIMITS');
+8:    console.log('='.repeat(80));
+9:    console.log('Hypothesis: AI scoring is truncating JSON due to length limits');
+14:        console.log('\n1. 📊 Fetching the target lead...');
+21:        console.log(`   ✅ Lead: ${name} (${company})`);
+22:        console.log(`   📏 JSON Length: ${profileJSON.length} characters`);
+24:        console.log('\n2. 🤖 AI Model Limits Analysis:');
+35:        console.log('   📋 Model Context Limits:');
+38:            console.log(`      ${model}: ${limits.chars.toLocaleString()} chars - ${status}`);
+43:        console.log(`\n   🎯 Current Model: ${currentModel}`);
+
+⚠️  Found console statements in: ./scripts/analysis/analyze-lead-data.js
+10:        console.error('❌ Missing AIRTABLE_BASE_ID or AIRTABLE_API_KEY in environment variables');
+15:        console.log(`🔍 ANALYZING LEAD DATA FOR: ${PROBLEMATIC_LEAD_ID}`);
+16:        console.log('='.repeat(80));
+25:            console.error(`❌ Failed to fetch lead: ${response.status} ${response.statusText}`);
+27:            console.error('Error details:', errorText);
+34:        console.log('📋 LEAD RECORD FOUND');
+35:        console.log('📊 Record ID:', data.id);
+36:        console.log('⏰ Created Time:', data.createdTime);
+37:        console.log('\n📄 FIELD ANALYSIS:');
+38:        console.log('─'.repeat(60));
+
+⚠️  Found console statements in: ./scripts/analysis/analyze-position-2486.js
+7:    console.log('🔍 ANALYZING JSON AT POSITION 2486');
+8:    console.log('='.repeat(80));
+9:    console.log('Target: recHkqPSMfdQWyqus - Position 2486, Line 43, Column 29');
+14:        console.log('\n1. 📊 Fetching lead data...');
+18:        console.log(`   📏 JSON Length: ${profileJSON.length} characters`);
+21:            console.log(`   ❌ JSON is shorter than position 2486!`);
+25:        console.log('\n2. 🎯 Character Analysis at Position 2486:');
+38:        console.log(`   📄 Context (±${context} chars):`);
+39:        console.log(`   Before: "${beforeTarget}"`);
+40:        console.log(`   Target char: "${targetChar}" (ASCII: ${targetChar.charCodeAt(0)})`);
+
+⚠️  Found console statements in: ./scripts/analysis/analyze-smart-resume-logs.js
+186:  console.log(`\n${colors.cyan}=== Smart Resume Process Analysis ===${colors.reset}`);
+187:  console.log(`${colors.gray}Analyzing ${analysis.totalLogs} log lines${colors.reset}\n`);
+190:  console.log(`${colors.cyan}Process Summary:${colors.reset}`);
+191:  console.log(`  Total Relevant Logs: ${analysis.smartResumeLogCount}`);
+192:  console.log(`  Job IDs Found: ${analysis.jobIds.length > 0 ? analysis.jobIds.join(', ') : 'None'}`);
+193:  console.log(`  Process Started: ${analysis.events.startEvents.length > 0 ? `${colors.green}YES${colors.reset}` : `${colors.red}NO${colors.reset}`}`);
+194:  console.log(`  Heartbeats: ${analysis.events.heartbeatEvents.length}`);
+195:  console.log(`  Completed Successfully: ${analysis.events.completionEvents.length > 0 ? `${colors.green}YES${colors.reset}` : `${colors.gray}No${colors.reset}`}`);
+196:  console.log(`  Errors Detected: ${analysis.events.errorEvents.length > 0 ? `${colors.red}YES (${analysis.events.errorEvents.length})${colors.reset}` : `${colors.green}NO${colors.reset}`}`);
+200:    console.log(`\n${colors.cyan}Lock Events:${colors.reset}`);
+
+⚠️  Found console statements in: ./scripts/analyze-unlogged-catches.js
+61:console.log('=== ROUTES WITH UNLOGGED CATCHES ===\n');
+64:  console.log(`${r.file}: ${r.unlogged} unlogged (${r.logged}/${r.total} logged)`);
+65:  console.log(`  Lines: ${r.unloggedLines.join(', ')}`);
+68:console.log('\n=== SERVICES WITH UNLOGGED CATCHES ===\n');
+71:  console.log(`${r.file}: ${r.unlogged} unlogged (${r.logged}/${r.total} logged)`);
+72:  console.log(`  Lines: ${r.unloggedLines.join(', ')}`);
+81:console.log(`\n=== SUMMARY ===`);
+82:console.log(`Total catches: ${totalCatches}`);
+83:console.log(`Logged: ${totalLogged}`);
+84:console.log(`Unlogged: ${totalUnlogged}`);
+
+⚠️  Found console statements in: ./scripts/apify-harvest-level2/index.js
+31:  console.log(`[harvest-level2] Triggering orchestrator: ${url}`);
+47:    console.error(`[harvest-level2] FAILED status=${resp.status} timeMs=${elapsed} body=`, data);
+53:  console.log(`[harvest-level2] Success processed=${processed} timeMs=${elapsed}`);
+56:    console.log(`[harvest-level2] Summaries: ${brief}`);
+58:  console.log('[harvest-level2] Done');
+62:  console.error('[harvest-level2] Error:', err.message);
+
+⚠️  Found console statements in: ./scripts/buildLhManualIndex.js
+5:console.log('[lhManualIndex] Rebuilt index:', status());
+
+⚠️  Found console statements in: ./scripts/buildManualTaxonomy.js
+34:    console.error('Manual file missing at', MANUAL_PATH);
+55:  console.log(`[taxonomy] Updated. Total items: ${merged.length}. Added: ${added.length}.`);
+57:    console.log('New sample:', added.slice(0,5));
+
+⚠️  Found console statements in: ./scripts/checkLeadScoringFields.js
+36:      console.error('Usage: node scripts/checkLeadScoringFields.js --client <Client-ID> --ids <comma-separated-record-ids>');
+40:    if (!base) { console.error(`No Airtable base for client ${client}`); process.exit(1); }
+42:    console.log(`Client: ${client}`);
+43:    console.log(`Record IDs: ${ids.join(', ')}`);
+66:    console.log('\nResults:');
+69:        console.log(`- ${r.id} -> ERROR: ${r.error}`);
+71:        console.log(`- ${r.id} | URL: ${r.url}`);
+72:        console.log(`  DateScored: ${r.dateScored} | Score: ${r.score} | HasEvaluation: ${r.hasAiEvaluation}`);
+73:        console.log(`  TopScoringPost (preview): ${r.topScoringPostPreview.replace(/\n/g, ' ')}`);
+76:    console.log('\nJSON:');
+
+⚠️  Found console statements in: ./scripts/client-by-client-processing.js
+23:    console.log(`[${timestamp}] [${level}] ${message}`);
+320:        console.error(error);
+328:        console.error('Unhandled pipeline error:', error);
+
+⚠️  Found console statements in: ./scripts/crawlLhManual.js
+3:crawl().then(r=>{ console.log('[lh:crawl] Done', r); }).catch(e=>{ console.error('[lh:crawl] Failed', e); process.exit(1); });
+
+⚠️  Found console statements in: ./scripts/daily-client-alerts/index.js
+21:            console.log(`⚠️  No Airtable Base ID for client ${clientData.clientId}`);
+33:        console.log(`Checking scored leads for ${clientData.clientId} since ${yesterdayISO}`);
+45:        console.log(`📊 Client ${clientData.clientId}: ${scoredCount} leads scored in last 24 hours`);
+49:        console.error(`❌ Error checking scored leads for ${clientData.clientId}:`, error);
+61:        console.log("🔍 Starting daily client scoring activity check...");
+67:        console.log(`Found ${scoringClients.length} active clients with scoring service (level >= 2)`);
+84:                console.log(`\n📋 Checking client: ${client.clientName} (${client.clientId})`);
+102:                    console.log(`✅ ${client.clientName}: ${scoredCount} leads scored - no alert needed`);
+105:                    console.log(`⚠️  ${client.clientName}: 0 leads scored - alert needed`);
+111:                        console.log(`📧 Sending no-leads alert to ${client.clientEmailAddress}`);
+
+⚠️  Found console statements in: ./scripts/deploy-to-render.js
+14:  console.error('❌ RENDER_API_KEY not found in environment');
+15:  console.log('Set it in your .env file or environment variables');
+47:    console.log('🚀 Deploying to Render Production...\n');
+50:    console.log(`📍 Current branch: ${currentBranch}`);
+51:    console.log(`🎯 Service ID: ${SERVICE_ID}`);
+52:    console.log(`🔗 Service URL: https://pb-webhook-server.onrender.com\n`);
+70:    console.log('⏳ Triggering deployment...');
+75:      console.log('\n✅ Deployment triggered successfully!\n');
+76:      console.log(`Deploy ID: ${deploy.id}`);
+77:      console.log(`Status: ${deploy.status}`);
+
+⚠️  Found console statements in: ./scripts/find-constants-usage.js
+64:console.log('Scanning for files that need migration...\n');
+110:console.log('\n=== HIGH PRIORITY FILES ===');
+112:    console.log(`\n📁 ${item.file}`);
+113:    item.issues.forEach(issue => console.log(`   ⚠️  ${issue}`));
+116:console.log('\n=== MEDIUM PRIORITY FILES ===');
+118:    console.log(`\n📁 ${item.file}`);
+119:    item.issues.forEach(issue => console.log(`   ⚠️  ${issue}`));
+122:console.log('\n=== LOW PRIORITY FILES ===');
+124:    console.log(`\n📁 ${item.file}`);
+125:    item.issues.forEach(issue => console.log(`   ⚠️  ${issue}`));
+
+⚠️  Found console statements in: ./scripts/fire-and-forget-batch-processing.js
+22:    console.log(`[${timestamp}] [${level}] ${message}`);
+
+⚠️  Found console statements in: ./scripts/fire-and-forget-client-by-client.js
+16:    console.log(`[${timestamp}] [${level}] ${message}`);
+205:        console.error('Fatal error:', error);
+
+⚠️  Found console statements in: ./scripts/killAllNode.js
+13:      console.log('No node.exe processes found.');
+21:      console.log('No other node.exe processes (only this script).');
+24:    console.log('Killing node PIDs (excluding self):', unique.join(', '));
+32:  console.log('Kill attempt complete.');
+34:    console.error('Failed to enumerate node.exe processes:', e.message);
+41:    console.log('Issued pkill -f node');
+43:    console.log('pkill returned non-zero (maybe no processes).');
+51:  console.log('Non-fatal exception during killAllNode:', e.message);
+55:  console.log('Non-fatal rejection during killAllNode:', e && e.message ? e.message : e);
+
+⚠️  Found console statements in: ./scripts/killPorts.js
+45:        console.log(`Timeout while checking port ${port}. Showing partial results (if any).`);
+64:        console.log('Timeout while identifying processes. Skipping detailed node.exe check.');
+80:      console.log(`Timeout while killing PID ${pid}`);
+96:  console.log(`\n${header}`);
+97:  console.log('PORT\tPIDS (LISTENING)');
+99:    console.log(`${r.port}\t${r.pids.length ? r.pids.join(',') : '- (free)'}`);
+106:  console.log('\nAll target ports already free. (Fast path)');
+114:        console.log(`Skip PID ${pid} on port ${row.port} (not node.exe)`);
+118:      console.log(`${ok ? 'Killed' : 'Failed'} PID ${pid} (port ${row.port})`);
+126:    console.log('\nSome ports still occupied (maybe not Node processes). Manual fallback:');
+
+⚠️  Found console statements in: ./scripts/lookupLeadRecIds.js
+38:      console.error('Usage: node scripts/lookupLeadRecIds.js --client <Client-ID> --urls <comma-separated-urls>');
+42:      console.error('Provide --urls or TARGET_URLS env (comma-separated).');
+48:      console.error(`No Airtable base for client ${client}`);
+52:    console.log(`Client: ${client}`);
+53:    console.log(`URLs: ${urls.join(', ')}`);
+89:    console.log('\nResults:');
+92:        console.log(`- ${r.url} -> NOT FOUND`);
+94:        console.log(`- ${r.url} -> ${r.id} | Status: ${r.fields[STATUS_FIELD] || ''} | Posts: ${r.fields.postsLen} | LastCheck: ${r.fields[LAST_CHECK_AT_FIELD] || ''}`);
+99:    console.log('\nJSON:');
+100:    console.log(JSON.stringify(results, null, 2));
+
+⚠️  Found console statements in: ./scripts/maintenance/backfillFullJSON.js
+8:  console.log("▶︎ Back-fill started…");
+40:      console.log(`✓ patched ${r.id}`);
+42:      console.error(`✗ ${r.id}: ${err.message}`);
+46:  console.log("✓ All done.");
+
+⚠️  Found console statements in: ./scripts/maintenance/env-sync.js
+40:  console.log('🔍 Environment Variable Status Check');
+41:  console.log('=====================================\n');
+43:  console.log('📋 BACKEND VARIABLES:');
+44:  console.log('---------------------');
+53:    console.log(`${status} ${varName} ${preview}`);
+56:  console.log('\n📋 FRONTEND VARIABLES:');
+57:  console.log('----------------------');
+64:    console.log(`${status} ${varName} ${preview}`);
+67:  console.log('\n🔧 DEPLOYMENT CHECKLIST:');
+68:  console.log('------------------------');
+
+⚠️  Found console statements in: ./scripts/post-score-level2/index.js
+62:  console.log(`[post-score-level2] Triggering: ${url}`);
+75:    console.error(`[post-score-level2] FAILED status=${resp.status} timeMs=${elapsed} body=`, data);
+83:  console.log(`[post-score-level2] Success processed=${processed} scored=${scored} timeMs=${elapsed}`);
+86:    console.log(`[post-score-level2] Clients: ${brief}`);
+88:  console.log('[post-score-level2] Done');
+92:  console.error('[post-score-level2] Error:', err.message);
+
+⚠️  Found console statements in: ./scripts/previewNextBatch.js
+29:      console.error('Usage: node scripts/previewNextBatch.js --client <Client-ID> [--limit N]');
+34:      console.error(`No Airtable base for client ${client}`);
+58:      console.log('No eligible leads found.');
+62:    console.log(`Client: ${client}`);
+63:    console.log(`Previewing up to ${limit} records:`);
+65:    out.forEach(o => console.log(`- ${o.id} | ${o.url} | Status: ${o.status}`));
+66:    console.log('\nJSON:');
+67:    console.log(JSON.stringify(out, null, 2));
+69:    console.error('Preview failed:', e.message);
+
+⚠️  Found console statements in: ./scripts/reset-front.js
+15:function info(msg){ console.log(`[reset-front] ${msg}`); }
+
+⚠️  Found console statements in: ./scripts/runRecordAdapterSimpleUpdater.js
+35:console.log('Updated all StructuredLogger instances in runRecordAdapterSimple.js');
+
+⚠️  Found console statements in: ./scripts/showRuns.js
+18:  if (!SECRET) return console.error('Missing PB_WEBHOOK_SECRET');
+19:  if (!CLIENT_ID) return console.error('Missing CLIENT_ID');
+22:    console.log('Base URL:', BASE_URL);
+28:      console.log('Run details:', JSON.stringify(j, null, 2));
+35:    console.log('Recent runs:', JSON.stringify(jc, null, 2));
+37:    console.error('Error:', e.message);
+
+⚠️  Found console statements in: ./scripts/simple-client-by-client.js
+17:    console.log(`[${timestamp}] [${level}] ${message}`);
+197:        console.error('Fatal error:', error);
+
+⚠️  Found console statements in: ./scripts/smart-resume-fixed.js
+13:console.log(`🔍 MODULE_DEBUG: Script loading started [${new Date().toISOString()}]`);
+17:    console.error(`🚨 UNCAUGHT_EXCEPTION: ${error.message}`);
+18:    console.error(`🚨 STACK: ${error.stack}`);
+23:    console.error(`🚨 UNHANDLED_REJECTION: ${reason}`);
+24:    console.error(`🚨 PROMISE: ${promise}`);
+28:console.log(`🔍 ERROR_HANDLERS: Installed global error handlers`);
+32:console.log(`🔍 MODULE_DEBUG: dotenv configured, NODE_ENV: ${process.env.NODE_ENV}`);
+33:console.log(`🔍 MODULE_DEBUG: SMART_RESUME_RUN_ID: ${process.env.SMART_RESUME_RUN_ID}`);
+36:console.log(`🔍 FORCE_DEBUG: About to force-call main() directly [${new Date().toISOString()}]`);
+38:console.log(`🔍 TRACE: About to load run ID generator`);
+
+⚠️  Found console statements in: ./scripts/smokeApifyInline.js
+24:    console.error('Missing PB_WEBHOOK_SECRET');
+28:    console.error('Missing CLIENT_ID');
+32:    console.error('Missing TARGET_URLS (comma-separated)');
+36:  console.log('Running inline Apify smoke test...');
+37:  console.log('Base URL:', BASE_URL);
+38:  console.log('Client ID:', CLIENT_ID);
+39:  console.log('Target URLs:', TARGET_URLS);
+40:  if (ACTOR_ID) console.log('Actor override:', ACTOR_ID);
+41:  if (BUILD) console.log('Build override:', BUILD);
+60:    console.log('Status:', resp.status);
+
+⚠️  Found console statements in: ./scripts/smokeApifyProcessClient.js
+20:    console.error('Missing PB_WEBHOOK_SECRET');
+24:    console.error('Missing CLIENT_ID');
+28:  console.log('Running process-client smoke...');
+29:  console.log('Base URL:', BASE_URL);
+30:  console.log('Client ID:', CLIENT_ID);
+31:  console.log('Max Batches:', MAX_BATCHES);
+45:    console.log('Status:', resp.status);
+46:    console.log('Response:', JSON.stringify(data, null, 2));
+50:    console.log('process-client smoke test completed.');
+52:    console.error('Error:', e.message);
+
+⚠️  Found console statements in: ./scripts/smokeHelp.js
+18:  console.log(`PASS ${label}`);
+22:  console.error(`FAIL ${label}:`, err?.message || err);
+75:    console.warn('WARN no topic id discovered from start-here; skipping topic check');
+84:    console.warn('WARN help/context check skipped or failed:', e?.message || e);
+88:    console.error(`\nSmoke tests completed with ${failures} failure(s).`);
+91:    console.log('\nAll Help API smoke tests passed.');
+96:  console.error('UNCAUGHT smoke error:', e);
+
+⚠️  Found console statements in: ./scripts/timeout-test.js
+4:console.log(`[TIMEOUT-TEST] Starting at ${new Date().toISOString()}`);
+5:console.log('[TIMEOUT-TEST] This script will run for 6 minutes to test timeout limits');
+16:    console.log(`[TIMEOUT-TEST] Still running... ${minutes}m ${seconds}s elapsed`);
+20:        console.log(`[TIMEOUT-TEST] SUCCESS! Completed full 6 minutes at ${new Date().toISOString()}`);
+21:        console.log('[TIMEOUT-TEST] This proves there is NO 5-minute timeout limit');
+30:    console.log(`[TIMEOUT-TEST] 🎯 CRITICAL: Passed 5-minute mark! (${currentElapsed}s elapsed)`);
+31:    console.log('[TIMEOUT-TEST] If you see this, there is NO 5-minute hard limit');
+37:    console.log(`[TIMEOUT-TEST] ❌ TERMINATED by SIGTERM after ${currentElapsed} seconds`);
+38:    console.log(`[TIMEOUT-TEST] Started: ${new Date(startTime).toISOString()}`);
+39:    console.log(`[TIMEOUT-TEST] Killed: ${new Date().toISOString()}`);
+
+⚠️  Found console statements in: ./scripts/update-repository.js
+30:console.log('File updated successfully.');
+
+⚠️  Found console statements in: ./scripts/verify-status-consistency.js
+43:console.log('=== Verifying Status Consistency ===\n');
+50:        console.warn(`⚠️ File not found: ${filePath}`);
+74:    console.log(`✓ Checked ${filePath}`);
+77:console.log('\n=== Results ===\n');
+80:    console.log('✅ All status values are consistent with Airtable schema!');
+82:    console.log(`❌ Found ${issues.length} inconsistencies:\n`);
+84:        console.log(`File: ${issue.file}:${issue.line}`);
+85:        console.log(`Pattern: "${issue.pattern}"`);
+86:        console.log(`Line: ${issue.content}`);
+87:        console.log('---');
+
+⚠️  Found console statements in: ./search-for-91.js
+46:        console.error('❌ RENDER_API_KEY not found in environment variables');
+51:        console.log('🔍 SEARCHING FOR "91" IN RENDER LOGS');
+52:        console.log('='.repeat(80));
+70:        console.log('📋 Available services:');
+71:        services.forEach(s => console.log(`   - ${s.name} (${s.id})`));
+77:            console.log('❌ Could not find Daily Batch Lead Scoring service');
+78:            console.log('Available services:', services.map(s => s.name));
+82:        console.log(`📋 Searching in: ${batchService.name} (${batchService.id})`);
+91:        console.log(`📅 Time range: ${startTime} to ${endTime}`);
+110:            console.log(`📊 Retrieved ${actualLogs.length} log entries`);
+
+⚠️  Found console statements in: ./search-rec-ids.js
+44:        console.error('❌ RENDER_API_KEY not found in environment variables');
+65:            console.log(`\n🔍 Checking ${service.name} (${service.id})...`);
+80:                console.log(`❌ Failed to get details for ${service.name}`);
+90:        console.log(`🔍 Searching for Rec IDs in logs from ${sixHoursAgo.toISOString()} to ${now.toISOString()}`);
+110:                console.log(`📋 Searching through ${actualLogs.length} log entries for ${service.name}...\n`);
+147:                    console.log(`🎯 FOUND ${foundRecIds.length} MATCHING REC IDs IN ${service.name}:`);
+149:                        console.log(`\n${index + 1}. Rec ID: ${found.recId}`);
+150:                        console.log(`   Time: ${found.timestamp}`);
+151:                        console.log(`   Context: ${found.message}`);
+156:                    console.log(`\n📊 FOUND ${batchSummaries.length} BATCH SUMMARIES IN ${service.name}:`);
+
+⚠️  Found console statements in: ./send-sample-email.js
+9:    console.log("📧 Sending Sample Email Test");
+10:    console.log("============================\n");
+18:            console.log("❌ No clients with email addresses found");
+24:        console.log(`📋 Sending test email to: ${testClient.clientName}`);
+25:        console.log(`📧 Email address: ${testClient.clientEmailAddress}`);
+26:        console.log(`🔄 BCC: guyralphwilson@gmail.com`);
+27:        console.log(`📝 Template: no-leads-scored-today`);
+28:        console.log("");
+37:            console.log("✅ Sample email sent successfully!");
+38:            console.log(`📨 Mailgun ID: ${result.mailgunId}`);
+
+⚠️  Found console statements in: ./simple-log-test.js
+6:    console.log("--- Starting Simple, Targeted Render Log Test ---");
+10:        console.error('❌ RENDER_API_KEY not found in .env file.');
+20:        console.log(`\n1. Finding service ID for "${serviceName}"...`);
+33:            console.error(`❌ Could not find a service named "${serviceName}"`);
+38:        console.log(`   ✅ Found Service ID: ${serviceId}`);
+39:        console.log(`   ✅ Found Owner ID: ${ownerId}`);
+41:        console.error('   ❌ Error fetching services:', error.message);
+51:    console.log(`\n2. Defined test time window (UTC):`);
+52:    console.log(`   Start: ${startTime}`);
+53:    console.log(`   End:   ${endTime}`);
+
+⚠️  Found console statements in: ./simpleTest.js
+9:console.log("=== SIMPLE QUOTE TEST ===");
+10:console.log("Sample:", sample);
+14:    console.log("✅ Worked!");
+16:    console.log("❌ Failed:", error.message);
+17:    console.log("Position:", error.message.match(/position (\d+)/)?.[1]);
+25:console.log("\\n=== ACTUAL PATTERN TEST ===");
+26:console.log("Pattern:", actualPattern);
+30:    console.log("✅ Actual pattern worked!");
+32:    console.log("❌ Actual pattern failed:", error.message);
+
+⚠️  Found console statements in: ./solution-max-tokens.js
+7:    console.log('🎯 CONFIRMED: MAX_TOKENS ISSUE FOUND!');
+8:    console.log('='.repeat(80));
+10:    console.log('📋 ISSUE ANALYSIS:');
+11:    console.log('   • finishReason: "MAX_TOKENS" in ALL tests');
+12:    console.log('   • thoughtsTokenCount: 999 (close to 1000 limit)');
+13:    console.log('   • parts array is EMPTY when hitting limit');
+14:    console.log('   • This causes "Cannot read properties of undefined (reading \'0\')" error');
+16:    console.log('\n🔍 THE PROBLEM:');
+17:    console.log('   Your maxOutputTokens is set to 1000, but Gemini needs more tokens');
+18:    console.log('   to generate the complete JSON response for complex profiles.');
+
+⚠️  Found console statements in: ./src/domain/models/validators.js
+92:      console.warn(`No transition rules defined for process type: ${processType}`);
+175:      console.warn(`Invalid date format for lastCheckTime: ${lastCheckTime}`);
+182:      console.warn(`Future date detected for lastCheckTime: ${lastCheckTime}`);
+
+⚠️  Found console statements in: ./temp/airtableService.new.js
+15:        console.error("ERROR: clientService.initializeClientsBase function is missing");
+18:    console.error("CRITICAL ERROR: Failed to load clientService module:", e.message);
+40:    console.log("Airtable Service: Using existing base connection");
+47:      console.error("ERROR: clientService is not properly loaded or initializeClientsBase is not a function");
+48:      console.error("clientService type:", typeof clientService);
+49:      console.error("clientService functions available:", 
+65:      console.log("FALLBACK: Directly initializing Airtable base connection");
+67:      console.log("FALLBACK: Successfully initialized Airtable base directly");
+71:        console.log("Attempting to use clientService.initializeClientsBase()...");
+73:        console.log("Airtable Service: Successfully got base connection from clientService");
+
+⚠️  Found console statements in: ./test-job-metrics.js
+23:  console.log('\n=== Testing Metric Validation ===\n');
+35:  console.log('Input metrics:');
+36:  console.log(testMetrics);
+40:  console.log('\nValid metrics after validation:');
+41:  console.log(validMetrics);
+43:  console.log('\nInvalid metrics:');
+44:  console.log(invalidMetrics);
+47:  console.log('\nTesting all valid status values...');
+52:    console.log(`Status '${status}': ${valid.Status === status ? 'Valid ✓' : 'Invalid ✗'}`);
+56:  console.log('\nTesting invalid status values...');
+
+⚠️  Found console statements in: ./test-render-api.js
+11:console.log('🔍 Testing Render API...');
+12:console.log(`Owner ID: ${RENDER_OWNER_ID || 'NOT SET'}`);
+13:console.log(`Service ID: ${RENDER_SERVICE_ID}`);
+14:console.log(`API Key: ${RENDER_API_KEY ? `${RENDER_API_KEY.substring(0, 10)}...` : 'NOT SET'}`);
+15:console.log('');
+20:    console.log('📡 Testing CORRECT Render API endpoint...');
+32:    console.log(`URL: ${logsUrl.replace(RENDER_OWNER_ID, 'OWNER_ID')}`);
+33:    console.log('');
+42:    console.log('✅ Logs fetched successfully!');
+43:    console.log(`Logs count: ${logsResponse.data.logs?.length || 0}`);
+
+⚠️  Found console statements in: ./test-run-tracking/test-run-tracking.js
+21:  console.log('Starting run tracking test on staging...');
+22:  console.log(`Server URL: ${STAGING_URL}`);
+23:  console.log(`Test client: ${TEST_CLIENT_ID || 'All clients'}`);
+24:  console.log(`Lead limit: ${TEST_LIMIT}`);
+28:    console.log('\n== STEP 1: Triggering lead scoring job ==');
+43:    console.log('API Response:', result);
+50:    console.log(`Job ID: ${jobId}`);
+53:    console.log('\n== STEP 2: Monitoring job status ==');
+54:    console.log('Waiting for job to initialize...');
+63:      console.log(`Check #${attempts}...`);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-current-job.js
+8:console.log(`🔍 Checking logs for job: ${jobId}`);
+9:console.log('Looking for our enhanced logging markers...\n');
+28:        console.log(`📋 Found ${relevantLines.length} relevant log entries:`);
+29:        relevantLines.forEach(line => console.log(line));
+31:        console.log('⚠️  No job-specific logs found yet.');
+32:        console.log('Job may still be starting or logs not ready.');
+36:        console.log('\n📄 Recent general logs:');
+38:            if (line.trim()) console.log(line);
+43:    console.log('❌ Could not fetch logs directly.');
+44:    console.log('Job is likely still running. Expected completion in 5-10 minutes.');
+
+⚠️  Found console statements in: ./tests/diagnostics/check-guy-wilson-posts.js
+10:    console.log('📊 Checking Guy-Wilson client post data...');
+15:      console.error('❌ Guy-Wilson client not found!');
+20:    console.log(`✅ Found client: ${client.clientName} (${client.clientId})`);
+25:      console.error('❌ Could not get client base!');
+30:    console.log('📋 Checking view "Leads with Posts not yet scored"...');
+34:      console.log('Available views:');
+36:        console.log(`- ${view.name}`);
+41:      console.log(`View "Leads with Posts not yet scored" exists: ${viewExists ? 'YES' : 'NO'}`);
+43:      console.error('❌ Error checking views:', viewError.message);
+47:    console.log('\n🔍 METHOD 1: Using view "Leads with Posts not yet scored"');
+
+⚠️  Found console statements in: ./tests/diagnostics/check-job-logs.js
+6:console.log(`🔍 Checking logs for job: ${jobId}`);
+28:    console.log('Raw response:', data.substring(0, 200) + '...');
+34:        console.log('❌ Invalid logs response');
+47:      console.log(`\n📋 Found ${jobLogs.length} relevant log entries:`);
+50:        console.log('⚠️  No logs found yet. Job may still be starting...');
+51:        console.log('Try again in 30-60 seconds.');
+57:        console.log(`[${timestamp}] ${log.message}`);
+61:      console.error('❌ Error parsing logs:', error.message);
+67:  console.error('❌ Request error:', error.message);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-logs-aest.js
+55:        console.error('❌ RENDER_API_KEY not found in environment variables');
+60:        console.log('🇦🇺 AEST-AWARE LOG CHECKER');
+61:        console.log('='.repeat(50));
+67:        console.log(`📅 Current time:`);
+68:        console.log(`   AEST: ${nowAest.toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })}`);
+69:        console.log(`   UTC:  ${nowUtc.toISOString()}`);
+75:        console.log(`\n🔍 Searching logs from:`);
+76:        console.log(`   AEST: ${thirtySixHoursAgoAest.toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })}`);
+77:        console.log(`   UTC:  ${thirtySixHoursAgoUtc.toISOString()}`);
+78:        console.log(`   to`);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-multiple-failing-leads.js
+7:    console.log('🔍 CHECKING MULTIPLE FAILING LEADS FOR PATTERNS');
+8:    console.log('='.repeat(80));
+9:    console.log('Goal: Find patterns in failed leads vs successful ones');
+14:        console.log('\n1. 📊 Fetching leads with different statuses...');
+26:        console.log(`   📋 Total leads analyzed: ${allLeads.length}`);
+72:        console.log('\n2. 📈 Status Distribution:');
+73:        console.log(`   ❌ Failed: ${categories.failed.length}`);
+74:        console.log(`   ✅ Successful: ${categories.successful.length}`);
+75:        console.log(`   ⏳ Pending: ${categories.pending.length}`);
+76:        console.log(`   ❓ Other: ${categories.other.length}`);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-production-data.js
+7:    console.log('🔍 CHECKING ACTUAL PRODUCTION DATA');
+8:    console.log('='.repeat(80));
+13:        console.log('\n1. 📊 Looking for leads with "Failed" text in AI Score field...');
+21:        console.log(`Found ${failedScoreLeads.length} leads with "Failed" in AI Score field`);
+24:            console.log('\n   📋 SAMPLE FAILED AI SCORES:');
+31:                console.log(`   ${index + 1}. ${name}`);
+32:                console.log(`      🎯 AI Score: "${aiScore}"`);
+33:                console.log(`      📊 Status: "${status}"`);
+34:                console.log(`      📅 Date: ${dateScored}`);
+35:                console.log('');
+
+⚠️  Found console statements in: ./tests/diagnostics/check-render-logs.js
+44:        console.error('❌ RENDER_API_KEY not found in environment variables');
+45:        console.log('Please add your Render API key to your .env file');
+50:        console.log('🔍 Fetching ALL Render services...\n');
+67:            console.error('❌ Failed to fetch services:', servicesResponse.data);
+75:            console.log(`Found ${services.length} services`);
+78:            console.log(`Found ${services.length} services`);
+80:            console.error('❌ Unexpected services response format:', services);
+84:        console.log('📋 Services to analyze:');
+89:            console.log(`  ${index + 1}. ${serviceName} (${serviceType}) - ${serviceId}`);
+91:        console.log('\n' + '='.repeat(80));
+
+⚠️  Found console statements in: ./tests/diagnostics/check-render-timestamp.js
+9:console.log('🕐 TIMESTAMP REFERENCE FOR RENDER LOGS');
+10:console.log('='.repeat(50));
+11:console.log('Current time:', now.toISOString());
+12:console.log('56 minutes ago:', minutesAgo56.toISOString());
+13:console.log('');
+14:console.log('📋 Search patterns for Render logs:');
+15:console.log(`Time range: ${minutesAgo56.toISOString().slice(11, 16)} to ${now.toISOString().slice(11, 16)}`);
+16:console.log('');
+17:console.log('🔍 Look for these patterns:');
+18:console.log('- 🚀 apiAndJobRoutes.js: /run-post-batch-score-v2');
+
+⚠️  Found console statements in: ./tests/diagnostics/check-service-status.js
+40:        console.log('📊 Getting detailed service information...\n');
+58:            console.log('🌐 SERVICE STATUS REPORT');
+59:            console.log('========================\n');
+61:            console.log(`📝 Name: ${service.name}`);
+62:            console.log(`🔗 Service ID: ${service.id}`);
+63:            console.log(`📈 Status: ${service.status || 'Unknown'}`);
+64:            console.log(`🖥️  Type: ${service.type || 'Unknown'}`);
+65:            console.log(`🌍 Region: ${service.region || 'Unknown'}`);
+69:                console.log(`🌐 URL: ${details.url || 'Not available'}`);
+70:                console.log(`🐳 Environment: ${details.env || 'Unknown'}`);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-smart-resume-debug-logs.js
+7:  console.log('Fetching logs from Render to check our debug markers...');
+29:    console.log(`\n=== Found ${unscoredCheckLines.length} UNSCORED CHECK logs ===`);
+30:    unscoredCheckLines.forEach(line => console.log(line));
+32:    console.log(`\n=== Found ${postDecisionLines.length} POST SCORING DECISION logs ===`);
+33:    postDecisionLines.forEach(line => console.log(line));
+35:    console.log(`\n=== Found ${overrideLines.length} POST SCORING OVERRIDE logs ===`);
+36:    overrideLines.forEach(line => console.log(line));
+38:    console.log(`\n=== Found ${guyWilsonLines.length} Guy-Wilson specific logs ===`);
+39:    guyWilsonLines.forEach(line => console.log(line));
+42:    console.error('Error:', error.message);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-smart-resume-logs.js
+71:      console.error(`${colors.red}Error parsing logs response: ${parseError.message}${colors.reset}`);
+72:      console.error(`Raw response: ${result.substring(0, 200)}...`);
+76:    console.error(`${colors.red}Error fetching logs: ${error.message}${colors.reset}`);
+93:    console.error(`${colors.red}Error fetching Smart Resume status: ${error.message}${colors.reset}`);
+258:  console.log(`\n${colors.cyan}=== Smart Resume Process Analysis ===${colors.reset}`);
+259:  console.log(`${colors.gray}Environment: ${useProduction ? 'PRODUCTION' : 'STAGING'}${colors.reset}`);
+260:  console.log(`${colors.gray}Analyzing logs from last ${minutes} minutes${colors.reset}\n`);
+263:  console.log(`${colors.cyan}Current Status:${colors.reset}`);
+266:    console.log(`  Lock Active: ${lockStatus.locked ? `${colors.green}YES${colors.reset}` : `${colors.gray}No${colors.reset}`}`);
+269:      console.log(`  Current Job: ${colors.yellow}${lockStatus.currentJobId}${colors.reset}`);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-timing-data.js
+8:    console.log('⏱️ CHECKING EXECUTION TIMING FROM AIRTABLE LOGS');
+9:    console.log('='.repeat(60));
+21:        console.log('\n🔍 Available fields in first record:');
+26:                console.log(`   📄 ${field}: ${JSON.stringify(fields[field]).substring(0, 100)}...`);
+37:        console.log(`\n📊 Found ${allExecutions.length} recent executions with timing data:\n`);
+43:            console.log(`${index + 1}. 🏢 ${clientName}`);
+47:                console.log(`   📄 Execution Log Preview: ${executionLog.substring(0, 150)}...`);
+57:                    console.log(`   ⏱️ Duration: ${seconds}s`);
+60:                        console.log(`   🚨 LONG EXECUTION: ${seconds}s (${Math.round(seconds/60)}m)`);
+62:                        console.log(`   ⚠️ Getting long: ${seconds}s`);
+
+⚠️  Found console statements in: ./tests/diagnostics/check-today-logs.js
+44:        console.error('❌ RENDER_API_KEY not found in environment variables');
+66:            console.error('❌ Failed to get service details:', detailsResponse.data);
+71:        console.log(`✅ Got ownerId: ${ownerId}`);
+77:        console.log(`🔍 Checking logs for pb-webhook-server from ${yesterdayUTC.toISOString()} to ${now.toISOString()} (including AEST logs from yesterday UTC)`);
+97:                console.log(`📋 Found ${actualLogs.length} log entries for today\n`);
+112:                    console.log(`🎯 Found ${batchLogs.length} batch-related log entries:\n`);
+117:                        console.log(`${index + 1}. [${timestamp}] ${message.substring(0, 200)}${message.length > 200 ? '...' : ''}\n`);
+120:                    console.log('📊 No batch-related logs found for today');
+131:                    console.log(`\n📈 SUMMARY LOGS (${summaryLogs.length} found):`);
+135:                        console.log(`\n${index + 1}. [${timestamp}]`);
+
+⚠️  Found console statements in: ./tests/diagnostics/debug-complete.js
+5:console.log('🔍 COMPLETE_DEBUG: Starting comprehensive debugging');
+8:console.log('🔍 ENV_CHECK: PB_WEBHOOK_SECRET =', process.env.PB_WEBHOOK_SECRET ? `SET (${process.env.PB_WEBHOOK_SECRET.length} chars)` : 'MISSING');
+9:console.log('🔍 ENV_CHECK: NODE_ENV =', process.env.NODE_ENV || 'undefined');
+10:console.log('🔍 ENV_CHECK: Working directory =', process.cwd());
+16:console.log('🔍 PATH_CHECK: Script path =', scriptPath);
+17:console.log('🔍 PATH_CHECK: Script exists =', fs.existsSync(scriptPath));
+21:    console.log('🔍 PATH_CHECK: Script size =', stats.size, 'bytes');
+22:    console.log('🔍 PATH_CHECK: Script modified =', stats.mtime);
+26:console.log('🔍 SYNTAX_CHECK: Testing Node.js syntax...');
+31:    console.log('🔍 SYNTAX_CHECK: ✅ Syntax is valid');
+
+⚠️  Found console statements in: ./tests/diagnostics/debug-dean-service-level.js
+5:    console.log('🔍 Checking Dean Hobin service level configuration...');
+8:    console.log(`Found ${activeClients.length} active clients total`);
+13:      console.log('❌ Dean Hobin not found in active clients list');
+14:      console.log('Available clients:', activeClients.map(c => ({ id: c.clientId, name: c.clientName, status: c.status })));
+18:    console.log('✅ Found Dean Hobin client:');
+19:    console.log('  Client ID:', deanClient.clientId);
+20:    console.log('  Client Name:', deanClient.clientName);
+21:    console.log('  Status:', deanClient.status);
+22:    console.log('  Service Level (raw):', deanClient.serviceLevel);
+23:    console.log('  Service Level (parsed):', Number(deanClient.serviceLevel));
+
+⚠️  Found console statements in: ./tests/diagnostics/debug-field-comparison.js
+5:    console.log('🔍 Comparing field structures between Guy Wilson and Dean Hobin bases...');
+12:      console.log('❌ Could not connect to one or both bases');
+16:    console.log('✅ Connected to both bases');
+19:    console.log('\n📋 Getting Guy Wilson field structure...');
+24:    console.log('📋 Getting Dean Hobin field structure...');
+28:    console.log(`\n📊 FIELD COMPARISON:`);
+29:    console.log(`Guy Wilson fields: ${guyFields.length}`);
+30:    console.log(`Dean Hobin fields: ${deanFields.length}`);
+41:    console.log(`\n🔍 CRITICAL FIELD CHECK:`);
+49:      console.log(`  ${field}: ${status}`);
+
+⚠️  Found console statements in: ./tests/diagnostics/debug-field-names.js
+17:console.log('\n===== CONFIGURED TABLE/FIELD NAMES =====');
+18:console.log(`airtableService.CLIENT_RUN_RESULTS_TABLE = ${airtableService.CLIENT_RUN_RESULTS_TABLE}`);
+19:console.log(`Expected: ${EXPECTED.CLIENT_RUN_RESULTS_TABLE}`);
+20:console.log(`Match: ${airtableService.CLIENT_RUN_RESULTS_TABLE === EXPECTED.CLIENT_RUN_RESULTS_TABLE ? '✅ YES' : '❌ NO'}`);
+25:    console.log(`\n===== CHECKING FIELD NAMES FOR CLIENT: ${clientId} =====`);
+28:    console.log('\nResolving client...');
+31:      console.error(`Client not found: ${clientId}`);
+34:    console.log(`Found client: ${client.clientName} (${clientId}), baseId=${client.airtableBaseId}`);
+37:    console.log('\nConnecting to client base...');
+39:    console.log('Base connection established');
+
+⚠️  Found console statements in: ./tests/diagnostics/debug-gemini-error.js
+8:    console.log('🔍 DEBUGGING GEMINI ERROR');
+9:    console.log('='.repeat(80));
+18:        console.log(`📏 Profile JSON length: ${profileJSON.length} characters`);
+35:        console.log('\n🧪 TEST 1: Simple test to verify Gemini works...');
+38:            console.log('✅ Simple test successful');
+40:            console.log('❌ Simple test failed:', error.message);
+44:        console.log('\n🧪 TEST 2: Progressive size testing...');
+52:            console.log(`\n   Testing size: ${size} characters (prompt: ${testPrompt.length})`);
+62:                        console.log(`   ✅ Success - Response: ${responseText.substring(0, 50)}...`);
+64:                        console.log('   ⚠️  Response structure issue - no parts');
+
+⚠️  Found console statements in: ./tests/diagnostics/debug-posts-integrity.js
+5:    console.log('🔍 Checking Posts Content integrity for Dean Hobin...');
+9:      console.log('❌ Could not connect to Dean Hobin base');
+13:    console.log('✅ Connected to Dean Hobin base');
+28:    console.log(`\n📊 Found ${doneRecords.length} records with Posts Harvest Status = "Done"`);
+45:        console.log(`  ${index + 1}. ✅ ${firstName} ${lastName}: Has content (${String(postsContent).length} chars) ${dateScored ? '- ALREADY SCORED' : '- READY FOR SCORING'}`);
+53:        console.log(`  ${index + 1}. ❌ ${firstName} ${lastName}: EMPTY Posts Content (${linkedinUrl})`);
+57:    console.log(`\n📈 SUMMARY:`);
+58:    console.log(`  - Records with "Done" status: ${doneRecords.length}`);
+59:    console.log(`  - With Posts Content: ${withContent} ✅`);
+60:    console.log(`  - Empty Posts Content: ${emptyContent} ❌`);
+
+⚠️  Found console statements in: ./tests/diagnostics/debug-scoring-process.js
+7:    console.log('🔍 DEBUGGING SCORING PROCESS WITH DETAILED LOGGING');
+8:    console.log('='.repeat(80));
+9:    console.log('Target: recHkqPSMfdQWyqus');
+10:    console.log('Goal: Track JSON through entire scoring pipeline');
+15:        console.log('\n1. 📊 STEP 1: Fetching lead data...');
+22:        console.log(`   ✅ Lead: ${name} (${company})`);
+23:        console.log(`   📏 Original JSON Length: ${profileJSON ? profileJSON.length : 0} characters`);
+26:            console.log('   ❌ No Profile Full JSON found!');
+30:        console.log('\n2. 🧬 STEP 2: JSON Validation Check...');
+34:            console.log('   ✅ JSON parses successfully');
+
+⚠️  Found console statements in: ./tests/diagnostics/find-big-batch.js
+55:        console.error('❌ RENDER_API_KEY not found in environment variables');
+60:        console.log('🔍 SEARCHING ALL SERVICES FOR BIG BATCH RUN (43+ LEADS)');
+61:        console.log('='.repeat(60));
+67:        console.log(`📅 Current time: ${nowAest.toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })} AEST`);
+73:        console.log(`🎯 Searching from: ${thismorningAest.toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })} AEST`);
+74:        console.log(`   (${thismmorningUtc.toISOString()} UTC)`);
+91:            console.error('❌ Failed to fetch services:', servicesResponse.data);
+99:            console.log(`\\n📋 Found ${services.length} services to check`);
+102:            console.log(`\\n📋 Found ${services.length} services to check`);
+104:            console.error('❌ Unexpected services response format:', services);
+
+⚠️  Found console statements in: ./tests/diagnostics/find-production-leads.js
+4:    console.log('🎯 FOCUSED ANALYSIS: Finding the specific 96 leads processed in production');
+5:    console.log('='.repeat(80));
+15:        console.log('1. 📊 Finding leads marked "To Be Scored" (the 96 being processed)...');
+28:        console.log(`   ✅ Found ${records.length} leads with "To Be Scored" status`);
+31:            console.log('❌ No leads found with "To Be Scored" status');
+32:            console.log('   This might mean:');
+33:            console.log('   - The filter formula is wrong');
+34:            console.log('   - The field name is different');
+35:            console.log('   - All leads have been processed since last run');
+49:        console.log('\n2. 🔍 Analyzing the "To Be Scored" leads for potential issues...');
+
+⚠️  Found console statements in: ./tests/runIdService.test.js
+8:const originalConsoleLog = console.log;
+9:console.log = jest.fn();
+13:  console.log = originalConsoleLog;
+
+⚠️  Found console statements in: ./tests/test-16k-tokens.js
+16:            console.log('🔧 Initializing Airtable connection for Guy-Wilson...');
+28:            console.log('✅ Airtable connection initialized successfully');
+31:            console.error('❌ Failed to initialize Airtable:', error.message);
+38:            console.log('🔧 Initializing Vertex AI...');
+52:            console.log('✅ Vertex AI initialized successfully');
+55:            console.error('❌ Failed to initialize Vertex AI:', error.message);
+62:            console.log(`🔍 Fetching lead: ${leadId}...`);
+79:            console.log(`✅ Found lead: ${lead.firstName} ${lead.lastName} (${lead.company})`);
+80:            console.log(`   Email: ${lead.email}`);
+81:            console.log(`   Status: ${lead.scoringStatus}`);
+
+⚠️  Found console statements in: ./tests/test-ai-scoring-local.js
+6:    console.log('🧪 LOCAL AI SCORING TEST');
+7:    console.log('='.repeat(40));
+8:    console.log('Testing one failing lead locally to see exactly where it breaks\n');
+12:        console.log('1. 📊 Getting failing lead...');
+14:        console.log(`   ✅ Got: ${lead.fields['First Name']} ${lead.fields['Last Name']}`);
+17:        console.log('\n2. 🔍 Parsing profile data...');
+20:        console.log(`   ✅ Profile parsed successfully`);
+21:        console.log(`   📊 Bio: ${(profile.about || '').length} chars`);
+22:        console.log(`   📊 Headline: "${profile.headline}"`);
+23:        console.log(`   📊 Experience: ${profile.experience?.length} jobs`);
+
+⚠️  Found console statements in: ./tests/test-airtable-credentials.js
+6:  console.log('🧪 Testing Airtable credentials...');
+11:      console.log('❌ AIRTABLE_API_KEY not found locally');
+16:      console.log('❌ MASTER_CLIENTS_BASE_ID not found locally');
+20:    console.log('🔑 Using AIRTABLE_API_KEY:', process.env.AIRTABLE_API_KEY.substring(0, 10) + '...');
+21:    console.log('🗄️  Using MASTER_CLIENTS_BASE_ID:', process.env.MASTER_CLIENTS_BASE_ID);
+30:    console.log('📋 Testing Apify Runs table access...');
+35:    console.log('✅ LOCAL: Airtable connection works! Found', records.length, 'records');
+38:    console.log('\n🎯 DIAGNOSIS: Local Airtable works, but staging fails');
+39:    console.log('   → Staging server has different/expired AIRTABLE_API_KEY');
+40:    console.log('   → Need to update environment variables on Render');
+
+⚠️  Found console statements in: ./tests/test-airtable-field-validator.js
+16:console.log('===============================================');
+17:console.log('AIRTABLE FIELD VALIDATOR - UNIT TEST');
+18:console.log('===============================================');
+30:  console.log('\n✅ All tests completed!\n');
+34:  console.log('\n📋 Testing validateFieldNames function...');
+44:  console.log(`✓ Valid field validation result: ${validResult.success ? 'PASS' : 'FAIL'}`);
+54:  console.log(`✓ Invalid field validation result: ${!invalidResult.success ? 'PASS' : 'FAIL'}`);
+55:  console.log(`  - Error count: ${invalidResult.errors.length}`);
+56:  console.log(`  - First error: ${invalidResult.errors[0]}`);
+66:  console.log(`✓ Mixed field validation with allowUnknown=true result: ${mixedResult.success ? 'PASS' : 'FAIL'}`);
+
+⚠️  Found console statements in: ./tests/test-airtable-service-boundaries.js
+19:  console.log('---------------------------------------------');
+20:  console.log('TESTING SERVICE LAYER DIRECTLY');
+21:  console.log('---------------------------------------------');
+27:    console.log('Initializing airtableService...');
+29:    console.log('Initialization result:', initResult);
+32:    console.log('\nGetting all clients...');
+34:    console.log(`Retrieved ${clients.length} clients`);
+37:    console.log('\nSample clients:');
+40:      console.log(`- ${client.clientId}: ${client.clientName} (${client.status})`);
+44:    console.log('\nTesting run ID generation:');
+
+⚠️  Found console statements in: ./tests/test-alert-simulation.js
+9:    console.log("🎭 Simulating Daily Client Alerts System");
+10:    console.log("========================================\n");
+17:        console.log(`📋 Found ${scoringClients.length} active clients with scoring service\n`);
+39:            console.log(`🎭 SCENARIO: ${scenario.name}`);
+40:            console.log("=" + "=".repeat(scenario.name.length + 10));
+56:                    console.log(`✅ ${client.clientName}: ${client.scoredLeads24h} leads - OK`);
+61:                        console.log(`🚨 ${client.clientName}: 0 leads - WOULD SEND EMAIL to ${client.clientEmailAddress}`);
+64:                        console.log(`⚠️  ${client.clientName}: 0 leads - No email address configured`);
+69:            console.log(`\n📊 Summary:`);
+70:            console.log(`   Clients with activity: ${results.clientsWithScoring}`);
+
+⚠️  Found console statements in: ./tests/test-all-operations.js
+26:                console.log(`\n=== ${description} ===`);
+27:                console.log(`Status: ${res.statusCode}`);
+30:                    console.log('✅ SUCCESS - 202 Accepted');
+32:                    console.log('❌ FAILED');
+37:                    console.log('JobId:', parsed.jobId || 'N/A');
+39:                    console.log('Response:', responseData.substring(0, 200));
+47:            console.error(`Error testing ${description}:`, error);
+64:    console.log('🧪 Testing all three operations with correct authentication...\n');
+102:            console.error(`Failed to test ${test.description}:`, error.message);
+106:    console.log(`\n📊 SUMMARY: ${successCount}/3 operations working correctly`);
+
+⚠️  Found console statements in: ./tests/test-api-endpoints.js
+65:    console.log('🧪 Testing API endpoints...\n');
+70:        console.log(`${status} ${endpoint}`);
+71:        console.log(`   Status: ${result.status}, JSON: ${result.isJson || false}`);
+72:        if (result.error) console.log(`   Error: ${result.error}`);
+73:        console.log('');
+76:    console.log('🎯 Test complete! All endpoints should return JSON with status < 400');
+79:runTests().catch(console.error);
+
+⚠️  Found console statements in: ./tests/test-api-service.js
+19:    console.log('🧪 Testing createLead API service function...');
+20:    console.log('📤 Test data:', testLeadData);
+24:    console.log('✅ SUCCESS: Lead created via API service!');
+25:    console.log('📋 Response:', result);
+26:    console.log('🔍 Field mapping check:');
+27:    console.log(`   • ID: ${result.id}`);
+28:    console.log(`   • Spaced format - First Name: ${result['First Name']}`);
+29:    console.log(`   • CamelCase format - firstName: ${result.firstName}`);
+30:    console.log(`   • LinkedIn URL: ${result.linkedinProfileUrl || result['LinkedIn Profile URL']}`);
+33:    console.log('❌ FAILED:', error.message);
+
+⚠️  Found console statements in: ./tests/test-apify-table.js
+7:    console.log('🧪 TESTING APIFY TABLE WITH GUY WILSON');
+8:    console.log('='.repeat(50));
+16:        console.log('\n1. 📋 Testing Apify table access...');
+18:        console.log('✅ Apify table accessible');
+21:        console.log('\n2. ➕ Creating test Apify run record...');
+33:        console.log('✅ Test record created:', createdRecord.id);
+34:        console.log('   Run ID:', createdRecord.get('Run ID'));
+35:        console.log('   Client ID:', createdRecord.get('Client ID'));
+36:        console.log('   Status:', createdRecord.get('Status'));
+39:        console.log('\n3. 🔍 Testing run ID lookup (webhook simulation)...');
+
+⚠️  Found console statements in: ./tests/test-batch-small.js
+63:    console.log('🧪 Testing batch scoring with small lead count...\n');
+72:        console.log(`\n${'='.repeat(60)}`);
+73:        console.log(`🔍 ${test.description}`);
+74:        console.log(`📊 Limit: ${test.limit} leads`);
+75:        console.log(`${'-'.repeat(40)}`);
+81:            console.log(`📡 Calling: ${url}`);
+86:            console.log(`\n📈 Response Status: ${response.statusCode}`);
+87:            console.log(`⏱️  Duration: ${duration}ms`);
+90:                console.log(`⚠️  JSON Parse Error: ${response.parseError}`);
+91:                console.log(`📄 Raw Response (first 500 chars):`);
+
+⚠️  Found console statements in: ./tests/test-client-run-caching.js
+14:  console.log('\n=== Client Run Record Caching Test ===\n');
+15:  console.log(`Using test run ID: ${TEST_RUN_ID}`);
+16:  console.log(`Using test client ID: ${TEST_CLIENT_ID}`);
+20:    console.log('\nStep 1: Creating initial client run record...');
+22:    console.log(`Created record with ID: ${record1.id}`);
+26:    console.log(`Cached record ID: ${cachedId1 || 'not cached'}`);
+29:      console.log('✅ Record ID was correctly cached');
+31:      console.log('❌ Record ID was not cached correctly');
+35:    console.log('\nStep 2: Attempting to create the same record again...');
+37:    console.log(`Retrieved record with ID: ${record2.id}`);
+
+⚠️  Found console statements in: ./tests/test-client-run-records.js
+13:  console.log('Testing client run record creation and updates with consistent run IDs...\n');
+21:  console.log(`Base Run ID: ${baseRunId}`);
+30:  console.log('Initializing Airtable service...');
+34:  console.log('Creating job tracking record...');
+36:  console.log(`Job tracking record created with ID: ${jobRecord.id}`);
+40:    console.log(`\nProcessing client ${client.id}...`);
+43:    console.log(`Creating client run record for ${client.id}...`);
+45:    console.log(`Client run record created with ID: ${clientRecord.id}`);
+46:    console.log(`Run ID stored in record: ${clientRecord.get('Run ID')}`);
+50:    console.log(`Expected client run ID: ${expectedClientRunId}`);
+
+⚠️  Found console statements in: ./tests/test-client-workflow.js
+7:    console.log('🧪 Testing client-by-client workflow...');
+12:    console.log(`Found ${clients.length} clients on stream 1:`);
+13:    clients.forEach(c => console.log(`  - ${c.clientName} (Level: ${c.serviceLevel})`));
+15:    console.log('\n✅ Client filtering works! Now you have two options:');
+16:    console.log('1. Use scripts/fire-and-forget-batch-processing.js (all operations for all clients)');
+17:    console.log('2. Use scripts/simple-client-by-client.js (client-by-client workflow)');
+20:test().catch(console.error);
+
+⚠️  Found console statements in: ./tests/test-connectivity.js
+6:    console.log('Testing basic API connectivity...');
+12:    console.log('Success! API is reachable:', response.data);
+14:    console.error('Error connecting to API:');
+15:    console.error('Status:', error.response?.status);
+16:    console.error('Data:', error.response?.data);
+17:    console.error('Message:', error.message);
+20:      console.error('Connection refused - server may be down');
+22:      console.error('Connection timed out - server may be slow or unavailable');
+
+⚠️  Found console statements in: ./tests/test-create-lead.js
+17:    console.log('🧪 Testing POST /api/linkedin/leads endpoint...');
+18:    console.log('📤 Sending test data:', JSON.stringify(testLead, null, 2));
+38:            console.log(`\n📥 Response Status: ${res.statusCode}`);
+44:                    console.log('✅ SUCCESS: Lead created successfully!');
+45:                    console.log('📋 Created Lead Details:');
+46:                    console.log(`   • ID: ${response.id}`);
+47:                    console.log(`   • Name: ${response.firstName} ${response.lastName}`);
+48:                    console.log(`   • LinkedIn URL: ${response.linkedinProfileUrl}`);
+49:                    console.log(`   • Source: ${response.source}`);
+50:                    console.log(`   • Status: ${response.status}`);
+
+⚠️  Found console statements in: ./tests/test-date-formats.js
+7:    console.log('🧪 Testing Date field format for Airtable...');
+22:        console.log('📋 Current Date Scored value:');
+23:        console.log(`   Raw value: ${JSON.stringify(leadRecord.fields['Date Scored'])}`);
+24:        console.log(`   Type: ${typeof leadRecord.fields['Date Scored']}`);
+34:        console.log('\n🧪 Testing different date formats:');
+38:            console.log(`\n--- Test ${i + 1} ---`);
+39:            console.log(`Format: ${JSON.stringify(format)} (${typeof format})`);
+56:                console.log(`✅ Success! Stored as: ${JSON.stringify(result)} (${typeof result})`);
+62:                console.log(`❌ Failed: ${error.message}`);
+67:        console.error('❌ Test failed:', error.message);
+
+⚠️  Found console statements in: ./tests/test-date-scored-fix.js
+8:    console.log('🧪 Testing Date Scored field update on failed scoring...');
+28:                    console.log(`✅ Found lead recHkqPSMfdQWyqus in client: ${client.clientId}`);
+38:            console.log('❌ Lead recHkqPSMfdQWyqus not found in any client');
+43:        console.log('📋 Current field values:');
+44:        console.log(`   Scoring Status: ${leadRecord.fields['Scoring Status'] || 'Not set'}`);
+45:        console.log(`   Date Scored: ${leadRecord.fields['Date Scored'] || 'Not set'}`);
+48:        console.log('🚀 Running batch scoring...');
+51:        console.log('📊 Scoring result:', result);
+61:            console.log('📋 Updated field values:');
+62:            console.log(`   Scoring Status: ${updatedRecord.fields['Scoring Status'] || 'Not set'}`);
+
+⚠️  Found console statements in: ./tests/test-date-scored-simple.js
+9:    console.log('🧪 Testing Date Scored field update on failed scoring...');
+17:        console.log('Available Airtable environment variables:');
+18:        console.log(`AIRTABLE_API_KEY: ${airtableApiKey ? '✅ Set' : '❌ Not set'}`);
+19:        console.log(`AIRTABLE_BASE_ID: ${process.env.AIRTABLE_BASE_ID ? '✅ Set' : '❌ Not set'}`);
+20:        console.log(`MASTER_CLIENTS_BASE_ID: ${process.env.MASTER_CLIENTS_BASE_ID ? '✅ Set' : '❌ Not set'}`);
+26:            console.log('❌ No AIRTABLE_BASE_ID found. Cannot proceed with test.');
+27:            console.log('To run this test, you need to either:');
+28:            console.log('1. Set AIRTABLE_BASE_ID in your .env file, or');
+29:            console.log('2. Manually specify the base ID where lead recHkqPSMfdQWyqus exists');
+33:        console.log(`Using base ID: ${baseId}`);
+
+⚠️  Found console statements in: ./tests/test-dean-harvest-debug.js
+5:    console.log('🧪 Triggering test harvest for Dean Hobin with debug logging...');
+14:    console.log('📤 Sending request to:', url);
+15:    console.log('📤 Payload:', payload);
+30:          console.log('\n📥 Response Status:', res.statusCode);
+33:            console.log('📥 Response Data:', JSON.stringify(result, null, 2));
+36:              console.log('\n✅ Test harvest initiated successfully!');
+37:              console.log(`🔍 Watch for webhook logs containing run ID: ${result.runId}`);
+38:              console.log('🔍 Look for [DEBUG] PBPostsSync entries in staging logs');
+40:              console.log('\n❌ Test harvest failed:', result);
+44:            console.log('📥 Raw Response:', data);
+
+⚠️  Found console statements in: ./tests/test-debug-logging.js
+7:    console.log('🧪 Testing Batch Scorer Debug Logging...\n');
+11:        console.log('📝 Test 1: Initializing Gemini client...');
+19:        console.log('✅ Gemini client initialized successfully');
+22:        console.log('\n📝 Test 2: Testing Gemini response metadata extraction...');
+36:        console.log('🚀 Calling Gemini API with test prompt...');
+67:        console.log('🎯 BATCH_SCORER_DEBUG:', JSON.stringify(debugInfo, null, 2));
+88:        console.log('🔍 RESPONSE_ANALYSIS:', JSON.stringify(responseAnalysis, null, 2));
+91:        console.log('\n📝 Test 3: Testing JSON parsing and error handling...');
+94:            console.log('✅ JSON parsed successfully');
+95:            console.log(`✅ Parsed ${parsedJson.length} objects`);
+
+⚠️  Found console statements in: ./tests/test-direct-scoring.js
+8:    console.log('🎯 DIRECT SCORING FLOW TEST');
+9:    console.log('='.repeat(80));
+10:    console.log('Goal: Test Gemini directly with failing lead data to identify issue');
+16:        console.log('\n1. 📊 Fetching failing lead data...');
+22:        console.log(`   ❌ Failing Lead: ${name}`);
+23:        console.log(`   📏 JSON Length: ${profileJSON ? profileJSON.length : 0} characters`);
+26:            console.log('   ❌ No Profile Full JSON found!');
+34:            console.log('   ✅ JSON parses successfully locally');
+36:            console.log('   ❌ JSON Parse Error locally:', parseError.message);
+41:        console.log('\n2. 🤖 Setting up Gemini client...');
+
+⚠️  Found console statements in: ./tests/test-direct-update.js
+8:    console.log('🧪 Testing direct Date Scored field update...');
+15:            console.log('❌ Missing required environment variables');
+22:        console.log('🔍 Looking for lead recHkqPSMfdQWyqus...');
+30:            console.log('❌ Lead recHkqPSMfdQWyqus not found');
+35:        console.log(`✅ Found lead recHkqPSMfdQWyqus`);
+38:        console.log('📋 Current field values:');
+39:        console.log(`   Scoring Status: ${leadRecord.fields['Scoring Status'] || 'Not set'}`);
+40:        console.log(`   Date Scored: ${leadRecord.fields['Date Scored'] || 'Not set'}`);
+44:        console.log(`🚀 Updating Date Scored field to: ${todayDate}`);
+53:        console.log('✅ Successfully updated the Date Scored field!');
+
+⚠️  Found console statements in: ./tests/test-double-suffix-prevention.js
+47:console.log("🧪 Testing runIdUtils.addClientSuffix to prevent double suffixes\n");
+52:  console.log(`Test ${index + 1}: ${testCase.name}`);
+53:  console.log(`  Input: runId="${testCase.runId}", clientId="${testCase.clientId}"`);
+56:  console.log(`  Result: "${result}"`);
+57:  console.log(`  Expected: "${testCase.expectedResult}"`);
+60:    console.log("  ✅ PASS\n");
+62:    console.log("  ❌ FAIL\n");
+69:  console.log("✅ All tests passed - our fix for double client suffixes is working correctly!");
+71:  console.log("❌ Some tests failed - we need to improve our implementation.");
+76:console.log("\nChecking real-world problematic run ID:");
+
+⚠️  Found console statements in: ./tests/test-e2e-run-id-handling.js
+19:  console.log('=== Testing End-to-End Run ID Handling ===\n');
+25:    console.log(`Generated base run ID: ${baseRunId}`);
+28:    console.log('\n1. Creating job tracking record...');
+30:    console.log(`Job tracking record created with ID: ${jobRecord.id}`);
+31:    console.log(`Run ID in record: ${jobRecord.get('Run ID')}`);
+39:    console.log('\n2. Processing multiple clients...');
+41:      console.log(`\nProcessing client ${client.id}...`);
+44:      console.log(`Creating client run record...`);
+46:      console.log(`Client run record created with ID: ${clientRecord.id}`);
+47:      console.log(`Run ID in record: ${clientRecord.get('Run ID')}`);
+
+⚠️  Found console statements in: ./tests/test-email-system.js
+10:    console.log("🧪 Testing Email Notification System");
+11:    console.log("=====================================\n");
+15:        console.log("📋 Test 1: Reading clients with email fields...");
+19:        console.log(`✅ Found ${activeClients.length} active clients`);
+20:        console.log(`📧 ${clientsWithEmail.length} have email addresses configured`);
+23:        console.log("\nClients with email addresses:");
+25:            console.log(`  - ${client.clientName} (${client.clientId}): ${client.clientEmailAddress}`);
+29:        console.log("\n📧 Test 2: Reading email templates...");
+31:        console.log(`✅ Found ${templates.length} active email templates`);
+34:            console.log(`  - ${template.templateName} (ID: ${template.templateId})`);
+
+⚠️  Found console statements in: ./tests/test-email.js
+6:    console.log('Testing Mailgun email...');
+33:    console.log('Email result:', result);
+36:testEmail().catch(console.error);
+
+⚠️  Found console statements in: ./tests/test-enhanced-batchscorer.js
+13:    console.log('🧪 Testing Enhanced BatchScorer Debugging...\n');
+26:                json: (data) => console.log(`📡 Mock response ${code}:`, data),
+27:                send: (data) => console.log(`📡 Mock response ${code}:`, data)
+40:        console.log('🎯 Testing with problem lead recHkqPSMfdQWyqus...');
+41:        console.log('📊 Looking for debugging output:\n');
+42:        console.log('   🎯 BATCH_SCORER_DEBUG: (batch metadata)');
+43:        console.log('   🔍 RESPONSE_ANALYSIS: (response completeness)');
+44:        console.log('   🚨 JSON_PARSE_FAILED: (if truncation occurs)\n');
+48:        console.log('\n✅ BatchScorer test completed!');
+49:        console.log('📊 Result:', JSON.stringify(result, null, 2));
+
+⚠️  Found console statements in: ./tests/test-enhanced-slim-lead.js
+7:    console.log('🧪 TESTING ENHANCED slimLead WITH REAL PROBLEMATIC DATA');
+8:    console.log('='.repeat(70));
+16:        console.error('❌ Missing AIRTABLE_BASE_ID or AIRTABLE_API_KEY');
+21:        console.log(`📥 Fetching lead ${problematicLeadId} from Airtable...`);
+36:        console.log('✅ Lead data fetched successfully');
+37:        console.log('\n📊 BEFORE PROCESSING:');
+42:                console.log(`   ${key}: ${value.length} characters`);
+46:        console.log(`   Total large field size: ${totalOriginalSize} characters`);
+49:        console.log('\n🔧 PROCESSING WITH ENHANCED slimLead...');
+52:        console.log('\n📊 AFTER PROCESSING:');
+
+⚠️  Found console statements in: ./tests/test-exact-production-flow.js
+17:            console.log('🔧 Initializing EXACT production dependencies...');
+49:            console.log('✅ Production dependencies initialized');
+50:            console.log(`   Model: ${geminiModelId}`);
+51:            console.log(`   Project: ${projectId}`);
+52:            console.log(`   Location: ${location}`);
+56:            console.error('❌ Failed to initialize:', error.message);
+63:            console.log('🔍 Fetching the exact failing lead: recHkqPSMfdQWyqus...');
+71:            console.log(`✅ Found lead: ${lead['First Name']} ${lead['Last Name']} (${lead.Company})`);
+72:            console.log(`   Email: ${lead.Email}`);
+73:            console.log(`   Current Status: ${lead['Scoring Status']}`);
+
+⚠️  Found console statements in: ./tests/test-failed-leads-diagnostic.js
+34:            console.log('��� Initializing Airtable connection for Guy-Wilson...');
+46:            console.log('✅ Airtable connection initialized successfully');
+49:            console.error('❌ Failed to initialize Airtable:', error.message);
+56:            console.log('��� Initializing Vertex AI...');
+70:            console.log('✅ Vertex AI initialized successfully');
+73:            console.error('❌ Failed to initialize Vertex AI:', error.message);
+80:            console.log('🔍 Searching for leads with "To Be Scored" status...');
+105:            console.log("📊 Found " + leads.length + " leads with 'To Be Scored' status");
+109:            console.error('❌ Failed to find unprocessed leads:', error.message);
+118:            console.log(`🧪 Testing lead: ${lead.email || 'No email'} (${lead.company || 'No company'})`);
+
+⚠️  Found console statements in: ./tests/test-failing-leads.js
+4:    console.log('🎯 TESTING THE 10 FAILING LEADS: Status = "To Be Scored"');
+5:    console.log('='.repeat(80));
+14:        console.log('1. 📊 Loading the 10 leads that are stuck with "To Be Scored" status...');
+27:        console.log(`   ✅ Found ${records.length} leads with "To Be Scored" status`);
+30:            console.log('✅ Great! No leads are stuck with "To Be Scored" status');
+31:            console.log('   This means the issue may have been resolved');
+35:        console.log('\n2. 🔍 Analyzing each failing lead in detail...');
+36:        console.log('─'.repeat(80));
+44:            console.log(`\n🔍 LEAD ${i + 1}/${records.length}: ${record.id}`);
+45:            console.log('─'.repeat(50));
+
+⚠️  Found console statements in: ./tests/test-fire-and-forget-endpoint.js
+7:    console.log('🧪 TESTING FIRE-AND-FORGET POST SCORING ENDPOINT');
+8:    console.log('='.repeat(50));
+15:        console.log('\n1. 🚀 Testing fire-and-forget endpoint...');
+16:        console.log(`   URL: ${baseUrl}${endpoint}`);
+17:        console.log(`   Params: clientId=Guy-Wilson, dryRun=true, limit=2, stream=1`);
+30:        console.log(`\n📊 Response received in ${responseTime}ms`);
+31:        console.log(`   Status: ${response.status}`);
+32:        console.log(`   Status Text: ${response.statusText}`);
+35:        console.log('\n📋 Response body:');
+36:        console.log(JSON.stringify(result, null, 2));
+
+⚠️  Found console statements in: ./tests/test-fire-and-forget-fields.js
+7:    console.log('🧪 TESTING FIRE-AND-FORGET FIELDS');
+8:    console.log('='.repeat(50));
+16:        console.log('\n1. 📋 Checking all fire-and-forget fields exist...');
+21:            console.log('\n📝 Current fields in Clients table:');
+22:            fields.forEach((field, i) => console.log(`${i+1}. ${field}`));
+47:            console.log('\n🔍 Checking for expected fire-and-forget fields...');
+52:                    console.log(`✅ ${expectedField}`);
+54:                    console.log(`❌ MISSING: ${expectedField}`);
+60:                console.log('\n🎉 ALL FIRE-AND-FORGET FIELDS FOUND!');
+62:                console.log('\n⚠️  Some fields are missing - check field names');
+
+⚠️  Found console statements in: ./tests/test-fire-and-forget-functions.js
+14:    console.log('🧪 TESTING FIRE-AND-FORGET FUNCTIONS');
+15:    console.log('='.repeat(50));
+21:        console.log('\n1. 🆔 Testing job ID generation...');
+23:        console.log(`✅ Generated job ID: ${jobId}`);
+26:        console.log('\n2. 🔄 Testing processing stream...');
+29:        console.log(`✅ Processing stream set and retrieved: ${stream}`);
+32:        console.log('\n3. 🚀 Testing job status - STARTED...');
+37:        console.log('\n4. 📋 Testing get job status...');
+39:        console.log('✅ Job status retrieved:', JSON.stringify(status, null, 2));
+42:        console.log('\n5. ⚡ Testing status update - RUNNING...');
+
+⚠️  Found console statements in: ./tests/test-fire-and-forget-harvesting.js
+15:    console.error('❌ PB_WEBHOOK_SECRET environment variable required');
+20:  console.log(`🧪 Testing fire-and-forget post harvesting: ${url}`);
+36:    console.log(`\n📊 Response Details:`);
+37:    console.log(`   Status: ${response.status}`);
+38:    console.log(`   Response Time: ${responseTime}ms`);
+39:    console.log(`   Data:`, JSON.stringify(data, null, 2));
+42:      console.log(`\n✅ SUCCESS: Fire-and-forget post harvesting started!`);
+43:      console.log(`   Job ID: ${data.jobId}`);
+44:      console.log(`   Stream: ${data.stream}`);
+45:      console.log(`   Background processing initiated`);
+
+⚠️  Found console statements in: ./tests/test-fire-and-forget-lead-scoring.js
+14:  console.log(`🧪 Testing fire-and-forget lead scoring: ${url}`);
+29:    console.log(`\n📊 Response Details:`);
+30:    console.log(`   Status: ${response.status}`);
+31:    console.log(`   Response Time: ${responseTime}ms`);
+32:    console.log(`   Data:`, JSON.stringify(data, null, 2));
+35:      console.log(`\n✅ SUCCESS: Fire-and-forget lead scoring started!`);
+36:      console.log(`   Job ID: ${data.jobId}`);
+37:      console.log(`   Stream: ${data.stream}`);
+38:      console.log(`   Limit: ${data.limit}`);
+39:      console.log(`   Background processing initiated`);
+
+⚠️  Found console statements in: ./tests/test-gemini-simple.js
+4:console.log("Testing Gemini configuration:");
+5:console.log("- vertexAIClient:", !!geminiConfig.vertexAIClient);
+6:console.log("- geminiModelId:", geminiConfig.geminiModelId);
+9:    console.log("\nTesting simple Gemini call...");
+17:            console.log("Model created successfully");
+20:            console.log("Response:", result.response.text());
+23:            console.error("Error:", error.message);
+27:    console.error("Gemini client not properly configured");
+
+⚠️  Found console statements in: ./tests/test-gemini-truncation.js
+8:    console.log('🧪 TESTING GEMINI INTERNAL TRUNCATION');
+9:    console.log('='.repeat(80));
+10:    console.log('Goal: See if Gemini receives full data but internally corrupts it');
+16:        console.log('\n1. 📊 Fetching failing lead data...');
+22:        console.log(`   ✅ Lead: ${name}`);
+23:        console.log(`   📏 Original JSON Length: ${profileJSON ? profileJSON.length : 0} characters`);
+26:            console.log('   ❌ No Profile Full JSON found!');
+34:            console.log('   ✅ JSON parses successfully locally');
+36:            console.log('   ❌ JSON Parse Error locally:', parseError.message);
+41:        console.log('\n2. 🤖 Setting up Gemini client...');
+
+⚠️  Found console statements in: ./tests/test-guy-wilson-connection.js
+11:    console.log('🔍 Testing Guy Wilson client connection');
+15:    console.log(`👤 Fetching client data for ID: ${clientId}`);
+19:      console.error('❌ Client not found in Clients table');
+24:    console.log('\n📋 Client Data:');
+25:    console.log(`   - Client Name: ${client.clientName}`);
+26:    console.log(`   - Client ID: ${client.clientId}`);
+27:    console.log(`   - Status: ${client.status}`);
+28:    console.log(`   - Airtable Base ID: ${client.airtableBaseId}`);
+29:    console.log(`   - Service Level: ${client.serviceLevel}`);
+32:    console.log('\n🔌 Testing connection to client Airtable base');
+
+⚠️  Found console statements in: ./tests/test-guy-wilson-email.js
+9:    console.log("📧 Sending Test Email to Guy Wilson Only");
+10:    console.log("========================================\n");
+18:            console.log("❌ Guy Wilson client not found");
+23:            console.log("❌ Guy Wilson doesn't have an email address configured");
+27:        console.log(`📋 Found client: ${guyWilson.clientName}`);
+28:        console.log(`📧 Email address: ${guyWilson.clientEmailAddress}`);
+29:        console.log(`🔄 BCC: guyralphwilson@gmail.com`);
+30:        console.log(`📝 Template: no-leads-scored-today`);
+31:        console.log("");
+40:            console.log("✅ Test email sent successfully to Guy Wilson!");
+
+⚠️  Found console statements in: ./tests/test-guy-wilson-post-harvesting.js
+18:    console.log(`🚀 Testing post harvesting for client: ${config.clientId}`);
+19:    console.log(`🔧 IGNORE_POST_HARVESTING_LIMITS=${config.ignoreLimits}`);
+23:    console.log(`📡 Making API call to: ${url}`);
+38:    console.log('\n📊 API Response:');
+39:    console.log(JSON.stringify(data, null, 2));
+43:      console.log('\n✅ Request processed successfully');
+44:      console.log(`📈 Stats: ${data.batches} batches processed`);
+45:      console.log(`🎯 Posts Today: ${data.postsToday} / Target: ${data.postsTarget}`);
+49:        console.log(`\n🎉 SUCCESS! Processed ${data.postsToday} posts which is more than the target of ${data.postsTarget}`);
+50:        console.log('This confirms IGNORE_POST_LIMITS is working correctly');
+
+⚠️  Found console statements in: ./tests/test-ignore-post-harvesting-limits.js
+25:  console.log(`🧪 Testing IGNORE_POST_HARVESTING_LIMITS=${IGNORE_POST_HARVESTING_LIMITS}`);
+39:    console.log(`${testPassed ? '✅' : '❌'} Scenario: ${name}`);
+40:    console.log(`  postsToday: ${postsToday}, postsTarget: ${postsTarget}, batches: ${batches}, maxBatches: ${maxBatches}`);
+41:    console.log(`  Original: ${originalResult ? 'Continue' : 'Stop'}, Modified: ${modifiedResult ? 'Continue' : 'Stop'}`);
+42:    console.log(`  Expected: ${expected ? 'Continue' : 'Stop'}\n`);
+52:console.log("\nTest Summary:");
+53:console.log("============");
+54:console.log(`The environment variable IGNORE_POST_HARVESTING_LIMITS=${process.env.IGNORE_POST_HARVESTING_LIMITS === 'true'}`);
+55:console.log("When set to 'true', post harvesting will continue until reaching max batches");
+56:console.log("When set to 'false', post harvesting will stop when reaching daily post target");
+
+⚠️  Found console statements in: ./tests/test-individual-endpoints.js
+23:                console.log(`\n=== ${description} ===`);
+24:                console.log(`Status: ${res.statusCode}`);
+27:                    console.log('Response:', JSON.stringify(parsed, null, 2));
+29:                    console.log('Raw Response:', responseData);
+36:            console.error(`Error testing ${description}:`, error);
+56:        console.error('Test failed:', error);
+
+⚠️  Found console statements in: ./tests/test-individual-failing-leads.js
+5:    console.log('🧪 TESTING INDIVIDUAL FAILING LEADS - AI SCORING PROCESS');
+6:    console.log('='.repeat(70));
+10:        console.log('1. 📊 Fetching the failing leads...');
+16:        console.log(`   ✅ Found ${failingLeads.length} leads with "To Be Scored" status`);
+19:            console.log('🎉 No failing leads found! All leads have been processed.');
+23:        console.log('\n2. 🔍 Testing each lead individually through the scoring process...');
+30:            console.log(`\n   📝 TESTING LEAD ${i + 1}/${Math.min(failingLeads.length, 10)}: ${leadName}`);
+31:            console.log(`      Lead ID: ${lead.id}`);
+32:            console.log(`      Company: ${lead.fields['Company Name'] || 'Not specified'}`);
+38:                    console.log(`      ❌ ISSUE: Missing "Profile Full JSON" field`);
+
+⚠️  Found console statements in: ./tests/test-individual-vs-batch.js
+49:    console.log('🧪 TESTING INDIVIDUAL LEAD SCORING...');
+50:    console.log(`📋 Lead ID: ${PROBLEMATIC_LEAD_ID}`);
+57:        console.log(`⏱️  Duration: ${duration}ms`);
+58:        console.log(`📊 Status Code: ${response.statusCode}`);
+64:                console.log('❌ INDIVIDUAL TEST RESULT: HTTP ERROR');
+65:                console.log(`🚨 Status Code: ${response.statusCode}`);
+66:                console.log('📄 Error Response:', JSON.stringify(parsedResponse, null, 2));
+69:                console.log('✅ INDIVIDUAL TEST RESULT: SUCCESS');
+70:                console.log('📄 Response structure:', Object.keys(parsedResponse));
+71:                if (parsedResponse.score) console.log(`🎯 Score: ${parsedResponse.score}`);
+
+⚠️  Found console statements in: ./tests/test-job-metrics.js
+23:  console.log('\n=== Testing Metric Validation ===\n');
+35:  console.log('Input metrics:');
+36:  console.log(testMetrics);
+40:  console.log('\nValid metrics after validation:');
+41:  console.log(validMetrics);
+43:  console.log('\nInvalid metrics:');
+44:  console.log(invalidMetrics);
+47:  console.log('\nTesting all valid status values...');
+52:    console.log(`Status '${status}': ${valid.Status === status ? 'Valid ✓' : 'Invalid ✗'}`);
+56:  console.log('\nTesting invalid status values...');
+
+⚠️  Found console statements in: ./tests/test-job-tracking.js
+27:console.log('Checking for required JobTracking methods...');
+32:    console.log(`✅ ${method} - Found`);
+34:    console.log(`❌ ${method} - MISSING`);
+40:  console.log('\n✅ SUCCESS: All required JobTracking methods are available!');
+42:  console.error('\n❌ ERROR: Some required JobTracking methods are missing!');
+47:console.log('\nChecking constants files...');
+50:  console.log('✅ airtableSimpleConstants.js - Loaded successfully');
+62:      console.log(`  ✅ ${constant} - Found`);
+64:      console.log(`  ❌ ${constant} - MISSING`);
+70:    console.log('\n✅ SUCCESS: All required constants are available!');
+
+⚠️  Found console statements in: ./tests/test-leads-endpoints.js
+6:    console.log('Testing GET /leads/search endpoint...');
+16:    console.log('Success! Search endpoint working, found', response.data.length, 'leads');
+18:    console.error('Error with search endpoint:');
+19:    console.error('Status:', error.response?.status);
+20:    console.error('Data:', error.response?.data);
+21:    console.error('Message:', error.message);
+25:    console.log('\nTesting POST /leads endpoint...');
+45:    console.log('Success! Created lead:', response.data);
+47:    console.error('Error with create endpoint:');
+48:    console.error('Status:', error.response?.status);
+
+⚠️  Found console statements in: ./tests/test-local-auth.js
+7:    console.log('🔍 Testing Gemini AI Authentication...');
+8:    console.log('─'.repeat(60));
+11:    console.log('📋 Environment Configuration:');
+12:    console.log(`   GCP_PROJECT_ID: ${process.env.GCP_PROJECT_ID}`);
+13:    console.log(`   GCP_LOCATION: ${process.env.GCP_LOCATION}`);
+14:    console.log(`   GEMINI_MODEL_ID: ${process.env.GEMINI_MODEL_ID}`);
+15:    console.log(`   GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
+23:        console.error('❌ Service account file not found:', serviceAccountPath);
+27:    console.log(`   ✅ Service account file found: ${serviceAccountPath}`);
+32:        console.log(`   ✅ Service account loaded for: ${serviceAccount.client_email}`);
+
+⚠️  Found console statements in: ./tests/test-master-base.js
+6:  console.log('🧪 Testing Master Clients base access...');
+16:    console.log('📋 Testing Clients table (warm pinger path)...');
+18:    console.log('✅ Clients table works:', clients.length, 'records');
+21:    console.log('📋 Testing Apify Runs table (failing path)...');
+23:    console.log('✅ Apify Runs table works:', runs.length, 'records');
+27:      console.log('🔍 Apify Runs fields:', Object.keys(runs[0].fields));
+31:    console.log('❌ Master base access failed:', error.message);
+32:    console.log('   Full error:', error);
+
+⚠️  Found console statements in: ./tests/test-multitenant-apify.js
+16:    console.log('🧪 Testing Multi-Tenant Apify Integration');
+17:    console.log(`📍 Base URL: ${BASE_URL}`);
+18:    console.log(`👤 Client ID: ${CLIENT_ID}`);
+21:        console.error('❌ Missing PB_WEBHOOK_SECRET environment variable');
+27:        console.log('\n📤 Test 1: Starting Apify run...');
+47:        console.log(`📊 Run Response:`, runData);
+50:            console.error('❌ Failed to start run');
+55:        console.log(`✅ Run started successfully: ${runId}`);
+58:        console.log('\n🔍 Test 2: Checking run details...');
+71:        console.log(`📊 Run Details:`, runDetails);
+
+⚠️  Found console statements in: ./tests/test-new-lead.js
+15:    console.log('Testing lead creation with data:', testData);
+27:    console.log('Success! Created lead:', response.data);
+29:    console.error('Error creating lead:');
+30:    console.error('Status:', error.response?.status);
+31:    console.error('Data:', error.response?.data);
+32:    console.error('Message:', error.message);
+
+⚠️  Found console statements in: ./tests/test-permanent-fixes.js
+3:console.log('='.repeat(80));
+4:console.log('🔧 COMPREHENSIVE PERMANENT FIXES TEST');
+5:console.log('='.repeat(80));
+8:    console.log('\n🔍 Running complete audit with permanent fixes...\n');
+13:        console.log('\n' + '='.repeat(80));
+14:        console.log('📊 AUDIT RESULTS SUMMARY');
+15:        console.log('='.repeat(80));
+17:        console.log(`\n✅ Tests Passed: ${auditResults.summary.passed}/${auditResults.summary.total}`);
+18:        console.log(`❌ Tests Failed: ${auditResults.summary.failed}/${auditResults.summary.total}`);
+19:        console.log(`📈 Pass Rate: ${auditResults.summary.passRate}%`);
+
+⚠️  Found console statements in: ./tests/test-post-endpoints.js
+27:                console.log(`\n=== ${description} ===`);
+28:                console.log(`Status: ${res.statusCode}`);
+31:                    console.log('Response:', JSON.stringify(parsed, null, 2));
+33:                    console.log('Raw Response:', responseData.substring(0, 500));
+40:            console.error(`Error testing ${description}:`, error);
+65:        console.error('Test failed:', error);
+
+⚠️  Found console statements in: ./tests/test-post-harvest-run-ids.js
+14:  console.log('🧪 Testing post harvest run ID handling');
+19:    console.log(`Generated client-suffixed run ID: ${clientSuffixedRunId} (from ${TEST_APIFY_RUN_ID})`);
+22:    console.log(`Creating/retrieving client run record for ${clientSuffixedRunId} and client ${TEST_CLIENT_ID}`);
+24:    console.log(`Client run record created/retrieved: ${record.id}`);
+27:    console.log(`Updating client run record with ${POST_COUNT} posts harvested`);
+31:    console.log(`Updated client run record: ${updatedRecord.id}`);
+34:    console.log('Verifying update...');
+41:      console.error('❌ No records found with the suffixed run ID');
+43:      console.error(`❌ Found ${runRecords.length} records with the same run ID (expected 1)`);
+46:      console.log(`✅ Found 1 record with ${harvestedPosts} posts harvested`);
+
+⚠️  Found console statements in: ./tests/test-post-harvesting-auth.js
+24:                console.log(`Status: ${res.statusCode}`);
+27:                    console.log('Response:', JSON.stringify(parsed, null, 2));
+29:                    console.log('Raw Response:', responseData);
+36:            console.error('Error:', error);
+
+⚠️  Found console statements in: ./tests/test-production-api-direct.js
+6:    console.log('🔍 TESTING PRODUCTION API DIRECTLY');
+7:    console.log('='.repeat(80));
+8:    console.log('Target: recHkqPSMfdQWyqus');
+24:        console.log('\n1. 🌐 Calling production API...');
+25:        console.log(`   URL: https://${options.hostname}${options.path}`);
+49:        console.log(`\n2. 📊 Response Analysis:`);
+50:        console.log(`   Status Code: ${result.statusCode}`);
+51:        console.log(`   Content-Type: ${result.headers['content-type']}`);
+52:        console.log(`   Content-Length: ${result.body.length} characters`);
+55:            console.log('   ✅ API call successful!');
+
+⚠️  Found console statements in: ./tests/test-production-api-locally.js
+29:    console.log('🧪 TESTING PRODUCTION API LOCALLY');
+30:    console.log('=' .repeat(60));
+31:    console.log(`🎯 Target Lead: ${leadId}`);
+32:    console.log(`📍 Production URL: https://pb-webhook-server.onrender.com/score-lead?recordId=${leadId}`);
+35:    console.log('\n📞 TEST 1: Current Production API (4096 tokens)');
+36:    console.log('-'.repeat(50));
+40:        console.log(`🔗 Calling: ${productionUrl}`);
+46:        console.log(`⏱️  Duration: ${duration}ms`);
+47:        console.log(`📊 Status Code: ${result.statusCode}`);
+50:            console.log('✅ SUCCESS - Production API returned 200');
+
+⚠️  Found console statements in: ./tests/test-production-identical.js
+8:    console.log('🎯 TESTING PRODUCTION-IDENTICAL CONDITIONS');
+9:    console.log('='.repeat(80));
+10:    console.log('Goal: Replicate exact same prompt/response flow as production scoring');
+16:        console.log('\n1. 📊 Fetching test leads...');
+19:        console.log(`   ❌ Failing Lead: ${failingRecord.get('Name') || 'Unknown'}`);
+20:        console.log(`   📏 JSON Length: ${failingRecord.get('Profile Full JSON')?.length || 0} characters`);
+30:            console.log(`   ✅ Successful Lead: ${successfulRecord.get('Name') || 'Unknown'}`);
+31:            console.log(`   📏 JSON Length: ${successfulRecord.get('Profile Full JSON')?.length || 0} characters`);
+35:        console.log('\n2. 🤖 Setting up EXACT production Gemini config...');
+50:        console.log('\n3. 📋 Loading production prompt builder...');
+
+⚠️  Found console statements in: ./tests/test-production-single-scorer.js
+8:    console.log('🎯 TESTING PRODUCTION SINGLE SCORER');
+9:    console.log('='.repeat(80));
+15:        console.log('\n1. 📊 Fetching failing lead...');
+25:        console.log(`   ❌ Lead: ${name}`);
+26:        console.log(`   📏 Profile Length: ${profileJSON?.length || 0} characters`);
+29:        console.log('\n2. 🤖 Loading production Gemini config...');
+33:            console.log('   ✅ Gemini config loaded');
+34:            console.log(`   📋 VertexAI Client: ${geminiConfig.vertexAIClient ? 'Available' : 'Missing'}`);
+35:            console.log(`   📋 Model ID: ${geminiConfig.geminiModelId || 'Missing'}`);
+37:            console.log('   ❌ Failed to load gemini config:', error.message);
+
+⚠️  Found console statements in: ./tests/test-run-id-fix.js
+7:console.log('TESTING IMPROVED RUN ID UTILS');
+8:console.log('==============================\n');
+54:console.log('Testing stripClientSuffix:');
+55:console.log('------------------------');
+61:    console.log(`${passed ? '✅' : '❌'} ${test.desc}`);
+62:    console.log(`   Input:    ${test.id}`);
+63:    console.log(`   Result:   ${result}`);
+64:    console.log(`   Expected: ${test.expected}`);
+65:    console.log();
+71:console.log('\nTesting addClientSuffix:');
+
+⚠️  Found console statements in: ./tests/test-run-id-system.js
+28:    console.log(`${colors.green}✓${colors.reset} ${name}`);
+29:    if (details) console.log(`  ${colors.cyan}${details}${colors.reset}`);
+32:    console.log(`${colors.red}✗${colors.reset} ${name}`);
+33:    if (details) console.log(`  ${colors.red}${details}${colors.reset}`);
+38:  console.log(`\n${colors.blue}━━━ ${name} ━━━${colors.reset}`);
+189:  console.log(`${colors.yellow}═══════════════════════════════════════`);
+190:  console.log(`    Run ID System Comprehensive Test`);
+191:  console.log(`═══════════════════════════════════════${colors.reset}`);
+199:    console.log(`\n${colors.yellow}═══════════════════════════════════════${colors.reset}`);
+200:    console.log(`${colors.blue}Test Summary:${colors.reset}`);
+
+⚠️  Found console statements in: ./tests/test-run-id-utils.js
+7:    console.log('Testing runIdUtils functions...\n');
+20:    console.log('=== Testing getBaseRunId / stripClientSuffix ===');
+24:        console.log(`Input: "${test.input}"\nExpected: "${test.expected}"\nActual: "${result}"\nTest: ${pass ? 'PASSED' : 'FAILED'}\n`);
+37:    console.log('=== Testing addClientSuffix ===');
+41:        console.log(`RunId: "${test.runId}", ClientId: "${test.clientId}"\nExpected: "${test.expected}"\nActual: "${result}"\nTest: ${pass ? 'PASSED' : 'FAILED'}\n`);
+60:    console.log('=== Testing Full Workflow (Strip then Add) ===');
+68:        console.log(`Original: "${test.runId}", ClientId: "${test.clientId}"`);
+69:        console.log(`After Strip - Expected: "${test.expectedAfterStrip}", Actual: "${stripped}", Test: ${stripPass ? 'PASSED' : 'FAILED'}`);
+70:        console.log(`After Re-Add - Expected: "${test.expectedAfterAdd}", Actual: "${reAdded}", Test: ${addPass ? 'PASSED' : 'FAILED'}\n`);
+
+⚠️  Found console statements in: ./tests/test-run-record-service.js
+29:  console.log('=== RUN RECORD SERVICE V2 TEST ===');
+30:  console.log(`Using test run ID: ${testRunId}`);
+31:  console.log('');
+35:    console.log('1. Initializing services...');
+38:    console.log('✅ Services initialized');
+41:    console.log('\n2. TEST: Creating job record from authorized source (orchestrator)...');
+48:      console.log(`✅ Job record created successfully: ${jobRecord.id}`);
+50:      console.error(`❌ Failed to create job record: ${error.message}`);
+55:    console.log('\n3. TEST: Attempting to create job record from unauthorized source (batchScorer)...');
+61:      console.error('❌ FAILED: Unauthorized source allowed to create job record!');
+
+⚠️  Found console statements in: ./tests/test-run-record-simple.js
+11:  console.log('=== TESTING SIMPLIFIED RUN RECORD SERVICE ===');
+16:    console.log(`Generated run ID: ${runId}`);
+25:    console.log(`Using test client: ${testClient.clientName} (${testClient.clientId})`);
+28:    console.log('\n=== Step 1: Create Job Tracking Record ===');
+30:    console.log(`Created job record: ${jobRecord.id}`);
+33:    console.log('\n=== Step 2: Create Client Run Record ===');
+40:    console.log(`Created client run record: ${clientRunRecord.id}`);
+43:    console.log('\n=== Step 3: Update Client Run Record ===');
+54:    console.log(`Updated client run record: ${updateResult.id}`);
+57:    console.log('\n=== Step 4: Update Aggregate Metrics ===');
+
+⚠️  Found console statements in: ./tests/test-run-tracking.js
+22:  console.log('Starting run tracking test on staging...');
+23:  console.log(`Server URL: ${STAGING_URL}`);
+24:  console.log(`Test client: ${TEST_CLIENT_ID || 'All clients'}`);
+25:  console.log(`Lead limit: ${TEST_LIMIT}`);
+29:    console.log('\n== STEP 1: Triggering lead scoring job ==');
+44:    console.log('API Response:', result);
+51:    console.log(`Job ID: ${jobId}`);
+54:    console.log('\n== STEP 2: Monitoring job status ==');
+55:    console.log('Waiting for job to initialize...');
+64:      console.log(`Check #${attempts}...`);
+
+⚠️  Found console statements in: ./tests/test-runid-utils.js
+7:console.log('=== Starting runIdUtils tests ===');
+40:  console.log(`\nTesting: ${test.desc}`);
+41:  console.log(`Input: ${test.input}`);
+44:  console.log(`Output: ${result}`);
+45:  console.log(`Expected: ${test.expected}`);
+49:    console.log('✅ PASS');
+51:    console.log('❌ FAIL');
+52:    console.error(e.message);
+57:console.log('\n=== Testing addClientSuffix ===');
+81:  console.log(`\nTesting: ${test.desc}`);
+
+⚠️  Found console statements in: ./tests/test-score-one-lead.js
+8:    console.log('🎯 MANUAL SINGLE LEAD SCORING TEST');
+9:    console.log('='.repeat(50));
+10:    console.log('Goal: Score one failing lead to see exactly where/why it fails\n');
+16:        console.log('1. 📊 Getting the lead...');
+19:        console.log(`   ✅ Lead: ${leadName} from ${lead.fields['Company Name']}`);
+20:        console.log(`   📊 Current status: ${lead.fields['Scoring Status']}`);
+22:        console.log('\n2. 🔍 Parsing profile data...');
+27:        console.log(`   ✅ Bio: ${bio.length} characters`);
+28:        console.log(`   ✅ Headline: "${profile.headline}"`);
+29:        console.log(`   ✅ Experience: ${profile.experience?.length} jobs`);
+
+⚠️  Found console statements in: ./tests/test-scorechunk-debugging.js
+13:    console.log('🧪 Testing Enhanced scoreChunk Debugging...\n');
+17:        console.log('📥 Fetching test lead recHkqPSMfdQWyqus...');
+29:        console.log('✅ Found test lead');
+40:        console.log(`📊 Profile length: ${scorable[0].profile.length} characters`);
+41:        console.log('🎯 Starting scoreChunk with enhanced debugging...\n');
+52:        console.log('\n✅ scoreChunk completed successfully!');
+53:        console.log('📊 Result:', JSON.stringify(result, null, 2));
+56:        console.log('\n❌ scoreChunk test failed:');
+57:        console.log('🚨 Error:', error.message);
+61:            console.log('✅ This might be the truncation error we\'re investigating!');
+
+⚠️  Found console statements in: ./tests/test-scoring-logic.js
+16:            console.log(`⚠️  No Airtable Base ID for client ${clientData.clientId}`);
+28:        console.log(`   📊 Checking scored leads since ${yesterdayISO}`);
+37:            console.log(`   📋 Found ${records.length} records in this page`);
+41:        console.log(`   ✅ Total: ${scoredCount} leads scored in last 24 hours`);
+45:        console.error(`   ❌ Error checking scored leads for ${clientData.clientId}:`, error.message);
+51:    console.log("🔍 Testing Scoring Logic for Email Alerts");
+52:    console.log("=========================================\n");
+59:        console.log(`📋 Found ${scoringClients.length} active clients with scoring service (level >= 2)\n`);
+73:            console.log(`🔍 Checking: ${client.clientName} (${client.clientId})`);
+74:            console.log(`   📧 Email: ${client.clientEmailAddress || 'Not configured'}`);
+
+⚠️  Found console statements in: ./tests/test-server-startup.js
+14:console.log(`${colors.yellow}Testing server startup with Run ID System...${colors.reset}\n`);
+32:    console.log(`${colors.green}✓${colors.reset} ${module.name} loaded successfully`);
+34:    console.log(`${colors.red}✗${colors.reset} ${module.name} failed to load`);
+35:    console.error(`  ${colors.red}${error.message}${colors.reset}`);
+40:console.log(`\n${colors.blue}Testing circular dependencies...${colors.reset}`);
+54:    console.log(`${colors.green}✓${colors.reset} No circular dependency issues detected`);
+56:    console.log(`${colors.red}✗${colors.reset} Functionality test failed`);
+60:  console.log(`${colors.red}✗${colors.reset} Circular dependency detected`);
+61:  console.error(`  ${colors.red}${error.message}${colors.reset}`);
+66:console.log(`\n${colors.yellow}════════════════════════════${colors.reset}`);
+
+⚠️  Found console statements in: ./tests/test-single-lead-manual.js
+4:    console.log('🎯 TESTING SINGLE LEAD MANUAL SCORING');
+5:    console.log('='.repeat(50));
+11:        console.log(`1. 📊 Fetching lead ${leadId}...`);
+13:        console.log(`   ✅ Found: ${lead.fields['First Name']} ${lead.fields['Last Name']} from ${lead.fields['Company Name']}`);
+15:        console.log('\n2. 🔍 Parsing profile data...');
+19:        console.log(`   📊 Profile stats:`);
+20:        console.log(`      Bio: ${(profile.about || profile.summary || '').length} chars`);
+21:        console.log(`      Headline: "${profile.headline}"`);
+22:        console.log(`      Experience: ${profile.experience?.length || 0} jobs`);
+24:        console.log('\n3. 🤖 Attempting manual AI scoring...');
+
+⚠️  Found console statements in: ./tests/test-single-lead.js
+6:        console.log('Usage: node test-single-lead.js <leadId>');
+7:        console.log('Example: node test-single-lead.js lead_12345');
+11:    console.log(`🔍 Testing individual lead: ${leadId}`);
+12:    console.log('='.repeat(50));
+16:        console.log('1. 📋 Checking lead existence...');
+22:        console.log('   Loading leads from Airtable...');
+34:            console.log(`   ❌ Lead ${leadId} not found in Airtable`);
+35:            console.log(`   📊 Total leads in system: ${allLeads.length}`);
+36:            console.log(`   🔍 Searching for partial matches...`);
+45:                console.log(`   📋 Found ${partialMatches.length} partial matches:`);
+
+⚠️  Found console statements in: ./tests/test-smart-resume-auth.js
+9:    console.log(`\n🔍 Testing ${name}...`);
+24:        console.log(`   URL: ${config.method} ${baseUrl}${config.url}`);
+25:        console.log(`   Headers: ${JSON.stringify(config.headers)}`);
+26:        if (config.body) console.log(`   Body: ${JSON.stringify(config.body)}`);
+31:        console.log(`   Response: ${response.status} ${response.statusText}`);
+32:        console.log(`   Data: ${JSON.stringify(responseData).substring(0, 150)}...`);
+35:            console.log(`   ✅ SUCCESS: ${name} authenticated correctly`);
+38:            console.log(`   ❌ FAILED: ${name} authentication failed`);
+43:        console.log(`   ❌ ERROR: ${name} - ${error.message}`);
+49:    console.log('🚀 Testing Smart Resume Authentication...\n');
+
+⚠️  Found console statements in: ./tests/test-smart-resume-endpoint.js
+23:  console.log(`Status: ${res.statusCode}`);
+24:  console.log(`Headers:`, res.headers);
+32:    console.log('\nResponse:');
+33:    console.log(responseData);
+38:  console.error('Error:', error);
+
+⚠️  Found console statements in: ./tests/test-smart-resume-minimal.js
+11:console.log('🧪 Starting minimal test of Smart Resume module...');
+27:  console.log('🔍 Loading Smart Resume module...');
+30:  console.log('✅ Module loaded successfully');
+31:  console.log('🔍 Module exports:', Object.keys(smartResumeModule));
+34:    console.error('❌ TEST FAILED: Module does not export runSmartResume function');
+38:  console.log('🚀 Executing minimal test with tight limits...');
+43:      console.log('✅ TEST PASSED: Module executed successfully');
+46:      console.error('❌ TEST FAILED: Module execution error:', error.message);
+47:      console.error('Stack trace:', error.stack);
+52:  console.error('❌ TEST FAILED: Module loading error:', error.message);
+
+⚠️  Found console statements in: ./tests/test-smart-resume-module.js
+16:console.log('🧪 Starting module test...');
+17:console.log(`🔍 TESTING WITH: SMART_RESUME_RUN_ID = ${process.env.SMART_RESUME_RUN_ID}`);
+24:console.log('📝 Smart resume module imported successfully');
+25:console.log('🔍 Module exports:', Object.keys(smartResumeModule));
+29:  console.error('❌ TEST FAILED: Module does not export runSmartResume function');
+33:console.log('✅ Module exports runSmartResume function');
+34:console.log('🚀 Calling runSmartResume function...');
+39:    console.log('✅ TEST PASSED: Module executed successfully');
+42:    console.error('❌ TEST FAILED: Module execution error:', error.message);
+43:    console.error('Stack trace:', error.stack);
+
+⚠️  Found console statements in: ./tests/test-smart-resume-status.js
+19:console.log(`🚀 Checking smart-resume status on ${envTarget} server`);
+20:console.log(`🔍 Target: http${useLocalServer ? '' : 's'}://${hostname}:${port}/smart-resume-status`);
+36:console.log('📤 Sending request...');
+39:  console.log(`📥 Status: ${res.statusCode}`);
+50:      console.log('\n📋 Smart Resume Status:');
+51:      console.log(JSON.stringify(parsedData, null, 2));
+55:        console.log('\n✅ Status check complete');
+58:          console.log(`⏳ Process is currently running: jobId=${parsedData.status.currentJobId}`);
+59:          console.log(`⏱️ Running for: ${parsedData.status.lockAgeMinutes} minutes`);
+62:            console.log(`⚠️ WARNING: Process appears to be stale/hung`);
+
+⚠️  Found console statements in: ./tests/test-smart-resume-termination.js
+31:  console.log('🚀 Using PRODUCTION environment');
+34:  console.log('🚀 Using STAGING environment');
+37:  console.log('🚀 Using LOCAL environment');
+44:  console.error('ERROR: PB_WEBHOOK_SECRET environment variable is required.');
+45:  console.error('Please set it before running this script.');
+68:    console.error('Failed to get status:', error);
+89:    console.error('Failed to reset lock:', error);
+98:  console.log('=== Smart Resume Termination Test ===');
+101:  console.log('\n1. Getting current status...');
+105:    console.error('Failed to get status. Exiting.');
+
+⚠️  Found console statements in: ./tests/test-smart-resume-with-simple-adapter.js
+15:console.log('🧪 Test run complete. Check the logs for any errors.');
+
+⚠️  Found console statements in: ./tests/test-smart-resume.js
+7:    console.log('Triggering Smart Resume process for Guy-Wilson...');
+24:      console.log('Response:', JSON.stringify(data, null, 2));
+27:      console.log('Raw response text:', responseText);
+31:    console.error('Error triggering Smart Resume:', error.message);
+38:    console.log('Smart Resume triggered successfully!');
+41:    console.error('Failed to trigger Smart Resume:', error);
+
+⚠️  Found console statements in: ./tests/test-staging-smart-resume.js
+9:    console.log('Triggering Smart Resume process for Guy-Wilson on staging...');
+24:    console.log('Status code:', response.status);
+28:      console.log('Response:', JSON.stringify(data, null, 2));
+31:      console.log('Raw response text:', responseText);
+35:    console.error('Error triggering Smart Resume:', error.message);
+42:    console.log('Smart Resume triggered successfully!');
+45:    console.error('Failed to trigger Smart Resume:', error);
+
+⚠️  Found console statements in: ./tests/test-timestamp-fix.js
+7:    console.log('🧪 Testing updated Date Scored field with full timestamp...');
+16:        console.log('🔍 Looking for lead recHkqPSMfdQWyqus...');
+24:            console.log('❌ Lead not found');
+30:        console.log('📋 Current field values:');
+31:        console.log(`   Scoring Status: ${leadRecord.fields['Scoring Status'] || 'Not set'}`);
+32:        console.log(`   Date Scored (current): ${leadRecord.fields['Date Scored'] || 'Not set'}`);
+36:        console.log(`   Current timestamp: ${currentTimestamp}`);
+37:        console.log(`   In AEST: ${new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })}`);
+40:        console.log('🚀 Updating Date Scored with full timestamp...');
+49:        console.log('✅ Update completed!');
+
+⚠️  Found console statements in: ./tests/test-timestamp-run-ids.js
+6:console.log('=== Testing Timestamp Format Run ID Handling ===\n');
+9:console.log('Testing stripClientSuffix:');
+22:  console.log(`${index + 1}. ${pass ? '✅' : '❌'} Input: "${test.input}"`);
+24:    console.log(`   Expected: "${test.expected}"`);
+25:    console.log(`   Got:      "${result}"`);
+30:console.log('\nTesting addClientSuffix:');
+45:  console.log(`${index + 1}. ${pass ? '✅' : '❌'} RunId: "${test.runId}", ClientId: "${test.clientId}"`);
+47:    console.log(`   Expected: "${test.expected}"`);
+48:    console.log(`   Got:      "${result}"`);
+53:console.log('\nTesting hasClientSuffix:');
+
+⚠️  Found console statements in: ./tests/test-trigger-endpoint.js
+30:    console.log(`[test-trigger] Calling ${processUrl} for Dean-Hobin`);
+
+⚠️  Found console statements in: ./tests/test-unified-run-id-service.js
+14:  console.log('\n=== Testing Run ID Format Detection and Conversion ===');
+49:      console.log(`\nTesting: ${testCase.id} - "${testCase.runId}"`);
+55:      console.log(`Detected format: ${detectedFormat || 'None'}`);
+56:      console.log(`Expected format: ${testCase.expectedFormat || 'None'}`);
+59:        console.log('✅ Format detection: PASS');
+61:        console.log('❌ Format detection: FAIL');
+68:      console.log(`Converted to standard: ${standardForm || 'None'}`);
+69:      console.log(`Expected standard form: ${testCase.expectedStandardForm || 'None'}`);
+72:        console.log('✅ Standard conversion: PASS');
+75:        console.log('❌ Standard conversion: FAIL');
+
+⚠️  Found console statements in: ./tests/test-url-resolution.js
+5:console.log('🔍 Testing Smart Resume URL Resolution...\n');
+34:    console.log(`${status} ${scenario.name}:`);
+35:    console.log(`   Environment: ${JSON.stringify(scenario.env)}`);
+36:    console.log(`   Resolved URL: ${baseUrl}`);
+37:    console.log(`   Expected: ${scenario.expected}`);
+38:    console.log('');
+41:console.log('🎯 Key Fix Applied:');
+42:console.log('   BEFORE: process.env.API_PUBLIC_BASE_URL || "http://localhost:3001"');
+43:console.log('   AFTER:  process.env.API_PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "https://pb-webhook-server-staging.onrender.com"');
+44:console.log('');
+
+⚠️  Found console statements in: ./tests/test-vertex-auth.js
+10:    console.log('🔍 TESTING VERTEX AI AUTHENTICATION');
+11:    console.log('='.repeat(60));
+20:    console.log('\n📋 Environment Variables:');
+24:            console.log(`   ✅ ${key}: ${value}`);
+26:            console.log(`   ❌ ${key}: NOT SET`);
+32:        console.log(`\n❌ CANNOT TEST: Missing ${missingVars.length} required environment variables`);
+33:        console.log('Please set up authentication first using production-auth-setup.js');
+38:        console.log('\n🔍 Initializing Vertex AI client...');
+45:        console.log('✅ Vertex AI client initialized successfully');
+47:        console.log('\n🔍 Getting generative model...');
+
+⚠️  Found console statements in: ./tests/test-webhook-client.js
+18:        console.log('Testing webhook with client parameter...');
+26:        console.log('Webhook Response:', response.data);
+27:        console.log('Test completed successfully!');
+30:        console.error('Webhook Test Failed:', error.response?.data || error.message);
+
+⚠️  Found console statements in: ./tests/validators.test.js
+8:const originalConsoleWarn = console.warn;
+13:  console.warn = consoleWarnMock;
+17:  console.warn = originalConsoleWarn;
+
+⚠️  Found console statements in: ./test_index.js
+2:console.log("<<<<< STARTING test_index.js - Attempting to load FULL queueDispatcher - Version F >>>>>");
+8:console.log("Express app created in test_index.js (for full queueDispatcher test).");
+18:    console.log("Attempting to require('./queueDispatcher') [the FULL version]...");
+20:    console.log("Successfully required './queueDispatcher' [the FULL version].");
+21:    console.log("Type of actualMountQueueFunction:", typeof actualMountQueueFunction);
+23:    console.error("ERROR during require('./queueDispatcher') [the FULL version]:", e.message, e.stack);
+29:        console.log("Attempting to call actualMountQueueFunction(app)...");
+31:        console.log("Successfully called actualMountQueueFunction(app).");
+33:        console.error("ERROR calling actualMountQueueFunction(app):", e.message, e.stack);
+36:    console.error("actualMountQueueFunction is NOT a function. Value is:", actualMountQueueFunction);
+
+⚠️  Found console statements in: ./test_queue_dispatcher.js
+2:console.log("<<<<< TEST_QUEUE_DISPATCHER.JS - LOADED - Version D >>>>>");
+5:    console.log("<<<<< TEST_QUEUE_DISPATCHER.JS - mountTestDispatcher function CALLED >>>>>");
+7:        console.log("App object was received by mountTestDispatcher.");
+9:        console.warn("App object was NOT what was expected in mountTestDispatcher.");
+
+⚠️  Found console statements in: ./test_single_scorer.js
+46:        console.log('--- FINAL SCORING RESULT ---');
+47:        console.log(JSON.stringify(result, null, 2));
+48:        console.log('--------------------------');
+52:        console.error(error);
+
+⚠️  Found console statements in: ./tools/applyMovePlan.js
+28:    console.error('Plan not found:', path.relative(ROOT, planPath));
+50:  console.log(`Moved ${moved.length} files. Skipped ${skipped.length}.`);
+53:      console.log(`MOVE ${m.src} -> ${m.dest}`);
+57:    console.warn('Skipped items:');
+58:    for (const s of skipped) console.warn(`SKIP ${s.src}: ${s.reason}`);
+
+⚠️  Found console statements in: ./tools/classifyDocsDryRun.js
+169:    console.log(`Dry-run complete: ${results.length} files. Totals: ${Object.entries(summary).map(([k,v])=>`${k}=${v}`).join(', ')}\n- Markdown: ${path.relative(ROOT, mdPath)}\n- JSON: ${path.relative(ROOT, jsonPath)}${plan ? `\n- Move plan (md/json): ${path.relative(ROOT, path.join(outDir,'move-plan.md'))}, ${path.relative(ROOT, path.join(outDir,'move-plan.json'))}` : ''}`);
+171:    console.log(md);
+
+⚠️  Found console statements in: ./trigger-redeploy.js
+5:console.log('Triggering Render redeploy to resolve dependencies...');
+6:console.log('Fix for express-rate-limit dependency applied.');
+
+⚠️  Found console statements in: ./trigger-smart-resume.js
+5:    console.log('Triggering Smart Resume process...');
+18:    console.log('Response:', JSON.stringify(data, null, 2));
+21:    console.error('Error triggering Smart Resume:', error.message);
+28:    console.log('Smart Resume triggered successfully!');
+31:    console.error('Failed to trigger Smart Resume:', error);
+
+⚠️  Found console statements in: ./utils/airtableUtils.js
+12:        console.error("airtableUtils.js: Airtable base is not initialized.");
+16:        console.error("airtableUtils.js: Table name and record ID are required.");
+24:        console.error(`airtableUtils.js: Error fetching record ${recordId} from table ${tableName}:`, error);
+
+⚠️  Found console statements in: ./utils/contextLogger.js
+5: * This replaces all console.log/error/warn calls and legacy [CLIENT:...] [SESSION:...] patterns
+45:      console.log(this._format('INFO', message), ...args);
+47:      console.log(this._format('INFO', message));
+58:      console.warn(this._format('WARN', message), ...args);
+60:      console.warn(this._format('WARN', message));
+71:      console.error(this._format('ERROR', message), ...args);
+73:      console.error(this._format('ERROR', message));
+84:      console.log(this._format('DEBUG', message), ...args);
+86:      console.log(this._format('DEBUG', message));
+97:      console.error(this._format('CRITICAL', message), ...args);
+
+⚠️  Found console statements in: ./utils/errorLogger.js
+30:    console.log('[ErrorLogger] Initialized successfully');
+32:    console.error('[ErrorLogger] Failed to initialize:', err.message);
+181:      console.log('[ErrorLogger] Error logging disabled via DISABLE_ERROR_LOGGING env var');
+194:      console.error('[ErrorLogger] Rate limit exceeded (100 errors/hour), skipping error log');
+202:      console.log('[ErrorLogger] Duplicate error within 5 minutes, skipping');
+212:      console.error('[ErrorLogger] Master base not initialized, cannot log error');
+258:    console.log('[ErrorLogger] Logging error to Airtable:', {
+269:      console.error('[ErrorLogger] CRITICAL: ERROR_LOG table name is undefined!');
+279:    console.log('[ErrorLogger] Error logged successfully:', createdRecord.id);
+285:    console.error('[ErrorLogger] Failed to log error to Airtable:', logError.message);
+
+⚠️  Found console statements in: ./utils/pbPostsSync_clean.js
+33:    console.log(`[getAirtableRecord] Original URL: ${profileUrl}`);
+34:    console.log(`[getAirtableRecord] Normalized URL: ${normUrl}`);
+39:    console.log(`[getAirtableRecord] Formula: ${formula}`);
+42:        console.log(`[getAirtableRecord] Executing filtered query with maxRecords=1`);
+53:            console.log(`[getAirtableRecord] Found record: ${records[0].id}`);
+56:            console.log(`[getAirtableRecord] No record found for: ${normUrl}`);
+60:        console.error(`[getAirtableRecord] Filtered lookup failed: ${e.message}`);
+71:        console.warn('PB Posts: No posts provided for client identification');
+83:            console.warn('PB Posts: No valid profile URLs found in posts');
+87:        console.log(`PB Posts: Checking ${profileUrls.length} unique profile URLs across client bases`);
+
+⚠️  Found console statements in: ./utils/runIdGenerator.js
+12:console.warn(`
+32:    console.warn(`Failed to use unifiedRunIdService, falling back to legacy implementation: ${error.message}`);
+61:    console.log(`🔍 SMART_RESUME_${runId} [${timestamp}] [${level}] ${message}`);
+
+⚠️  Found console statements in: ./utils/structuredLogger.js
+99:            console.warn('⚠️ DIRECT INSTANTIATION OF STRUCTURED LOGGER DETECTED ⚠️');
+100:            console.warn('Please use unifiedLoggerFactory.js instead of direct instantiation:');
+101:            console.warn('  const { createLogger } = require("./utils/unifiedLoggerFactory");');
+102:            console.warn('  const logger = createLogger(clientId, sessionId, processType);');
+110:            console.error('CRITICAL ERROR: Object passed as clientId to StructuredLogger constructor:', 
+128:            console.error('CRITICAL ERROR: Object passed as sessionId to StructuredLogger constructor:', 
+152:            console.warn(`[StructuredLogger] Created logger with fixed parameters: clientId=${this.clientId}, sessionId=${this.sessionId}`);
+160:            console.log(`${prefix} ${message}`, ...args);
+167:            console.log(`${prefix} ${message}`, ...args);
+174:            console.error(`${prefix} ${message}`, ...args);
+
+⚠️  Found console statements in: ./verify-date-scored-fix.js
+8:    console.log('🧪 Verifying Date Scored fix implementation...');
+17:        console.log('🔍 Checking lead recHkqPSMfdQWyqus...');
+25:            console.log('❌ Lead not found');
+31:        console.log('📋 Current field status:');
+32:        console.log(`   Scoring Status: ${leadRecord.fields['Scoring Status'] || 'Not set'}`);
+33:        console.log(`   Date Scored: ${leadRecord.fields['Date Scored'] || 'Not set'}`);
+34:        console.log(`   Raw Date Scored: ${JSON.stringify(leadRecord.fields['Date Scored'])}`);
+38:        console.log(`   Today's date (our format): ${todayFormatted}`);
+44:            console.log(`   Stored date formatted: ${storedDateFormatted}`);
+47:                console.log('✅ SUCCESS: Date Scored field contains today\'s date!');
+
+⚠️  Found console statements in: ./verify-field-structure.js
+4:    console.log('🔍 VERIFYING AIRTABLE FIELD STRUCTURE');
+5:    console.log('='.repeat(60));
+8:        console.log('   🔗 Using default Airtable base instance...');
+10:        console.log('\n1. 📋 Checking LEADS table structure...');
+18:            console.log(`   ✅ Found ${leadsRecords.length} sample leads`);
+19:            console.log('\n   📋 Available fields in LEADS table:');
+29:                console.log(`      ${index + 1}. "${field}" (${valueType}): ${valuePreview}`);
+33:            console.log('\n   🔍 Client ID related fields check:');
+40:                console.log(`      ✅ Found ${clientFields.length} client/ID related fields:`);
+42:                    console.log(`         • "${field}"`);
+
+⚠️  Found console statements in: ./verify-production-issues-table.js
+13:  console.log('🔍 Verifying Production Issues table schema...\n');
+20:    console.log('📋 Fetching table metadata...');
+24:    console.log('✅ Table found: Production Issues\n');
+51:    console.log('📝 Expected Fields (19 total):');
+52:    console.log('─'.repeat(60));
+54:      console.log(`${index + 1}. ${name} (${type})`);
+57:    console.log('\n🧪 Testing field access by creating a test record...\n');
+72:    console.log('Creating test record with these fields:');
+74:      console.log(`  ✓ ${field}`);
+80:    console.log(`\n✅ Test record created successfully! ID: ${recordId}`);
+
+======================================
+CHECK 11: Scorer & Service Logger Issues
+======================================
+Looking for logger issues in scorer modules and critical services...
+
+  ⚠️  index.js: Async functions using moduleLogger (should use scoped logger)
+350-        moduleLogger.error('Failed to analyze recent logs:', error);
+383-        moduleLogger.error('Failed to analyze log text:', error);
+411-        moduleLogger.error('Failed to get production issues:', error);
+437-        moduleLogger.error('Failed to mark issue as fixed:', error);
+458-        moduleLogger.info('🔍 Verifying Production Issues table schema...');
+
+validate-codebase.sh: line 334: [: 0
+0: integer expression expected
+validate-codebase.sh: line 334: [: 0
+0: integer expression expected
+validate-codebase.sh: line 334: [: 0
+0: integer expression expected
+validate-codebase.sh: line 334: [: 0
+0: integer expression expected
+
+==========================================
+SUMMARY
+==========================================
+❌ Found 2 critical error(s)
+Review output above and fix before deploying
+
+Note: Warnings (⚠️) are suggestions, not blockers
+==========================================

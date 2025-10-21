@@ -1,4 +1,9 @@
 const express = require('express');
+const { createLogger } = require('../../../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
+console.log('✅ linkedinRoutesWithAuth.js loaded - logger initialized:', typeof logger);
+
 const router = express.Router();
 
 // Import authentication middleware
@@ -31,13 +36,13 @@ async function getAirtableBase(req) {
  * Sorted by First Name, Last Name
  */
 router.get('/leads/top-scoring-posts', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/top-scoring-posts called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: GET /leads/top-scoring-posts called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const airtableBase = await getAirtableBase(req);
 
-    console.log('LinkedIn Routes: Fetching leads from Airtable...');
+    logger.info('LinkedIn Routes: Fetching leads from Airtable...');
 
     // Define field names (matching frontend)
     const FIELD_NAMES = {
@@ -69,7 +74,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
         if (active && Number.isFinite(val)) maxPossibleScore += val;
       }
     } catch (e) {
-      console.warn('LinkedIn Routes: Failed to load Post Scoring Attributes for max score:', e?.message || e);
+      logger.warn('LinkedIn Routes: Failed to load Post Scoring Attributes for max score:', e?.message || e);
     }
     if (!Number.isFinite(maxPossibleScore) || maxPossibleScore <= 0) {
       // Fallback to a safe default to avoid hiding all results
@@ -86,7 +91,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
           const raw = row ? row.get('Posts Threshold Percentage') : undefined;
           minPercNum = Number.parseFloat(raw);
         } catch (e) {
-          console.warn('LinkedIn Routes: Could not read Posts Threshold Percentage from Credentials:', e?.message || e);
+          logger.warn('LinkedIn Routes: Could not read Posts Threshold Percentage from Credentials:', e?.message || e);
         }
       }
       if (!Number.isFinite(minPercNum)) minPercNum = 0;
@@ -102,7 +107,7 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
     filterParts.push(`NOT({Top Scoring Post} = BLANK())`);
     const filterFormula = `AND(${filterParts.join(', ')})`;
 
-    console.log('LinkedIn Routes: Using filter:', filterFormula);
+    logger.info('LinkedIn Routes: Using filter:', filterFormula);
 
     const records = await airtableBase('Leads').select({
       filterByFormula: filterFormula,
@@ -113,7 +118,21 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       maxRecords: 50  // Limit to 50 records for Load More pattern
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${records.length} top scoring posts leads`);
+    logger.info(`LinkedIn Routes: Found ${records.length} top scoring posts leads (limited to 50)`);
+
+    // Get total count without limit for display purposes
+    let totalCount = records.length;
+    try {
+      const countRecords = await airtableBase('Leads').select({
+        filterByFormula: filterFormula,
+        fields: [FIELD_NAMES.FIRST_NAME] // Minimal field to speed up count query
+      }).all();
+      totalCount = countRecords.length;
+      logger.info(`LinkedIn Routes: Total matching records: ${totalCount}`);
+    } catch (countError) {
+      logger.warn('LinkedIn Routes: Could not get total count:', countError.message);
+      // Fall back to returned count if total count fails
+    }
 
     // Transform records to expected format and include computed helpers
     const transformedLeads = records.map(record => ({
@@ -141,10 +160,14 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
       ...record.fields
     }));
 
-    res.json(transformedLeads);
+    res.json({
+      leads: transformedLeads,
+      total: totalCount,
+      displayed: transformedLeads.length
+    });
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
+    logger.error('LinkedIn Routes: Error in /leads/top-scoring-posts:', error);
     res.status(500).json({ 
       error: 'Failed to fetch top scoring posts',
       details: error.message 
@@ -157,8 +180,8 @@ router.get('/leads/top-scoring-posts', async (req, res) => {
  * Get leads that need follow-ups (with follow-up dates today or earlier)
  */
 router.get('/leads/follow-ups', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/follow-ups called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: GET /leads/follow-ups called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const airtableBase = await getAirtableBase(req);
@@ -177,7 +200,7 @@ router.get('/leads/follow-ups', async (req, res) => {
       maxRecords: 50 // Memory limit protection
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${leads.length} follow-ups for client ${req.client.clientId}`);
+    logger.info(`LinkedIn Routes: Found ${leads.length} follow-ups for client ${req.client.clientId}`);
 
     // Transform to expected format with days calculation
     const transformedLeads = leads.map(record => {
@@ -211,7 +234,7 @@ router.get('/leads/follow-ups', async (req, res) => {
     res.json(transformedLeads);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
+    logger.error('LinkedIn Routes: Error in /leads/follow-ups:', error);
     res.status(500).json({ 
       error: 'Failed to fetch follow-ups',
       details: error.message 
@@ -224,8 +247,8 @@ router.get('/leads/follow-ups', async (req, res) => {
  * Search for leads with optional query, priority, search terms filters and pagination
  */
 router.get('/leads/search', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/search called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: GET /leads/search called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const airtableBase = await getAirtableBase(req);
@@ -238,7 +261,7 @@ router.get('/leads/search', async (req, res) => {
     const pageLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 25)); // Default 25, max 100
     const pageOffset = Math.max(0, parseInt(offset, 10) || 0); // Default 0
     
-    console.log('LinkedIn Routes: Search query:', searchTerm, 'Priority:', priority, 'Search Terms:', searchTerms, 'Limit:', pageLimit, 'Offset:', pageOffset);
+    logger.info('LinkedIn Routes: Search query:', searchTerm, 'Priority:', priority, 'Search Terms:', searchTerms, 'Limit:', pageLimit, 'Offset:', pageOffset);
     
     // Build filter formula based on query, priority, and search terms
     let filterParts = [];
@@ -279,7 +302,7 @@ router.get('/leads/search', async (req, res) => {
         
         // Join with AND so all terms must be found (leads tagged with ALL specified terms)
         filterParts.push(`AND(${termSearches.join(', ')})`);
-        console.log('LinkedIn Routes: Search terms filter applied for:', terms);
+        logger.info('LinkedIn Routes: Search terms filter applied for:', terms);
       }
     }
     
@@ -299,7 +322,7 @@ router.get('/leads/search', async (req, res) => {
     // Combine all filter parts - if no search/priority, just show all client leads
     const filterFormula = filterParts.length > 1 ? `AND(${filterParts.join(', ')})` : filterParts[0];
 
-    console.log('LinkedIn Routes: Using filter:', filterFormula);
+    logger.info('LinkedIn Routes: Using filter:', filterFormula);
 
     // Stream Airtable pages and return only the requested slice (offset, limit)
     // This avoids the previous ~500 record cap while keeping memory reasonable.
@@ -316,7 +339,7 @@ router.get('/leads/search', async (req, res) => {
     let skipped = 0;
     let done = false;
 
-    console.log(`LinkedIn Routes: Streaming pages for offset=${pageOffset}, limit=${pageLimit}…`);
+    logger.info(`LinkedIn Routes: Streaming pages for offset=${pageOffset}, limit=${pageLimit}…`);
 
     await new Promise((resolve, reject) => {
       airtableBase('Leads')
@@ -348,7 +371,7 @@ router.get('/leads/search', async (req, res) => {
         );
     });
 
-    console.log(`LinkedIn Routes: Returning ${collected.length} leads (offset: ${pageOffset}, limit: ${pageLimit}, skipped: ${skipped})`);
+    logger.info(`LinkedIn Routes: Returning ${collected.length} leads (offset: ${pageOffset}, limit: ${pageLimit}, skipped: ${skipped})`);
 
     // Transform to expected format
     const transformedLeads = collected.map(record => {
@@ -383,7 +406,7 @@ router.get('/leads/search', async (req, res) => {
     res.json(transformedLeads);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/search:', error);
+    logger.error('LinkedIn Routes: Error in /leads/search:', error);
     res.status(500).json({ 
       error: 'Failed to search leads',
       details: error.message 
@@ -396,8 +419,8 @@ router.get('/leads/search', async (req, res) => {
  * Bulk export all matching leads as a downloadable file (fast, no client paging)
  */
 router.get('/leads/export', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/export called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: GET /leads/export called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
 
   try {
     const airtableBase = await getAirtableBase(req);
@@ -437,7 +460,7 @@ router.get('/leads/export', async (req, res) => {
           )`
         );
         filterParts.push(`AND(${termSearches.join(', ')})`);
-        console.log('LinkedIn Routes: Export terms filter applied for:', terms);
+        logger.info('LinkedIn Routes: Export terms filter applied for:', terms);
       }
     }
     if (priority && priority !== 'all') {
@@ -578,9 +601,9 @@ router.get('/leads/export', async (req, res) => {
       res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, X-Total-Rows, X-Truncated');
       res.end(buf);
     }
-    console.log(`LinkedIn Routes: Exported ${rows.length} ${exportType} (scanned ${totalScanned})${reachedLimit && hardLimit ? ' [TRUNCATED]' : ''}`);
+    logger.info(`LinkedIn Routes: Exported ${rows.length} ${exportType} (scanned ${totalScanned})${reachedLimit && hardLimit ? ' [TRUNCATED]' : ''}`);
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/export:', error);
+    logger.error('LinkedIn Routes: Error in /leads/export:', error);
     res.status(500).json({ error: 'Failed to export leads', details: error.message });
   }
 });
@@ -590,14 +613,14 @@ router.get('/leads/export', async (req, res) => {
  * Get search token suggestions from existing leads
  */
 router.get('/leads/search-token-suggestions', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/search-token-suggestions called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: GET /leads/search-token-suggestions called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const airtableBase = await getAirtableBase(req);
     const { limit = 30, minCount = 1 } = req.query;
     
-    console.log('LinkedIn Routes: Fetching suggestions with limit=' + limit + ', minCount=' + minCount);
+    logger.info('LinkedIn Routes: Fetching suggestions with limit=' + limit + ', minCount=' + minCount);
 
     // Query leads with search terms using a view that filters for non-empty Search Terms
     const records = await airtableBase('Leads').select({
@@ -606,7 +629,7 @@ router.get('/leads/search-token-suggestions', async (req, res) => {
       maxRecords: 500 // Get enough records to analyze
     }).all();
 
-    console.log(`LinkedIn Routes: Found ${records.length} lead records`);
+    logger.info(`LinkedIn Routes: Found ${records.length} lead records`);
 
     // Extract and count all search tokens
     const tokenCounts = new Map();
@@ -642,7 +665,7 @@ router.get('/leads/search-token-suggestions', async (req, res) => {
       }
     });
 
-    console.log(`LinkedIn Routes: Scanned ${records.length} leads, found ${leadsWithSearchTerms} with search terms, ${tokenCounts.size} unique tokens`);
+    logger.info(`LinkedIn Routes: Scanned ${records.length} leads, found ${leadsWithSearchTerms} with search terms, ${tokenCounts.size} unique tokens`);
 
     // Convert to suggestions format and filter by minimum count
     const suggestions = Array.from(tokenCounts.entries())
@@ -657,7 +680,7 @@ router.get('/leads/search-token-suggestions', async (req, res) => {
     res.json({ suggestions });
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error in /leads/search-token-suggestions:', error);
+    logger.error('LinkedIn Routes: Error in /leads/search-token-suggestions:', error);
     res.status(500).json({ 
       error: 'Failed to fetch search token suggestions',
       details: error.message 
@@ -670,14 +693,14 @@ router.get('/leads/search-token-suggestions', async (req, res) => {
  * Get a specific lead by ID
  */
 router.get('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/:id called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: GET /leads/:id called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
     
-    console.log('LinkedIn Routes: Getting lead:', leadId);
+    logger.info('LinkedIn Routes: Getting lead:', leadId);
 
     // Get the lead from Airtable
     const record = await airtableBase('Leads').find(leadId);
@@ -725,7 +748,7 @@ router.get('/leads/:id', async (req, res) => {
       ...f
     };
 
-  console.log('[DEBUG /leads/:id] Source variants:', {
+  logger.info('[DEBUG /leads/:id] Source variants:', {
     field_Source: f['Source'],
     field_LeadSource: f['Lead Source'],
     field_source_lower: f['source'],
@@ -733,11 +756,11 @@ router.get('/leads/:id', async (req, res) => {
     leadId: record.id
   });
 
-    console.log('LinkedIn Routes: Lead found');
+    logger.info('LinkedIn Routes: Lead found');
     res.json(transformedLead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error getting lead:', error);
+    logger.error('LinkedIn Routes: Error getting lead:', error);
     if (error.statusCode === 404) {
       return res.status(404).json({ error: 'Lead not found' });
     }
@@ -758,8 +781,8 @@ const MAX_SEARCH_TERMS = 15;
  * Returns: { id, searchTerms (display), tokens (canonical lower), count, max }
  */
 router.patch('/leads/:id/search-terms', async (req, res) => {
-  console.log('LinkedIn Routes: PATCH /leads/:id/search-terms called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: PATCH /leads/:id/search-terms called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
@@ -838,18 +861,18 @@ router.patch('/leads/:id/search-terms', async (req, res) => {
     let updated, attemptErrors = [];
     for (const fields of attempts) {
       try {
-        console.log('LinkedIn Routes: Attempting update with fields', fields);
+        logger.info('LinkedIn Routes: Attempting update with fields', fields);
         updated = await airtableBase('Leads').update([{ id: leadId, fields }]);
-        if (updated && updated.length) { console.log('LinkedIn Routes: Update succeeded with', Object.keys(fields)); break; }
+        if (updated && updated.length) { logger.info('LinkedIn Routes: Update succeeded with', Object.keys(fields)); break; }
       } catch (e) { attemptErrors.push(`${Object.keys(fields).join('+')}: ${e.message}`); }
     }
     if (!updated || !updated.length) {
       return res.status(500).json({ error: 'Failed to update search terms', details: attemptErrors.join(' | ') });
     }
-    console.log(`LinkedIn Routes: Updated search terms for lead ${leadId}: display="${displayStr}" canonical="${canonicalStr}"`);
+    logger.info(`LinkedIn Routes: Updated search terms for lead ${leadId}: display="${displayStr}" canonical="${canonicalStr}"`);
     return res.json({ id: leadId, searchTerms: displayStr, tokens: canonicalTokens, count: canonicalTokens.length, max: MAX_SEARCH_TERMS });
   } catch (error) {
-    console.error('LinkedIn Routes: Error updating search terms:', error);
+    logger.error('LinkedIn Routes: Error updating search terms:', error);
     return res.status(500).json({ error: 'Failed to update search terms', details: error.message });
   }
 });
@@ -859,8 +882,8 @@ router.patch('/leads/:id/search-terms', async (req, res) => {
  * Generic partial update (non search-term fields)
  */
 router.patch('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: PATCH /leads/:id (generic) called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: PATCH /leads/:id (generic) called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
@@ -870,14 +893,14 @@ router.patch('/leads/:id', async (req, res) => {
     }
     // Defensive log: track any attempt to toggle Posts Actioned via API
     if (Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
-      console.warn(`[LinkedIn Routes] PATCH: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
+      logger.warn(`[LinkedIn Routes] PATCH: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
     }
-    console.log('LinkedIn Routes: Generic PATCH applying fields:', updates);
+    logger.info('LinkedIn Routes: Generic PATCH applying fields:', updates);
     const updatedRecords = await airtableBase('Leads').update([{ id: leadId, fields: updates }]);
     if (!updatedRecords || !updatedRecords.length) return res.status(404).json({ error: 'Lead not found' });
     return res.json({ id: updatedRecords[0].id, fields: updatedRecords[0].fields });
   } catch (error) {
-    console.error('LinkedIn Routes: Error in generic PATCH:', error);
+    logger.error('LinkedIn Routes: Error in generic PATCH:', error);
     return res.status(500).json({ error: 'Failed to update lead', details: error.message });
   }
 });
@@ -887,19 +910,19 @@ router.patch('/leads/:id', async (req, res) => {
  * Update a specific lead (same as PATCH for compatibility)
  */
 router.put('/leads/:id', async (req, res) => {
-  console.log('LinkedIn Routes: PUT /leads/:id called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: PUT /leads/:id called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
     const updates = req.body;
     
-    console.log('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
+    logger.info('LinkedIn Routes: Updating lead:', leadId, 'with data:', updates);
 
     // Defensive log: track any attempt to toggle Posts Actioned via API
     if (updates && Object.prototype.hasOwnProperty.call(updates, 'Posts Actioned')) {
-      console.warn(`[LinkedIn Routes] PUT: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
+      logger.warn(`[LinkedIn Routes] PUT: Posts Actioned set to`, updates['Posts Actioned'], 'for lead', leadId, 'by client', req.client?.clientId || 'unknown');
     }
 
     // Update the lead in Airtable
@@ -940,11 +963,11 @@ router.put('/leads/:id', async (req, res) => {
       ...updatedRecords[0].fields
     };
 
-    console.log('LinkedIn Routes: Lead updated successfully');
+    logger.info('LinkedIn Routes: Lead updated successfully');
     res.json(updatedLead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error updating lead:', error);
+    logger.error('LinkedIn Routes: Error updating lead:', error);
     if (error.statusCode === 404) {
       return res.status(404).json({ error: 'Lead not found' });
     }
@@ -960,8 +983,8 @@ router.put('/leads/:id', async (req, res) => {
  * Find a lead by their LinkedIn profile URL
  */
 router.get('/leads/by-linkedin-url', async (req, res) => {
-  console.log('LinkedIn Routes: GET /leads/by-linkedin-url called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: GET /leads/by-linkedin-url called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const airtableBase = await getAirtableBase(req);
@@ -971,7 +994,7 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
       return res.status(400).json({ error: 'LinkedIn URL parameter is required' });
     }
     
-    console.log('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
+    logger.info('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
 
     // Normalize the URL (remove trailing slash if present)
     let normalizedUrl = url;
@@ -986,7 +1009,7 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
     }).firstPage();
 
     if (!records || records.length === 0) {
-      console.log('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
+      logger.info('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
       return res.status(404).json({ error: 'Lead not found with that LinkedIn URL' });
     }
 
@@ -1011,11 +1034,11 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
       lastContactDate: record.get('Last Contact Date') || null
     };
 
-    console.log('LinkedIn Routes: Found lead:', leadData.firstName, leadData.lastName);
+    logger.info('LinkedIn Routes: Found lead:', leadData.firstName, leadData.lastName);
     res.json(leadData);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error searching for lead by LinkedIn URL:', error);
+    logger.error('LinkedIn Routes: Error searching for lead by LinkedIn URL:', error);
     res.status(500).json({ 
       error: 'Failed to search for lead',
       details: error.message 
@@ -1028,14 +1051,14 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
  * Creates a new lead in Airtable
  */
 router.post('/leads', async (req, res) => {
-  console.log('LinkedIn Routes: POST /leads called');
-  console.log(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  logger.info('LinkedIn Routes: POST /leads called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
   
   try {
     const leadData = req.body;
     const airtableBase = await getAirtableBase(req);
     
-    console.log('LinkedIn Routes: Creating lead with data:', leadData);
+    logger.info('LinkedIn Routes: Creating lead with data:', leadData);
 
     // DEBUG: Log exactly what we're sending to Airtable
     const recordToCreate = {
@@ -1045,7 +1068,7 @@ router.post('/leads', async (req, res) => {
       }
     };
 
-    console.log('LinkedIn Routes: Record to create:', recordToCreate);
+    logger.info('LinkedIn Routes: Record to create:', recordToCreate);
 
     // Create the lead in Airtable
     const createdRecords = await airtableBase('Leads').create([recordToCreate]);
@@ -1076,11 +1099,11 @@ router.post('/leads', async (req, res) => {
       ...createdRecords[0].fields
     };
 
-    console.log('LinkedIn Routes: Lead created successfully:', newLead.firstName, newLead.lastName);
+    logger.info('LinkedIn Routes: Lead created successfully:', newLead.firstName, newLead.lastName);
     res.status(201).json(newLead);
 
   } catch (error) {
-    console.error('LinkedIn Routes: Error creating lead:', error);
+    logger.error('LinkedIn Routes: Error creating lead:', error);
     res.status(500).json({ 
       error: 'Failed to create lead',
       details: error.message 

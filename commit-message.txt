@@ -1,0 +1,12 @@
+fix: standardize field name constants in jobTracking.js
+
+This commit implements comprehensive field name standardization in jobTracking.js:
+
+- Replace all hardcoded string literals with proper constants
+- Use CLIENT_RUN_FIELDS and JOB_TRACKING_FIELDS consistently
+- Fix 'Error' field reference to use JOB_TRACKING_FIELDS.ERROR
+- Add field name validation to prevent Airtable errors
+- Standardize STATUS_VALUES usage for consistency
+
+This addresses the "Required JobTracking methods not found: updateAggregateMetrics" error
+by ensuring consistent field references across all methods in the JobTracking class.

@@ -3,7 +3,59 @@
 /**
  * Structured logging utilities for multi-tenant client management
  * Provides consistent log formatting for easy filtering on Render
+ * 
+ * IMPORTANT: DO NOT INSTANTIATE THIS CLASS DIRECTLY!
+ * Use the unifiedLoggerFactory.js to create loggers:
+ *   const { createLogger } = require('./utils/unifiedLoggerFactory');
+ *   const logger = createLogger(clientId, sessionId, processType);
+ * 
+ * Supports process-specific logging levels via environment variables:
+ * - DEBUG_LEAD_SCORING=debug|info|warn|error
+ * - DEBUG_POST_HARVESTING=debug|info|warn|error
+ * - DEBUG_POST_SCORING=debug|info|warn|error
+ * - DEBUG_LEVEL=debug|info|warn|error (default level)
  */
+
+/**
+ * Determine if a particular log level should be displayed based on environment settings
+ * 
+ * Process-specific environment variables override the general DEBUG_LEVEL:
+ * - DEBUG_LEAD_SCORING controls lead scoring logs
+ * - DEBUG_POST_HARVESTING controls post harvesting logs
+ * - DEBUG_POST_SCORING controls post scoring logs
+ * - DEBUG_LEVEL is used as fallback for all processes
+ * 
+ * @param {string} level - Log level (debug|info|warn|error)
+ * @param {string} processType - Process name (lead_scoring|post_harvesting|post_scoring)
+ * @returns {boolean} Whether this log should be displayed
+ */
+function shouldLog(level, processType) {
+    // Log levels in order of verbosity
+    const levels = ['debug', 'info', 'warn', 'error'];
+    
+    // Get the process-specific log level, or fall back to general level
+    let envLevel;
+    if (processType === 'lead_scoring') {
+        envLevel = (process.env.DEBUG_LEAD_SCORING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
+    } else if (processType === 'post_harvesting') {
+        envLevel = (process.env.DEBUG_POST_HARVESTING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
+    } else if (processType === 'post_scoring') {
+        envLevel = (process.env.DEBUG_POST_SCORING || process.env.DEBUG_LEVEL || 'info').toLowerCase();
+    } else {
+        envLevel = (process.env.DEBUG_LEVEL || 'info').toLowerCase();
+    }
+    
+    // Get index of configured level and current message level
+    const configLevelIdx = levels.indexOf(envLevel);
+    const messageLevelIdx = levels.indexOf(level.toLowerCase());
+    
+    // If either level is not valid, default to showing the message
+    if (configLevelIdx === -1 || messageLevelIdx === -1) return true;
+    
+    // Show the message if its level index is >= the configured level index
+    // (i.e., if it's equally or more important)
+    return messageLevelIdx >= configLevelIdx;
+}
 
 /**
  * Generate a unique session ID for tracking a complete operation
@@ -41,39 +93,114 @@ function createLogPrefix(clientId, sessionId, type) {
  * Structured logger class for consistent multi-tenant logging
  */
 class StructuredLogger {
-    constructor(clientId, sessionId = null) {
-        this.clientId = clientId;
-        this.sessionId = sessionId || generateSessionId();
+    constructor(clientId, sessionId = null, processType = null, skipWarning = false) {
+        // WARN ABOUT DIRECT INSTANTIATION - new in refactoring
+        if (!skipWarning) {
+            console.warn('⚠️ DIRECT INSTANTIATION OF STRUCTURED LOGGER DETECTED ⚠️');
+            console.warn('Please use unifiedLoggerFactory.js instead of direct instantiation:');
+            console.warn('  const { createLogger } = require("./utils/unifiedLoggerFactory");');
+            console.warn('  const logger = createLogger(clientId, sessionId, processType);');
+            console.trace(); // Show stack trace to identify the source
+        }
+        
+        // ROOT CAUSE FIX: Validate parameters to prevent [object Object] issues
+        
+        // Handle clientId
+        if (typeof clientId === 'object') {
+            console.error('CRITICAL ERROR: Object passed as clientId to StructuredLogger constructor:', 
+                JSON.stringify(clientId));
+            
+            // Try to extract a usable clientId from the object
+            if (clientId && clientId.clientId) {
+                clientId = clientId.clientId;
+            } else if (clientId && clientId.id) {
+                clientId = clientId.id;
+            } else {
+                clientId = 'INVALID_OBJECT_CLIENT_ID';
+            }
+        }
+        
+        // Handle sessionId - FIXED for null, undefined, and object values
+        if (sessionId === null || sessionId === undefined) {
+            // Handle null/undefined case silently
+            sessionId = 'unknown';
+        } else if (typeof sessionId === 'object') {
+            console.error('CRITICAL ERROR: Object passed as sessionId to StructuredLogger constructor:', 
+                JSON.stringify(sessionId));
+            
+            // Try to extract a usable sessionId from the object
+            if (sessionId && sessionId.runId) {
+                sessionId = sessionId.runId;
+            } else if (sessionId && sessionId.id) {
+                sessionId = sessionId.id;
+            } else {
+                sessionId = 'INVALID_OBJECT_SESSION_ID';
+            }
+        }
+        
+        // Ensure clientId is a string
+        this.clientId = (clientId !== null && clientId !== undefined) ? String(clientId) : 'SYSTEM';
+        
+        // Ensure sessionId is a string or generate one
+        this.sessionId = (sessionId !== null && sessionId !== undefined) ? String(sessionId) : generateSessionId();
+        
+        // Ensure processType is a string
+        this.processType = processType ? String(processType) : null; // lead_scoring, post_harvesting, post_scoring
+        
+        // Log a warning if we had to fix any parameters
+        if (typeof clientId === 'object' || typeof sessionId === 'object') {
+            console.warn(`[StructuredLogger] Created logger with fixed parameters: clientId=${this.clientId}, sessionId=${this.sessionId}`);
+            console.trace(); // Add stack trace to see where the invalid object was passed
+        }
     }
 
     setup(message, ...args) {
-        const prefix = createLogPrefix(this.clientId, this.sessionId, 'SETUP');
-        console.log(`${prefix} ${message}`, ...args);
+        if (shouldLog('info', this.processType)) {
+            const prefix = createLogPrefix(this.clientId, this.sessionId, 'SETUP');
+            console.log(`${prefix} ${message}`, ...args);
+        }
     }
 
     process(message, ...args) {
-        const prefix = createLogPrefix(this.clientId, this.sessionId, 'PROCESS');
-        console.log(`${prefix} ${message}`, ...args);
+        if (shouldLog('info', this.processType)) {
+            const prefix = createLogPrefix(this.clientId, this.sessionId, 'PROCESS');
+            console.log(`${prefix} ${message}`, ...args);
+        }
     }
 
     error(message, ...args) {
-        const prefix = createLogPrefix(this.clientId, this.sessionId, 'ERROR');
-        console.error(`${prefix} ${message}`, ...args);
+        if (shouldLog('error', this.processType)) {
+            const prefix = createLogPrefix(this.clientId, this.sessionId, 'ERROR');
+            console.error(`${prefix} ${message}`, ...args);
+        }
+    }
+
+    info(message, ...args) {
+        if (shouldLog('info', this.processType)) {
+            const prefix = createLogPrefix(this.clientId, this.sessionId, 'INFO');
+            console.log(`${prefix} ${message}`, ...args);
+        }
     }
 
     summary(message, ...args) {
-        const prefix = createLogPrefix(this.clientId, this.sessionId, 'SUMMARY');
-        console.log(`${prefix} ${message}`, ...args);
+        if (shouldLog('info', this.processType)) {
+            const prefix = createLogPrefix(this.clientId, this.sessionId, 'SUMMARY');
+            console.log(`${prefix} ${message}`, ...args);
+        }
     }
 
     debug(message, ...args) {
-        const prefix = createLogPrefix(this.clientId, this.sessionId, 'DEBUG');
-        console.log(`${prefix} ${message}`, ...args);
+        if (shouldLog('debug', this.processType)) {
+            const prefix = createLogPrefix(this.clientId, this.sessionId, 'DEBUG');
+            console.log(`${prefix} ${message}`, ...args);
+        }
     }
 
     warn(message, ...args) {
-        const prefix = createLogPrefix(this.clientId, this.sessionId, 'WARN');
-        console.warn(`${prefix} ${message}`, ...args);
+        if (shouldLog('warn', this.processType)) {
+            const prefix = createLogPrefix(this.clientId, this.sessionId, 'WARN');
+            console.warn(`${prefix} ${message}`, ...args);
+        }
     }
 
     // Get session ID for cross-function tracking
@@ -81,9 +208,16 @@ class StructuredLogger {
         return this.sessionId;
     }
 
-    // Create child logger for sub-operations with same session
+    // Create child logger for sub-operations with same session and process type
     createChild(subClientId = null) {
-        return new StructuredLogger(subClientId || this.clientId, this.sessionId);
+        return new StructuredLogger(subClientId || this.clientId, this.sessionId, this.processType, true);
+    }
+    
+    // Static factory method to create logger instances without triggering the warning
+    static createLogger(clientId, sessionId = null, processType = null) {
+        // Create a new instance and bypass the warning by setting skipWarning to true
+        const logger = new StructuredLogger(clientId, sessionId, processType, true);
+        return logger;
     }
 }
 

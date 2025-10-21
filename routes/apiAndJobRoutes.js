@@ -3,8 +3,9 @@
 const express = require("express");
 const router = express.Router();
 const fetch = (...args) =>
-  import("node-fetch").then(({ default: f }) => f(...args));
+  import("node-fetch").then(({ default: f }) => f(...args));
 const dirtyJSON = require('dirty-json');
+const { logErrorWithStackTrace } = require('../utils/errorHandler');
 
 // ---------------------------------------------------------------
 // Dependencies
@@ -13,6 +14,30 @@ const geminiConfig = require("../config/geminiClient.js");
 const airtableBase = require("../config/airtableClient.js");
 const { getClientBase } = require("../config/airtableClient.js");
 const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
+const { 
+  CLIENT_TABLES, 
+  LEAD_FIELDS, 
+  CLIENT_RUN_FIELDS,
+  JOB_TRACKING_FIELDS, 
+  CLIENT_RUN_STATUS_VALUES,
+  CREDENTIAL_FIELDS
+} = require("../constants/airtableUnifiedConstants.js");
+const { validateFieldNames, createValidatedObject } = require('../utils/airtableFieldValidator');
+
+// Using centralized status utility functions for consistent behavior
+const { getStatusString } = require('../utils/statusUtils');
+// Use the new run ID system for all run ID operations
+const runIdSystem = require('../services/runIdSystem.js');
+const { JobTracking } = require('../services/jobTracking.js');
+const jobOrchestrationService = require('../services/jobOrchestrationService.js');
+const { handleClientError } = require('../utils/errorHandler.js');
+// Old error logger removed - now using Render log analysis
+const logCriticalError = async () => {}; // No-op
+// Structured logging for 100% error coverage
+const { createLogger } = require('../utils/contextLogger.js');
+
+// Module-level logger for routes without specific runId context
+const moduleLogger = createLogger({ runId: 'MODULE_INIT', clientId: 'SYSTEM', operation: 'api_routes' });
 
 const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
 const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
@@ -21,10 +46,10 @@ const { scoreLeadNow } = require("../singleScorer.js");
 const batchScorer = require("../batchScorer.js");
 const { loadAttributes, loadAttributeForEditing, loadAttributeForEditingWithClientBase, updateAttribute, updateAttributeWithClientBase } = require("../attributeLoader.js");
 const { computeFinalScore } = require("../scoring.js");
-const { buildAttributeBreakdown } = require("../breakdown.js");
+const { buildAttributeBreakdown } = require("../scripts/analysis/breakdown.js");
 const {
-  alertAdmin,
-  isMissingCritical,
+  alertAdmin,
+  isMissingCritical,
 } = require("../utils/appHelpers.js");
 
 const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
@@ -33,10 +58,48 @@ const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
 const ENQUEUE_URL = `${__PUBLIC_BASE__}/enqueue`;
 
 // ---------------------------------------------------------------
+// Helper: Log error to Airtable (non-blocking)
+// ---------------------------------------------------------------
+async function logRouteError(error, req = null, additionalContext = {}) {
+  try {
+    // Handle both route mode (has req) and background mode (no req)
+    const endpoint = req ? `${req.method} ${req.path || req.url || 'unknown'}` : 'background-job';
+    const clientId = additionalContext.clientId || req?.headers?.['x-client-id'] || req?.query?.clientId || req?.body?.clientId || null;
+    const runId = additionalContext.runId || req?.query?.runId || req?.body?.runId || null;
+    
+    // Create logger with context
+    const logger = createLogger({
+      runId: runId || 'UNKNOWN',
+      clientId: clientId || 'UNKNOWN',
+      operation: 'route_error'
+    });
+    
+    logger.error(`Route error in ${endpoint}: ${error.message}`, {
+      requestBody: req?.body || null,
+      queryParams: req?.query || null,
+      ...additionalContext
+    });
+    
+    await logCriticalError(error, {
+      endpoint,
+      clientId,
+      runId,
+      requestBody: req?.body || null,
+      queryParams: req?.query || null,
+      ...additionalContext
+    });
+  } catch (loggingError) {
+    moduleLogger.error('Failed to log route error:', loggingError.message);
+    // Don't recursively log the logging error to avoid infinite loop
+  }
+}
+
+// ---------------------------------------------------------------
 // Health Check
 // ---------------------------------------------------------------
 router.get("/health", (_req, res) => {
-  console.log("apiAndJobRoutes.js: /health hit");
+  const healthLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'health_check' });
+  healthLogger.info("Health endpoint hit");
   res.json({
     status: "ok",
     enhanced_audit_system: "loaded",
@@ -46,13 +109,151 @@ router.get("/health", (_req, res) => {
 
 // Simple audit test route (no auth required)
 router.get("/audit-test", (_req, res) => {
-  console.log("apiAndJobRoutes.js: /audit-test hit");
+  const auditLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'audit_test' });
+  auditLogger.info("Audit test endpoint hit");
   res.json({
     status: "success", 
     message: "Enhanced audit system is loaded",
     timestamp: new Date().toISOString(),
     features: ["endpoint testing", "automated troubleshooting", "smart recommendations"]
   });
+});
+
+// ---------------------------------------------------------------
+// Debug Job Status (for client-by-client polling)
+// ---------------------------------------------------------------
+router.get("/debug-job-status", async (req, res) => {
+  try {
+    const { jobId } = req.query;
+    
+    if (!jobId) {
+      return res.status(400).json({
+        error: 'jobId parameter is required'
+      });
+    }
+    
+    const { getJobStatus } = require('../services/clientService');
+    
+    // Try to find job status in any client's records
+    // Job ID format: job_{operation}_stream{N}_{timestamp}
+    const jobParts = jobId.split('_');
+    if (jobParts.length < 4) {
+      return res.status(400).json({
+        error: 'Invalid jobId format'
+      });
+    }
+    
+    const operation = jobParts[1] + (jobParts[2].startsWith('stream') ? '' : '_' + jobParts[2]);
+    
+    // Get all active clients to search for job status
+    const { getAllActiveClients } = require('../services/clientService');
+    const clients = await getAllActiveClients();
+    
+    let foundStatus = null;
+    let foundClientId = null;
+    
+    // Search through all clients for this job
+    for (const client of clients) {
+      try {
+        const status = await getJobStatus(client.clientId, operation);
+        if (status && status.jobId === jobId) {
+          foundStatus = status.status;
+          foundClientId = client.clientId;
+          break;
+        }
+      } catch (error) {
+        // Continue searching other clients
+        await logRouteError(error, req, { 
+          operation: 'job_status_search',
+          expectedBehavior: true,
+          isSearch: true,
+          jobId: jobId 
+        }).catch(() => {});
+      }
+    }
+    
+    // If not found in specific clients, check global job status
+    if (!foundStatus) {
+      try {
+        const globalStatus = await getJobStatus(null, operation);
+        if (globalStatus && globalStatus.jobId === jobId) {
+          foundStatus = globalStatus.status;
+          foundClientId = 'global';
+        }
+      } catch (error) {
+        // Job not found
+        await logRouteError(error, req, { 
+          operation: 'global_job_status_search',
+          expectedBehavior: true,
+          isSearch: true,
+          jobId: jobId 
+        }).catch(() => {});
+      }
+    }
+    
+    if (foundStatus) {
+      res.json({
+        jobId,
+        status: foundStatus,
+        clientId: foundClientId,
+        operation,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(404).json({
+        error: 'Job not found',
+        jobId,
+        operation
+      });
+    }
+    
+  } catch (error) {
+    const errorLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'debug_job_status' });
+    errorLogger.error('Error in debug-job-status:', error.message);
+    await logRouteError(error, req, { operation: 'debug-job-status', jobId }).catch(() => {});
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
+// Debug endpoint for checking specific client operation status
+router.get("/debug-job-status/:clientId/:operation", async (req, res) => {
+  try {
+    const { clientId, operation } = req.params;
+    const { getJobStatus } = require('../services/clientService');
+    
+    const status = await getJobStatus(clientId, operation);
+    
+    if (status) {
+      res.json({
+        clientId,
+        operation,
+        status: status.status,
+        jobId: status.jobId,
+        lastRunDate: status.lastRunDate,
+        lastRunTime: status.lastRunTime,
+        lastRunCount: status.lastRunCount,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(404).json({
+        error: 'Job status not found',
+        clientId,
+        operation
+      });
+    }
+    
+  } catch (error) {
+    const errorLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'debug_job_status_client' });
+    errorLogger.error('Error in debug-job-status client endpoint:', error.message);
+    await logRouteError(error, req).catch(() => {});
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
 });
 
 // ---------------------------------------------------------------
@@ -67,7 +268,9 @@ router.get("/audit-test", (_req, res) => {
 // ---------------------------------------------------------------
 router.get("/api/initiate-pb-message", async (req, res) => {
   const { recordId } = req.query;
-  console.log("/api/initiate-pb-message for", recordId);
+  const logger = createLogger({ runId: `pb_message_${recordId || 'unknown'}`, clientId: req.headers['x-client-id'] || 'UNKNOWN', operation: 'initiate_pb_message' });
+  
+  logger.info(`/api/initiate-pb-message for ${recordId}`);
   if (!recordId)
     return res
       .status(400)
@@ -131,7 +334,8 @@ router.get("/api/initiate-pb-message", async (req, res) => {
         "Message Status": "Queuing Initiated by Server",
       });
     } catch (e) {
-      console.warn("Airtable status update failed:", e.message);
+      logger.warn("Airtable status update failed:", e.message);
+      await logRouteError(e, req).catch(() => {});
     }
 
     res.json({
@@ -139,58 +343,61 @@ router.get("/api/initiate-pb-message", async (req, res) => {
       message: `Lead ${recordId} queued.`,
       enqueueResponse: enqueueData,
     });
-  } catch (e) {
-    console.error("initiate-pb-message:", e);
-    await alertAdmin(
-      "Error /api/initiate-pb-message",
-      `ID:${recordId}\n${e.message}`
-    );
-    if (!res.headersSent)
-      res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// ---------------------------------------------------------------
+  } catch (e) {
+    logger.error("initiate-pb-message:", e.message);
+    await logRouteError(e, req, { operation: 'initiate-pb-message', recordId }).catch(() => {});
+    await alertAdmin(
+      "Error /api/initiate-pb-message",
+      `ID:${recordId}\n${e.message}`
+    );
+    if (!res.headersSent)
+      res.status(500).json({ success: false, error: e.message });
+  }
+});// ---------------------------------------------------------------
 // Manual PB Posts Sync
 // ---------------------------------------------------------------
-router.all("/api/sync-pb-posts", async (_req, res) => {
-  try {
-    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
-    res.json({
-      status: "success",
-      message: "PB posts sync completed.",
-      details: info,
-    });
-  } catch (err) {
-    console.error("sync-pb-posts error (manual trigger):", err);
-    res.status(500).json({ status: "error", error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------
+router.all("/api/sync-pb-posts", async (req, res) => {
+  const syncLogger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'sync_pb_posts' });
+  try {
+    const info = await syncPBPostsToAirtable(); // Assuming this might be a manual trigger
+    res.json({
+      status: "success",
+      message: "PB posts sync completed.",
+      details: info,
+    });
+  } catch (err) {
+    syncLogger.error("sync-pb-posts error (manual trigger):", err);
+    await logRouteError(err, req).catch(() => {});
+    res.status(500).json({ status: "error", error: err.message });
+  }
+});// ---------------------------------------------------------------
 // PB Webhook
 // ---------------------------------------------------------------
 router.post("/api/pb-webhook", async (req, res) => {
-  try {
-    const secret = req.query.secret || req.body.secret;
-    if (secret !== process.env.PB_WEBHOOK_SECRET) {
-      console.warn("PB Webhook: Forbidden attempt with incorrect secret.");
-      return res.status(403).json({ error: "Forbidden" });
-    }
+  const webhookLogger = createLogger({
+    runId: `pb_webhook_${Date.now()}`,
+    clientId: 'SYSTEM',
+    operation: 'pb_webhook'
+  });
+  
+  try {
+    const secret = req.query.secret || req.body.secret;
+    if (secret !== process.env.PB_WEBHOOK_SECRET) {
+      webhookLogger.warn("PB Webhook: Forbidden attempt with incorrect secret.");
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
-    console.log(
-      "PB Webhook: Received raw payload:",
-      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
-    );
+    webhookLogger.info(
+      "Received raw payload:",
+      JSON.stringify(req.body).slice(0, 1000) // Log only a part of potentially large payload
+    );
 
-    res.status(200).json({ message: "Webhook received. Processing in background." });
-
-    (async () => {
+    res.status(200).json({ message: "Webhook received. Processing in background." });    (async () => {
       try {
         let rawResultObject = req.body.resultObject;
 
         if (!rawResultObject) {
-            console.warn("PB Webhook: resultObject is missing in the payload.");
+            webhookLogger.warn("PB Webhook: resultObject is missing in the payload.");
             return;
         }
 
@@ -201,13 +408,15 @@ router.post("/api/pb-webhook", async (req, res) => {
             const cleanedString = rawResultObject.replace(/,\s*([}\]])/g, "$1");
             postsInputArray = JSON.parse(cleanedString);
           } catch (parseError) {
-            console.error("PB Webhook: Error parsing resultObject string with JSON.parse:", parseError);
+            webhookLogger.error("PB Webhook: Error parsing resultObject string with JSON.parse:", parseError.message);
+            await logRouteError(parseError, req).catch(() => {});
             // Fallback: try dirty-json
             try {
               postsInputArray = dirtyJSON.parse(rawResultObject);
-              console.log("PB Webhook: dirty-json successfully parsed resultObject string.");
+              webhookLogger.info("PB Webhook: dirty-json successfully parsed resultObject string.");
             } catch (dirtyErr) {
-              console.error("PB Webhook: dirty-json also failed to parse resultObject string:", dirtyErr);
+              webhookLogger.error("PB Webhook: dirty-json also failed to parse resultObject string:", dirtyErr.message);
+              await logRouteError(dirtyErr, req).catch(() => {});
               return;
             }
           }
@@ -216,41 +425,41 @@ router.post("/api/pb-webhook", async (req, res) => {
         } else if (typeof rawResultObject === 'object' && rawResultObject !== null) {
           postsInputArray = [rawResultObject];
         } else {
-          console.warn("PB Webhook: resultObject is not a string, array, or recognized object.");
+          webhookLogger.warn("PB Webhook: resultObject is not a string, array, or recognized object.");
           return;
         }
         
         if (!Array.isArray(postsInputArray)) {
-            console.warn("PB Webhook: Processed postsInput is not an array.");
-            return;
-        }
+            webhookLogger.warn("PB Webhook: Processed postsInput is not an array.");
+            return;
+        }
 
-        console.log(`PB Webhook: Extracted ${postsInputArray.length} items from resultObject for background processing.`);
+        webhookLogger.info(`Extracted ${postsInputArray.length} items from resultObject for background processing.`);
 
-        const filteredPostsInput = postsInputArray.filter(item => {
-          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
-            return true;
-          }
-          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
-        });
-        console.log(`PB Webhook: Filtered to ${filteredPostsInput.length} items after removing potential header.`);
-
-        if (filteredPostsInput.length > 0) {
+        const filteredPostsInput = postsInputArray.filter(item => {
+          if (typeof item !== 'object' || item === null || !item.hasOwnProperty('profileUrl')) {
+            return true;
+          }
+          return !(item.profileUrl === "Profile URL" && item.error === "Invalid input");
+        });
+        webhookLogger.info(`Filtered to ${filteredPostsInput.length} items after removing potential header.`);        if (filteredPostsInput.length > 0) {
           // TEMP FIX: Use specific client base if auto-detection fails
           const { getClientBase } = require('../config/airtableClient');
           const clientBase = await getClientBase('Guy-Wilson'); // Fixed: Use correct client ID and await
           
           const processed = await syncPBPostsToAirtable(filteredPostsInput, clientBase);
-          console.log("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
+          webhookLogger.info("PB Webhook: Background syncPBPostsToAirtable completed.", processed);
         } else {
-          console.log("PB Webhook: No valid posts to sync after filtering.");
+          webhookLogger.info("PB Webhook: No valid posts to sync after filtering.");
         }      } catch (backgroundErr) {
-        console.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
+        webhookLogger.error("PB Webhook: Error during background processing:", backgroundErr.message, backgroundErr.stack);
+        await logRouteError(backgroundErr, req).catch(() => {});
       }
     })();
 
   } catch (initialErr) {
-    console.error("PB Webhook: Initial error:", initialErr.message, initialErr.stack);
+    webhookLogger.error("PB Webhook: Initial error:", initialErr.message, initialErr.stack);
+    await logRouteError(initialErr, req).catch(() => {});
     res.status(500).json({ error: initialErr.message });
   }
 });
@@ -261,12 +470,13 @@ router.post("/api/pb-webhook", async (req, res) => {
 // Manual Batch Score (Admin/Batch Operation) - Multi-Client
 // ---------------------------------------------------------------
 router.get("/run-batch-score", async (req, res) => {
-  console.log("Batch scoring requested (multi-client)");
+  const logger = createLogger({ runId: 'batch_score_req', clientId: 'SYSTEM', operation: 'run_batch_score' });
+  logger.info("Batch scoring requested (multi-client)");
   
   const limit = Number(req.query.limit) || 500;
   
   if (!vertexAIClient || !geminiModelId) {
-    console.warn(`Batch scoring unavailable: vertexAIClient=${!!vertexAIClient}, geminiModelId=${geminiModelId}`);
+    logger.warn(`Batch scoring unavailable: vertexAIClient=${!!vertexAIClient}, geminiModelId=${geminiModelId}`);
     return res.status(503).json({
       success: false,
       error: "Batch scoring unavailable (Google VertexAI config missing)",
@@ -277,16 +487,285 @@ router.get("/run-batch-score", async (req, res) => {
     });
   }
   
+  // STANDALONE RUN: Not called from orchestrator, so skip all metrics/record creation
   batchScorer
-    .run(req, res, { vertexAIClient, geminiModelId, limit })
+    .run(req, res, { vertexAIClient, geminiModelId, limit, isStandalone: true })
     .catch((e) => {
       if (!res.headersSent)
         res.status(500).send("Batch scoring error: " + e.message);
     });
 });
+
+// Fire-and-forget version: GET /run-batch-score-v2
+// Query params: ?stream=1&limit=500 (both optional)
+router.get("/run-batch-score-v2", async (req, res) => {
+  try {
+    if (!vertexAIClient || !geminiModelId) {
+      const logger = createLogger({ runId: 'batch_score_v2_req', clientId: 'SYSTEM', operation: 'run_batch_score_v2' });
+      logger.warn(`Lead scoring unavailable: vertexAIClient=${!!vertexAIClient}, geminiModelId=${geminiModelId}`);
+      return res.status(503).json({
+        ok: false,
+        error: "Lead scoring unavailable (Google VertexAI config missing)",
+        details: {
+          vertexAIClient: !!vertexAIClient,
+          geminiModelId: geminiModelId || "not set"
+        }
+      });
+    }
+
+    const stream = parseInt(req.query.stream) || 1;
+    const limit = Number(req.query.limit) || 500;
+    const singleClientId = req.query.clientId; // Optional: process single client
+    const parentRunId = req.query.parentRunId; // Optional: master run ID from Smart Resume (IMMUTABLE)
+    const clientRunId = req.query.clientRunId; // Optional: client-specific run ID from Smart Resume
+    const { generateJobId, setJobStatus, setProcessingStream, getActiveClientsByStream } = require('../services/clientService');
+    
+    // Generate job ID and set initial status
+    const jobId = generateJobId('lead_scoring', stream);
+    const clientDesc = singleClientId ? ` for client ${singleClientId}` : '';
+    
+    // Create logger with jobId as runId for this request
+    const logger = createLogger({ 
+      runId: jobId, 
+      clientId: singleClientId || 'MULTI_CLIENT', 
+      operation: 'run_batch_score_v2' 
+    });
+    
+    logger.info(`Starting fire-and-forget lead scoring${clientDesc}, jobId: ${jobId}, stream: ${stream}, limit: ${limit}`);
+
+    // Return 202 Accepted immediately
+    res.status(202).json({
+      ok: true,
+      message: `Lead scoring started in background${clientDesc}`,
+      jobId,
+      stream,
+      limit,
+      clientId: singleClientId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Start background processing
+    processLeadScoringInBackground(jobId, stream, limit, singleClientId, { 
+      vertexAIClient, 
+      geminiModelId,
+      parentRunId, // Master run ID (IMMUTABLE)
+      clientRunId  // Client-specific run ID created by smart-resume
+    });
+
+  } catch (e) {
+    const logger = createLogger({ runId: 'batch_score_v2_error', clientId: 'SYSTEM', operation: 'run_batch_score_v2' });
+    logger.error('[run-batch-score-v2] error:', e.message);
+    await logRouteError(e, req).catch(() => {});
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Background processing function for lead scoring
+async function processLeadScoringInBackground(jobId, stream, limit, singleClientId, aiDependencies) {
+  const {
+    getActiveClientsByStream,
+    setJobStatus,
+    setProcessingStream,
+    formatDuration
+  } = require('../services/clientService');
+  // Import run ID system for consistent ID generation and management
+  const runIdSystem = require('../services/runIdSystem');
+
+  // Create logger for this background job
+  const logger = createLogger({
+    runId: jobId,
+    clientId: singleClientId || 'MULTI_CLIENT',
+    operation: 'lead_scoring_background'
+  });
+
+  const MAX_CLIENT_PROCESSING_MINUTES = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
+  const MAX_JOB_PROCESSING_HOURS = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
+
+  const jobStartTime = Date.now();
+  const jobTimeoutMs = MAX_JOB_PROCESSING_HOURS * 60 * 60 * 1000;
+  const clientTimeoutMs = MAX_CLIENT_PROCESSING_MINUTES * 60 * 1000;
+
+  let processedCount = 0;
+  let scoredCount = 0;
+  let errorCount = 0;
+
+  // CLEAN ARCHITECTURE: Lead scoring is a pure consumer of run IDs
+  // If orchestrator provides clientRunId, use it for metrics updates
+  // If not provided (standalone mode), skip metrics updates entirely
+  const { clientRunId } = aiDependencies;
+  
+  if (clientRunId) {
+    logger.info(`Using client run ID from orchestrator: ${clientRunId} for job ${jobId}`);
+  } else {
+    logger.info(`No run ID provided - running in standalone mode (no metrics updates) for job ${jobId}`);
+  }
+
+  try {
+    logger.info(`Starting job ${jobId} on stream ${stream} with limit ${limit}`);
+
+    // Set initial job status (don't set processing stream for operation)
+    await setJobStatus(null, 'lead_scoring', 'STARTED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: '0 seconds',
+      lastRunCount: 0
+    });
+
+    // Get active clients filtered by processing stream
+    const activeClients = await getActiveClientsByStream(stream, singleClientId);
+    
+    logger.info(`Found ${activeClients.length} active clients on stream ${stream} to process`);
+
+    // Update status to RUNNING
+    await setJobStatus(null, 'lead_scoring', 'RUNNING', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: formatDuration(Date.now() - jobStartTime),
+      lastRunCount: processedCount
+    });
+
+    // Process each client
+    for (const client of activeClients) {
+      // Check job timeout
+      if (Date.now() - jobStartTime > jobTimeoutMs) {
+        logger.warn(`Job timeout reached (${MAX_JOB_PROCESSING_HOURS}h), killing job ${jobId}`);
+        await setJobStatus(null, 'lead_scoring', 'JOB_TIMEOUT_KILLED', jobId, {
+          lastRunDate: new Date().toISOString(),
+          lastRunTime: formatDuration(Date.now() - jobStartTime),
+          lastRunCount: scoredCount
+        });
+        return;
+      }
+
+      const clientStartTime = Date.now();
+      logger.info(`Processing client ${client.clientId} (${processedCount + 1}/${activeClients.length})`);
+
+      try {
+        // CLEAN ARCHITECTURE: Pass client run ID exactly as received from orchestrator
+        // In standalone mode (clientRunId is undefined), lead scoring still works but doesn't update metrics
+        logger.debug(`Processing client ${client.clientId} with run ID: ${clientRunId || 'none (standalone mode)'}`);
+        
+        // Set up client timeout
+        const clientPromise = processClientForLeadScoring(client.clientId, limit, aiDependencies, clientRunId);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Client timeout')), clientTimeoutMs)
+        );
+
+        const result = await Promise.race([clientPromise, timeoutPromise]);
+        
+        if (result?.successful) {
+          scoredCount += result.successful;
+        }
+
+        const clientDuration = Date.now() - clientStartTime;
+        logger.info(`Client ${client.clientId} completed in ${formatDuration(clientDuration)}`);
+
+      } catch (error) {
+        errorCount++;
+        if (error.message === 'Client timeout') {
+          logger.warn(`Client ${client.clientId} timeout (${MAX_CLIENT_PROCESSING_MINUTES}m), skipping`);
+        } else {
+          logger.error(`Client ${client.clientId} error: ${error.message}`);
+          logger.error(`Error stack: ${error.stack}`);
+        }
+      }
+
+      processedCount++;
+
+      // Update progress
+      await setJobStatus(null, 'lead_scoring', 'RUNNING', jobId, {
+        lastRunDate: new Date().toISOString(),
+        lastRunTime: formatDuration(Date.now() - jobStartTime),
+        lastRunCount: scoredCount
+      });
+    }
+
+    // Job completed successfully
+    const finalDuration = formatDuration(Date.now() - jobStartTime);
+    logger.info(`Job ${jobId} completed. Processed: ${processedCount}, Scored: ${scoredCount}, Errors: ${errorCount}, Duration: ${finalDuration}`);
+
+    await setJobStatus(null, 'lead_scoring', 'COMPLETED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: finalDuration,
+      lastRunCount: scoredCount
+    });
+
+  } catch (error) {
+    logger.error(`Job ${jobId} failed: ${error.message}`);
+    logger.error(`Error stack: ${error.stack}`);
+    await logRouteError(error).catch(() => {});
+    await setJobStatus(null, 'lead_scoring', 'FAILED', jobId, {
+      lastRunDate: new Date().toISOString(),
+      lastRunTime: formatDuration(Date.now() - jobStartTime),
+      lastRunCount: scoredCount
+    });
+  }
+}
+
+// Helper function to process individual client for lead scoring
+async function processClientForLeadScoring(clientId, limit, aiDependencies, runId) {
+  // Create logger with client-specific context
+  const logger = createLogger({
+    runId: runId || 'standalone',
+    clientId: clientId,
+    operation: 'process_client_lead_scoring'
+  });
+  
+  // Add debug logging for Guy Wilson specific debugging
+  logger.debug(`processClientForLeadScoring called for client: ${clientId}`);
+  if (clientId === 'guy-wilson') {
+    logger.debug(`Processing Guy Wilson client with runId: ${runId}`);
+  }
+  
+  // Create a fake request object for batchScorer.run() that targets a specific client
+  const fakeReq = {
+    query: {
+      limit: limit,
+      clientId: clientId,
+      // Only include runId if provided (orchestrated run), otherwise undefined (standalone)
+      runId: runId
+    }
+  };
+
+  // Create a fake response object to capture results
+  let result = { processed: 0, successful: 0, failed: 0, tokensUsed: 0 };
+  const fakeRes = {
+    status: () => fakeRes,
+    json: (data) => {
+      // Extract metrics from batchScorer response
+      if (data && data.clients && data.clients.length > 0) {
+        const clientResult = data.clients[0];
+        result = {
+          processed: clientResult.processed || 0,
+          successful: clientResult.successful || 0,
+          failed: clientResult.failed || 0,
+          tokensUsed: clientResult.tokensUsed || 0
+        };
+      }
+      return fakeRes;
+    },
+    send: () => fakeRes,
+    headersSent: false
+  };
+
+  try {
+    // Use batchScorer.run() for a single client
+    await batchScorer.run(fakeReq, fakeRes, aiDependencies);
+    return result;
+  } catch (error) {
+    logger.error(`[processClientForLeadScoring] Error processing client ${clientId}:`, error.message);
+    await logRouteError(error, req).catch(() => {});
+    throw error;
+  }
+}
+
 // Single Lead Scorer
 // ---------------------------------------------------------------
 router.get("/score-lead", async (req, res) => {
+  const debugLogger = createLogger({
+    runId: 'SYSTEM',
+    clientId: 'SYSTEM',
+    operation: 'score_lead_debug'
+  });
+  
   try {
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
@@ -315,12 +794,12 @@ router.get("/score-lead", async (req, res) => {
     if (!id)
       return res.status(400).json({ error: "recordId query param required" });    const record = await clientBase("Leads").find(id);
     if (!record) { 
-        console.warn(`score-lead: Lead record not found for ID: ${id}`);
+        debugLogger.warn(`score-lead: Lead record not found for ID: ${id}`);
         return res.status(404).json({ error: `Lead record not found for ID: ${id}` });
     }
     const profileJsonString = record.get("Profile Full JSON");
     if (!profileJsonString) {
-        console.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
+        debugLogger.warn(`score-lead: Profile Full JSON is empty for lead ID: ${id}`);
          await clientBase("Leads").update(id, {
             "AI Score": 0,
             "Scoring Status": "Skipped – Profile JSON missing",
@@ -348,7 +827,7 @@ router.get("/score-lead", async (req, res) => {
     }
 
     if (isMissingCritical(profile)) {
-      console.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
+      debugLogger.warn(`score-lead: Lead ID ${id} JSON missing critical fields for scoring.`);
     }
 
     const gOut = await scoreLeadNow(profile, {
@@ -357,7 +836,7 @@ router.get("/score-lead", async (req, res) => {
       clientId,
     });
     if (!gOut) {
-        console.error(`score-lead: singleScorer returned null for lead ID: ${id}`);
+        debugLogger.error(`singleScorer returned null for lead ID: ${id}`);
         throw new Error("singleScorer returned null.");
     }
     let {
@@ -435,37 +914,213 @@ router.get("/score-lead", async (req, res) => {
       "Exclude Details": exclude_details,
     });
 
-    res.json({ id, finalPct, aiProfileAssessment, breakdown });
-  } catch (err) {
-    console.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
-    if (!res.headersSent)
-      res.status(500).json({ error: err.message });
-  }
+    res.json({ id, finalPct, aiProfileAssessment, breakdown });
+  } catch (err) {
+    debugLogger.error(`score-lead error for ID ${req.query.recordId}:`, err.message, err.stack);
+    await logRouteError(err, req).catch(() => {});
+    if (!res.headersSent)
+      res.status(500).json({ error: err.message });
+  }
+});// ---------------------------------------------------------------
+// Debug: return normalized Valid PMPro Levels (safe to expose in staging)
+router.get('/debug/valid-pmpro-levels', async (_req, res) => {
+  try {
+    const { getValidPMProLevels } = require('../services/pmproMembershipService');
+    const levels = await getValidPMProLevels();
+    res.json({ success: true, levels });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
-// ---------------------------------------------------------------
 // Gemini Debug
 // ---------------------------------------------------------------
 router.get("/debug-gemini-info", (_req, res) => {
-  const modelIdForScoring =
-    geminiConfig?.geminiModel?.model ||
-    process.env.GEMINI_MODEL_ID ||
-    "gemini-2.5-pro-preview-05-06 (default)";
+  const modelIdForScoring =
+    geminiConfig?.geminiModel?.model ||
+    process.env.GEMINI_MODEL_ID ||
+    "gemini-2.5-pro-preview-05-06 (default)";
 
-  res.json({
-    message: "Gemini Debug Info",
-    model_id_for_scoring: modelIdForScoring,
-    batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
-    project_id: process.env.GCP_PROJECT_ID,
-    location: process.env.GCP_LOCATION,
-    global_client_available: !!vertexAIClient,
-    default_model_instance_available:
-      !!(geminiConfig && geminiConfig.geminiModel),
-    gpt_chat_url: process.env.GPT_CHAT_URL || "Not Set",
-  });
+  res.json({
+    message: "Gemini Debug Info",
+    model_id_for_scoring: modelIdForScoring,
+    batch_scorer_model_id: geminiModelId || process.env.GEMINI_MODEL_ID,
+    project_id: process.env.GCP_PROJECT_ID,
+    location: process.env.GCP_LOCATION,
+    global_client_available: !!vertexAIClient,
+    default_model_instance_available:
+      !!(geminiConfig && geminiConfig.geminiModel),
+    gpt_chat_url: process.env.GPT_CHAT_URL || "Not Set",
+  });
 });
 
-// ---------------------------------------------------------------
+/**
+ * Test Render API connectivity
+ */
+router.get("/debug-render-api", async (_req, res) => {
+  const logger = createLogger({ runId: 'DEBUG_API', clientId: 'SYSTEM', operation: 'render_api_test' });
+  
+  try {
+    const axios = require('axios');
+    const RENDER_API_KEY = process.env.RENDER_API_KEY;
+    const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID;
+    const RENDER_OWNER_ID = process.env.RENDER_OWNER_ID;
+    
+    logger.info('Testing Render API connectivity');
+    
+    // Check environment variables
+    const envCheck = {
+      hasApiKey: !!RENDER_API_KEY,
+      hasServiceId: !!RENDER_SERVICE_ID,
+      hasOwnerId: !!RENDER_OWNER_ID,
+      serviceId: RENDER_SERVICE_ID || 'NOT SET',
+      ownerId: RENDER_OWNER_ID || 'NOT SET',
+    };
+    
+    if (!RENDER_API_KEY || !RENDER_SERVICE_ID || !RENDER_OWNER_ID) {
+      return res.json({
+        success: false,
+        message: 'Missing required environment variables',
+        environmentCheck: envCheck,
+        instructions: {
+          RENDER_API_KEY: 'Get from Render Dashboard → Account Settings → API Keys',
+          RENDER_SERVICE_ID: 'Service ID from URL (srv-xxx)',
+          RENDER_OWNER_ID: 'Workspace ID from URL (/w/xxx) or Account Settings',
+        }
+      });
+    }
+    
+    // Test the API
+    const params = new URLSearchParams({
+      ownerId: RENDER_OWNER_ID,
+      limit: '5',
+      direction: 'backward',
+      resource: RENDER_SERVICE_ID,  // Just 'resource', not 'resource[]'
+    });
+    
+    const logsUrl = `https://api.render.com/v1/logs?${params.toString()}`;
+    
+    const logsResponse = await axios.get(logsUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${RENDER_API_KEY}`
+      },
+      timeout: 10000
+    });
+    
+    logger.info('Render API test successful', {
+      logsCount: logsResponse.data.logs?.length || 0,
+      hasMore: logsResponse.data.hasMore
+    });
+    
+    res.json({
+      success: true,
+      message: 'Render API connectivity test passed!',
+      environmentCheck: envCheck,
+      testResults: {
+        logsRetrieved: logsResponse.data.logs?.length || 0,
+        hasMore: logsResponse.data.hasMore,
+        sampleLog: logsResponse.data.logs?.[0] || null
+      }
+    });
+    
+  } catch (error) {
+    logger.error('Render API test failed', {
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Render API test failed',
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data,
+      requestUrl: `https://api.render.com/v1/logs?ownerId=xxx&limit=5&direction=backward&resource[]=xxx`,
+      troubleshooting: {
+        '400 Bad Request': 'Invalid parameters - check owner ID format or resource ID',
+        '401 Unauthorized': 'Check RENDER_API_KEY is valid',
+        '403 Forbidden': 'Check API key has permission to access logs',
+        '404 Not Found': 'Check RENDER_OWNER_ID and RENDER_SERVICE_ID are correct',
+        'Timeout': 'Render API might be slow or unreachable'
+      }
+    });
+  }
+});
+
+/**
+ * Get the status of any running or recent Smart Resume processes
+ */
+router.get("/debug-smart-resume-status", async (req, res) => {
+  const statusLogger = createLogger({
+    runId: 'SYSTEM',
+    clientId: 'SYSTEM',
+    operation: 'smart_resume_status'
+  });
+  
+  statusLogger.info("ℹ️ Smart resume status check requested");
+  
+  try {
+    // Check webhook secret for sensitive operations
+    let isAuthenticated = false;
+    const providedSecret = req.headers['x-webhook-secret'];
+    const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+    
+    if (providedSecret && providedSecret === expectedSecret) {
+      isAuthenticated = true;
+    }
+    
+    // Build basic status response
+    const statusResponse = {
+      timestamp: new Date().toISOString(),
+      lockStatus: {
+        locked: !!smartResumeRunning,
+        currentJobId: currentSmartResumeJobId || null,
+        lockAcquiredAt: smartResumeLockTime ? new Date(smartResumeLockTime).toISOString() : null,
+        lockDuration: smartResumeLockTime ? `${Math.round((Date.now() - smartResumeLockTime)/1000/60)} minutes` : null
+      }
+    };
+    
+    // Add active process info if available and authenticated
+    if (global.smartResumeActiveProcess) {
+      statusResponse.activeProcess = {
+        status: global.smartResumeActiveProcess.status || 'unknown',
+        jobId: global.smartResumeActiveProcess.jobId,
+        stream: global.smartResumeActiveProcess.stream,
+        startedAt: global.smartResumeActiveProcess.startTime ? new Date(global.smartResumeActiveProcess.startTime).toISOString() : null,
+        runtime: global.smartResumeActiveProcess.startTime ? `${Math.round((Date.now() - global.smartResumeActiveProcess.startTime)/1000/60)} minutes` : 'unknown'
+      };
+      
+      // Include more sensitive details only if authenticated
+      if (isAuthenticated) {
+        if (global.smartResumeActiveProcess.error) {
+          statusResponse.activeProcess.error = global.smartResumeActiveProcess.error;
+        }
+        
+        if (global.smartResumeActiveProcess.endTime) {
+          statusResponse.activeProcess.endedAt = new Date(global.smartResumeActiveProcess.endTime).toISOString();
+          statusResponse.activeProcess.executionTime = `${Math.round((global.smartResumeActiveProcess.endTime - global.smartResumeActiveProcess.startTime)/1000/60)} minutes`;
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      ...statusResponse
+    });
+  } catch (error) {
+    statusLogger.error("❌ Failed to get smart resume status:", error);
+    await logRouteError(error, req).catch(() => {});
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get status',
+      details: error.message
+    });
+  }
+});// ---------------------------------------------------------------
 // Import multi-tenant post scoring
 // ---------------------------------------------------------------
 const postBatchScorer = require("../postBatchScorer.js");
@@ -475,10 +1130,19 @@ const { commitHash } = require("../versionInfo.js");
 // Multi-Tenant Post Batch Score (Admin/Batch Operation)
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score", async (req, res) => {
-  console.log("apiAndJobRoutes.js: /run-post-batch-score endpoint hit");
+  // Generate temp runId for endpoint logging
+  const tempRunId = `postbatch_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const endpointLogger = createLogger({
+    runId: tempRunId,
+    clientId: 'SYSTEM',
+    operation: 'post_batch_score_endpoint'
+  });
+  
+  endpointLogger.info("Endpoint hit");
+  
   // Multi-tenant batch operation: processes ALL clients, no x-client-id required
   if (!vertexAIClient || !geminiModelId) {
-    console.error("Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
+    endpointLogger.error("Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
     return res.status(503).json({
       status: 'error',
       message: "Multi-tenant post scoring unavailable (Gemini config missing)."
@@ -507,7 +1171,7 @@ router.post("/run-post-batch-score", async (req, res) => {
         const match = activeClients.find(c => (c.clientName || '').toLowerCase() === clientNameQuery.toLowerCase());
         if (match) {
           singleClientId = match.clientId;
-          console.log(`Resolved clientName='${clientNameQuery}' to clientId='${singleClientId}'`);
+          endpointLogger.info(`Resolved clientName='${clientNameQuery}' to clientId='${singleClientId}'`);
         } else {
           return res.status(404).json({
             status: 'error',
@@ -515,17 +1179,40 @@ router.post("/run-post-batch-score", async (req, res) => {
           });
         }
       } catch (e) {
-        console.warn('Client name resolution failed:', e.message);
+        endpointLogger.warn('Client name resolution failed:', e.message);
+        await logRouteError(e, req).catch(() => {});
       }
     }
-    console.log(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, tableOverride=${tableOverride || 'DEFAULT'}, markSkips=${markSkips}`);
+    endpointLogger.info(`Starting multi-tenant post scoring for ALL clients, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, tableOverride=${tableOverride || 'DEFAULT'}, markSkips=${markSkips}`);
     if (singleClientId) {
-      console.log(`Restricting run to single clientId=${singleClientId}`);
+      endpointLogger.info(`Restricting run to single clientId=${singleClientId}`);
     }
-    // Start the multi-tenant post scoring process for ALL clients
-  const results = await postBatchScorer.runMultiTenantPostScoring(
+    // Use job orchestration service to start job
+    try {
+      // This is the only place that should create job tracking records
+      const jobInfo = await jobOrchestrationService.startJob({
+        jobType: 'post_scoring',
+        clientId: singleClientId, // May be null for all clients
+        initialData: {
+          'System Notes': `Post scoring initiated for ${singleClientId || 'all clients'}`
+        }
+      });
+      
+      // Use the runId assigned by the orchestration service
+      const runId = jobInfo.runId;
+      endpointLogger.info(`Using job run ID from orchestration service: ${runId}`);
+      endpointLogger.info(`Created job tracking record with ID ${runId}`);
+    } catch (err) {
+      endpointLogger.error(`Failed to create job tracking record: ${err.message}`);
+      await logRouteError(err, req).catch(() => {});
+      // Continue anyway as we want the job to run
+    }
+    
+    // Start the multi-tenant post scoring process
+    const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
+      runId, // Pass the run ID as the third parameter
       singleClientId || null, // specific client if provided
       limit,
       {
@@ -533,14 +1220,33 @@ router.post("/run-post-batch-score", async (req, res) => {
         leadsTableName: tableOverride || undefined,
         markSkips,
         verboseErrors,
-    maxVerboseErrors,
-    targetIds: targetIds && targetIds.length ? targetIds : undefined
+        maxVerboseErrors,
+        targetIds: targetIds && targetIds.length ? targetIds : undefined
       }
     );
+    // Update the job tracking record with completion status
+    try {
+      await JobTracking.completeJob({
+        runId,
+        status: results.successfulClients === results.totalClients ? CLIENT_RUN_STATUS_VALUES.COMPLETED : CLIENT_RUN_STATUS_VALUES.COMPLETED_WITH_ERRORS,
+        updates: {
+          'System Notes': `Multi-tenant post scoring completed: ${results.successfulClients}/${results.totalClients} clients successful, ${results.totalPostsScored}/${results.totalPostsProcessed} posts scored`,
+          'Items Processed': results.totalPostsProcessed,
+          'Posts Successfully Scored': results.totalPostsScored
+        }
+      });
+      endpointLogger.info(`Updated job tracking record ${runId} with completion status`);
+    } catch (err) {
+      endpointLogger.error(`Failed to update job tracking record: ${err.message}`);
+      await logRouteError(error, req).catch(() => {});
+    }
+    
     // Return results immediately
     res.status(200).json({
-      status: 'completed',
+      // ARCHITECTURAL FIX: Use getStatusString helper for consistent status handling
+      status: getStatusString('COMPLETED'),
       message: 'Multi-tenant post scoring completed',
+      runId, // Include the run ID in the response
       summary: {
         totalClients: results.totalClients,
         successfulClients: results.successfulClients,
@@ -549,9 +1255,8 @@ router.post("/run-post-batch-score", async (req, res) => {
         totalPostsScored: results.totalPostsScored,
         totalLeadsSkipped: results.totalLeadsSkipped,
         skipCounts: results.skipCounts,
-  totalErrors: results.totalErrors,
-  errorReasonCounts: results.errorReasonCounts,
-      duration: results.duration
+        errorReasonCounts: results.errorReasonCounts,
+        duration: results.duration
       },
   clientResults: results.clientResults,
       mode: dryRun ? 'dryRun' : 'live',
@@ -562,20 +1267,422 @@ router.post("/run-post-batch-score", async (req, res) => {
   , commit: commitHash
     });
   } catch (error) {
-    console.error("Multi-tenant post scoring error:", error.message, error.stack);
+    endpointLogger.error("Multi-tenant post scoring error:", error.message, error.stack);
+    await logRouteError(error, req).catch(() => {});
     let errorMessage = "Multi-tenant post scoring failed";
     if (error.message) {
       errorMessage += ` Details: ${error.message}`;
     }
     if (!res.headersSent) {
       return res.status(500).json({
-        status: 'error',
+        status: getStatusString('ERROR'),
         message: errorMessage,
         errorDetails: error.toString()
       });
     }
   }
 });
+
+// ---------------------------------------------------------------
+// FIRE-AND-FORGET Post Batch Score (NEW PATTERN) 
+// ---------------------------------------------------------------
+router.post("/run-post-batch-score-v2", async (req, res) => {
+  // CRITICAL: Consumer pattern - use parentRunId if provided, null for standalone
+  const stream = req.query.stream ? parseInt(req.query.stream, 10) : (req.body?.stream || 1);
+  const parentRunId = req.query.parentRunId || req.body?.parentRunId || null; // Master run ID (IMMUTABLE)
+  const clientRunId = req.query.clientRunId || req.body?.clientRunId || null; // Client-specific run ID from smart-resume
+  const singleClientId = req.query.clientId || req.query.client_id || req.body?.clientId || null;
+  
+  // Determine mode: orchestrated (has parentRunId) vs standalone (no parentRunId)
+  const isOrchestrated = !!parentRunId;
+  
+  // For logging: use parentRunId in orchestrated mode, temp ID in standalone
+  const logRunId = isOrchestrated 
+    ? parentRunId.split('-').slice(0, 2).join('-') // Extract timestamp portion
+    : `post_scoring_standalone_${Date.now()}`;
+  
+  // Create endpoint-scoped logger
+  const endpointLogger = createLogger({
+    runId: logRunId,
+    clientId: singleClientId || 'SYSTEM',
+    operation: 'post_scoring_endpoint'
+  });
+  
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] apiAndJobRoutes.js: /run-post-batch-score-v2 endpoint hit (FIRE-AND-FORGET)");
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] Mode:", isOrchestrated ? 'ORCHESTRATED' : 'STANDALONE');
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] parentRunId:", parentRunId || 'NONE');
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] clientRunId:", clientRunId || 'NONE');
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] Request body:", JSON.stringify(req.body));
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] Request query:", JSON.stringify(req.query));
+  
+  // Check if fire-and-forget is enabled
+  const fireAndForgetEnabled = process.env.FIRE_AND_FORGET === 'true';
+  endpointLogger.info("🚀 [POST-SCORING-DEBUG] FIRE_AND_FORGET env var:", process.env.FIRE_AND_FORGET, "Enabled:", fireAndForgetEnabled);
+  
+  if (!fireAndForgetEnabled) {
+    endpointLogger.info("⚠️ [POST-SCORING-DEBUG] Fire-and-forget not enabled - returning 501");
+    return res.status(501).json({
+      status: 'error',
+      message: 'Fire-and-forget mode not enabled. Set FIRE_AND_FORGET=true'
+    });
+  }
+  
+  endpointLogger.info("✅ [POST-SCORING-DEBUG] Fire-and-forget IS enabled, continuing...");
+
+  if (!vertexAIClient || !geminiModelId) {
+    endpointLogger.error("❌ Multi-tenant post scoring unavailable: missing Vertex AI client or model ID");
+    return res.status(503).json({
+      status: 'error',
+      message: "Multi-tenant post scoring unavailable (Gemini config missing)."
+    });
+  }
+
+  try {
+    // Parse query parameters (same as original endpoint)
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : (req.body?.limit || null);
+    const dryRun = req.query.dryRun === 'true' || req.query.dry_run === 'true' || req.body?.dryRun === true;
+    
+    // CRITICAL ARCHITECTURAL FIX: Consumer pattern - never generate Run ID
+    // Use parentRunId if provided (orchestrated mode), otherwise null (standalone mode)
+    const runId = parentRunId; // May be null for standalone runs
+    
+    endpointLogger.info(`🎯 [POST-SCORING-DEBUG] Starting fire-and-forget post scoring: runId=${runId || 'NONE'}, stream=${stream}, clientId=${singleClientId || 'ALL'}, limit=${limit || 'UNLIMITED'}, dryRun=${dryRun}, mode=${isOrchestrated ? 'ORCHESTRATED' : 'STANDALONE'}`);
+    
+    // ORCHESTRATED MODE: Job Tracking record already exists (created by smart-resume)
+    // STANDALONE MODE: No tracking - skip record creation entirely
+    if (isOrchestrated) {
+      endpointLogger.info(`ℹ️ [POST-SCORING-DEBUG] Orchestrated mode - using existing Job Tracking record: ${runId}`);
+    } else {
+      endpointLogger.info(`ℹ️ [POST-SCORING-DEBUG] Standalone mode - no Job Tracking record will be created or updated`);
+    }
+    
+    // FIRE-AND-FORGET: Respond immediately with 202 Accepted
+    endpointLogger.info(`✅ [POST-SCORING-DEBUG] Responding with 202 Accepted, starting background processing...`);
+    res.status(202).json({
+      status: 'accepted',
+      message: 'Post scoring job started in background',
+      runId: runId || 'N/A (standalone mode)',
+      mode: isOrchestrated ? 'orchestrated' : 'standalone',
+      stream: stream,
+      clientId: singleClientId || 'ALL',
+      dryRun: dryRun ? 'dryRun' : 'live',
+      estimatedDuration: '5-30 minutes depending on client count',
+      note: isOrchestrated 
+        ? 'Check job status via Job Tracking table in Airtable'
+        : 'Standalone mode - no tracking records created, check Render logs for results'
+    });
+
+    // Start background processing (don't await - fire and forget!)
+    endpointLogger.info(`🔄 [POST-SCORING-DEBUG] Calling processPostScoringInBackground with runId=${runId || 'null'}, parentRunId=${parentRunId || 'null'}, clientRunId=${clientRunId || 'null'}`);
+    processPostScoringInBackground(runId, stream, {
+      limit,
+      dryRun,
+      singleClientId,
+      parentRunId, // Master run ID (IMMUTABLE) - may be null
+      clientRunId  // Client-specific run ID created by smart-resume - may be null
+    }).catch(error => {
+      endpointLogger.error(`❌ [POST-SCORING-DEBUG] Background post scoring failed:`, error.message);
+      endpointLogger.error(`❌ [POST-SCORING-DEBUG] Error stack:`, error.stack);
+    });
+
+  } catch (error) {
+    endpointLogger.error("❌ Fire-and-forget post scoring startup error:", error.message);
+    await logRouteError(error, req).catch(() => {});
+    if (!res.headersSent) {
+      return res.status(500).json({
+        status: 'error',
+        message: `Failed to start post scoring job: ${error.message}`
+      });
+    }
+  }
+});
+
+/**
+ * Background processing function for fire-and-forget post scoring
+ * CRITICAL: Consumer pattern - uses provided runId (may be null for standalone mode)
+ */
+async function processPostScoringInBackground(runId, stream, options) {
+  const { 
+    setJobStatus, 
+    setProcessingStream, 
+    formatDuration,
+    getActiveClientsByStream
+  } = require('../services/clientService');
+  
+  const startTime = Date.now();
+  const maxClientMinutes = parseInt(process.env.MAX_CLIENT_PROCESSING_MINUTES) || 10;
+  const maxJobHours = parseInt(process.env.MAX_JOB_PROCESSING_HOURS) || 2;
+  const maxJobMs = maxJobHours * 60 * 60 * 1000;
+  
+  // Determine mode based on whether runId was provided
+  const isOrchestrated = !!runId;
+  
+  // For logging: use runId in orchestrated mode, temp ID in standalone
+  const logRunId = isOrchestrated
+    ? runId.split('-').slice(0, 2).join('-') // Extract timestamp portion
+    : `post_scoring_bg_${Date.now()}`;
+  
+  // Create job-level logger
+  const jobLogger = createLogger({
+    runId: logRunId,
+    clientId: options.singleClientId || 'MULTI-CLIENT',
+    operation: 'post_scoring_batch'
+  });
+  
+  jobLogger.info(`🔄 [POST-SCORING-DEBUG] Background post scoring started: runId=${runId || 'NONE'}, stream=${stream}, mode=${isOrchestrated ? 'ORCHESTRATED' : 'STANDALONE'}, parentRunId=${options.parentRunId || 'NONE'}`);
+  
+  try {
+    // Get active clients filtered by processing stream
+    const clientService = require("../services/clientService");
+    jobLogger.info(`📊 [POST-SCORING-DEBUG] Getting active clients for stream ${stream}, singleClientId=${options.singleClientId || 'ALL'}`);
+    let clients = await getActiveClientsByStream(stream, options.singleClientId);
+    
+    jobLogger.info(`📊 [POST-SCORING-DEBUG] Found ${clients.length} clients in stream ${stream}`);
+    if (clients.length > 0) {
+      jobLogger.info(`📊 [POST-SCORING-DEBUG] Client list:`, clients.map(c => `${c.clientName} (${c.clientId})`).join(', '));
+    } else {
+      jobLogger.info(`⚠️ [POST-SCORING-DEBUG] No clients found to process - exiting`);
+      return;
+    }
+
+    let totalProcessed = 0;
+    let totalSuccessful = 0;
+    let totalFailed = 0;
+
+    // Process each client with timeout protection
+    for (let i = 0; i < clients.length; i++) {
+      const client = clients[i];
+      
+      // Extract timestamp-only portion for client logger (cleaner logs)
+      // Create client-specific logger with timestamp-only runId
+      const clientLogger = createLogger({
+        runId: logRunId,  // Reuse the timestamp from job logger
+        clientId: client.clientId,
+        operation: 'post_scoring_client'
+      });
+      
+      // Check overall job timeout
+      if (Date.now() - startTime > maxJobMs) {
+        jobLogger.info(`⏰ Job timeout reached (${maxJobHours} hours) - stopping gracefully`);
+        if (isOrchestrated) {
+          await setJobStatus(client.clientId, 'post_scoring', 'JOB_TIMEOUT_KILLED', runId, {
+            duration: formatDuration(Date.now() - startTime),
+            count: totalSuccessful
+          });
+        }
+        break;
+      }
+
+      clientLogger.info(`🎯 [POST-SCORING-DEBUG] Processing client ${i + 1}/${clients.length}: ${client.clientName} (${client.clientId})`);
+      clientLogger.info(`🎯 [POST-SCORING-DEBUG] Client details: serviceLevel=${client.serviceLevel}, baseId=${client.airtableBaseId}`);
+      
+      // ORCHESTRATED MODE: Set client status in tracking tables
+      // STANDALONE MODE: Skip all status updates (no tracking)
+      if (isOrchestrated) {
+        await setJobStatus(client.clientId, 'post_scoring', 'RUNNING', runId);
+        clientLogger.info(`✅ [POST-SCORING-DEBUG] Set job status to RUNNING for ${client.clientId}`);
+      } else {
+        clientLogger.info(`ℹ️ [POST-SCORING-DEBUG] Standalone mode - skipping job status update`);
+      }
+      
+      const clientStartTime = Date.now();
+      
+      try {
+        // CLEAN ARCHITECTURE: Pure consumer - use clientRunId exactly as provided by orchestrator
+        // If not provided (standalone mode), postBatchScorer will handle it internally
+        const clientRunId = options.clientRunId; // May be undefined in standalone mode
+        clientLogger.info(`🔍 [POST-SCORING-DEBUG] Using clientRunId=${clientRunId || 'undefined (scorer will handle)'} (${options.clientRunId ? 'from orchestrator' : 'standalone mode'})`);
+        clientLogger.info(`🔍 [POST-SCORING-DEBUG] Calling postBatchScorer.runMultiTenantPostScoring with limit=${options.limit || 'UNLIMITED'}, dryRun=${options.dryRun || false}`);
+        
+        // Run post scoring for this client with timeout
+        const clientResult = await Promise.race([
+          postBatchScorer.runMultiTenantPostScoring(
+            vertexAIClient,
+            geminiModelId,
+            clientRunId, // Pass exactly as-is (may be undefined)
+            client.clientId,
+            options.limit,
+            {
+              dryRun: options.dryRun
+            }
+          ),
+          // Client timeout
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Client timeout')), maxClientMinutes * 60 * 1000)
+          )
+        ]);
+
+        // Success - update status
+        const clientDuration = formatDuration(Date.now() - clientStartTime);
+        const postsScored = clientResult.totalPostsScored || 0;
+        const postsExamined = clientResult.totalPostsProcessed || 0;
+        
+        clientLogger.info(`✅ [POST-SCORING-DEBUG] Post scoring completed for ${client.clientName}:`);
+        clientLogger.info(`   - Posts Examined: ${postsExamined}`);
+        clientLogger.info(`   - Posts Scored: ${postsScored}`);
+        clientLogger.info(`   - Tokens Used: ${clientResult.totalTokensUsed || 0}`);
+        clientLogger.info(`   - Errors: ${clientResult.errors || 0}`);
+        clientLogger.info(`   - Duration: ${clientDuration}`);
+        
+        // ORCHESTRATED MODE: Update job status in tracking tables
+        // STANDALONE MODE: Skip all status updates (no tracking)
+        if (isOrchestrated) {
+          await setJobStatus(client.clientId, 'post_scoring', 'COMPLETED', runId, {
+            duration: clientDuration,
+            count: postsScored
+          });
+          clientLogger.info(`✅ [POST-SCORING-DEBUG] Updated job status to COMPLETED for ${client.clientId}`);
+        } else {
+          clientLogger.info(`ℹ️ [POST-SCORING-DEBUG] Standalone mode - skipping job status update`);
+        }
+        
+        // If we have a parent run ID, update the client run record with post scoring metrics
+        if (options.parentRunId) {
+          try {
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Starting for ${client.clientName} (${client.clientId})`);
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Has parentRunId=${options.parentRunId}`);
+            
+            // CRITICAL: The parentRunId from orchestrator is ALREADY the complete client run ID
+            // (e.g., "251007-041822-Guy-Wilson") - we use it EXACTLY as-is, no reconstruction
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Using client run ID as-is: ${options.parentRunId}`);
+            
+            // Calculate duration as human-readable text
+            const duration = formatDuration(Date.now() - (options.startTime || Date.now()));
+            
+            // Prepare metrics updates
+            // DEBUG: Log field constant values to catch any undefined constants
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] Field constants:`, {
+              POSTS_EXAMINED: CLIENT_RUN_FIELDS.POSTS_EXAMINED,
+              POSTS_SCORED: CLIENT_RUN_FIELDS.POSTS_SCORED,
+              POST_SCORING_TOKENS: CLIENT_RUN_FIELDS.POST_SCORING_TOKENS,
+              SYSTEM_NOTES: CLIENT_RUN_FIELDS.SYSTEM_NOTES
+            });
+            
+            const metricsUpdates = {
+              [CLIENT_RUN_FIELDS.POSTS_EXAMINED]: postsExamined,
+              [CLIENT_RUN_FIELDS.POSTS_SCORED]: postsScored,
+              [CLIENT_RUN_FIELDS.POST_SCORING_TOKENS]: clientResult.totalTokensUsed || 0,
+              [CLIENT_RUN_FIELDS.SYSTEM_NOTES]: `Post scoring completed with ${postsScored}/${postsExamined} posts scored, ${clientResult.errors || 0} errors, ${clientResult.skipped || 0} leads skipped. Total tokens: ${clientResult.totalTokensUsed || 0}.`
+            };
+            
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Prepared updates:`, JSON.stringify(metricsUpdates, null, 2));
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Calling JobTracking.updateClientRun...`);
+            
+            // Pass the complete client run ID exactly as received from orchestrator
+            // NO reconstruction, NO suffix manipulation - just use it as-is
+            const updateResult = await JobTracking.updateClientRun({
+              runId: options.parentRunId,  // Complete client run ID, use exactly as-is
+              clientId: client.clientId,
+              updates: metricsUpdates,
+              options: {
+                isStandalone: false,  // This is never standalone if we have a parentRunId
+                logger: console,
+                source: 'post_scoring_api'
+              }
+            });
+            
+            clientLogger.info(`📊 [POST-SCORING-DEBUG] METRICS UPDATE: Result:`, JSON.stringify(updateResult, null, 2));
+            
+            // Add safety checks for updateResult properties
+            if (updateResult && updateResult.success && !updateResult.skipped) {
+              clientLogger.info(`📊 Updated client run record for ${client.clientName} with post scoring metrics`);
+              clientLogger.info(`   - Posts Examined: ${postsExamined}`);
+              clientLogger.info(`   - Posts Successfully Scored: ${postsScored}`);
+              clientLogger.info(`   - Tokens Used: ${clientResult.totalTokensUsed || 0}`);
+            } else if (updateResult && updateResult.skipped) {
+              clientLogger.info(`ℹ️ Metrics update skipped: ${updateResult.reason || 'Unknown reason'}`);
+            } else {
+              clientLogger.error(`❌ [ERROR] Failed to update metrics: ${updateResult ? updateResult.error || 'Unknown error' : 'No update result returned'}`);
+            }
+          } catch (metricError) {
+            // Log metrics update failure with stack trace capture
+            await logErrorWithStackTrace(metricError, {
+              runId: runId || 'STANDALONE',
+              clientId: client.clientId,
+              context: `Post scoring metrics update failed for ${client.clientName}`,
+              loggerName: 'POST-SCORING',
+              operation: 'metricsUpdate',
+            });
+            
+            // Use standardized error handling
+            handleClientError(client.clientId, 'post_scoring_metrics', metricError, {
+              logger: console,
+              includeStack: true
+            });
+          }
+        } else {
+          jobLogger.info(`⚠️ [POST-SCORING-DEBUG] METRICS UPDATE: Skipped - no parentRunId provided`);
+        }
+        
+        clientLogger.info(`✅ ${client.clientName}: ${postsScored} posts scored in ${clientDuration}`);
+        totalSuccessful++;
+        totalProcessed += postsScored;
+
+      } catch (error) {
+        // Handle client failure or timeout
+        await logRouteError(error, { 
+          client: client.clientId, 
+          operation: 'post_scoring',
+          timeout: error.message.includes('timeout')
+        }).catch(() => {});
+        
+        const clientDuration = formatDuration(Date.now() - clientStartTime);
+        const isTimeout = error.message.includes('timeout');
+        const status = isTimeout ? 'CLIENT_TIMEOUT_KILLED' : 'FAILED';
+        
+        // ORCHESTRATED MODE: Update job status in tracking tables
+        // STANDALONE MODE: Skip all status updates (no tracking)
+        if (isOrchestrated) {
+          await setJobStatus(client.clientId, 'post_scoring', status, runId, {
+            duration: clientDuration,
+            count: 0
+          });
+        }
+        
+        clientLogger.error(`❌ ${client.clientName} ${isTimeout ? 'TIMEOUT' : 'FAILED'}: ${error.message}`);
+        clientLogger.error(`❌ Error stack:`, error.stack);
+        totalFailed++;
+      }
+    }
+
+    // Final summary
+    const totalDuration = formatDuration(Date.now() - startTime);
+    jobLogger.info(`🎉 Fire-and-forget post scoring completed: ${runId || 'STANDALONE'}`);
+    jobLogger.info(`📊 Summary: ${totalSuccessful} successful, ${totalFailed} failed, ${totalProcessed} posts scored, ${totalDuration}`);
+
+  } catch (error) {
+    // Log fatal post scoring error with stack trace capture
+    await logErrorWithStackTrace(error, {
+      runId: runId || 'STANDALONE',
+      clientId: null,
+      context: `Fatal error in background post scoring ${runId || 'STANDALONE'}`,
+      loggerName: 'POST-SCORING',
+      operation: 'backgroundPostScoring',
+    });
+    
+    await logRouteError(error).catch(() => {});
+  } finally {
+    // ALWAYS analyze logs, even if post-scoring failed
+    // 🔍 LOG ANALYSIS: DISABLED - Use standalone analyzer instead
+    // Analyzer moved to manual trigger (node analyze-now.js) or daily cron job
+    // This keeps post-scoring endpoint fast and avoids duplicate error detection
+    // if (runId) {
+    //   try {
+    //     const baseRunId = options.parentRunId || runId;
+    //     jobLogger.info(`🔍 Analyzing logs for post-scoring run: ${runId} (base: ${baseRunId})`);
+    //     const ProductionIssueService = require('../services/productionIssueService');
+    //     const service = new ProductionIssueService();
+    //     await service.analyzeRecentLogs({ runId: baseRunId });
+    //     jobLogger.info(`✅ Post-scoring log analysis complete for ${runId}`);
+    //   } catch (analyzeError) {
+    //     jobLogger.error(`❌ Failed to analyze post-scoring logs for ${runId}:`, analyzeError.message);
+    //   }
+    // } else {
+    //   jobLogger.info(`ℹ️ Standalone mode - skipping log analysis`);
+    // }
+    jobLogger.info(`ℹ️ Log analysis disabled - use manual analyzer (node analyze-now.js) or daily cron job`);
+  }
+}
 
 // ---------------------------------------------------------------
 // Simplified single-client post batch scoring (no table override, minimal params)
@@ -587,11 +1694,11 @@ router.post("/run-post-batch-score", async (req, res) => {
 // ---------------------------------------------------------------
 router.post("/run-post-batch-score-simple", async (req, res) => {
   if (!vertexAIClient || !geminiModelId) {
-    return res.status(503).json({ status: 'error', message: 'Post scoring unavailable' });
+    return res.status(503).json({ status: getStatusString('ERROR'), message: 'Post scoring unavailable' });
   }
   const clientId = req.query.clientId || req.query.client || null;
   if (!clientId) {
-    return res.status(400).json({ status: 'error', message: 'clientId required' });
+    return res.status(400).json({ status: getStatusString('ERROR'), message: 'clientId required' });
   }
   const dryRun = req.query.dryRun === 'true';
   const limit = req.query.limit ? parseInt(req.query.limit, 10) : null;
@@ -601,16 +1708,29 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
   const idsFromBody = Array.isArray(req.body?.ids) ? req.body.ids.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim()) : [];
   const targetIds = (idsFromQuery.length ? idsFromQuery : idsFromBody);
   try {
+    // Use job orchestration service to start the job
+    const jobInfo = await jobOrchestrationService.startJob({
+      jobType: 'post_scoring',
+      clientId: clientId,
+      initialData: {
+        [CLIENT_RUN_FIELDS.CLIENT_ID]: clientId
+      }
+    });
+    
+    // Use the run ID assigned by the orchestration service
+    const runId = jobInfo.runId;
+
     const results = await postBatchScorer.runMultiTenantPostScoring(
       vertexAIClient,
       geminiModelId,
+      runId, // Pass the run ID
       clientId,
       limit,
-  { dryRun, verboseErrors, maxVerboseErrors, targetIds: targetIds && targetIds.length ? targetIds : undefined }
+      { dryRun, verboseErrors, maxVerboseErrors, targetIds: targetIds && targetIds.length ? targetIds : undefined }
     );
     const first = results.clientResults[0] || {};
     res.json({
-      status: 'completed',
+      status: getStatusString('COMPLETED'),
       mode: dryRun ? 'dryRun' : 'live',
       clientId,
       limit: limit || 'UNLIMITED',
@@ -618,14 +1738,14 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
       scored: results.totalPostsScored,
       skipped: results.totalLeadsSkipped,
       skipCounts: results.skipCounts,
-      errors: results.totalErrors,
-  errorReasonCounts: results.errorReasonCounts,
+      errorReasonCounts: results.errorReasonCounts,
       duration: results.duration,
-  clientStatus: first.status || null,
-  diagnostics: results.diagnostics || null
+      clientStatus: first.status || null,
+      diagnostics: results.diagnostics || null
     });
   } catch (e) {
-    res.status(500).json({ status: 'error', message: e.message });
+    await logRouteError(e, req, { operation: 'batch_lead_scoring' }).catch(() => {});
+    res.status(500).json({ status: getStatusString('ERROR'), message: e.message });
   }
 });
 
@@ -641,7 +1761,7 @@ router.post("/run-post-batch-score-simple", async (req, res) => {
 router.post("/run-post-batch-score-level2", async (req, res) => {
   // Require Gemini to be configured server-side
   if (!vertexAIClient || !geminiModelId) {
-    return res.status(503).json({ status: 'error', message: 'Post scoring unavailable (Gemini config missing).' });
+    return res.status(503).json({ status: getStatusString('ERROR'), message: 'Post scoring unavailable (Gemini config missing).' });
   }
 
   try {
@@ -668,18 +1788,30 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
       totalPostsScored: 0,
       totalLeadsSkipped: 0,
       skipCounts: {},
-      totalErrors: 0,
       errorReasonCounts: {},
       duration: 0
     };
 
     const startedAt = Date.now();
 
+    // Use job orchestration service to start the job
+    const jobInfo = await jobOrchestrationService.startJob({
+      jobType: 'post_scoring_multi',
+      initialData: {
+        'Client Count': candidates.length
+      }
+    });
+    
+    // Use the run ID assigned by the orchestration service
+    const runId = jobInfo.runId;
+  const logger = createLogger({ runId, operation: 'post_batch_score_level2' });
+
     for (const c of candidates) {
       try {
         const results = await postBatchScorer.runMultiTenantPostScoring(
           vertexAIClient,
           geminiModelId,
+          runId, // Pass the run ID
           c.clientId,
           limit,
           {
@@ -694,12 +1826,11 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
         // Each invocation with a single client returns a results object with one clientResults entry
         const first = results.clientResults && results.clientResults[0] ? results.clientResults[0] : null;
         if (first) {
-          summaries.push({ clientId: c.clientId, status: first.status, postsProcessed: first.postsProcessed || 0, postsScored: first.postsScored || 0, errors: first.errors || 0 });
+          summaries.push({ clientId: c.clientId, status: first.status, postsProcessed: first.postsProcessed || 0, postsScored: first.postsScored || 0 });
           // Aggregate totals
           aggregate.totalPostsProcessed += first.postsProcessed || 0;
           aggregate.totalPostsScored += first.postsScored || 0;
           aggregate.totalLeadsSkipped += first.leadsSkipped || 0;
-          aggregate.totalErrors += first.errors || 0;
           // Success vs failed (treat completed_with_errors as failed for counts)
           if (first.status === 'success') aggregate.successfulClients++; else aggregate.failedClients++;
           // Merge skip counts
@@ -719,16 +1850,19 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
           aggregate.failedClients++;
         }
       } catch (e) {
-        summaries.push({ clientId: c.clientId, status: 'failed', error: e.message });
+        await logRouteError(e, req, { 
+          client: c.clientId, 
+          operation: 'batch_summary' 
+        }).catch(() => {});
+        summaries.push({ clientId: c.clientId, status: getStatusString('FAILED'), error: e.message });
         aggregate.failedClients++;
-        aggregate.totalErrors++;
       }
     }
 
     aggregate.duration = Math.round((Date.now() - startedAt) / 1000);
 
     return res.status(200).json({
-      status: 'completed',
+      status: getStatusString('COMPLETED'),
       message: `Post scoring completed for service level >= ${minServiceLevel}`,
       summary: aggregate,
       clientResults: summaries,
@@ -738,8 +1872,9 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
       commit: commitHash
     });
   } catch (error) {
-    console.error("/run-post-batch-score-level2 error:", error.message);
-    return res.status(500).json({ status: 'error', message: error.message });
+    logger.error("/run-post-batch-score-level2 error:", error.message);
+    await logRouteError(error, req).catch(() => {});
+    return res.status(500).json({ status: getStatusString('ERROR'), message: error.message });
   }
 });
 
@@ -747,7 +1882,8 @@ router.post("/run-post-batch-score-level2", async (req, res) => {
 // Debug endpoint for troubleshooting client discovery (Admin Only)
 // ---------------------------------------------------------------
 router.get("/debug-clients", async (req, res) => {
-  console.log("Debug clients endpoint hit");
+  const logger = createLogger({ operation: 'debug_clients' });
+  logger.info("Debug clients endpoint hit");
   
   // This is an admin endpoint - should require admin authentication
   // For now, we'll require a debug key to prevent unauthorized access
@@ -760,6 +1896,7 @@ router.get("/debug-clients", async (req, res) => {
   }
   
   try {
+    // Use clientService to get all clients
     const clientService = require("../services/clientService");
     
     // Check environment variables
@@ -774,14 +1911,17 @@ router.get("/debug-clients", async (req, res) => {
       }
     };
     
-    // Try to get all clients
+    // Try to get all clients using the new service layer
     let allClients = [];
     let activeClients = [];
     let error = null;
     
     try {
+      // Get all clients
       allClients = await clientService.getAllClients();
-      activeClients = await clientService.getAllActiveClients();
+      
+      // Filter for active clients (to maintain compatibility)
+      activeClients = allClients.filter(client => client.status === 'Active');
     } catch (clientError) {
       error = clientError.message;
     }
@@ -791,13 +1931,15 @@ router.get("/debug-clients", async (req, res) => {
       activeClients: activeClients.length,
       allClientsData: allClients,
       activeClientsData: activeClients,
-      error: error
+      error: error,
+      usingNewServiceLayer: true
     };
     
     res.json(debugInfo);
     
   } catch (error) {
-    console.error("Debug clients error:", error);
+    logger.error("Debug clients error:", error);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       error: error.message,
       stack: error.stack
@@ -806,10 +1948,379 @@ router.get("/debug-clients", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Debug Production Issues endpoint (Admin Only)
+// ---------------------------------------------------------------
+router.get("/debug-production-issues", async (req, res) => {
+  const logger = createLogger({ operation: 'debug_production_issues' });
+  logger.info("Debug production issues endpoint hit");
+  
+  // This is an admin endpoint - require debug key
+  const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
+  if (!debugKey || debugKey !== process.env.DEBUG_API_KEY) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for debug endpoints'
+    });
+  }
+  
+  try {
+    const ProductionIssueService = require("../services/productionIssueService");
+    const service = new ProductionIssueService();
+    
+    // Get query parameters
+    const hours = parseInt(req.query.hours) || 2;
+    const limit = parseInt(req.query.limit) || 100;
+    const status = req.query.status || null;
+    
+    // Get all issues
+    const allRecords = await service.getProductionIssues({ limit, status });
+    
+    // Filter by time if needed
+    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const recentRecords = allRecords.filter(r => {
+      const timestamp = r.get('Timestamp');
+      if (!timestamp) return false;
+      return new Date(timestamp) > cutoffTime;
+    });
+    
+    // Format the response
+    const issues = recentRecords.map(record => ({
+      id: record.id,
+      'Timestamp': record.get('Timestamp'),
+      'Status': record.get('Status'),
+      'Severity': record.get('Severity'),
+      'Error Type': record.get('Error Type'),
+      'Error Message': record.get('Error Message'),
+      'Client ID': record.get('Client ID'),
+      'Run ID': record.get('Run ID'),
+      'File Path': record.get('File Path'),
+      'Function Name': record.get('Function Name'),
+      'Line Number': record.get('Line Number'),
+      'Stack Trace': record.get('Stack Trace'),
+      'Context': record.get('Context'),
+      'Fixed In Commit': record.get('Fixed In Commit'),
+      'Fixed By': record.get('Fixed By'),
+      'Resolution Notes': record.get('Resolution Notes')
+    }));
+    
+    // Group by error type
+    const byType = {};
+    issues.forEach(issue => {
+      const type = issue['Error Type'] || 'Unknown';
+      byType[type] = (byType[type] || 0) + 1;
+    });
+    
+    // Group by severity
+    const bySeverity = {};
+    issues.forEach(issue => {
+      const severity = issue.Severity || 'Unknown';
+      bySeverity[severity] = (bySeverity[severity] || 0) + 1;
+    });
+    
+    // Group by run ID
+    const byRunId = {};
+    issues.forEach(issue => {
+      const runId = issue['Run ID'] || 'Unknown';
+      if (runId !== 'Unknown') {
+        byRunId[runId] = (byRunId[runId] || 0) + 1;
+      }
+    });
+    
+    res.json({
+      summary: {
+        totalInDatabase: allRecords.length,
+        recentCount: issues.length,
+        hoursFilter: hours,
+        byType,
+        bySeverity,
+        byRunId
+      },
+      issues: issues,
+      expected: {
+        message: 'Based on Render log 251008-130924-Guy-Wilson, we expect:',
+        errors: [
+          '1. Airtable Field Error: "Unknown field name: Errors" (3 occurrences)',
+          '2. Logger Initialization: "Cannot access logger before initialization" (1 occurrence)'
+        ],
+        expectedTotal: '2-3 distinct errors'
+      }
+    });
+    
+  } catch (error) {
+    logger.error("Debug production issues error:", error);
+    res.status(500).json({
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// TEMPORARY: Check Production Issues (No Auth - For Testing Only)
+// ---------------------------------------------------------------
+router.get("/check-production-issues-temp", async (req, res) => {
+  const logger = createLogger({ operation: 'check_production_issues_temp' });
+  logger.info("Temporary production issues check endpoint hit (no auth)");
+  
+  try {
+    const ProductionIssueService = require("../services/productionIssueService");
+    const service = new ProductionIssueService();
+    
+    // Get query parameters
+    const hours = parseInt(req.query.hours) || 2;
+    const limit = parseInt(req.query.limit) || 100;
+    
+    // Get all issues
+    const allRecords = await service.getProductionIssues({ limit });
+    
+    // Filter by time if needed
+    const cutoffTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const recentRecords = allRecords.filter(r => {
+      const timestamp = r.get('Timestamp');
+      if (!timestamp) return false;
+      return new Date(timestamp) > cutoffTime;
+    });
+    
+    // Format the response
+    const issues = recentRecords.map(record => ({
+      id: record.id,
+      'Timestamp': record.get('Timestamp'),
+      'Status': record.get('Status'),
+      'Severity': record.get('Severity'),
+      'Error Type': record.get('Error Type'),
+      'Error Message': record.get('Error Message'),
+      'Client ID': record.get('Client ID'),
+      'Run ID': record.get('Run ID'),
+      'File Path': record.get('File Path'),
+      'Function Name': record.get('Function Name'),
+      'Line Number': record.get('Line Number')
+    }));
+    
+    // Group by error type
+    const byType = {};
+    issues.forEach(issue => {
+      const type = issue['Error Type'] || 'Unknown';
+      byType[type] = (byType[type] || 0) + 1;
+    });
+    
+    // Group by severity
+    const bySeverity = {};
+    issues.forEach(issue => {
+      const severity = issue.Severity || 'Unknown';
+      bySeverity[severity] = (bySeverity[severity] || 0) + 1;
+    });
+    
+    res.json({
+      success: true,
+      summary: {
+        totalInDatabase: allRecords.length,
+        recentCount: issues.length,
+        hoursFilter: hours,
+        byType,
+        bySeverity
+      },
+      issues: issues,
+      note: "TEMPORARY ENDPOINT - Will be removed after testing. Use /debug-production-issues with auth key for production."
+    });
+    
+  } catch (error) {
+    logger.error("Temporary production issues check error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// Environment Variable Documentation Scan (Admin Only)
+// ---------------------------------------------------------------
+router.post("/api/scan-env-vars", async (req, res) => {
+  const logger = createLogger({ operation: 'scan_env_vars' });
+  logger.info("Environment variable scan endpoint hit");
+  
+  // This is an admin endpoint - require debug key or webhook secret
+  const debugKey = req.headers['x-debug-api-key'] || req.headers['x-debug-key'] || req.query.debugKey;
+  const webhookSecret = req.headers['x-webhook-secret'] || req.query.webhookSecret;
+  const validDebugKey = process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET;
+  
+  if ((!debugKey || debugKey !== validDebugKey) && (!webhookSecret || webhookSecret !== process.env.PB_WEBHOOK_SECRET)) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for environment variable scan'
+    });
+  }
+  
+  try {
+    const EnvVarDocumenter = require("../services/envVarDocumenter");
+    const documenter = new EnvVarDocumenter();
+    
+    const includeAiDescriptions = req.body.includeAiDescriptions !== false; // default true
+    const onlySetVariables = req.body.onlySetVariables === true; // default false
+    
+    logger.info(`Starting environment variable scan (AI: ${includeAiDescriptions}, Filter: ${onlySetVariables ? 'REAL ONLY' : 'ALL'})`);
+    
+    // Run the scan with options
+    const results = await documenter.scanAndSync({ 
+      includeAi: includeAiDescriptions,
+      onlySetVariables: onlySetVariables
+    });
+    
+    logger.info(`Scan complete: ${results.stats.created} created, ${results.stats.updated} updated, ${results.obsoleteRecords.length} obsolete`);
+    
+    res.json({
+      success: true,
+      message: 'Environment variable scan completed',
+      results: {
+        created: results.stats.created,
+        updated: results.stats.updated,
+        unchanged: results.stats.unchanged,
+        obsolete: results.obsoleteRecords.length,
+        obsoleteVariables: results.obsoleteRecords.map(r => r.fields['Variable Name'])
+      },
+      nextSteps: [
+        'Check your Airtable Environment Variables table',
+        'Fill in Production Values manually',
+        'Assign Render Groups for organization',
+        'Export documentation with: npm run doc-env-vars export'
+      ]
+    });
+    
+  } catch (error) {
+    logger.error("Environment variable scan error:", error);
+    res.status(500).json({
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// Environment Variable AI Enhancement endpoint (Admin Only)
+// Processes one variable at a time with progress updates
+// ---------------------------------------------------------------
+router.post("/api/enhance-env-descriptions", async (req, res) => {
+  const logger = createLogger({ operation: 'enhance_env_descriptions' });
+  logger.info("Environment variable AI enhancement endpoint hit");
+  
+  // This is an admin endpoint - require debug key or webhook secret
+  const debugKey = req.headers['x-debug-api-key'] || req.headers['x-debug-key'] || req.query.debugKey;
+  const webhookSecret = req.headers['x-webhook-secret'] || req.query.webhookSecret;
+  const validDebugKey = process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET;
+  
+  if ((!debugKey || debugKey !== validDebugKey) && (!webhookSecret || webhookSecret !== process.env.PB_WEBHOOK_SECRET)) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required for environment variable enhancement'
+    });
+  }
+  
+  try {
+    const EnvVarDocumenter = require("../services/envVarDocumenter");
+    const documenter = new EnvVarDocumenter();
+    
+    await documenter.initialize();
+    
+    // Get all records that need AI enhancement
+    const existingRecords = await documenter.getExistingRecords();
+    const recordsToEnhance = existingRecords.filter(r => {
+      const desc = r.fields['AI Description'] || '';
+      const status = r.fields['Status'] || 'Active';
+      // Enhance if: empty, pending, or just showing usage count (fallback description)
+      return (status === 'Active' || status === 'Deprecated') && 
+             (desc.includes('AI description pending') || 
+              desc === '' || 
+              desc.match(/^Used in \d+ location/));
+    });
+    
+    logger.info(`Found ${recordsToEnhance.length} variables to enhance`);
+    
+    // Set up SSE (Server-Sent Events) for progress updates
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    const sendProgress = (data) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+    
+    sendProgress({ type: 'start', total: recordsToEnhance.length });
+    
+    let processed = 0;
+    let updated = 0;
+    let errors = 0;
+    
+    for (const record of recordsToEnhance) {
+      const varName = record.fields['Variable Name'];
+      processed++;
+      
+      try {
+        sendProgress({ 
+          type: 'progress', 
+          current: processed,
+          total: recordsToEnhance.length,
+          varName,
+          status: 'analyzing'
+        });
+        
+        // Generate AI description
+        const analysis = await documenter.analyzer.generateDescription(varName);
+        
+        // Update the record
+        await documenter.updateRecord(record.id, analysis);
+        
+        updated++;
+        
+        sendProgress({ 
+          type: 'progress', 
+          current: processed,
+          total: recordsToEnhance.length,
+          varName,
+          status: 'completed',
+          description: analysis.description
+        });
+        
+        // Small delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        errors++;
+        logger.error(`Error enhancing ${varName}:`, error);
+        
+        sendProgress({ 
+          type: 'progress', 
+          current: processed,
+          total: recordsToEnhance.length,
+          varName,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+    
+    sendProgress({ 
+      type: 'complete', 
+      processed,
+      updated,
+      errors
+    });
+    
+    res.end();
+    
+  } catch (error) {
+    logger.error("Enhancement error:", error);
+    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+    res.end();
+  }
+});
+
+// ---------------------------------------------------------------
 // JSON Quality Diagnostic endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/api/json-quality-analysis", async (req, res) => {
-  console.log("JSON quality analysis endpoint hit");
+  const logger = createLogger({ operation: 'json_quality_analysis' });
+  logger.info("JSON quality analysis endpoint hit");
   
   // This is an admin endpoint - should require admin authentication
   const debugKey = req.headers['x-debug-key'] || req.query.debugKey;
@@ -827,7 +2338,7 @@ router.get("/api/json-quality-analysis", async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const mode = req.query.mode || 'analyze'; // analyze or repair
     
-    console.log(`Running JSON quality analysis: mode=${mode}, clientId=${clientId || 'ALL'}, limit=${limit}`);
+    logger.info(`Running JSON quality analysis: mode=${mode}, clientId=${clientId || 'ALL'}, limit=${limit}`);
     
     const results = await analyzeJsonQuality(clientId, limit, mode);
     
@@ -842,7 +2353,8 @@ router.get("/api/json-quality-analysis", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("JSON quality analysis error:", error);
+    logger.error("JSON quality analysis error:", error);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       status: 'error',
       message: error.message,
@@ -855,6 +2367,8 @@ router.get("/api/json-quality-analysis", async (req, res) => {
 // Token Budget Management (TESTING - Hardcoded 15K limit)
 // ---------------------------------------------------------------
 
+// Utility logger for token calculation helpers
+const tokenUtilLogger = createLogger({ operation: 'token_utilities' });
 // Calculate tokens for attribute text fields (approximation: ~4 chars per token)
 function calculateAttributeTokens(instructions, examples, signals) {
   const instructionsText = extractPlainText(instructions) || '';
@@ -864,7 +2378,7 @@ function calculateAttributeTokens(instructions, examples, signals) {
   const totalText = `${instructionsText} ${examplesText} ${signalsText}`;
   const tokenCount = Math.ceil(totalText.length / 4);
   
-  console.log(`Token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
+  tokenUtilLogger.info(`Token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
   return tokenCount;
 }
 
@@ -927,7 +2441,8 @@ async function getCurrentTokenUsage(clientId) {
     };
     
   } catch (error) {
-    console.error("Error calculating token usage:", error);
+    tokenUtilLogger.error("Error calculating token usage:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -968,7 +2483,8 @@ async function validateTokenBudget(attributeId, updatedData, clientId) {
     };
     
   } catch (error) {
-    console.error("Error validating token budget:", error);
+    tokenUtilLogger.error("Error validating token budget:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -988,7 +2504,7 @@ function calculatePostAttributeTokens(detailedInstructions, positiveKeywords, ne
   const totalText = `${instructionsText} ${positiveText} ${negativeText} ${exampleHighText} ${exampleLowText}`;
   const tokenCount = Math.ceil(totalText.length / 4);
   
-  console.log(`Post token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
+  tokenUtilLogger.info(`Post token calculation: ${totalText.length} chars = ~${tokenCount} tokens`);
   return tokenCount;
 }
 
@@ -1026,7 +2542,7 @@ async function getCurrentPostTokenUsage(clientId) {
         const exampleHigh = record.get('Example - High Score / Applies') || '';
         const exampleLow = record.get('Example - Low Score / Does Not Apply') || '';
         
-        console.log(`Post attribute ${record.get('Attribute ID') || 'Unknown'}: instructions=${detailedInstructions.length}chars, pos=${positiveKeywords.length}chars, neg=${negativeKeywords.length}chars, high=${exampleHigh.length}chars, low=${exampleLow.length}chars`);
+        tokenUtilLogger.info(`Post attribute ${record.get('Attribute ID') || 'Unknown'}: instructions=${detailedInstructions.length}chars, pos=${positiveKeywords.length}chars, neg=${negativeKeywords.length}chars, high=${exampleHigh.length}chars, low=${exampleLow.length}chars`);
         
         const tokens = calculatePostAttributeTokens(detailedInstructions, positiveKeywords, negativeKeywords, exampleHigh, exampleLow);
         totalTokens += tokens;
@@ -1055,7 +2571,8 @@ async function getCurrentPostTokenUsage(clientId) {
     };
     
   } catch (error) {
-    console.error("Error calculating post token usage:", error);
+    tokenUtilLogger.error("Error calculating post token usage:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -1098,7 +2615,8 @@ async function validatePostTokenBudget(attributeId, updatedData, clientId) {
     };
     
   } catch (error) {
-    console.error("Error validating post token budget:", error);
+    tokenUtilLogger.error("Error validating post token budget:", error);
+    await logRouteError(error, req).catch(() => {});
     throw error;
   }
 }
@@ -1110,10 +2628,11 @@ async function validatePostTokenBudget(attributeId, updatedData, clientId) {
 // Get current token usage status
 router.get("/api/token-usage", async (req, res) => {
   try {
-    console.log("apiAndJobRoutes.js: GET /api/token-usage - Getting current token usage");
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'token_usage' });
+    logger.info("Getting current token usage");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -1138,7 +2657,8 @@ router.get("/api/token-usage", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("apiAndJobRoutes.js: GET /api/token-usage error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/token-usage error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get token usage"
@@ -1149,10 +2669,11 @@ router.get("/api/token-usage", async (req, res) => {
 // Validate if attribute save would exceed budget
 router.post("/api/attributes/:id/validate-budget", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget - Validating token budget`);
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'validate_token_budget', attributeId: req.params.id });
+    logger.info("Validating token budget");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -1184,7 +2705,8 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/validate-budget error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to validate token budget"
@@ -1199,10 +2721,11 @@ router.post("/api/attributes/:id/validate-budget", async (req, res) => {
 // Get current post token usage status
 router.get("/api/post-token-usage", async (req, res) => {
   try {
-    console.log("apiAndJobRoutes.js: GET /api/post-token-usage - Getting current post token usage");
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'post_token_usage' });
+    logger.info("Getting current post token usage");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -1228,7 +2751,8 @@ router.get("/api/post-token-usage", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("apiAndJobRoutes.js: GET /api/post-token-usage error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/post-token-usage error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get post token usage"
@@ -1239,10 +2763,11 @@ router.get("/api/post-token-usage", async (req, res) => {
 // Validate if post attribute save would exceed budget
 router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget - Validating post token budget`);
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'validate_post_token_budget', attributeId: req.params.id });
+    logger.info("Validating post token budget");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -1274,7 +2799,8 @@ router.post("/api/post-attributes/:id/validate-budget", async (req, res) => {
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/validate-budget error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to validate post token budget"
@@ -1355,10 +2881,11 @@ function validateAttributeResponse(data) {
 // Get attribute for editing
 router.get("/api/attributes/:id/edit", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit - Loading attribute for editing`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_attribute_edit', attributeId: req.params.id });
+    logger.info("Loading attribute for editing");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -1384,7 +2911,8 @@ router.get("/api/attributes/:id/edit", async (req, res) => {
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: GET /api/attributes/${req.params.id}/edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load attribute for editing"
@@ -1395,10 +2923,11 @@ router.get("/api/attributes/:id/edit", async (req, res) => {
 // AI-powered attribute editing (memory-based, returns improved rubric)
 router.post("/api/attributes/:id/ai-edit", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'ai_edit_attribute', attributeId: req.params.id });
+    logger.info("Generating AI suggestions for attribute");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -1430,22 +2959,22 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     
     // Call Gemini (using same model as scoring system for consistency)
     if (!vertexAIClient) {
-      console.error("apiAndJobRoutes.js: Gemini client not available - vertexAIClient is null");
+      logger.error("apiAndJobRoutes.js: Gemini client not available - vertexAIClient is null");
       throw new Error("Gemini client not available - check config/geminiClient.js");
     }
 
     // Debug: Check what we have available
-    console.log(`apiAndJobRoutes.js: Debug - vertexAIClient available: ${!!vertexAIClient}`);
-    console.log(`apiAndJobRoutes.js: Debug - geminiModelId: ${geminiModelId}`);
-    console.log(`apiAndJobRoutes.js: Debug - geminiConfig: ${JSON.stringify(geminiConfig ? Object.keys(geminiConfig) : 'null')}`);
+    logger.info(`apiAndJobRoutes.js: Debug - vertexAIClient available: ${!!vertexAIClient}`);
+    logger.info(`apiAndJobRoutes.js: Debug - geminiModelId: ${geminiModelId}`);
+    logger.info(`apiAndJobRoutes.js: Debug - geminiConfig: ${JSON.stringify(geminiConfig ? Object.keys(geminiConfig) : 'null')}`);
 
     // Use the same model that works for scoring instead of a separate editing model
     const editingModelId = geminiModelId || "gemini-2.5-pro-preview-05-06";
-    console.log(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing (same as scoring)`);
+    logger.info(`apiAndJobRoutes.js: Using model ${editingModelId} for AI editing (same as scoring)`);
     
     // Validate model ID
     if (!editingModelId || editingModelId === 'null' || editingModelId === 'undefined') {
-      console.error("apiAndJobRoutes.js: Invalid model ID:", editingModelId);
+      logger.error("apiAndJobRoutes.js: Invalid model ID:", editingModelId);
       throw new Error("Invalid Gemini model ID - check environment configuration");
     }
     
@@ -1466,7 +2995,7 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     });
     const prompt = buildAttributeEditPrompt(currentAttribute, userRequest);
     
-    console.log(`apiAndJobRoutes.js: Sending prompt to Gemini for attribute ${req.params.id}`);
+    logger.info(`apiAndJobRoutes.js: Sending prompt to Gemini for attribute ${req.params.id}`);
     
     // Use same request structure as working scorer
     const requestPayload = {
@@ -1503,19 +3032,20 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     if (candidate.content && candidate.content.parts && candidate.content.parts[0].text) {
       responseText = candidate.content.parts[0].text.trim();
     } else {
-      console.warn(`apiAndJobRoutes.js: Candidate had no text content. Finish Reason: ${finishReason || 'Unknown'}.`);
+      logger.warn(`apiAndJobRoutes.js: Candidate had no text content. Finish Reason: ${finishReason || 'Unknown'}.`);
       throw new Error(`Gemini API call returned no text content. Finish Reason: ${finishReason || 'Unknown'}`);
     }
     
-    console.log(`apiAndJobRoutes.js: Received response from Gemini: ${responseText.substring(0, 100)}...`);
+    logger.info(`apiAndJobRoutes.js: Received response from Gemini: ${responseText.substring(0, 100)}...`);
     
     // Parse and validate AI response
     let aiResponse;
     try {
       aiResponse = JSON.parse(responseText);
     } catch (parseError) {
-      console.error("apiAndJobRoutes.js: AI response parsing error:", parseError.message);
-      console.error("apiAndJobRoutes.js: Raw AI response:", responseText);
+      logger.error("apiAndJobRoutes.js: AI response parsing error:", parseError.message);
+      await logRouteError(parseError, req).catch(() => {});
+      logger.error("apiAndJobRoutes.js: Raw AI response:", responseText);
       throw new Error(`AI returned invalid JSON: ${responseText.substring(0, 200)}...`);
     }
     
@@ -1530,7 +3060,8 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to generate AI suggestions"
@@ -1541,10 +3072,11 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
 // Save improved rubric to live attribute
 router.post("/api/attributes/:id/save", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save - Saving attribute changes`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'save_attribute', attributeId: req.params.id });
+    logger.info("Saving attribute changes");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -1565,13 +3097,13 @@ router.post("/api/attributes/:id/save", async (req, res) => {
     
     // Check token budget before saving (for all active attributes)
     if (updatedData.active === true || updatedData.active === 'true') {
-      console.log(`apiAndJobRoutes.js: Checking token budget for attribute ${attributeId} (active=true)`);
+      logger.info(`apiAndJobRoutes.js: Checking token budget for attribute ${attributeId} (active=true)`);
       
       try {
         const budgetValidation = await validateTokenBudget(attributeId, updatedData, clientId);
         
         if (!budgetValidation.isValid) {
-          console.log(`apiAndJobRoutes.js: Token budget exceeded for attribute ${attributeId}`);
+          logger.info(`apiAndJobRoutes.js: Token budget exceeded for attribute ${attributeId}`);
           return res.status(400).json({
             success: false,
             error: "Token budget exceeded",
@@ -1587,10 +3119,11 @@ router.post("/api/attributes/:id/save", async (req, res) => {
           });
         }
         
-        console.log(`apiAndJobRoutes.js: Token budget OK for attribute ${attributeId} (${budgetValidation.newTokens} tokens)`);
+        logger.info(`apiAndJobRoutes.js: Token budget OK for attribute ${attributeId} (${budgetValidation.newTokens} tokens)`);
         
       } catch (budgetError) {
-        console.error(`apiAndJobRoutes.js: Token budget check failed for ${attributeId}:`, budgetError.message);
+        logger.error(`apiAndJobRoutes.js: Token budget check failed for ${attributeId}:`, budgetError.message);
+        await logRouteError(budgetError, req).catch(() => {});
         // Don't block save if budget check fails - just log warning
       }
     }
@@ -1606,14 +3139,15 @@ router.post("/api/attributes/:id/save", async (req, res) => {
 
     await updateAttributeWithClientBase(attributeId, updatedData, clientBase);
     
-    console.log(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
+    logger.info(`apiAndJobRoutes.js: Successfully saved changes to attribute ${attributeId}`);
     res.json({
       success: true,
       message: "Attribute updated successfully"
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/save error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to save attribute changes"
@@ -1651,10 +3185,11 @@ function extractPlainText(richTextValue) {
 // List all attributes for the library view
 router.get("/api/attributes", async (req, res) => {
   try {
-    console.log("apiAndJobRoutes.js: GET /api/attributes - Loading attribute library");
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_attributes_library' });
+    logger.info("Loading attribute library");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -1713,7 +3248,7 @@ router.get("/api/attributes", async (req, res) => {
       return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    console.log(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} attributes for library view`);
+    logger.info(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} attributes for library view`);
     res.json({
       success: true,
       attributes,
@@ -1721,7 +3256,8 @@ router.get("/api/attributes", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("apiAndJobRoutes.js: GET /api/attributes error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/attributes error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load attributes"
@@ -1732,10 +3268,11 @@ router.get("/api/attributes", async (req, res) => {
 // Verify Active/Inactive filtering is working
 router.get("/api/attributes/verify-active-filtering", async (req, res) => {
   try {
-    console.log("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering - Testing active/inactive filtering");
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'verify_active_filtering' });
+    logger.info("Testing active/inactive filtering");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -1816,7 +3353,8 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/attributes/verify-active-filtering error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to verify active filtering"
@@ -1827,10 +3365,11 @@ router.get("/api/attributes/verify-active-filtering", async (req, res) => {
 // Field-specific AI help endpoint
 router.post("/api/attributes/:id/ai-field-help", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help - Field-specific AI help`);
-    
     // Get client ID from header
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'ai_field_help', attributeId: req.params.id });
+    logger.info("Field-specific AI help");
+    
     if (!clientId) {
       return res.status(401).json({ error: 'Client ID required' });
     }
@@ -1976,31 +3515,31 @@ Answer their question directly and conversationally. If they ask about changing 
         }
       });
 
-      console.log(`apiAndJobRoutes.js: Sending maxPoints prompt to Gemini:`, prompt.substring(0, 200) + '...');
+      logger.info(`apiAndJobRoutes.js: Sending maxPoints prompt to Gemini:`, prompt.substring(0, 200) + '...');
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
 
-      console.log(`apiAndJobRoutes.js: Gemini response structure:`, JSON.stringify(result.response, null, 2));
+      logger.info(`apiAndJobRoutes.js: Gemini response structure:`, JSON.stringify(result.response, null, 2));
 
       const candidate = result.response.candidates?.[0];
       if (!candidate) {
-        console.error(`apiAndJobRoutes.js: No candidates in maxPoints response. Full response:`, JSON.stringify(result.response, null, 2));
+        logger.error(`apiAndJobRoutes.js: No candidates in maxPoints response. Full response:`, JSON.stringify(result.response, null, 2));
         throw new Error("No response from AI");
       }
 
-      console.log(`apiAndJobRoutes.js: maxPoints candidate structure:`, JSON.stringify(candidate, null, 2));
+      logger.info(`apiAndJobRoutes.js: maxPoints candidate structure:`, JSON.stringify(candidate, null, 2));
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
-        console.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
-        console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        logger.error(`apiAndJobRoutes.js: Empty maxPoints response text. Candidate:`, JSON.stringify(candidate, null, 2));
+        logger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
         
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
 
-      console.log(`apiAndJobRoutes.js: maxPoints AI response:`, responseText.substring(0, 100) + '...');
+      logger.info(`apiAndJobRoutes.js: maxPoints AI response:`, responseText.substring(0, 100) + '...');
 
       // Extract suggested value if present
       let suggestion = responseText;
@@ -2239,31 +3778,31 @@ Answer their question directly and conversationally. If you have specific update
         }
       });
 
-      console.log(`apiAndJobRoutes.js: Sending instructions prompt to Gemini:`, prompt.substring(0, 200) + '...');
+      logger.info(`apiAndJobRoutes.js: Sending instructions prompt to Gemini:`, prompt.substring(0, 200) + '...');
 
       const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });
 
-      console.log(`apiAndJobRoutes.js: Instructions Gemini response structure:`, JSON.stringify(result.response, null, 2));
+      logger.info(`apiAndJobRoutes.js: Instructions Gemini response structure:`, JSON.stringify(result.response, null, 2));
 
       const candidate = result.response.candidates?.[0];
       if (!candidate) {
-        console.error(`apiAndJobRoutes.js: No candidates in instructions response. Full response:`, JSON.stringify(result.response, null, 2));
+        logger.error(`apiAndJobRoutes.js: No candidates in instructions response. Full response:`, JSON.stringify(result.response, null, 2));
         throw new Error("No response from AI");
       }
 
-      console.log(`apiAndJobRoutes.js: Instructions candidate structure:`, JSON.stringify(candidate, null, 2));
+      logger.info(`apiAndJobRoutes.js: Instructions candidate structure:`, JSON.stringify(candidate, null, 2));
 
       const responseText = candidate.content?.parts?.[0]?.text?.trim();
       if (!responseText) {
-        console.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
-        console.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
+        logger.error(`apiAndJobRoutes.js: Empty instructions response text. Candidate:`, JSON.stringify(candidate, null, 2));
+        logger.error(`apiAndJobRoutes.js: Finish reason:`, candidate.finishReason);
         
         throw new Error(`Empty response from AI. Finish reason: ${candidate.finishReason || 'Unknown'}. Check backend logs for details.`);
       }
 
-      console.log(`apiAndJobRoutes.js: Instructions AI response:`, responseText.substring(0, 100) + '...');
+      logger.info(`apiAndJobRoutes.js: Instructions AI response:`, responseText.substring(0, 100) + '...');
 
       // Extract suggested value if present
       let suggestion = responseText;
@@ -2360,7 +3899,8 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/attributes/${req.params.id}/ai-field-help error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to get AI help"
@@ -2375,10 +3915,11 @@ Respond in a helpful, conversational tone. If you have a specific suggested valu
 // List all post attributes for the library view
 router.get("/api/post-attributes", async (req, res) => {
   try {
-    console.log("apiAndJobRoutes.js: GET /api/post-attributes - Loading post attribute library");
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_post_attributes_library' });
+    logger.info("Loading post attribute library");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -2444,7 +3985,7 @@ router.get("/api/post-attributes", async (req, res) => {
       return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    console.log(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} post attributes for library view`);
+    logger.info(`apiAndJobRoutes.js: Successfully loaded ${attributes.length} post attributes for library view`);
     res.json({
       success: true,
       attributes,
@@ -2452,7 +3993,8 @@ router.get("/api/post-attributes", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("apiAndJobRoutes.js: GET /api/post-attributes error:", error.message);
+    logger.error("apiAndJobRoutes.js: GET /api/post-attributes error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load post attributes"
@@ -2463,10 +4005,11 @@ router.get("/api/post-attributes", async (req, res) => {
 // Get post attribute for editing
 router.get("/api/post-attributes/:id/edit", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit - Loading attribute for editing`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'get_post_attribute_edit', attributeId: req.params.id });
+    logger.info("Loading post attribute for editing");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -2508,14 +4051,15 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
       examples: record.get("Example - High Score / Applies") || record.get("Example - Low Score / Does Not Apply") || ""
     };
 
-    console.log(`apiAndJobRoutes.js: Successfully loaded post attribute ${req.params.id} for editing`);
+    logger.info(`apiAndJobRoutes.js: Successfully loaded post attribute ${req.params.id} for editing`);
     res.json({
       success: true,
       attribute
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: GET /api/post-attributes/${req.params.id}/edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to load post attribute for editing"
@@ -2526,10 +4070,11 @@ router.get("/api/post-attributes/:id/edit", async (req, res) => {
 // Generate AI suggestions for post attribute
 router.post("/api/post-attributes/:id/ai-edit", async (req, res) => {
   try {
-    console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit - Generating AI suggestions`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'ai_edit_post_attribute', attributeId: req.params.id });
+    logger.info("Generating AI suggestions for post attribute");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -2626,7 +4171,7 @@ Include a brief explanation of why this example fits this attribute.`;
     const { generateWithGemini } = require("../config/geminiClient.js");
     const suggestions = await generateWithGemini(prompt);
 
-    console.log(`apiAndJobRoutes.js: Successfully generated AI suggestions for post attribute ${req.params.id}`);
+    logger.info(`apiAndJobRoutes.js: Successfully generated AI suggestions for post attribute ${req.params.id}`);
     res.json({
       success: true,
       suggestions,
@@ -2634,7 +4179,8 @@ Include a brief explanation of why this example fits this attribute.`;
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/ai-edit error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to generate AI suggestions"
@@ -2645,11 +4191,11 @@ Include a brief explanation of why this example fits this attribute.`;
 // Save post attribute changes
 router.post("/api/post-attributes/:id/save", async (req, res) => {
   try {
-    console.log(`🔥 BACKEND HIT: POST /api/post-attributes/${req.params.id}/save - Starting...`);
-    console.log(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save - Saving post attribute changes`);
-    
     // Extract client ID for multi-tenant support
     const clientId = req.headers['x-client-id'];
+    const logger = createLogger({ clientId, operation: 'save_post_attribute', attributeId: req.params.id });
+    logger.info("🔥 BACKEND HIT: Saving post attribute changes");
+    
     if (!clientId) {
       return res.status(400).json({
         success: false,
@@ -2668,7 +4214,7 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
 
     const { heading, instructions, positiveIndicators, negativeIndicators, highScoreExample, lowScoreExample, active, maxPoints, scoringType } = req.body;
     
-    console.log('Post attribute save - active field:', {
+    logger.info('Post attribute save - active field:', {
       receivedActive: active,
       typeOfActive: typeof active,
       willSaveAs: active !== undefined ? !!active : 'not updating'
@@ -2695,19 +4241,20 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
     
     if (active !== undefined) updateData["Active"] = !!active; // Handle Active field updates with boolean conversion
 
-    console.log('Update data being sent to Airtable:', updateData);
+    logger.info('Update data being sent to Airtable:', updateData);
 
     // Update the record
     await clientBase("Post Scoring Attributes").update(req.params.id, updateData);
 
-    console.log(`apiAndJobRoutes.js: Successfully saved post attribute ${req.params.id}`);
+    logger.info(`apiAndJobRoutes.js: Successfully saved post attribute ${req.params.id}`);
     res.json({
       success: true,
       message: "Post attribute updated successfully"
     });
     
   } catch (error) {
-    console.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save error:`, error.message);
+    logger.error(`apiAndJobRoutes.js: POST /api/post-attributes/${req.params.id}/save error:`, error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message || "Failed to save post attribute"
@@ -2722,10 +4269,12 @@ router.post("/api/post-attributes/:id/save", async (req, res) => {
 // Comprehensive system audit - tests all "floors" of our architecture
 router.get("/api/audit/comprehensive", async (req, res) => {
   const startTime = Date.now();
-  console.log("apiAndJobRoutes.js: Starting comprehensive system audit");
   
   // Get client ID from header
   const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation: 'comprehensive_audit' });
+  logger.info("Starting comprehensive system audit");
+  
   if (!clientId) {
     return res.status(400).json({
       success: false,
@@ -2749,7 +4298,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
   try {
     // ============= FLOOR 1: BASIC CONNECTIVITY & AUTHENTICATION =============
-    console.log("Audit Floor 1: Testing basic connectivity and authentication");
+    logger.info("Audit Floor 1: Testing basic connectivity and authentication");
     auditResults.floors.floor1 = {
       name: "Basic Connectivity & Authentication",
       status: "PASS",
@@ -2830,7 +4379,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     auditResults.summary.totalTests++;
 
     // ============= FLOOR 2: BUSINESS LOGIC & SCORING =============
-    console.log("Audit Floor 2: Testing business logic and scoring system");
+    logger.info("Audit Floor 2: Testing business logic and scoring system");
     auditResults.floors.floor2 = {
       name: "Business Logic & Scoring",
       status: "PASS",
@@ -2898,7 +4447,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     // Test 2.3: Scoring System Components
     try {
       const { computeFinalScore } = require("../scoring.js");
-      const { buildAttributeBreakdown } = require("../breakdown.js");
+      const { buildAttributeBreakdown } = require("../scripts/analysis/breakdown.js");
       
       // Test with mock data
       const mockPositiveScores = { A: 5, B: 8 };
@@ -2934,7 +4483,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     auditResults.summary.totalTests++;
 
     // Test 2.4: ENDPOINT TESTING - "Drive the Car" Tests
-    console.log("Running endpoint tests - actually calling API endpoints...");
+    logger.info("Running endpoint tests - actually calling API endpoints...");
     
     // Test 2.4a: Scoring Endpoint Test
     try {
@@ -3060,7 +4609,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     auditResults.summary.totalTests++;
 
     // ============= FLOOR 3: ADVANCED FEATURES & AI =============
-    console.log("Audit Floor 3: Testing advanced features and AI integration");
+    logger.info("Audit Floor 3: Testing advanced features and AI integration");
     auditResults.floors.floor3 = {
       name: "Advanced Features & AI",
       status: "PASS",
@@ -3161,7 +4710,7 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     }
 
     auditResults.duration = Date.now() - startTime;
-    console.log(`Comprehensive audit completed in ${auditResults.duration}ms with status: ${auditResults.overallStatus}`);
+    logger.info(`Comprehensive audit completed in ${auditResults.duration}ms with status: ${auditResults.overallStatus}`);
 
     res.json({
       success: true,
@@ -3169,7 +4718,8 @@ router.get("/api/audit/comprehensive", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Comprehensive audit error:", error.message);
+    logger.error("Comprehensive audit error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     auditResults.overallStatus = "ERROR";
     auditResults.error = error.message;
     auditResults.duration = Date.now() - startTime;
@@ -3184,9 +4734,10 @@ router.get("/api/audit/comprehensive", async (req, res) => {
 
 // Quick health audit - lightweight version for frequent checks
 router.get("/api/audit/quick", async (req, res) => {
-  console.log("apiAndJobRoutes.js: Running quick audit");
-  
   const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation: 'quick_audit' });
+  logger.info("Running quick audit");
+  
   if (!clientId) {
     return res.status(400).json({
       success: false,
@@ -3233,7 +4784,8 @@ router.get("/api/audit/quick", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Quick audit error:", error.message);
+    logger.error("Quick audit error:", error.message);
+    await logRouteError(error, req).catch(() => {});
     res.status(500).json({
       success: false,
       error: error.message,
@@ -3253,10 +4805,11 @@ router.get("/api/audit/quick", async (req, res) => {
 
 // Automated troubleshooting endpoint - detects issues and suggests/applies fixes
 router.post("/api/audit/auto-fix", async (req, res) => {
-  console.log("🔧 Starting automated issue detection and resolution...");
-  
   const startTime = Date.now();
   const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation: 'auto_fix' });
+  logger.info("🔧 Starting automated issue detection and resolution");
+  
   
   if (!clientId) {
     return res.status(400).json({
@@ -3275,7 +4828,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
   };
 
   try {
-    console.log("🔍 Running comprehensive audit to detect issues...");
+    logger.info("🔍 Running comprehensive audit to detect issues...");
     
     // First, run comprehensive audit to detect issues
   const baseUrl = process.env.API_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
@@ -3304,7 +4857,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
     const failedTests = allTests.filter(test => test.status === "FAIL");
     const warningTests = allTests.filter(test => test.status === "WARN");
     
-    console.log(`🎯 Found ${failedTests.length} failed tests and ${warningTests.length} warnings`);
+    logger.info(`🎯 Found ${failedTests.length} failed tests and ${warningTests.length} warnings`);
     
     // Categorize and process each issue
     for (const test of failedTests) {
@@ -3324,7 +4877,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
       // Apply automated fixes where possible
       if (fixRecommendation.canAutomate) {
         try {
-          console.log(`🔧 Attempting automated fix for: ${test.test}`);
+          logger.info(`🔧 Attempting automated fix for: ${test.test}`);
           const fixResult = await applyAutomatedFix(test.test, test.message, clientId);
           if (fixResult.success) {
             issue.fix_applied = true;
@@ -3335,7 +4888,8 @@ router.post("/api/audit/auto-fix", async (req, res) => {
             });
           }
         } catch (fixError) {
-          console.warn(`⚠️  Automated fix failed for ${test.test}: ${fixError.message}`);
+          logger.warn(`⚠️  Automated fix failed for ${test.test}: ${fixError.message}`);
+          await logRouteError(fixError, req).catch(() => {});
           issue.automated_fix.error = fixError.message;
         }
       }
@@ -3374,7 +4928,7 @@ router.post("/api/audit/auto-fix", async (req, res) => {
       duration: `${duration}ms`
     };
 
-    console.log(`🏁 Auto-fix completed in ${duration}ms. ${autoFix.detectedIssues.length} issues detected, ${autoFix.appliedFixes.length} fixes applied.`);
+    logger.info(`🏁 Auto-fix completed in ${duration}ms. ${autoFix.detectedIssues.length} issues detected, ${autoFix.appliedFixes.length} fixes applied.`);
     
     res.json({
       success: true,
@@ -3382,7 +4936,8 @@ router.post("/api/audit/auto-fix", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("🚨 Auto-fix error:", error);
+    logger.error("🚨 Auto-fix error:", error);
+    await logRouteError(error, req).catch(() => {});
     const duration = Date.now() - startTime;
     
     res.status(500).json({
@@ -3457,7 +5012,8 @@ function generateFixRecommendation(testName, message) {
 }
 
 async function applyAutomatedFix(testName, message, clientId) {
-  console.log(`🔧 Applying automated fix for: ${testName}`);
+  const logger = createLogger({ clientId, operation: 'apply_auto_fix', test: testName });
+  logger.info(`🔧 Applying automated fix for: ${testName}`);
   
   switch (testName) {
     case "Attribute Loading":
@@ -3563,5 +5119,1194 @@ function generateSmartRecommendations(detectedIssues, auditData) {
   
   return recommendations;
 }
+
+// ---------------------------------------------------------------
+// SMART RESUME CLIENT-BY-CLIENT ENDPOINT
+// ---------------------------------------------------------------
+
+// In-memory lock to prevent concurrent smart resume executions
+let smartResumeRunning = false;
+let currentSmartResumeJobId = null;
+let smartResumeLockTime = null; // Track when the lock was acquired
+let currentStreamId = null; // Track which stream is being processed
+
+// Global termination controls
+global.smartResumeTerminateSignal = false;
+global.smartResumeActiveProcess = null;
+
+// Read timeout from environment variable or use default of 3.5 hours
+const DEFAULT_LOCK_TIMEOUT_HOURS = 3.5;
+const SMART_RESUME_LOCK_TIMEOUT = 
+  (process.env.SMART_RESUME_LOCK_TIMEOUT_HOURS 
+    ? parseFloat(process.env.SMART_RESUME_LOCK_TIMEOUT_HOURS) 
+    : DEFAULT_LOCK_TIMEOUT_HOURS) * 60 * 60 * 1000;
+
+moduleLogger.info(`ℹ️ Smart resume stale lock timeout configured: ${SMART_RESUME_LOCK_TIMEOUT/1000/60/60} hours`);
+
+// Special Guy Wilson post harvesting endpoint
+router.get("/guy-wilson-post-harvest", async (req, res) => {
+  const logger = createLogger({ clientId: 'Guy-Wilson', operation: 'guy_wilson_post_harvest' });
+  logger.info("� SPECIAL GUY WILSON POST HARVEST ENDPOINT HIT");
+  
+  try {
+    // Direct way to trigger post harvesting for Guy Wilson
+    const { processLevel2ClientsV2 } = require('./apifyProcessRoutes');
+    
+    // Create a fake request with all the required parameters
+    const fakeReq = {
+      headers: { 'x-client-id': 'Guy-Wilson' },
+      query: { clientId: 'Guy-Wilson', stream: 1 },
+      body: { clientId: 'Guy-Wilson', debug: true, force: true }
+    };
+    
+    // Create a response collector
+    let responseData = null;
+    const fakeRes = {
+      status: (code) => ({
+        json: (data) => {
+          responseData = { statusCode: code, data };
+          logger.info(`🚨 GUY WILSON POST HARVEST: Process completed with status ${code}`);
+          logger.info(JSON.stringify(data, null, 2));
+        }
+      })
+    };
+    
+    logger.info("� GUY WILSON POST HARVEST: Calling process handler directly");
+    await processLevel2ClientsV2(fakeReq, fakeRes);
+    
+    // Send the response back to the client
+    return res.json({
+      message: "Guy Wilson post harvest triggered successfully",
+      result: responseData
+    });
+  } catch (error) {
+    logger.error("🚨 GUY WILSON POST HARVEST ERROR:", error);
+    await logRouteError(error, req).catch(() => {});
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+router.post("/smart-resume-client-by-client", async (req, res) => {
+  // Generate jobId early for consistent logging
+  const tempJobId = `smart_resume_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  
+  // Create endpoint-scoped logger (using temporary jobId before full validation)
+  const endpointLogger = createLogger({
+    runId: tempJobId,  // Using full jobId since it doesn't follow standard format
+    clientId: 'SYSTEM',
+    operation: 'smart_resume_endpoint'
+  });
+  
+  endpointLogger.info("🚀 apiAndJobRoutes.js: /smart-resume-client-by-client endpoint hit");
+  
+  // Check webhook secret
+  const providedSecret = req.headers['x-webhook-secret'];
+  const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+  
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    endpointLogger.info("❌ Smart resume: Unauthorized - invalid webhook secret");
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Unauthorized - invalid webhook secret' 
+    });
+  }
+  
+  // ⭐ STALE LOCK DETECTION: Check if existing lock is too old
+  if (smartResumeRunning && smartResumeLockTime) {
+    const lockAge = Date.now() - smartResumeLockTime;
+    if (lockAge > SMART_RESUME_LOCK_TIMEOUT) {
+      endpointLogger.info(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
+      smartResumeRunning = false;
+      currentSmartResumeJobId = null;
+      smartResumeLockTime = null;
+    }
+  }
+  
+  // ⭐ CONCURRENT EXECUTION PROTECTION
+  if (smartResumeRunning) {
+    const lockAge = smartResumeLockTime ? Math.round((Date.now() - smartResumeLockTime)/1000/60) : 'unknown';
+    endpointLogger.info(`⚠️ Smart resume already running (jobId: ${currentSmartResumeJobId}, age: ${lockAge} minutes)`);
+    return res.status(409).json({
+      success: false,
+      error: 'Smart resume process already running',
+      currentJobId: currentSmartResumeJobId,
+      lockAgeMinutes: lockAge,
+      message: 'Please wait for current execution to complete (15-20 minutes typical)',
+      retryAfter: 1200 // Suggest retry after 20 minutes
+    });
+  }
+  
+  // ⭐ ADDITIONAL SAFETY: Check recent logs for running smart resume jobs
+  try {
+    endpointLogger.info(`🔍 Checking for recent smart resume activity in logs...`);
+    
+    // Look for recent SCRIPT_START entries without corresponding SCRIPT_END entries
+    // This helps detect if an old process is still running
+    const recentStartPattern = new RegExp(`SMART_RESUME_.*_SCRIPT_START.*${new Date().toISOString().slice(0, 10)}`);
+    const recentEndPattern = new RegExp(`SMART_RESUME_.*_SCRIPT_END.*${new Date().toISOString().slice(0, 10)}`);
+    
+    // Check if we can find evidence of a recent start without a matching end
+    // This is a simplified check - in production you might check actual log files
+    endpointLogger.info(`🔍 Process safety check completed - proceeding with new job`);
+    
+  } catch (processCheckError) {
+    endpointLogger.info(`⚠️ Could not perform process safety check (non-critical): ${processCheckError.message}`);
+    // Continue anyway - this is just an extra safety measure
+  }
+  
+  // Check if fire-and-forget is enabled
+  if (process.env.FIRE_AND_FORGET !== 'true') {
+    endpointLogger.info("⚠️ Fire-and-forget not enabled");
+    return res.status(400).json({
+      success: false,
+      message: 'Fire-and-forget mode not enabled. Set FIRE_AND_FORGET=true'
+    });
+  }
+  
+  try {
+    const { stream, leadScoringLimit, postScoringLimit, clientFilter } = req.body;
+    const jobId = tempJobId; // Use the jobId we generated at the start
+    
+    // Set the lock with timestamp
+    smartResumeRunning = true;
+    currentSmartResumeJobId = jobId;
+    smartResumeLockTime = Date.now();
+    
+    endpointLogger.info(`🎯 Starting smart resume processing: jobId=${jobId}, stream=${stream || 1}${clientFilter ? `, clientFilter=${clientFilter}` : ''}`);
+    endpointLogger.info(`🔒 Smart resume lock acquired for jobId: ${jobId} at ${new Date().toISOString()}`);
+    
+    // FIRE-AND-FORGET: Respond immediately with 202 Accepted
+    res.status(202).json({
+      success: true,
+      message: 'Smart resume processing started',
+      jobId: jobId,
+      timestamp: new Date().toISOString(),
+      estimatedDuration: '15-20 minutes'
+    });
+    
+    // Start background processing
+    setImmediate(() => {
+      executeSmartResume(jobId, stream || 1, leadScoringLimit, postScoringLimit);
+    });
+    
+  } catch (error) {
+    // Release lock on startup error
+    smartResumeRunning = false;
+    currentSmartResumeJobId = null;
+    
+    endpointLogger.error("❌ Smart resume startup error:", error.message);
+    await logRouteError(error, req).catch(() => {});
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start smart resume processing',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Background processing function for smart resume
+ */
+async function executeSmartResume(jobId, stream, leadScoringLimit, postScoringLimit) {
+  // Create job-scoped logger for background processing
+  const jobLogger = createLogger({
+    runId: jobId,  // Using full jobId (smart_resume_timestamp_random format)
+    clientId: 'SYSTEM',
+    operation: 'smart_resume_background'
+  });
+  
+  jobLogger.info(`🎯 Smart resume background processing started`);
+  
+  // Track current stream
+  currentStreamId = stream;
+  
+  // Register as active process globally for monitoring
+  global.smartResumeActiveProcess = {
+    jobId,
+    stream,
+    startTime: Date.now(),
+    status: getStatusString('RUNNING')
+  };
+  
+  // Reset any previous termination signal
+  global.smartResumeTerminateSignal = false;
+  
+  // Define heartbeatInterval in the outer scope so it's accessible in the finally block
+  let heartbeatInterval = null;
+  
+  try {
+    // Set up environment variables for the module
+    process.env.BATCH_PROCESSING_STREAM = stream.toString();
+    process.env.SMART_RESUME_RUN_ID = jobId; // Add this for easier log identification
+    if (leadScoringLimit) process.env.LEAD_SCORING_LIMIT = leadScoringLimit.toString();
+    if (postScoringLimit) process.env.POST_SCORING_LIMIT = postScoringLimit.toString();
+    
+    // Set up heartbeat logging with termination check
+    const startTime = Date.now();
+    heartbeatInterval = setInterval(() => {
+      // Check for termination signal
+      if (global.smartResumeTerminateSignal) {
+        jobLogger.info(`🛑 Termination signal detected, stopping process`);
+        clearInterval(heartbeatInterval);
+        throw new Error('Process terminated by admin request');
+      }
+      
+      // Regular heartbeat
+      const elapsedMinutes = Math.round((Date.now() - startTime) / 1000 / 60);
+      jobLogger.info(`💓 Smart resume still running... (${elapsedMinutes} minutes elapsed)`);
+    }, 15000); // Check every 15 seconds for faster termination response
+    
+    // Import and use the smart resume module directly
+    const scriptPath = require('path').join(__dirname, '../scripts/smart-resume-client-by-client.js');
+    let smartResumeModule;
+    
+    jobLogger.info(`🏃 Preparing to execute smart resume module...`);
+    jobLogger.info(`🔍 ENV_DEBUG: PB_WEBHOOK_SECRET = ${process.env.PB_WEBHOOK_SECRET ? 'SET' : 'MISSING'}`);
+    jobLogger.info(`🔍 ENV_DEBUG: NODE_ENV = ${process.env.NODE_ENV}`);
+    
+    try {
+        // Clear module from cache to ensure fresh instance
+        delete require.cache[require.resolve(scriptPath)];
+        
+        // Safely load the module
+        try {
+            jobLogger.info(`🔍 Loading smart resume module...`);
+            smartResumeModule = require(scriptPath);
+        } catch (loadError) {
+            jobLogger.error(`❌ Failed to load smart resume module:`, loadError);
+            await logRouteError(loadError, req).catch(() => {});
+            throw new Error(`Module loading failed: ${loadError.message}`);
+        }
+        
+        // Add detailed diagnostic logs about the module structure
+        jobLogger.info(`🔍 DIAGNOSTIC: Module type: ${typeof smartResumeModule}`);
+        jobLogger.info(`🔍 DIAGNOSTIC: Module exports:`, Object.keys(smartResumeModule || {}));
+        
+        // Check what function is available and use the right one
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Module loaded, checking type...`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] typeof smartResumeModule: ${typeof smartResumeModule}`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] smartResumeModule keys: ${Object.keys(smartResumeModule || {}).join(', ')}`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Has runSmartResume?: ${typeof smartResumeModule.runSmartResume === 'function'}`);
+        jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Has main?: ${typeof smartResumeModule.main === 'function'}`);
+        
+        let scriptResult;
+        
+        if (typeof smartResumeModule === 'function') {
+            jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Module is a direct function, calling it with stream=${stream}...`);
+            scriptResult = await smartResumeModule(stream);
+        } else if (typeof smartResumeModule.runSmartResume === 'function') {
+            jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Found runSmartResume function, calling it with stream=${stream}...`);
+            // Pass the stream parameter properly
+            scriptResult = await smartResumeModule.runSmartResume(stream);
+        } else if (typeof smartResumeModule.main === 'function') {
+            jobLogger.info(`🔍 [SMART-RESUME-DEBUG] Found main function, calling it with stream=${stream}...`);
+            scriptResult = await smartResumeModule.main(stream);
+        } else {
+            jobLogger.error(`❌ [SMART-RESUME-DEBUG] CRITICAL: No usable function found in module`);
+            jobLogger.error(`❌ [SMART-RESUME-DEBUG] Available exports:`, Object.keys(smartResumeModule || {}));
+            throw new Error('Smart resume module does not export a usable function');
+        }
+        
+        jobLogger.info(`✅ [SMART-RESUME-DEBUG] Smart resume function returned successfully`);
+        
+        // CRITICAL DEBUG: Log the entire scriptResult object
+        jobLogger.info(`🔍 DEBUG: scriptResult type: ${typeof scriptResult}`);
+        jobLogger.info(`🔍 DEBUG: scriptResult value: ${JSON.stringify(scriptResult, null, 2)}`);
+        jobLogger.info(`🔍 DEBUG: scriptResult?.runId = ${scriptResult?.runId}`);
+        jobLogger.info(`🔍 DEBUG: scriptResult?.normalizedRunId = ${scriptResult?.normalizedRunId}`);
+        
+        // Extract runId from script result for log analysis
+        const realRunId = scriptResult?.runId || scriptResult?.normalizedRunId;
+        if (realRunId) {
+            jobLogger.info(`📝 Script returned runId: ${realRunId}`);
+        } else {
+            jobLogger.warn(`⚠️ Script did not return runId in result`);
+            jobLogger.warn(`⚠️ DEBUG: Full scriptResult was: ${JSON.stringify(scriptResult)}`);
+        }
+        
+        // Store runId for finally block
+        global.smartResumeRealRunId = realRunId;
+        jobLogger.info(`🔍 DEBUG: Stored runId in global.smartResumeRealRunId = ${global.smartResumeRealRunId}`);
+        
+        jobLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_START: Module execution beginning`);
+        jobLogger.info(`✅ Smart resume function called successfully`);
+        
+        jobLogger.info(`✅ Smart resume completed successfully`);
+        jobLogger.info(`🔍 SMART_RESUME_${jobId} SCRIPT_END: Module execution completed`);
+        
+        // Update global process tracking
+        if (global.smartResumeActiveProcess) {
+          global.smartResumeActiveProcess.status = getStatusString('COMPLETED');
+          global.smartResumeActiveProcess.endTime = Date.now();
+          global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
+        }
+        
+        // Send success email report
+        await sendSmartResumeReport(jobId, true, {
+          stream: stream,
+          timestamp: Date.now(),
+          executionTime: Date.now() - smartResumeLockTime
+        });
+        
+    } catch (moduleError) {
+        jobLogger.error(`🚨 MODULE EXECUTION FAILED - ERROR DETAILS:`);
+        await logRouteError(moduleError, req).catch(() => {});
+        jobLogger.error(`🚨 Error message: ${moduleError.message}`);
+        jobLogger.error(`🚨 Stack trace: ${moduleError.stack}`);
+        throw moduleError;
+    }
+    
+  } catch (error) {
+    jobLogger.error(`❌ Smart resume failed:`, error.message);
+    jobLogger.error(`🔍 SMART_RESUME_${jobId} SCRIPT_ERROR: ${error.message}`);
+    
+    // Update global process tracking
+    if (global.smartResumeActiveProcess) {
+      global.smartResumeActiveProcess.status = 'failed';
+      global.smartResumeActiveProcess.error = error.message || String(error);
+      global.smartResumeActiveProcess.endTime = Date.now();
+      global.smartResumeActiveProcess.executionTime = Date.now() - smartResumeLockTime;
+    }
+    
+    // Check if this was an admin-triggered termination
+    const wasTerminated = error.message === 'Process terminated by admin request';
+    if (wasTerminated) {
+      jobLogger.info(`🛑 Process was terminated by admin request`);
+    }
+    
+    // Try to send failure email if configured (but not for admin terminations)
+    if (!wasTerminated) {
+      try {
+        await sendSmartResumeReport(jobId, false, {
+          error: error.message,
+          runId: jobId,
+          stream: stream,
+          timestamp: Date.now()
+        });
+      } catch (emailError) {
+        jobLogger.error(`❌ Failed to send error email:`, emailError.message);
+        await logRouteError(emailError, req).catch(() => {});
+      }
+    }
+  } finally {
+    // ⭐ ALWAYS RELEASE THE LOCK WHEN DONE (SUCCESS OR FAILURE)
+    jobLogger.info(`🔓 Releasing smart resume lock (held for ${Math.round((Date.now() - smartResumeLockTime)/1000)} seconds)`);
+    smartResumeRunning = false;
+    currentSmartResumeJobId = null;
+    smartResumeLockTime = null;
+    
+    // Reset stream tracking
+    currentStreamId = null;
+    
+    // Clear heartbeat interval
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
+    
+    // Make sure global tracking is complete
+    if (global.smartResumeActiveProcess && !global.smartResumeActiveProcess.endTime) {
+      global.smartResumeActiveProcess.endTime = Date.now();
+      
+      // If status wasn't set earlier, mark as unknown
+      if (global.smartResumeActiveProcess.status === 'running') {
+        global.smartResumeActiveProcess.status = 'unknown';
+      }
+    }
+    
+    // Reset termination signal
+    global.smartResumeTerminateSignal = false;
+    
+    // 🔍 LOG ANALYSIS: Moved to standalone daily cron job (daily-log-analyzer.js)
+    // This keeps the scoring endpoint fast and avoids duplicate error detection
+    // The cron job runs daily and picks up from last checkpoint using "Last Analyzed Log ID"
+    jobLogger.info(`ℹ️ Log analysis runs separately via daily cron job (daily-log-analyzer.js)`);
+    
+    // Clean up the global runId storage
+    if (global.smartResumeRealRunId) {
+      delete global.smartResumeRealRunId;
+      jobLogger.error(`⚠️ You can manually analyze logs by calling /api/analyze-logs/recent`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------
+// SPECIAL GUY WILSON POST HARVESTING DIRECT ENDPOINT
+// ---------------------------------------------------------------
+router.get("/harvest-guy-wilson", async (req, res) => {
+  const logger = createLogger({ clientId: 'Guy-Wilson', operation: 'harvest_guy_wilson_direct' });
+  logger.info("🚨 SPECIAL GUY WILSON DIRECT HARVEST ENDPOINT HIT");
+  
+  try {
+    // Use direct HTTP request to the existing endpoint
+    const fetch = require('node-fetch');
+    
+    // Prepare the base URL - use localhost to avoid network issues
+    const endpointUrl = `http://localhost:${process.env.PORT || 3001}/api/apify/process-level2-v2`;
+    const secret = process.env.PB_WEBHOOK_SECRET;
+    
+    logger.info(`🚨 GUY WILSON DIRECT HARVEST: Calling endpoint ${endpointUrl}`);
+    
+    // Make the request
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': 'Guy-Wilson',
+        'Authorization': `Bearer ${secret}`
+      },
+      body: JSON.stringify({
+        clientId: 'Guy-Wilson',
+        stream: 1,
+        debug: true,
+        force: true
+      })
+    });
+    
+    const responseData = await response.json();
+    
+    logger.info(`🚨 GUY WILSON DIRECT HARVEST: Response status: ${response.status}`);
+    logger.info(`🚨 GUY WILSON DIRECT HARVEST: Response data:`, JSON.stringify(responseData, null, 2));
+    
+    // Send the response back to the client
+    return res.json({
+      message: "Guy Wilson post harvest triggered successfully",
+      status: response.status,
+      result: responseData
+    });
+  } catch (error) {
+    logger.error("🚨 GUY WILSON DIRECT HARVEST ERROR:", error);
+    await logRouteError(error, req).catch(() => {});
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+/**
+ * Helper function for sending Smart Resume reports
+ * @param {string} jobId - The job ID
+ * @param {boolean} success - Whether the job succeeded
+ * @param {object} details - Job execution details
+ */
+async function sendSmartResumeReport(jobId, success, details) {
+  const logger = createLogger({ runId: jobId, operation: 'send_smart_resume_report' });
+  
+  try {
+    logger.info(`📧 [${jobId}] Sending ${success ? 'success' : 'failure'} report...`);
+    
+    // Load email service dynamically
+    let emailService;
+    try {
+      emailService = require('../services/emailReportingService');
+    } catch (loadError) {
+      logger.error(`📧 [${jobId}] Could not load email service:`, loadError.message);
+      // Email service loading error is not critical - just log and continue
+      return { sent: false, reason: 'Email service not available' };
+    }
+    
+    // Check if email service is configured
+    if (!emailService || !emailService.isConfigured()) {
+      logger.info(`📧 [${jobId}] Email service not configured, skipping report`);
+      return { sent: false, reason: 'Email service not configured' };
+    }
+    
+    // Send the report
+    const result = await emailService.sendExecutionReport({
+      ...details,
+      runId: jobId,
+      success: success
+    });
+    
+    logger.info(`📧 [${jobId}] Email report sent successfully`);
+    return { sent: true, result };
+    
+  } catch (emailError) {
+    logger.error(`📧 [${jobId}] Failed to send email report:`, emailError);
+    await logRouteError(emailError, req).catch(() => {});
+    return { sent: false, error: emailError.message };
+  }
+}
+
+// ---------------------------------------------------------------
+// GET HANDLER FOR SMART RESUME - Handles browser and simple curl requests
+// ---------------------------------------------------------------
+router.get("/smart-resume-client-by-client", async (req, res) => {
+  const logger = createLogger({ operation: 'smart_resume_get' });
+  logger.info("🚨 GET request received for /smart-resume-client-by-client - processing directly");
+  logger.info("🔍 Query parameters:", req.query);
+  
+  try {
+    // Extract parameters from query string
+    const stream = parseInt(req.query.stream) || 1;
+    const leadScoringLimit = req.query.leadScoringLimit ? parseInt(req.query.leadScoringLimit) : null;
+    const postScoringLimit = req.query.postScoringLimit ? parseInt(req.query.postScoringLimit) : null;
+    
+    // ⭐ STALE LOCK DETECTION: Check if existing lock is too old
+    if (smartResumeRunning && smartResumeLockTime) {
+      const lockAge = Date.now() - smartResumeLockTime;
+      if (lockAge > SMART_RESUME_LOCK_TIMEOUT) {
+        logger.info(`🔓 Stale lock detected (${Math.round(lockAge/1000/60)} minutes old), auto-releasing`);
+        smartResumeRunning = false;
+        currentSmartResumeJobId = null;
+        smartResumeLockTime = null;
+      }
+    }
+    
+    // Check if another job is already running
+    if (smartResumeRunning) {
+      logger.info(`⏳ Smart resume already running (job: ${currentSmartResumeJobId}), returning status`);
+      return res.json({
+        success: true,
+        status: getStatusString('RUNNING'),
+        jobId: currentSmartResumeJobId,
+        message: `Smart resume already running (started ${new Date(smartResumeLockTime).toISOString()})`
+      });
+    }
+    
+    // Create a job ID and set the lock
+    const jobId = `job-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    smartResumeRunning = true;
+    currentSmartResumeJobId = jobId;
+    smartResumeLockTime = Date.now();
+    
+    logger.info(`🔒 [${jobId}] Smart resume lock acquired - starting processing (GET request)`);
+    
+    // Return immediate response with job ID
+    res.json({ 
+      success: true,
+      status: 'started',
+      jobId,
+      message: 'Smart resume processing has been started'
+    });
+    
+    // Start background processing
+    setImmediate(() => {
+      executeSmartResume(jobId, stream || 1, leadScoringLimit, postScoringLimit);
+    });
+    
+  } catch (error) {
+    // Release lock on error
+    smartResumeRunning = false;
+    currentSmartResumeJobId = null;
+    smartResumeLockTime = null;
+    
+    logger.error("❌ Error in GET smart-resume processing:", error);
+    await logRouteError(error, req).catch(() => {});
+    return res.status(500).json({
+      success: false, 
+      error: `Error in smart resume GET handler: ${error.message}`
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// EMERGENCY SMART RESUME LOCK RESET ENDPOINT
+// ---------------------------------------------------------------
+router.post("/reset-smart-resume-lock", async (req, res) => {
+  const logger = createLogger({ operation: 'emergency_reset_smart_resume' });
+  logger.info("🚨 Emergency reset: /reset-smart-resume-lock endpoint hit");
+  
+  // Check webhook secret
+  const providedSecret = req.headers['x-webhook-secret'];
+  const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+  
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    logger.info("❌ Emergency reset: Unauthorized - invalid webhook secret");
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Unauthorized - invalid webhook secret' 
+    });
+  }
+  
+  try {
+    const previousJobId = currentSmartResumeJobId;
+    const wasRunning = smartResumeRunning;
+    const lockAge = smartResumeLockTime ? Math.round((Date.now() - smartResumeLockTime)/1000/60) : 'unknown';
+    
+    // Check if termination was requested
+    const { forceTerminate } = req.body || {};
+    let terminationRequested = false;
+    let activeProcess = null;
+    
+    if (forceTerminate && global.smartResumeActiveProcess && global.smartResumeActiveProcess.status === 'running') {
+      terminationRequested = true;
+      activeProcess = { ...global.smartResumeActiveProcess };
+      
+      // Set termination signal - will be detected by heartbeat
+      logger.info(`🛑 Emergency reset: Setting termination signal for job ${activeProcess.jobId}`);
+      global.smartResumeTerminateSignal = true;
+    }
+    
+    // Force reset the lock
+    smartResumeRunning = false;
+    currentSmartResumeJobId = null;
+    smartResumeLockTime = null;
+    
+    logger.info(`🔓 Emergency reset: Lock forcefully cleared`);
+    logger.info(`   Previous state: running=${wasRunning}, jobId=${previousJobId}, age=${lockAge} minutes`);
+    
+    res.json({
+      success: true,
+      message: terminationRequested 
+        ? 'Smart resume lock reset and termination signal sent' 
+        : 'Smart resume lock forcefully reset',
+      terminationRequested,
+      previousState: {
+        wasRunning,
+        previousJobId,
+        lockAgeMinutes: lockAge,
+        activeProcess: activeProcess ? {
+          jobId: activeProcess.jobId,
+          stream: activeProcess.stream,
+          startTime: activeProcess.startTime,
+          runtime: activeProcess.startTime ? Math.round((Date.now() - activeProcess.startTime)/1000/60) + ' minutes' : 'unknown'
+        } : null
+      },
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    logger.error("❌ Emergency reset failed:", error.message);
+    await logRouteError(error, req).catch(() => {});
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reset lock',
+      details: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
+// SMART RESUME STATUS ENDPOINT
+// ---------------------------------------------------------------
+router.get("/smart-resume-status", async (req, res) => {
+  const logger = createLogger({ operation: 'smart_resume_status' });
+  logger.info("🔍 apiAndJobRoutes.js: /smart-resume-status endpoint hit");
+  
+  // Check webhook secret
+  const providedSecret = req.headers['x-webhook-secret'];
+  const expectedSecret = process.env.PB_WEBHOOK_SECRET;
+  
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    logger.info("❌ Smart resume status: Unauthorized - invalid webhook secret");
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Unauthorized - invalid webhook secret' 
+    });
+  }
+  
+  try {
+    // Calculate lock details
+    const lockAge = smartResumeLockTime ? Date.now() - smartResumeLockTime : null;
+    const isStale = lockAge && lockAge > SMART_RESUME_LOCK_TIMEOUT;
+    
+    // Build response
+    const status = {
+      isRunning: smartResumeRunning,
+      currentJobId: currentSmartResumeJobId,
+      lockAcquiredAt: smartResumeLockTime ? new Date(smartResumeLockTime).toISOString() : null,
+      lockAgeSeconds: lockAge ? Math.round(lockAge / 1000) : null,
+      lockAgeMinutes: lockAge ? Math.round(lockAge / 1000 / 60) : null,
+      isStale: isStale,
+      staleThresholdMinutes: Math.round(SMART_RESUME_LOCK_TIMEOUT / 1000 / 60),
+      serverTime: new Date().toISOString()
+    };
+    
+    // If stale, add warning
+    if (isStale && smartResumeRunning) {
+      logger.info(`⚠️ Stale lock detected in status check (${status.lockAgeMinutes} minutes old)`);
+      status.warning = `Lock appears stale (${status.lockAgeMinutes} min old). Consider resetting.`;
+    }
+    
+    logger.info(`🔍 Smart resume status check: isRunning=${status.isRunning}, jobId=${status.currentJobId}`);
+    res.json({
+      success: true,
+      status: status
+    });
+    
+  } catch (error) {
+    logger.error("❌ Smart resume status check failed:", error.message);
+    await logRouteError(error, req).catch(() => {});
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get status',
+      details: error.message
+    });
+  }
+});
+
+// ========================================================================
+// PMPro Membership Sync Endpoints
+// ========================================================================
+
+const pmproService = require('../services/pmproMembershipService');
+const clientService = require('../services/clientService');
+const { MASTER_TABLES, CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
+
+/**
+ * POST /api/sync-client-statuses
+ * Sync all client statuses based on WordPress PMPro memberships
+ * Updates Status field to Active or Paused based on membership validity
+ */
+router.post("/api/sync-client-statuses", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'membership-sync', 
+    clientId: 'SYSTEM', 
+    operation: 'sync-client-statuses' 
+  });
+
+  try {
+    logger.info('🔄 Starting client status sync based on PMPro memberships...');
+
+    // Get all clients from Master Clients base
+    const allClients = await clientService.getAllClients();
+    logger.info(`📋 Found ${allClients.length} clients to check`);
+
+    const results = {
+      total: allClients.length,
+      processed: 0,
+      activated: 0,
+      paused: 0,
+      errors: 0,
+      skipped: 0,
+      details: []
+    };
+
+    // Process each client
+    for (const client of allClients) {
+      const clientId = client.clientId;
+      const clientName = client.clientName;
+      const wpUserId = client.wpUserId;
+      const currentStatus = client.status;
+      const statusManagement = client.statusManagement || 'Automatic'; // Default to Automatic if not set
+
+      logger.info(`\n--- Processing: ${clientName} (${clientId}) ---`);
+
+      // Skip if Status Management is set to "Manual"
+      if (statusManagement === 'Manual') {
+        logger.info(`⏭️ SKIPPING: ${clientName} has Status Management set to "Manual"`);
+        results.skipped++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'skipped',
+          reason: 'Status Management set to Manual',
+          status: currentStatus
+        });
+        continue;
+      }
+
+      // Check if WordPress User ID exists
+      if (!wpUserId || wpUserId === 0) {
+        logger.error(`❌ ERROR: ${clientName} has no WordPress User ID`);
+        console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) has no WordPress User ID - setting Status to Paused`);
+        
+        // Update status to Paused
+        await updateClientStatus(client.id, 'Paused', 'No WordPress User ID configured', null);
+        
+        results.paused++;
+        results.errors++;
+        results.processed++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'paused',
+          reason: 'No WordPress User ID',
+          error: true
+        });
+        continue;
+      }
+
+      logger.info(`🔍 WordPress User ID: ${wpUserId} - checking membership...`);
+
+      // Check PMPro membership
+      const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+
+      if (membershipCheck.error) {
+        logger.error(`❌ ERROR checking membership for ${clientName}: ${membershipCheck.error}`);
+        console.error(`[MEMBERSHIP_SYNC_ERROR] Client "${clientName}" (${clientId}) - ${membershipCheck.error} - setting Status to Paused`);
+        
+        // Update status to Paused
+        await updateClientStatus(client.id, 'Paused', membershipCheck.error, null);
+        
+        results.paused++;
+        results.errors++;
+        results.processed++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'paused',
+          reason: membershipCheck.error,
+          error: true
+        });
+        continue;
+      }
+
+      // Determine what the status should be
+      const shouldBeActive = membershipCheck.hasValidMembership;
+      const newStatus = shouldBeActive ? 'Active' : 'Paused';
+      
+      // Log membership info
+      if (membershipCheck.hasValidMembership) {
+        logger.info(`✅ Valid membership: Level ${membershipCheck.levelId} (${membershipCheck.levelName})`);
+      } else {
+        logger.warn(`⚠️ Invalid or no membership - Level: ${membershipCheck.levelId || 'none'}`);
+      }
+
+      // Check if status changed OR if we need to update expiry date
+      const statusChanged = currentStatus !== newStatus;
+      const expiryNeedsUpdate = membershipCheck.expiryDate !== undefined; // Always update expiry if we have it
+      
+      logger.info(`🔍 Update check: statusChanged=${statusChanged}, expiryNeedsUpdate=${expiryNeedsUpdate}, expiryDate=${membershipCheck.expiryDate}`);
+      
+      if (statusChanged || expiryNeedsUpdate) {
+        if (statusChanged) {
+          logger.info(`🔄 Updating status: ${currentStatus} → ${newStatus}`);
+        }
+        if (expiryNeedsUpdate && !statusChanged) {
+          logger.info(`📅 Updating expiry date: ${membershipCheck.expiryDate || 'None'}`);
+        }
+        
+        const reason = shouldBeActive 
+          ? `Valid PMPro membership (Level ${membershipCheck.levelId})`
+          : (membershipCheck.levelId 
+              ? `Invalid PMPro level ${membershipCheck.levelId}` 
+              : 'No active PMPro membership');
+        
+        // Always include expiry date in the update
+        await updateClientStatus(client.id, newStatus, reason, membershipCheck.expiryDate);
+        
+        if (statusChanged) {
+          if (newStatus === 'Active') {
+            results.activated++;
+            console.log(`[MEMBERSHIP_SYNC] ✅ Client "${clientName}" (${clientId}) activated - has valid PMPro membership (Level ${membershipCheck.levelId})`);
+          } else {
+            results.paused++;
+            console.log(`[MEMBERSHIP_SYNC] ⏸️ Client "${clientName}" (${clientId}) paused - ${reason}`);
+          }
+          
+          results.details.push({
+            clientId,
+            clientName,
+            action: newStatus.toLowerCase(),
+            previousStatus: currentStatus,
+            newStatus: newStatus,
+            reason: reason,
+            membershipLevel: membershipCheck.levelId
+          });
+        } else {
+          // Status unchanged but expiry updated
+          results.skipped++;
+          results.details.push({
+            clientId,
+            clientName,
+            action: 'unchanged',
+            status: currentStatus,
+            membershipLevel: membershipCheck.levelId,
+            expiryUpdated: true
+          });
+        }
+      } else {
+        logger.info(`✓ Status unchanged: ${currentStatus}`);
+        results.skipped++;
+        results.details.push({
+          clientId,
+          clientName,
+          action: 'unchanged',
+          status: currentStatus,
+          membershipLevel: membershipCheck.levelId
+        });
+      }
+
+      results.processed++;
+    }
+
+    logger.info('\n✅ Client status sync complete!');
+    logger.info(`📊 Summary: ${results.activated} activated, ${results.paused} paused, ${results.skipped} unchanged, ${results.errors} errors`);
+
+    // Invalidate client cache to ensure next read gets fresh data
+    clientService.clearCache();
+
+    res.json({
+      success: true,
+      message: 'Client status sync completed',
+      results: results
+    });
+
+  } catch (error) {
+    logger.error('❌ Client status sync failed:', {
+      error: error.message,
+      stack: error.stack
+    });
+    console.error('[MEMBERSHIP_SYNC_ERROR] Fatal error during client status sync:', error.message);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Client status sync failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Helper function to update client status in Airtable
+ */
+async function updateClientStatus(recordId, newStatus, reason, expiryDate = null) {
+  try {
+    const Airtable = require('airtable');
+    Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
+    const base = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    // Log the reason to console/Render logs instead of trying to write to Comment field
+    console.log(`[MEMBERSHIP_SYNC] Updating client ${recordId}: Status → ${newStatus} (${reason})${expiryDate ? `, Expiry → ${expiryDate}` : ''}`);
+    
+    const updateFields = {
+      [CLIENT_FIELDS.STATUS]: newStatus
+    };
+    
+    // Add expiry date if provided (null will clear the field)
+    if (expiryDate !== undefined) {
+      updateFields[CLIENT_FIELDS.EXPIRY_DATE] = expiryDate;
+    }
+    
+    await base(MASTER_TABLES.CLIENTS).update(recordId, updateFields);
+    
+    return true;
+  } catch (error) {
+    console.error(`[MEMBERSHIP_SYNC_ERROR] Failed to update client status in Airtable:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * GET /api/test-wordpress-connection
+ * Test WordPress connection and PMPro API availability
+ */
+router.get("/api/test-wordpress-connection", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'wp-test', 
+    clientId: 'SYSTEM', 
+    operation: 'test-wordpress' 
+  });
+
+  try {
+    logger.info('🔍 Testing WordPress connection...');
+    
+    const testResult = await pmproService.testWordPressConnection();
+    
+    if (testResult.success) {
+      logger.info('✅ WordPress connection successful');
+      res.json({
+        success: true,
+        message: 'WordPress connection successful',
+        details: testResult
+      });
+    } else {
+      logger.error('❌ WordPress connection failed:', testResult.error);
+      res.status(500).json({
+        success: false,
+        error: 'WordPress connection failed',
+        details: testResult
+      });
+    }
+  } catch (error) {
+    logger.error('❌ WordPress connection test failed:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Test failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/check-client-membership/:clientId
+ * Check membership status for a specific client (for testing)
+ */
+router.post("/api/check-client-membership/:clientId", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'membership-check', 
+    clientId: req.params.clientId, 
+    operation: 'check-membership' 
+  });
+
+  try {
+    const clientId = req.params.clientId;
+    logger.info(`🔍 Checking membership for client: ${clientId}`);
+    
+    // Get client info
+    const client = await clientService.getClientById(clientId);
+    
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        error: 'Client not found'
+      });
+    }
+
+    const wpUserId = client.wpUserId;
+    
+    if (!wpUserId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Client has no WordPress User ID'
+      });
+    }
+
+    // Check membership
+    const membershipCheck = await pmproService.checkUserMembership(wpUserId);
+    
+    res.json({
+      success: true,
+      client: {
+        clientId: client.clientId,
+        clientName: client.clientName,
+        wpUserId: wpUserId,
+        currentStatus: client.status
+      },
+      membership: membershipCheck,
+      recommendation: membershipCheck.hasValidMembership ? 'Active' : 'Paused'
+    });
+
+  } catch (error) {
+    logger.error('❌ Membership check failed:', error.message);
+    res.status(500).json({
+      success: false,
+      error: 'Membership check failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/verify-client-access/:clientId
+ * Verify if a client has valid access to the portal
+ * Used by frontend to gate access based on membership status
+ * 
+ * Returns:
+ * - isAllowed: boolean - whether client can access portal
+ * - status: string - client's current status (Active/Paused)
+ * - expiryDate: string|null - membership expiry date (YYYY-MM-DD) or null for lifetime
+ * - expiryWarning: boolean - true if expiry is within warning period
+ * - daysUntilExpiry: number|null - days remaining until expiry
+ * - message: string - user-friendly message to display
+ * - renewalUrl: string|null - URL to renew membership if needed
+ */
+router.get("/api/verify-client-access/:clientId", async (req, res) => {
+  const logger = createLogger({ 
+    runId: 'verify-access', 
+    clientId: req.params.clientId, 
+    operation: 'verify-access' 
+  });
+
+  try {
+    const clientId = req.params.clientId;
+    logger.info(`🔍 Verifying access for client: ${clientId}`);
+    
+    // Get FRESH client info from Airtable (bypass cache for security check)
+    const client = await clientService.getClientByIdFresh(clientId);
+    
+    if (!client) {
+      logger.warn(`❌ Client not found: ${clientId}`);
+      return res.status(404).json({
+        success: false,
+        isAllowed: false,
+        message: 'Unable to find your client record. Please contact support and we\'ll investigate.',
+        errorType: 'CLIENT_NOT_FOUND'
+      });
+    }
+
+    logger.info(`✅ Found client: ${client.clientName}, Status: ${client.status}`);
+    
+    // Check if client is Active
+    if (client.status !== 'Active') {
+      logger.warn(`⚠️ Client is not active: ${client.status}`);
+      return res.json({
+        success: true,
+        isAllowed: false,
+        status: client.status,
+        message: 'Your membership is not yet active. Please check your membership status or contact support.',
+        errorType: 'NOT_ACTIVE'
+      });
+    }
+
+    // Client is Active - check expiry date
+    const expiryDate = client.expiryDate;
+    let expiryWarning = false;
+    let daysUntilExpiry = null;
+    let renewalUrl = null;
+
+    if (expiryDate) {
+      // Parse expiry date
+      const expiry = new Date(expiryDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Normalize to start of day
+      
+      daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+      
+      logger.info(`📅 Expiry date: ${expiryDate}, Days until expiry: ${daysUntilExpiry}`);
+
+      // Check if expired
+      if (daysUntilExpiry < 0) {
+        logger.warn(`❌ Membership expired ${Math.abs(daysUntilExpiry)} days ago`);
+        return res.json({
+          success: true,
+          isAllowed: false,
+          status: 'Expired',
+          expiryDate: expiryDate,
+          daysUntilExpiry: daysUntilExpiry,
+          message: 'Your membership has expired. Please renew to continue accessing the portal.',
+          renewalUrl: process.env.RENEWAL_URL || null,
+          errorType: 'EXPIRED'
+        });
+      }
+
+      // Check if expiring soon (within warning period - default 4 weeks = 28 days)
+      const warningDays = parseInt(process.env.EXPIRY_WARNING_DAYS || '28', 10);
+      if (daysUntilExpiry <= warningDays) {
+        expiryWarning = true;
+        renewalUrl = process.env.RENEWAL_URL || null;
+        logger.info(`⚠️ Expiry warning: ${daysUntilExpiry} days remaining (threshold: ${warningDays} days)`);
+      }
+    } else {
+      logger.info(`✅ Lifetime membership (no expiry date)`);
+    }
+
+    // Grant access
+    return res.json({
+      success: true,
+      isAllowed: true,
+      status: client.status,
+      expiryDate: expiryDate,
+      expiryWarning: expiryWarning,
+      daysUntilExpiry: daysUntilExpiry,
+      renewalUrl: renewalUrl,
+      message: expiryWarning 
+        ? `Your membership expires in ${daysUntilExpiry} days. Renew now and get 1-month free!`
+        : 'Access granted',
+      client: {
+        clientId: client.clientId,
+        clientName: client.clientName
+      }
+    });
+
+  } catch (error) {
+    logger.error('❌ Access verification failed:', error.message);
+    res.status(500).json({
+      success: false,
+      isAllowed: false,
+      error: 'Access verification failed',
+      message: 'An error occurred while verifying your access. Please try again.',
+      errorType: 'SERVER_ERROR',
+      details: error.message
+    });
+  }
+});
 
 module.exports = router;

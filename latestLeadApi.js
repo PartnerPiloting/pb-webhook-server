@@ -1,4 +1,8 @@
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 /****************************************************************
+
   GET /latest-lead  →  returns selected fields for the “current” lead
   (current = record ID stored in Credentials → Record ID for Chat)
 *****************************************************************/
@@ -27,7 +31,7 @@ module.exports = function latestLeadApi(app, base) {
   
         res.json(cleaned);
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         res.status(500).json({ error: err.message });
       }
     });

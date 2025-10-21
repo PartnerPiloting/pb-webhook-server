@@ -4,6 +4,14 @@
 require('dotenv').config(); 
 
 const { VertexAI } = require('@google-cloud/vertexai');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for config initialization
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'gemini-config' 
+});
 
 const MODEL_ID_FROM_ENV = process.env.GEMINI_MODEL_ID || "gemini-2.5-pro-preview-05-06";
 const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
@@ -31,10 +39,10 @@ try {
 
     defaultGeminiModelInstance = initializedVertexAIClient.getGenerativeModel({ model: MODEL_ID_FROM_ENV });
     
-    console.log(`Gemini Client Initialized successfully in config/geminiClient.js (using GOOGLE_APPLICATION_CREDENTIALS). Default Model ID: ${MODEL_ID_FROM_ENV}`);
+    logger.info(`Gemini Client Initialized successfully in config/geminiClient.js (using GOOGLE_APPLICATION_CREDENTIALS). Default Model ID: ${MODEL_ID_FROM_ENV}`);
 
 } catch (error) {
-    console.error("CRITICAL ERROR: Failed to initialize Gemini Client in config/geminiClient.js (GOOGLE_APPLICATION_CREDENTIALS method):", error.message, error.stack);
+    logger.error("CRITICAL ERROR: Failed to initialize Gemini Client in config/geminiClient.js (GOOGLE_APPLICATION_CREDENTIALS method):", { error: error.message, stack: error.stack });
     // initializedVertexAIClient and defaultGeminiModelInstance will remain null
 }
 

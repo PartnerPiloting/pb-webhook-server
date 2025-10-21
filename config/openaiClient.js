@@ -3,6 +3,14 @@
 
 require('dotenv').config();
 const OpenAI = require('openai');
+const { createLogger } = require('../utils/contextLogger');
+
+// Create module-level logger for config initialization
+const logger = createLogger({ 
+    runId: 'SYSTEM', 
+    clientId: 'SYSTEM', 
+    operation: 'openai-config' 
+});
 
 let openaiClient = null;
 
@@ -20,7 +28,7 @@ function initializeOpenAI() {
         apiKey: process.env.OPENAI_API_KEY
     });
 
-    console.log("OpenAI client initialized successfully");
+    logger.info("OpenAI client initialized successfully");
     return openaiClient;
 }
 

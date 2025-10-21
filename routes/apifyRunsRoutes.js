@@ -4,6 +4,10 @@
 
 const express = require('express');
 const router = express.Router();
+const { createLogger } = require('../utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'route' });
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
 const { 
     getApifyRun, 
     getClientRuns, 
@@ -30,7 +34,8 @@ router.get('/api/apify/runs/:runId', async (req, res) => {
         res.json({ ok: true, run: runData });
         
     } catch (error) {
-        console.error('[ApifyRunsAPI] Error fetching run:', error.message);
+        logger.error('[ApifyRunsAPI] Error fetching run:', error.message);
+        await logCriticalError(error, req).catch(() => {});
         res.status(500).json({ ok: false, error: error.message });
     }
 });
@@ -57,7 +62,8 @@ router.get('/api/apify/runs/client/:clientId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('[ApifyRunsAPI] Error fetching client runs:', error.message);
+        logger.error('[ApifyRunsAPI] Error fetching client runs:', error.message);
+        await logCriticalError(error, req).catch(() => {});
         res.status(500).json({ ok: false, error: error.message });
     }
 });
@@ -101,14 +107,15 @@ router.put('/api/apify/runs/:runId', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('[ApifyRunsAPI] Error updating run:', error.message);
+        logger.error('[ApifyRunsAPI] Error updating run:', error.message);
+        await logCriticalError(error, req).catch(() => {});
         res.status(500).json({ ok: false, error: error.message });
     }
 });
 
 // POST /api/apify/runs/cache/clear - Clear the runs cache (development only)
 if (process.env.NODE_ENV === 'development') {
-    router.post('/api/apify/runs/cache/clear', (req, res) => {
+    router.post('/api/apify/runs/cache/clear', async (req, res) => {
         try {
             // Simple auth check
             const auth = req.headers['authorization'];
@@ -120,7 +127,8 @@ if (process.env.NODE_ENV === 'development') {
             res.json({ ok: true, message: 'Runs cache cleared' });
             
         } catch (error) {
-            console.error('[ApifyRunsAPI] Error clearing cache:', error.message);
+            logger.error('[ApifyRunsAPI] Error clearing cache:', error.message);
+            await logCriticalError(error, { endpoint: 'POST /api/apify/runs/cache/clear' }).catch(() => {});
             res.status(500).json({ ok: false, error: error.message });
         }
     });

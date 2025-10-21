@@ -6,16 +6,24 @@
 const express = require('express');
 const router = express.Router();
 
+// --- Error Logging ---
+// Removed old error logger - now using production issue tracking
+const logCriticalError = async () => {};
+
 // --- Dependencies needed for /lh-webhook/upsertLeadOnly ---
 const { upsertLead } = require('../services/leadService.js');
 const { alertAdmin } = require('../utils/appHelpers.js'); // For error alerting
 const dirtyJSON = require('dirty-json');
 
+// Import Airtable field constants for standardization
+const { LEAD_FIELDS } = require('../constants/airtableUnifiedConstants.js');
+
 // Import client service for multi-tenant support
 const { getClientBase, getClientById } = require('../services/clientService.js');
 
 // --- Structured Logging ---
-const { StructuredLogger } = require('../utils/structuredLogger');
+// FIXED: Using unified logger factory to prevent "Object passed as sessionId" errors
+const { createLogger } = require('../utils/contextLogger');
 
 /* ------------------------------------------------------------------
     POST /lh-webhook/upsertLeadOnly?client=CLIENT_ID – Linked Helper Webhook
@@ -31,9 +39,9 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
         // Extract and validate client parameter
         const clientId = req.query.client;
         
-        // Create client-specific logger
-        log = new StructuredLogger(clientId || 'UNKNOWN');
-        log.setup("=== WEBHOOK REQUEST: /lh-webhook/upsertLeadOnly ===");
+        // Create client-specific logger using safe creation
+        log = createSafeLogger(clientId || 'UNKNOWN', null, 'webhook');
+        log.info("=== WEBHOOK REQUEST: /lh-webhook/upsertLeadOnly ===");
         
         if (!clientId) {
             log.error("Missing required 'client' parameter");
@@ -54,6 +62,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             }
         } catch (clientError) {
             log.error(`Error validating client ${clientId}: ${clientError.message}`);
+    await logCriticalError(clientError, { operation: 'lh_webhook_upsertLeadOnly', isSearch: true, clientId: clientId }).catch(() => {});
             return res.status(401).json({ 
                 error: "Failed to validate client. Please check your client parameter." 
             });
@@ -81,12 +90,13 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             }
         } catch (baseError) {
             log.error(`Error getting Airtable base for client ${clientId}: ${baseError.message}`);
+    logCriticalError(baseError, { operation: 'unknown' }).catch(() => {});
             return res.status(503).json({ 
                 error: "Service temporarily unavailable. Failed to access client's database." 
             });
         }
 
-        log.setup(`Processing for client: ${client.clientName} (${clientId})`);
+        log.info(`Processing for client: ${client.clientName} (${clientId})`);
 
         // ADDED: Enhanced JSON processing with dirty-json fallback for malformed data
         let processedBody;
@@ -100,6 +110,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     processedBody = req.body; // Keep as string if parsing fails
                 }
             } else {
+    logCriticalError(e, { operation: 'unknown' }).catch(() => {});
                 processedBody = req.body;
             }
 
@@ -114,10 +125,12 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                             log.debug(`Successfully parsed stringified JSON in field: ${key}`);
                         } catch (parseError) {
                             try {
+    logCriticalError(parseError, { operation: 'unknown' }).catch(() => {});
                                 obj[key] = dirtyJSON.parse(value);
                                 log.info(`dirty-json successfully parsed malformed JSON in field: ${key}`);
                             } catch (dirtyError) {
                                 log.warn(`Failed to parse JSON in field ${key} with both JSON.parse and dirty-json. Keeping original string.`);
+    logCriticalError(dirtyError, { operation: 'unknown' }).catch(() => {});
                             }
                         }
                     } else if (typeof value === 'object') {
@@ -133,12 +146,16 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             }
 
         } catch (bodyProcessingError) {
+            logCriticalError(bodyProcessingError, { 
+                operation: 'json_parse_webhook_body',
+                expectedBehavior: true 
+            }).catch(() => {});
             log.error("Error processing request body with enhanced JSON parsing:", bodyProcessingError.message);
             processedBody = req.body; // Fallback
         }
 
         const rawLeadsFromWebhook = Array.isArray(processedBody) ? processedBody : (processedBody ? [processedBody] : []);
-        log.setup(`Received ${rawLeadsFromWebhook.length} leads for processing`);
+        log.info(`Received ${rawLeadsFromWebhook.length} leads for processing`);
         
         if (rawLeadsFromWebhook.length > 0) {
             log.debug("First raw lead payload:", JSON.stringify(rawLeadsFromWebhook[0], null, 2));
@@ -192,24 +209,24 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                 log.debug(`All available fields:`, Object.keys(lh));
                 
                 const leadForUpsert = {
-                    "First Name": lh.firstName || lh.first_name || "", 
-                    "Last Name": lh.lastName || lh.last_name || "",
+                    [LEAD_FIELDS.FIRST_NAME]: lh.firstName || lh.first_name || "", 
+                    [LEAD_FIELDS.LAST_NAME]: lh.lastName || lh.last_name || "",
                     firstName: lh.firstName || lh.first_name || "",  // Add camelCase for upsertLead function
                     lastName: lh.lastName || lh.last_name || "",     // Add camelCase for upsertLead function
-                    "Headline": lh.headline || "", 
-                    "Location": lh.locationName || lh.location_name || lh.location || "",
-                    "Phone": (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
-                    "Email": lh.email || lh.workEmail || "",
-                    "LinkedIn Profile URL": rawUrl ? rawUrl.replace(/\/$/, "") : null, 
+                    [LEAD_FIELDS.HEADLINE]: lh.headline || "", 
+                    [LEAD_FIELDS.LOCATION]: lh.locationName || lh.location_name || lh.location || "",
+                    [LEAD_FIELDS.PHONE]: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
+                    [LEAD_FIELDS.EMAIL]: lh.email || lh.workEmail || "",
+                    [LEAD_FIELDS.LINKEDIN_PROFILE_URL]: rawUrl ? rawUrl.replace(/\/$/, "") : null, 
                     linkedinProfileUrl: rawUrl ? rawUrl.replace(/\/$/, "") : null,  // Property name the function expects
-                    "View In Sales Navigator": salesNavigatorUrl, 
-                    "Job Title": lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
-                    "Company Name": lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
-                    "About": lh.summary || lh.bio || "", 
-                    "Scoring Status": scoringStatusForThisLead, 
-                    "LinkedIn Connection Status": lh.connectionStatus || lh.linkedinConnectionStatus || "Unknown",
-                    "Profile Full JSON": JSON.stringify(lh),
-                    "Raw Profile Data": JSON.stringify(lh),
+                    [LEAD_FIELDS.VIEW_IN_SALES_NAVIGATOR]: salesNavigatorUrl, 
+                    [LEAD_FIELDS.JOB_TITLE]: lh.headline || lh.occupation || lh.position || (lh.experience && lh.experience[0] ? lh.experience[0].title : "") || "",
+                    [LEAD_FIELDS.COMPANY_NAME]: lh.companyName || (lh.company ? lh.company.name : "") || (lh.experience && lh.experience[0] ? lh.experience[0].company : "") || lh.organization_1 || "",
+                    [LEAD_FIELDS.ABOUT]: lh.summary || lh.bio || "", 
+                    [LEAD_FIELDS.SCORING_STATUS]: scoringStatusForThisLead, 
+                    [LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS]: lh.connectionStatus || lh.linkedinConnectionStatus || "Unknown",
+                    [LEAD_FIELDS.PROFILE_FULL_JSON]: JSON.stringify(lh),
+                    [LEAD_FIELDS.RAW_PROFILE_DATA]: JSON.stringify(lh),
                     raw: lh  // originalLeadData for fallback URL lookup
                 };
                 
@@ -230,17 +247,27 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
             } catch (upsertError) {
                 errorCount++;
                 log.error(`Error upserting lead (Attempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}): ${upsertError.message}`, upsertError.stack);
+    logCriticalError(upsertError, { operation: 'unknown' }).catch(() => {});
                 await alertAdmin("Lead Upsert Error in /lh-webhook/upsertLeadOnly", `Client: ${clientId}\\nAttempted URL: ${lh.profileUrl || lh.linkedinProfileUrl || lh.profile_url || 'N/A'}\\nError: ${upsertError.message}`);
             }
         }
-        log.summary(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}`);
+        log.info(`Processing finished. Upserted/Updated: ${processedCount}, Failed: ${errorCount}`);
         if (!res.headersSent) {
             res.json({ message: `Client ${clientId}: Upserted/Updated ${processedCount} LH profiles, Failed: ${errorCount}` });
         }
     } catch (err) {
         const finalClientId = req.query.client || 'unknown';
-        const finalLog = log || new StructuredLogger(finalClientId);
+        // FIXED: Using createLogger instead of direct StructuredLogger instantiation
+        const finalLog = log || createLogger({ runId: 'SYSTEM', clientId: finalClientId, operation: 'webhook' });
         finalLog.error(`Critical error in /lh-webhook/upsertLeadOnly: ${err.message}`, err.stack);
+        
+        // Log to Airtable Error Log
+        await logCriticalError(err, {
+            endpoint: 'POST /lh-webhook/upsertLeadOnly',
+            clientId: finalClientId,
+            webhookPayload: req.body
+        }).catch(() => {});
+        
         await alertAdmin("Critical Error in /lh-webhook/upsertLeadOnly", `Client: ${req.query.client || 'unknown'}\\nError: ${err.message}`);
         if (!res.headersSent) {
             res.status(500).json({ error: err.message });

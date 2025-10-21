@@ -1,5 +1,5 @@
 // File: services/postGeminiScorer.js
-const { StructuredLogger } = require('./utils/structuredLogger');
+const { createLogger } = require('./utils/contextLogger');
 const MAX_OUTPUT_TOKENS_FOR_POST_SCORING = 16384;
 const GEMINI_TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || "120000", 10);
 
@@ -7,10 +7,10 @@ async function scorePostsWithGemini(geminiInputObject, configuredGeminiModelInst
     // Initialize logger if not provided (backward compatibility)
     if (!logger) {
         const clientId = geminiInputObject?.lead_id?.substring(0, 8) || 'UNKNOWN';
-        logger = new StructuredLogger(clientId, 'GEMINI');
+        logger = createLogger({ runId: 'SYSTEM', clientId: clientId, operation: 'post_gemini_scorer' });
     }
 
-    logger.setup('scorePostsWithGemini', `Starting Gemini post scoring for ${geminiInputObject?.posts?.length || 0} posts`);
+    logger.info( `Starting Gemini post scoring for ${geminiInputObject?.posts?.length || 0} posts`);
 
     if (!geminiInputObject || !geminiInputObject.posts || geminiInputObject.posts.length === 0) {
         logger.error('scorePostsWithGemini', 'No posts provided to score');
@@ -50,7 +50,7 @@ Here is the object to analyze:
 ${JSON.stringify(geminiInputObject, null, 2)}
 `;
 
-    logger.process('scorePostsWithGemini', `Calling Gemini API - Prompt length: ${userPromptContent.length}, Max tokens: ${MAX_OUTPUT_TOKENS_FOR_POST_SCORING}`);
+    logger.debug( `Calling Gemini API - Prompt length: ${userPromptContent.length}, Max tokens: ${MAX_OUTPUT_TOKENS_FOR_POST_SCORING}`);
     let rawResponseText = "", usageMetadata = {}, modelFinishReason = null, modelSafetyRatings = null;
     try {
         const requestPayload = {
@@ -83,7 +83,8 @@ ${JSON.stringify(geminiInputObject, null, 2)}
         if (candidate.content?.parts?.[0]?.text) rawResponseText = candidate.content.parts[0].text;
         else logger.warn('scorePostsWithGemini', `Candidate had no text content - Finish Reason: ${modelFinishReason || "Unknown"}`);
         if (modelFinishReason && modelFinishReason !== "STOP") logger.warn('scorePostsWithGemini', `Gemini API call finished with non-STOP reason: ${modelFinishReason}`);
-        logger.debug('scorePostsWithGemini', `TOKENS (Gemini) – Prompt: ${usageMetadata.promptTokenCount || "?"}, Candidates: ${usageMetadata.candidatesTokenCount || "?"}, Total: ${usageMetadata.totalTokenCount || "?"}`);
+        const totalTokens = usageMetadata.totalTokenCount || 0;
+        logger.debug('scorePostsWithGemini', `TOKENS (Gemini) – Prompt: ${usageMetadata.promptTokenCount || "?"}, Candidates: ${usageMetadata.candidatesTokenCount || "?"}, Total: ${totalTokens}`);
         if (rawResponseText.trim() === "") {
             logger.error('scorePostsWithGemini', `Gemini response text is empty - Finish Reason: ${modelFinishReason || "Unknown"}`);
             throw new Error(`PostGeminiScorer: Gemini response text is empty. Finish Reason: ${modelFinishReason || "Unknown"}.`);
@@ -91,32 +92,56 @@ ${JSON.stringify(geminiInputObject, null, 2)}
 
         const cleanedJsonString = rawResponseText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
         
+        // Import the robust JSON repair utility
+        const { repairAndParseJson } = require('./utils/jsonRepair');
+        
+        // Try to parse with advanced error recovery
+        const parseResult = repairAndParseJson(cleanedJsonString);
         let parsedJsonObject;
-        try {
-            parsedJsonObject = JSON.parse(cleanedJsonString);
-        } catch (parseError) {
-            logger.error('scorePostsWithGemini', `Failed to parse Gemini's JSON response: ${parseError.message}`);
+        
+        if (parseResult.success) {
+            parsedJsonObject = parseResult.data;
+            if (parseResult.method !== 'CLEAN') {
+                // Log that we had to repair the JSON
+                logger.warn('scorePostsWithGemini', `Had to repair JSON using method: ${parseResult.method}`);
+            }
+        } else {
+            logger.error('scorePostsWithGemini', `Failed to parse Gemini's JSON response: ${parseResult.error}`);
             throw new Error(`PostGeminiScorer: Failed to parse Gemini's response. Raw response: ${rawResponseText.substring(0, 500)}...`);
         }
 
+        // Add token usage to result
+        const tokenUsage = {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0,
+            totalTokens: usageMetadata.totalTokenCount || 0
+        };
+        
         // Flexible parsing to handle multiple Gemini response formats
+        let resultArray;
         if (Array.isArray(parsedJsonObject)) {
             // Format 1: Direct array [{post_id: "...", post_score: 50}]
-            logger.summary('scorePostsWithGemini', `Successfully parsed direct array format with ${parsedJsonObject.length} scored posts`);
-            return parsedJsonObject;
+            logger.info('scorePostsWithGemini', `Successfully parsed direct array format with ${parsedJsonObject.length} scored posts`);
+            resultArray = parsedJsonObject;
         } else if (parsedJsonObject.post_analysis && Array.isArray(parsedJsonObject.post_analysis)) {
             // Format 2: Wrapped in object {post_analysis: [{post_id: "...", post_score: 50}]}
             logger.debug('scorePostsWithGemini', 'Detected wrapped response format, extracting post_analysis array');
-            logger.summary('scorePostsWithGemini', `Successfully parsed wrapped format with ${parsedJsonObject.post_analysis.length} scored posts`);
-            return parsedJsonObject.post_analysis;
+            logger.info('scorePostsWithGemini', `Successfully parsed wrapped format with ${parsedJsonObject.post_analysis.length} scored posts`);
+            resultArray = parsedJsonObject.post_analysis;
         } else if (parsedJsonObject.posts && Array.isArray(parsedJsonObject.posts)) {
             // Format 3: Alternative wrapper {posts: [{post_id: "...", post_score: 50}]}
             logger.debug('scorePostsWithGemini', 'Detected alternative wrapped response format, extracting posts array');
-            logger.summary('scorePostsWithGemini', `Successfully parsed alternative format with ${parsedJsonObject.posts.length} scored posts`);
-            return parsedJsonObject.posts;
+            logger.info('scorePostsWithGemini', `Successfully parsed alternative format with ${parsedJsonObject.posts.length} scored posts`);
+            resultArray = parsedJsonObject.posts;
         } else {
             logger.error('scorePostsWithGemini', `Gemini response not in recognized format: ${JSON.stringify(parsedJsonObject).substring(0, 200)}...`);
             throw new Error("PostGeminiScorer: Gemini response format error: Expected a JSON array or object containing an array of post score objects.");
+        }
+        
+        // Return the result array along with token usage information
+        return {
+            results: resultArray,
+            tokenUsage: tokenUsage
         }
     } catch (error) {
         logger.error('scorePostsWithGemini', `Gemini API call failed: ${error.message}`);

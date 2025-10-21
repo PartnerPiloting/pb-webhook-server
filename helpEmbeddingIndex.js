@@ -1,4 +1,7 @@
 // helpEmbeddingIndex.js
+const { createLogger } = require('./utils/contextLogger');
+const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
 // Simple paragraph chunk + embedding index for Help topics (and optional manual segments)
 // Focus: minimal, low-maintenance. Rebuilds when checksum of source text changes.
 
@@ -74,7 +77,7 @@ function saveCache() {
     if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
     fs.writeFileSync(CACHE_FILE, JSON.stringify({ chunks: _state.chunks, meta: _state.meta }, null, 2), 'utf8');
   } catch (e) {
-    console.warn('[helpEmbeddingIndex] Failed to save cache', e.message);
+    logger.warn('[helpEmbeddingIndex] Failed to save cache', e.message);
   }
 }
 
