@@ -6340,4 +6340,92 @@ router.get("/api/test-daily-alerts", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// TEST: Run airtable-warm-pinger script manually
+// ---------------------------------------------------------------
+router.get("/api/test-airtable-warm", async (req, res) => {
+  try {
+    console.log("🧪 Manual test of airtable-warm-pinger script starting...");
+    
+    // Import the script's main function
+    const airtableWarmScript = require('../scripts/airtable-warm/index.js');
+    
+    // Note: The script runs immediately on require and uses process.exitCode
+    // So we'll run it directly and capture output
+    const Airtable = require('airtable');
+    const { getAllActiveClients } = require('../services/clientService');
+    
+    const AIRTABLE_TABLE_NAME = process.env.AIRTABLE_TABLE_NAME || 'Leads';
+    
+    console.log('[warm] Starting Airtable warm ping via Client Master');
+    
+    const clients = await getAllActiveClients();
+    const baseIds = Array.from(
+      new Set(
+        clients
+          .map((c) => c.airtableBaseId)
+          .filter((id) => id && String(id).trim().length > 0)
+      )
+    );
+    
+    console.log(`[warm] Active clients: ${clients.length}, unique base IDs: ${baseIds.length}`);
+    
+    const results = [];
+    
+    for (const baseId of baseIds) {
+      const start = Date.now();
+      try {
+        const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
+        const table = base(AIRTABLE_TABLE_NAME);
+        
+        const records = await new Promise((resolve, reject) => {
+          const sel = table.select({ maxRecords: 1, pageSize: 1, fields: [] });
+          sel.firstPage((err, recs) => {
+            if (err) return reject(err);
+            resolve(recs);
+          });
+        });
+        
+        const ms = Date.now() - start;
+        const count = records?.length || 0;
+        console.log(`[warm] Ping success base=${baseId} table=${AIRTABLE_TABLE_NAME} records=${count} timeMs=${ms}`);
+        
+        results.push({
+          baseId,
+          success: true,
+          records: count,
+          timeMs: ms
+        });
+        
+      } catch (e) {
+        console.error(`[warm] Ping failed base=${baseId} table=${AIRTABLE_TABLE_NAME} error=${e.message}`);
+        results.push({
+          baseId,
+          success: false,
+          error: e.message
+        });
+      }
+    }
+    
+    console.log('[warm] Done');
+    console.log("✅ Airtable warm pinger completed successfully");
+    
+    res.json({
+      success: true,
+      message: "Airtable warm pinger executed successfully",
+      clientsChecked: clients.length,
+      basesPinged: baseIds.length,
+      results: results
+    });
+    
+  } catch (error) {
+    console.error("❌ Airtable warm pinger failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 module.exports = router;
