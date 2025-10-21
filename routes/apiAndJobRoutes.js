@@ -6309,4 +6309,35 @@ router.get("/api/verify-client-access/:clientId", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------
+// TEST: Run daily-client-alerts script manually
+// ---------------------------------------------------------------
+router.get("/api/test-daily-alerts", async (req, res) => {
+  try {
+    console.log("🧪 Manual test of daily-client-alerts script starting...");
+    
+    // Import the script
+    const dailyClientAlerts = require('../scripts/daily-client-alerts/index.js');
+    
+    // Run it
+    const results = await dailyClientAlerts.main();
+    
+    console.log("✅ Daily alerts script completed successfully");
+    
+    res.json({
+      success: true,
+      message: "Daily client alerts script executed successfully",
+      results: results
+    });
+    
+  } catch (error) {
+    console.error("❌ Daily alerts script failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 module.exports = router;
