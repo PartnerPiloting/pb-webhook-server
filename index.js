@@ -2584,6 +2584,7 @@ app.get('/api/help/start-here', async (req, res) => {
     }
 });
 moduleLogger.info('index.js: Help Start Here endpoint mounted at /api/help/start-here');
+moduleLogger.info('[DEBUG] Continuing index.js execution after Help Start Here...');
 
 // Export selected utilities for internal scripts/tests (non-breaking)
 try {
@@ -3215,44 +3216,6 @@ app.get('/debug-linkedin-files', (req, res) => {
 // Old error logger removed - now using Render log analysis
 const logCriticalError = async () => {}; // No-op
 
-// 404 handler - must come before error handler
-app.use((req, res, next) => {
-    res.status(404).json({ 
-        error: 'Not Found', 
-        message: `Cannot ${req.method} ${req.path}`,
-        path: req.path 
-    });
-});
-
-// Global error handler - catches all unhandled errors
-app.use(async (err, req, res, next) => {
-    moduleLogger.error('Global error handler caught error:', err);
-    
-    // Log critical errors to Airtable
-    try {
-        await logCriticalError(err, {
-            endpoint: `${req.method} ${req.path}`,
-            clientId: req.headers['x-client-id'],
-            requestBody: req.body,
-            queryParams: req.query,
-            headers: {
-                'user-agent': req.headers['user-agent'],
-                'content-type': req.headers['content-type']
-            }
-        });
-    } catch (loggingError) {
-        moduleLogger.error('Failed to log error to Airtable:', loggingError.message);
-    }
-    
-    // Send error response to client
-    const statusCode = err.statusCode || err.status || 500;
-    res.status(statusCode).json({
-        error: err.name || 'Internal Server Error',
-        message: err.message || 'An unexpected error occurred',
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-    });
-});
-
 /* ------------------------------------------------------------------
     SECURE ENV VAR EXPORT ENDPOINT (For Local Development Only)
     
@@ -3361,25 +3324,6 @@ app.get('/api/export-env-vars', (req, res) => {
     4) Start server
 ------------------------------------------------------------------*/
 const port = process.env.PORT || 3001;
-moduleLogger.info(
-    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"
-    } – ${new Date().toISOString()}`
-);
-
-app.listen(port, () => {
-    moduleLogger.info(`Server running on port ${port}.`);
-    if (!globalGeminiModel) {
-        moduleLogger.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
-    } else if (!base) {
-        moduleLogger.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
-    } else if (!geminiConfig || !geminiConfig.vertexAIClient) {
-        moduleLogger.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
-    }
-    else {
-        moduleLogger.info("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
-    }
-});
-
 /* ------------------------------------------------------------------
     LEGACY SECTION (Properly Commented Out)
 ------------------------------------------------------------------*/
@@ -3459,6 +3403,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
     const start = Date.now();
     const topicId = req.params.id;
     const includeInstructions = (req.query.include_instructions === '1');
+    moduleLogger.info(`[HELP DEBUG] GET /api/help/topic/${topicId} - Request received`);
     try {
         const helpBase = getHelpBase();
         if (!helpBase) return res.status(500).json({ error: 'HELP_BASE_UNRESOLVED' });
@@ -3625,6 +3570,7 @@ app.get('/api/help/topic/:id', async (req, res) => {
         res.status(500).json({ error: 'TOPIC_FETCH_ERROR', message: e.message });
     }
 });
+moduleLogger.info('index.js: Help Topic endpoint mounted at /api/help/topic/:id');
 
 // --- Simple QA endpoint (Phase 0 stub) ---
 // POST { topicId, question, includeInstructions? } => basic keyword scan answer
@@ -4258,5 +4204,77 @@ app.post('/admin/help/reindex-all', async (req, res) => {
         res.json({ ok:true, global: globalIdx.status(), embedding: embedIdx.status(), ensure: { globalEnsure, embedReady: !!embedEnsure } });
     } catch (e) {
         res.status(500).json({ ok:false, error:e.message });
+    }
+});
+
+/* ============================================================================
+   FINAL MIDDLEWARE - Error Handler and 404
+   
+   These MUST come after all routes but before app.listen()
+   Order matters: Error handler first, then 404 handler
+   ============================================================================ */
+
+// Global error handler - catches all unhandled errors from routes
+app.use(async (err, req, res, next) => {
+    moduleLogger.error('Global error handler caught error:', err);
+    
+    // Log critical errors to Airtable
+    try {
+        await logCriticalError(err, {
+            endpoint: `${req.method} ${req.path}`,
+            clientId: req.headers['x-client-id'],
+            requestBody: req.body,
+            queryParams: req.query,
+            headers: {
+                'user-agent': req.headers['user-agent'],
+                'content-type': req.headers['content-type']
+            }
+        });
+    } catch (loggingError) {
+        moduleLogger.error('Failed to log error to Airtable:', loggingError.message);
+    }
+    
+    // Send error response to client
+    const statusCode = err.statusCode || err.status || 500;
+    res.status(statusCode).json({
+        error: err.name || 'Internal Server Error',
+        message: err.message || 'An unexpected error occurred',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
+});
+
+// 404 handler - catches requests that don't match any route
+app.use((req, res, next) => {
+    res.status(404).json({ 
+        error: 'Not Found', 
+        message: `Cannot ${req.method} ${req.path}`,
+        path: req.path 
+    });
+});
+
+/* ============================================================================
+   START SERVER - THIS MUST BE THE LAST CODE IN THIS FILE
+   
+   ⚠️  CRITICAL: All routes MUST be defined ABOVE this line!
+   
+   Routes defined after app.listen() will NOT be registered.
+   Always add new routes BEFORE this section.
+   ============================================================================ */
+
+moduleLogger.info(
+    `▶︎ Server starting – Version: Gemini Integrated (Refactor 8.4) – Commit ${process.env.RENDER_GIT_COMMIT || "local"} – ${new Date().toISOString()}`
+);
+
+app.listen(port, () => {
+    moduleLogger.info(`Server running on port ${port}.`);
+    if (!globalGeminiModel) {
+        moduleLogger.error("Final Check: Server started BUT Global Gemini Model (default instance) is not available. Scoring will fail.");
+    } else if (!base) {
+        moduleLogger.error("Final Check: Server started BUT Airtable Base is not available. Airtable operations will fail.");
+    } else if (!geminiConfig || !geminiConfig.vertexAIClient) {
+        moduleLogger.error("Final Check: Server started BUT VertexAI Client is not available from geminiConfig. Batch scoring may fail.");
+    }
+    else {
+        moduleLogger.info("Final Check: Server started and essential services (Gemini client, default model, Airtable) appear to be loaded and all routes mounted.");
     }
 });
