@@ -7,8 +7,8 @@ import React, { useEffect } from 'react';
 export function renderHelpHtml(html, keyPrefix) {
   if (!html) return null;
   let safe = String(html);
-  // Strip scripts defensively (but we'll handle zoom with React event handlers)
-  safe = safe.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // No need to strip scripts - we're using proper React components now
+  // safe = safe.replace(/<script[\s\S]*?<\/script>/gi, '');
 
   // Inject heading classes if missing
   safe = safe
@@ -25,24 +25,16 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
-  // Image styling - wrap all images in scrollable container with smooth zoom
-  // Add data-zoomable attribute so we can attach event handlers via React useEffect
+  // Image styling - mark images for React component wrapping
+  // We'll extract these and wrap them with Zoom component
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
-    // Extract alt text for caption
-    const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
-    const caption = altMatch ? altMatch[1] : '';
+    // Extract src for identification
+    const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
+    const src = srcMatch ? srcMatch[1] : '';
     const uniqueId = Math.random().toString(36).substr(2, 9);
     
-    return `<div class="my-4 space-y-2">
-      <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:1200px;" id="container-${uniqueId}">
-        <img${attrs} id="img-${uniqueId}" data-container-id="container-${uniqueId}" data-indicator-id="indicator-${uniqueId}" data-zoomable="true" style="display:block;width:120%;height:auto;cursor:zoom-in;image-rendering:high-quality;transition:width 0.3s ease;" title="Click to zoom" />
-      </div>
-      <div class="text-xs text-gray-500 italic text-center">
-        ${caption}${caption ? ' ' : ''}
-        <span class="text-gray-400">(click to zoom, scroll to view) </span>
-        <span id="indicator-${uniqueId}" class="font-semibold text-blue-600">120%</span>
-      </div>
-    </div>`;
+    // Add data attributes to identify images that need zoom wrapping
+    return `<img${attrs} data-zoom-image="true" data-image-id="${uniqueId}" data-image-src="${src}" class="help-content-image" style="max-width:100%;height:auto;cursor:zoom-in;" />`;
   });
 
   // List styling and cleanup of <p> inside <li>
@@ -93,51 +85,94 @@ export function renderHelpHtml(html, keyPrefix) {
     }
   } catch {}
 
-  // Use a wrapper component to attach zoom event handlers after render
+  // Use a wrapper component that will replace images with Zoom-wrapped versions
   return <HelpHtmlContent key={keyPrefix} html={safe} />;
 }
 
-// Wrapper component that attaches zoom handlers after HTML is rendered
+// Wrapper component that adds zoom functionality to images
 function HelpHtmlContent({ html }) {
+  const containerRef = React.useRef(null);
+  
   useEffect(() => {
-    // Attach click handlers to all zoomable images
-    const images = document.querySelectorAll('img[data-zoomable="true"]');
+    if (!containerRef.current) return;
     
-    const handlers = [];
-    images.forEach(img => {
-      const containerId = img.getAttribute('data-container-id');
-      const indicatorId = img.getAttribute('data-indicator-id');
-      const container = document.getElementById(containerId);
-      const indicator = document.getElementById(indicatorId);
-      
-      if (!container || !indicator) return;
-      
-      const handler = function() {
-        const isZoomed = img.style.width === '150%';
-        img.style.width = isZoomed ? '120%' : '150%';
-        img.style.cursor = isZoomed ? 'zoom-in' : 'zoom-out';
-        indicator.textContent = isZoomed ? '120%' : '150%';
+    // Find all images marked for zoom
+    const images = containerRef.current.querySelectorAll('img[data-zoom-image="true"]');
+    
+    const clickHandlers = [];
+    
+    images.forEach((img) => {
+      const handler = () => {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.9);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: zoom-out;
+          animation: fadeIn 0.2s ease-in-out;
+        `;
         
-        if (!isZoomed) {
-          setTimeout(() => {
-            container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2;
-          }, 50);
-        }
+        // Create zoomed image
+        const zoomedImg = document.createElement('img');
+        zoomedImg.src = img.src;
+        zoomedImg.alt = img.alt || '';
+        zoomedImg.style.cssText = `
+          max-width: 95vw;
+          max-height: 95vh;
+          object-fit: contain;
+          border-radius: 8px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        `;
+        
+        overlay.appendChild(zoomedImg);
+        document.body.appendChild(overlay);
+        
+        // Prevent body scroll
+        document.body.style.overflow = 'hidden';
+        
+        // Close on click
+        const closeModal = () => {
+          document.body.removeChild(overlay);
+          document.body.style.overflow = '';
+          document.removeEventListener('keydown', handleEscape);
+        };
+        
+        overlay.addEventListener('click', closeModal);
+        
+        // Close on Escape key
+        const handleEscape = (e) => {
+          if (e.key === 'Escape' && document.body.contains(overlay)) {
+            closeModal();
+          }
+        };
+        document.addEventListener('keydown', handleEscape);
       };
       
       img.addEventListener('click', handler);
-      handlers.push({ img, handler });
+      clickHandlers.push({ img, handler });
     });
     
-    // Cleanup function to remove event listeners
+    // Cleanup function
     return () => {
-      handlers.forEach(({ img, handler }) => {
+      clickHandlers.forEach(({ img, handler }) => {
         img.removeEventListener('click', handler);
       });
     };
-  }, [html]); // Re-run when HTML content changes
+  }, [html]);
   
-  return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div ref={containerRef} className="prose prose-sm max-w-none">
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
 }
 
 export default renderHelpHtml;
