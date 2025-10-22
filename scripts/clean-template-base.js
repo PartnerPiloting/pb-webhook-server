@@ -9,7 +9,7 @@
  *   Deep clean: node scripts/clean-template-base.js <template-base-id> --deep-clean
  * 
  * Basic mode:
- *   - Clears data from Leads, LinkedIn Posts, Connection Request Parameters
+ *   - Clears data from Leads, Connection Request Parameters
  *   - Updates Credentials with default threshold values
  *   - Keeps seed data in Scoring Attributes tables
  * 
@@ -32,7 +32,6 @@ const Airtable = require('airtable');
 // Tables to CLEAR (delete all records)
 const TABLES_TO_CLEAR = [
   'Leads',
-  'LinkedIn Posts',
   'Connection Request Parameters' // LinkedHelper connection automation
 ];
 
