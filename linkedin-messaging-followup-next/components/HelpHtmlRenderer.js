@@ -1,5 +1,5 @@
 "use client";
-import React from 'react';
+import React, { useEffect } from 'react';
 
 // Shared HTML normalizer/renderer for all help areas
 // Applies identical heading/link/list styling, fixes <kbd>, preserves query params on /start-here links,
@@ -7,7 +7,7 @@ import React from 'react';
 export function renderHelpHtml(html, keyPrefix) {
   if (!html) return null;
   let safe = String(html);
-  // Strip scripts defensively
+  // Strip scripts defensively (but we'll handle zoom with React event handlers)
   safe = safe.replace(/<script[\s\S]*?<\/script>/gi, '');
 
   // Inject heading classes if missing
@@ -26,6 +26,7 @@ export function renderHelpHtml(html, keyPrefix) {
     });
 
   // Image styling - wrap all images in scrollable container with smooth zoom
+  // Add data-zoomable attribute so we can attach event handlers via React useEffect
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
@@ -34,33 +35,13 @@ export function renderHelpHtml(html, keyPrefix) {
     
     return `<div class="my-4 space-y-2">
       <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:1200px;" id="container-${uniqueId}">
-        <img${attrs} id="img-${uniqueId}" style="display:block;width:120%;height:auto;cursor:zoom-in;image-rendering:high-quality;transition:width 0.3s ease;" title="Click to zoom" />
+        <img${attrs} id="img-${uniqueId}" data-container-id="container-${uniqueId}" data-indicator-id="indicator-${uniqueId}" data-zoomable="true" style="display:block;width:120%;height:auto;cursor:zoom-in;image-rendering:high-quality;transition:width 0.3s ease;" title="Click to zoom" />
       </div>
       <div class="text-xs text-gray-500 italic text-center">
         ${caption}${caption ? ' ' : ''}
         <span class="text-gray-400">(click to zoom, scroll to view) </span>
         <span id="indicator-${uniqueId}" class="font-semibold text-blue-600">120%</span>
       </div>
-      <script>
-        (function() {
-          const img = document.getElementById('img-${uniqueId}');
-          const container = document.getElementById('container-${uniqueId}');
-          const indicator = document.getElementById('indicator-${uniqueId}');
-          
-          img.onclick = function() {
-            const isZoomed = this.style.width === '150%';
-            this.style.width = isZoomed ? '120%' : '150%';
-            this.style.cursor = isZoomed ? 'zoom-in' : 'zoom-out';
-            indicator.textContent = isZoomed ? '120%' : '150%';
-            
-            if (!isZoomed) {
-              setTimeout(function() {
-                container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2;
-              }, 50);
-            }
-          };
-        })();
-      </script>
     </div>`;
   });
 
@@ -112,7 +93,51 @@ export function renderHelpHtml(html, keyPrefix) {
     }
   } catch {}
 
-  return <div key={keyPrefix} className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: safe }} />;
+  // Use a wrapper component to attach zoom event handlers after render
+  return <HelpHtmlContent key={keyPrefix} html={safe} />;
+}
+
+// Wrapper component that attaches zoom handlers after HTML is rendered
+function HelpHtmlContent({ html }) {
+  useEffect(() => {
+    // Attach click handlers to all zoomable images
+    const images = document.querySelectorAll('img[data-zoomable="true"]');
+    
+    const handlers = [];
+    images.forEach(img => {
+      const containerId = img.getAttribute('data-container-id');
+      const indicatorId = img.getAttribute('data-indicator-id');
+      const container = document.getElementById(containerId);
+      const indicator = document.getElementById(indicatorId);
+      
+      if (!container || !indicator) return;
+      
+      const handler = function() {
+        const isZoomed = img.style.width === '150%';
+        img.style.width = isZoomed ? '120%' : '150%';
+        img.style.cursor = isZoomed ? 'zoom-in' : 'zoom-out';
+        indicator.textContent = isZoomed ? '120%' : '150%';
+        
+        if (!isZoomed) {
+          setTimeout(() => {
+            container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2;
+          }, 50);
+        }
+      };
+      
+      img.addEventListener('click', handler);
+      handlers.push({ img, handler });
+    });
+    
+    // Cleanup function to remove event listeners
+    return () => {
+      handlers.forEach(({ img, handler }) => {
+        img.removeEventListener('click', handler);
+      });
+    };
+  }, [html]); // Re-run when HTML content changes
+  
+  return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 export default renderHelpHtml;
