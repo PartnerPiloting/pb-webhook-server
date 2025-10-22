@@ -25,7 +25,7 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
-  // Image styling - wrap all images in scrollable container with progressive zoom
+  // Image styling - wrap all images in scrollable container with zoom
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
@@ -33,11 +33,11 @@ export function renderHelpHtml(html, keyPrefix) {
     
     return `<div class="my-4 space-y-2">
       <div class="border rounded-lg overflow-auto bg-gray-50 p-4 flex justify-center" style="max-height:800px;">
-        <img${attrs} style="display:block;max-width:100%;height:auto;cursor:zoom-in;" onclick="const levels=['100%','150%','200%'];const cur=this.style.maxWidth||'100%';const idx=levels.indexOf(cur);this.style.maxWidth=levels[(idx+1)%levels.length];this.style.cursor=this.style.maxWidth==='100%'?'zoom-in':'zoom-out';" title="Click to zoom: 100% → 150% → 200% → 100%" />
+        <img${attrs} style="display:block;max-width:100%;height:auto;cursor:zoom-in;" onclick="const wasZoomed=this.style.maxWidth==='none';this.style.maxWidth=wasZoomed?'100%':'none';this.style.cursor=wasZoomed?'zoom-in':'zoom-out';if(!wasZoomed){const container=this.parentElement;setTimeout(()=>{container.scrollLeft=(container.scrollWidth-container.clientWidth)/2;container.scrollTop=(container.scrollHeight-container.clientHeight)/2;},50);}" title="Click to zoom to full size (auto-centers), scroll to view" />
       </div>
       <div class="text-xs text-gray-500 italic">
         ${caption}${caption ? ' ' : ''}
-        <span class="text-gray-400">(click image to cycle zoom: 100% → 150% → 200%, scroll to view full image)</span>
+        <span class="text-gray-400">(click image to zoom to full resolution, auto-centers and you can scroll to view entire image)</span>
       </div>
     </div>`;
   });
