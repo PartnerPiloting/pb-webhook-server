@@ -129,22 +129,52 @@ class HelpHtmlContent extends React.Component {
         placeholder.parentNode.replaceChild(wrapper, placeholder);
         
         if (isVertical) {
-          // Tall diagram: Use scrollable container
+          // Tall diagram: Scrollable container with click-to-zoom
           const container = document.createElement('div');
           container.className = 'border rounded-lg overflow-auto bg-gray-50 p-4';
           container.style.maxHeight = '800px';
+          container.style.width = '100%';
           
           const img = document.createElement('img');
           img.src = src;
           img.alt = alt;
-          img.style.cssText = 'width: 100%; height: auto; display: block;';
+          img.style.cssText = 'width: 2400px; height: auto; display: block; cursor: zoom-in;';
+          
+          // Add click to zoom handler
+          img.onclick = () => {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 9999; display: flex; align-items: center; justify-content: center; cursor: zoom-out; overflow: auto;';
+            
+            const zoomedImg = document.createElement('img');
+            zoomedImg.src = src;
+            zoomedImg.alt = alt;
+            zoomedImg.style.cssText = 'max-width: 95vw; max-height: none; width: auto; height: auto;';
+            
+            modal.appendChild(zoomedImg);
+            document.body.appendChild(modal);
+            document.body.style.overflow = 'hidden';
+            
+            modal.onclick = () => {
+              document.body.removeChild(modal);
+              document.body.style.overflow = '';
+            };
+            
+            const handleEscape = (e) => {
+              if (e.key === 'Escape' && document.body.contains(modal)) {
+                document.body.removeChild(modal);
+                document.body.style.overflow = '';
+                document.removeEventListener('keydown', handleEscape);
+              }
+            };
+            document.addEventListener('keydown', handleEscape);
+          };
           
           container.appendChild(img);
           wrapper.appendChild(container);
           
           const hint = document.createElement('div');
           hint.className = 'text-xs text-gray-500 text-center mt-2';
-          hint.textContent = 'Scroll to view full diagram';
+          hint.textContent = 'Scroll to view diagram, click to zoom to full size';
           wrapper.appendChild(hint);
         } else {
           // Normal image: Use zoom modal
