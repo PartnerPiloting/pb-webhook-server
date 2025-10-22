@@ -72,7 +72,6 @@ router.post('/clean-base', async (req, res) => {
     // Tables configuration
     const TABLES_TO_CLEAR = [
       'Leads',
-      'LinkedIn Posts',
       'Connection Request Parameters'
     ];
 
