@@ -25,21 +25,8 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
-  // SVG image styling - wrap in scrollable container
-  // Detect SVG by data-media-type attribute or .svg in URL (fallback)
+  // Image styling - wrap all images in scrollable container with zoom
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
-    // Check if this is an SVG by examining attributes
-    const mediaTypeMatch = attrs.match(/data-media-type=["']([^"']*)["']/i);
-    const mediaType = mediaTypeMatch ? mediaTypeMatch[1].toLowerCase() : '';
-    const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
-    const src = srcMatch ? srcMatch[1].toLowerCase() : '';
-    
-    const isSvg = mediaType.includes('svg') || src.includes('.svg');
-    
-    if (!isSvg) {
-      return match; // Not an SVG, return unchanged
-    }
-    
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
     const caption = altMatch ? altMatch[1] : '';
@@ -50,7 +37,7 @@ export function renderHelpHtml(html, keyPrefix) {
       </div>
       <div class="text-xs text-gray-500 italic">
         ${caption}${caption ? ' ' : ''}
-        <span class="text-gray-400">(click image to zoom, scroll to view full diagram)</span>
+        <span class="text-gray-400">(click image to zoom, scroll to view full image)</span>
       </div>
     </div>`;
   });
