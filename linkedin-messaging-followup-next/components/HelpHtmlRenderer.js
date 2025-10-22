@@ -27,12 +27,22 @@ export function renderHelpHtml(html, keyPrefix) {
 
   // SVG image styling - wrap in scrollable container
   // Detect SVG by data-media-type attribute or .svg in URL (fallback)
-  safe = safe.replace(/<img([^>]*(?:data-media-type=["'][^"']*svg[^"']*["']|src=["'][^"']*\.svg[^"']*["'])[^>]*)>/gi, (match, attrs) => {
+  safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
+    // Check if this is an SVG by examining attributes
+    const mediaTypeMatch = attrs.match(/data-media-type=["']([^"']*)["']/i);
+    const mediaType = mediaTypeMatch ? mediaTypeMatch[1].toLowerCase() : '';
+    const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
+    const src = srcMatch ? srcMatch[1].toLowerCase() : '';
+    
+    const isSvg = mediaType.includes('svg') || src.includes('.svg');
+    
+    if (!isSvg) {
+      return match; // Not an SVG, return unchanged
+    }
+    
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
     const caption = altMatch ? altMatch[1] : '';
-    const mediaIdMatch = attrs.match(/data-media-id=["']([^"']*)["']/i);
-    const mediaId = mediaIdMatch ? mediaIdMatch[1] : '';
     
     return `<div class="my-4 space-y-2">
       <div class="border rounded-lg overflow-auto max-h-[600px] bg-white p-4">
