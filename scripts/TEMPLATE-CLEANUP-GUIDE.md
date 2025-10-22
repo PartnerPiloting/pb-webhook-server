@@ -7,8 +7,7 @@ The `clean-template-base.js` script automates cleaning a duplicated Guy Wilson b
 
 ### 🧼 Basic Mode (Default)
 **Tables with records DELETED:**
-- `Leads` - All lead data cleared
-- `LinkedIn Posts` - All post data cleared
+- `Leads` - All lead data cleared (posts are stored as JSON in "Posts Content" field)
 - `Connection Request Parameters` - LinkedHelper automation settings cleared
 
 **Tables UPDATED (not deleted):**
@@ -91,7 +90,6 @@ node scripts/clean-template-base.js <base-id> --deep-clean
 ```
 🔍 Validating required table structure...
    ✅ Leads
-   ✅ LinkedIn Posts
    ✅ Connection Request Parameters
    ✅ Credentials
    ✅ Scoring Attributes
@@ -105,12 +103,12 @@ node scripts/clean-template-base.js <base-id> --deep-clean
    Processing: Leads
       Found 450 records
       Deleted 450/450 records...
-      ✅ Cleared 450 records
+      ✅ Cleared 450 records (posts stored in "Posts Content" field)
 
-   Processing: LinkedIn Posts
-      Found 1200 records
-      Deleted 1200/1200 records...
-      ✅ Cleared 1200 records
+   Processing: Connection Request Parameters
+      Found 5 records
+      Deleted 5/5 records...
+      ✅ Cleared 5 records
 ```
 
 ### Update Phase
