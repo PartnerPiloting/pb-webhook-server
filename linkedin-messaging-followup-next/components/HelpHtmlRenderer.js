@@ -25,6 +25,25 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
+  // SVG image styling - wrap in scrollable container
+  safe = safe.replace(/<img([^>]*src=["'][^"']*\.svg[^"']*["'][^>]*)>/gi, (match, attrs) => {
+    // Extract alt text for caption
+    const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
+    const caption = altMatch ? altMatch[1] : '';
+    const mediaIdMatch = attrs.match(/data-media-id=["']([^"']*)["']/i);
+    const mediaId = mediaIdMatch ? mediaIdMatch[1] : '';
+    
+    return `<div class="my-4 space-y-2">
+      <div class="border rounded-lg overflow-auto max-h-[600px] bg-white p-4">
+        <img${attrs} class="max-w-none" style="min-width:100%;height:auto;" />
+      </div>
+      <div class="text-xs text-gray-500 italic">
+        ${caption}${caption ? ' ' : ''}
+        <span class="text-gray-400">(scroll to view full diagram)</span>
+      </div>
+    </div>`;
+  });
+
   // List styling and cleanup of <p> inside <li>
   safe = safe
     .replace(/<ul(?![^>]*class=)([^>]*)>/gi, '<ul class="list-disc pl-5"$1>')
