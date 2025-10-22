@@ -25,19 +25,20 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
-  // Image styling - wrap all images in scrollable container at readable size
+  // Image styling - wrap all images in scrollable container with smooth zoom
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
     const caption = altMatch ? altMatch[1] : '';
     
     return `<div class="my-4 space-y-2">
-      <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:1200px;">
-        <img${attrs} style="display:block;width:80%;margin:0 auto;height:auto;" />
+      <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:1200px;" id="img-container-${Math.random().toString(36).substr(2, 9)}">
+        <img${attrs} style="display:block;width:100%;height:auto;cursor:zoom-in;image-rendering:high-quality;transition:width 0.3s ease;" onclick="const container=this.parentElement;const isZoomed=this.style.width==='150%';this.style.width=isZoomed?'100%':'150%';this.style.cursor=isZoomed?'zoom-in':'zoom-out';const indicator=container.nextElementSibling.querySelector('.zoom-indicator');indicator.textContent=isZoomed?'100%':'150%';if(!isZoomed){setTimeout(()=>{container.scrollLeft=(container.scrollWidth-container.clientWidth)/2;},50);}" title="Click to toggle zoom" />
       </div>
       <div class="text-xs text-gray-500 italic text-center">
         ${caption}${caption ? ' ' : ''}
-        <span class="text-gray-400">(scroll to view full image)</span>
+        <span class="text-gray-400">(click to zoom, scroll to view) </span>
+        <span class="zoom-indicator font-semibold text-blue-600">100%</span>
       </div>
     </div>`;
   });
