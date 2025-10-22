@@ -129,7 +129,7 @@ class HelpHtmlContent extends React.Component {
           <img 
             src={src} 
             alt={alt}
-            style={{ maxWidth: '100%', height: 'auto', cursor: 'zoom-in' }}
+            style={{ maxWidth: '2000px', width: '100%', height: 'auto', cursor: 'zoom-in' }}
           />
         </Zoom>
       );
