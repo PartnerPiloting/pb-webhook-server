@@ -45,12 +45,12 @@ export function renderHelpHtml(html, keyPrefix) {
     const caption = altMatch ? altMatch[1] : '';
     
     return `<div class="my-4 space-y-2">
-      <div class="border rounded-lg overflow-auto max-h-[600px] bg-white p-4">
-        <img${attrs} class="max-w-none" style="min-width:100%;height:auto;" />
+      <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:800px;">
+        <img${attrs} style="display:block;max-width:100%;height:auto;cursor:zoom-in;" onclick="this.style.maxWidth=this.style.maxWidth==='100%'?'none':'100%';this.style.cursor=this.style.cursor==='zoom-in'?'zoom-out':'zoom-in';" title="Click to zoom in/out" />
       </div>
       <div class="text-xs text-gray-500 italic">
         ${caption}${caption ? ' ' : ''}
-        <span class="text-gray-400">(scroll to view full diagram)</span>
+        <span class="text-gray-400">(click image to zoom, scroll to view full diagram)</span>
       </div>
     </div>`;
   });
