@@ -50,20 +50,6 @@ const TABLES_TO_KEEP = [
   'Post Scoring Instructions'
 ];
 
-// Legacy/unused tables to DELETE entirely (optional - only if --deep-clean flag passed)
-const TABLES_TO_DELETE = [
-  'Connections',              // Legacy - not used
-  'Boolean Searches',         // Not referenced in code
-  'Concept Dictionary',       // Not referenced in code
-  'Name Parsing Rules',       // Not referenced in code
-  'Project Tasks',            // Not referenced in code
-  'Attributes Blob',          // Not referenced in code
-  'Campaigns',                // Not referenced in code
-  'Instructions + Thoughts',  // Replaced by help system
-  'Test Post Scoring',        // Dev/test table
-  'Scoring Attributes 06 08 25' // Backup/snapshot table
-];
-
 /**
  * Update Credentials table with default threshold values
  */
@@ -212,19 +198,30 @@ async function cleanTemplateBase(templateBaseId, deepClean = false) {
     }
   }
 
-  // Deep clean: Delete unused legacy tables
+  // Deep clean: Delete ALL tables except core required ones
   if (deepClean) {
-    console.log('\n🔥 DEEP CLEAN: Deleting unused legacy tables...\n');
-    console.log('   ⚠️  WARNING: This will PERMANENTLY DELETE these tables!\n');
+    console.log('\n🔥 DEEP CLEAN: Deleting all non-essential tables...\n');
+    console.log('   ⚠️  WARNING: This will PERMANENTLY DELETE tables not in the core set!\n');
     
-    // Get table metadata to find table IDs
+    // Define tables to preserve (everything else gets deleted)
+    const TABLES_TO_PRESERVE = [
+      ...TABLES_TO_CLEAR,
+      ...Object.keys(TABLES_TO_UPDATE),
+      ...TABLES_TO_KEEP
+    ];
+    
+    console.log(`   ℹ️  Will preserve ${TABLES_TO_PRESERVE.length} core tables:`);
+    TABLES_TO_PRESERVE.forEach(t => console.log(`      - ${t}`));
+    console.log('');
+    
+    // Get table metadata to find all tables and their IDs
     const metadataUrl = `https://api.airtable.com/v0/meta/bases/${templateBaseId}/tables`;
     const headers = {
       'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
       'Content-Type': 'application/json'
     };
     
-    let tableMetadata;
+    let tableMetadata = [];
     try {
       const fetch = (await import('node-fetch')).default;
       const response = await fetch(metadataUrl, { headers });
@@ -233,73 +230,49 @@ async function cleanTemplateBase(templateBaseId, deepClean = false) {
       }
       const data = await response.json();
       tableMetadata = data.tables || [];
+      
+      console.log(`   📋 Found ${tableMetadata.length} total tables in base\n`);
     } catch (error) {
-      console.log(`   ⚠️  Could not fetch table metadata: ${error.message}`);
-      console.log('   ℹ️  Falling back to record deletion only (tables will remain empty)\n');
+      console.log(`   ❌ Could not fetch table metadata: ${error.message}`);
+      console.log('   ℹ️  Cannot proceed with deep clean without metadata API access\n');
       tableMetadata = [];
     }
     
-    for (const tableName of TABLES_TO_DELETE) {
-      try {
-        // Check if table exists first
-        let tableExists = false;
+    if (tableMetadata.length > 0) {
+      // Find tables to delete (all tables NOT in TABLES_TO_PRESERVE)
+      const tablesToDelete = tableMetadata.filter(table => 
+        !TABLES_TO_PRESERVE.includes(table.name)
+      );
+      
+      console.log(`   🗑️  Will delete ${tablesToDelete.length} tables:\n`);
+      tablesToDelete.forEach(t => console.log(`      - ${t.name}`));
+      console.log('');
+      
+      // Delete each unwanted table
+      for (const tableInfo of tablesToDelete) {
         try {
-          await base(tableName).select({ maxRecords: 1 }).firstPage();
-          tableExists = true;
-        } catch (error) {
-          console.log(`   ⏭️  ${tableName}: Already deleted or doesn't exist`);
-          continue;
-        }
-        
-        // Try to delete via metadata API
-        const tableInfo = tableMetadata.find(t => t.name === tableName);
-        if (tableInfo && tableInfo.id) {
-          console.log(`   🗑️  ${tableName}: Deleting table permanently...`);
+          console.log(`   🗑️  ${tableInfo.name}: Deleting table permanently...`);
           
-          try {
-            const fetch = (await import('node-fetch')).default;
-            const deleteUrl = `https://api.airtable.com/v0/meta/bases/${templateBaseId}/tables/${tableInfo.id}`;
-            const deleteResponse = await fetch(deleteUrl, {
-              method: 'DELETE',
-              headers
-            });
-            
-            if (deleteResponse.ok) {
-              console.log(`      ✅ Table deleted permanently`);
-              continue;
-            } else {
-              throw new Error(`API returned ${deleteResponse.status}: ${deleteResponse.statusText}`);
-            }
-          } catch (deleteError) {
-            console.log(`      ⚠️  Could not delete table via API: ${deleteError.message}`);
-            console.log(`      ℹ️  Falling back to clearing records...`);
+          const fetch = (await import('node-fetch')).default;
+          const deleteUrl = `https://api.airtable.com/v0/meta/bases/${templateBaseId}/tables/${tableInfo.id}`;
+          const deleteResponse = await fetch(deleteUrl, {
+            method: 'DELETE',
+            headers
+          });
+          
+          if (deleteResponse.ok) {
+            console.log(`      ✅ Table deleted permanently`);
+          } else {
+            const errorText = await deleteResponse.text();
+            console.log(`      ⚠️  API returned ${deleteResponse.status}: ${errorText}`);
           }
+        } catch (deleteError) {
+          console.log(`      ❌ Error: ${deleteError.message}`);
         }
-        
-        // Fallback: Just clear all records if API deletion fails
-        const records = await base(tableName).select().all();
-        
-        if (records.length > 0) {
-          console.log(`   🗑️  ${tableName}: Clearing ${records.length} records...`);
-          
-          const BATCH_SIZE = 10;
-          for (let i = 0; i < records.length; i += BATCH_SIZE) {
-            const batch = records.slice(i, i + BATCH_SIZE);
-            await base(tableName).destroy(batch.map(r => r.id));
-          }
-          
-          console.log(`      ✅ Cleared all records from ${tableName}`);
-          console.log(`      ℹ️  Table still exists but is empty. Delete manually in Airtable UI.`);
-        } else {
-          console.log(`   ✅ ${tableName}: Already empty`);
-        }
-        
-      } catch (error) {
-        console.log(`   ⚠️  ${tableName}: ${error.message}`);
       }
+      
+      console.log('\n   ✅ Deep clean complete!');
     }
-    
-    console.log('\n   ℹ️  Deep clean complete.');
   }
 
   console.log('\n' + '='.repeat(60));
