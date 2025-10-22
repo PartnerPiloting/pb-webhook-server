@@ -63,8 +63,7 @@ async function updateCredentialsDefaults(base, tableName) {
     await base(tableName).create({
       'AI Score Threshold Input': 50,
       'Posts Threshold Percentage': 30,
-      'Last LH Leads Export': null,
-      'Top Leads Last Export At': null
+      'Last LH Leads Export': null
     });
     console.log(`      ✅ Created default Credentials record`);
     return;
@@ -84,8 +83,7 @@ async function updateCredentialsDefaults(base, tableName) {
   await base(tableName).update(record.id, {
     'AI Score Threshold Input': 50,
     'Posts Threshold Percentage': 30,
-    'Last LH Leads Export': null,
-    'Top Leads Last Export At': null
+    'Last LH Leads Export': null
   });
   
   console.log(`      ✅ Updated with default values (AI threshold: 50, Posts threshold: 30%)`);
