@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Rendering Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-container {
+            margin: 30px 0;
+            border: 2px solid #ccc;
+            padding: 20px;
+        }
+        h2 {
+            color: #333;
+        }
+        .image-wrapper {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: auto;
+            background: #f9f9f9;
+            padding: 16px;
+            max-height: 1200px;
+        }
+        
+        /* Test 1: Default browser rendering */
+        .test1 img {
+            display: block;
+            width: 100%;
+            height: auto;
+            cursor: pointer;
+            transition: width 0.3s ease;
+        }
+        
+        /* Test 2: With crisp-edges */
+        .test2 img {
+            display: block;
+            width: 100%;
+            height: auto;
+            cursor: pointer;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            transition: width 0.3s ease;
+        }
+        
+        /* Test 3: With pixelated */
+        .test3 img {
+            display: block;
+            width: 100%;
+            height: auto;
+            cursor: pointer;
+            image-rendering: pixelated;
+            transition: width 0.3s ease;
+        }
+        
+        /* Test 4: High quality smooth - WINNER! */
+        .test4 img {
+            display: block;
+            width: 100%;
+            height: auto;
+            cursor: zoom-in;
+            image-rendering: high-quality;
+            transition: width 0.3s ease;
+        }
+        
+        .zoom-indicator {
+            font-weight: 600;
+            color: #2563eb;
+            margin-left: 5px;
+        }
+        
+        .instructions {
+            background: #fffacd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Rendering Quality Test</h1>
+    <p>Testing different CSS image-rendering approaches with your 4000px diagram.</p>
+    <p><strong>Instructions:</strong> Click each image to toggle zoom (100% ↔ 150%). Compare text sharpness.</p>
+    
+    <div id="loading" class="loading">Loading diagram from API...</div>
+    
+    <div id="tests" style="display:none;">
+        <div class="test-container">
+            <h2>Test 1: Default Browser Rendering (baseline)</h2>
+            <div class="instructions">No image-rendering CSS applied. Click to zoom.</div>
+            <div class="image-wrapper test1">
+                <img id="img1" alt="System Architecture Diagram" onclick="toggleZoom(this)">
+            </div>
+        </div>
+        
+        <div class="test-container">
+            <h2>Test 2: crisp-edges (recommended for diagrams)</h2>
+            <div class="instructions">Uses image-rendering: crisp-edges. Should keep text sharp when zoomed.</div>
+            <div class="image-wrapper test2">
+                <img id="img2" alt="System Architecture Diagram" onclick="toggleZoom(this)">
+            </div>
+        </div>
+        
+        <div class="test-container">
+            <h2>Test 3: pixelated (for comparison)</h2>
+            <div class="instructions">Uses image-rendering: pixelated. May look blocky.</div>
+            <div class="image-wrapper test3">
+                <img id="img3" alt="System Architecture Diagram" onclick="toggleZoom(this)">
+            </div>
+        </div>
+        
+        <div class="test-container">
+            <h2>Test 4: high-quality (smooth scaling) - ⭐ WINNER!</h2>
+            <div class="instructions">Uses image-rendering: high-quality + zoom indicator + auto-center. This is what we'll deploy!</div>
+            <div class="image-wrapper test4">
+                <img id="img4" alt="System Architecture Diagram" onclick="toggleZoomWithIndicator(this, 'indicator4')">
+            </div>
+            <div style="text-align: center; margin-top: 8px; font-size: 12px; color: #666;">
+                <span class="text-gray-400">(click to zoom, scroll to view) </span>
+                <span id="indicator4" class="zoom-indicator">100%</span>
+            </div>
+        </div>
+        
+        <div style="background: #e8f4f8; padding: 20px; margin-top: 40px; border-radius: 8px;">
+            <h3>What to look for:</h3>
+            <ul>
+                <li><strong>At 100% width:</strong> All should look similar and clear</li>
+                <li><strong>After clicking (150% zoom):</strong> 
+                    <ul>
+                        <li>Test 1 (default) - May get blurry/fuzzy text</li>
+                        <li>Test 2 (crisp-edges) - Should keep text sharp</li>
+                        <li>Test 3 (pixelated) - May look too blocky/harsh</li>
+                        <li>Test 4 (high-quality) - Should be smooth but may still blur text</li>
+                    </ul>
+                </li>
+            </ul>
+            <p><strong>Winner:</strong> The one where text stays readable at 150% zoom!</p>
+        </div>
+    </div>
+    
+    <script>
+        // Fetch the actual diagram URL from the API
+        async function loadDiagram() {
+            try {
+                const response = await fetch('https://pb-webhook-server-staging.onrender.com/api/help/topic/recmNfxlg467K25qk');
+                const data = await response.json();
+                
+                // Extract image URL from the HTML
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(data.bodyHtml, 'text/html');
+                const img = doc.querySelector('img');
+                
+                if (img && img.src) {
+                    // Set all test images to the same URL
+                    document.getElementById('img1').src = img.src;
+                    document.getElementById('img2').src = img.src;
+                    document.getElementById('img3').src = img.src;
+                    document.getElementById('img4').src = img.src;
+                    
+                    // Hide loading, show tests
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('tests').style.display = 'block';
+                } else {
+                    document.getElementById('loading').textContent = 'Error: Could not find image in API response';
+                }
+            } catch (error) {
+                document.getElementById('loading').textContent = 'Error loading diagram: ' + error.message;
+            }
+        }
+        
+        function toggleZoom(img) {
+            if (img.style.width === '150%') {
+                img.style.width = '100%';
+            } else {
+                img.style.width = '150%';
+            }
+        }
+        
+        function toggleZoomWithIndicator(img, indicatorId) {
+            const container = img.parentElement;
+            const isZoomed = img.style.width === '150%';
+            
+            // Toggle zoom
+            img.style.width = isZoomed ? '100%' : '150%';
+            img.style.cursor = isZoomed ? 'zoom-in' : 'zoom-out';
+            
+            // Update indicator
+            const indicator = document.getElementById(indicatorId);
+            indicator.textContent = isZoomed ? '100%' : '150%';
+            
+            // Auto-center horizontally when zooming in
+            if (!isZoomed) {
+                setTimeout(() => {
+                    container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2;
+                }, 50);
+            }
+        }
+        
+        // Load on page load
+        loadDiagram();
+    </script>
+</body>
+</html>
