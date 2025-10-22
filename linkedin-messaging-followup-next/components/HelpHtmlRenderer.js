@@ -25,19 +25,19 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
-  // Image styling - wrap all images in scrollable container with zoom
+  // Image styling - wrap all images in scrollable container at readable size
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
     const caption = altMatch ? altMatch[1] : '';
     
     return `<div class="my-4 space-y-2">
-      <div class="border rounded-lg overflow-auto bg-gray-50 p-4 flex justify-center" style="max-height:800px;">
-        <img${attrs} style="display:block;max-width:100%;height:auto;cursor:zoom-in;" onclick="const wasZoomed=this.style.maxWidth==='none';this.style.maxWidth=wasZoomed?'100%':'none';this.style.cursor=wasZoomed?'zoom-in':'zoom-out';if(!wasZoomed){const container=this.parentElement;setTimeout(()=>{container.scrollLeft=(container.scrollWidth-container.clientWidth)/2;container.scrollTop=(container.scrollHeight-container.clientHeight)/2;},50);}" title="Click to zoom to full size (auto-centers), scroll to view" />
+      <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:1200px;">
+        <img${attrs} style="display:block;width:80%;margin:0 auto;height:auto;" />
       </div>
-      <div class="text-xs text-gray-500 italic">
+      <div class="text-xs text-gray-500 italic text-center">
         ${caption}${caption ? ' ' : ''}
-        <span class="text-gray-400">(click image to zoom to full resolution, auto-centers and you can scroll to view entire image)</span>
+        <span class="text-gray-400">(scroll to view full image)</span>
       </div>
     </div>`;
   });
