@@ -1,0 +1,178 @@
+"use client";
+import React, { useEffect } from 'react';
+
+// Shared HTML normalizer/renderer for all help areas
+// Applies identical heading/link/list styling, fixes <kbd>, preserves query params on /start-here links,
+// and opens start-here links in a new tab.
+export function renderHelpHtml(html, keyPrefix) {
+  if (!html) return null;
+  let safe = String(html);
+  // No need to strip scripts - we're using proper React components now
+  // safe = safe.replace(/<script[\s\S]*?<\/script>/gi, '');
+
+  // Inject heading classes if missing
+  safe = safe
+    .replace(/<h1(?![^>]*class=)([^>]*)>/gi, '<h1 class="mt-6 mb-4 text-base font-bold text-gray-900"$1>')
+    .replace(/<h2(?![^>]*class=)([^>]*)>/gi, '<h2 class="mt-6 mb-3 text-[15px] font-semibold text-gray-900"$1>')
+    .replace(/<h3(?![^>]*class=)([^>]*)>/gi, '<h3 class="mt-5 mb-2 text-[14px] font-semibold text-gray-900"$1>')
+    .replace(/<h4(?![^>]*class=)([^>]*)>/gi, '<h4 class="mt-5 mb-2 text-[13px] font-semibold text-gray-800"$1>');
+
+  // Style anchors
+  safe = safe
+    .replace(/<a (?![^>]*class=)([^>]*?)>/gi, '<a class="text-blue-600 underline font-medium hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500" $1>')
+    .replace(/<a([^>]*class=["'])([^"']*)(["'][^>]*?)>/gi, (m, pre, classes, post) => {
+      if (/text-blue-600|underline/.test(classes)) return m;
+      return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
+    });
+
+  // Image styling - mark images for React component wrapping
+  // We'll extract these and wrap them with Zoom component
+  safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
+    // Extract src for identification
+    const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
+    const src = srcMatch ? srcMatch[1] : '';
+    const uniqueId = Math.random().toString(36).substr(2, 9);
+    
+    // Add data attributes to identify images that need zoom wrapping
+    return `<img${attrs} data-zoom-image="true" data-image-id="${uniqueId}" data-image-src="${src}" class="help-content-image" style="max-width:100%;height:auto;cursor:zoom-in;" />`;
+  });
+
+  // List styling and cleanup of <p> inside <li>
+  safe = safe
+    .replace(/<ul(?![^>]*class=)([^>]*)>/gi, '<ul class="list-disc pl-5"$1>')
+    .replace(/<ol(?![^>]*class=)([^>]*)>/gi, '<ol class="list-decimal pl-5"$1>')
+    .replace(/<li(?![^>]*class=)([^>]*)>/gi, '<li class="leading-relaxed"$1>');
+  safe = safe.replace(/<li([^>]*)>\s*<p[^>]*>([\s\S]*?)<\/p>\s*<\/li>/gi, (m, attrs, inner) => {
+    const trimmed = (inner || '').trim();
+    if (!trimmed) return '';
+    return `<li${attrs}>${trimmed}</li>`;
+  });
+  safe = safe.replace(/(<li[^>]*>)\s*<p[^>]*>/gi, '$1');
+  safe = safe.replace(/<\/p>\s*(<\/li>)/gi, '$1');
+  // Tighten list spacing and ensure default bullets/decimal
+  safe = safe
+    .replace(/<ul(?![^>]*style=)([^>]*)>/gi, '<ul$1 style="margin:0;padding-left:1.25rem;list-style:disc;">')
+    .replace(/<ol(?![^>]*style=)([^>]*)>/gi, '<ol$1 style="margin:0;padding-left:1.25rem;list-style:decimal;">')
+    .replace(/<\/li>\s+<li/gi, '</li><li');
+
+  // Unescape <kbd> that might arrive encoded, then apply a default style when no class exists
+  safe = safe.replace(/&lt;kbd&gt;([\s\S]*?)&lt;\/kbd&gt;/gi, '<kbd>$1</kbd>');
+  safe = safe.replace(/<kbd(?![^>]*class=)([^>]*)>/gi, '<kbd class="mx-0.5 rounded border border-gray-300 bg-gray-100 px-1 py-0.5 text-[0.75rem] font-medium text-gray-800 align-baseline"$1>');
+
+  // Strip internal reference tokens and render basic markdown-style bold/italic within HTML bodies
+  safe = safe
+    .replace(/:contentReference\[[^\]]+\]\{[^}]*\}/g, '')
+    .replace(/:oaicite\[[^\]]+\]\{[^}]*\}/g, '')
+    .replace(/\\\*/g, '*')
+    .replace(/\*\*([^*<>][^*<>]*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[\s>(])\*([^*<>][^*<>]*?)\*(?=[\s<).,!?:;]|$)/g, '$1<em>$2</em>')
+    .replace(/  +/g, ' ');
+
+  // Preserve current query params on internal /start-here links and force them to open in a new tab
+  try {
+    if (typeof window !== 'undefined') {
+      const q = window.location.search || '';
+      if (q) {
+        safe = safe.replace(/href=(["'])(\/start-here[^'"\s>]*)\1/gi, (m, quote, path) => {
+          if (path.includes('?')) return `href=${quote}${path}&${q.replace(/^\?/, '')}${quote}`;
+          return `href=${quote}${path}${q}${quote}`;
+        });
+      }
+      safe = safe.replace(/<a([^>]*href=["']\/start-here[^>]*?)>/gi, (m, pre) => {
+        if (/target=|rel=/.test(m)) return m;
+        return `<a${pre} target="_blank" rel="noopener noreferrer">`;
+      });
+    }
+  } catch {}
+
+  // Use a wrapper component that will replace images with Zoom-wrapped versions
+  return <HelpHtmlContent key={keyPrefix} html={safe} />;
+}
+
+// Wrapper component that adds zoom functionality to images
+function HelpHtmlContent({ html }) {
+  const containerRef = React.useRef(null);
+  
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    // Find all images marked for zoom
+    const images = containerRef.current.querySelectorAll('img[data-zoom-image="true"]');
+    
+    const clickHandlers = [];
+    
+    images.forEach((img) => {
+      const handler = () => {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.9);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: zoom-out;
+          animation: fadeIn 0.2s ease-in-out;
+        `;
+        
+        // Create zoomed image
+        const zoomedImg = document.createElement('img');
+        zoomedImg.src = img.src;
+        zoomedImg.alt = img.alt || '';
+        zoomedImg.style.cssText = `
+          max-width: 95vw;
+          max-height: 95vh;
+          object-fit: contain;
+          border-radius: 8px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        `;
+        
+        overlay.appendChild(zoomedImg);
+        document.body.appendChild(overlay);
+        
+        // Prevent body scroll
+        document.body.style.overflow = 'hidden';
+        
+        // Close on click
+        const closeModal = () => {
+          document.body.removeChild(overlay);
+          document.body.style.overflow = '';
+          document.removeEventListener('keydown', handleEscape);
+        };
+        
+        overlay.addEventListener('click', closeModal);
+        
+        // Close on Escape key
+        const handleEscape = (e) => {
+          if (e.key === 'Escape' && document.body.contains(overlay)) {
+            closeModal();
+          }
+        };
+        document.addEventListener('keydown', handleEscape);
+      };
+      
+      img.addEventListener('click', handler);
+      clickHandlers.push({ img, handler });
+    });
+    
+    // Cleanup function
+    return () => {
+      clickHandlers.forEach(({ img, handler }) => {
+        img.removeEventListener('click', handler);
+      });
+    };
+  }, [html]);
+  
+  return (
+    <div ref={containerRef} className="prose prose-sm max-w-none">
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
+}
+
+export default renderHelpHtml;

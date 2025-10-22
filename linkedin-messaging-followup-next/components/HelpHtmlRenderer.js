@@ -140,19 +140,25 @@ class HelpHtmlContent extends React.Component {
           img.alt = alt;
           img.style.cssText = 'width: 2400px; height: auto; display: block; cursor: zoom-in;';
           
-          // Add click to zoom handler
+          // Add click to zoom handler - starts at readable 2400px width
           img.onclick = () => {
             const modal = document.createElement('div');
-            modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 9999; display: flex; align-items: center; justify-content: center; cursor: zoom-out; overflow: auto;';
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 9999; overflow: auto; padding: 20px; cursor: zoom-out;';
+            
+            // Add heading for context
+            const heading = document.createElement('h2');
+            heading.textContent = 'System Architecture Diagram';
+            heading.style.cssText = 'color: white; text-align: center; margin: 0 0 20px 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;';
+            modal.appendChild(heading);
             
             const zoomedImg = document.createElement('img');
             zoomedImg.src = src;
             zoomedImg.alt = alt;
-            zoomedImg.style.cssText = 'max-width: 95vw; max-height: none; width: auto; height: auto;';
+            // Start at 2400px (60% of 4000px) for readable text, same as initial view
+            zoomedImg.style.cssText = 'display: block; margin: 0 auto; width: 2400px; height: auto;';
             
             modal.appendChild(zoomedImg);
             document.body.appendChild(modal);
-            document.body.style.overflow = 'hidden';
             
             modal.onclick = () => {
               document.body.removeChild(modal);
