@@ -81,19 +81,6 @@ router.post('/clean-base', async (req, res) => {
       'Post Scoring Instructions'
     ];
 
-    const TABLES_TO_DELETE = [
-      'Connections',
-      'Boolean Searches',
-      'Concept Dictionary',
-      'Name Parsing Rules',
-      'Project Tasks',
-      'Attributes Blob',
-      'Campaigns',
-      'Instructions + Thoughts',
-      'Test Post Scoring',
-      'Scoring Attributes 06 08 25'
-    ];
-
     // Step 1: Validate tables
     results.operations.push({ step: 'validation', status: 'started' });
     const allRequiredTables = [...TABLES_TO_CLEAR, 'Credentials', ...TABLES_TO_KEEP];
@@ -226,13 +213,27 @@ router.post('/clean-base', async (req, res) => {
       });
     }
 
-    // Step 5: Deep clean (delete legacy tables)
+    // Step 5: Deep clean (delete all tables except core required ones)
     let tablesDeleted = 0;
     
     if (deepClean) {
       results.operations.push({ step: 'deep_clean', status: 'started' });
       
-      // Get table metadata for deletion
+      // Define tables to keep (everything else gets deleted)
+      const TABLES_TO_PRESERVE = [
+        ...TABLES_TO_CLEAR,
+        'Credentials',
+        ...TABLES_TO_KEEP
+      ];
+      
+      results.operations.push({ 
+        step: 'deep_clean', 
+        status: 'info',
+        message: `Will preserve ${TABLES_TO_PRESERVE.length} core tables: ${TABLES_TO_PRESERVE.join(', ')}`,
+        preservedTables: TABLES_TO_PRESERVE
+      });
+      
+      // Get all tables from metadata API
       const metadataUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables`;
       const headers = {
         'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
@@ -246,89 +247,86 @@ router.post('/clean-base', async (req, res) => {
         if (response.ok) {
           const data = await response.json();
           tableMetadata = data.tables || [];
+          
+          results.operations.push({ 
+            step: 'deep_clean', 
+            status: 'metadata_fetched',
+            totalTables: tableMetadata.length,
+            tableNames: tableMetadata.map(t => t.name)
+          });
         }
       } catch (error) {
         results.operations.push({ 
           step: 'deep_clean', 
           status: 'metadata_fetch_failed',
-          error: error.message,
-          fallback: 'will clear records only'
+          error: error.message
+        });
+        // Can't proceed with deep clean without metadata
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to fetch table metadata for deep clean',
+          details: error.message,
+          results
         });
       }
       
-      for (const tableName of TABLES_TO_DELETE) {
-        try {
-          // Check if table exists
-          try {
-            await base(tableName).select({ maxRecords: 1 }).firstPage();
-          } catch (error) {
-            results.operations.push({ 
-              step: 'deep_clean', 
-              table: tableName, 
-              status: 'not_found'
-            });
-            continue;
-          }
-          
-          if (dryRun) {
-            results.operations.push({ 
-              step: 'deep_clean', 
-              table: tableName, 
-              status: 'dry_run',
-              action: 'would delete table'
-            });
-            continue;
-          }
-          
-          // Try to delete via API
-          const tableInfo = tableMetadata.find(t => t.name === tableName);
-          if (tableInfo && tableInfo.id) {
-            try {
-              const fetch = (await import('node-fetch')).default;
-              const deleteUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableInfo.id}`;
-              const deleteResponse = await fetch(deleteUrl, {
-                method: 'DELETE',
-                headers
-              });
-              
-              if (deleteResponse.ok) {
-                tablesDeleted++;
-                results.operations.push({ 
-                  step: 'deep_clean', 
-                  table: tableName, 
-                  status: 'deleted',
-                  method: 'api'
-                });
-                continue;
-              }
-            } catch (deleteError) {
-              // Fall through to record clearing
-            }
-          }
-          
-          // Fallback: Clear all records
-          const records = await base(tableName).select().all();
-          if (records.length > 0) {
-            const BATCH_SIZE = 10;
-            for (let i = 0; i < records.length; i += BATCH_SIZE) {
-              const batch = records.slice(i, i + BATCH_SIZE);
-              await base(tableName).destroy(batch.map(r => r.id));
-            }
-            results.operations.push({ 
-              step: 'deep_clean', 
-              table: tableName, 
-              status: 'cleared',
-              method: 'records_only',
-              recordsDeleted: records.length
-            });
-          }
-          
-        } catch (error) {
+      // Find tables to delete (all tables NOT in TABLES_TO_PRESERVE)
+      const tablesToDelete = tableMetadata.filter(table => 
+        !TABLES_TO_PRESERVE.includes(table.name)
+      );
+      
+      results.operations.push({ 
+        step: 'deep_clean', 
+        status: 'identified_for_deletion',
+        count: tablesToDelete.length,
+        tables: tablesToDelete.map(t => t.name)
+      });
+      
+      // Delete each unwanted table
+      for (const tableInfo of tablesToDelete) {
+        if (dryRun) {
           results.operations.push({ 
             step: 'deep_clean', 
-            table: tableName, 
+            table: tableInfo.name, 
+            status: 'dry_run',
+            action: 'would delete table'
+          });
+          continue;
+        }
+        
+        try {
+          const fetch = (await import('node-fetch')).default;
+          const deleteUrl = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableInfo.id}`;
+          const deleteResponse = await fetch(deleteUrl, {
+            method: 'DELETE',
+            headers
+          });
+          
+          if (deleteResponse.ok) {
+            tablesDeleted++;
+            results.operations.push({ 
+              step: 'deep_clean', 
+              table: tableInfo.name, 
+              tableId: tableInfo.id,
+              status: 'deleted',
+              method: 'api'
+            });
+          } else {
+            const errorText = await deleteResponse.text();
+            results.operations.push({ 
+              step: 'deep_clean', 
+              table: tableInfo.name, 
+              status: 'delete_failed',
+              statusCode: deleteResponse.status,
+              error: errorText
+            });
+          }
+        } catch (deleteError) {
+          results.operations.push({ 
+            step: 'deep_clean', 
+            table: tableInfo.name, 
             status: 'error',
-            error: error.message
+            error: deleteError.message
           });
         }
       }
