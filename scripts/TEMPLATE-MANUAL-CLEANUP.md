@@ -48,7 +48,7 @@ After running the cleanup script, delete these **9 legacy tables** from your tem
 ### Step 1: Run Automated Script
 ```bash
 # Via Render API (recommended)
-POST https://pb-webhook-server-staging.onrender.com/api/template-cleanup/clean-base
+POST https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base
 Body: {
   "baseId": "appXXXXXXXXXXXX",
   "deepClean": false,  # No need for deep clean since API can't delete tables
