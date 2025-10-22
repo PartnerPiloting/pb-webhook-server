@@ -118,23 +118,50 @@ class HelpHtmlContent extends React.Component {
       
       if (!src) return;
       
-      const wrapper = document.createElement('div');
-      wrapper.className = 'my-4';
-      wrapper.setAttribute('data-zoom-rendered', 'true');
-      placeholder.parentNode.replaceChild(wrapper, placeholder);
-      
-      const root = ReactDOM.createRoot(wrapper);
-      root.render(
-        <Zoom>
-          <img 
-            src={src} 
-            alt={alt}
-            style={{ maxWidth: '2000px', width: '100%', height: 'auto', cursor: 'zoom-in' }}
-          />
-        </Zoom>
-      );
-      
-      this.roots.push(root);
+      // Load image to check dimensions
+      const tempImg = new Image();
+      tempImg.onload = () => {
+        const isVertical = tempImg.height > tempImg.width * 1.5;
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'my-4';
+        wrapper.setAttribute('data-zoom-rendered', 'true');
+        placeholder.parentNode.replaceChild(wrapper, placeholder);
+        
+        if (isVertical) {
+          // Tall diagram: Use scrollable container
+          const container = document.createElement('div');
+          container.className = 'border rounded-lg overflow-auto bg-gray-50 p-4';
+          container.style.maxHeight = '800px';
+          
+          const img = document.createElement('img');
+          img.src = src;
+          img.alt = alt;
+          img.style.cssText = 'width: 100%; height: auto; display: block;';
+          
+          container.appendChild(img);
+          wrapper.appendChild(container);
+          
+          const hint = document.createElement('div');
+          hint.className = 'text-xs text-gray-500 text-center mt-2';
+          hint.textContent = 'Scroll to view full diagram';
+          wrapper.appendChild(hint);
+        } else {
+          // Normal image: Use zoom modal
+          const root = ReactDOM.createRoot(wrapper);
+          root.render(
+            <Zoom>
+              <img 
+                src={src} 
+                alt={alt}
+                style={{ width: '100%', height: 'auto', cursor: 'zoom-in' }}
+              />
+            </Zoom>
+          );
+          this.roots.push(root);
+        }
+      };
+      tempImg.src = src;
     });
   }
 
