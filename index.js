@@ -1725,6 +1725,15 @@ try {
     moduleLogger.error("index.js: Error mounting env var routes", e.message, e.stack); 
 }
 
+// Template Cleanup routes for client onboarding
+try { 
+    const templateCleanupRoutes = require('./routes/templateCleanupRoutes.js'); 
+    app.use('/api/template-cleanup', templateCleanupRoutes); 
+    moduleLogger.info("index.js: Template cleanup routes mounted at /api/template-cleanup"); 
+} catch(e) { 
+    moduleLogger.error("index.js: Error mounting template cleanup routes", e.message, e.stack); 
+}
+
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
