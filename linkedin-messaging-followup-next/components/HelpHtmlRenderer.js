@@ -34,12 +34,12 @@ export function renderHelpHtml(html, keyPrefix) {
     
     return `<div class="my-4 space-y-2">
       <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:1200px;" id="container-${uniqueId}">
-        <img${attrs} id="img-${uniqueId}" style="display:block;width:100%;height:auto;cursor:zoom-in;image-rendering:high-quality;transition:width 0.3s ease;" title="Click to zoom" />
+        <img${attrs} id="img-${uniqueId}" style="display:block;width:120%;height:auto;cursor:zoom-in;image-rendering:high-quality;transition:width 0.3s ease;" title="Click to zoom" />
       </div>
       <div class="text-xs text-gray-500 italic text-center">
         ${caption}${caption ? ' ' : ''}
         <span class="text-gray-400">(click to zoom, scroll to view) </span>
-        <span id="indicator-${uniqueId}" class="font-semibold text-blue-600">100%</span>
+        <span id="indicator-${uniqueId}" class="font-semibold text-blue-600">120%</span>
       </div>
       <script>
         (function() {
@@ -49,9 +49,9 @@ export function renderHelpHtml(html, keyPrefix) {
           
           img.onclick = function() {
             const isZoomed = this.style.width === '150%';
-            this.style.width = isZoomed ? '100%' : '150%';
+            this.style.width = isZoomed ? '120%' : '150%';
             this.style.cursor = isZoomed ? 'zoom-in' : 'zoom-out';
-            indicator.textContent = isZoomed ? '100%' : '150%';
+            indicator.textContent = isZoomed ? '120%' : '150%';
             
             if (!isZoomed) {
               setTimeout(function() {
