@@ -94,8 +94,7 @@ Check the response JSON and your Airtable base:
 
 **Expected:**
 - ✅ Only 7 tables remain (down from 15)
-- ✅ Leads: 0 records
-- ✅ LinkedIn Posts: 0 records
+- ✅ Leads: 0 records (posts are stored as JSON in "Posts Content" field)
 - ✅ Connection Request Parameters: 0 records
 - ✅ Credentials: 1 record with defaults (AI=50, Posts=30%)
 - ✅ Scoring Attributes: 23 records
