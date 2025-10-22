@@ -26,7 +26,8 @@ export function renderHelpHtml(html, keyPrefix) {
     });
 
   // SVG image styling - wrap in scrollable container
-  safe = safe.replace(/<img([^>]*src=["'][^"']*\.svg[^"']*["'][^>]*)>/gi, (match, attrs) => {
+  // Detect SVG by data-media-type attribute or .svg in URL (fallback)
+  safe = safe.replace(/<img([^>]*(?:data-media-type=["'][^"']*svg[^"']*["']|src=["'][^"']*\.svg[^"']*["'])[^>]*)>/gi, (match, attrs) => {
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
     const caption = altMatch ? altMatch[1] : '';
