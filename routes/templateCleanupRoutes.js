@@ -185,8 +185,7 @@ router.post('/clean-base', async (req, res) => {
         await base('Credentials').create({
           'AI Score Threshold Input': 50,
           'Posts Threshold Percentage': 30,
-          'Last LH Leads Export': null,
-          'Top Leads Last Export At': null
+          'Last LH Leads Export': null
         });
         results.operations.push({ 
           step: 'updating_credentials', 
@@ -205,8 +204,7 @@ router.post('/clean-base', async (req, res) => {
         await base('Credentials').update(credRecords[0].id, {
           'AI Score Threshold Input': 50,
           'Posts Threshold Percentage': 30,
-          'Last LH Leads Export': null,
-          'Top Leads Last Export At': null
+          'Last LH Leads Export': null
         });
         
         results.operations.push({ 
