@@ -3478,7 +3478,16 @@ app.get('/api/help/topic/:id', async (req, res) => {
                     const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
                     const url = f.url || (attachment && attachment.url) || '';
                     const caption = f.caption || f.description || '';
-                    const mediaType = f.type || (attachment && attachment.type) || '';
+                    // Get media type - check attachment type first (most reliable), then field type, then infer from filename
+                    let mediaType = (attachment && attachment.type) || f.type || '';
+                    if (!mediaType && attachment && attachment.filename) {
+                        // Infer from filename extension
+                        const filename = attachment.filename.toLowerCase();
+                        if (filename.endsWith('.svg')) mediaType = 'image/svg+xml';
+                        else if (filename.endsWith('.png')) mediaType = 'image/png';
+                        else if (filename.endsWith('.jpg') || filename.endsWith('.jpeg')) mediaType = 'image/jpeg';
+                        else if (filename.endsWith('.gif')) mediaType = 'image/gif';
+                    }
                     let altMatch = match.match(/alt=["']([^"']*)["']/i);
                     const altText = altMatch ? altMatch[1] : (caption || ('Media '+id));
                     return `<img src="${url}" alt="${altText.replace(/"/g,'&quot;')}" data-media-id="${id}" data-media-type="${mediaType}" class="help-media-image" />` + (caption ? `<div class="help-media-caption" data-media-id="${id}">${caption}</div>` : '');
