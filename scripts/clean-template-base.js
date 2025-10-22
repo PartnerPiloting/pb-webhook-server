@@ -135,38 +135,54 @@ async function cleanTemplateBase(templateBaseId, deepClean = false) {
     }
   }
 
-  console.log('\n🗑️  Clearing data tables...\n');
+  console.log('\n🗑️  Clearing data tables (memory-safe batch processing)...\n');
 
-  // Clear each data table
+  // Clear each data table with pagination to avoid memory issues
   for (const tableName of TABLES_TO_CLEAR) {
     try {
       console.log(`   Processing: ${tableName}`);
       
-      // Fetch all records
-      const records = await base(tableName).select().all();
-      
-      if (records.length === 0) {
-        console.log(`      Already empty ✓`);
-        continue;
+      let totalDeleted = 0;
+      let hasMore = true;
+
+      // Process in small batches to avoid memory issues with large tables
+      while (hasMore) {
+        // Fetch only 100 records at a time
+        const batch = await base(tableName).select({
+          maxRecords: 100
+        }).firstPage();
+        
+        if (batch.length === 0) {
+          if (totalDeleted === 0) {
+            console.log(`      Already empty ✓`);
+          }
+          hasMore = false;
+          break;
+        }
+
+        if (totalDeleted === 0) {
+          console.log(`      Processing records in batches of 100...`);
+        }
+
+        // Delete in chunks of 10 (Airtable API limit)
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < batch.length; i += BATCH_SIZE) {
+          const chunk = batch.slice(i, i + BATCH_SIZE);
+          const recordIds = chunk.map(r => r.id);
+          await base(tableName).destroy(recordIds);
+          totalDeleted += recordIds.length;
+        }
+        
+        console.log(`      Deleted ${totalDeleted} records so far...`);
+        
+        // Check if there are more records
+        const remaining = await base(tableName).select({ maxRecords: 1 }).firstPage();
+        hasMore = remaining.length > 0;
       }
 
-      console.log(`      Found ${records.length} records`);
-
-      // Airtable API limits deletions to 10 records at a time
-      const BATCH_SIZE = 10;
-      let deleted = 0;
-
-      for (let i = 0; i < records.length; i += BATCH_SIZE) {
-        const batch = records.slice(i, i + BATCH_SIZE);
-        const recordIds = batch.map(r => r.id);
-        
-        await base(tableName).destroy(recordIds);
-        deleted += recordIds.length;
-        
-        console.log(`      Deleted ${deleted}/${records.length} records...`);
+      if (totalDeleted > 0) {
+        console.log(`      ✅ Cleared ${totalDeleted} total records\n`);
       }
-
-      console.log(`      ✅ Cleared ${deleted} records\n`);
 
     } catch (error) {
       console.error(`   ❌ Error clearing ${tableName}: ${error.message}`);
