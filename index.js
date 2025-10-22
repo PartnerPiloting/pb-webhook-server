@@ -3478,9 +3478,10 @@ app.get('/api/help/topic/:id', async (req, res) => {
                     const attachment = Array.isArray(f.attachment) && f.attachment.length ? f.attachment[0] : null;
                     const url = f.url || (attachment && attachment.url) || '';
                     const caption = f.caption || f.description || '';
+                    const mediaType = f.type || (attachment && attachment.type) || '';
                     let altMatch = match.match(/alt=["']([^"']*)["']/i);
                     const altText = altMatch ? altMatch[1] : (caption || ('Media '+id));
-                    return `<img src="${url}" alt="${altText.replace(/"/g,'&quot;')}" data-media-id="${id}" class="help-media-image" />` + (caption ? `<div class="help-media-caption" data-media-id="${id}">${caption}</div>` : '');
+                    return `<img src="${url}" alt="${altText.replace(/"/g,'&quot;')}" data-media-id="${id}" data-media-type="${mediaType}" class="help-media-image" />` + (caption ? `<div class="help-media-caption" data-media-id="${id}">${caption}</div>` : '');
                 });
                 html = html.replace(A_TAG_RE, (match, id, inner) => {
                     const rec = mediaMap.get(String(id));
