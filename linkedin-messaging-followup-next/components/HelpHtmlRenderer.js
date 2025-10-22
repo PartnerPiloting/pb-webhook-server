@@ -25,19 +25,19 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
-  // Image styling - wrap all images in scrollable container with zoom
+  // Image styling - wrap all images in scrollable container with progressive zoom
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
     // Extract alt text for caption
     const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
     const caption = altMatch ? altMatch[1] : '';
     
     return `<div class="my-4 space-y-2">
-      <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:800px;">
-        <img${attrs} style="display:block;max-width:100%;height:auto;cursor:zoom-in;" onclick="this.style.maxWidth=this.style.maxWidth==='100%'?'none':'100%';this.style.cursor=this.style.cursor==='zoom-in'?'zoom-out':'zoom-in';" title="Click to zoom in/out" />
+      <div class="border rounded-lg overflow-auto bg-gray-50 p-4 flex justify-center" style="max-height:800px;">
+        <img${attrs} style="display:block;max-width:100%;height:auto;cursor:zoom-in;" onclick="const levels=['100%','150%','200%'];const cur=this.style.maxWidth||'100%';const idx=levels.indexOf(cur);this.style.maxWidth=levels[(idx+1)%levels.length];this.style.cursor=this.style.maxWidth==='100%'?'zoom-in':'zoom-out';" title="Click to zoom: 100% → 150% → 200% → 100%" />
       </div>
       <div class="text-xs text-gray-500 italic">
         ${caption}${caption ? ' ' : ''}
-        <span class="text-gray-400">(click image to zoom, scroll to view full image)</span>
+        <span class="text-gray-400">(click image to cycle zoom: 100% → 150% → 200%, scroll to view full image)</span>
       </div>
     </div>`;
   });
