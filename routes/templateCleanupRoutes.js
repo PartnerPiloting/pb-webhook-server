@@ -102,51 +102,69 @@ router.post('/clean-base', async (req, res) => {
       }
     }
 
-    // Step 2: Clear data tables
+    // Step 2: Clear data tables (with memory-safe pagination)
     results.operations.push({ step: 'clearing', status: 'started' });
     let totalRecordsDeleted = 0;
 
     for (const tableName of TABLES_TO_CLEAR) {
-      const records = await base(tableName).select().all();
+      let tableRecordsDeleted = 0;
+      let hasMore = true;
       
-      if (records.length === 0) {
-        results.operations.push({ 
-          step: 'clearing', 
-          table: tableName, 
-          status: 'already_empty',
-          recordsDeleted: 0
-        });
-        continue;
-      }
-
-      if (dryRun) {
-        results.operations.push({ 
-          step: 'clearing', 
-          table: tableName, 
-          status: 'dry_run',
-          recordsFound: records.length,
-          action: 'would delete'
-        });
-        continue;
-      }
-
-      // Delete in batches of 10
-      const BATCH_SIZE = 10;
-      let deleted = 0;
-
-      for (let i = 0; i < records.length; i += BATCH_SIZE) {
-        const batch = records.slice(i, i + BATCH_SIZE);
-        const recordIds = batch.map(r => r.id);
-        await base(tableName).destroy(recordIds);
-        deleted += recordIds.length;
-      }
-
-      totalRecordsDeleted += deleted;
       results.operations.push({ 
         step: 'clearing', 
         table: tableName, 
-        status: 'cleared',
-        recordsDeleted: deleted
+        status: 'processing'
+      });
+
+      // Process in small batches to avoid memory issues
+      while (hasMore) {
+        try {
+          // Fetch only 100 records at a time
+          const batch = await base(tableName).select({
+            maxRecords: 100
+          }).firstPage();
+          
+          if (batch.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          if (dryRun) {
+            tableRecordsDeleted += batch.length;
+            hasMore = false; // In dry run, just count first page
+          } else {
+            // Delete in chunks of 10 (Airtable API limit)
+            const BATCH_SIZE = 10;
+            for (let i = 0; i < batch.length; i += BATCH_SIZE) {
+              const chunk = batch.slice(i, i + BATCH_SIZE);
+              const recordIds = chunk.map(r => r.id);
+              await base(tableName).destroy(recordIds);
+              tableRecordsDeleted += recordIds.length;
+            }
+            
+            // Check if there are more records
+            const remaining = await base(tableName).select({ maxRecords: 1 }).firstPage();
+            hasMore = remaining.length > 0;
+          }
+        } catch (error) {
+          results.operations.push({ 
+            step: 'clearing', 
+            table: tableName, 
+            status: 'error',
+            error: error.message,
+            recordsDeletedBeforeError: tableRecordsDeleted
+          });
+          hasMore = false;
+        }
+      }
+
+      totalRecordsDeleted += tableRecordsDeleted;
+      results.operations.push({ 
+        step: 'clearing', 
+        table: tableName, 
+        status: dryRun ? 'dry_run' : 'cleared',
+        recordsDeleted: tableRecordsDeleted,
+        action: dryRun ? `would delete ~${tableRecordsDeleted} records` : 'deleted'
       });
     }
 
@@ -200,17 +218,46 @@ router.post('/clean-base', async (req, res) => {
       }
     }
 
-    // Step 4: Verify seed data preserved
+    // Step 4: Verify seed data preserved (with memory-safe count)
     results.operations.push({ step: 'verification', status: 'started' });
     
     for (const tableName of TABLES_TO_KEEP) {
-      const records = await base(tableName).select().all();
-      results.operations.push({ 
-        step: 'verification', 
-        table: tableName, 
-        status: 'preserved',
-        recordCount: records.length
-      });
+      try {
+        // Just count records, don't load them all
+        let recordCount = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const batch = await base(tableName).select({ maxRecords: 100 }).firstPage();
+          recordCount += batch.length;
+          
+          if (batch.length < 100) {
+            hasMore = false;
+          } else {
+            // Check if there are more
+            const offset = batch[batch.length - 1].id;
+            const next = await base(tableName).select({ 
+              maxRecords: 1,
+              filterByFormula: `RECORD_ID() != '${offset}'`
+            }).firstPage();
+            hasMore = next.length > 0;
+          }
+        }
+        
+        results.operations.push({ 
+          step: 'verification', 
+          table: tableName, 
+          status: 'preserved',
+          recordCount: recordCount
+        });
+      } catch (error) {
+        results.operations.push({ 
+          step: 'verification', 
+          table: tableName, 
+          status: 'error',
+          error: error.message
+        });
+      }
     }
 
     // Step 5: Deep clean (delete all tables except core required ones)
