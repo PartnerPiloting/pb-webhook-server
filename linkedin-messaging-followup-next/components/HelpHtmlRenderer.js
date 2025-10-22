@@ -1,16 +1,15 @@
 "use client";
-import React, { useEffect } from 'react';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import Zoom from 'react-medium-image-zoom';
+import 'react-medium-image-zoom/dist/styles.css';
 
-// Shared HTML normalizer/renderer for all help areas
-// Applies identical heading/link/list styling, fixes <kbd>, preserves query params on /start-here links,
-// and opens start-here links in a new tab.
+// Shared HTML normalizer/renderer - uses react-medium-image-zoom library
 export function renderHelpHtml(html, keyPrefix) {
   if (!html) return null;
   let safe = String(html);
-  // No need to strip scripts - we're using proper React components now
-  // safe = safe.replace(/<script[\s\S]*?<\/script>/gi, '');
 
-  // Inject heading classes if missing
+  // Inject heading classes
   safe = safe
     .replace(/<h1(?![^>]*class=)([^>]*)>/gi, '<h1 class="mt-6 mb-4 text-base font-bold text-gray-900"$1>')
     .replace(/<h2(?![^>]*class=)([^>]*)>/gi, '<h2 class="mt-6 mb-3 text-[15px] font-semibold text-gray-900"$1>')
@@ -25,19 +24,13 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
-  // Image styling - mark images for React component wrapping
-  // We'll extract these and wrap them with Zoom component
+  // Mark images for React zoom wrapping
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
-    // Extract src for identification
-    const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
-    const src = srcMatch ? srcMatch[1] : '';
-    const uniqueId = Math.random().toString(36).substr(2, 9);
-    
-    // Add data attributes to identify images that need zoom wrapping
-    return `<img${attrs} data-zoom-image="true" data-image-id="${uniqueId}" data-image-src="${src}" class="help-content-image" style="max-width:100%;height:auto;cursor:zoom-in;" />`;
+    const uniqueId = 'zoom-' + Math.random().toString(36).substr(2, 9);
+    return `<span data-zoom-placeholder="${uniqueId}" data-img-attrs="${attrs.replace(/"/g, '&quot;')}"></span>`;
   });
 
-  // List styling and cleanup of <p> inside <li>
+  // List styling
   safe = safe
     .replace(/<ul(?![^>]*class=)([^>]*)>/gi, '<ul class="list-disc pl-5"$1>')
     .replace(/<ol(?![^>]*class=)([^>]*)>/gi, '<ol class="list-decimal pl-5"$1>')
@@ -49,17 +42,16 @@ export function renderHelpHtml(html, keyPrefix) {
   });
   safe = safe.replace(/(<li[^>]*>)\s*<p[^>]*>/gi, '$1');
   safe = safe.replace(/<\/p>\s*(<\/li>)/gi, '$1');
-  // Tighten list spacing and ensure default bullets/decimal
   safe = safe
     .replace(/<ul(?![^>]*style=)([^>]*)>/gi, '<ul$1 style="margin:0;padding-left:1.25rem;list-style:disc;">')
     .replace(/<ol(?![^>]*style=)([^>]*)>/gi, '<ol$1 style="margin:0;padding-left:1.25rem;list-style:decimal;">')
     .replace(/<\/li>\s+<li/gi, '</li><li');
 
-  // Unescape <kbd> that might arrive encoded, then apply a default style when no class exists
+  // Fix kbd tags
   safe = safe.replace(/&lt;kbd&gt;([\s\S]*?)&lt;\/kbd&gt;/gi, '<kbd>$1</kbd>');
   safe = safe.replace(/<kbd(?![^>]*class=)([^>]*)>/gi, '<kbd class="mx-0.5 rounded border border-gray-300 bg-gray-100 px-1 py-0.5 text-[0.75rem] font-medium text-gray-800 align-baseline"$1>');
 
-  // Strip internal reference tokens and render basic markdown-style bold/italic within HTML bodies
+  // Strip tokens
   safe = safe
     .replace(/:contentReference\[[^\]]+\]\{[^}]*\}/g, '')
     .replace(/:oaicite\[[^\]]+\]\{[^}]*\}/g, '')
@@ -68,7 +60,7 @@ export function renderHelpHtml(html, keyPrefix) {
     .replace(/(^|[\s>(])\*([^*<>][^*<>]*?)\*(?=[\s<).,!?:;]|$)/g, '$1<em>$2</em>')
     .replace(/  +/g, ' ');
 
-  // Preserve current query params on internal /start-here links and force them to open in a new tab
+  // Handle /start-here links
   try {
     if (typeof window !== 'undefined') {
       const q = window.location.search || '';
@@ -85,94 +77,74 @@ export function renderHelpHtml(html, keyPrefix) {
     }
   } catch {}
 
-  // Use a wrapper component that will replace images with Zoom-wrapped versions
   return <HelpHtmlContent key={keyPrefix} html={safe} />;
 }
 
-// Wrapper component that adds zoom functionality to images
-function HelpHtmlContent({ html }) {
-  const containerRef = React.useRef(null);
-  
-  useEffect(() => {
-    if (!containerRef.current) return;
-    
-    // Find all images marked for zoom
-    const images = containerRef.current.querySelectorAll('img[data-zoom-image="true"]');
-    
-    const clickHandlers = [];
-    
-    images.forEach((img) => {
-      const handler = () => {
-        // Create modal overlay
-        const overlay = document.createElement('div');
-        overlay.style.cssText = `
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.9);
-          z-index: 9999;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: zoom-out;
-          animation: fadeIn 0.2s ease-in-out;
-        `;
-        
-        // Create zoomed image
-        const zoomedImg = document.createElement('img');
-        zoomedImg.src = img.src;
-        zoomedImg.alt = img.alt || '';
-        zoomedImg.style.cssText = `
-          max-width: 95vw;
-          max-height: 95vh;
-          object-fit: contain;
-          border-radius: 8px;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-        `;
-        
-        overlay.appendChild(zoomedImg);
-        document.body.appendChild(overlay);
-        
-        // Prevent body scroll
-        document.body.style.overflow = 'hidden';
-        
-        // Close on click
-        const closeModal = () => {
-          document.body.removeChild(overlay);
-          document.body.style.overflow = '';
-          document.removeEventListener('keydown', handleEscape);
-        };
-        
-        overlay.addEventListener('click', closeModal);
-        
-        // Close on Escape key
-        const handleEscape = (e) => {
-          if (e.key === 'Escape' && document.body.contains(overlay)) {
-            closeModal();
-          }
-        };
-        document.addEventListener('keydown', handleEscape);
-      };
-      
-      img.addEventListener('click', handler);
-      clickHandlers.push({ img, handler });
+// Component that uses react-medium-image-zoom library
+class HelpHtmlContent extends React.Component {
+  containerRef = React.createRef();
+  roots = [];
+
+  componentDidMount() {
+    this.renderZoomImages();
+  }
+
+  componentDidUpdate() {
+    this.renderZoomImages();
+  }
+
+  componentWillUnmount() {
+    this.roots.forEach(root => {
+      try {
+        root.unmount();
+      } catch (e) {}
     });
+    this.roots = [];
+  }
+
+  renderZoomImages() {
+    if (!this.containerRef.current) return;
+
+    const placeholders = this.containerRef.current.querySelectorAll('[data-zoom-placeholder]:not([data-zoom-rendered])');
     
-    // Cleanup function
-    return () => {
-      clickHandlers.forEach(({ img, handler }) => {
-        img.removeEventListener('click', handler);
-      });
-    };
-  }, [html]);
-  
-  return (
-    <div ref={containerRef} className="prose prose-sm max-w-none">
-      <div dangerouslySetInnerHTML={{ __html: html }} />
-    </div>
-  );
+    placeholders.forEach(placeholder => {
+      const attrs = placeholder.getAttribute('data-img-attrs')?.replace(/&quot;/g, '"') || '';
+      
+      const srcMatch = attrs.match(/src=["']([^"']*)["']/);
+      const altMatch = attrs.match(/alt=["']([^"']*)["']/);
+      
+      const src = srcMatch ? srcMatch[1] : '';
+      const alt = altMatch ? altMatch[1] : '';
+      
+      if (!src) return;
+      
+      const wrapper = document.createElement('div');
+      wrapper.className = 'my-4';
+      wrapper.setAttribute('data-zoom-rendered', 'true');
+      placeholder.parentNode.replaceChild(wrapper, placeholder);
+      
+      const root = ReactDOM.createRoot(wrapper);
+      root.render(
+        <Zoom>
+          <img 
+            src={src} 
+            alt={alt}
+            style={{ maxWidth: '100%', height: 'auto', cursor: 'zoom-in' }}
+          />
+        </Zoom>
+      );
+      
+      this.roots.push(root);
+    });
+  }
+
+  render() {
+    return (
+      <div ref={this.containerRef} className="prose prose-sm max-w-none">
+        <div dangerouslySetInnerHTML={{ __html: this.props.html }} />
+      </div>
+    );
+  }
 }
 
 export default renderHelpHtml;
