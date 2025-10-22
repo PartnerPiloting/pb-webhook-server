@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Rendering Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-8">
+    <div class="max-w-4xl mx-auto space-y-6">
+        <h1 class="text-2xl font-bold text-gray-900">SVG Rendering Test Harness</h1>
+        
+        <!-- API Response Info -->
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h2 class="text-lg font-semibold mb-2">API Response</h2>
+            <div class="space-y-2">
+                <div>
+                    <strong>Status:</strong> <span id="status" class="text-gray-600">Loading...</span>
+                </div>
+                <div>
+                    <strong>Media ID:</strong> <span id="mediaId" class="text-gray-600">-</span>
+                </div>
+                <div>
+                    <strong>Media Type:</strong> <span id="mediaType" class="text-gray-600">-</span>
+                </div>
+                <div>
+                    <strong>URL:</strong> <span id="url" class="text-xs text-gray-600 break-all">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Raw HTML from API -->
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h2 class="text-lg font-semibold mb-2">Raw HTML from Backend</h2>
+            <pre id="rawHtml" class="text-xs bg-gray-50 p-3 rounded overflow-x-auto"></pre>
+        </div>
+
+        <!-- Detection Test -->
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h2 class="text-lg font-semibold mb-2">SVG Detection Test</h2>
+            <div id="detectionResult" class="text-sm text-gray-600"></div>
+        </div>
+
+        <!-- Rendered Output (Our Transform) -->
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h2 class="text-lg font-semibold mb-2">Transformed HTML (Should be scrollable)</h2>
+            <div id="transformedOutput" class="prose prose-sm max-w-none"></div>
+        </div>
+
+        <!-- Raw Output (No Transform) -->
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h2 class="text-lg font-semibold mb-2">Raw HTML (No Transform)</h2>
+            <div id="rawOutput" class="prose prose-sm max-w-none"></div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'https://pb-webhook-server-staging.onrender.com';
+        const TOPIC_ID = 'recmNfxlg467K25qk'; // "The Moving Parts" topic
+
+        async function loadTopic() {
+            try {
+                console.log('Starting fetch...');
+                document.getElementById('status').textContent = 'Fetching...';
+                
+                const response = await fetch(`${BACKEND_URL}/api/help/topic/${TOPIC_ID}`);
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Data received:', data);
+                
+                document.getElementById('status').textContent = response.ok ? 'Success ✓' : 'Error ✗';
+                
+                if (!response.ok) {
+                    document.getElementById('status').textContent = `Error: ${data.error}`;
+                    return;
+                }
+
+                // Extract info
+                const bodyHtml = data.bodyHtml || '';
+                document.getElementById('rawHtml').textContent = bodyHtml.substring(0, 500) + '...';
+                
+                // Extract img tag to analyze
+                const imgMatch = bodyHtml.match(/<img[^>]*>/i);
+                if (imgMatch) {
+                    const imgTag = imgMatch[0];
+                    
+                    // Extract attributes
+                    const mediaIdMatch = imgTag.match(/data-media-id=["']([^"']*)["']/i);
+                    const mediaTypeMatch = imgTag.match(/data-media-type=["']([^"']*)["']/i);
+                    const urlMatch = imgTag.match(/src=["']([^"']*)["']/i);
+                    
+                    document.getElementById('mediaId').textContent = mediaIdMatch ? mediaIdMatch[1] : 'Not found';
+                    document.getElementById('mediaType').textContent = mediaTypeMatch ? mediaTypeMatch[1] : 'Not found';
+                    document.getElementById('url').textContent = urlMatch ? urlMatch[1] : 'Not found';
+                    
+                    // Test SVG detection
+                    const hasSvgType = mediaTypeMatch && /svg/i.test(mediaTypeMatch[1]);
+                    const hasSvgUrl = urlMatch && /\.svg/i.test(urlMatch[1]);
+                    
+                    document.getElementById('detectionResult').innerHTML = `
+                        <div class="space-y-1">
+                            <div>Has data-media-type with 'svg': <strong>${hasSvgType ? '✓ YES' : '✗ NO'}</strong></div>
+                            <div>URL contains '.svg': <strong>${hasSvgUrl ? '✓ YES' : '✗ NO'}</strong></div>
+                            <div>Should trigger transform: <strong>${hasSvgType || hasSvgUrl ? '✓ YES' : '✗ NO'}</strong></div>
+                        </div>
+                    `;
+                }
+                
+                // Apply our transform (same as HelpHtmlRenderer.js)
+                let transformed = bodyHtml;
+                transformed = transformed.replace(/<img([^>]*)>/gi, (match, attrs) => {
+                    // Check if this is an SVG
+                    const mediaTypeMatch = attrs.match(/data-media-type=["']([^"']*)["']/i);
+                    const mediaType = mediaTypeMatch ? mediaTypeMatch[1].toLowerCase() : '';
+                    const srcMatch = attrs.match(/src=["']([^"']*)["']/i);
+                    const src = srcMatch ? srcMatch[1].toLowerCase() : '';
+                    
+                    const isSvg = mediaType.includes('svg') || src.includes('.svg');
+                    
+                    if (!isSvg) {
+                        return match; // Not an SVG
+                    }
+                    
+                    const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
+                    const caption = altMatch ? altMatch[1] : '';
+                    
+                    return `<div class="my-4 space-y-2">
+                        <div class="border rounded-lg overflow-auto bg-gray-50 p-4" style="max-height:800px;">
+                            <img${attrs} style="display:block;max-width:100%;height:auto;" />
+                        </div>
+                        <div class="text-xs text-gray-500 italic">
+                            ${caption}${caption ? ' ' : ''}
+                            <span class="text-gray-400">(scroll to view full diagram)</span>
+                        </div>
+                    </div>`;
+                });
+                
+                document.getElementById('transformedOutput').innerHTML = transformed;
+                document.getElementById('rawOutput').innerHTML = bodyHtml;
+                
+            } catch (error) {
+                console.error('Test error:', error);
+                document.getElementById('status').textContent = `Error: ${error.message}`;
+                document.getElementById('status').style.color = 'red';
+            }
+        }
+
+        // Load on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM loaded, starting test...');
+            loadTopic();
+        });
+    </script>
+</body>
+</html>
