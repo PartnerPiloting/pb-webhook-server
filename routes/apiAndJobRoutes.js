@@ -6370,9 +6370,8 @@ router.get("/api/test-airtable-warm", async (req, res) => {
     
     console.log(`[warm] Active clients: ${clients.length}, unique base IDs: ${baseIds.length}`);
     
-    const results = [];
-    
-    for (const baseId of baseIds) {
+    // Ping all bases in parallel for faster execution
+    const pingPromises = baseIds.map(async (baseId) => {
       const start = Date.now();
       try {
         const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
@@ -6390,22 +6389,26 @@ router.get("/api/test-airtable-warm", async (req, res) => {
         const count = records?.length || 0;
         console.log(`[warm] Ping success base=${baseId} table=${AIRTABLE_TABLE_NAME} records=${count} timeMs=${ms}`);
         
-        results.push({
+        return {
           baseId,
           success: true,
           records: count,
           timeMs: ms
-        });
+        };
         
       } catch (e) {
         console.error(`[warm] Ping failed base=${baseId} table=${AIRTABLE_TABLE_NAME} error=${e.message}`);
-        results.push({
+        return {
           baseId,
           success: false,
           error: e.message
-        });
+        };
       }
-    }
+    });
+    
+    // Wait for all pings to complete
+    const settledResults = await Promise.allSettled(pingPromises);
+    const results = settledResults.map(r => r.status === 'fulfilled' ? r.value : r.reason);
     
     console.log('[warm] Done');
     console.log("✅ Airtable warm pinger completed successfully");

@@ -441,13 +441,13 @@ router.get('/help', (req, res) => {
       }
     },
     examples: {
-      curl: `curl -X POST https://pb-webhook-server-staging.onrender.com/api/template-cleanup/clean-base \\
+      curl: `curl -X POST https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base \\
   -H "Authorization: Bearer YOUR_SECRET" \\
   -H "Content-Type: application/json" \\
   -d '{"baseId":"appXXXXXXXXXXXX","deepClean":true}'`,
       postman: {
         method: 'POST',
-        url: 'https://pb-webhook-server-staging.onrender.com/api/template-cleanup/clean-base',
+        url: 'https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base',
         headers: {
           'Authorization': 'Bearer YOUR_PB_WEBHOOK_SECRET',
           'Content-Type': 'application/json'
