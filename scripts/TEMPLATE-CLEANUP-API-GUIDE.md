@@ -9,7 +9,7 @@ Run the template cleanup script via HTTP endpoint - no SSH needed!
 ### 🔹 Help Endpoint (No Auth Required)
 
 ```
-GET https://pb-webhook-server-staging.onrender.com/api/template-cleanup/help
+GET https://pb-webhook-server.onrender.com/api/template-cleanup/help
 ```
 
 **Browser:** Just paste the URL and press Enter
@@ -21,7 +21,7 @@ GET https://pb-webhook-server-staging.onrender.com/api/template-cleanup/help
 ### 🔹 Cleanup Endpoint (Requires Auth)
 
 ```
-POST https://pb-webhook-server-staging.onrender.com/api/template-cleanup/clean-base
+POST https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base
 ```
 
 **Authentication:** Bearer token with your `PB_WEBHOOK_SECRET`
@@ -51,7 +51,7 @@ Test what will happen without making changes:
 
 **Postman:**
 ```
-POST https://pb-webhook-server-staging.onrender.com/api/template-cleanup/clean-base
+POST https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base
 
 Headers:
   Authorization: Bearer Diamond9753!!@@pb
@@ -70,7 +70,7 @@ Same as above
 
 **cURL (from local terminal):**
 ```bash
-curl -X POST https://pb-webhook-server-staging.onrender.com/api/template-cleanup/clean-base \
+curl -X POST https://pb-webhook-server.onrender.com/api/template-cleanup/clean-base \
   -H "Authorization: Bearer Diamond9753!!@@pb" \
   -H "Content-Type: application/json" \
   -d '{"baseId":"appYOURBASEID","deepClean":true,"dryRun":true}'

@@ -57,16 +57,22 @@ async function main() {
 
     console.log(`[warm] Active clients: ${clients.length}, unique base IDs: ${baseIds.length}`);
 
-    for (const baseId of baseIds) {
+    // Ping all bases in parallel for faster execution
+    const pingPromises = baseIds.map(async (baseId) => {
       const start = Date.now();
       try {
         const count = await pingBase(baseId, tableName);
         const ms = Date.now() - start;
         console.log(`[warm] Ping success base=${baseId} table=${tableName} records=${count} timeMs=${ms}`);
+        return { baseId, success: true, records: count, timeMs: ms };
       } catch (e) {
         console.error(`[warm] Ping failed base=${baseId} table=${tableName} error=${e.message}`);
+        return { baseId, success: false, error: e.message };
       }
-    }
+    });
+
+    // Wait for all pings to complete
+    await Promise.allSettled(pingPromises);
 
     console.log('[warm] Done');
   } catch (e) {
