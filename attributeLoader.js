@@ -347,33 +347,24 @@ async function updateAttributeWithClientBase(attributeId, data, clientBase, logg
     if (data.minToQualify !== undefined) updateFields["Min To Qualify"] = Number(data.minToQualify);
     if (data.penalty !== undefined) updateFields["Penalty"] = Number(data.penalty);
     
-    // Airtable checkboxes: true = checked, false/undefined = unchecked (must send true or omit field)
-    if (data.disqualifying !== undefined) {
-      if (data.disqualifying) {
-        updateFields["Disqualifying"] = true;
-      } else {
-        updateFields["Disqualifying"] = false; // Explicitly uncheck
-      }
+    // Airtable checkboxes: true = checked, omit field to uncheck (Airtable rejects explicit false)
+    if (data.disqualifying === true) {
+      updateFields["Disqualifying"] = true;
     }
+    // If false/undefined, don't include field - Airtable will uncheck automatically
     
-    if (data.bonusPoints !== undefined) {
-      if (data.bonusPoints) {
-        updateFields["Bonus Points"] = true;
-      } else {
-        updateFields["Bonus Points"] = false; // Explicitly uncheck
-      }
+    if (data.bonusPoints === true) {
+      updateFields["Bonus Points"] = true;
     }
+    // If false/undefined, don't include field - Airtable will uncheck automatically
     
     if (data.signals !== undefined) updateFields["Signals"] = data.signals;
     if (data.examples !== undefined) updateFields["Examples"] = data.examples;
     
-    if (data.active !== undefined) {
-      if (data.active) {
-        updateFields["Active"] = true;
-      } else {
-        updateFields["Active"] = false; // Explicitly uncheck
-      }
+    if (data.active === true) {
+      updateFields["Active"] = true;
     }
+    // If false/undefined, don't include field - Airtable will uncheck automatically
 
     const record = await clientBase(TABLE_NAME).update(attributeId, updateFields);
     
