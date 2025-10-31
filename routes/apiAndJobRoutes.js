@@ -3071,10 +3071,11 @@ router.post("/api/attributes/:id/ai-edit", async (req, res) => {
 
 // Save improved rubric to live attribute
 router.post("/api/attributes/:id/save", async (req, res) => {
+  // Extract client ID for multi-tenant support (before try block so it's available in catch)
+  const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ clientId, operation: 'save_attribute', attributeId: req.params.id });
+  
   try {
-    // Extract client ID for multi-tenant support
-    const clientId = req.headers['x-client-id'];
-    const logger = createLogger({ clientId, operation: 'save_attribute', attributeId: req.params.id });
     logger.info("Saving attribute changes");
     
     if (!clientId) {
