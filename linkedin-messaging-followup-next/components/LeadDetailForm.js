@@ -392,6 +392,30 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         <h4 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Basic Information</h4>
         
         <div className="space-y-3">
+          {/* First Name and Last Name on same line */}
+          <div className="flex space-x-4">
+            <div className="flex flex-1">
+              <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">First Name</label>
+              <input
+                type="text"
+                value={formData.firstName || ''}
+                onChange={(e) => handleChange('firstName', e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="Enter first name"
+              />
+            </div>
+            <div className="flex flex-1">
+              <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Last Name</label>
+              <input
+                type="text"
+                value={formData.lastName || ''}
+                onChange={(e) => handleChange('lastName', e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="Enter last name"
+              />
+            </div>
+          </div>
+
           <div className="flex">
             <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
               LinkedIn Profile URL *
