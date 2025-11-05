@@ -1,5 +1,5 @@
 // scripts/daily-client-alerts/index.js
-// Daily client alert system - checks for clients with no scored leads in last 24 hours
+// Daily client alert system - checks for clients with no scored leads in last 48 hours
 // Sends templated emails to clients with BCC to admin
 
 require('dotenv').config();
@@ -11,9 +11,9 @@ const Airtable = require('airtable');
 const NO_LEADS_TEMPLATE_ID = 'no-leads-scored-today';
 
 /**
- * Get scored leads count for a client in the last 24 hours
+ * Get scored leads count for a client in the last 48 hours
  * @param {Object} clientData - Client data with airtableBaseId
- * @returns {Promise<number>} Number of leads scored in last 24 hours
+ * @returns {Promise<number>} Number of leads scored in last 48 hours
  */
 async function getScoredLeadsCount24h(clientData) {
     try {
@@ -25,24 +25,24 @@ async function getScoredLeadsCount24h(clientData) {
         // Connect to client's Airtable base
         const base = clientService.getClientBase(clientData.airtableBaseId);
         
-        // Calculate 24 hours ago timestamp
+        // Calculate 48 hours ago timestamp
         const now = new Date();
-        const yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
-        const yesterdayISO = yesterday.toISOString();
+        const twoDaysAgo = new Date(now.getTime() - (48 * 60 * 60 * 1000));
+        const twoDaysAgoISO = twoDaysAgo.toISOString();
 
-        console.log(`Checking scored leads for ${clientData.clientId} since ${yesterdayISO}`);
+        console.log(`Checking scored leads for ${clientData.clientId} since ${twoDaysAgoISO}`);
 
         let scoredCount = 0;
 
-        // Query the Candidates Scored - last 24 hours view
+        // Query the Candidates Scored - last 48 hours view
         await base('Leads').select({
-            view: 'Candidates Scored - last 24 hours'
+            view: 'Candidates Scored - last 48 hours'
         }).eachPage((records, fetchNextPage) => {
             scoredCount += records.length;
             fetchNextPage();
         });
 
-        console.log(`📊 Client ${clientData.clientId}: ${scoredCount} leads scored in last 24 hours`);
+        console.log(`📊 Client ${clientData.clientId}: ${scoredCount} leads scored in last 48 hours`);
         return scoredCount;
 
     } catch (error) {
@@ -175,7 +175,7 @@ async function sendAdminSummary(results) {
             <li><strong>Email Failures:</strong> ${results.emailsFailed}</li>
         </ul>
 
-        <h3>Clients Without Scoring Activity (Last 24 Hours)</h3>
+        <h3>Clients Without Scoring Activity (Last 48 Hours)</h3>
         ${results.clientsWithoutScoring > 0 ? `
         <table border="1" style="border-collapse: collapse; width: 100%;">
             <tr style="background-color: #f2f2f2;">
@@ -195,7 +195,7 @@ async function sendAdminSummary(results) {
                 </tr>
                 `).join('')}
         </table>
-        ` : '<p><em>All clients had scoring activity in the last 24 hours.</em></p>'}
+        ` : '<p><em>All clients had scoring activity in the last 48 hours.</em></p>'}
 
         ${results.errors.length > 0 ? `
         <h3>Errors</h3>
