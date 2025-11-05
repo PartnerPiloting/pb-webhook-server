@@ -7,8 +7,8 @@ const clientService = require('../../services/clientService');
 const emailNotificationService = require('../../services/emailNotificationService');
 const Airtable = require('airtable');
 
-// Template ID for "no leads scored today" emails
-const NO_LEADS_TEMPLATE_ID = 'no-leads-scored-today';
+// Template ID for "no leads scored in 48 hours" emails
+const NO_LEADS_TEMPLATE_ID = 'no-leads-scored-48-hours';
 
 /**
  * Get scored leads count for a client in the last 48 hours
