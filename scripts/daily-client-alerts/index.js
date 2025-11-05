@@ -1,5 +1,5 @@
 // scripts/daily-client-alerts/index.js
-// Daily client alert system - checks for clients with no scored leads in last 48 hours
+// Daily client alert system - checks for clients with no scored leads in last 72 hours
 // Sends templated emails to clients with BCC to admin
 
 require('dotenv').config();
@@ -7,13 +7,13 @@ const clientService = require('../../services/clientService');
 const emailNotificationService = require('../../services/emailNotificationService');
 const Airtable = require('airtable');
 
-// Template ID for "no leads scored in 48 hours" emails
-const NO_LEADS_TEMPLATE_ID = 'no-leads-scored-48-hours';
+// Template ID for "no leads scored in 72 hours" emails
+const NO_LEADS_TEMPLATE_ID = 'no-leads-scored-72-hours';
 
 /**
- * Get scored leads count for a client in the last 48 hours
+ * Get scored leads count for a client in the last 72 hours
  * @param {Object} clientData - Client data with airtableBaseId
- * @returns {Promise<number>} Number of leads scored in last 48 hours
+ * @returns {Promise<number>} Number of leads scored in last 72 hours
  */
 async function getScoredLeadsCount24h(clientData) {
     try {
@@ -25,28 +25,28 @@ async function getScoredLeadsCount24h(clientData) {
         // Connect to client's Airtable base
         const base = clientService.getClientBase(clientData.airtableBaseId);
         
-        // Calculate 48 hours ago timestamp
+        // Calculate 72 hours ago timestamp
         const now = new Date();
-        const twoDaysAgo = new Date(now.getTime() - (48 * 60 * 60 * 1000));
-        const twoDaysAgoISO = twoDaysAgo.toISOString();
+        const threeDaysAgo = new Date(now.getTime() - (72 * 60 * 60 * 1000));
+        const threeDaysAgoISO = threeDaysAgo.toISOString();
 
-        console.log(`Checking scored leads for ${clientData.clientId} since ${twoDaysAgoISO}`);
+        console.log(`Checking scored leads for ${clientData.clientId} since ${threeDaysAgoISO}`);
 
         let scoredCount = 0;
 
-        // Query leads directly with filter for records scored in last 48 hours
-        // Filter: Last Scored Time exists AND is greater than 48 hours ago
+        // Query leads directly with filter for records scored in last 72 hours
+        // Filter: Last Scored Time exists AND is greater than 72 hours ago
         await base('Leads').select({
             filterByFormula: `AND(
                 {Last Scored Time} != '',
-                IS_AFTER({Last Scored Time}, '${twoDaysAgoISO}')
+                IS_AFTER({Last Scored Time}, '${threeDaysAgoISO}')
             )`
         }).eachPage((records, fetchNextPage) => {
             scoredCount += records.length;
             fetchNextPage();
         });
 
-        console.log(`📊 Client ${clientData.clientId}: ${scoredCount} leads scored in last 48 hours`);
+        console.log(`📊 Client ${clientData.clientId}: ${scoredCount} leads scored in last 72 hours`);
         return scoredCount;
 
     } catch (error) {
@@ -179,7 +179,7 @@ async function sendAdminSummary(results) {
             <li><strong>Email Failures:</strong> ${results.emailsFailed}</li>
         </ul>
 
-        <h3>Clients Without Scoring Activity (Last 48 Hours)</h3>
+        <h3>Clients Without Scoring Activity (Last 72 Hours)</h3>
         ${results.clientsWithoutScoring > 0 ? `
         <table border="1" style="border-collapse: collapse; width: 100%;">
             <tr style="background-color: #f2f2f2;">
