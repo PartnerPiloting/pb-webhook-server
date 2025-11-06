@@ -35,11 +35,11 @@ async function getScoredLeadsCount24h(clientData) {
         let scoredCount = 0;
 
         // Query leads directly with filter for records scored in last 72 hours
-        // Filter: Last Scored Time exists AND is greater than 72 hours ago
+        // Filter: Date Scored exists AND is greater than 72 hours ago
         await base('Leads').select({
             filterByFormula: `AND(
-                {Last Scored Time} != '',
-                IS_AFTER({Last Scored Time}, '${threeDaysAgoISO}')
+                {Date Scored} != '',
+                IS_AFTER({Date Scored}, '${threeDaysAgoISO}')
             )`
         }).eachPage((records, fetchNextPage) => {
             scoredCount += records.length;
