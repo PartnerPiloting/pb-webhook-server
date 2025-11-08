@@ -683,11 +683,43 @@ export const getSearchTokenSuggestions = async (opts = {}) => {
 
 export const getLeadByLinkedInUrl = async (linkedinUrl) => {
   try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
     const response = await api.get('/leads/by-linkedin-url', {
-      params: { url: linkedinUrl }
+      params: { 
+        url: linkedinUrl,
+        testClient: clientId
+      }
     });
-    return response.data;
+    
+    // Map backend response to frontend format (same structure as getLeadById)
+    const lead = response.data;
+    return {
+      id: lead.id,
+      'Profile Key': lead.profileKey || lead.id,
+      'First Name': lead.firstName,
+      'Last Name': lead.lastName,
+      'LinkedIn Profile URL': lead.linkedinProfileUrl,
+      'Email': lead.email,
+      email: lead.email,
+      'Phone': lead.phone,
+      phone: lead.phone,
+      'AI Score': lead.aiScore,
+      aiScore: lead.aiScore,
+      'Status': lead.status,
+      status: lead.status,
+      'Priority': lead.priority,
+      priority: lead.priority,
+      'Notes': lead.notes,
+      notes: lead.notes
+    };
   } catch (error) {
+    if (error.response && error.response.status === 404) {
+      throw new Error('Lead not found with that LinkedIn URL');
+    }
     throw new Error('Failed to find lead by LinkedIn URL');
   }
 };

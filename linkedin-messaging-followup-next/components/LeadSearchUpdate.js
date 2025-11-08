@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { debounce } from '../utils/helpers';
-import { searchLeads, getLeadById, updateLead } from '../services/api';
+import { searchLeads, getLeadById, getLeadByLinkedInUrl, updateLead } from '../services/api';
 import LeadDetailForm from './LeadDetailForm';
 import LeadSearchEnhanced from './LeadSearchEnhanced';
 import LeadDetailModal from './LeadDetailModal';
@@ -47,6 +47,39 @@ const LeadSearchUpdate = () => {
     if (requestId !== currentSearchRef.current) {
       console.log(`🔍 Search cancelled: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" (ID: ${requestId})`);
       return;
+    }
+    
+    // Check if query is a LinkedIn URL
+    const linkedinUrlRegex = /linkedin\.com\/in\/[\w-]+/i;
+    if (query && linkedinUrlRegex.test(query)) {
+      console.log(`🔗 Detected LinkedIn URL: ${query}`);
+      setIsLoading(true);
+      
+      try {
+        // Look up lead by LinkedIn URL
+        const lead = await getLeadByLinkedInUrl(query);
+        
+        // Check if request is still current
+        if (requestId !== currentSearchRef.current) {
+          console.log(`🔍 LinkedIn URL lookup ignored: "${query}" (ID: ${requestId}) - newer request active`);
+          return;
+        }
+        
+        // Open lead detail modal directly
+        setSelectedLead(lead);
+        setIsModalOpen(true);
+        setIsLoading(false);
+        console.log(`✅ Lead found by LinkedIn URL and opened:`, lead);
+        return;
+      } catch (error) {
+        console.error('LinkedIn URL lookup error:', error);
+        if (requestId === currentSearchRef.current) {
+          setMessage({ type: 'error', text: error.message || 'Lead not found with that LinkedIn URL' });
+          setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+          setIsLoading(false);
+        }
+        return;
+      }
     }
     
     setIsLoading(true);
