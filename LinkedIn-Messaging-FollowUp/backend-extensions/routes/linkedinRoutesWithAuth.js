@@ -689,6 +689,104 @@ router.get('/leads/search-token-suggestions', async (req, res) => {
 });
 
 /**
+ * GET /api/linkedin/leads/by-linkedin-url?url=linkedinUrl
+ * Find a lead by their LinkedIn profile URL
+ * IMPORTANT: This route MUST come BEFORE /leads/:id to avoid being matched as an ID
+ */
+router.get('/leads/by-linkedin-url', async (req, res) => {
+  logger.info('LinkedIn Routes: GET /leads/by-linkedin-url called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'LinkedIn URL parameter is required' });
+    }
+    
+    logger.info('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
+
+    // Normalize the URL (remove trailing slash, protocol, www)
+    let normalizedUrl = url;
+    if (typeof normalizedUrl === 'string') {
+      // Remove trailing slash
+      normalizedUrl = normalizedUrl.replace(/\/$/, '');
+      // Remove protocol and www for comparison
+      const urlPattern = normalizedUrl.replace(/^https?:\/\/(www\.)?/, '');
+      
+      // Try multiple search patterns to handle different URL formats in Airtable
+      const searchPatterns = [
+        normalizedUrl, // exact match without trailing slash
+        normalizedUrl + '/', // with trailing slash
+        'https://' + urlPattern,
+        'https://www.' + urlPattern,
+        'http://' + urlPattern,
+        'http://www.' + urlPattern
+      ];
+      
+      logger.info('LinkedIn Routes: URL after normalization:', normalizedUrl);
+      logger.info('LinkedIn Routes: URL pattern (no protocol/www):', urlPattern);
+      logger.info('LinkedIn Routes: Trying search patterns:', JSON.stringify(searchPatterns, null, 2));
+      
+      // Build OR formula with LOWER() for case-insensitive matching
+      const orConditions = searchPatterns.map(pattern => 
+        `LOWER({LinkedIn Profile URL})=LOWER("${pattern.replace(/"/g, '\\"')}")`
+      ).join(',');
+      
+      const filterFormula = `OR(${orConditions})`;
+      logger.info('LinkedIn Routes: Filter formula:', filterFormula);
+      logger.info('LinkedIn Routes: Filter formula length:', filterFormula.length);
+      
+      // Search for the lead by LinkedIn Profile URL with flexible matching
+      const records = await airtableBase('Leads').select({
+        maxRecords: 1,
+        filterByFormula: filterFormula
+      }).firstPage();
+      
+      logger.info('LinkedIn Routes: Airtable query completed');
+      logger.info('LinkedIn Routes: Records found:', records ? records.length : 0);
+
+      if (!records || records.length === 0) {
+        logger.info('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
+        logger.info('LinkedIn Routes: Client base ID:', req.client?.airtableBaseId);
+        return res.status(404).json({ error: 'Lead not found with that LinkedIn URL' });
+      }
+
+      const record = records[0];
+      const leadData = {
+        id: record.id,
+        firstName: record.get('First Name') || '',
+        lastName: record.get('Last Name') || '', 
+        linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
+        company: record.get('Company') || '',
+        jobTitle: record.get('Job Title') || '',
+        industry: record.get('Industry') || '',
+        location: record.get('Location') || '',
+        priority: record.get('Priority') || '',
+        notes: record.get('Notes') || '',
+        tags: record.get('Tags') || '',
+        status: record.get('Status') || '',
+        score: record.get('Score') || null,
+        leadScoringStatus: record.get('Scoring Status') || '',
+        dateScored: record.get('Date Scored') || null,
+        dateAdded: record.get('Date Added') || null,
+        lastContactDate: record.get('Last Contact Date') || null
+      };
+
+      logger.info('LinkedIn Routes: Found lead:', leadData.firstName, leadData.lastName);
+      res.json(leadData);
+    }
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error searching for lead by LinkedIn URL:', error);
+    res.status(500).json({ 
+      error: 'Failed to search for lead',
+      details: error.message 
+    });
+  }
+});
+
+/**
  * GET /api/linkedin/leads/:id
  * Get a specific lead by ID
  */
@@ -973,104 +1071,6 @@ router.put('/leads/:id', async (req, res) => {
     }
     res.status(500).json({ 
       error: 'Failed to update lead',
-      details: error.message 
-    });
-  }
-});
-
-/**
- * GET /api/linkedin/leads/by-linkedin-url?url=linkedinUrl
- * Find a lead by their LinkedIn profile URL
- */
-router.get('/leads/by-linkedin-url', async (req, res) => {
-  logger.info('LinkedIn Routes: GET /leads/by-linkedin-url called');
-  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
-  
-  try {
-    const airtableBase = await getAirtableBase(req);
-    const { url } = req.query;
-    
-    if (!url) {
-      return res.status(400).json({ error: 'LinkedIn URL parameter is required' });
-    }
-    
-    logger.info('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
-
-    // Normalize the URL (remove trailing slash, protocol, www)
-    let normalizedUrl = url;
-    if (typeof normalizedUrl === 'string') {
-      // Remove trailing slash
-      normalizedUrl = normalizedUrl.replace(/\/$/, '');
-      // Remove protocol and www for comparison
-      const urlPattern = normalizedUrl.replace(/^https?:\/\/(www\.)?/, '');
-      
-      // Try multiple search patterns to handle different URL formats in Airtable
-      const searchPatterns = [
-        normalizedUrl, // exact match without trailing slash
-        normalizedUrl + '/', // with trailing slash
-        'https://' + urlPattern,
-        'https://www.' + urlPattern,
-        'http://' + urlPattern,
-        'http://www.' + urlPattern
-      ];
-      
-      logger.info('LinkedIn Routes: URL after normalization:', normalizedUrl);
-      logger.info('LinkedIn Routes: URL pattern (no protocol/www):', urlPattern);
-      logger.info('LinkedIn Routes: Trying search patterns:', JSON.stringify(searchPatterns, null, 2));
-      
-      // Build OR formula with LOWER() for case-insensitive matching
-      // Note: OR() in Airtable takes multiple arguments, not comma-separated in a string
-      const orConditions = searchPatterns.map(pattern => 
-        `LOWER({LinkedIn Profile URL})=LOWER("${pattern.replace(/"/g, '\\"')}")`
-      ).join(',');
-      
-      const filterFormula = `OR(${orConditions})`;
-      logger.info('LinkedIn Routes: Filter formula:', filterFormula);
-      logger.info('LinkedIn Routes: Filter formula length:', filterFormula.length);
-      
-      // Search for the lead by LinkedIn Profile URL with flexible matching
-      const records = await airtableBase('Leads').select({
-        maxRecords: 1,
-        filterByFormula: filterFormula
-      }).firstPage();
-      
-      logger.info('LinkedIn Routes: Airtable query completed');
-      logger.info('LinkedIn Routes: Records found:', records ? records.length : 0);
-
-      if (!records || records.length === 0) {
-        logger.info('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
-        logger.info('LinkedIn Routes: Client base ID:', req.client?.airtableBaseId);
-        return res.status(404).json({ error: 'Lead not found with that LinkedIn URL' });
-      }
-
-      const record = records[0];
-      const leadData = {
-        id: record.id,
-        firstName: record.get('First Name') || '',
-        lastName: record.get('Last Name') || '', 
-        linkedinProfileUrl: record.get('LinkedIn Profile URL') || '',
-        company: record.get('Company') || '',
-        jobTitle: record.get('Job Title') || '',
-        industry: record.get('Industry') || '',
-        location: record.get('Location') || '',
-        priority: record.get('Priority') || '',
-        notes: record.get('Notes') || '',
-        tags: record.get('Tags') || '',
-        status: record.get('Status') || '',
-        score: record.get('Score') || null,
-        leadScoringStatus: record.get('Scoring Status') || '',
-        dateScored: record.get('Date Scored') || null,
-        dateAdded: record.get('Date Added') || null,
-        lastContactDate: record.get('Last Contact Date') || null
-      };
-
-      logger.info('LinkedIn Routes: Found lead:', leadData.firstName, leadData.lastName);
-      res.json(leadData);
-    }
-  } catch (error) {
-    logger.error('LinkedIn Routes: Error searching for lead by LinkedIn URL:', error);
-    res.status(500).json({ 
-      error: 'Failed to search for lead',
       details: error.message 
     });
   }
