@@ -4,6 +4,7 @@ import HelpButton from './HelpButton';
 import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
+import { getLeadByLinkedInUrl } from '../services/api';
 
 // (Former flag gate removed)
 const LeadSearchEnhanced = ({ 
@@ -19,6 +20,7 @@ const LeadSearchEnhanced = ({
 }) => {
   // Search states
   const [nameSearch, setNameSearch] = useState('');
+  const [linkedinLookupError, setLinkedinLookupError] = useState('');
   const [priority, setPriority] = useState('all');
   const [searchTerms, setSearchTerms] = useState('');
 
@@ -68,11 +70,39 @@ const LeadSearchEnhanced = ({
   };
 
   // Handle name search change
-  const handleNameSearchChange = (e) => {
+  const handleNameSearchChange = async (e) => {
     const value = e.target.value;
     setNameSearch(value);
+    setLinkedinLookupError('');
     
-    // Trigger search with current filters
+    // Check if value is a LinkedIn URL
+    const linkedinUrlRegex = /linkedin\.com\/in\/[\w-]+/i;
+    if (value && linkedinUrlRegex.test(value)) {
+      console.log(`🔗 Detected LinkedIn URL in search: ${value}`);
+      
+      try {
+        // Look up lead by LinkedIn URL
+        const lead = await getLeadByLinkedInUrl(value);
+        console.log(`✅ Lead found by LinkedIn URL:`, lead);
+        
+        // Open lead detail directly
+        if (onLeadSelect) {
+          onLeadSelect(lead);
+        }
+        
+        // Clear the search box
+        setNameSearch('');
+        return;
+      } catch (error) {
+        console.error('LinkedIn URL lookup error:', error);
+        setLinkedinLookupError(error.message || 'Lead not found with that LinkedIn URL');
+        // Let the error display for 5 seconds
+        setTimeout(() => setLinkedinLookupError(''), 5000);
+        return;
+      }
+    }
+    
+    // Not a LinkedIn URL, trigger normal search
     if (onSearch) {
       onSearch({
         nameQuery: value,
@@ -477,6 +507,13 @@ const LeadSearchEnhanced = ({
           <h2 className="text-lg font-medium text-gray-900">Search & Filter</h2>
           <HelpButton area="lead_search_and_update_search" title="Help for Search & Filter" />
         </div>
+        
+        {/* LinkedIn URL Error Message */}
+        {linkedinLookupError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+            {linkedinLookupError}
+          </div>
+        )}
         
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           {/* Name Search - narrower, 1 column */}
