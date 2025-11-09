@@ -708,37 +708,25 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
     logger.info('LinkedIn Routes: Searching for lead with LinkedIn URL:', url);
 
     // Normalize the URL (remove trailing slash, protocol, www)
+    // This matches the same normalization used in NewLeadForm.js duplicate checking
     let normalizedUrl = url;
     if (typeof normalizedUrl === 'string') {
       // Remove trailing slash
       normalizedUrl = normalizedUrl.replace(/\/$/, '');
-      // Remove protocol and www for comparison
+      // Remove protocol and www for comparison (match NewLeadForm normalization)
       const urlPattern = normalizedUrl.replace(/^https?:\/\/(www\.)?/, '');
-      
-      // Try multiple search patterns to handle different URL formats in Airtable
-      const searchPatterns = [
-        normalizedUrl, // exact match without trailing slash
-        normalizedUrl + '/', // with trailing slash
-        'https://' + urlPattern,
-        'https://www.' + urlPattern,
-        'http://' + urlPattern,
-        'http://www.' + urlPattern
-      ];
       
       logger.info('LinkedIn Routes: URL after normalization:', normalizedUrl);
       logger.info('LinkedIn Routes: URL pattern (no protocol/www):', urlPattern);
-      logger.info('LinkedIn Routes: Trying search patterns:', JSON.stringify(searchPatterns, null, 2));
       
-      // Build OR formula with LOWER() for case-insensitive matching
-      const orConditions = searchPatterns.map(pattern => 
-        `LOWER({LinkedIn Profile URL})=LOWER("${pattern.replace(/"/g, '\\"')}")`
-      ).join(',');
+      // Use SEARCH() function like /leads/search endpoint does
+      // This does substring/partial matching which is more flexible than exact equality
+      // Match the same approach used in duplicate checking
+      const filterFormula = `SEARCH(LOWER("${urlPattern.replace(/"/g, '\\"')}"), LOWER({LinkedIn Profile URL})) > 0`;
       
-      const filterFormula = `OR(${orConditions})`;
       logger.info('LinkedIn Routes: Filter formula:', filterFormula);
-      logger.info('LinkedIn Routes: Filter formula length:', filterFormula.length);
       
-      // Search for the lead by LinkedIn Profile URL with flexible matching
+      // Search for the lead by LinkedIn Profile URL using SEARCH (substring match)
       const records = await airtableBase('Leads').select({
         maxRecords: 1,
         filterByFormula: filterFormula
