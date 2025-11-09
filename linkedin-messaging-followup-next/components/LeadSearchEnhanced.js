@@ -211,10 +211,14 @@ const LeadSearchEnhanced = ({
           throw new Error(`HTTP ${backendStatus}${backendErr ? ' - ' + backendErr : ''}`);
         }
         const text = await res.text();
+        
+        // Count actual items copied (split by newlines, filter out empty lines)
+        const actualCount = text.split('\n').filter(line => line.trim()).length;
+        
         // Some browsers block clipboard without user gesture; attempt then fallback
         try {
           await navigator.clipboard.writeText(text);
-          alert(`Copied up to ${COPY_MAX.toLocaleString()} ${exportType} (fast server copy).`);
+          alert(`Copied ${actualCount.toLocaleString()} ${exportType}.`);
           closeExportModal();
   } catch (e) { // Clipboard attempt failed
           // Show a temporary textarea fallback
@@ -226,7 +230,7 @@ const LeadSearchEnhanced = ({
           ta.select();
           document.execCommand('copy');
           document.body.removeChild(ta);
-          alert(`Copied (fallback) up to ${COPY_MAX.toLocaleString()} ${exportType}.`);
+          alert(`Copied ${actualCount.toLocaleString()} ${exportType}.`);
           closeExportModal();
         }
       } catch (e) {
