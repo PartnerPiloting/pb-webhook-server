@@ -72,37 +72,43 @@ const LeadSearchEnhanced = ({
   // Handle name search change
   const handleNameSearchChange = async (e) => {
     const value = e.target.value;
-    setNameSearch(value);
     setLinkedinLookupError('');
     
-    // Check if value is a LinkedIn URL
+    // Check if value is a LinkedIn URL BEFORE updating state
     const linkedinUrlRegex = /linkedin\.com\/in\/[\w-]+/i;
     if (value && linkedinUrlRegex.test(value)) {
       console.log(`🔗 Detected LinkedIn URL in search: ${value}`);
+      
+      // Set the value in the input box temporarily
+      setNameSearch(value);
       
       try {
         // Look up lead by LinkedIn URL
         const lead = await getLeadByLinkedInUrl(value);
         console.log(`✅ Lead found by LinkedIn URL:`, lead);
         
+        // Clear the search box
+        setNameSearch('');
+        
         // Open lead detail directly
         if (onLeadSelect) {
           onLeadSelect(lead);
         }
         
-        // Clear the search box
-        setNameSearch('');
-        return;
+        return; // Don't trigger normal search
       } catch (error) {
         console.error('LinkedIn URL lookup error:', error);
         setLinkedinLookupError(error.message || 'Lead not found with that LinkedIn URL');
+        // Clear the search box after error
+        setNameSearch('');
         // Let the error display for 5 seconds
         setTimeout(() => setLinkedinLookupError(''), 5000);
-        return;
+        return; // Don't trigger normal search
       }
     }
     
-    // Not a LinkedIn URL, trigger normal search
+    // Not a LinkedIn URL, update state and trigger normal search
+    setNameSearch(value);
     if (onSearch) {
       onSearch({
         nameQuery: value,
