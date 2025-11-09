@@ -239,7 +239,15 @@ const TopScoringPostsWithParams = () => {
               <div
                 key={lead.id || lead.recordId}
                 className="p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                onClick={() => setSelectedLead(lead)}
+                onClick={() => {
+                  console.log('🔍 Selected lead Posts Relevance values:', {
+                    computedPostsRelevancePercentage: lead.computedPostsRelevancePercentage,
+                    'Posts Relevance Percentage field': lead['Posts Relevance Percentage'],
+                    'Posts Relevance Score': lead['Posts Relevance Score'],
+                    postsMaxPossibleScore: lead.postsMaxPossibleScore
+                  });
+                  setSelectedLead(lead);
+                }}
               >
                 <div className="flex items-start">
                   <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
@@ -277,7 +285,7 @@ const TopScoringPostsWithParams = () => {
               </h2>
               <div className="text-sm text-gray-600 mt-1">
                 AI Score: {selectedLead[FIELD_NAMES.AI_SCORE] || 0}% • 
-                Posts Relevance: {Math.round(selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] || 0)}%
+                Posts Relevance: {Math.round((selectedLead.computedPostsRelevancePercentage ?? selectedLead[FIELD_NAMES.POSTS_RELEVANCE_PERCENTAGE] ?? 0))}%
               </div>
             </div>
 
