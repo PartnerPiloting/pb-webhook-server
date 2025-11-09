@@ -1017,9 +1017,10 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
       logger.info('LinkedIn Routes: Trying search patterns:', searchPatterns);
       
       // Build OR formula with LOWER() for case-insensitive matching
+      // Note: OR() in Airtable takes multiple arguments, not comma-separated in a string
       const orConditions = searchPatterns.map(pattern => 
-        `LOWER({LinkedIn Profile URL}) = LOWER("${pattern}")`
-      ).join(', ');
+        `LOWER({LinkedIn Profile URL})=LOWER("${pattern.replace(/"/g, '\\"')}")`
+      ).join(',');
       
       const filterFormula = `OR(${orConditions})`;
       logger.info('LinkedIn Routes: Filter formula:', filterFormula);
