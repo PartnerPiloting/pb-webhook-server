@@ -1014,7 +1014,9 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
         'http://www.' + urlPattern
       ];
       
-      logger.info('LinkedIn Routes: Trying search patterns:', searchPatterns);
+      logger.info('LinkedIn Routes: URL after normalization:', normalizedUrl);
+      logger.info('LinkedIn Routes: URL pattern (no protocol/www):', urlPattern);
+      logger.info('LinkedIn Routes: Trying search patterns:', JSON.stringify(searchPatterns, null, 2));
       
       // Build OR formula with LOWER() for case-insensitive matching
       // Note: OR() in Airtable takes multiple arguments, not comma-separated in a string
@@ -1024,15 +1026,20 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
       
       const filterFormula = `OR(${orConditions})`;
       logger.info('LinkedIn Routes: Filter formula:', filterFormula);
+      logger.info('LinkedIn Routes: Filter formula length:', filterFormula.length);
       
       // Search for the lead by LinkedIn Profile URL with flexible matching
       const records = await airtableBase('Leads').select({
         maxRecords: 1,
         filterByFormula: filterFormula
       }).firstPage();
+      
+      logger.info('LinkedIn Routes: Airtable query completed');
+      logger.info('LinkedIn Routes: Records found:', records ? records.length : 0);
 
       if (!records || records.length === 0) {
         logger.info('LinkedIn Routes: No lead found with LinkedIn URL:', normalizedUrl);
+        logger.info('LinkedIn Routes: Client base ID:', req.client?.airtableBaseId);
         return res.status(404).json({ error: 'Lead not found with that LinkedIn URL' });
       }
 
