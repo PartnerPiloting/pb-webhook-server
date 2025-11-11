@@ -72,10 +72,8 @@ const LeadSearchEnhanced = ({
   // Handle CSV export - download all matching leads with selected fields
   const handleCSVExport = async () => {
     try {
-      // Get all leads based on current filters (no pagination limit)
-      const allLeads = await searchLeads(nameSearch, priority, searchTerms, 10000, 0);
-      
-      if (!allLeads || allLeads.length === 0) {
+      // Use the leads that are already loaded (respects current filters from parent)
+      if (!leads || leads.length === 0) {
         alert('No leads to export');
         return;
       }
@@ -94,7 +92,7 @@ const LeadSearchEnhanced = ({
         return str;
       };
 
-      const rows = allLeads.map(lead => [
+      const rows = leads.map(lead => [
         escapeCSV(lead['First Name'] || ''),
         escapeCSV(lead['Last Name'] || ''),
         escapeCSV(lead['Email'] || lead['Email Address'] || ''),
@@ -120,7 +118,7 @@ const LeadSearchEnhanced = ({
       link.click();
       document.body.removeChild(link);
 
-      alert(`Exported ${allLeads.length} leads to CSV`);
+      alert(`Exported ${leads.length} leads to CSV`);
     } catch (error) {
       console.error('CSV export error:', error);
       alert(`Export failed: ${error.message}`);
