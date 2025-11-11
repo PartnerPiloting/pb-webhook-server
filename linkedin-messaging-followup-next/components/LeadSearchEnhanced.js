@@ -69,6 +69,64 @@ const LeadSearchEnhanced = ({
     setExportRunning(false);
   };
 
+  // Handle CSV export - download all matching leads with selected fields
+  const handleCSVExport = async () => {
+    try {
+      // Get all leads based on current filters (no pagination limit)
+      const allLeads = await searchLeads(nameSearch, priority, searchTerms, 10000, 0);
+      
+      if (!allLeads || allLeads.length === 0) {
+        alert('No leads to export');
+        return;
+      }
+
+      // CSV Headers
+      const headers = ['First Name', 'Last Name', 'Email', 'LinkedIn URL', 'Notes'];
+      
+      // CSV Rows - escape values that contain commas or quotes
+      const escapeCSV = (val) => {
+        if (val === null || val === undefined) return '';
+        const str = String(val);
+        // If contains comma, quote, or newline, wrap in quotes and escape existing quotes
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      const rows = allLeads.map(lead => [
+        escapeCSV(lead['First Name'] || ''),
+        escapeCSV(lead['Last Name'] || ''),
+        escapeCSV(lead['Email'] || lead['Email Address'] || ''),
+        escapeCSV(lead['LinkedIn Profile URL'] || ''),
+        escapeCSV(lead['Notes'] || '')
+      ]);
+
+      // Create CSV content
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n');
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `leads-export-${new Date().toISOString().slice(0, 10)}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      alert(`Exported ${allLeads.length} leads to CSV`);
+    } catch (error) {
+      console.error('CSV export error:', error);
+      alert(`Export failed: ${error.message}`);
+    }
+  };
+
   // Handle name search change
   const handleNameSearchChange = async (e) => {
     const value = e.target.value;
@@ -637,6 +695,15 @@ const LeadSearchEnhanced = ({
                     <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
                   </svg>
                   Export LinkedIn URLs…
+                </button>
+                <button
+                  onClick={() => handleCSVExport()}
+                  className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export All to CSV
                 </button>
               </div>
             </div>
