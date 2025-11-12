@@ -428,8 +428,8 @@ router.get('/leads/export', async (req, res) => {
 
     const exportType = String(type).toLowerCase();
     const exportFormat = String(format).toLowerCase();
-    if (!['linkedin', 'emails', 'phones'].includes(exportType)) {
-      return res.status(400).json({ error: 'Invalid type. Use linkedin|emails|phones' });
+    if (!['linkedin', 'emails', 'phones', 'csv'].includes(exportType)) {
+      return res.status(400).json({ error: 'Invalid type. Use linkedin|emails|phones|csv' });
     }
     if (!['txt', 'csv'].includes(exportFormat)) {
       return res.status(400).json({ error: 'Invalid format. Use txt|csv' });
@@ -527,11 +527,23 @@ router.get('/leads/export', async (req, res) => {
               const linkedinUrl = normalize(record.fields['LinkedIn Profile URL']);
               const email = normalize(record.fields['Email']);
               const phone = normalize(record.fields['Phone'] || record.fields['Phone Number']);
+              const notes = normalize(record.fields['Notes']);
 
               let raw = '';
               if (exportType === 'linkedin') raw = linkedinUrl;
               if (exportType === 'emails') raw = email;
               if (exportType === 'phones') raw = phone;
+              
+              // For CSV type, we export all fields without deduplication
+              if (exportType === 'csv') {
+                rows.push([firstName, lastName, email, normLinkedIn(linkedinUrl), notes]);
+                if (hardLimit && rows.length >= hardLimit) {
+                  reachedLimit = true;
+                  break;
+                }
+                continue;
+              }
+              
               const key = canonKey(exportType, raw);
               if (!key) continue;
               if (seen.has(key)) continue;
@@ -575,16 +587,18 @@ router.get('/leads/export', async (req, res) => {
     const baseName = exportType === 'linkedin' ? 'linkedin-urls' : (exportType === 'emails' ? 'emails' : 'phones');
 
   // Build full content to compute accurate Content-Length for progress
-    if (exportFormat === 'csv') {
+    if (exportFormat === 'csv' || exportType === 'csv') {
       let header = '';
       if (exportType === 'linkedin') header = ['linkedin_url','first_name','last_name','company','job_title','profile_key'].map(csvEscape).join(',');
       if (exportType === 'emails') header = ['email','first_name','last_name','linkedin_url','company','job_title'].map(csvEscape).join(',');
       if (exportType === 'phones') header = ['phone','first_name','last_name','linkedin_url','company','job_title'].map(csvEscape).join(',');
+      if (exportType === 'csv') header = ['first_name','last_name','email','linkedin_url','notes'].map(csvEscape).join(',');
       const body = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
       const content = '\uFEFF' + header + '\r\n' + body + (body ? '\r\n' : '');
       const buf = Buffer.from(content, 'utf8');
+      const csvBaseName = exportType === 'csv' ? 'leads-export' : baseName;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${baseName}-${today}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${csvBaseName}-${today}.csv"`);
       res.setHeader('X-Total-Rows', String(rows.length));
       res.setHeader('Content-Length', String(buf.length));
       if (reachedLimit && hardLimit) res.setHeader('X-Truncated', '1');

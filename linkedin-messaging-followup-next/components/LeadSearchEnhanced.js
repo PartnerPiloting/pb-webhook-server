@@ -72,13 +72,14 @@ const LeadSearchEnhanced = ({
   // Handle CSV export - download all matching leads with selected fields
   const handleCSVExport = async () => {
     try {
-      // Fetch ALL matching leads from backend (not just current page)
+      // Use the same /leads/export endpoint as emails/phones but with type=csv
       const apiBase = getApiBase();
       const p = new URLSearchParams();
       if (nameSearch) p.set('q', nameSearch);
       if (priority !== 'all') p.set('priority', priority);
       if (searchTerms) p.set('searchTerms', searchTerms);
-      p.set('limit', '10000'); // High limit to get all results
+      p.set('type', 'csv'); // New type that returns all fields
+      p.set('format', 'csv');
       
       // Preserve testClient/test mode param
       try {
@@ -87,62 +88,31 @@ const LeadSearchEnhanced = ({
         if (tc) p.set('testClient', tc);
       } catch {}
       
-      const url = `${apiBase}/leads/search?${p.toString()}`;
+      const url = `${apiBase}/leads/export?${p.toString()}`;
       const res = await fetch(url, { credentials: 'include' });
       
       if (!res.ok) {
-        throw new Error(`Failed to fetch leads: ${res.status}`);
+        throw new Error(`Failed to export: ${res.status}`);
       }
       
-      const data = await res.json();
-      const allLeads = Array.isArray(data) ? data : (data.leads || []);
-      
-      if (!allLeads || allLeads.length === 0) {
-        alert('No leads to export');
-        return;
-      }
-
-      // CSV Headers
-      const headers = ['First Name', 'Last Name', 'Email', 'LinkedIn URL', 'Notes'];
-      
-      // CSV Rows - escape values that contain commas or quotes
-      const escapeCSV = (val) => {
-        if (val === null || val === undefined) return '';
-        const str = String(val);
-        // If contains comma, quote, or newline, wrap in quotes and escape existing quotes
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-
-      const rows = allLeads.map(lead => [
-        escapeCSV(lead['First Name'] || ''),
-        escapeCSV(lead['Last Name'] || ''),
-        escapeCSV(lead['Email'] || lead['Email Address'] || ''),
-        escapeCSV(lead['LinkedIn Profile URL'] || ''),
-        escapeCSV(lead['Notes'] || '')
-      ]);
-
-      // Create CSV content
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.join(','))
-      ].join('\n');
-
-      // Create blob and download
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
+      // Get the CSV blob directly from response
+      const blob = await res.blob();
       const downloadUrl = URL.createObjectURL(blob);
       
+      // Get count from header if available
+      const totalRows = res.headers.get('X-Total-Rows') || 'unknown';
+      
+      // Trigger download
+      const link = document.createElement('a');
       link.setAttribute('href', downloadUrl);
       link.setAttribute('download', `leads-export-${new Date().toISOString().slice(0, 10)}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
 
-      alert(`Exported ${allLeads.length} leads to CSV`);
+      alert(`Exported ${totalRows} leads to CSV`);
     } catch (error) {
       console.error('CSV export error:', error);
       alert(`Export failed: ${error.message}`);
