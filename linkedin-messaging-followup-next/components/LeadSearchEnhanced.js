@@ -72,8 +72,32 @@ const LeadSearchEnhanced = ({
   // Handle CSV export - download all matching leads with selected fields
   const handleCSVExport = async () => {
     try {
-      // Use the leads that are already loaded (respects current filters from parent)
-      if (!leads || leads.length === 0) {
+      // Fetch ALL matching leads from backend (not just current page)
+      const apiBase = getApiBase();
+      const p = new URLSearchParams();
+      if (nameSearch) p.set('q', nameSearch);
+      if (priority !== 'all') p.set('priority', priority);
+      if (searchTerms) p.set('searchTerms', searchTerms);
+      p.set('limit', '10000'); // High limit to get all results
+      
+      // Preserve testClient/test mode param
+      try {
+        const qs = new URLSearchParams(window.location.search || '');
+        const tc = qs.get('testClient');
+        if (tc) p.set('testClient', tc);
+      } catch {}
+      
+      const url = `${apiBase}/leads/search?${p.toString()}`;
+      const res = await fetch(url, { credentials: 'include' });
+      
+      if (!res.ok) {
+        throw new Error(`Failed to fetch leads: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      const allLeads = Array.isArray(data) ? data : (data.leads || []);
+      
+      if (!allLeads || allLeads.length === 0) {
         alert('No leads to export');
         return;
       }
@@ -92,7 +116,7 @@ const LeadSearchEnhanced = ({
         return str;
       };
 
-      const rows = leads.map(lead => [
+      const rows = allLeads.map(lead => [
         escapeCSV(lead['First Name'] || ''),
         escapeCSV(lead['Last Name'] || ''),
         escapeCSV(lead['Email'] || lead['Email Address'] || ''),
@@ -109,16 +133,16 @@ const LeadSearchEnhanced = ({
       // Create blob and download
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
+      const downloadUrl = URL.createObjectURL(blob);
       
-      link.setAttribute('href', url);
+      link.setAttribute('href', downloadUrl);
       link.setAttribute('download', `leads-export-${new Date().toISOString().slice(0, 10)}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      alert(`Exported ${leads.length} leads to CSV`);
+      alert(`Exported ${allLeads.length} leads to CSV`);
     } catch (error) {
       console.error('CSV export error:', error);
       alert(`Export failed: ${error.message}`);
