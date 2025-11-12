@@ -71,6 +71,17 @@ const LeadSearchEnhanced = ({
 
   // Handle CSV export - download all matching leads with selected fields
   const handleCSVExport = async () => {
+    // Show preparing message with approximate count
+    const confirmMessage = totalLeads > 0 
+      ? `Preparing to export ${totalLeads} lead${totalLeads !== 1 ? 's' : ''} to CSV...`
+      : 'Preparing to export leads to CSV...';
+    
+    // Show non-blocking notification
+    const notification = document.createElement('div');
+    notification.textContent = confirmMessage;
+    notification.style.cssText = 'position:fixed;top:20px;right:20px;background:#3b82f6;color:white;padding:12px 20px;border-radius:6px;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:9999;font-size:14px;';
+    document.body.appendChild(notification);
+    
     try {
       // Use the same /leads/export endpoint as emails/phones but with type=csv
       const apiBase = getApiBase();
@@ -100,7 +111,7 @@ const LeadSearchEnhanced = ({
       const downloadUrl = URL.createObjectURL(blob);
       
       // Get count from header if available
-      const totalRows = res.headers.get('X-Total-Rows') || 'unknown';
+      const totalRows = res.headers.get('X-Total-Rows') || totalLeads || 'unknown';
       
       // Trigger download
       const link = document.createElement('a');
@@ -112,10 +123,15 @@ const LeadSearchEnhanced = ({
       document.body.removeChild(link);
       URL.revokeObjectURL(downloadUrl);
 
-      alert(`Exported ${totalRows} leads to CSV`);
+      // Update notification to success
+      notification.textContent = `✓ Exported ${totalRows} lead${totalRows !== 1 ? 's' : ''} to CSV`;
+      notification.style.background = '#10b981';
+      setTimeout(() => document.body.removeChild(notification), 3000);
     } catch (error) {
       console.error('CSV export error:', error);
-      alert(`Export failed: ${error.message}`);
+      notification.textContent = `✗ Export failed: ${error.message}`;
+      notification.style.background = '#ef4444';
+      setTimeout(() => document.body.removeChild(notification), 5000);
     }
   };
 
