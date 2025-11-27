@@ -2,13 +2,32 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getSearchTokenSuggestions } from '../services/api';
 
-// Tokenizer with quoted phrase support
+// Check if input looks like a boolean search query
+function isBooleanQuery(input) {
+  if (!input || typeof input !== 'string') return false;
+  const upper = input.toUpperCase();
+  // Check for boolean operators or parentheses
+  return upper.includes(' OR ') || 
+         upper.includes(' AND ') || 
+         upper.includes(' NOT ') ||
+         input.includes('(') || 
+         input.includes(')') ||
+         input.startsWith('-');
+}
+
+// Tokenizer with boolean query support
 // Rules:
-// - Split on commas/semicolons/newlines and whitespace, BUT keep text inside double quotes as one token
+// - If input contains boolean operators (OR, AND, NOT, parentheses), treat entire input as single query
+// - Otherwise: Split on commas/semicolons/newlines and whitespace, BUT keep text inside double quotes as one token
 // - Lowercase, trim, strip surrounding quotes/parens/brackets, drop empties
 // - Dedupe in insertion order, cap to 25, max token length 40
 function tokenizeToCanonical(input) {
   if (!input || typeof input !== 'string') return [];
+  
+  // Check if this is a boolean query - if so, keep it as a single token
+  if (isBooleanQuery(input)) {
+    return [input.trim()];
+  }
   
   // Normalize separators to make scanning easier
   const src = String(input).replace(/[;\n]/g, ',');
@@ -54,21 +73,29 @@ function tokenizeToCanonical(input) {
 }
 
 // Chip component (minimal styling relying on Tailwind present in app)
-const Chip = ({ label, onRemove }) => (
-  <span className="inline-flex items-center px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded mr-2 mb-2">
-    {label}
-    {onRemove && (
-      <button
-        type="button"
-        onClick={onRemove}
-        className="ml-1 text-blue-500 hover:text-blue-700"
-        title="Remove"
-      >
-        ×
-      </button>
-    )}
-  </span>
-);
+const Chip = ({ label, onRemove }) => {
+  // Check if this is a boolean query to style it differently
+  const isBoolean = isBooleanQuery(label);
+  const chipClass = isBoolean 
+    ? "inline-flex items-center px-2 py-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded mr-2 mb-2"
+    : "inline-flex items-center px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded mr-2 mb-2";
+  
+  return (
+    <span className={chipClass}>
+      {label}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className={isBoolean ? "ml-1 text-purple-500 hover:text-purple-700" : "ml-1 text-blue-500 hover:text-blue-700"}
+          title="Remove"
+        >
+          ×
+        </button>
+      )}
+    </span>
+  );
+};
 
 // Props:
 // - initialTerms: string (the Long text field value)
