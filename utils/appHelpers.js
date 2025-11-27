@@ -107,7 +107,9 @@ function getLastTwoOrgs(lh = {}) {
 }
 
 /* ------------------------------------------------------------------
-    helper: isMissingCritical (bio ≥40, headline, job-history)
+    helper: isMissingCritical (headline + job-history required, bio optional)
+    Changed: Bio no longer required to support free LinkedIn accounts (non-Sales Navigator)
+    Regular LinkedIn truncates About section to "..." but provides full headline + job history
 ------------------------------------------------------------------*/
 function isMissingCritical(profile = {}) {
     const about = (
@@ -127,7 +129,8 @@ function isMissingCritical(profile = {}) {
             }
         }
     }
-    return !(hasBio && hasHeadline && hasJob);
+    // Bio is now optional bonus data - only require headline + job history
+    return !(hasHeadline && hasJob);
 }
 
 module.exports = {

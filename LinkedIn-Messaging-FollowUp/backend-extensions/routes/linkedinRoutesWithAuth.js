@@ -284,25 +284,38 @@ router.get('/leads/search', async (req, res) => {
       filterParts.push(`AND(${wordSearches.join(', ')})`);
     }
 
-    // Add search terms filter (search in canonical tokens)
+    // Add search terms filter with boolean logic support
     if (searchTerms && searchTerms.trim() !== '') {
-      // Parse comma-separated search terms and normalize
-      const terms = searchTerms.toLowerCase().trim().split(',')
-        .map(term => term.trim())
-        .filter(Boolean);
+      const { parseBooleanSearch } = require('../../../utils/booleanSearchParser');
       
-      if (terms.length > 0) {
-        // Create search conditions for each term in both canonical and regular search terms fields
-        const termSearches = terms.map(term => 
-          `OR(
-            SEARCH("${term}", LOWER({Search Tokens (canonical)})) > 0,
-            SEARCH("${term}", LOWER({Search Terms})) > 0
-          )`
+      try {
+        // Parse boolean search query (supports AND, OR, NOT, parentheses, quotes)
+        const booleanFormula = parseBooleanSearch(
+          searchTerms,
+          ['{Search Tokens (canonical)}', '{Search Terms}']
         );
         
-        // Join with AND so all terms must be found (leads tagged with ALL specified terms)
-        filterParts.push(`AND(${termSearches.join(', ')})`);
-        logger.info('LinkedIn Routes: Search terms filter applied for:', terms);
+        if (booleanFormula) {
+          filterParts.push(booleanFormula);
+          logger.info('LinkedIn Routes: Boolean search filter applied for:', searchTerms);
+        }
+      } catch (error) {
+        logger.warn('LinkedIn Routes: Boolean search parsing failed, falling back to simple search:', error.message);
+        // Fallback to old comma-separated behavior
+        const terms = searchTerms.toLowerCase().trim().split(',')
+          .map(term => term.trim())
+          .filter(Boolean);
+        
+        if (terms.length > 0) {
+          const termSearches = terms.map(term => 
+            `OR(
+              SEARCH("${term}", LOWER({Search Tokens (canonical)})) > 0,
+              SEARCH("${term}", LOWER({Search Terms})) > 0
+            )`
+          );
+          filterParts.push(`AND(${termSearches.join(', ')})`);
+          logger.info('LinkedIn Routes: Search terms filter applied for:', terms);
+        }
       }
     }
     
@@ -450,17 +463,34 @@ router.get('/leads/export', async (req, res) => {
       filterParts.push(`AND(${wordSearches.join(', ')})`);
     }
     if (searchTerms && String(searchTerms).trim() !== '') {
-      const terms = String(searchTerms).toLowerCase().trim().split(',')
-        .map(t => t.trim()).filter(Boolean);
-      if (terms.length > 0) {
-        const termSearches = terms.map(term =>
-          `OR(
-            SEARCH("${term}", LOWER({Search Tokens (canonical)})) > 0,
-            SEARCH("${term}", LOWER({Search Terms})) > 0
-          )`
+      const { parseBooleanSearch } = require('../../../utils/booleanSearchParser');
+      
+      try {
+        // Parse boolean search query (supports AND, OR, NOT, parentheses, quotes)
+        const booleanFormula = parseBooleanSearch(
+          String(searchTerms),
+          ['{Search Tokens (canonical)}', '{Search Terms}']
         );
-        filterParts.push(`AND(${termSearches.join(', ')})`);
-        logger.info('LinkedIn Routes: Export terms filter applied for:', terms);
+        
+        if (booleanFormula) {
+          filterParts.push(booleanFormula);
+          logger.info('LinkedIn Routes: Export boolean search filter applied for:', searchTerms);
+        }
+      } catch (error) {
+        logger.warn('LinkedIn Routes: Export boolean search parsing failed, falling back to simple search:', error.message);
+        // Fallback to old comma-separated behavior
+        const terms = String(searchTerms).toLowerCase().trim().split(',')
+          .map(t => t.trim()).filter(Boolean);
+        if (terms.length > 0) {
+          const termSearches = terms.map(term =>
+            `OR(
+              SEARCH("${term}", LOWER({Search Tokens (canonical)})) > 0,
+              SEARCH("${term}", LOWER({Search Terms})) > 0
+            )`
+          );
+          filterParts.push(`AND(${termSearches.join(', ')})`);
+          logger.info('LinkedIn Routes: Export terms filter applied for:', terms);
+        }
       }
     }
     if (priority && priority !== 'all') {

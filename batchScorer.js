@@ -351,21 +351,22 @@ async function scoreChunk(records, clientId, clientBase, runId = 'UNKNOWN') {
         // ***** END DEBUG LOGGING *****
 
         if (isMissingCritical(profile)) { 
-            log.warn(`Lead ${rec.id} [${profile.linkedinProfileUrl || profile.profile_url || "unknown"}] missing critical data. Alerting admin`);
-            await alertAdmin("Incomplete lead data for batch scoring", `Client: ${clientId || 'unknown'}\nRec ID: ${rec.id}\nURL: ${profile.linkedinProfileUrl || profile.profile_url || "unknown"}`); 
-            // For now, we still let it go through to the 'aboutText.length < 40' check as per original logic.
-            // We can add a skip here later if needed.
-        }
-
-        if (aboutText.length < 40) {
-            log.debug(`Lead ${rec.id} profile too thin (aboutText length: ${aboutText.length}), skipping AI call`);
+            log.warn(`Lead ${rec.id} [${profile.linkedinProfileUrl || profile.profile_url || "unknown"}] missing critical data (headline or job history). Skipping.`);
             airtableUpdatesForSkipped.push({
                 id: rec.id,
-                // ROOT CAUSE FIX: Field name is "AI Attribute Breakdown" not "AI Attributes Detail"
-                fields: { [LEAD_FIELDS.AI_SCORE]: 0, [LEAD_FIELDS.SCORING_STATUS]: "Skipped – Profile Too Thin", [LEAD_FIELDS.AI_PROFILE_ASSESSMENT]: "", "AI Attribute Breakdown": "", [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() }
+                fields: { 
+                    [LEAD_FIELDS.AI_SCORE]: 0, 
+                    [LEAD_FIELDS.SCORING_STATUS]: "Skipped – Missing Critical Data", 
+                    [LEAD_FIELDS.AI_PROFILE_ASSESSMENT]: "Missing required fields: headline or job history", 
+                    "AI Attribute Breakdown": "", 
+                    [LEAD_FIELDS.DATE_SCORED]: new Date().toISOString() 
+                }
             });
             continue;
         }
+
+        // Bio is now optional - profiles can be scored with headline + job history alone
+        // (Regular LinkedIn provides truncated About sections, but full headline + experience)
         scorable.push({ id: rec.id, rec, profile });
     }
 
