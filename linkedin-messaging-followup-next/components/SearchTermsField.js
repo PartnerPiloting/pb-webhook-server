@@ -75,7 +75,7 @@ const Chip = ({ label, onRemove }) => (
 // - onTermsChange: (termsString, canonicalTokensCsv) => void
 // - placeholder?: string
 // - disabled?: boolean
-export default function SearchTermsField({ initialTerms, onTermsChange, placeholder = 'Type terms (use quotes for phrases, e.g. "Mindset Mastery") and press Enter or comma…', disabled = false }) {
+export default function SearchTermsField({ initialTerms, onTermsChange, placeholder = 'Type terms and press Enter or comma. Supports: AND, OR, NOT, ( ), "exact phrase"', disabled = false }) {
   const isDev = typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production';
   const debug = isDev && (typeof window !== 'undefined') && (window.localStorage?.DEBUG_SEARCH_TERMS === '1');
   const [inputValue, setInputValue] = useState('');
@@ -186,6 +186,16 @@ export default function SearchTermsField({ initialTerms, onTermsChange, placehol
 
   return (
     <div className="flex-1">
+      {/* Boolean search help hint */}
+      <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-900">
+        <span className="font-semibold">Boolean Search:</span>{' '}
+        <span className="font-mono bg-white px-1 rounded">term1 term2</span> (both) •{' '}
+        <span className="font-mono bg-white px-1 rounded">term1 OR term2</span> (either) •{' '}
+        <span className="font-mono bg-white px-1 rounded">NOT term</span> (exclude) •{' '}
+        <span className="font-mono bg-white px-1 rounded">"exact phrase"</span> •{' '}
+        <span className="font-mono bg-white px-1 rounded">(group OR logic)</span>
+      </div>
+      
       <div className={`w-full px-3 py-2 border border-gray-300 rounded-md bg-white ${disabled ? 'opacity-60' : ''}`}>
         <div className="flex flex-wrap">
           {selectedTokens.map(t => (
