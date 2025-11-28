@@ -225,6 +225,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     [LEAD_FIELDS.ABOUT]: lh.summary || lh.bio || "", 
                     [LEAD_FIELDS.SCORING_STATUS]: scoringStatusForThisLead, 
                     [LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS]: lh.connectionStatus || lh.linkedinConnectionStatus || "Unknown",
+                    connectionSince: lh.connected_at || lh.connectedAt || lh.connectionDate,  // Pass connection date to upsertLead
                     [LEAD_FIELDS.PROFILE_FULL_JSON]: JSON.stringify(lh),
                     [LEAD_FIELDS.RAW_PROFILE_DATA]: JSON.stringify(lh),
                     raw: lh  // originalLeadData for fallback URL lookup
