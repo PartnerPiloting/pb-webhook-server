@@ -80,13 +80,41 @@ function isAustralian(loc = "") {
 ------------------------------------------------------------------*/
 function safeDate(d) {
     if (!d) return null;
+    
+    // Already a valid Date object
     if (d instanceof Date) return isNaN(d) ? null : d;
-    if (/^\d{4}\.\d{2}\.\d{2}$/.test(d)) {
-        const iso = d.replace(/\./g, "-");
-        return new Date(iso + "T00:00:00Z");
+    
+    // Convert to string for parsing
+    const str = String(d).trim();
+    if (!str) return null;
+    
+    // Handle LinkedIn Helper format: "2024.01.29" or "2024.1.29"
+    if (/^\d{4}\.\d{1,2}\.\d{1,2}$/.test(str)) {
+        const iso = str.replace(/\./g, "-");
+        const dt = new Date(iso + "T00:00:00Z");
+        return isNaN(dt) ? null : dt;
     }
-    const dt = new Date(d);
-    return isNaN(dt) ? null : dt;
+    
+    // Handle ISO 8601 formats: "2024-01-29T17:53:34.277Z" or "2024-01-29"
+    if (/^\d{4}-\d{1,2}-\d{1,2}/.test(str)) {
+        const dt = new Date(str);
+        if (!isNaN(dt)) return dt;
+    }
+    
+    // Handle various common formats via Date.parse
+    // Examples: "01/29/2024", "January 29, 2024", "29 Jan 2024"
+    const timestamp = Date.parse(str);
+    if (!isNaN(timestamp)) {
+        return new Date(timestamp);
+    }
+    
+    // Last resort: try new Date() constructor
+    const dt = new Date(str);
+    if (!isNaN(dt)) return dt;
+    
+    // Date conversion failed - log it for debugging
+    console.warn(`[safeDate] Failed to parse date: "${d}" (type: ${typeof d})`);
+    return null;
 }
 
 /* ------------------------------------------------------------------
