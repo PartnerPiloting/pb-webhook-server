@@ -645,6 +645,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                 initialTerms={formData.searchTerms || formData.searchTokensCanonical || ''}
                 onTermsChange={handleSearchTermsChange}
                 disabled={isUpdating}
+                showBooleanHelp={false}
               />
               {/* Helper note removed per UX feedback */}
             </div>
