@@ -646,6 +646,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                 onTermsChange={handleSearchTermsChange}
                 disabled={isUpdating}
                 showBooleanHelp={false}
+                placeholder="Type terms and press Enter or comma to tag this lead..."
               />
               {/* Helper note removed per UX feedback */}
             </div>
