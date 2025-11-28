@@ -150,9 +150,15 @@ async function upsertLead(
     if (existing.length) {
         isNewLead = false;
         logger.info(`leadService/upsertLead: Updating existing lead ${finalUrl} (ID: ${existing[0].id})`);
-        // For "Date Connected", if it's now "Connected" and didn't have a date before, or if a new date is provided
-        if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !existing[0].fields[LEAD_FIELDS.DATE_CONNECTED] && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
-            fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
+        // For "Date Connected", update if:
+        // 1. We have a new connection date from the webhook, OR
+        // 2. Status is now "Connected" but there's no existing date
+        if (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED) {
+            if (!existing[0].fields[LEAD_FIELDS.DATE_CONNECTED] && !fields[LEAD_FIELDS.DATE_CONNECTED]) {
+                // No date anywhere - set to now
+                fields[LEAD_FIELDS.DATE_CONNECTED] = new Date().toISOString();
+            }
+            // If fields[LEAD_FIELDS.DATE_CONNECTED] already exists from connectionSince, it will be used
         }
         
         // Validate field names before sending to Airtable
