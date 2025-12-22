@@ -191,7 +191,7 @@ export default function LeadSearchTableDirect({
     <div className="bg-white rounded-lg shadow">
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="text-lg font-medium text-gray-900">
-          Search Results (showing {sortedLeads.length}{totalLeads ? ` of ${totalLeads}` : ''})
+          Search Results (showing {sortedLeads.length} of {totalLeads})
           <span className="ml-2 text-sm font-normal text-gray-500">
             Sorted by {columns.find((col) => col.key === sortKey)?.label || sortKey} ({sortDir === 'asc' ? 'ascending' : 'descending'})
           </span>
