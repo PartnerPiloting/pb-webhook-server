@@ -266,6 +266,9 @@ router.get('/leads/search', async (req, res) => {
     // Build filter formula based on query, priority, and search terms
     let filterParts = [];
     
+    // Track if any filters are applied (for total count optimization)
+    const hasFilters = (searchTerm && searchTerm.trim() !== '') || (priority && priority !== 'all') || (searchTerms && searchTerms.trim() !== '');
+    
     // Add name and LinkedIn URL search filter (only if search term provided)
     if (searchTerm && searchTerm.trim() !== '') {
       // Split search term into words for better name matching
@@ -351,8 +354,31 @@ router.get('/leads/search', async (req, res) => {
     let collected = [];
     let skipped = 0;
     let done = false;
+    let totalCount = null; // Only count when filters applied
 
     logger.info(`LinkedIn Routes: Streaming pages for offset=${pageOffset}, limit=${pageLimit}…`);
+
+    // If filters are applied, count total matching records (expensive but useful)
+    if (hasFilters) {
+      logger.info('LinkedIn Routes: Filters detected, counting total matching records...');
+      let countTotal = 0;
+      await new Promise((resolve, reject) => {
+        airtableBase('Leads')
+          .select({ filterByFormula: filterFormula, fields: ['First Name'] }) // Minimal field to speed up count
+          .eachPage(
+            (records, fetchNextPage) => {
+              countTotal += records.length;
+              fetchNextPage();
+            },
+            (err) => {
+              if (err) return reject(err);
+              resolve();
+            }
+          );
+      });
+      totalCount = countTotal;
+      logger.info(`LinkedIn Routes: Total matching records: ${totalCount}`);
+    }
 
     await new Promise((resolve, reject) => {
       airtableBase('Leads')
@@ -416,7 +442,12 @@ router.get('/leads/search', async (req, res) => {
       };
     });
 
-    res.json(transformedLeads);
+    res.json({
+      leads: transformedLeads,
+      total: totalCount, // null when no filters, number when filtered
+      offset: pageOffset,
+      limit: pageLimit
+    });
 
   } catch (error) {
     logger.error('LinkedIn Routes: Error in /leads/search:', error);
