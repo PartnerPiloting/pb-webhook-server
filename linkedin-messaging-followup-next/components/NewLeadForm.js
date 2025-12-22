@@ -60,8 +60,9 @@ const NewLeadForm = ({ onLeadCreated }) => {
       console.log('Input URL:', formData.linkedinProfileUrl);
       console.log('Normalized Input URL:', normalizedInputUrl);
       
-      // Search for leads - we'll get all results and filter them locally
-      const results = await searchLeads(formData.linkedinProfileUrl, 'all');
+      // Search for leads - returns { leads: [...], total: number|null }
+      const response = await searchLeads(formData.linkedinProfileUrl, 'all');
+      const results = response.leads || response; // Support both new and old format
       console.log('Search results:', results);
       
       // Filter for exact normalized LinkedIn URL matches

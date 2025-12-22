@@ -198,17 +198,32 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
     
     const response = await api.get('/leads/search', { params });
     
-    // Ensure we always return an array
+    // Handle both old (array) and new (object with leads/total) response formats
+    let leadsArray = [];
+    let total = null;
+    
     if (!response.data) {
-      return [];
+      return { leads: [], total: null };
     }
     
-    if (!Array.isArray(response.data)) {
-      return [];
+    // New format: { leads: [...], total: number|null }
+    if (response.data.leads && Array.isArray(response.data.leads)) {
+      leadsArray = response.data.leads;
+      total = response.data.total;
+    }
+    // Old format: just an array
+    else if (Array.isArray(response.data)) {
+      leadsArray = response.data;
+      total = null;
+    }
+    // Unknown format
+    else {
+      console.error('Unexpected response format from /leads/search:', response.data);
+      return { leads: [], total: null };
     }
     
     // Map backend field names to frontend field names
-    return response.data.map(lead => ({
+    const mappedLeads = leadsArray.map(lead => ({
       'Profile Key': lead.id || '',
       'First Name': lead.firstName || '',
       'Last Name': lead.lastName || '',
@@ -228,6 +243,8 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
       // Include all raw data for compatibility
       ...lead
     }));
+    
+    return { leads: mappedLeads, total };
   } catch (error) {
     console.error('Search error:', error);
     throw new Error('Failed to search leads');
