@@ -30,6 +30,7 @@ const LeadSearchUpdate = () => {
   const [searchTerms, setSearchTerms] = useState('');
   const [allLeads, setAllLeads] = useState([]); // Store all search results
   const [leads, setLeads] = useState([]); // Display leads (paginated subset)
+  const [totalLeads, setTotalLeads] = useState(null); // Total matching records (null when no filters)
   const [currentPage, setCurrentPage] = useState(1);
   const [leadsPerPage] = useState(25); // Show 25 leads per page
   const [selectedLead, setSelectedLead] = useState(null);
@@ -90,7 +91,11 @@ const LeadSearchUpdate = () => {
       const offset = (page - 1) * leadsPerPage;
       
       // Use backend search with pagination
-      const results = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset);
+      const response = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset);
+      
+      // Handle new response structure: { leads: [...], total: number|null }
+      const results = response.leads || response; // Support both old and new format
+      const total = response.total || null;
       
       // Check again after async operation
       if (requestId !== currentSearchRef.current) {
@@ -113,12 +118,13 @@ const LeadSearchUpdate = () => {
 
       // With API pagination, we only get the current page
       setLeads(filteredResults);
+      setTotalLeads(total); // Set total from API (null when no filters, number when filtered)
       setCurrentPage(page);
       
       // For now, assume we have more data if we get a full page (we'll improve this later)
       setAllLeads(filteredResults);
       
-      console.log(`🔍 Search completed: "${query}" page ${page} (ID: ${requestId}) - ${filteredResults.length} results on this page`);
+      console.log(`🔍 Search completed: "${query}" page ${page} (ID: ${requestId}) - ${filteredResults.length} results on this page, total: ${total || 'unknown'}`);
     } catch (error) {
       console.error('Search error:', error);
       if (requestId === currentSearchRef.current) {
@@ -301,7 +307,7 @@ const LeadSearchUpdate = () => {
       {/* Enhanced Search and Table View - Full Width */}
       <LeadSearchEnhanced
         leads={leads}
-        totalLeads={allLeads.length}
+        totalLeads={totalLeads}
         currentPage={currentPage}
         leadsPerPage={leadsPerPage}
         onLeadSelect={handleLeadSelect}
@@ -314,8 +320,8 @@ const LeadSearchUpdate = () => {
         currentPage={currentPage}
         pageItemCount={leads.length}
         pageSize={leadsPerPage}
-        // We don't have a true total; pass null so component omits it
-        knownTotal={null}
+        // Pass total from API (null when no filters, number when filtered)
+        knownTotal={totalLeads}
         onPageChange={handlePageChange}
         isLoading={isLoading}
         disableNext={leads.length < leadsPerPage}
