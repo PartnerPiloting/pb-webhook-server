@@ -238,10 +238,18 @@ const StartHereContent: React.FC = () => {
   };
 
   const copyTopicLink = (topicId: string) => {
-    // Get current URL without client ID parameter
+    // Ask coach for the recipient's client ID
+    const recipientClientId = prompt('Enter client ID for the link recipient:\n\n(Example: John-Smith or Jane-Doe)');
+    
+    if (!recipientClientId || !recipientClientId.trim()) {
+      alert('Link not copied - client ID is required');
+      return;
+    }
+    
+    // Build URL with recipient's client ID and topic
     const url = new URL(window.location.href);
-    url.searchParams.delete('testClient');
-    url.searchParams.delete('clientId');
+    url.searchParams.set('testClient', recipientClientId.trim());
+    url.searchParams.delete('clientId'); // Use testClient only
     url.searchParams.set('topic', topicId);
     
     navigator.clipboard.writeText(url.toString()).then(() => {
@@ -251,6 +259,7 @@ const StartHereContent: React.FC = () => {
       }, 2000);
     }).catch(err => {
       console.error('Failed to copy link:', err);
+      alert('Failed to copy link to clipboard');
     });
   };
 
