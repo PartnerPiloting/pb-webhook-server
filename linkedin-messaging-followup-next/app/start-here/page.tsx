@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDownIcon } from '@heroicons/react/24/solid';
+import { useSearchParams } from 'next/navigation';
+import { ChevronDownIcon, LinkIcon } from '@heroicons/react/24/solid';
 import Layout from '../../components/Layout';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
@@ -22,6 +23,8 @@ const StartHereContent: React.FC = () => {
   const [data, setData] = useState<HelpResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState<Record<string, boolean>>({});
+  const searchParams = useSearchParams();
   // Map-based open state (reverted to stable approach)
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
   const [openSubs, setOpenSubs] = useState<Record<string, boolean>>({});
@@ -118,6 +121,63 @@ const StartHereContent: React.FC = () => {
     return () => { active = false; };
   }, []);
 
+  // Auto-expand topic from URL parameter
+  useEffect(() => {
+    if (!data || loading) return;
+    const topicParam = searchParams.get('topic');
+    if (!topicParam) return;
+
+    // Find the topic and its parent category/subcategory
+    for (const cat of data.categories) {
+      for (const sub of cat.subCategories) {
+        const topic = sub.topics.find(t => t.id === topicParam);
+        if (topic) {
+          // Open the hierarchy
+          setOpenCats({ [cat.id]: true });
+          setOpenSubs({ [sub.id]: true });
+          setOpenTopics({ [topic.id]: true });
+          
+          // Load topic content
+          const loadState = topicLoadState[topic.id];
+          if (loadState === undefined || loadState === 'idle' || loadState === 'error') {
+            setTopicLoadState(s=>({...s,[topic.id]:'loading'}));
+            try {
+              if (topicLoadingTimers.current[topic.id]) clearTimeout(topicLoadingTimers.current[topic.id]);
+              topicLoadingTimers.current[topic.id] = setTimeout(() => {
+                setTopicLoadState(s => (s[topic.id] === 'loading' ? { ...s, [topic.id]: 'error' } : s));
+              }, 15000);
+            } catch {}
+            getHelpTopic(topic.id, { includeInstructions: false })
+              .then(data => {
+                setTopicBlocks(s=>({...s,[topic.id]: data.blocks || [] }));
+                setTopicDetails(s=>({...s,[topic.id]: data }));
+                setTopicLoadState(s=>({...s,[topic.id]:'ready'}));
+                // Scroll to topic after content loads
+                setTimeout(() => {
+                  const el = document.getElementById(`topic-${topic.id}`);
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 300);
+              })
+              .catch(err => {
+                console.error('topic load error', topic.id, err);
+                setTopicLoadState(s=>({...s,[topic.id]:'error'}));
+              })
+              .finally(() => {
+                try { clearTimeout(topicLoadingTimers.current[topic.id]); delete topicLoadingTimers.current[topic.id]; } catch {}
+              });
+          } else {
+            // Already loaded, just scroll
+            setTimeout(() => {
+              const el = document.getElementById(`topic-${topic.id}`);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 300);
+          }
+          break;
+        }
+      }
+    }
+  }, [data, loading, searchParams, topicLoadState]);
+
   if (loading) {
     return <div className="text-gray-500">Loading Start Here content...</div>;
   }
@@ -174,6 +234,23 @@ const StartHereContent: React.FC = () => {
         }
       }
       return next;
+    });
+  };
+
+  const copyTopicLink = (topicId: string) => {
+    // Get current URL without client ID parameter
+    const url = new URL(window.location.href);
+    url.searchParams.delete('testClient');
+    url.searchParams.delete('clientId');
+    url.searchParams.set('topic', topicId);
+    
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopySuccess(s => ({ ...s, [topicId]: true }));
+      setTimeout(() => {
+        setCopySuccess(s => ({ ...s, [topicId]: false }));
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy link:', err);
     });
   };
 
@@ -289,13 +366,26 @@ const StartHereContent: React.FC = () => {
                               {sub.topics.sort((a,b)=>a.order-b.order).map(t => {
                                 const tOpen = !!openTopics[t.id];
                                 return (
-                                  <li key={t.id} className="border border-gray-200 rounded-md bg-gray-50/40">
-                                    <button onClick={()=>toggleTopic(t.id)} className="w-full flex items-start justify-between gap-3 text-left px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md">
-                                      <span className="flex-1 text-gray-800 leading-snug">
-                                        <span className="font-medium">{t.title}</span>
-                                      </span>
-                                      <ChevronDownIcon className={`h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5 transition-transform ${tOpen ? 'rotate-180 text-blue-500' : 'group-hover:text-gray-600'}`} />
-                                    </button>
+                                  <li key={t.id} id={`topic-${t.id}`} className="border border-gray-200 rounded-md bg-gray-50/40">
+                                    <div className="flex items-center">
+                                      <button onClick={()=>toggleTopic(t.id)} className="flex-1 flex items-start justify-between gap-3 text-left px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md">
+                                        <span className="flex-1 text-gray-800 leading-snug">
+                                          <span className="font-medium">{t.title}</span>
+                                        </span>
+                                        <ChevronDownIcon className={`h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5 transition-transform ${tOpen ? 'rotate-180 text-blue-500' : 'group-hover:text-gray-600'}`} />
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); copyTopicLink(t.id); }}
+                                        className="px-2 py-2 text-gray-400 hover:text-blue-600 transition-colors"
+                                        title="Copy link to this topic"
+                                      >
+                                        {copySuccess[t.id] ? (
+                                          <span className="text-xs font-medium text-green-600">✓</span>
+                                        ) : (
+                                          <LinkIcon className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    </div>
                                     {tOpen && (
                                       <div className="px-4 pb-4 pt-1 space-y-3 border-t border-gray-100">
                                         {topicLoadState[t.id]==='error' && (
