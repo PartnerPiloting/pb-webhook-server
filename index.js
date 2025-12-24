@@ -2198,7 +2198,16 @@ app.get('/api/help/start-here', async (req, res) => {
     if (req.query.table === 'copy') helpTableName = 'Help copy';
     else if (req.query.table === 'help') helpTableName = 'Help';
     else helpTableName = process.env.HELP_TABLE_DEFAULT || 'Help';
-    await collectFiltered(helpTableName, rowsTopics, "{help_area} = 'start_here'");
+    
+    // Section filtering (Setup, Regular Tasks, Getting Better Results)
+    let filterFormula = "{help_area} = 'start_here'";
+    const section = req.query.section;
+    if (section) {
+        // Add section filter: AND({help_area} = 'start_here', {Section} = 'Regular Tasks')
+        filterFormula = `AND({help_area} = 'start_here', {Section} = '${section.replace(/'/g, "\\'")}')`;
+    }
+    
+    await collectFiltered(helpTableName, rowsTopics, filterFormula);
 
         // Maps
         const catMap = new Map();

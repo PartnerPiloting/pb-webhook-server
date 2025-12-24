@@ -1135,6 +1135,7 @@ export const getStartHereHelp = async (opts = {}) => {
   } catch {}
   if (opts.refresh) params.set('refresh', '1');
   if (opts.table) params.set('table', opts.table); // e.g. 'copy' to inspect legacy table
+  if (opts.section) params.set('section', opts.section); // Section filtering: Setup, Regular Tasks, Getting Better Results
     // Add a cache-buster to avoid CDN/browser caching stale responses in preview envs
     params.set('_', String(Date.now()));
   const startHereUrl = `${baseUrl}/api/help/start-here?${params.toString()}`;
