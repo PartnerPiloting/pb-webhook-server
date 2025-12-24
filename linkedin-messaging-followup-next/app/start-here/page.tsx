@@ -107,7 +107,9 @@ const StartHereContent: React.FC = () => {
     let active = true;
     (async () => {
       try {
-        const resp = await getStartHereHelp();
+        // Check if refresh parameter is present in URL
+        const shouldRefresh = searchParams.get('refresh') === '1';
+        const resp = await getStartHereHelp({ refresh: shouldRefresh });
         if (!active) return;
         setData(resp);
         setLoading(false);
@@ -119,7 +121,7 @@ const StartHereContent: React.FC = () => {
       }
     })();
     return () => { active = false; };
-  }, []);
+  }, [searchParams]);
 
   // Auto-expand topic from URL parameter
   useEffect(() => {
