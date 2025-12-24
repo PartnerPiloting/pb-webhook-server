@@ -24,6 +24,7 @@ const StartHereContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState<Record<string, boolean>>({});
+  const [activeSection, setActiveSection] = useState<string>('Regular Tasks'); // Default to Regular Tasks
   const searchParams = useSearchParams();
   // Map-based open state (reverted to stable approach)
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
@@ -109,7 +110,10 @@ const StartHereContent: React.FC = () => {
       try {
         // Check if refresh parameter is present in URL
         const shouldRefresh = searchParams.get('refresh') === '1';
-        const resp = await getStartHereHelp({ refresh: shouldRefresh });
+        const resp = await getStartHereHelp({ 
+          refresh: shouldRefresh,
+          section: activeSection // Pass section filter to backend
+        });
         if (!active) return;
         setData(resp);
         setLoading(false);
@@ -121,7 +125,7 @@ const StartHereContent: React.FC = () => {
       }
     })();
     return () => { active = false; };
-  }, [searchParams]);
+  }, [searchParams, activeSection]); // Re-fetch when section changes
 
   // Auto-expand topic from URL parameter
   useEffect(() => {
@@ -333,6 +337,23 @@ const StartHereContent: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto space-y-5">
+      {/* Section Tabs */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1 flex gap-1">
+        {['Setup', 'Regular Tasks', 'Getting Better Results'].map(section => (
+          <button
+            key={section}
+            onClick={() => setActiveSection(section)}
+            className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition ${
+              activeSection === section
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }`}
+          >
+            {section}
+          </button>
+        ))}
+      </div>
+      
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-xs text-gray-500 pl-1 tracking-wide">{data.meta?.totalTopics ?? 0} topics • fetched {new Date(data.fetchedAt).toLocaleTimeString()} {data.meta?.cached && '(cached)'} • ordering: {data.meta?.orderingStrategy || 'default'} • mode: Full</div>
       </div>
