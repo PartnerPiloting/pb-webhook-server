@@ -1767,7 +1767,7 @@ moduleLogger.info("index.js: Emergency debug routes added");
 
 // --- HELP / START HERE (PHASE 1) ---
 // Simple in-memory cache for start_here help content
-let __helpStartHereCache = { data: null, fetchedAt: 0 };
+let __helpStartHereCache = new Map(); // Cache per section: Map<section, {data, fetchedAt}>
 const HELP_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 // Utility to slugify for stable IDs
@@ -2106,9 +2106,11 @@ function sanitizeHelpHtml(html) {
 app.get('/api/help/start-here', async (req, res) => {
     try {
         const refresh = req.query.refresh === '1';
+        const section = req.query.section || 'all'; // Cache key includes section
         const now = Date.now();
-        if (!refresh && __helpStartHereCache.data && (now - __helpStartHereCache.fetchedAt) < HELP_CACHE_TTL_MS) {
-            const cachedCopy = JSON.parse(JSON.stringify(__helpStartHereCache.data));
+        const cached = __helpStartHereCache.get(section);
+        if (!refresh && cached && cached.data && (now - cached.fetchedAt) < HELP_CACHE_TTL_MS) {
+            const cachedCopy = JSON.parse(JSON.stringify(cached.data));
             // If the cached payload still has unresolved {{media:ID}} tokens (from an earlier version
             // before placeholder resolution executed), bypass the cache and rebuild so users do not
             // see raw tokens in the UI.
@@ -2545,7 +2547,8 @@ app.get('/api/help/start-here', async (req, res) => {
         if (layoutErrors.length) payload.meta.layoutErrors = layoutErrors.slice(0,10); // cap for response
         payload.meta.layoutMode = 'all';
     }
-    __helpStartHereCache = { data: payload, fetchedAt: Date.now() };
+    const section = req.query.section || 'all';
+    __helpStartHereCache.set(section, { data: payload, fetchedAt: Date.now() });
     res.json(payload);
     } catch (e) {
         try { moduleLogger.error('Help Start Here endpoint error raw =>', e); } catch {}
