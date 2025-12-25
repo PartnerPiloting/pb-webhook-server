@@ -2203,8 +2203,7 @@ app.get('/api/help/start-here', async (req, res) => {
     
     // Section filtering (Setup, Regular Tasks, Getting Better Results)
     let filterFormula = "{help_area} = 'start_here'";
-    const section = req.query.section;
-    if (section) {
+    if (section && section !== 'all') {
         // Add section filter: AND({help_area} = 'start_here', {Section} = 'Regular Tasks')
         filterFormula = `AND({help_area} = 'start_here', {Section} = '${section.replace(/'/g, "\\'")}')`;
     }
@@ -2547,7 +2546,6 @@ app.get('/api/help/start-here', async (req, res) => {
         if (layoutErrors.length) payload.meta.layoutErrors = layoutErrors.slice(0,10); // cap for response
         payload.meta.layoutMode = 'all';
     }
-    const section = req.query.section || 'all';
     __helpStartHereCache.set(section, { data: payload, fetchedAt: Date.now() });
     res.json(payload);
     } catch (e) {
