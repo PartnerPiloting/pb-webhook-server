@@ -361,15 +361,111 @@ const StartHereContent: React.FC = () => {
         {data.categories.sort((a,b)=>a.order-b.order).map(cat => {
           const catOpen = !!openCats[cat.id];
           const topicCount = cat.subCategories.reduce((sum, sc) => sum + sc.topics.length, 0);
+          
+          // Flattening logic: hide category/subcategory if it's just 1 subcategory with 1 topic
+          const shouldFlatten = cat.subCategories.length === 1 && topicCount === 1;
+          
+          if (shouldFlatten) {
+            // Render topic directly without category/subcategory wrapper
+            const sub = cat.subCategories[0];
+            const t = sub.topics[0];
+            const tOpen = !!openTopics[t.id];
+            
+            return (
+              <div key={cat.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <li id={`topic-${t.id}`} className="list-none">
+                  <div className="flex items-center">
+                    <button onClick={()=>toggleTopic(t.id)} className="flex-1 flex items-start justify-between gap-3 text-left px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <span className="flex-1 text-gray-800 leading-snug">
+                        <span className="font-semibold">{t.title}</span>
+                      </span>
+                      <ChevronDownIcon className={`h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5 transition-transform ${tOpen ? 'rotate-180 text-blue-500' : 'group-hover:text-gray-600'}`} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); copyTopicLink(t.id); }}
+                      className="px-4 py-4 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="Copy link to this topic"
+                    >
+                      {copySuccess[t.id] ? (
+                        <span className="text-xs font-medium text-green-600">✓</span>
+                      ) : (
+                        <LinkIcon className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  {tOpen && (
+                    <div className="px-5 pb-5 pt-1 space-y-3 border-t border-gray-100">
+                      {topicLoadState[t.id]==='error' && (
+                        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 flex items-center justify-between">
+                          <span>Failed to load topic content.</span>
+                          <button onClick={()=>{ setTopicLoadState(s=>({...s,[t.id]:'idle'})); toggleTopic(t.id); }} className="text-red-700 underline font-medium">Retry</button>
+                        </div>
+                      )}
+                      <div className="text-[13px] leading-relaxed text-gray-700 space-y-4">
+                        {(() => {
+                          const st = topicLoadState[t.id];
+                          if (st === 'loading') return <div className="text-xs text-gray-400">Loading topic content…</div>;
+                          if (st === 'error') return null;
+                          const full = topicDetails[t.id];
+                          const blocks = topicBlocks[t.id];
+                          if (full && typeof full.bodyHtml === 'string' && full.bodyHtml.trim()) {
+                            return renderHelpHtml(full.bodyHtml, t.id + '::html');
+                          }
+                          if (blocks && blocks.length) return renderBlocksInline(t.id, blocks);
+                          const fallback = (t as any).body || '';
+                          if (fallback) return renderMarkdown(String(fallback), t.id + '::fallback');
+                          return <div className="text-xs text-gray-400">Preparing topic content…</div>;
+                        })()}
+                      </div>
+                      <div className="bg-white/60 border border-gray-200 rounded-md p-2 flex flex-col gap-2 max-h-96 overflow-hidden">
+                        <div className="flex-1 overflow-auto pr-1 space-y-3 order-1">
+                          {qaHistory[t.id] && qaHistory[t.id].length > 0 ? (
+                            qaHistory[t.id].map((m, idx) => (
+                              <div key={t.id+'::msg::'+idx} className={`text-[12px] leading-relaxed rounded-md px-2 py-1.5 border ${m.role==='user' ? 'bg-blue-50/70 border-blue-200 text-gray-800' : 'bg-white border-gray-200 text-gray-700'}`}> 
+                                {m.role==='assistant' ? (
+                                  <>
+                                    {renderMarkdown(sanitizeAnswer(m.text), t.id+'::ans::'+idx)}
+                                    {m.method && m.method !== 'error' && (
+                                      <div className="mt-1 text-[9px] tracking-wide text-gray-300" title="Internal retrieval method (hidden from end users)">/* {m.method} */</div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="font-medium">{m.text}</div>
+                                )}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-[11px] text-gray-400">Ask a question below to start a mini Q&A for this topic.</div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 border-t border-gray-100 pt-2 order-2">
+                          <input
+                            type="text"
+                            value={qaInput[t.id] || ''}
+                            onChange={e=>setQaInput(s=>({...s,[t.id]:e.target.value}))}
+                            placeholder="Ask a question about this topic..."
+                            className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); askQuestion(t.id);} }}
+                          />
+                          <button onClick={()=>askQuestion(t.id)} disabled={qaLoading[t.id]} className="px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed min-w-[52px]">{qaLoading[t.id] ? '...' : 'Ask'}</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              </div>
+            );
+          }
+          
+          // Normal rendering for categories with multiple topics
           return (
             <div key={cat.id} className={`group relative flex flex-col bg-white rounded-lg shadow-sm transition border ${catOpen ? 'md:col-span-2 border-blue-500 shadow-md overflow-hidden' : 'border-gray-200 hover:shadow-md'}`}>
               <button onClick={()=>toggleCat(cat.id)} aria-expanded={catOpen} className="w-full flex justify-between items-start gap-3 text-left px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <div className="pr-6">
                   <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
                     <span>{cat.name}</span>
-                    <span className="inline-block text-[10px] font-medium uppercase tracking-wide text-gray-400 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded">Cat {cat.order}</span>
                   </h3>
-                  <p className="text-xs text-gray-500">{cat.subCategories.length} sub-categories • {topicCount} topics</p>
+                  <p className="text-xs text-gray-500">{topicCount} topic{topicCount !== 1 ? 's' : ''}</p>
                   {catOpen && cat.description && (
                     <p className="mt-2 text-[11px] leading-snug text-gray-600 pr-4">{cat.description}</p>
                   )}
@@ -381,6 +477,100 @@ const StartHereContent: React.FC = () => {
                   <div className="divide-y divide-gray-100">
                     {cat.subCategories.sort((a,b)=>a.order-b.order).map(sub => {
                       const subOpen = !!openSubs[sub.id];
+                      const shouldHideSubcategory = sub.topics.length === 1;
+                      
+                      if (shouldHideSubcategory) {
+                        // Render topic directly without subcategory wrapper
+                        const t = sub.topics[0];
+                        const tOpen = !!openTopics[t.id];
+                        
+                        return (
+                          <div key={sub.id} className="py-3 first:pt-1 last:pb-1">
+                            <li id={`topic-${t.id}`} className="list-none border border-gray-200 rounded-md bg-gray-50/40">
+                              <div className="flex items-center">
+                                <button onClick={()=>toggleTopic(t.id)} className="flex-1 flex items-start justify-between gap-3 text-left px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md">
+                                  <span className="flex-1 text-gray-800 leading-snug">
+                                    <span className="font-medium">{t.title}</span>
+                                  </span>
+                                  <ChevronDownIcon className={`h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5 transition-transform ${tOpen ? 'rotate-180 text-blue-500' : 'group-hover:text-gray-600'}`} />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); copyTopicLink(t.id); }}
+                                  className="px-2 py-2 text-gray-400 hover:text-blue-600 transition-colors"
+                                  title="Copy link to this topic"
+                                >
+                                  {copySuccess[t.id] ? (
+                                    <span className="text-xs font-medium text-green-600">✓</span>
+                                  ) : (
+                                    <LinkIcon className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                              {tOpen && (
+                                <div className="px-4 pb-4 pt-1 space-y-3 border-t border-gray-100">
+                                  {topicLoadState[t.id]==='error' && (
+                                    <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 flex items-center justify-between">
+                                      <span>Failed to load topic content.</span>
+                                      <button onClick={()=>{ setTopicLoadState(s=>({...s,[t.id]:'idle'})); toggleTopic(t.id); }} className="text-red-700 underline font-medium">Retry</button>
+                                    </div>
+                                  )}
+                                  <div className="text-[13px] leading-relaxed text-gray-700 space-y-4">
+                                    {(() => {
+                                      const st = topicLoadState[t.id];
+                                      if (st === 'loading') return <div className="text-xs text-gray-400">Loading topic content…</div>;
+                                      if (st === 'error') return null;
+                                      const full = topicDetails[t.id];
+                                      const blocks = topicBlocks[t.id];
+                                      if (full && typeof full.bodyHtml === 'string' && full.bodyHtml.trim()) {
+                                        return renderHelpHtml(full.bodyHtml, t.id + '::html');
+                                      }
+                                      if (blocks && blocks.length) return renderBlocksInline(t.id, blocks);
+                                      const fallback = (t as any).body || '';
+                                      if (fallback) return renderMarkdown(String(fallback), t.id + '::fallback');
+                                      return <div className="text-xs text-gray-400">Preparing topic content…</div>;
+                                    })()}
+                                  </div>
+                                  <div className="bg-white/60 border border-gray-200 rounded-md p-2 flex flex-col gap-2 max-h-96 overflow-hidden">
+                                    <div className="flex-1 overflow-auto pr-1 space-y-3 order-1">
+                                      {qaHistory[t.id] && qaHistory[t.id].length > 0 ? (
+                                        qaHistory[t.id].map((m, idx) => (
+                                          <div key={t.id+'::msg::'+idx} className={`text-[12px] leading-relaxed rounded-md px-2 py-1.5 border ${m.role==='user' ? 'bg-blue-50/70 border-blue-200 text-gray-800' : 'bg-white border-gray-200 text-gray-700'}`}> 
+                                            {m.role==='assistant' ? (
+                                              <>
+                                                {renderMarkdown(sanitizeAnswer(m.text), t.id+'::ans::'+idx)}
+                                                {m.method && m.method !== 'error' && (
+                                                  <div className="mt-1 text-[9px] tracking-wide text-gray-300" title="Internal retrieval method (hidden from end users)">/* {m.method} */</div>
+                                                )}
+                                              </>
+                                            ) : (
+                                              <div className="font-medium">{m.text}</div>
+                                            )}
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className="text-[11px] text-gray-400">Ask a question below to start a mini Q&A for this topic.</div>
+                                      )}
+                                    </div>
+                                    <div className="flex gap-2 border-t border-gray-100 pt-2 order-2">
+                                      <input
+                                        type="text"
+                                        value={qaInput[t.id] || ''}
+                                        onChange={e=>setQaInput(s=>({...s,[t.id]:e.target.value}))}
+                                        placeholder="Ask a question about this topic..."
+                                        className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); askQuestion(t.id);} }}
+                                      />
+                                      <button onClick={()=>askQuestion(t.id)} disabled={qaLoading[t.id]} className="px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed min-w-[52px]">{qaLoading[t.id] ? '...' : 'Ask'}</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </li>
+                          </div>
+                        );
+                      }
+                      
+                      // Normal rendering for subcategories with multiple topics
                       return (
                         <div key={sub.id} className="py-3 first:pt-1 last:pb-1">
                           <button onClick={()=>toggleSubCategory(sub.id)} className="w-full text-left mb-1 flex items-start justify-between group/sub px-1">
