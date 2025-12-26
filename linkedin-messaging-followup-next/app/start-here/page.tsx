@@ -389,7 +389,7 @@ const StartHereContent: React.FC = () => {
             const tOpen = !!openTopics[t.id];
             
             return (
-              <div key={cat.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+              <div key={cat.id} className="md:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <li id={`topic-${t.id}`} className="list-none">
                   <div className="flex items-center">
                     <button onClick={()=>toggleTopic(t.id)} className="flex-1 flex items-start justify-between gap-3 text-left px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
