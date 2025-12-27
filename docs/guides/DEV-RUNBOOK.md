@@ -341,7 +341,7 @@ curl http://localhost:3001/basic-test      # run in a DIFFERENT terminal
 
 ## Reusable development pattern (for any new feature)
 - Keep API and UI on predictable ports (3001/3000) in dev.
-- UI reads API base from a single env var (`NEXT_PUBLIC_API_BASE_URL`).
+- UI auto-detects backend environment (staging vs production) from the site hostname and `VERCEL_ENV`. `NEXT_PUBLIC_API_BASE_URL` is primarily for local overrides (e.g., pointing to `http://localhost:3001`) and is not required for staging/production.
 - Add a simple `/status` endpoint for each feature.
 - Prefer dry-run defaults for risky operations; add a clear finalize/reset path.
 - Provide a “select all by default” path and a “testPageSize/page” option for safe testing.

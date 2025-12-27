@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { validateEnvironment, displayValidationResults } from '../utils/validateEnv';
+// Show the actually resolved backend base to avoid confusion with env var fallbacks
+import { getBackendBase } from '../services/api';
 
 const EnvironmentValidator = ({ children }) => {
   const [isValidated, setIsValidated] = useState(false);
@@ -15,6 +17,10 @@ const EnvironmentValidator = ({ children }) => {
       
       // Display results (warnings are OK, errors are not)
       const isValid = displayValidationResults(results);
+      try {
+        const resolved = getBackendBase();
+        console.info('[Environment] Resolved backend base:', resolved);
+      } catch {}
       
       if (isValid) {
         setIsValidated(true);
