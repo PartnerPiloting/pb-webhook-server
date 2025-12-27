@@ -143,18 +143,28 @@ const StartHereContent: React.FC = () => {
     const topicParam = searchParams.get('topic');
     if (!topicParam) return;
 
+    console.log('[Deep Link] Looking for topic:', topicParam);
+    console.log('[Deep Link] Available categories:', data.categories.length);
+
     // Find the topic and its parent category/subcategory (searching across all loaded data)
     for (const cat of data.categories) {
       for (const sub of cat.subCategories) {
         const topic = sub.topics.find(t => t.id === topicParam);
         if (topic) {
+          console.log('[Deep Link] FOUND topic:', topic.title);
+          console.log('[Deep Link] Topic object:', topic);
+          console.log('[Deep Link] Topic section value:', topic.section, 'Type:', typeof topic.section);
+          console.log('[Deep Link] Current activeSection:', activeSection);
+          
           // Switch to the correct section tab if topic has section info
           if (topic.section) {
-            console.log('[Deep Link] Found topic:', topic.title, 'Section:', topic.section);
+            console.log('[Deep Link] Will switch to section:', topic.section);
             // Only switch section if it's different from current (avoid re-render loop)
             if (topic.section !== activeSection) {
               setActiveSection(topic.section);
             }
+          } else {
+            console.log('[Deep Link] WARNING: Topic has no section field!');
           }
           
           // Open the hierarchy
