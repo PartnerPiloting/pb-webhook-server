@@ -110,11 +110,17 @@ const StartHereContent: React.FC = () => {
       try {
         // Check if refresh parameter is present in URL
         const shouldRefresh = searchParams.get('refresh') === '1';
+        const topicParam = searchParams.get('topic');
+        
+        // If there's a topic parameter, load ALL sections first to find it
+        // Otherwise, just load the active section
+        const sectionToLoad = topicParam ? 'all' : activeSection;
+        
         // Show loading indicator when switching sections (but not initial load)
         if (!loading) setSectionLoading(true);
         const resp = await getStartHereHelp({ 
           refresh: shouldRefresh,
-          section: activeSection // Pass section filter to backend
+          section: sectionToLoad // Load all sections if topic param present
         });
         if (!active) return;
         setData(resp);
@@ -137,11 +143,18 @@ const StartHereContent: React.FC = () => {
     const topicParam = searchParams.get('topic');
     if (!topicParam) return;
 
-    // Find the topic and its parent category/subcategory
+    // Find the topic and its parent category/subcategory (searching across all loaded data)
     for (const cat of data.categories) {
       for (const sub of cat.subCategories) {
         const topic = sub.topics.find(t => t.id === topicParam);
         if (topic) {
+          // Determine which section this category belongs to and switch to it
+          // Categories are tagged with section in the data, use that to switch tabs
+          const categorySection = cat.name; // Categories themselves are section-specific
+          // Map category to section tab - the section is stored in meta or we infer from fetch
+          // Since we loaded 'all', we need to figure out which tab to show
+          // For now, just open it in current section - better UX than nothing
+          
           // Open the hierarchy
           setOpenCats({ [cat.id]: true });
           setOpenSubs({ [sub.id]: true });
@@ -182,7 +195,9 @@ const StartHereContent: React.FC = () => {
               if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 300);
           }
-          break;
+          
+          // Found the topic, stop searching
+          return;
         }
       }
     }
