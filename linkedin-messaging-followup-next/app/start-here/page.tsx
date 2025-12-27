@@ -405,6 +405,73 @@ const StartHereContent: React.FC = () => {
             </div>
           </div>
         )}
+      
+      {/* Focused view: Show only the active topic */}
+      {viewMode === 'focused' && (() => {
+        const topicParam = searchParams.get('topic');
+        if (!topicParam) return null;
+        
+        // Find the topic in data
+        let foundTopic: HelpTopic | null = null;
+        let foundCat: HelpCategory | null = null;
+        let foundSub: HelpSubCategory | null = null;
+        
+        for (const cat of data.categories) {
+          for (const sub of cat.subCategories) {
+            const topic = sub.topics.find(t => t.id === topicParam);
+            if (topic) {
+              foundTopic = topic;
+              foundCat = cat;
+              foundSub = sub;
+              break;
+            }
+          }
+          if (foundTopic) break;
+        }
+        
+        if (!foundTopic) return <div className="text-gray-500 text-sm">Topic not found</div>;
+        
+        const topicId = foundTopic.id;
+        const isOpen = !!openTopics[topicId];
+        const loadState = topicLoadState[topicId] || 'idle';
+        const blocks = topicBlocks[topicId];
+        
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-start justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">{foundTopic.title}</h2>
+              <button
+                onClick={() => {
+                  setOpenTopics(s => ({ ...s, [topicId]: !isOpen }));
+                  if (!isOpen && loadState === 'idle') {
+                    toggleTopic(topicId);
+                  }
+                }}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                {isOpen ? 'Collapse' : 'Expand'}
+              </button>
+            </div>
+            
+            {isOpen && (
+              <div className="mt-4 space-y-4">
+                {loadState === 'loading' && (
+                  <div className="text-sm text-gray-500">Loading topic content...</div>
+                )}
+                {loadState === 'error' && (
+                  <div className="text-sm text-red-600">Failed to load topic content</div>
+                )}
+                {loadState === 'ready' && blocks && (
+                  <div className="prose prose-sm max-w-none">
+                    {renderBlocksInline(topicId, blocks)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      
       {viewMode === 'full' && (
       <div className="grid md:grid-cols-2 gap-5">
         {data.categories.sort((a,b)=>a.order-b.order).map(cat => {
