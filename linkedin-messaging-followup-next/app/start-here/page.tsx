@@ -2,7 +2,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronDownIcon, LinkIcon } from '@heroicons/react/24/solid';
-import Layout from '../../components/Layout';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import EnvironmentValidator from '../../components/EnvironmentValidator';
 import { getStartHereHelp, getHelpTopic } from '../../services/api';
@@ -846,9 +845,21 @@ export default function StartHerePage() {
   return (
     <EnvironmentValidator>
       <ErrorBoundary>
-        <Layout>
-          <StartHereContent />
-        </Layout>
+        <div className="min-h-screen bg-gray-50">
+          {/* Simple public header */}
+          <header className="bg-white shadow-sm border-b border-gray-200">
+            <div className="w-full px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between items-center h-16">
+                <h1 className="text-xl font-semibold text-gray-900">Start Here - Setup & Training</h1>
+              </div>
+            </div>
+          </header>
+          
+          {/* Main content */}
+          <main className="w-full px-4 sm:px-6 lg:px-8 py-8">
+            <StartHereContent />
+          </main>
+        </div>
       </ErrorBoundary>
     </EnvironmentValidator>
   );
