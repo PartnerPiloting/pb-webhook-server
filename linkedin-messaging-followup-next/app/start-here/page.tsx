@@ -249,18 +249,8 @@ const StartHereContent: React.FC = () => {
   };
 
   const copyTopicLink = (topicId: string) => {
-    // Ask coach for the recipient's client ID
-    const recipientClientId = prompt('Enter client ID for the link recipient:\n\n(Example: John-Smith or Jane-Doe)');
-    
-    if (!recipientClientId || !recipientClientId.trim()) {
-      alert('Link not copied - client ID is required');
-      return;
-    }
-    
-    // Build URL with recipient's client ID and topic
-    const url = new URL(window.location.href);
-    url.searchParams.set('testClient', recipientClientId.trim());
-    url.searchParams.delete('clientId'); // Use testClient only
+    // Build generic URL with just the topic parameter (no client ID required)
+    const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set('topic', topicId);
     
     navigator.clipboard.writeText(url.toString()).then(() => {
