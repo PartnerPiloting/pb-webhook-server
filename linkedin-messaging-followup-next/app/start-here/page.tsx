@@ -435,11 +435,13 @@ const StartHereContent: React.FC = () => {
         const isOpen = !!openTopics[topicId];
         const loadState = topicLoadState[topicId] || 'idle';
         const blocks = topicBlocks[topicId];
+        const full = topicDetails[topicId];
         
         // Debug logging for focused view
         console.log('[Focused View] topicId:', topicId);
         console.log('[Focused View] loadState:', loadState);
         console.log('[Focused View] blocks:', blocks?.length, 'blocks');
+        console.log('[Focused View] has bodyHtml:', !!full?.bodyHtml);
         
         // In focused mode, always show content (no collapse/expand needed)
         return (
@@ -453,9 +455,16 @@ const StartHereContent: React.FC = () => {
               {loadState === 'error' && (
                 <div className="text-sm text-red-600">Failed to load topic content</div>
               )}
-              {loadState === 'ready' && blocks && (
+              {loadState === 'ready' && (
                 <div className="prose prose-sm max-w-none">
-                  {renderBlocksInline(topicId, blocks)}
+                  {/* Prefer server-resolved HTML (includes media resolution for {{media:n}}) when available */}
+                  {full && typeof full.bodyHtml === 'string' && full.bodyHtml.trim() ? (
+                    renderHelpHtml(full.bodyHtml, topicId + '::html')
+                  ) : blocks && blocks.length ? (
+                    renderBlocksInline(topicId, blocks)
+                  ) : (
+                    <div className="text-sm text-gray-400">No content available</div>
+                  )}
                 </div>
               )}
             </div>
