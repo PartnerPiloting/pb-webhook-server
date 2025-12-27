@@ -9,7 +9,7 @@ import { renderHelpHtml } from '../../components/HelpHtmlRenderer';
 
 export const dynamic = 'force-dynamic';
 
-interface HelpTopic { id: string; title: string; order: number; body?: string; contextType?: string | null; }
+interface HelpTopic { id: string; title: string; order: number; body?: string; contextType?: string | null; section?: string | null; }
 interface TopicBlockText { type: 'text'; markdown: string }
 interface TopicBlockMedia { type: 'media'; token: string; media: { media_id: number|string; type: string; url: string|null; caption?: string|null; description?: string|null; instructions?: string|null; attachment?: any } }
 interface TopicBlockMissing { type: 'media-missing'; token: string; media_id: string }
