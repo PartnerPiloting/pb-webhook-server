@@ -75,11 +75,12 @@ export async function getCurrentClientProfile() {
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-  const clientId = urlParams.get('clientId') || urlParams.get('testClient');
+  const clientId = urlParams.get('clientId') || urlParams.get('testClient') || localStorage.getItem('clientCode');
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
     
     console.log('ClientUtils: Extracted clientId:', clientId);
+    console.log('ClientUtils: (from localStorage):', localStorage.getItem('clientCode'));
     console.log('ClientUtils: Extracted wpUserId:', wpUserId);
     
     let apiUrl = '/api/auth/test';
