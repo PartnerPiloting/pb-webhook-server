@@ -2231,12 +2231,14 @@ app.get('/api/help/start-here', async (req, res) => {
             const f = r.fields || {};
             const name = (f.category_name || '').toString().trim() || 'Unnamed Category';
             const order = normOrder(f.category_order, name);
+            const section = (f.Section || '').toString().trim() || null; // Track which section this category belongs to
             catMap.set(r.id, {
                 id: 'cat::' + slugify(name),
                 airtableId: r.id,
                 name,
                 description: (f.description || '').toString().trim() || null,
                 order,
+                section, // Include section for frontend tab switching
                 subCategories: [],
                 _rawOrder: f.category_order
             });

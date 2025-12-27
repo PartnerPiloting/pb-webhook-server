@@ -148,12 +148,10 @@ const StartHereContent: React.FC = () => {
       for (const sub of cat.subCategories) {
         const topic = sub.topics.find(t => t.id === topicParam);
         if (topic) {
-          // Determine which section this category belongs to and switch to it
-          // Categories are tagged with section in the data, use that to switch tabs
-          const categorySection = cat.name; // Categories themselves are section-specific
-          // Map category to section tab - the section is stored in meta or we infer from fetch
-          // Since we loaded 'all', we need to figure out which tab to show
-          // For now, just open it in current section - better UX than nothing
+          // Switch to the correct section tab if category has section info
+          if (cat.section) {
+            setActiveSection(cat.section);
+          }
           
           // Open the hierarchy
           setOpenCats({ [cat.id]: true });
