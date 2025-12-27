@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile } from '../utils/clientUtils.js';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
+import ClientCodeEntry from './ClientCodeEntry';
 
 // Lazy-load the help panel to keep initial bundle lean
 const ContextHelpPanel = dynamic(() => import('./ContextHelpPanel'), { ssr: false });
@@ -138,47 +139,32 @@ const Layout = ({ children }) => {
     );
   }
 
-  // Error state (allow dev mode via testClient query)
+  // Error state (allow Start Here publicly, require client code for other pages)
   if (error) {
     let testClient = '';
     try { const u = new URL(window.location.href); testClient = u.searchParams.get('testClient') || ''; } catch {}
+    
+    // Allow Start Here to be viewed publicly without auth
+    const isStartHere = pathname && pathname.startsWith('/start-here');
+    
     if (!testClient) {
-      const msg = String(error?.message || '');
-      let title = 'Access Required';
-      let message = 'This portal is available to authorized users only.';
-      let details = 'Please ensure you are logged into your Australian Side Hustles account, then access this portal through the member dashboard.';
-      if (msg.includes('access has been suspended')) {
-        details = 'Your LinkedIn Portal access is currently inactive. Please contact Australian Side Hustles Support to reactivate your access.';
-      } else if (msg.includes('System temporarily unavailable')) {
-        title = 'System Temporarily Unavailable';
-        message = 'System temporarily unavailable. Please try again in a moment.';
-        details = 'If this persists, contact Australian Side Hustles Support.';
+      // No client code provided
+      if (isStartHere) {
+        // Allow Start Here to render publicly
+        console.info('Layout: Rendering Start Here in public mode (no auth required)');
+      } else {
+        // Show client code entry form for all other pages
+        let errorMessage = null;
+        const msg = String(error?.message || '');
+        if (msg.includes('access has been suspended') || msg.includes('not Active')) {
+          errorMessage = 'Your membership has expired. Please check with your coach.';
+        }
+        return <ClientCodeEntry error={errorMessage} />;
       }
-      return (
-        <div className="min-h-screen bg-gray-50 p-8">
-          <div className="text-center">
-            <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-sm border border-red-200">
-              <div className="text-red-600 mb-4">
-                <svg className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 15.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">{title}</h2>
-              <p className="text-gray-600 mb-4">{message}</p>
-              <div className="text-sm text-gray-500 mb-4"><p>{details}</p></div>
-              <div className="mt-6">
-                <a href="https://australiansidehustles.com.au/wp-login.php" target="_blank" rel="noopener noreferrer"
-                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                  Login to Australian Side Hustles
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
+    } else {
+      // Dev mode: log and continue rendering the app UI
+      console.warn('Layout: auth failed but continuing in dev mode (testClient present):', error);
     }
-    // Dev mode: log and continue rendering the app UI
-    console.warn('Layout: auth failed but continuing in dev mode (testClient present):', error);
   }
 
   // Children fallback
