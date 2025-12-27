@@ -2231,14 +2231,12 @@ app.get('/api/help/start-here', async (req, res) => {
             const f = r.fields || {};
             const name = (f.category_name || '').toString().trim() || 'Unnamed Category';
             const order = normOrder(f.category_order, name);
-            const section = (f.Section || '').toString().trim() || null; // Track which section this category belongs to
             catMap.set(r.id, {
                 id: 'cat::' + slugify(name),
                 airtableId: r.id,
                 name,
                 description: (f.description || '').toString().trim() || null,
                 order,
-                section, // Include section for frontend tab switching
                 subCategories: [],
                 _rawOrder: f.category_order
             });
@@ -2283,6 +2281,7 @@ app.get('/api/help/start-here', async (req, res) => {
             } else if (enableAutoFormat && bodyVal) {
                 bodyVal = autoFormatHelpBody(bodyVal);
             }
+            const section = (f.Section || '').toString().trim() || null; // Track which section this topic belongs to
             sub.topics.push({
                 id: r.id,
                 title,
@@ -2290,7 +2289,8 @@ app.get('/api/help/start-here', async (req, res) => {
                 body: bodyFormat === 'markdown' ? bodyVal : undefined,
                 bodyHtml: bodyHtml,
                 bodyFormat,
-                contextType: f.context_type || null
+                contextType: f.context_type || null,
+                section // Include section for frontend tab switching
             });
         });
 
