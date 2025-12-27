@@ -19,7 +19,9 @@ export default function ClientCodeEntry({ onSubmit, error: initialError = null }
 
     try {
       // Validate the client code by calling the backend
-      const response = await fetch(`/api/auth/test?clientId=${encodeURIComponent(code)}`);
+      const { getBackendBase } = await import('../services/api');
+      const backendUrl = getBackendBase();
+      const response = await fetch(`${backendUrl}/api/auth/test?testClient=${encodeURIComponent(code)}`);
       
       if (response.ok) {
         const data = await response.json();
