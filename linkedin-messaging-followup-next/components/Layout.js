@@ -142,7 +142,10 @@ const Layout = ({ children }) => {
   // Error state (allow Start Here publicly, require client code for other pages)
   if (error) {
     let testClient = '';
-    try { const u = new URL(window.location.href); testClient = u.searchParams.get('testClient') || ''; } catch {}
+    try { 
+      const u = new URL(window.location.href); 
+      testClient = u.searchParams.get('testClient') || localStorage.getItem('clientCode') || ''; 
+    } catch {}
     
     // Allow Start Here to be viewed publicly without auth
     const isStartHere = pathname && pathname.startsWith('/start-here');

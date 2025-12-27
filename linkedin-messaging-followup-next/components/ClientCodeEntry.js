@@ -24,7 +24,8 @@ export default function ClientCodeEntry({ onSubmit, error: initialError = null }
       if (response.ok) {
         const data = await response.json();
         if (data.status === 'success' && data.client?.status === 'Active') {
-          // Valid and active - redirect with testClient param
+          // Valid and active - store in localStorage and redirect with testClient param
+          localStorage.setItem('clientCode', code);
           const url = new URL(window.location.href);
           url.searchParams.set('testClient', code);
           window.location.href = url.toString();
