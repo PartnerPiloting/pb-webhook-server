@@ -43,6 +43,8 @@ const StartHereContent: React.FC = () => {
   const [topicLoadState, setTopicLoadState] = useState<Record<string, 'idle'|'loading'|'error'|'ready'>>({});
   // Safety timers to flip stuck loading -> error after a grace period
   const topicLoadingTimers = useRef<Record<string, any>>({});
+  // Track if this is the initial load (with topic deep link)
+  const initialLoadDone = useRef(false);
 
   // Local renderer to display topic blocks/HTML directly from state (no global window helper)
   const renderBlocksInline = (id: string, blocks?: TopicBlock[]) => {
@@ -113,15 +115,17 @@ const StartHereContent: React.FC = () => {
         const shouldRefresh = searchParams.get('refresh') === '1';
         const topicParam = searchParams.get('topic');
         
-        // If there's a topic parameter, load ALL sections first to find it
+        // If there's a topic parameter AND this is the initial load, load ALL sections to find it
         // Otherwise, just load the active section
-        const sectionToLoad = topicParam ? 'all' : activeSection;
+        const isInitialDeepLink = topicParam && !initialLoadDone.current;
+        const sectionToLoad = isInitialDeepLink ? 'all' : activeSection;
+        if (isInitialDeepLink) initialLoadDone.current = true;
         
         // Show loading indicator when switching sections (but not initial load)
         if (!loading) setSectionLoading(true);
         const resp = await getStartHereHelp({ 
           refresh: shouldRefresh,
-          section: sectionToLoad // Load all sections if topic param present
+          section: sectionToLoad // Load all sections only on initial deep link load
         });
         if (!active) return;
         setData(resp);
