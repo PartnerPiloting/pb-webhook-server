@@ -436,38 +436,24 @@ const StartHereContent: React.FC = () => {
         const loadState = topicLoadState[topicId] || 'idle';
         const blocks = topicBlocks[topicId];
         
+        // In focused mode, always show content (no collapse/expand needed)
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-start justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">{foundTopic.title}</h2>
-              <button
-                onClick={() => {
-                  setOpenTopics(s => ({ ...s, [topicId]: !isOpen }));
-                  if (!isOpen && loadState === 'idle') {
-                    toggleTopic(topicId);
-                  }
-                }}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              >
-                {isOpen ? 'Collapse' : 'Expand'}
-              </button>
-            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">{foundTopic.title}</h2>
             
-            {isOpen && (
-              <div className="mt-4 space-y-4">
-                {loadState === 'loading' && (
-                  <div className="text-sm text-gray-500">Loading topic content...</div>
-                )}
-                {loadState === 'error' && (
-                  <div className="text-sm text-red-600">Failed to load topic content</div>
-                )}
-                {loadState === 'ready' && blocks && (
-                  <div className="prose prose-sm max-w-none">
-                    {renderBlocksInline(topicId, blocks)}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="mt-4 space-y-4">
+              {loadState === 'loading' && (
+                <div className="text-sm text-gray-500">Loading topic content...</div>
+              )}
+              {loadState === 'error' && (
+                <div className="text-sm text-red-600">Failed to load topic content</div>
+              )}
+              {loadState === 'ready' && blocks && (
+                <div className="prose prose-sm max-w-none">
+                  {renderBlocksInline(topicId, blocks)}
+                </div>
+              )}
+            </div>
           </div>
         );
       })()}
