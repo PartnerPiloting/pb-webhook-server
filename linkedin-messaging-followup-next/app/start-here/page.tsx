@@ -436,6 +436,11 @@ const StartHereContent: React.FC = () => {
         const loadState = topicLoadState[topicId] || 'idle';
         const blocks = topicBlocks[topicId];
         
+        // Debug logging for focused view
+        console.log('[Focused View] topicId:', topicId);
+        console.log('[Focused View] loadState:', loadState);
+        console.log('[Focused View] blocks:', blocks?.length, 'blocks');
+        
         // In focused mode, always show content (no collapse/expand needed)
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
