@@ -2323,7 +2323,8 @@ app.get('/api/help/start-here', async (req, res) => {
                             title: t.title,
                             order: t.order,
                             ...(includeBody ? { body: t.body, bodyHtml: t.bodyHtml, bodyFormat: t.bodyFormat } : {}),
-                            contextType: t.contextType
+                            contextType: t.contextType,
+                            section: t.section
                         }))
                     }))
             }));
@@ -2804,7 +2805,8 @@ app.get('/api/help/context', async (req, res) => {
                             title: t.title,
                             order: t.order,
                             ...(includeBody ? { body: t.body, bodyHtml: t.bodyHtml, bodyFormat: t.bodyFormat } : {}),
-                            contextType: t.contextType
+                            contextType: t.contextType,
+                            section: t.section
                         }))
                     }))
             }));
