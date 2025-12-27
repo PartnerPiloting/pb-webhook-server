@@ -13,6 +13,23 @@ function resolveApiBase() {
       raw = 'http://localhost:3001';
     }
 
+    // Detect staging environment (same logic as getBackendBase)
+    if (!raw && typeof window !== 'undefined') {
+      const host = window.location.hostname || '';
+      // Check if URL contains "staging"
+      if (/vercel\.app$/i.test(host) && /staging/i.test(host)) {
+        raw = 'https://pb-webhook-server-staging.onrender.com';
+      }
+    }
+    
+    // Check VERCEL_ENV environment variable
+    if (!raw) {
+      const vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV;
+      if (vercelEnv === 'preview') {
+        raw = 'https://pb-webhook-server-staging.onrender.com';
+      }
+    }
+
     // Final fallback to production Render URL
     if (!raw) raw = 'https://pb-webhook-server.onrender.com/api/linkedin';
 
