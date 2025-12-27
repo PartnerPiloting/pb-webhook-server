@@ -26,6 +26,7 @@ const StartHereContent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState<Record<string, boolean>>({});
   const [activeSection, setActiveSection] = useState<string>('Regular Tasks'); // Default to Regular Tasks
+  const [viewMode, setViewMode] = useState<'focused' | 'full'>('full'); // Track if showing focused topic view or full tree
   const searchParams = useSearchParams();
   // Map-based open state (reverted to stable approach)
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
@@ -146,8 +147,14 @@ const StartHereContent: React.FC = () => {
   useEffect(() => {
     if (!data || loading) return;
     const topicParam = searchParams.get('topic');
-    if (!topicParam) return;
+    if (!topicParam) {
+      // No topic param means navigating normally - ensure full view
+      setViewMode('full');
+      return;
+    }
 
+    // Deep link detected - set focused view
+    setViewMode('focused');
     console.log('[Deep Link] Looking for topic:', topicParam);
     console.log('[Deep Link] Available categories:', data.categories.length);
 
@@ -368,7 +375,10 @@ const StartHereContent: React.FC = () => {
         {['Setup', 'Regular Tasks', 'Getting Better Results'].map(section => (
           <button
             key={section}
-            onClick={() => setActiveSection(section)}
+            onClick={() => {
+              setActiveSection(section);
+              setViewMode('full'); // Switch to full view when clicking section tabs
+            }}
             className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition ${
               activeSection === section
                 ? 'bg-blue-500 text-white shadow-sm'
@@ -381,7 +391,7 @@ const StartHereContent: React.FC = () => {
       </div>
       
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-gray-500 pl-1 tracking-wide">{data.meta?.totalTopics ?? 0} topics • fetched {new Date(data.fetchedAt).toLocaleTimeString()} {data.meta?.cached && '(cached)'} • ordering: {data.meta?.orderingStrategy || 'default'} • mode: Full</div>
+        <div className="text-xs text-gray-500 pl-1 tracking-wide">{data.meta?.totalTopics ?? 0} topics • fetched {new Date(data.fetchedAt).toLocaleTimeString()} {data.meta?.cached && '(cached)'} • ordering: {data.meta?.orderingStrategy || 'default'} • mode: {viewMode === 'focused' ? 'Focused' : 'Full'}</div>
       </div>
       <div className="relative">
         {sectionLoading && (
@@ -395,6 +405,7 @@ const StartHereContent: React.FC = () => {
             </div>
           </div>
         )}
+      {viewMode === 'full' && (
       <div className="grid md:grid-cols-2 gap-5">
         {data.categories.sort((a,b)=>a.order-b.order).map(cat => {
           const catOpen = !!openCats[cat.id];
@@ -722,6 +733,7 @@ const StartHereContent: React.FC = () => {
           );
         })}
       </div>
+      )}
       </div>
     </div>
   );
