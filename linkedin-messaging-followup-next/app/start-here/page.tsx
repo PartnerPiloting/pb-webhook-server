@@ -148,9 +148,13 @@ const StartHereContent: React.FC = () => {
       for (const sub of cat.subCategories) {
         const topic = sub.topics.find(t => t.id === topicParam);
         if (topic) {
-          // Switch to the correct section tab if category has section info
-          if (cat.section) {
-            setActiveSection(cat.section);
+          // Switch to the correct section tab if topic has section info
+          if (topic.section) {
+            console.log('[Deep Link] Found topic:', topic.title, 'Section:', topic.section);
+            // Only switch section if it's different from current (avoid re-render loop)
+            if (topic.section !== activeSection) {
+              setActiveSection(topic.section);
+            }
           }
           
           // Open the hierarchy
