@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 interface FormData {
   yourName: string;
@@ -16,7 +17,15 @@ interface FormData {
   detectedOffset?: string;
 }
 
+interface ClientInfo {
+  clientId: string;
+  clientName: string;
+  calendarConnected: boolean;
+}
+
 export default function CalendarBooking() {
+  const searchParams = useSearchParams();
+  const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
   const [formData, setFormData] = useState<FormData>({
     yourName: '',
     yourLinkedIn: '',
@@ -34,6 +43,29 @@ export default function CalendarBooking() {
   const [loading, setLoading] = useState(false);
   const [generatedMessage, setGeneratedMessage] = useState<string>('');
   const [selectedDates, setSelectedDates] = useState<string[]>(['', '', '']);
+
+  // Load client info from URL
+  useEffect(() => {
+    const clientId = searchParams.get('client');
+    if (!clientId) {
+      setClipboardError('⚠️ Missing client ID. Please use your personalized link.');
+      return;
+    }
+
+    // Validate client and check calendar connection
+    fetch(`/api/calendar/client-info?clientId=${clientId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          setClipboardError('⚠️ Invalid client ID: ' + data.error);
+        } else {
+          setClientInfo(data);
+        }
+      })
+      .catch(() => {
+        setClipboardError('⚠️ Failed to load client information');
+      });
+  }, [searchParams]);
 
   const parseClipboardData = (text: string): FormData | null => {
     try {
@@ -116,7 +148,10 @@ export default function CalendarBooking() {
     try {
       const response = await fetch('/api/calendar/suggest-times', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-client-id': clientInfo?.clientId || '',
+        },
         body: JSON.stringify({
           yourName: formData.yourName,
           leadName: formData.leadName,
@@ -147,11 +182,19 @@ export default function CalendarBooking() {
       return;
     }
 
+    if (!clientInfo?.calendarConnected) {
+      alert('Please connect your Google Calendar first');
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch('/api/calendar/book-meeting', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-client-id': clientInfo.clientId,
+        },
         body: JSON.stringify({
           yourName: formData.yourName,
           yourEmail: formData.yourLinkedIn, // Or add separate email field
@@ -198,7 +241,40 @@ export default function CalendarBooking() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">📅 Calendar Booking</h1>
+        <h1 className="text-3xl font-bold mb-2">📅 Calendar Booking</h1>
+        {clientInfo && (
+          <p className="text-sm text-gray-600 mb-8">
+            Client: <strong>{clientInfo.clientName}</strong> ({clientInfo.clientId})
+          </p>
+        )}
+
+        {/* Calendar Connection Status */}
+        {clientInfo && !clientInfo.calendarConnected && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
+            <h2 className="text-lg font-semibold text-yellow-900 mb-2">
+              🔗 Connect Your Google Calendar
+            </h2>
+            <p className="text-sm text-yellow-800 mb-4">
+              You need to connect your Google Calendar to create meeting invites.
+            </p>
+            <button
+              onClick={() => {
+                window.location.href = `/api/auth/google?clientId=${clientInfo.clientId}`;
+              }}
+              className="bg-blue-600 text-white py-2 px-6 rounded-lg font-semibold hover:bg-blue-700"
+            >
+              Connect Google Calendar
+            </button>
+          </div>
+        )}
+
+        {clientInfo?.calendarConnected && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-green-800">
+              ✓ Google Calendar connected
+            </p>
+          </div>
+        )}
 
         {/* Clipboard Reader */}
         {!dataLoaded && (
