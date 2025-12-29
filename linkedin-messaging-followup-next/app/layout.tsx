@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "LinkedIn Lead Workspace",
+  title: "Network Accelerator",
   description: "Score leads — Start conversations — Close deals",
 };
 

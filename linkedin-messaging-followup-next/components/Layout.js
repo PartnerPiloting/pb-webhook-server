@@ -198,8 +198,8 @@ const Layout = ({ children }) => {
                     <div>
                       <div className="text-2xl font-bold">
                         {clientName
-                          ? `${clientName}'s LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`
-                          : `LinkedIn Workspace${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
+                          ? `${clientName}'s Network Accelerator${!isProduction && envLabel ? ` (${envLabel})` : ''}`
+                          : `Network Accelerator${!isProduction && envLabel ? ` (${envLabel})` : ''}`}
                       </div>
                       <div className="text-base text-gray-600 mt-2">
                         Score leads — Start conversations — Close deals
