@@ -203,7 +203,14 @@ function CalendarBookingContent() {
 
       const data = await response.json();
       
-      if (data.error) {
+      // Check for HTTP errors first (401, 500, etc.)
+      if (!response.ok) {
+        const errorMsg = data.error || data.message || `Request failed (${response.status})`;
+        setChatMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `❌ ${errorMsg}` 
+        }]);
+      } else if (data.error) {
         setChatMessages(prev => [...prev, { 
           role: 'assistant', 
           content: `❌ ${data.error}` 
