@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 // This will connect to your existing clientService once we integrate with backend
 export async function GET(request: Request) {
   try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface FormData {
@@ -23,7 +23,7 @@ interface ClientInfo {
   calendarConnected: boolean;
 }
 
-export default function CalendarBooking() {
+function CalendarBookingContent() {
   const searchParams = useSearchParams();
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
   const [formData, setFormData] = useState<FormData>({
@@ -497,5 +497,13 @@ export default function CalendarBooking() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function CalendarBookingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>}>
+      <CalendarBookingContent />
+    </Suspense>
   );
 }
