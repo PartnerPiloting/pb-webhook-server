@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-// This will connect to your existing clientService once we integrate with backend
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -12,21 +11,48 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Client ID required' }, { status: 400 });
     }
 
-    // TODO: Connect to existing clientService.js on backend
-    // For now, mock response for guy-wilson
-    if (clientId === 'guy-wilson') {
-      return NextResponse.json({
-        clientId: 'guy-wilson',
-        clientName: 'Guy Wilson',
-        calendarConnected: false, // Will be true after OAuth
-      });
+    // Query Airtable Master Clients base
+    const airtableResponse = await fetch(
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula={Client ID}='${clientId}'`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
+        },
+      }
+    );
+
+    if (!airtableResponse.ok) {
+      console.error('Airtable query failed:', await airtableResponse.text());
+      return NextResponse.json(
+        { error: 'Failed to query client database' },
+        { status: 500 }
+      );
     }
 
-    // Return error for unknown clients
-    return NextResponse.json(
-      { error: 'Client not found or inactive' },
-      { status: 404 }
-    );
+    const data = await airtableResponse.json();
+    
+    if (!data.records || data.records.length === 0) {
+      return NextResponse.json(
+        { error: 'Client not found' },
+        { status: 404 }
+      );
+    }
+
+    const client = data.records[0].fields;
+    
+    // Check if client is active
+    if (client.Status !== 'Active') {
+      return NextResponse.json(
+        { error: 'Client is not active' },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.json({
+      clientId: client['Client ID'],
+      clientName: client['Client Name'],
+      calendarConnected: client['Calendar Connected'] || false,
+    });
 
   } catch (error) {
     console.error('Client info error:', error);

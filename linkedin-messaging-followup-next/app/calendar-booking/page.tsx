@@ -196,6 +196,7 @@ function CalendarBookingContent() {
           'x-client-id': clientInfo.clientId,
         },
         body: JSON.stringify({
+          clientId: clientInfo.clientId,
           yourName: formData.yourName,
           yourEmail: formData.yourLinkedIn, // Or add separate email field
           yourPhone: formData.yourPhone,
