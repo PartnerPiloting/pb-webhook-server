@@ -7051,7 +7051,7 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
         }
         
         if (slots.length > 0) {
-          calendarContext = `\n\nCALENDAR AVAILABILITY:\n${slots.map(s => 
+          calendarContext += `\n\nCALENDAR AVAILABILITY:\n${slots.map(s => 
             `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 8).map(f => `${f.display} Brisbane (${f.leadDisplay} for lead)`).join(', ') : 'Fully booked'}`
           ).join('\n')}`;
         }
