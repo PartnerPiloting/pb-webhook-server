@@ -6933,6 +6933,11 @@ RESPONSE STYLE:
 - When showing availability, show times in your timezone
 - For vague requests like "next week", show all days or ask which specific days
 
+CRITICAL RULES:
+- ONLY report appointments/meetings that are provided in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
+- NEVER make up or invent fake appointments
+- If no calendar data is provided, say "I don't have your calendar data for that date. Could you try asking about a specific day like 'Monday' or 'next Tuesday'?"
+
 ACTIONS:
 1. When the user picks/confirms a time, include this to SET the booking time:
    ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
@@ -6957,34 +6962,57 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     logger.info(`Query analysis - message: "${message}", isAppointmentQuery: ${!!isAppointmentQuery}, isAvailabilityQuery: ${!!isAvailabilityQuery}`);
     
     if (isAppointmentQuery) {
-      const dayMatches = message.toLowerCase().match(/monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today/gi) || [];
+      // More permissive day matching - handle typos like "moday" for "monday"
+      const dayPatterns = [
+        { pattern: /mon|monda|monday|moday/i, day: 'monday' },
+        { pattern: /tue|tues|tuesday/i, day: 'tuesday' },
+        { pattern: /wed|wednes|wednesday/i, day: 'wednesday' },
+        { pattern: /thu|thur|thurs|thursday/i, day: 'thursday' },
+        { pattern: /fri|friday/i, day: 'friday' },
+        { pattern: /sat|satur|saturday/i, day: 'saturday' },
+        { pattern: /sun|sunday/i, day: 'sunday' },
+      ];
       
-      // Handle "next [day]" - find the next occurrence of that day
-      const nextDayMatch = message.toLowerCase().match(/next (monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+      const msgLower = message.toLowerCase();
+      const dayMatches = [];
       
-      if (dayMatches.length > 0 || message.toLowerCase().includes('next week') || message.toLowerCase().includes('this week') || nextDayMatch) {
+      for (const { pattern, day } of dayPatterns) {
+        if (pattern.test(msgLower)) {
+          dayMatches.push(day);
+        }
+      }
+      
+      // Also check for tomorrow/today
+      if (msgLower.includes('tomorrow')) dayMatches.push('tomorrow');
+      if (msgLower.includes('today')) dayMatches.push('today');
+      
+      // Handle "next [day]" or "this coming [day]" or just "[day]" - find the NEXT occurrence
+      const wantsNextOccurrence = msgLower.includes('next') || msgLower.includes('coming') || msgLower.includes('this') || dayMatches.length > 0;
+      
+      if (dayMatches.length > 0 || msgLower.includes('next week') || msgLower.includes('this week')) {
         const eventDays = [];
         
         for (const dateStr of dates) {
           const date = new Date(dateStr);
           const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
           
-          // Check if this is "next [day]" - should be the first occurrence of that day in the future
-          let isNextDay = false;
-          if (nextDayMatch) {
-            const targetDay = nextDayMatch[1].toLowerCase();
-            if (dayName === targetDay) {
-              // Only include if we haven't already found this day
-              isNextDay = !eventDays.some(d => d.day.toLowerCase().includes(targetDay));
-            }
-          }
+          // Check if this day matches any requested day
+          const matchesDay = dayMatches.some(d => d === dayName || d === 'tomorrow' || d === 'today');
+          const isTomorrow = dayMatches.includes('tomorrow') && dateStr === dates[1];
+          const isToday = dayMatches.includes('today') && dateStr === dates[0];
+          const isThisWeek = msgLower.includes('this week');
+          const isNextWeek = msgLower.includes('next week');
           
-          const shouldInclude = isNextDay ||
-            dayMatches.some(m => dayName.includes(m.toLowerCase())) ||
-            (message.toLowerCase().includes('tomorrow') && dateStr === dates[1]) ||
-            (message.toLowerCase().includes('today') && dateStr === dates[0]) ||
-            message.toLowerCase().includes('next week') ||
-            message.toLowerCase().includes('this week');
+          // For single day requests (e.g., "monday"), only get the NEXT occurrence
+          let shouldInclude = false;
+          if (isTomorrow || isToday) {
+            shouldInclude = true;
+          } else if (isThisWeek || isNextWeek) {
+            shouldInclude = true;
+          } else if (matchesDay) {
+            // Only include if we haven't already found this day (first/next occurrence)
+            shouldInclude = !eventDays.some(d => d.day.toLowerCase().includes(dayName));
+          }
           
           if (shouldInclude) {
             logger.info(`Fetching events for ${dateStr} (${dayName})`);
