@@ -151,12 +151,19 @@ function CalendarBookingContent() {
       });
 
       const messageData = await messageRes.json();
+      console.log('API Response:', messageData);
       
       if (messageData.error) {
         setGenerateError(messageData.error);
       } else {
-        setGeneratedMessage(messageData.message);
-        setSuccess('✅ Message generated! Copy and send to lead.');
+        const msg = messageData.message || '';
+        console.log('Setting generatedMessage to:', msg);
+        setGeneratedMessage(msg);
+        if (msg) {
+          setSuccess('✅ Message generated! Scroll down to see it.');
+        } else {
+          setGenerateError('API returned empty message');
+        }
       }
     } catch (err) {
       setGenerateError('Failed to generate message');
