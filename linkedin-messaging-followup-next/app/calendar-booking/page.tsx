@@ -177,68 +177,48 @@ function CalendarBookingContent() {
   const handleBookMeeting = async () => {
     setBookError('');
     
-    if (!formData.leadEmail.trim()) {
-      setBookError('Lead Email is required to book meeting');
-      return;
-    }
-
     if (!bookTime.trim()) {
       setBookError('Please select a meeting time');
       return;
     }
 
-    if (!clientInfo?.calendarConnected) {
-      setBookError('Please connect your Google Calendar first');
-      return;
+    // Build Google Calendar URL with pre-filled details
+    const startDate = new Date(bookTime);
+    const endDate = new Date(startDate.getTime() + 30 * 60 * 1000); // 30 min meeting
+    
+    // Format dates for Google Calendar (YYYYMMDDTHHmmss)
+    const formatGCalDate = (date: Date) => {
+      return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    };
+    
+    const title = formData.leadName 
+      ? `Meeting with ${formData.leadName}`
+      : 'Meeting';
+    
+    const descriptionParts = [];
+    if (formData.yourZoom) descriptionParts.push(`Zoom: ${formData.yourZoom}`);
+    if (formData.leadLinkedIn) descriptionParts.push(`Lead LinkedIn: ${formData.leadLinkedIn}`);
+    if (formData.yourLinkedIn) descriptionParts.push(`Your LinkedIn: ${formData.yourLinkedIn}`);
+    if (formData.yourPhone) descriptionParts.push(`Your Phone: ${formData.yourPhone}`);
+    if (formData.leadPhone) descriptionParts.push(`Lead Phone: ${formData.leadPhone}`);
+    const description = descriptionParts.join('\\n');
+    
+    const location = formData.yourZoom || formData.leadLocation || 'Zoom';
+    
+    // Build Google Calendar URL
+    let calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE`;
+    calUrl += `&text=${encodeURIComponent(title)}`;
+    calUrl += `&dates=${formatGCalDate(startDate)}/${formatGCalDate(endDate)}`;
+    calUrl += `&details=${encodeURIComponent(description)}`;
+    calUrl += `&location=${encodeURIComponent(location)}`;
+    
+    if (formData.leadEmail) {
+      calUrl += `&add=${encodeURIComponent(formData.leadEmail)}`;
     }
-
-    setLoading(true);
-
-    try {
-      const location = formData.leadLocation.trim() || 'Brisbane, Australia';
-      const timezoneRes = await fetch('/api/calendar/detect-timezone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location }),
-      });
-
-      const timezoneData = await timezoneRes.json();
-      const detectedTimezone = timezoneData.timezone || 'Australia/Brisbane';
-
-      const response = await fetch('/api/calendar/book-meeting', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-client-id': clientInfo.clientId,
-        },
-        body: JSON.stringify({
-          clientId: clientInfo.clientId,
-          yourName: formData.yourName,
-          yourEmail: formData.yourLinkedIn,
-          yourPhone: formData.yourPhone,
-          yourZoom: formData.yourZoom,
-          yourLinkedIn: formData.yourLinkedIn,
-          leadName: formData.leadName,
-          leadEmail: formData.leadEmail,
-          leadPhone: formData.leadPhone,
-          leadLinkedIn: formData.leadLinkedIn,
-          meetingTime: bookTime,
-          timezone: detectedTimezone,
-        }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setSuccess('✅ Meeting booked successfully! Calendar invite sent to ' + formData.leadEmail);
-        setBookTime('');
-      } else {
-        setBookError(data.error);
-      }
-    } catch (err) {
-      setBookError('Failed to book meeting');
-    } finally {
-      setLoading(false);
-    }
+    
+    // Open Google Calendar in new tab
+    window.open(calUrl, '_blank');
+    setSuccess('✅ Google Calendar opened - review and save the event');
   };
 
   if (!clientInfo) {
@@ -486,7 +466,7 @@ function CalendarBookingContent() {
               <div className="p-4 bg-green-50 rounded-lg">
                 <h3 className="font-medium text-gray-800 mb-3">Book Meeting</h3>
                 <p className="text-sm text-gray-600 mb-3">
-                  Select a single time to create calendar event
+                  Select a time - opens Google Calendar to review and save
                 </p>
                 <input
                   type="datetime-local"
@@ -496,10 +476,9 @@ function CalendarBookingContent() {
                 />
                 <button
                   onClick={handleBookMeeting}
-                  disabled={loading || !clientInfo.calendarConnected}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md font-medium disabled:bg-gray-400"
+                  className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md font-medium"
                 >
-                  {loading ? 'Booking...' : '📅 Book Meeting'}
+                  📅 Open in Google Calendar
                 </button>
                 
                 {bookError && (
