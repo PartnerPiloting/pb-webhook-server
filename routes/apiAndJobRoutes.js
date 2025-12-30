@@ -7011,7 +7011,19 @@ The frontend will parse this to auto-fill the booking form.`;
     });
 
     const result = await chat.sendMessage(conversationHistory[conversationHistory.length - 1].parts[0].text);
-    const responseText = result.response.text();
+    
+    // Handle different response formats from Vertex AI SDK
+    let responseText;
+    if (result.response && typeof result.response.text === 'function') {
+      responseText = result.response.text();
+    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
+      responseText = result.response.candidates[0].content.parts[0].text;
+    } else if (typeof result.text === 'function') {
+      responseText = result.text();
+    } else {
+      logger.error('Unexpected Gemini response format:', JSON.stringify(result, null, 2));
+      throw new Error('Unexpected AI response format');
+    }
     
     logger.info(`Gemini response received (${responseText.length} chars)`);
 
