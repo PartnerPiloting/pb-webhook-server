@@ -23,8 +23,10 @@ interface ClientInfo {
 }
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'error';
   content: string;
+  timestamp?: string;
+  bookingAction?: BookingAction;
 }
 
 interface BookingAction {
@@ -177,8 +179,9 @@ function CalendarBookingContent() {
     if (!chatInput.trim() || chatLoading) return;
     
     const userMessage = chatInput.trim();
+    const timestamp = new Date().toLocaleTimeString();
     setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp }]);
     setChatLoading(true);
 
     try {
@@ -204,23 +207,31 @@ function CalendarBookingContent() {
       });
 
       const data = await response.json();
+      const responseTimestamp = new Date().toLocaleTimeString();
       
       // Check for HTTP errors first (401, 500, etc.)
       if (!response.ok) {
         const errorMsg = data.error || data.message || `Request failed (${response.status})`;
         setChatMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `❌ ${errorMsg}` 
+          role: 'error', 
+          content: errorMsg,
+          timestamp: responseTimestamp
         }]);
       } else if (data.error) {
         setChatMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `❌ ${data.error}` 
+          role: 'error', 
+          content: data.error,
+          timestamp: responseTimestamp
         }]);
       } else {
+        // Build booking action if present
+        const bookingAction = data.action?.type === 'setBookingTime' ? data.action as BookingAction : undefined;
+        
         setChatMessages(prev => [...prev, { 
           role: 'assistant', 
-          content: data.message 
+          content: data.message,
+          timestamp: responseTimestamp,
+          bookingAction
         }]);
         
         // Update timezone info
@@ -241,8 +252,9 @@ function CalendarBookingContent() {
       }
     } catch (err) {
       setChatMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: '❌ Failed to send message. Please try again.' 
+        role: 'error', 
+        content: 'Failed to send message. Please try again.',
+        timestamp: new Date().toLocaleTimeString()
       }]);
     } finally {
       setChatLoading(false);
@@ -611,29 +623,72 @@ ${yourFirstName}`;
                   </div>
                 )}
                 
-                <div className="bg-gray-50 rounded-lg p-4 mb-4 h-64 overflow-y-auto">
+                <div className="bg-gray-50 rounded-lg p-4 mb-4 h-72 overflow-y-auto">
                   {chatMessages.length === 0 ? (
                     <div className="text-gray-500 text-center py-8">
-                      <p className="mb-2">Ask me about your availability!</p>
+                      <p className="mb-2">🤖 Ask me about your availability!</p>
                       <p className="text-sm">Try: &quot;What&apos;s free Thursday?&quot; or &quot;Check next Tuesday lunch&quot;</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {chatMessages.map((msg, idx) => (
-                        <div
-                          key={idx}
-                          className={`p-3 rounded-lg ${
-                            msg.role === 'user'
-                              ? 'bg-blue-100 ml-8'
-                              : 'bg-white border mr-8'
-                          }`}
-                        >
-                          <pre className="whitespace-pre-wrap text-sm font-sans">{msg.content}</pre>
+                        <div key={idx}>
+                          {/* User messages */}
+                          {msg.role === 'user' && (
+                            <div className="text-sm p-3 rounded-lg bg-blue-100 ml-8">
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-medium text-blue-800">You:</span>
+                                {msg.timestamp && <span className="text-xs text-blue-600">{msg.timestamp}</span>}
+                              </div>
+                              <div className="text-blue-900">{msg.content}</div>
+                            </div>
+                          )}
+                          
+                          {/* Assistant messages */}
+                          {msg.role === 'assistant' && (
+                            <div className="text-sm p-3 rounded-lg bg-green-50 border border-green-200 mr-8">
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-medium text-green-700">🤖 AI Assistant:</span>
+                                {msg.timestamp && <span className="text-xs text-green-600">{msg.timestamp}</span>}
+                              </div>
+                              <pre className="whitespace-pre-wrap font-sans text-green-800">{msg.content}</pre>
+                              
+                              {/* Booking action button */}
+                              {msg.bookingAction && (
+                                <div className="mt-3 p-2 bg-white border border-green-300 rounded">
+                                  <div className="text-xs text-green-700 mb-2">✨ Suggested time:</div>
+                                  <div className="text-sm font-medium mb-2">{msg.bookingAction.displayTime}</div>
+                                  <button
+                                    onClick={() => {
+                                      setBookTime(msg.bookingAction!.dateTime);
+                                      if (msg.bookingAction!.leadDisplayTime) {
+                                        setLeadDisplayTime(msg.bookingAction!.leadDisplayTime);
+                                      }
+                                    }}
+                                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                                  >
+                                    Apply to Booking
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Error messages */}
+                          {msg.role === 'error' && (
+                            <div className="text-sm p-3 rounded-lg bg-red-50 border border-red-200 mr-8">
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-medium text-red-700">❌ Error:</span>
+                                {msg.timestamp && <span className="text-xs text-red-600">{msg.timestamp}</span>}
+                              </div>
+                              <div className="text-red-800">{msg.content}</div>
+                            </div>
+                          )}
                         </div>
                       ))}
                       {chatLoading && (
-                        <div className="bg-white border rounded-lg p-3 mr-8">
-                          <span className="text-gray-500">Checking calendar...</span>
+                        <div className="text-sm p-3 rounded-lg bg-green-50 border border-green-200 mr-8">
+                          <span className="text-green-700">🤖 Checking calendar...</span>
                         </div>
                       )}
                       <div ref={chatEndRef} />
@@ -642,21 +697,21 @@ ${yourFirstName}`;
                 </div>
                 
                 <div className="flex gap-2">
-                  <input
-                    type="text"
+                  <textarea
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
                     placeholder="What's free Thursday afternoon?"
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm resize-none"
+                    rows={2}
                     disabled={chatLoading}
                   />
                   <button
                     onClick={handleChatSend}
                     disabled={chatLoading || !chatInput.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium disabled:bg-gray-400"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium disabled:bg-gray-400 self-end"
                   >
-                    Send
+                    {chatLoading ? 'Thinking...' : 'Ask AI'}
                   </button>
                 </div>
               </div>
