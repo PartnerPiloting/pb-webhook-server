@@ -6933,10 +6933,15 @@ RESPONSE STYLE:
 - For vague requests like "next week", show all days or ask which specific days
 
 ACTIONS:
-When the user confirms a booking time, include this JSON at the END of your response (on its own line):
-ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
+1. When the user picks/confirms a time, include this to SET the booking time:
+   ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
 
-The frontend will parse this to auto-fill the booking form.`;
+2. When the user says to BOOK IT (phrases like "book it", "lock it in", "add to calendar", "schedule it", "confirm", "yes book that"), include this to OPEN the calendar:
+   ACTION: {"type":"openCalendar"}
+   
+   Note: Only use openCalendar if a time has already been set. If no time is set yet, ask which time they want.
+
+The frontend parses these actions - setBookingTime fills the form, openCalendar opens Google Calendar.`;
 
     // Check if the user is asking about availability
     const isAvailabilityQuery = message.toLowerCase().match(/free|available|open|slot|what.*work|check.*calendar|tuesday|wednesday|thursday|friday|monday|saturday|sunday|tomorrow|next week|this week/i);
@@ -7039,6 +7044,8 @@ The frontend will parse this to auto-fill the booking form.`;
             displayTime: formatTimeInTimezone(actionData.dateTime, yourTimezone),
             leadDisplayTime: formatTimeInTimezone(actionData.dateTime, leadTimezone),
           };
+        } else if (actionData.type === 'openCalendar') {
+          action = { type: 'openCalendar' };
         }
       } catch (e) {
         logger.error('Failed to parse action:', e);

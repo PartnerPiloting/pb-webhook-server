@@ -30,7 +30,7 @@ interface ChatMessage {
 }
 
 interface BookingAction {
-  type: 'setBookingTime';
+  type: 'setBookingTime' | 'openCalendar';
   dateTime: string;
   timezone: string;
   displayTime: string;
@@ -248,6 +248,14 @@ function CalendarBookingContent() {
           setBookTime(localDateTime);
           setLeadDisplayTime(action.leadDisplayTime || '');
           setSuccess(`✅ Time set: ${action.displayTime} (${action.leadDisplayTime} for lead)`);
+        }
+        
+        // Handle openCalendar action - auto-open Google Calendar
+        if (data.action?.type === 'openCalendar') {
+          // Small delay so user sees the AI response first
+          setTimeout(() => {
+            handleBookMeeting();
+          }, 500);
         }
       }
     } catch (err) {
