@@ -113,6 +113,10 @@ function CalendarBookingContent() {
   };
 
   const handleGenerateMessage = async () => {
+    console.log('handleGenerateMessage CALLED');
+    console.log('formData:', formData);
+    console.log('suggestTimes:', suggestTimes);
+    
     if (!formData.leadName.trim()) {
       setError('❌ Lead Name is required to generate message');
       return;
