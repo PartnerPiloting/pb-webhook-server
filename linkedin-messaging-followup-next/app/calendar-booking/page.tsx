@@ -68,11 +68,7 @@ function CalendarBookingContent() {
     try {
       const fields = text.split('|||').map(f => f.trim());
       
-      console.log('Clipboard fields count:', fields.length);
-      console.log('Clipboard fields:', fields);
-      
       if (fields.length !== 7) {
-        console.error(`Expected 7 fields, got ${fields.length}`);
         return null;
       }
 
@@ -101,11 +97,6 @@ function CalendarBookingContent() {
   const handleFillFromClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      
-      console.log('Raw clipboard text:', text);
-      console.log('Clipboard length:', text.length);
-      console.log('Contains |||?', text.includes('|||'));
-      
       const parsed = parseClipboardData(text);
       
       if (!parsed) {
