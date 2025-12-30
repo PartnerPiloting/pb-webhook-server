@@ -6668,9 +6668,39 @@ router.get("/api/test-membership-sync", async (req, res) => {
 });
 
 // =============================================
-// CALENDAR BOOKING CHAT ENDPOINT
-// Uses Vertex AI (Gemini) for smart booking assistant
+// CALENDAR BOOKING ENDPOINTS
+// Uses Service Account for calendar access (no OAuth expiry)
 // =============================================
+
+// Get service account email for calendar setup instructions
+router.get("/api/calendar/setup-info", async (req, res) => {
+  try {
+    const calendarService = require('../config/calendarServiceAccount.js');
+    
+    if (!calendarService.serviceAccountEmail) {
+      return res.status(500).json({ 
+        error: 'Calendar service not configured',
+        setupRequired: true 
+      });
+    }
+    
+    return res.json({
+      serviceAccountEmail: calendarService.serviceAccountEmail,
+      instructions: [
+        '1. Open Google Calendar in your browser',
+        '2. Find your calendar on the left, click the 3 dots → Settings',
+        '3. Scroll to "Share with specific people"',
+        '4. Click "Add people" and enter the service account email above',
+        '5. Set permission to "See all event details"',
+        '6. Click Send',
+        '7. Add your calendar email to your client profile in Airtable'
+      ]
+    });
+  } catch (error) {
+    console.error('Calendar setup-info error:', error);
+    return res.status(500).json({ error: 'Failed to get setup info' });
+  }
+});
 
 router.post("/api/calendar/chat", async (req, res) => {
   const logger = createLogger({ runId: 'CALENDAR', clientId: req.headers['x-client-id'] || 'unknown', operation: 'calendar-chat' });
@@ -6757,151 +6787,65 @@ router.post("/api/calendar/chat", async (req, res) => {
       });
     };
 
-    // Get calendar access token for this client
-    const getValidAccessToken = async () => {
+    // Import service account calendar client
+    const calendarService = require('../config/calendarServiceAccount.js');
+
+    // Get calendar email for this client
+    const getCalendarEmail = async () => {
       const lookupResponse = await fetch(
-        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Token&fields[]=Google Calendar Refresh Token&fields[]=Google Calendar Token Expiry`,
+        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email`,
         {
           headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` },
         }
       );
 
       if (!lookupResponse.ok) {
-        return { token: '', error: 'Failed to lookup client' };
+        return { email: '', error: 'Failed to lookup client' };
       }
 
       const data = await lookupResponse.json();
       if (!data.records || data.records.length === 0) {
-        return { token: '', error: 'Client not found' };
+        return { email: '', error: 'Client not found' };
       }
 
       const record = data.records[0];
-      const fields = record.fields;
-      const accessToken = fields['Google Calendar Token'];
-      const refreshToken = fields['Google Calendar Refresh Token'];
-      const tokenExpiry = fields['Google Calendar Token Expiry'];
+      const calendarEmail = record.fields['Google Calendar Email'];
 
-      if (!accessToken || !refreshToken) {
-        return { token: '', error: 'Calendar not connected' };
+      if (!calendarEmail) {
+        return { email: '', error: `Calendar not configured. Share your calendar with: ${calendarService.serviceAccountEmail || 'service account'}` };
       }
 
-      const expiryDate = new Date(tokenExpiry);
-      const now = new Date();
-      const bufferMs = 5 * 60 * 1000;
-
-      if (expiryDate.getTime() - bufferMs > now.getTime()) {
-        return { token: accessToken };
-      }
-
-      // Refresh token
-      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          refresh_token: refreshToken,
-          client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
-          client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-          grant_type: 'refresh_token',
-        }),
-      });
-
-      const tokens = await tokenResponse.json();
-      if (tokens.error) {
-        console.error('Google token refresh failed:', tokens.error, tokens.error_description);
-        return { token: '', error: `Failed to refresh token: ${tokens.error_description || tokens.error}` };
-      }
-
-      const newExpiryDate = new Date(Date.now() + tokens.expires_in * 1000);
-
-      await fetch(
-        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients/${record.id}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fields: {
-              'Google Calendar Token': tokens.access_token,
-              'Google Calendar Token Expiry': newExpiryDate.toISOString(),
-            },
-          }),
-        }
-      );
-
-      return { token: tokens.access_token };
+      return { email: calendarEmail };
     };
 
-    // Get free slots for a date
-    const getFreeSlotsForDate = async (accessToken, date, startHour = 9, endHour = 17, timezone = 'Australia/Brisbane') => {
-      const startTime = new Date(`${date}T${String(startHour).padStart(2, '0')}:00:00`);
-      const endTime = new Date(`${date}T${String(endHour).padStart(2, '0')}:00:00`);
-
-      const freebusyResponse = await fetch(
-        'https://www.googleapis.com/calendar/v3/freeBusy',
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            timeMin: startTime.toISOString(),
-            timeMax: endTime.toISOString(),
-            timeZone: timezone,
-            items: [{ id: 'primary' }],
-          }),
-        }
-      );
-
-      if (!freebusyResponse.ok) {
-        logger.error('FreeBusy API error:', await freebusyResponse.text());
+    // Get free slots for a date using service account
+    const getFreeSlotsForDate = async (calendarEmail, date, startHour = 9, endHour = 17, timezone = 'Australia/Brisbane') => {
+      const { slots, error } = await calendarService.getFreeSlotsForDate(calendarEmail, date, startHour, endHour, timezone);
+      
+      if (error) {
+        logger.error('FreeBusy error:', error);
         return [];
       }
 
-      const freebusyData = await freebusyResponse.json();
-      const busySlots = freebusyData.calendars?.primary?.busy || [];
-
-      const freeSlots = [];
-      const slotDuration = 30 * 60 * 1000;
-
-      for (let time = startTime.getTime(); time < endTime.getTime(); time += slotDuration) {
-        const slotStart = new Date(time);
-        const slotEnd = new Date(time + slotDuration);
-
-        const isAvailable = !busySlots.some(busy => {
-          const busyStart = new Date(busy.start).getTime();
-          const busyEnd = new Date(busy.end).getTime();
-          return slotStart.getTime() < busyEnd && slotEnd.getTime() > busyStart;
-        });
-
-        if (isAvailable) {
-          const displayTime = slotStart.toLocaleTimeString('en-AU', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: timezone,
-          });
-
-          freeSlots.push({
-            time: slotStart.toISOString(),
-            display: displayTime,
-          });
-        }
-      }
-
-      return freeSlots;
+      return slots.map(slot => ({
+        time: slot.start,
+        display: new Date(slot.start).toLocaleTimeString('en-AU', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: timezone,
+        }),
+      }));
     };
 
     // Detect lead timezone from location
     const leadTimezone = getTimezoneFromLocation(context.leadLocation || 'Brisbane');
     const yourTimezone = 'Australia/Brisbane'; // Hardcoded for now
 
-    // Get calendar access token
-    const { token, error: tokenError } = await getValidAccessToken();
-    if (tokenError) {
-      return res.status(401).json({ error: tokenError });
+    // Get calendar email for this client
+    const { email: calendarEmail, error: calendarError } = await getCalendarEmail();
+    if (calendarError) {
+      return res.status(401).json({ error: calendarError });
     }
 
     // Get today's date and next 7 days for potential calendar queries
@@ -6964,7 +6908,7 @@ The frontend will parse this to auto-fill the booking form.`;
             message.toLowerCase().includes('this week');
           
           if (shouldInclude) {
-            const freeSlots = await getFreeSlotsForDate(token, dateStr, 9, 17, yourTimezone);
+            const freeSlots = await getFreeSlotsForDate(calendarEmail, dateStr, 9, 17, yourTimezone);
             
             const slotsWithLeadTime = freeSlots.map(slot => ({
               ...slot,
