@@ -191,17 +191,23 @@ function CalendarBookingContent() {
       return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
     };
     
-    const title = formData.leadName 
-      ? `Meeting with ${formData.leadName}`
-      : 'Meeting';
+    // Title: "Lead Name and Your Name meeting"
+    const leadNamePart = formData.leadName || 'Contact';
+    const yourNamePart = formData.yourName || 'Me';
+    const title = `${leadNamePart} and ${yourNamePart} meeting`;
     
-    const descriptionParts = [];
-    if (formData.yourZoom) descriptionParts.push(`Zoom: ${formData.yourZoom}`);
-    if (formData.leadLinkedIn) descriptionParts.push(`Lead LinkedIn: ${formData.leadLinkedIn}`);
-    if (formData.yourLinkedIn) descriptionParts.push(`Your LinkedIn: ${formData.yourLinkedIn}`);
-    if (formData.yourPhone) descriptionParts.push(`Your Phone: ${formData.yourPhone}`);
-    if (formData.leadPhone) descriptionParts.push(`Lead Phone: ${formData.leadPhone}`);
-    const description = descriptionParts.join('\\n');
+    // Description with proper line breaks
+    const descriptionLines = [];
+    if (formData.yourZoom) descriptionLines.push(`Zoom: ${formData.yourZoom}`);
+    if (formData.leadLinkedIn) descriptionLines.push(`${leadNamePart}: ${formData.leadLinkedIn}`);
+    if (formData.yourLinkedIn || formData.yourPhone) {
+      let yourLine = `${yourNamePart}: `;
+      if (formData.yourLinkedIn) yourLine += formData.yourLinkedIn;
+      if (formData.yourLinkedIn && formData.yourPhone) yourLine += ' | ';
+      if (formData.yourPhone) yourLine += formData.yourPhone;
+      descriptionLines.push(yourLine);
+    }
+    const description = descriptionLines.join('\n');
     
     const location = formData.yourZoom || formData.leadLocation || 'Zoom';
     
