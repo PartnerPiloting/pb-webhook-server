@@ -120,8 +120,6 @@ async function getFreeSlotsForDate(calendarEmail, date, startHour = 9, endHour =
     const { busy, error } = await getFreeBusy(calendarEmail, startTime, endTime);
     
     if (error) {
-    
-    if (error) {
         return { slots: [], error };
     }
     
