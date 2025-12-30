@@ -395,7 +395,27 @@ The frontend will parse this to auto-fill the booking form.`;
     const geminiData = await geminiResponse.json();
     console.log('Gemini chat response:', JSON.stringify(geminiData, null, 2));
 
-    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I couldn\'t process that request.';
+    // Check for Gemini API errors
+    if (geminiData.error) {
+      console.error('Gemini API error:', geminiData.error);
+      return NextResponse.json({
+        message: `❌ Gemini API error: ${geminiData.error.message || 'Unknown error'}`,
+        leadTimezone,
+        yourTimezone,
+      });
+    }
+
+    // Check if response has expected structure
+    if (!geminiData.candidates || !geminiData.candidates[0]?.content?.parts?.[0]?.text) {
+      console.error('Unexpected Gemini response structure:', geminiData);
+      return NextResponse.json({
+        message: '❌ Gemini returned an unexpected response. Please try again.',
+        leadTimezone,
+        yourTimezone,
+      });
+    }
+
+    const responseText = geminiData.candidates[0].content.parts[0].text;
 
     // Parse any ACTION from the response
     let action: BookingAction | null = null;
