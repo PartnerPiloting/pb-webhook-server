@@ -440,20 +440,14 @@ ${yourFirstName}`;
           {!clientInfo.calendarConnected && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
               <p className="text-yellow-800 mb-3">
-                📅 Connect your Google Calendar to enable booking
+                📅 Calendar not configured - contact admin to set up calendar sharing
               </p>
-              <button
-                onClick={() => window.location.href = `/api/auth/google?clientId=${clientInfo.clientId}`}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium"
-              >
-                Connect Google Calendar
-              </button>
             </div>
           )}
 
           {clientInfo.calendarConnected && (
             <p className="mt-2 text-green-600 font-medium">
-              ✅ Google Calendar Connected
+              ✅ Calendar Ready
             </p>
           )}
         </div>
