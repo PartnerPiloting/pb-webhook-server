@@ -39,6 +39,7 @@ function CalendarBookingContent() {
   const [success, setSuccess] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [generatedMessage, setGeneratedMessage] = useState<string>('');
+  const [generateError, setGenerateError] = useState<string>('');
   const [suggestTimes, setSuggestTimes] = useState<string[]>(['', '', '']);
   const [bookTime, setBookTime] = useState<string>('');
 
@@ -113,23 +114,16 @@ function CalendarBookingContent() {
   };
 
   const handleGenerateMessage = async () => {
-    console.log('handleGenerateMessage CALLED');
-    console.log('formData:', formData);
-    console.log('suggestTimes:', suggestTimes);
+    setGenerateError('');
+    setSuccess('');
     
-    if (!formData.leadName.trim()) {
-      setError('❌ Lead Name is required to generate message');
-      return;
-    }
-
     const times = suggestTimes.filter(t => t.trim());
     if (times.length === 0) {
-      setError('❌ Please select at least one time slot');
+      setGenerateError('Please select at least one time slot');
       return;
     }
 
     setLoading(true);
-    setError('');
 
     try {
       const location = formData.leadLocation.trim() || 'Brisbane, Australia';
@@ -157,17 +151,15 @@ function CalendarBookingContent() {
       });
 
       const messageData = await messageRes.json();
-      console.log('Generate message response:', messageData);
-      console.log('Message content:', messageData.message);
       
       if (messageData.error) {
-        setError('❌ ' + messageData.error);
+        setGenerateError(messageData.error);
       } else {
         setGeneratedMessage(messageData.message);
         setSuccess('✅ Message generated! Copy and send to lead.');
       }
     } catch (err) {
-      setError('❌ Failed to generate message');
+      setGenerateError('Failed to generate message');
     } finally {
       setLoading(false);
     }
@@ -444,6 +436,7 @@ function CalendarBookingContent() {
                     />
                   ))}
                 </div>
+                
                 <button
                   onClick={handleGenerateMessage}
                   disabled={loading}
@@ -451,6 +444,12 @@ function CalendarBookingContent() {
                 >
                   {loading ? 'Generating...' : '💬 Generate Message'}
                 </button>
+                
+                {generateError && (
+                  <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded-md text-red-700 text-sm">
+                    ❌ {generateError}
+                  </div>
+                )}
                 
                 {generatedMessage && (
                   <div className="mt-4 p-4 bg-white border rounded-md">
