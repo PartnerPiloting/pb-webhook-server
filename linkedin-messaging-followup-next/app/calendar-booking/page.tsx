@@ -101,6 +101,11 @@ function CalendarBookingContent() {
   const handleFillFromClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
+      
+      console.log('Raw clipboard text:', text);
+      console.log('Clipboard length:', text.length);
+      console.log('Contains |||?', text.includes('|||'));
+      
       const parsed = parseClipboardData(text);
       
       if (!parsed) {
