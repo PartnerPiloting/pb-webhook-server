@@ -717,7 +717,7 @@ ${yourFirstName}`;
                 <h3 className="font-medium text-gray-800 mb-3">Book Meeting</h3>
                 <p className="text-sm text-gray-600 mb-3">
                   {clientInfo.calendarConnected 
-                    ? 'Use chat above to find a time, and then review below'
+                    ? 'Use chat above to find a time, then choose date/time below and open in your calendar'
                     : 'Select a time - opens Google Calendar to review and save'}
                 </p>
                 
