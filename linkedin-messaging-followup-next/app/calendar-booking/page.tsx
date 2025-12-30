@@ -712,70 +712,11 @@ ${yourFirstName}`;
             )}
 
             <div className="border-t pt-6 mt-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Actions</h2>
-              
-              <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-medium text-gray-800 mb-3">Generate AI Message</h3>
-                <p className="text-sm text-gray-600 mb-3">
-                  Select multiple times to suggest to lead
-                </p>
-                <div className="space-y-2 mb-4">
-                  {suggestTimes.map((time, index) => (
-                    <input
-                      key={index}
-                      type="datetime-local"
-                      value={time}
-                      onChange={(e) => {
-                        const newTimes = [...suggestTimes];
-                        newTimes[index] = e.target.value;
-                        setSuggestTimes(newTimes);
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  ))}
-                </div>
-                
-                <button
-                  onClick={handleGenerateMessage}
-                  disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium disabled:bg-gray-400"
-                >
-                  {loading ? 'Generating...' : '💬 Generate Message'}
-                </button>
-                
-                {generateError && (
-                  <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded-md text-red-700 text-sm">
-                    ❌ {generateError}
-                  </div>
-                )}
-                
-                {generatedMessage && (
-                  <div className="mt-4 p-4 bg-white border rounded-md">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-gray-700">Generated Message:</span>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(generatedMessage);
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 2000);
-                        }}
-                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                      >
-                        {copied ? '✅ Copied!' : '📋 Copy'}
-                      </button>
-                    </div>
-                    <pre className="whitespace-pre-wrap text-sm text-gray-800">
-                      {generatedMessage}
-                    </pre>
-                  </div>
-                )}
-              </div>
-
               <div className="p-4 bg-green-50 rounded-lg">
-                <h3 className="font-medium text-gray-800 mb-3">Book Meeting</h3>
+                <h3 className="font-medium text-gray-800 mb-3">📅 Book Meeting</h3>
                 <p className="text-sm text-gray-600 mb-3">
                   {clientInfo.calendarConnected 
-                    ? 'Use chat above to find a time, then choose date/time below and open in your calendar'
+                    ? 'AI will set the time - or pick manually below'
                     : 'Select a time - opens Google Calendar to review and save'}
                 </p>
                 

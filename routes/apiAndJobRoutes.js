@@ -6794,34 +6794,6 @@ router.post("/api/calendar/chat", async (req, res) => {
     // Import service account calendar client
     const calendarService = require('../config/calendarServiceAccount.js');
 
-    // Get calendar email for this client
-    const getCalendarEmail = async () => {
-      const lookupResponse = await fetch(
-        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email`,
-        {
-          headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` },
-        }
-      );
-
-      if (!lookupResponse.ok) {
-        return { email: '', error: 'Failed to lookup client' };
-      }
-
-      const data = await lookupResponse.json();
-      if (!data.records || data.records.length === 0) {
-        return { email: '', error: 'Client not found' };
-      }
-
-      const record = data.records[0];
-      const calendarEmail = record.fields['Google Calendar Email'];
-
-      if (!calendarEmail) {
-        return { email: '', error: `Calendar not configured. Share your calendar with: ${calendarService.serviceAccountEmail || 'service account'}` };
-      }
-
-      return { email: calendarEmail };
-    };
-
     // Get free slots for a date using service account
     const getFreeSlotsForDate = async (calendarEmail, date, startHour = 9, endHour = 17, timezone = 'Australia/Brisbane') => {
       const { slots, error } = await calendarService.getFreeSlotsForDate(calendarEmail, date, startHour, endHour, timezone);
@@ -6844,10 +6816,37 @@ router.post("/api/calendar/chat", async (req, res) => {
 
     // Detect lead timezone from location
     const leadTimezone = getTimezoneFromLocation(context.leadLocation || 'Brisbane');
-    const yourTimezone = 'Australia/Brisbane'; // Hardcoded for now
+    
+    // Get client timezone and calendar email from Airtable
+    const getClientCalendarInfo = async () => {
+      const lookupResponse = await fetch(
+        `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email&fields[]=Timezone`,
+        {
+          headers: { 'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}` },
+        }
+      );
 
-    // Get calendar email for this client
-    const { email: calendarEmail, error: calendarError } = await getCalendarEmail();
+      if (!lookupResponse.ok) {
+        return { email: '', timezone: 'Australia/Brisbane', error: 'Failed to lookup client' };
+      }
+
+      const data = await lookupResponse.json();
+      if (!data.records || data.records.length === 0) {
+        return { email: '', timezone: 'Australia/Brisbane', error: 'Client not found' };
+      }
+
+      const record = data.records[0];
+      const calendarEmail = record.fields['Google Calendar Email'];
+      const timezone = record.fields['Timezone'] || 'Australia/Brisbane';
+
+      if (!calendarEmail) {
+        return { email: '', timezone, error: `Calendar not configured. Share your calendar with: ${calendarService.serviceAccountEmail || 'service account'}` };
+      }
+
+      return { email: calendarEmail, timezone, error: null };
+    };
+
+    const { email: calendarEmail, timezone: yourTimezone, error: calendarError } = await getClientCalendarInfo();
     if (calendarError) {
       return res.status(401).json({ error: calendarError });
     }
@@ -6861,32 +6860,81 @@ router.post("/api/calendar/chat", async (req, res) => {
       dates.push(d.toISOString().split('T')[0]);
     }
 
+    // Check if timezones have the same offset right now (for timezone display logic)
+    const getOffsetMinutes = (tz) => {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' });
+      const parts = formatter.formatToParts(now);
+      const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+      const match = offsetPart.match(/GMT([+-])(\d+)(?::(\d+))?/);
+      if (!match) return 0;
+      const sign = match[1] === '+' ? 1 : -1;
+      const hours = parseInt(match[2], 10);
+      const minutes = parseInt(match[3] || '0', 10);
+      return sign * (hours * 60 + minutes);
+    };
+    
+    const yourOffset = getOffsetMinutes(yourTimezone);
+    const leadOffset = getOffsetMinutes(leadTimezone);
+    const sameTimezone = yourOffset === leadOffset;
+    
+    // Extract lead's first name
+    const leadFirstName = (context.leadName || '').split(' ')[0] || 'the lead';
+    
+    // City name for display (extract from timezone or location)
+    const getDisplayCity = (tz, location) => {
+      if (location) {
+        const loc = location.toLowerCase();
+        if (loc.includes('sydney')) return 'Sydney';
+        if (loc.includes('melbourne')) return 'Melbourne';
+        if (loc.includes('brisbane')) return 'Brisbane';
+        if (loc.includes('perth')) return 'Perth';
+        if (loc.includes('adelaide')) return 'Adelaide';
+        if (loc.includes('auckland')) return 'Auckland';
+        if (loc.includes('singapore')) return 'Singapore';
+      }
+      // Extract from timezone string
+      const city = tz.split('/').pop()?.replace('_', ' ');
+      return city || 'their timezone';
+    };
+    const leadCity = getDisplayCity(leadTimezone, context.leadLocation);
+
     // Build system prompt with context
     const systemPrompt = `You are a helpful calendar booking assistant for ${context.yourName}.
 
 CONTEXT:
-- Your timezone: ${yourTimezone} (Brisbane)
-- Lead's name: ${context.leadName}
+- Your timezone: ${yourTimezone}
+- Lead's name: ${context.leadName} (use "${leadFirstName}" in messages)
 - Lead's location: ${context.leadLocation || 'Unknown'}
 - Lead's timezone: ${leadTimezone}
+- Timezone difference: ${sameTimezone ? 'SAME timezone - do NOT mention timezone in messages' : `DIFFERENT timezone - include "(${leadCity} time)" when stating times for the lead`}
 - Today's date: ${today.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 ${context.conversationHint ? `- From conversation: "${context.conversationHint}"` : ''}
 
 YOUR CAPABILITIES:
 1. Check calendar availability for specific dates
-2. Show free time slots in both your timezone and lead's timezone
+2. Show free time slots
 3. Suggest the best meeting time when asked
-4. Set a booking time when the user confirms
+4. Generate booking messages to send to the lead
+5. Set a booking time when the user confirms
 
-RULES:
-- Always show times in BOTH timezones: "2pm Brisbane (3pm Sydney for ${context.leadName})"
+MESSAGE GENERATION RULES (when asked to generate a message for the lead):
+- Use ${leadFirstName}'s first name
+- Keep it casual but professional
+- Offer 2-3 time options unless user specifies otherwise
+- If timezones are THE SAME: just say "11am Tuesday" - NO timezone mention
+- If timezones are DIFFERENT: include their timezone like "11am (${leadCity} time) Tuesday"
+- Keep messages concise - 2-3 sentences max
+- User can override any of these rules by telling you directly
+
+RESPONSE STYLE:
 - Be conversational but concise
-- When user picks a time, respond with confirmation and include the ACTION JSON
-- For vague requests like "next week", ask which specific days to check
+- When showing availability, show times in your timezone
+- For vague requests like "next week", show all days or ask which specific days
 
 ACTIONS:
 When the user confirms a booking time, include this JSON at the END of your response (on its own line):
-ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"Australia/Brisbane"}
+ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
 
 The frontend will parse this to auto-fill the booking form.`;
 
