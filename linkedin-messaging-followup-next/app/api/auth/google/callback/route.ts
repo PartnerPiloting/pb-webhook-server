@@ -44,14 +44,47 @@ export async function GET(request: Request) {
       );
     }
 
-    // Store tokens in Airtable
-    // TODO: Call backend API to store tokens
-    console.log('Tokens obtained for client:', clientId);
-    console.log('Access token:', tokens.access_token?.substring(0, 20) + '...');
-    console.log('Refresh token:', tokens.refresh_token ? 'YES' : 'NO');
+    // Calculate token expiry (tokens.expires_in is in seconds)
+    const expiryDate = new Date(Date.now() + tokens.expires_in * 1000);
 
-    // For now, just redirect back with success
-    // In production, this would save to Airtable Master Clients base
+    // Save tokens to Airtable Master Clients base
+    const airtableResponse = await fetch(
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          records: [
+            {
+              fields: {
+                'Client ID': clientId,
+                'Google Calendar Token': tokens.access_token,
+                'Google Calendar Refresh Token': tokens.refresh_token,
+                'Google Calendar Token Expiry': expiryDate.toISOString(),
+                'Calendar Connected': true,
+              },
+            },
+          ],
+          performUpsert: {
+            fieldsToMergeOn: ['Client ID'],
+          },
+        }),
+      }
+    );
+
+    if (!airtableResponse.ok) {
+      const error = await airtableResponse.text();
+      console.error('Failed to save tokens to Airtable:', error);
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/calendar-booking?client=${clientId}&error=save_failed`
+      );
+    }
+
+    console.log('Tokens saved successfully for client:', clientId);
+    
     return NextResponse.redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/calendar-booking?client=${clientId}&connected=true`
     );
