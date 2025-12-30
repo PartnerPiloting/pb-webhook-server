@@ -6944,14 +6944,15 @@ ACTIONS:
 
 The frontend parses these actions - setBookingTime fills the form, openCalendar opens Google Calendar.`;
 
-    // Check if the user is asking about availability
+    // Check if the user is asking about availability (free slots)
     const isAvailabilityQuery = message.toLowerCase().match(/free|available|open|slot|what.*work|check.*calendar|tuesday|wednesday|thursday|friday|monday|saturday|sunday|tomorrow|next week|this week/i);
-
-    let calendarContext = '';
     
     // Check if the user is asking about their appointments/meetings
-    // More permissive regex to catch variations
-    const isAppointmentQuery = message.toLowerCase().match(/appoint|meeting|scheduled|what.*(have|on)|show.*have|booked|busy|next (monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+    // But NOT if they're asking about "free" times - that's availability
+    const hasFreeKeyword = message.toLowerCase().match(/free|available|open|slot/i);
+    const isAppointmentQuery = !hasFreeKeyword && message.toLowerCase().match(/appoint|meeting|scheduled|what.*(have|on)|show.*have|booked|busy/i);
+    
+    let calendarContext = '';
     
     logger.info(`Query analysis - message: "${message}", isAppointmentQuery: ${!!isAppointmentQuery}, isAvailabilityQuery: ${!!isAvailabilityQuery}`);
     
