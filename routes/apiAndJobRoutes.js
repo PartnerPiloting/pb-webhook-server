@@ -7047,8 +7047,8 @@ The frontend will parse this to auto-fill the booking form.`;
     });
 
   } catch (error) {
-    logger.error('Calendar chat error:', error);
-    res.status(500).json({ error: 'Failed to process chat message' });
+    logger.error('Calendar chat error:', error.message, error.stack);
+    res.status(500).json({ error: `Chat failed: ${error.message}` });
   }
 });
 
