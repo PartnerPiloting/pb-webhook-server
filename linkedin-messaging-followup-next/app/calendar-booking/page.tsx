@@ -71,7 +71,8 @@ function CalendarBookingContent() {
     try {
       const fields = text.split('|||').map(f => f.trim());
       
-      if (fields.length !== 7) {
+      // Accept 7 or 8 fields (8th is optional Lead Email)
+      if (fields.length < 7 || fields.length > 8) {
         return null;
       }
 
@@ -89,7 +90,7 @@ function CalendarBookingContent() {
         leadName: extractValue(fields[4]),
         leadLinkedIn: extractValue(fields[5]),
         leadLocation: extractValue(fields[6]),
-        leadEmail: '',
+        leadEmail: fields[7] ? extractValue(fields[7]) : '',
         leadPhone: '',
       };
     } catch (e) {
