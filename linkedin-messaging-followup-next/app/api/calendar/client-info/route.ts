@@ -40,6 +40,9 @@ export async function GET(request: Request) {
 
     const client = data.records[0].fields;
     
+    // Debug: Log the raw Calendar Connected value
+    console.log('Raw Calendar Connected value:', client['Calendar Connected'], 'Type:', typeof client['Calendar Connected']);
+    
     // Check if client is active
     if (client.Status !== 'Active') {
       return NextResponse.json(
@@ -51,7 +54,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       clientId: client['Client ID'],
       clientName: client['Client Name'],
-      calendarConnected: client['Calendar Connected'] || false,
+      calendarConnected: !!client['Calendar Connected'],
     });
 
   } catch (error) {
