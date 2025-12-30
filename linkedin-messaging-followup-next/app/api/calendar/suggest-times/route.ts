@@ -79,7 +79,16 @@ Generate the message:`;
     );
 
     const data = await response.json();
+    console.log('Gemini response:', JSON.stringify(data));
+    
     const message = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    // If Gemini returned empty, use fallback
+    if (!message.trim()) {
+      console.log('Gemini returned empty, using fallback');
+      const firstName = params.leadName.split(' ')[0];
+      return `Hi ${firstName},\n\nI'd love to schedule a time to connect. Here are a few options that should work well with your ${params.leadLocation} timezone:\n\n${params.suggestedTimes.map((t, i) => `Option ${i + 1}: ${t}`).join('\n')}\n\nWhich time works best for you?\n\nBest regards,\n${params.yourName}`;
+    }
     
     return message.trim();
   } catch (error) {
