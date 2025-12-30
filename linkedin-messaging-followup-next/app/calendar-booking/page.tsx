@@ -153,6 +153,9 @@ function CalendarBookingContent() {
       });
 
       const messageData = await messageRes.json();
+      console.log('Generate message response:', messageData);
+      console.log('Message content:', messageData.message);
+      
       if (messageData.error) {
         setError('❌ ' + messageData.error);
       } else {
