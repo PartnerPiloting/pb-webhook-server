@@ -6807,7 +6807,8 @@ router.post("/api/calendar/chat", async (req, res) => {
 
       const tokens = await tokenResponse.json();
       if (tokens.error) {
-        return { token: '', error: 'Failed to refresh token' };
+        console.error('Google token refresh failed:', tokens.error, tokens.error_description);
+        return { token: '', error: `Failed to refresh token: ${tokens.error_description || tokens.error}` };
       }
 
       const newExpiryDate = new Date(Date.now() + tokens.expires_in * 1000);
