@@ -6950,26 +6950,45 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     let calendarContext = '';
     
     // Check if the user is asking about their appointments/meetings
-    const isAppointmentQuery = message.toLowerCase().match(/appointment|meeting|scheduled|what do i have|what('s| is) on|booked|busy/i);
+    const isAppointmentQuery = message.toLowerCase().match(/appointment|meeting|scheduled|what do i have|what('s| is) on|booked|busy|next monday|next tuesday|next wednesday|next thursday|next friday|next saturday|next sunday/i);
+    
+    logger.info(`Query analysis - message: "${message}", isAppointmentQuery: ${!!isAppointmentQuery}, isAvailabilityQuery: ${!!isAvailabilityQuery}`);
     
     if (isAppointmentQuery) {
       const dayMatches = message.toLowerCase().match(/monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today/gi) || [];
       
-      if (dayMatches.length > 0 || message.toLowerCase().includes('next week') || message.toLowerCase().includes('this week')) {
+      // Handle "next [day]" - find the next occurrence of that day
+      const nextDayMatch = message.toLowerCase().match(/next (monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+      
+      if (dayMatches.length > 0 || message.toLowerCase().includes('next week') || message.toLowerCase().includes('this week') || nextDayMatch) {
         const eventDays = [];
         
         for (const dateStr of dates) {
           const date = new Date(dateStr);
           const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
           
-          const shouldInclude = dayMatches.some(m => dayName.includes(m.toLowerCase())) ||
+          // Check if this is "next [day]" - should be the first occurrence of that day in the future
+          let isNextDay = false;
+          if (nextDayMatch) {
+            const targetDay = nextDayMatch[1].toLowerCase();
+            if (dayName === targetDay) {
+              // Only include if we haven't already found this day
+              isNextDay = !eventDays.some(d => d.day.toLowerCase().includes(targetDay));
+            }
+          }
+          
+          const shouldInclude = isNextDay ||
+            dayMatches.some(m => dayName.includes(m.toLowerCase())) ||
             (message.toLowerCase().includes('tomorrow') && dateStr === dates[1]) ||
             (message.toLowerCase().includes('today') && dateStr === dates[0]) ||
             message.toLowerCase().includes('next week') ||
             message.toLowerCase().includes('this week');
           
           if (shouldInclude) {
+            logger.info(`Fetching events for ${dateStr} (${dayName})`);
             const { events, error } = await calendarService.getEventsForDate(calendarEmail, dateStr, yourTimezone);
+            
+            logger.info(`Events result for ${dateStr}: ${events?.length || 0} events, error: ${error || 'none'}`);
             
             if (!error) {
               eventDays.push({
@@ -6980,6 +6999,11 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
                   displayTime: formatTimeInTimezone(e.start, yourTimezone),
                 })),
               });
+              
+              // For "next [day]", only include the first match
+              if (nextDayMatch && isNextDay) {
+                break;
+              }
             }
           }
         }
@@ -6988,6 +7012,7 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
           calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS:\n${eventDays.map(d => 
             `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
           ).join('\n')}`;
+          logger.info(`Calendar context for AI: ${calendarContext}`);
         }
       }
     }
