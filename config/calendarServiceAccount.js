@@ -134,13 +134,18 @@ async function getFreeSlotsForDate(calendarEmail, date, startHour = 9, endHour =
  */
 async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisbane') {
     if (!calendarClient) {
+        console.error('[CalendarServiceAccount] getEventsForDate: Calendar client not initialized');
         return { events: [], error: 'Calendar service not initialized' };
     }
+    
+    console.log(`[CalendarServiceAccount] getEventsForDate: calendarEmail=${calendarEmail}, date=${date}, timezone=${timezone}`);
     
     try {
         // Get events for the full day
         const startTime = new Date(`${date}T00:00:00`);
         const endTime = new Date(`${date}T23:59:59`);
+        
+        console.log(`[CalendarServiceAccount] Querying events from ${startTime.toISOString()} to ${endTime.toISOString()}`);
         
         const response = await calendarClient.events.list({
             calendarId: calendarEmail,
@@ -150,6 +155,8 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
             orderBy: 'startTime',
         });
         
+        console.log(`[CalendarServiceAccount] Raw response items: ${response.data.items?.length || 0}`);
+        
         const events = (response.data.items || []).map(event => ({
             summary: event.summary || '(No title)',
             start: event.start?.dateTime || event.start?.date,
@@ -157,9 +164,11 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
             location: event.location || '',
         }));
         
+        console.log(`[CalendarServiceAccount] Returning ${events.length} events`);
+        
         return { events };
     } catch (error) {
-        console.error('[CalendarServiceAccount] Events error:', error.message);
+        console.error('[CalendarServiceAccount] Events error:', error.message, error.code, error.errors);
         if (error.code === 404) {
             return { events: [], error: `Calendar not accessible. Share your calendar with: ${serviceAccountEmail}` };
         }
