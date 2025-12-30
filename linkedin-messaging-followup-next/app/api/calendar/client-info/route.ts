@@ -40,8 +40,9 @@ export async function GET(request: Request) {
 
     const client = data.records[0].fields;
     
-    // Debug: Log the raw Calendar Connected value
-    console.log('Raw Calendar Connected value:', client['Calendar Connected'], 'Type:', typeof client['Calendar Connected']);
+    // Debug: Log ALL fields returned by Airtable
+    console.log('All Airtable fields:', JSON.stringify(client, null, 2));
+    console.log('Field names:', Object.keys(client));
     
     // Check if client is active
     if (client.Status !== 'Active') {
