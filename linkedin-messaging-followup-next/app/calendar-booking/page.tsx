@@ -68,7 +68,11 @@ function CalendarBookingContent() {
     try {
       const fields = text.split('|||').map(f => f.trim());
       
+      console.log('Clipboard fields count:', fields.length);
+      console.log('Clipboard fields:', fields);
+      
       if (fields.length !== 7) {
+        console.error(`Expected 7 fields, got ${fields.length}`);
         return null;
       }
 
