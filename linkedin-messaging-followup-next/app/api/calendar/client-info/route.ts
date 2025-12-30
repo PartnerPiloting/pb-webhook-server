@@ -12,12 +12,14 @@ export async function GET(request: Request) {
     }
 
     // Query Airtable Master Clients base (case-insensitive)
+    // Explicitly request the Calendar Connected field
     const airtableResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Client ID&fields[]=Client Name&fields[]=Status&fields[]=Calendar Connected&fields[]=Google Calendar Token`,
       {
         headers: {
           'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
         },
+        cache: 'no-store',
       }
     );
 
@@ -41,8 +43,11 @@ export async function GET(request: Request) {
     const client = data.records[0].fields;
     
     // Debug: Log ALL fields returned by Airtable
+    console.log('Record ID:', data.records[0].id);
     console.log('All Airtable fields:', JSON.stringify(client, null, 2));
     console.log('Field names:', Object.keys(client));
+    console.log('Calendar Connected raw value:', client['Calendar Connected']);
+    console.log('Google Calendar Token exists:', !!client['Google Calendar Token']);
     
     // Check if client is active
     if (client.Status !== 'Active') {
