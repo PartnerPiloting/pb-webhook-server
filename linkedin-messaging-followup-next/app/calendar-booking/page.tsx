@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface FormData {
@@ -13,12 +13,26 @@ interface FormData {
   leadLocation: string;
   leadEmail: string;
   leadPhone: string;
+  conversationHint: string;
 }
 
 interface ClientInfo {
   clientId: string;
   clientName: string;
   calendarConnected: boolean;
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface BookingAction {
+  type: 'setBookingTime';
+  dateTime: string;
+  timezone: string;
+  displayTime: string;
+  leadDisplayTime: string;
 }
 
 function CalendarBookingContent() {
@@ -34,6 +48,7 @@ function CalendarBookingContent() {
     leadLocation: '',
     leadEmail: '',
     leadPhone: '',
+    conversationHint: '',
   });
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
@@ -42,8 +57,23 @@ function CalendarBookingContent() {
   const [generateError, setGenerateError] = useState<string>('');
   const [bookError, setBookError] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [confirmCopied, setConfirmCopied] = useState(false);
   const [suggestTimes, setSuggestTimes] = useState<string[]>(['', '', '']);
   const [bookTime, setBookTime] = useState<string>('');
+  
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [leadTimezone, setLeadTimezone] = useState<string>('');
+  const [yourTimezone] = useState<string>('Australia/Brisbane');
+  const [leadDisplayTime, setLeadDisplayTime] = useState<string>('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Confirmation message state
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [includeEmailInConfirm, setIncludeEmailInConfirm] = useState(true);
+  const [confirmationMessage, setConfirmationMessage] = useState('');
 
   // Load client info from URL
   useEffect(() => {
@@ -67,12 +97,25 @@ function CalendarBookingContent() {
       });
   }, [searchParams]);
 
+  // Scroll chat to bottom when messages change
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  // Generate confirmation message when booking time changes
+  useEffect(() => {
+    if (bookTime && showConfirmation) {
+      generateConfirmationMessage();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookTime, includeEmailInConfirm, showConfirmation, leadDisplayTime]);
+
   const parseClipboardData = (text: string): FormData | null => {
     try {
       const fields = text.split('|||').map(f => f.trim());
       
-      // Accept 7 or 8 fields (8th is optional Lead Email)
-      if (fields.length < 7 || fields.length > 8) {
+      // Accept 7, 8, or 9 fields (8th = Lead Email, 9th = Conversation Hint)
+      if (fields.length < 7 || fields.length > 9) {
         return null;
       }
 
@@ -92,6 +135,7 @@ function CalendarBookingContent() {
         leadLocation: extractValue(fields[6]),
         leadEmail: fields[7] ? extractValue(fields[7]) : '',
         leadPhone: '',
+        conversationHint: fields[8] ? extractValue(fields[8]) : '',
       };
     } catch (e) {
       return null;
@@ -104,15 +148,90 @@ function CalendarBookingContent() {
       const parsed = parseClipboardData(text);
       
       if (!parsed) {
-        setError('❌ Clipboard data format invalid. Expected 7 fields separated by |||');
+        setError('❌ Clipboard data format invalid. Expected 7-9 fields separated by |||');
         return;
       }
 
       setFormData(parsed);
       setSuccess('✅ Data loaded from clipboard successfully!');
       setError('');
+      
+      // If there's a conversation hint, add it as initial context in chat
+      if (parsed.conversationHint) {
+        setChatMessages([{
+          role: 'assistant',
+          content: `📋 From your conversation: "${parsed.conversationHint}"\n\nHow can I help you schedule this meeting?`
+        }]);
+      }
     } catch (err) {
       setError('❌ Failed to read clipboard. Please allow clipboard access.');
+    }
+  };
+
+  const handleChatSend = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    
+    const userMessage = chatInput.trim();
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setChatLoading(true);
+
+    try {
+      const response = await fetch('/api/calendar/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientInfo!.clientId,
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          messages: chatMessages,
+          context: {
+            yourName: formData.yourName,
+            yourTimezone,
+            leadName: formData.leadName,
+            leadLocation: formData.leadLocation || 'Brisbane',
+            conversationHint: formData.conversationHint,
+          },
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.error) {
+        setChatMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `❌ ${data.error}` 
+        }]);
+      } else {
+        setChatMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: data.message 
+        }]);
+        
+        // Update timezone info
+        if (data.leadTimezone) {
+          setLeadTimezone(data.leadTimezone);
+        }
+        
+        // Handle booking action - auto-fill the picker
+        if (data.action?.type === 'setBookingTime') {
+          const action = data.action as BookingAction;
+          // Convert ISO to datetime-local format
+          const dt = new Date(action.dateTime);
+          const localDateTime = dt.toISOString().slice(0, 16);
+          setBookTime(localDateTime);
+          setLeadDisplayTime(action.leadDisplayTime || '');
+          setSuccess(`✅ Time set: ${action.displayTime} (${action.leadDisplayTime} for lead)`);
+        }
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: '❌ Failed to send message. Please try again.' 
+      }]);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -175,6 +294,44 @@ function CalendarBookingContent() {
     }
   };
 
+  const generateConfirmationMessage = () => {
+    const leadFirstName = formData.leadName.split(' ')[0] || 'there';
+    const yourFirstName = formData.yourName.split(' ')[0] || '';
+    
+    // Format the meeting time for display
+    let meetingTimeDisplay = '';
+    if (bookTime) {
+      const dt = new Date(bookTime);
+      meetingTimeDisplay = dt.toLocaleString('en-AU', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+      
+      // Add lead's timezone if different
+      if (leadDisplayTime && leadDisplayTime !== meetingTimeDisplay) {
+        meetingTimeDisplay = leadDisplayTime;
+      }
+    }
+    
+    const emailPart = includeEmailInConfirm && formData.leadEmail 
+      ? ` to ${formData.leadEmail}` 
+      : '';
+    
+    const message = `Hi ${leadFirstName},
+
+Great! I have just sent a calendar invite for ${meetingTimeDisplay}${emailPart} - did it come through?
+
+Looking forward to meeting!
+
+${yourFirstName}`;
+    
+    setConfirmationMessage(message);
+  };
+
   const handleBookMeeting = async () => {
     setBookError('');
     
@@ -225,7 +382,11 @@ function CalendarBookingContent() {
     
     // Open Google Calendar in new tab
     window.open(calUrl, '_blank');
-    setSuccess('✅ Google Calendar opened - review and save the event');
+    
+    // Show confirmation message section
+    setShowConfirmation(true);
+    generateConfirmationMessage();
+    setSuccess('✅ Google Calendar opened - send confirmation to lead below');
   };
 
   if (!clientInfo) {
@@ -280,7 +441,7 @@ function CalendarBookingContent() {
               📋 Fill from Clipboard
             </button>
             <p className="text-sm text-gray-500 mt-2 text-center">
-              Paste AI Blaze output (7 fields with |||)
+              Paste AI Blaze output (7-9 fields with |||)
             </p>
           </div>
 
@@ -374,20 +535,20 @@ function CalendarBookingContent() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Lead Location
-                    <span className="text-gray-500 text-xs ml-1">(defaults to Brisbane)</span>
+                    <span className="text-gray-500 text-xs ml-1">(for timezone)</span>
                   </label>
                   <input
                     type="text"
                     value={formData.leadLocation}
                     onChange={(e) => setFormData({...formData, leadLocation: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="Brisbane, Australia"
+                    placeholder="Sydney, Australia"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Lead Email
-                    <span className="text-red-500 text-xs ml-1">(required for booking)</span>
+                    <span className="text-gray-500 text-xs ml-1">(optional - adds as guest)</span>
                   </label>
                   <input
                     type="email"
@@ -409,6 +570,70 @@ function CalendarBookingContent() {
                 </div>
               </div>
             </div>
+
+            {/* Chat Section for Booking */}
+            {clientInfo.calendarConnected && (
+              <div className="border-t pt-6 mt-6">
+                <h2 className="text-lg font-semibold text-gray-800 mb-4">📅 Smart Booking Assistant</h2>
+                
+                {formData.conversationHint && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <span className="text-sm text-blue-800">
+                      💬 From conversation: &quot;{formData.conversationHint}&quot;
+                    </span>
+                  </div>
+                )}
+                
+                <div className="bg-gray-50 rounded-lg p-4 mb-4 h-64 overflow-y-auto">
+                  {chatMessages.length === 0 ? (
+                    <div className="text-gray-500 text-center py-8">
+                      <p className="mb-2">Ask me about your availability!</p>
+                      <p className="text-sm">Try: &quot;What&apos;s free Thursday?&quot; or &quot;Check next Tuesday lunch&quot;</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {chatMessages.map((msg, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-3 rounded-lg ${
+                            msg.role === 'user'
+                              ? 'bg-blue-100 ml-8'
+                              : 'bg-white border mr-8'
+                          }`}
+                        >
+                          <pre className="whitespace-pre-wrap text-sm font-sans">{msg.content}</pre>
+                        </div>
+                      ))}
+                      {chatLoading && (
+                        <div className="bg-white border rounded-lg p-3 mr-8">
+                          <span className="text-gray-500">Checking calendar...</span>
+                        </div>
+                      )}
+                      <div ref={chatEndRef} />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
+                    placeholder="What's free Thursday afternoon?"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md"
+                    disabled={chatLoading}
+                  />
+                  <button
+                    onClick={handleChatSend}
+                    disabled={chatLoading || !chatInput.trim()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium disabled:bg-gray-400"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-6 mt-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">Actions</h2>
@@ -473,14 +698,29 @@ function CalendarBookingContent() {
               <div className="p-4 bg-green-50 rounded-lg">
                 <h3 className="font-medium text-gray-800 mb-3">Book Meeting</h3>
                 <p className="text-sm text-gray-600 mb-3">
-                  Select a time - opens Google Calendar to review and save
+                  {clientInfo.calendarConnected 
+                    ? 'Use chat above to find a time, or pick manually below'
+                    : 'Select a time - opens Google Calendar to review and save'}
                 </p>
+                
                 <input
                   type="datetime-local"
                   value={bookTime}
                   onChange={(e) => setBookTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md mb-4"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md mb-2"
                 />
+                
+                {bookTime && leadDisplayTime && (
+                  <p className="text-sm text-gray-600 mb-4">
+                    📍 Your calendar: {new Date(bookTime).toLocaleString('en-AU', {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                      hour: 'numeric', minute: '2-digit', hour12: true
+                    })} Brisbane
+                    <br />
+                    📍 Lead sees: {leadDisplayTime}
+                  </p>
+                )}
+                
                 <button
                   onClick={handleBookMeeting}
                   className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md font-medium"
@@ -494,6 +734,42 @@ function CalendarBookingContent() {
                   </div>
                 )}
               </div>
+
+              {/* Confirmation Message Section */}
+              {showConfirmation && (
+                <div className="mt-6 p-4 bg-purple-50 rounded-lg">
+                  <h3 className="font-medium text-gray-800 mb-3">📨 Send Confirmation to Lead</h3>
+                  
+                  <div className="mb-3">
+                    <label className="flex items-center text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={includeEmailInConfirm}
+                        onChange={(e) => setIncludeEmailInConfirm(e.target.checked)}
+                        className="mr-2"
+                      />
+                      Include email address in message
+                    </label>
+                  </div>
+                  
+                  <div className="bg-white border rounded-md p-4 mb-3">
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800">
+                      {confirmationMessage}
+                    </pre>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(confirmationMessage);
+                      setConfirmCopied(true);
+                      setTimeout(() => setConfirmCopied(false), 2000);
+                    }}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-md font-medium"
+                  >
+                    {confirmCopied ? '✅ Copied!' : '📋 Copy Confirmation Message'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
