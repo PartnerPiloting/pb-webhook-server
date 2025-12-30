@@ -6950,7 +6950,8 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     let calendarContext = '';
     
     // Check if the user is asking about their appointments/meetings
-    const isAppointmentQuery = message.toLowerCase().match(/appointment|meeting|scheduled|what do i have|what('s| is) on|booked|busy|next monday|next tuesday|next wednesday|next thursday|next friday|next saturday|next sunday/i);
+    // More permissive regex to catch variations
+    const isAppointmentQuery = message.toLowerCase().match(/appoint|meeting|scheduled|what.*(have|on)|show.*have|booked|busy|next (monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
     
     logger.info(`Query analysis - message: "${message}", isAppointmentQuery: ${!!isAppointmentQuery}, isAvailabilityQuery: ${!!isAvailabilityQuery}`);
     
