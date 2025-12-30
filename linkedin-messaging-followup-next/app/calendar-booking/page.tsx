@@ -40,6 +40,8 @@ function CalendarBookingContent() {
   const [loading, setLoading] = useState(false);
   const [generatedMessage, setGeneratedMessage] = useState<string>('');
   const [generateError, setGenerateError] = useState<string>('');
+  const [bookError, setBookError] = useState<string>('');
+  const [copied, setCopied] = useState(false);
   const [suggestTimes, setSuggestTimes] = useState<string[]>(['', '', '']);
   const [bookTime, setBookTime] = useState<string>('');
 
@@ -173,23 +175,24 @@ function CalendarBookingContent() {
   };
 
   const handleBookMeeting = async () => {
+    setBookError('');
+    
     if (!formData.leadEmail.trim()) {
-      setError('❌ Lead Email is required to book meeting');
+      setBookError('Lead Email is required to book meeting');
       return;
     }
 
     if (!bookTime.trim()) {
-      setError('❌ Please select a meeting time');
+      setBookError('Please select a meeting time');
       return;
     }
 
     if (!clientInfo?.calendarConnected) {
-      setError('❌ Please connect your Google Calendar first');
+      setBookError('Please connect your Google Calendar first');
       return;
     }
 
     setLoading(true);
-    setError('');
 
     try {
       const location = formData.leadLocation.trim() || 'Brisbane, Australia';
@@ -229,10 +232,10 @@ function CalendarBookingContent() {
         setSuccess('✅ Meeting booked successfully! Calendar invite sent to ' + formData.leadEmail);
         setBookTime('');
       } else {
-        setError('❌ ' + data.error);
+        setBookError(data.error);
       }
     } catch (err) {
-      setError('❌ Failed to book meeting');
+      setBookError('Failed to book meeting');
     } finally {
       setLoading(false);
     }
@@ -465,11 +468,12 @@ function CalendarBookingContent() {
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(generatedMessage);
-                          setSuccess('✅ Message copied to clipboard!');
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
                         }}
-                        className="text-blue-600 hover:text-blue-700 text-sm"
+                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                       >
-                        📋 Copy
+                        {copied ? '✅ Copied!' : '📋 Copy'}
                       </button>
                     </div>
                     <pre className="whitespace-pre-wrap text-sm text-gray-800">
@@ -497,6 +501,12 @@ function CalendarBookingContent() {
                 >
                   {loading ? 'Booking...' : '📅 Book Meeting'}
                 </button>
+                
+                {bookError && (
+                  <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded-md text-red-700 text-sm">
+                    ❌ {bookError}
+                  </div>
+                )}
               </div>
             </div>
           </div>
