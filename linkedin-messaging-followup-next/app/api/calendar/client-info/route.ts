@@ -11,9 +11,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Client ID required' }, { status: 400 });
     }
 
-    // Query Airtable Master Clients base
+    // Query Airtable Master Clients base (case-insensitive)
     const airtableResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula={Client ID}='${clientId}'`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`,
       {
         headers: {
           'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
