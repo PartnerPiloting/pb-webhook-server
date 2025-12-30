@@ -114,8 +114,13 @@ function CalendarBookingContent() {
     try {
       const fields = text.split('|||').map(f => f.trim());
       
-      // Accept 7, 8, or 9 fields (8th = Lead Email, 9th = Conversation Hint)
-      if (fields.length < 7 || fields.length > 9) {
+      // Accept 7-10 fields:
+      // 1-4: Your Name, LinkedIn, Phone, Zoom
+      // 5-7: Lead Name, LinkedIn, Location
+      // 8: Lead Email (optional)
+      // 9: Conversation Hint / Booking Time Preference (optional)
+      // 10: Lead Phone (optional)
+      if (fields.length < 7 || fields.length > 10) {
         return null;
       }
 
@@ -134,8 +139,8 @@ function CalendarBookingContent() {
         leadLinkedIn: extractValue(fields[5]),
         leadLocation: extractValue(fields[6]),
         leadEmail: fields[7] ? extractValue(fields[7]) : '',
-        leadPhone: '',
         conversationHint: fields[8] ? extractValue(fields[8]) : '',
+        leadPhone: fields[9] ? extractValue(fields[9]) : '',
       };
     } catch (e) {
       return null;
@@ -148,7 +153,7 @@ function CalendarBookingContent() {
       const parsed = parseClipboardData(text);
       
       if (!parsed) {
-        setError('❌ Clipboard data format invalid. Expected 7-9 fields separated by |||');
+        setError('❌ Clipboard data format invalid. Expected 7-10 fields separated by |||');
         return;
       }
 
@@ -441,7 +446,7 @@ ${yourFirstName}`;
               📋 Fill from Clipboard
             </button>
             <p className="text-sm text-gray-500 mt-2 text-center">
-              Paste AI Blaze output (7-9 fields with |||)
+              Paste AI Blaze output (7-10 fields with |||)
             </p>
           </div>
 
@@ -566,6 +571,19 @@ ${yourFirstName}`;
                     value={formData.leadPhone}
                     onChange={(e) => setFormData({...formData, leadPhone: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Booking Time Preference
+                    <span className="text-gray-500 text-xs ml-1">(from conversation)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.conversationHint}
+                    onChange={(e) => setFormData({...formData, conversationHint: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    placeholder="e.g. Wednesday arvo next week"
                   />
                 </div>
               </div>
