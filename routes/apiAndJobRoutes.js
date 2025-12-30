@@ -6679,7 +6679,8 @@ router.get("/api/calendar/setup-info", async (req, res) => {
     
     if (!calendarService.serviceAccountEmail) {
       return res.status(500).json({ 
-        error: 'Calendar service not configured',
+        error: 'Calendar service not configured - service account not loaded',
+        hint: 'Check GOOGLE_APPLICATION_CREDENTIALS env var points to valid JSON file',
         setupRequired: true 
       });
     }
@@ -6698,7 +6699,10 @@ router.get("/api/calendar/setup-info", async (req, res) => {
     });
   } catch (error) {
     console.error('Calendar setup-info error:', error);
-    return res.status(500).json({ error: 'Failed to get setup info' });
+    return res.status(500).json({ 
+      error: 'Failed to get setup info', 
+      details: error.message 
+    });
   }
 });
 
