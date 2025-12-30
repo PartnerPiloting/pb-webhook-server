@@ -6852,10 +6852,10 @@ router.post("/api/calendar/chat", async (req, res) => {
       return res.status(401).json({ error: calendarError });
     }
 
-    // Get today's date and next 14 days for potential calendar queries
+    // Get today's date and next 60 days (~2 months) for potential calendar queries
     const today = new Date();
     const dates = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 60; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() + i);
       dates.push(d.toISOString().split('T')[0]);
