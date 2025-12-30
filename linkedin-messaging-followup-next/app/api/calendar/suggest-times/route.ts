@@ -102,17 +102,22 @@ export async function POST(request: Request) {
       yourTimezone,
     } = await request.json();
 
-    if (!yourName || !leadName || !suggestedTimes || suggestedTimes.length === 0) {
+    if (!suggestedTimes || suggestedTimes.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'At least one time slot is required' },
         { status: 400 }
       );
     }
+    
+    // Use fallback values for optional fields
+    const finalYourName = yourName?.trim() || '[Your Name]';
+    const finalLeadName = leadName?.trim() || '[Contact]';
+    const finalLeadLocation = leadLocation?.trim() || 'Brisbane, Australia';
 
     const message = await generateMessageWithGemini({
-      yourName,
-      leadName,
-      leadLocation,
+      yourName: finalYourName,
+      leadName: finalLeadName,
+      leadLocation: finalLeadLocation,
       leadTimezone,
       suggestedTimes,
       yourTimezone: yourTimezone || 'Australia/Brisbane',
