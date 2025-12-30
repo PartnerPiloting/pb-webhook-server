@@ -33,9 +33,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Retrieve client's OAuth token from Airtable
+    // Retrieve client's OAuth token from Airtable (case-insensitive)
     const airtableResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula={Client ID}='${clientId}'`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`,
       {
         headers: {
           'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,

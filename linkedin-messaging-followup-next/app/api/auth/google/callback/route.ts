@@ -47,9 +47,36 @@ export async function GET(request: Request) {
     // Calculate token expiry (tokens.expires_in is in seconds)
     const expiryDate = new Date(Date.now() + tokens.expires_in * 1000);
 
-    // Save tokens to Airtable Master Clients base
+    // First, find the client record (case-insensitive lookup)
+    const lookupResponse = await fetch(
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
+        },
+      }
+    );
+
+    if (!lookupResponse.ok) {
+      console.error('Failed to lookup client:', await lookupResponse.text());
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/calendar-booking?client=${clientId}&error=lookup_failed`
+      );
+    }
+
+    const lookupData = await lookupResponse.json();
+    
+    if (!lookupData.records || lookupData.records.length === 0) {
+      console.error('Client not found:', clientId);
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/calendar-booking?client=${clientId}&error=client_not_found`
+      );
+    }
+
+    // Save tokens to Airtable Master Clients base (update existing record)
+    const recordId = lookupData.records[0].id;
     const airtableResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients/${recordId}`,
       {
         method: 'PATCH',
         headers: {
@@ -57,19 +84,11 @@ export async function GET(request: Request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          records: [
-            {
-              fields: {
-                'Client ID': clientId,
-                'Google Calendar Token': tokens.access_token,
-                'Google Calendar Refresh Token': tokens.refresh_token,
-                'Google Calendar Token Expiry': expiryDate.toISOString(),
-                'Calendar Connected': true,
-              },
-            },
-          ],
-          performUpsert: {
-            fieldsToMergeOn: ['Client ID'],
+          fields: {
+            'Google Calendar Token': tokens.access_token,
+            'Google Calendar Refresh Token': tokens.refresh_token,
+            'Google Calendar Token Expiry': expiryDate.toISOString(),
+            'Calendar Connected': true,
           },
         }),
       }
