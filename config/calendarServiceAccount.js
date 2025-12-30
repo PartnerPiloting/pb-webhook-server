@@ -124,9 +124,53 @@ async function getFreeSlotsForDate(calendarEmail, date, startHour = 9, endHour =
     return { slots };
 }
 
+/**
+ * Get calendar events for a specific date
+ * 
+ * @param {string} calendarEmail - The email of the calendar to check
+ * @param {string} date - Date in YYYY-MM-DD format
+ * @param {string} timezone - Timezone string (e.g., 'Australia/Brisbane')
+ * @returns {Promise<{events: Array<{summary: string, start: string, end: string}>, error?: string}>}
+ */
+async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisbane') {
+    if (!calendarClient) {
+        return { events: [], error: 'Calendar service not initialized' };
+    }
+    
+    try {
+        // Get events for the full day
+        const startTime = new Date(`${date}T00:00:00`);
+        const endTime = new Date(`${date}T23:59:59`);
+        
+        const response = await calendarClient.events.list({
+            calendarId: calendarEmail,
+            timeMin: startTime.toISOString(),
+            timeMax: endTime.toISOString(),
+            singleEvents: true,
+            orderBy: 'startTime',
+        });
+        
+        const events = (response.data.items || []).map(event => ({
+            summary: event.summary || '(No title)',
+            start: event.start?.dateTime || event.start?.date,
+            end: event.end?.dateTime || event.end?.date,
+            location: event.location || '',
+        }));
+        
+        return { events };
+    } catch (error) {
+        console.error('[CalendarServiceAccount] Events error:', error.message);
+        if (error.code === 404) {
+            return { events: [], error: `Calendar not accessible. Share your calendar with: ${serviceAccountEmail}` };
+        }
+        return { events: [], error: error.message };
+    }
+}
+
 module.exports = {
     calendarClient,
     serviceAccountEmail,
     getFreeBusy,
     getFreeSlotsForDate,
+    getEventsForDate,
 };

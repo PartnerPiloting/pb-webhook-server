@@ -6912,11 +6912,12 @@ CONTEXT:
 ${context.conversationHint ? `- From conversation: "${context.conversationHint}"` : ''}
 
 YOUR CAPABILITIES:
-1. Check calendar availability for specific dates
-2. Show free time slots
-3. Suggest the best meeting time when asked
-4. Generate booking messages to send to the lead
-5. Set a booking time when the user confirms
+1. Show your scheduled appointments/meetings for specific dates
+2. Check calendar availability for specific dates
+3. Show free time slots
+4. Suggest the best meeting time when asked
+5. Generate booking messages to send to the lead
+6. Set a booking time when the user confirms
 
 MESSAGE GENERATION RULES (when asked to generate a message for the lead):
 - Use ${leadFirstName}'s first name
@@ -6947,6 +6948,49 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     const isAvailabilityQuery = message.toLowerCase().match(/free|available|open|slot|what.*work|check.*calendar|tuesday|wednesday|thursday|friday|monday|saturday|sunday|tomorrow|next week|this week/i);
 
     let calendarContext = '';
+    
+    // Check if the user is asking about their appointments/meetings
+    const isAppointmentQuery = message.toLowerCase().match(/appointment|meeting|scheduled|what do i have|what('s| is) on|booked|busy/i);
+    
+    if (isAppointmentQuery) {
+      const dayMatches = message.toLowerCase().match(/monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today/gi) || [];
+      
+      if (dayMatches.length > 0 || message.toLowerCase().includes('next week') || message.toLowerCase().includes('this week')) {
+        const eventDays = [];
+        
+        for (const dateStr of dates) {
+          const date = new Date(dateStr);
+          const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
+          
+          const shouldInclude = dayMatches.some(m => dayName.includes(m.toLowerCase())) ||
+            (message.toLowerCase().includes('tomorrow') && dateStr === dates[1]) ||
+            (message.toLowerCase().includes('today') && dateStr === dates[0]) ||
+            message.toLowerCase().includes('next week') ||
+            message.toLowerCase().includes('this week');
+          
+          if (shouldInclude) {
+            const { events, error } = await calendarService.getEventsForDate(calendarEmail, dateStr, yourTimezone);
+            
+            if (!error) {
+              eventDays.push({
+                date: dateStr,
+                day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
+                events: events.map(e => ({
+                  ...e,
+                  displayTime: formatTimeInTimezone(e.start, yourTimezone),
+                })),
+              });
+            }
+          }
+        }
+        
+        if (eventDays.length > 0) {
+          calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS:\n${eventDays.map(d => 
+            `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
+          ).join('\n')}`;
+        }
+      }
+    }
     
     if (isAvailabilityQuery) {
       const dayMatches = message.toLowerCase().match(/monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today/gi) || [];
