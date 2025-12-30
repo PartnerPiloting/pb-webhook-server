@@ -14,11 +14,14 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // Get backend URL
+    // Get backend URL - MUST be staging for calendar chat
     const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server-staging.onrender.com';
+    const targetUrl = `${backendUrl}/api/calendar/chat`;
+    
+    console.log(`[Calendar Chat Proxy] Calling: ${targetUrl}`);
 
     // Forward request to backend
-    const response = await fetch(`${backendUrl}/api/calendar/chat`, {
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -28,9 +31,15 @@ export async function POST(request: Request) {
     });
 
     const data = await response.json();
+    
+    console.log(`[Calendar Chat Proxy] Response status: ${response.status}`);
 
     if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
+      // Include debug info in error response
+      return NextResponse.json({ 
+        ...data, 
+        _debug: { targetUrl, status: response.status } 
+      }, { status: response.status });
     }
 
     return NextResponse.json(data);
