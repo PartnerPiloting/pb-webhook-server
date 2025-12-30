@@ -182,7 +182,9 @@ function CalendarBookingContent() {
     setChatLoading(true);
 
     try {
-      const response = await fetch('/api/calendar/chat', {
+      // Call backend directly (same pattern as AIEditModal for attributes)
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server-staging.onrender.com';
+      const response = await fetch(`${baseUrl}/api/calendar/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
