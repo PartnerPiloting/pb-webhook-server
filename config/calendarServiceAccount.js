@@ -86,11 +86,40 @@ async function getFreeBusy(calendarEmail, timeMin, timeMax) {
  * @returns {Promise<{slots: Array<{start: string, end: string}>, error?: string}>}
  */
 async function getFreeSlotsForDate(calendarEmail, date, startHour = 9, endHour = 17, timezone = 'Australia/Brisbane') {
-    // Create date range in the specified timezone
-    const startTime = new Date(`${date}T${String(startHour).padStart(2, '0')}:00:00`);
-    const endTime = new Date(`${date}T${String(endHour).padStart(2, '0')}:00:00`);
+    // Get the timezone offset for the target date
+    // Brisbane is UTC+10, Sydney is UTC+10 or UTC+11 (DST)
+    const getTimezoneOffset = (tz, dateStr) => {
+        const testDate = new Date(`${dateStr}T12:00:00Z`);
+        const formatter = new Intl.DateTimeFormat('en-US', { 
+            timeZone: tz, 
+            timeZoneName: 'shortOffset' 
+        });
+        const parts = formatter.formatToParts(testDate);
+        const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+        const match = offsetPart.match(/GMT([+-])(\d+)(?::(\d+))?/);
+        if (!match) return 10 * 60; // Default to Brisbane UTC+10
+        const sign = match[1] === '+' ? 1 : -1;
+        const hours = parseInt(match[2], 10);
+        const minutes = parseInt(match[3] || '0', 10);
+        return sign * (hours * 60 + minutes);
+    };
+    
+    const offsetMinutes = getTimezoneOffset(timezone, date);
+    
+    // Create times in the target timezone by adjusting from UTC
+    // e.g., 9am Brisbane (UTC+10) = 9am - 10h = previous day 11pm UTC
+    const startTime = new Date(`${date}T${String(startHour).padStart(2, '0')}:00:00Z`);
+    startTime.setMinutes(startTime.getMinutes() - offsetMinutes);
+    
+    const endTime = new Date(`${date}T${String(endHour).padStart(2, '0')}:00:00Z`);
+    endTime.setMinutes(endTime.getMinutes() - offsetMinutes);
+    
+    console.log(`[CalendarServiceAccount] getFreeSlotsForDate: ${date} ${startHour}:00-${endHour}:00 ${timezone} (offset: ${offsetMinutes}min)`);
+    console.log(`[CalendarServiceAccount] Query range: ${startTime.toISOString()} to ${endTime.toISOString()}`);
     
     const { busy, error } = await getFreeBusy(calendarEmail, startTime, endTime);
+    
+    if (error) {
     
     if (error) {
         return { slots: [], error };
@@ -141,11 +170,33 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
     console.log(`[CalendarServiceAccount] getEventsForDate: calendarEmail=${calendarEmail}, date=${date}, timezone=${timezone}`);
     
     try {
-        // Get events for the full day
-        const startTime = new Date(`${date}T00:00:00`);
-        const endTime = new Date(`${date}T23:59:59`);
+        // Get timezone offset for proper date range
+        const getTimezoneOffset = (tz, dateStr) => {
+            const testDate = new Date(`${dateStr}T12:00:00Z`);
+            const formatter = new Intl.DateTimeFormat('en-US', { 
+                timeZone: tz, 
+                timeZoneName: 'shortOffset' 
+            });
+            const parts = formatter.formatToParts(testDate);
+            const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+            const match = offsetPart.match(/GMT([+-])(\d+)(?::(\d+))?/);
+            if (!match) return 10 * 60; // Default to Brisbane UTC+10
+            const sign = match[1] === '+' ? 1 : -1;
+            const hours = parseInt(match[2], 10);
+            const minutes = parseInt(match[3] || '0', 10);
+            return sign * (hours * 60 + minutes);
+        };
         
-        console.log(`[CalendarServiceAccount] Querying events from ${startTime.toISOString()} to ${endTime.toISOString()}`);
+        const offsetMinutes = getTimezoneOffset(timezone, date);
+        
+        // Get events for the full day in the target timezone
+        const startTime = new Date(`${date}T00:00:00Z`);
+        startTime.setMinutes(startTime.getMinutes() - offsetMinutes);
+        
+        const endTime = new Date(`${date}T23:59:59Z`);
+        endTime.setMinutes(endTime.getMinutes() - offsetMinutes);
+        
+        console.log(`[CalendarServiceAccount] Querying events from ${startTime.toISOString()} to ${endTime.toISOString()} (${timezone})`);
         
         const response = await calendarClient.events.list({
             calendarId: calendarEmail,
