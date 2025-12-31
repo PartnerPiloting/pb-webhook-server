@@ -55,12 +55,6 @@ function CalendarBookingContent() {
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [generatedMessage, setGeneratedMessage] = useState<string>('');
-  const [generateError, setGenerateError] = useState<string>('');
-  const [bookError, setBookError] = useState<string>('');
-  const [copied, setCopied] = useState(false);
-  const [confirmCopied, setConfirmCopied] = useState(false);
-  const [suggestTimes, setSuggestTimes] = useState<string[]>(['', '', '']);
   const [bookTime, setBookTime] = useState<string>('');
   
   // Chat state
@@ -272,65 +266,6 @@ function CalendarBookingContent() {
     }
   };
 
-  const handleGenerateMessage = async () => {
-    setGenerateError('');
-    setSuccess('');
-    
-    const times = suggestTimes.filter(t => t.trim());
-    if (times.length === 0) {
-      setGenerateError('Please select at least one time slot');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const location = formData.leadLocation.trim() || 'Brisbane, Australia';
-      const timezoneRes = await fetch('/api/calendar/detect-timezone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location }),
-      });
-
-      const timezoneData = await timezoneRes.json();
-      const detectedTimezone = timezoneData.timezone || 'Australia/Brisbane';
-
-      const messageRes = await fetch('/api/calendar/suggest-times', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-id': clientInfo!.clientId,
-        },
-        body: JSON.stringify({
-          yourName: formData.yourName,
-          leadName: formData.leadName,
-          suggestedTimes: times,
-          leadTimezone: detectedTimezone,
-        }),
-      });
-
-      const messageData = await messageRes.json();
-      console.log('API Response:', messageData);
-      
-      if (messageData.error) {
-        setGenerateError(messageData.error);
-      } else {
-        const msg = messageData.message || '';
-        console.log('Setting generatedMessage to:', msg);
-        setGeneratedMessage(msg);
-        if (msg) {
-          setSuccess('✅ Message generated! Scroll down to see it.');
-        } else {
-          setGenerateError('API returned empty message');
-        }
-      }
-    } catch (err) {
-      setGenerateError('Failed to generate message');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const generateConfirmationMessage = () => {
     const leadFirstName = formData.leadName.split(' ')[0] || 'there';
     const yourFirstName = formData.yourName.split(' ')[0] || '';
@@ -370,10 +305,10 @@ ${yourFirstName}`;
   };
 
   const handleBookMeeting = async () => {
-    setBookError('');
+    setError('');
     
     if (!bookTime.trim()) {
-      setBookError('Please select a meeting time');
+      setError('Please select a meeting time');
       return;
     }
 
