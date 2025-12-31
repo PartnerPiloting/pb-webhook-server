@@ -6,14 +6,16 @@ import { useRouter, usePathname } from 'next/navigation';
 interface ClientIdPromptProps {
   title?: string;
   description?: string;
+  initialError?: string;
 }
 
 export default function ClientIdPrompt({ 
   title = 'Enter Your Client Code',
-  description = 'Please enter your client code to continue.'
+  description = 'Please enter your client code to continue.',
+  initialError = ''
 }: ClientIdPromptProps) {
   const [clientCode, setClientCode] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(initialError);
   const router = useRouter();
   const pathname = usePathname();
 

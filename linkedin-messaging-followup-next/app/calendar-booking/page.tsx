@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import ClientIdPrompt from '../../components/ClientIdPrompt';
 
 interface FormData {
@@ -75,6 +75,8 @@ function CalendarBookingContent() {
 
   // Load client info from URL
   const [showClientPrompt, setShowClientPrompt] = useState(false);
+  const [promptError, setPromptError] = useState<string>('');
+  const router = useRouter();
   
   useEffect(() => {
     const clientId = searchParams.get('client');
@@ -87,13 +89,19 @@ function CalendarBookingContent() {
       .then(res => res.json())
       .then(data => {
         if (data.error) {
-          setError('⚠️ Invalid client ID: ' + data.error);
+          // Invalid client - clear URL and show prompt with error
+          setPromptError(data.error);
+          setShowClientPrompt(true);
+          // Clear the URL params
+          window.history.replaceState({}, '', window.location.pathname);
         } else {
           setClientInfo(data);
         }
       })
       .catch(() => {
-        setError('⚠️ Failed to load client information');
+        setPromptError('Failed to load client information');
+        setShowClientPrompt(true);
+        window.history.replaceState({}, '', window.location.pathname);
       });
   }, [searchParams]);
 
@@ -370,6 +378,7 @@ ${yourFirstName}`;
       <ClientIdPrompt 
         title="Smart Booking Assistant"
         description="Enter your client code to access your personalized calendar booking assistant."
+        initialError={promptError}
       />
     );
   }
