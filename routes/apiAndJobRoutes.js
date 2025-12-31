@@ -6815,7 +6815,9 @@ router.post("/api/calendar/chat", async (req, res) => {
     };
 
     // Detect lead timezone from location
-    const leadTimezone = getTimezoneFromLocation(context.leadLocation || 'Brisbane');
+    // If lead location is blank/unknown, assume same timezone as user (no conversion)
+    const leadLocationKnown = context.leadLocation && context.leadLocation.trim() !== '';
+    const leadTimezone = leadLocationKnown ? getTimezoneFromLocation(context.leadLocation) : yourTimezone;
     
     // Get client timezone and calendar email from Airtable
     const getClientCalendarInfo = async () => {
