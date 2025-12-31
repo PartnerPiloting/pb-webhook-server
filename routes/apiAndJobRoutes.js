@@ -6964,11 +6964,11 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     logger.info(`Query analysis - message: "${message}", isAppointmentQuery: ${!!isAppointmentQuery}, isAvailabilityQuery: ${!!isAvailabilityQuery}`);
     
     if (isAppointmentQuery) {
-      // Fetch next 7 days of appointments and let AI interpret which day user meant
-      // This handles typos, abbreviations, etc. naturally
+      // Fetch next 14 days of appointments and let AI interpret which day user meant
+      // 14 days covers "next week" scenarios (today might be Tuesday, "next Tuesday" is 7 days away)
       const eventDays = [];
       
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < 14; i++) {
         const dateStr = dates[i];
         const date = new Date(dateStr);
         const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
@@ -6989,7 +6989,7 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
       }
       
       if (eventDays.length > 0) {
-        calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS (next 7 days):\n${eventDays.map(d => 
+        calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS (next 14 days):\n${eventDays.map(d => 
           `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
         ).join('\n')}`;
         logger.info(`Calendar context for AI: ${calendarContext}`);
@@ -7031,10 +7031,11 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
       
       logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
       
-      // Fetch next 7 days of availability and let AI interpret which day user meant
+      // Fetch next 14 days of availability and let AI interpret which day user meant
+      // 14 days covers "next week" scenarios (today might be Tuesday, "next Tuesday" is 7 days away)
       const slots = [];
       
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < 14; i++) {
         const dateStr = dates[i];
         const date = new Date(dateStr);
         
@@ -7053,7 +7054,7 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
       }
       
       if (slots.length > 0) {
-        calendarContext += `\n\nCALENDAR AVAILABILITY (next 7 days):\n${slots.map(s => 
+        calendarContext += `\n\nCALENDAR AVAILABILITY (next 14 days):\n${slots.map(s => 
           `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 8).map(f => `${f.display} Brisbane (${f.leadDisplay} for lead)`).join(', ') : 'Fully booked'}`
         ).join('\n')}`;
       }
