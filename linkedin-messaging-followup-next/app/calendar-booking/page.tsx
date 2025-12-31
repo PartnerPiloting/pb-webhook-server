@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
+import ClientIdPrompt from '../../components/ClientIdPrompt';
 
 interface FormData {
   yourName: string;
@@ -73,10 +74,12 @@ function CalendarBookingContent() {
   const [confirmationMessage, setConfirmationMessage] = useState('');
 
   // Load client info from URL
+  const [showClientPrompt, setShowClientPrompt] = useState(false);
+  
   useEffect(() => {
     const clientId = searchParams.get('client');
     if (!clientId) {
-      setError('⚠️ Missing client ID. Please use your personalized link.');
+      setShowClientPrompt(true);
       return;
     }
 
@@ -360,6 +363,16 @@ ${yourFirstName}`;
     generateConfirmationMessage();
     setSuccess('✅ Google Calendar opened - send confirmation to lead below');
   };
+
+  // Show client ID prompt if no client in URL
+  if (showClientPrompt) {
+    return (
+      <ClientIdPrompt 
+        title="Smart Booking Assistant"
+        description="Enter your client code to access your personalized calendar booking assistant."
+      />
+    );
+  }
 
   if (!clientInfo) {
     return (
