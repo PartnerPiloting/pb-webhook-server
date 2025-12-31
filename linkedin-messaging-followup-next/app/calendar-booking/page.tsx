@@ -681,6 +681,14 @@ ${yourFirstName}`;
                                       const descLines = [];
                                       if (formData.yourZoom) descLines.push(`Zoom: ${formData.yourZoom}`);
                                       if (formData.leadLinkedIn) descLines.push(`${leadNamePart}: ${formData.leadLinkedIn}`);
+                                      // Add your info (LinkedIn + phone)
+                                      if (formData.yourLinkedIn || formData.yourPhone) {
+                                        let yourLine = `${yourNamePart}: `;
+                                        if (formData.yourLinkedIn) yourLine += formData.yourLinkedIn;
+                                        if (formData.yourLinkedIn && formData.yourPhone) yourLine += ' | ';
+                                        if (formData.yourPhone) yourLine += formData.yourPhone;
+                                        descLines.push(yourLine);
+                                      }
                                       const description = descLines.join('\n');
                                       const location = formData.yourZoom || formData.leadLocation || 'Zoom';
                                       let calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE`;
