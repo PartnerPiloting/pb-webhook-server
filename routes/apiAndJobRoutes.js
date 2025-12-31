@@ -6938,14 +6938,11 @@ RESPONSE STYLE:
 CRITICAL RULES:
 - ONLY report appointments/meetings that are provided in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
 - NEVER make up or invent fake appointments
-- If user asks about availability/appointments but no calendar data is provided, say "I don't have your calendar data for that date."
-- HOWEVER: If user directly specifies a time to book (e.g., "book 1:30pm Tuesday", "let's do 2pm next Friday"), just SET that time - no calendar data needed!
+- If no calendar data is provided, say "I don't have your calendar data for that date. Could you try asking about a specific day like 'Monday' or 'next Tuesday'?"
 
 ACTIONS:
-1. When the user picks/confirms a time (e.g., "book 1:30pm Tuesday", "let's do 2pm"), include this to SET the booking time:
+1. When the user picks/confirms a time, include this to SET the booking time:
    ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
-   
-   IMPORTANT: Calculate the correct dateTime based on today's date (${today.toISOString().split('T')[0]}) and the user's requested day/time.
 
 2. When the user says to BOOK IT (phrases like "book it", "lock it in", "add to calendar", "schedule it", "confirm", "yes book that"), include this to OPEN the calendar:
    ACTION: {"type":"openCalendar"}
