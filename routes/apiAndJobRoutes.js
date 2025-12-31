@@ -6962,162 +6962,98 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     logger.info(`Query analysis - message: "${message}", isAppointmentQuery: ${!!isAppointmentQuery}, isAvailabilityQuery: ${!!isAvailabilityQuery}`);
     
     if (isAppointmentQuery) {
-      // More permissive day matching - handle typos like "moday" for "monday"
-      const dayPatterns = [
-        { pattern: /mon|monda|monday|moday/i, day: 'monday' },
-        { pattern: /tue|tues|tuesday/i, day: 'tuesday' },
-        { pattern: /wed|wednes|wednesday/i, day: 'wednesday' },
-        { pattern: /thu|thur|thurs|thursday/i, day: 'thursday' },
-        { pattern: /fri|friday/i, day: 'friday' },
-        { pattern: /sat|satur|saturday/i, day: 'saturday' },
-        { pattern: /sun|sunday/i, day: 'sunday' },
-      ];
+      // Fetch next 7 days of appointments and let AI interpret which day user meant
+      // This handles typos, abbreviations, etc. naturally
+      const eventDays = [];
       
-      const msgLower = message.toLowerCase();
-      const dayMatches = [];
-      
-      for (const { pattern, day } of dayPatterns) {
-        if (pattern.test(msgLower)) {
-          dayMatches.push(day);
+      for (let i = 0; i < 7; i++) {
+        const dateStr = dates[i];
+        const date = new Date(dateStr);
+        const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
+        
+        logger.info(`Fetching events for ${dateStr} (${dayName})`);
+        const { events, error } = await calendarService.getEventsForDate(calendarEmail, dateStr, yourTimezone);
+        
+        if (!error) {
+          eventDays.push({
+            date: dateStr,
+            day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
+            events: events.map(e => ({
+              ...e,
+              displayTime: formatTimeInTimezone(e.start, yourTimezone),
+            })),
+          });
         }
       }
       
-      // Also check for tomorrow/today
-      if (msgLower.includes('tomorrow')) dayMatches.push('tomorrow');
-      if (msgLower.includes('today')) dayMatches.push('today');
-      
-      // Handle "next [day]" or "this coming [day]" or just "[day]" - find the NEXT occurrence
-      const wantsNextOccurrence = msgLower.includes('next') || msgLower.includes('coming') || msgLower.includes('this') || dayMatches.length > 0;
-      
-      if (dayMatches.length > 0 || msgLower.includes('next week') || msgLower.includes('this week')) {
-        const eventDays = [];
-        
-        for (const dateStr of dates) {
-          const date = new Date(dateStr);
-          const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
-          
-          // Check if this day matches any requested day
-          const matchesDay = dayMatches.some(d => d === dayName || d === 'tomorrow' || d === 'today');
-          const isTomorrow = dayMatches.includes('tomorrow') && dateStr === dates[1];
-          const isToday = dayMatches.includes('today') && dateStr === dates[0];
-          const isThisWeek = msgLower.includes('this week');
-          const isNextWeek = msgLower.includes('next week');
-          
-          // For single day requests (e.g., "monday"), only get the NEXT occurrence
-          let shouldInclude = false;
-          if (isTomorrow || isToday) {
-            shouldInclude = true;
-          } else if (isThisWeek || isNextWeek) {
-            shouldInclude = true;
-          } else if (matchesDay) {
-            // Only include if we haven't already found this day (first/next occurrence)
-            shouldInclude = !eventDays.some(d => d.day.toLowerCase().includes(dayName));
-          }
-          
-          if (shouldInclude) {
-            logger.info(`Fetching events for ${dateStr} (${dayName})`);
-            const { events, error } = await calendarService.getEventsForDate(calendarEmail, dateStr, yourTimezone);
-            
-            logger.info(`Events result for ${dateStr}: ${events?.length || 0} events, error: ${error || 'none'}`);
-            
-            if (!error) {
-              eventDays.push({
-                date: dateStr,
-                day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
-                events: events.map(e => ({
-                  ...e,
-                  displayTime: formatTimeInTimezone(e.start, yourTimezone),
-                })),
-              });
-              
-              // For "next [day]", only include the first match
-              if (nextDayMatch && isNextDay) {
-                break;
-              }
-            }
-          }
-        }
-        
-        if (eventDays.length > 0) {
-          calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS:\n${eventDays.map(d => 
-            `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
-          ).join('\n')}`;
-          logger.info(`Calendar context for AI: ${calendarContext}`);
-        }
+      if (eventDays.length > 0) {
+        calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS (next 7 days):\n${eventDays.map(d => 
+          `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
+        ).join('\n')}`;
+        logger.info(`Calendar context for AI: ${calendarContext}`);
       }
     }
     
     if (isAvailabilityQuery) {
-      const dayMatches = message.toLowerCase().match(/monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today/gi) || [];
+      // Parse time preferences from message
+      let startHour = 9;  // default 9am
+      let endHour = 17;   // default 5pm
       
-      if (dayMatches.length > 0 || message.toLowerCase().includes('next week') || message.toLowerCase().includes('this week')) {
-        const slots = [];
+      const msgLower = message.toLowerCase();
+      
+      // Parse "up to X pm" or "until X pm" or "before X pm"
+      const untilMatch = msgLower.match(/(?:up to|until|before|by)\s*(\d{1,2})\s*(?:pm|p\.m\.?)/i);
+      if (untilMatch) {
+        endHour = parseInt(untilMatch[1], 10) + 12; // Convert to 24h
+        if (endHour > 21) endHour = 21; // Cap at 9pm
+      }
+      
+      // Parse "after X am/pm" or "from X am/pm"
+      const afterMatch = msgLower.match(/(?:after|from|starting)\s*(\d{1,2})\s*(am|pm|a\.m\.?|p\.m\.?)/i);
+      if (afterMatch) {
+        startHour = parseInt(afterMatch[1], 10);
+        if (afterMatch[2].toLowerCase().startsWith('p') && startHour < 12) startHour += 12;
+      }
+      
+      // Parse time-of-day keywords
+      if (msgLower.includes('morning')) {
+        startHour = 9;
+        endHour = 12;
+      } else if (msgLower.includes('afternoon') || msgLower.includes('arvo')) {
+        startHour = 12;
+        endHour = 17;
+      } else if (msgLower.includes('evening')) {
+        startHour = 17;
+        endHour = 21;
+      }
+      
+      logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
+      
+      // Fetch next 7 days of availability and let AI interpret which day user meant
+      const slots = [];
+      
+      for (let i = 0; i < 7; i++) {
+        const dateStr = dates[i];
+        const date = new Date(dateStr);
         
-        for (const dateStr of dates) {
-          const date = new Date(dateStr);
-          const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
-          
-          const shouldInclude = dayMatches.some(m => dayName.includes(m.toLowerCase())) ||
-            (message.toLowerCase().includes('tomorrow') && dateStr === dates[1]) ||
-            (message.toLowerCase().includes('today') && dateStr === dates[0]) ||
-            message.toLowerCase().includes('next week') ||
-            message.toLowerCase().includes('this week');
-          
-          if (shouldInclude) {
-            // Parse time preferences from message
-            let startHour = 9;  // default 9am
-            let endHour = 17;   // default 5pm
-            
-            const msgLower = message.toLowerCase();
-            
-            // Parse "up to X pm" or "until X pm" or "before X pm"
-            const untilMatch = msgLower.match(/(?:up to|until|before|by)\s*(\d{1,2})\s*(?:pm|p\.m\.?)/i);
-            if (untilMatch) {
-              endHour = parseInt(untilMatch[1], 10) + 12; // Convert to 24h
-              if (endHour > 21) endHour = 21; // Cap at 9pm
-            }
-            
-            // Parse "after X am/pm" or "from X am/pm"
-            const afterMatch = msgLower.match(/(?:after|from|starting)\s*(\d{1,2})\s*(am|pm|a\.m\.?|p\.m\.?)/i);
-            if (afterMatch) {
-              startHour = parseInt(afterMatch[1], 10);
-              if (afterMatch[2].toLowerCase().startsWith('p') && startHour < 12) startHour += 12;
-            }
-            
-            // Parse time-of-day keywords
-            if (msgLower.includes('morning')) {
-              startHour = 9;
-              endHour = 12;
-            } else if (msgLower.includes('afternoon') || msgLower.includes('arvo')) {
-              startHour = 12;
-              endHour = 17;
-            } else if (msgLower.includes('evening')) {
-              startHour = 17;
-              endHour = 21;
-            }
-            
-            logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
-            
-            const freeSlots = await getFreeSlotsForDate(calendarEmail, dateStr, startHour, endHour, yourTimezone);
-            
-            const slotsWithLeadTime = freeSlots.map(slot => ({
-              ...slot,
-              leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
-            }));
-            
-            slots.push({
-              date: dateStr,
-              day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
-              freeSlots: slotsWithLeadTime,
-            });
-          }
-        }
+        const freeSlots = await getFreeSlotsForDate(calendarEmail, dateStr, startHour, endHour, yourTimezone);
         
-        if (slots.length > 0) {
-          calendarContext += `\n\nCALENDAR AVAILABILITY:\n${slots.map(s => 
-            `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 8).map(f => `${f.display} Brisbane (${f.leadDisplay} for lead)`).join(', ') : 'Fully booked'}`
-          ).join('\n')}`;
-        }
+        const slotsWithLeadTime = freeSlots.map(slot => ({
+          ...slot,
+          leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
+        }));
+        
+        slots.push({
+          date: dateStr,
+          day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
+          freeSlots: slotsWithLeadTime,
+        });
+      }
+      
+      if (slots.length > 0) {
+        calendarContext += `\n\nCALENDAR AVAILABILITY (next 7 days):\n${slots.map(s => 
+          `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 8).map(f => `${f.display} Brisbane (${f.leadDisplay} for lead)`).join(', ') : 'Fully booked'}`
+        ).join('\n')}`;
       }
     }
 
