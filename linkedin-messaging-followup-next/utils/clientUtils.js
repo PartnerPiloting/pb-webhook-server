@@ -75,7 +75,7 @@ export async function getCurrentClientProfile() {
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-  const clientId = urlParams.get('clientId') || urlParams.get('testClient') || localStorage.getItem('clientCode');
+  const clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient') || localStorage.getItem('clientCode');
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
     
@@ -144,7 +144,7 @@ export async function getCurrentClientProfile() {
     
     // Check for client parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
-  const clientId = urlParams.get('clientId') || urlParams.get('testClient');
+  const clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient');
     
     // Only allow fallback if client parameter is explicitly provided
   if (clientId) {
