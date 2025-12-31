@@ -7109,13 +7109,47 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
       try {
         const actionData = JSON.parse(actionMatch[1]);
         if (actionData.type === 'setBookingTime') {
-          action = {
-            ...actionData,
-            leadTimezone,
-            leadDateTime: actionData.dateTime,
-            displayTime: formatTimeInTimezone(actionData.dateTime, yourTimezone),
-            leadDisplayTime: formatTimeInTimezone(actionData.dateTime, leadTimezone),
-          };
+          // AI sends dateTime like "2025-01-06T11:00:00" in YOUR timezone (Brisbane)
+          // We need to interpret it as Brisbane time, not UTC
+          // The dateTime without Z suffix is treated as local, but server is in UTC
+          // So we append the timezone offset to make it explicit
+          let dateTimeStr = actionData.dateTime;
+          
+          // If no timezone info in the string, assume it's in yourTimezone (Brisbane = UTC+10)
+          if (!dateTimeStr.includes('Z') && !dateTimeStr.includes('+') && !dateTimeStr.includes('-', 10)) {
+            // Parse the date parts manually to avoid UTC conversion
+            const [datePart, timePart] = dateTimeStr.split('T');
+            const [year, month, day] = datePart.split('-').map(Number);
+            const [hour, minute] = (timePart || '00:00').split(':').map(Number);
+            
+            // Create display strings directly without timezone conversion
+            const displayDate = new Date(year, month - 1, day, hour, minute || 0);
+            const displayTime = displayDate.toLocaleString('en-AU', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            });
+            
+            action = {
+              ...actionData,
+              leadTimezone,
+              leadDateTime: dateTimeStr,
+              displayTime: displayTime,
+              leadDisplayTime: formatTimeInTimezone(dateTimeStr, leadTimezone),
+            };
+          } else {
+            // Has timezone info, use normal formatting
+            action = {
+              ...actionData,
+              leadTimezone,
+              leadDateTime: actionData.dateTime,
+              displayTime: formatTimeInTimezone(actionData.dateTime, yourTimezone),
+              leadDisplayTime: formatTimeInTimezone(actionData.dateTime, leadTimezone),
+            };
+          }
         } else if (actionData.type === 'openCalendar') {
           action = { type: 'openCalendar' };
         }
