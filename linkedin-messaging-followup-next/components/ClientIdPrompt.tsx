@@ -75,7 +75,7 @@ export default function ClientIdPrompt({
                 setClientCode(e.target.value);
                 setError('');
               }}
-              placeholder="e.g., guy-wilson"
+              placeholder="e.g., Guy-Wilson"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
               autoFocus
             />
