@@ -6952,7 +6952,9 @@ ACTIONS:
 The frontend parses these actions - setBookingTime fills the form, openCalendar opens Google Calendar.`;
 
     // Check if the user is asking about availability (free slots)
-    const isAvailabilityQuery = message.toLowerCase().match(/free|available|open|slot|what.*work|check.*calendar|tuesday|wednesday|thursday|friday|monday|saturday|sunday|tomorrow|next week|this week/i);
+    // Check if the user is asking about availability (free slots) or wants booking suggestions
+    // Include "book", "schedule", "suggest" to catch booking intent queries
+    const isAvailabilityQuery = message.toLowerCase().match(/free|available|open|slot|what.*work|check.*calendar|tuesday|wednesday|thursday|friday|monday|saturday|sunday|tomorrow|next week|this week|book\s|schedule|suggest|when.*good|best time/i);
     
     // Check if the user is asking about their appointments/meetings
     // But NOT if they're asking about "free" times - that's availability
