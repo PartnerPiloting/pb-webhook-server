@@ -17,8 +17,8 @@ function HomeContent() {
   
   useEffect(() => {
     const validateAccess = async () => {
-      // Check for clientId or testClient parameter
-      const clientId = searchParams.get('clientId') || searchParams.get('testClient');
+      // Check for client (new standard), clientId, or testClient (legacy) parameter
+      const clientId = searchParams.get('client') || searchParams.get('clientId') || searchParams.get('testClient');
       
       // If no client ID, redirect to membership required page
       if (!clientId) {

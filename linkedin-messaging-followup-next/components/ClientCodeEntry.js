@@ -26,10 +26,12 @@ export default function ClientCodeEntry({ onSubmit, error: initialError = null }
       if (response.ok) {
         const data = await response.json();
         if (data.status === 'success' && data.client?.status === 'Active') {
-          // Valid and active - store in localStorage and redirect with testClient param
+          // Valid and active - store in localStorage and redirect with client param
+          // Also set testClient for backwards compatibility with existing code
           localStorage.setItem('clientCode', code);
           const url = new URL(window.location.href);
-          url.searchParams.set('testClient', code);
+          url.searchParams.set('client', code);      // New standard param
+          url.searchParams.set('testClient', code);  // Legacy compatibility
           window.location.href = url.toString();
           return;
         } else if (data.client?.status !== 'Active') {

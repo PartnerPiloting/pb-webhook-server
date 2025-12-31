@@ -26,8 +26,11 @@ export default function ClientIdPrompt({
       return;
     }
 
-    // Redirect to same page with client parameter
-    router.push(`${pathname}?client=${encodeURIComponent(code)}`);
+    // Redirect to same page with client parameter (and testClient for legacy compatibility)
+    const url = new URL(window.location.href);
+    url.searchParams.set('client', code);
+    url.searchParams.set('testClient', code);
+    window.location.href = url.toString();
   };
 
   return (
