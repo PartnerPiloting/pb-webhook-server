@@ -71,6 +71,7 @@ function CalendarBookingContent() {
   const [yourTimezone] = useState<string>('Australia/Brisbane');
   const [leadDisplayTime, setLeadDisplayTime] = useState<string>('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   
   // Confirmation message state
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -266,6 +267,8 @@ function CalendarBookingContent() {
       }]);
     } finally {
       setChatLoading(false);
+      // Auto-focus back to input
+      setTimeout(() => chatInputRef.current?.focus(), 100);
     }
   };
 
@@ -721,6 +724,7 @@ ${yourFirstName}`;
                 
                 <div className="flex gap-2">
                   <textarea
+                    ref={chatInputRef}
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
