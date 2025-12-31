@@ -662,14 +662,35 @@ ${yourFirstName}`;
                                   <div className="text-sm font-medium mb-2">{msg.bookingAction.displayTime}</div>
                                   <button
                                     onClick={() => {
-                                      setBookTime(msg.bookingAction!.dateTime);
+                                      // Set time first, then open calendar
+                                      const dateTimeToBook = msg.bookingAction!.dateTime;
+                                      setBookTime(dateTimeToBook);
                                       if (msg.bookingAction!.leadDisplayTime) {
                                         setLeadDisplayTime(msg.bookingAction!.leadDisplayTime);
                                       }
+                                      // Open Google Calendar directly with this time
+                                      const startDate = new Date(dateTimeToBook);
+                                      const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+                                      const formatGCalDate = (date: Date) => date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+                                      const leadNamePart = formData.leadName || 'Contact';
+                                      const yourNamePart = formData.yourName || 'Me';
+                                      const title = `${leadNamePart} and ${yourNamePart} meeting`;
+                                      const descLines = [];
+                                      if (formData.yourZoom) descLines.push(`Zoom: ${formData.yourZoom}`);
+                                      if (formData.leadLinkedIn) descLines.push(`${leadNamePart}: ${formData.leadLinkedIn}`);
+                                      const description = descLines.join('\n');
+                                      const location = formData.yourZoom || formData.leadLocation || 'Zoom';
+                                      let calUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE`;
+                                      calUrl += `&text=${encodeURIComponent(title)}`;
+                                      calUrl += `&dates=${formatGCalDate(startDate)}/${formatGCalDate(endDate)}`;
+                                      calUrl += `&details=${encodeURIComponent(description)}`;
+                                      calUrl += `&location=${encodeURIComponent(location)}`;
+                                      if (formData.leadEmail) calUrl += `&add=${encodeURIComponent(formData.leadEmail)}`;
+                                      window.open(calUrl, '_blank');
                                     }}
                                     className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
                                   >
-                                    Apply to Booking
+                                    Book a Time
                                   </button>
                                 </div>
                               )}
