@@ -21,6 +21,7 @@ interface ClientInfo {
   clientId: string;
   clientName: string;
   calendarConnected: boolean;
+  calendarEmail: string | null;
   timezone: string | null;
   timezoneConfigured: boolean;
 }
@@ -288,10 +289,19 @@ function CalendarBookingContent() {
         },
       });
       
-      const data = await res.json();
+      // Handle non-JSON responses
+      const text = await res.text();
+      let data;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        setSetupError('Server error - please try again');
+        return;
+      }
       
       if (res.ok && data.success) {
         setCalendarVerified(true);
+        setCalendarAccessError(null);
         // Refresh client info
         const refreshRes = await fetch(`/api/calendar/client-info?clientId=${clientInfo.clientId}`);
         const refreshData = await refreshRes.json();
@@ -299,13 +309,32 @@ function CalendarBookingContent() {
           setClientInfo(refreshData);
         }
       } else {
-        setSetupError(data.error || 'Calendar verification failed');
+        setSetupError(data.error || 'Calendar not accessible - check sharing permissions');
       }
     } catch {
-      setSetupError('Failed to verify calendar connection');
+      setSetupError('Failed to connect to server');
     } finally {
       setVerifyingCalendar(false);
     }
+  };
+
+  // Open setup and pre-populate existing values
+  const openSetup = () => {
+    // Pre-populate timezone if configured
+    if (clientInfo?.timezoneConfigured && clientInfo?.timezone) {
+      const matchingOption = TIMEZONE_OPTIONS.find(tz => tz.value === clientInfo.timezone);
+      if (matchingOption) {
+        setSelectedTimezone(clientInfo.timezone);
+      } else {
+        setSelectedTimezone('OTHER');
+        setCustomTimezone(clientInfo.timezone);
+      }
+    }
+    // Pre-populate calendar email if configured
+    if (clientInfo?.calendarEmail) {
+      setCalendarEmail(clientInfo.calendarEmail);
+    }
+    setShowSetup(true);
   };
 
   // Copy service account email to clipboard
@@ -628,7 +657,7 @@ ${yourFirstName}`;
                   </ul>
                 </div>
                 <button
-                  onClick={() => setShowSetup(true)}
+                  onClick={openSetup}
                   className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   Set Up
@@ -641,9 +670,14 @@ ${yourFirstName}`;
           {showSetup && (
             <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-700">
-                  {clientInfo.timezoneConfigured && clientInfo.calendarConnected ? 'Edit Settings' : 'Quick Setup'}
-                </h3>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700">
+                    {clientInfo.timezoneConfigured && clientInfo.calendarConnected ? 'Edit Settings' : 'Quick Setup'}
+                  </h3>
+                  {!(clientInfo.timezoneConfigured && clientInfo.calendarConnected) && (
+                    <p className="text-xs text-gray-500 mt-1">Just a few quick steps to get you started</p>
+                  )}
+                </div>
                 <button
                   onClick={() => setShowSetup(false)}
                   className="text-gray-500 hover:text-gray-700 text-sm"
@@ -732,7 +766,7 @@ ${yourFirstName}`;
                       <p className="text-xs text-gray-500">Loading...</p>
                     )}
                     <p className="text-xs text-gray-500 mt-2">
-                      In Google Calendar → Settings → Share with specific people → Add this email with "Make changes to events" permission
+                      In Google Calendar → Settings → Share with specific people → Add this email with <span className="font-semibold text-gray-700">"Make changes to events"</span> permission
                     </p>
                   </div>
 
@@ -796,7 +830,7 @@ ${yourFirstName}`;
                     ✅ Ready ({yourTimezone})
                   </p>
                   <button
-                    onClick={() => setShowSetup(true)}
+                    onClick={openSetup}
                     className="text-xs text-gray-500 hover:text-gray-700 underline"
                   >
                     Edit
@@ -810,7 +844,7 @@ ${yourFirstName}`;
                   <button
                     onClick={() => {
                       setCalendarAccessError(null);
-                      setShowSetup(true);
+                      openSetup();
                     }}
                     className="mt-2 px-3 py-1 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded"
                   >
