@@ -11,6 +11,37 @@
  */
 
 /**
+ * Clean up LinkedIn/Sales Navigator noise from text
+ * Removes common artifacts before parsing
+ * @param {string} text - Raw text with potential noise
+ * @returns {string} Cleaned text
+ */
+function cleanLinkedInNoise(text) {
+    if (!text) return '';
+    
+    return text
+        // Remove "View X's profileName" patterns (concatenated at end of lines)
+        .replace(/\s*View\s+[^'\n]+['']s\s*profile[A-Za-z\s]*/gi, '')
+        // Remove standalone "View X's profile" 
+        .replace(/\s*View\s+[^'\n]+['']s\s*profile/gi, '')
+        // Remove "Remove reaction" 
+        .replace(/\s*Remove\s+reaction/gi, '')
+        // Remove pronouns like (She/Her), (He/Him), (They/Them)
+        .replace(/\s*\((?:She\/Her|He\/Him|They\/Them)\)/gi, '')
+        // Remove "1st degree connection" markers
+        .replace(/\s*·?\s*1st(?:\s+degree)?\s*(?:connection)?/gi, '')
+        // Clean up multiple spaces (but not newlines)
+        .replace(/[ \t]+/g, ' ')
+        // Clean up lines that are just whitespace
+        .replace(/^\s*$/gm, '')
+        // Trim each line
+        .split('\n').map(line => line.trim()).join('\n')
+        // Remove excessive blank lines (more than 2 consecutive)
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+/**
  * Detect the format of pasted text
  * @param {string} text - Raw pasted text
  * @returns {'aiblaze' | 'linkedin_raw' | 'salesnav_raw' | 'manual'} Format type
@@ -110,8 +141,11 @@ function formatDateDDMMYY(date) {
  * @returns {Array<{date: string, time: string, sender: string, message: string}>}
  */
 function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date()) {
+    // Pre-clean the text to remove LinkedIn artifacts
+    const cleanedText = cleanLinkedInNoise(text);
+    
     const messages = [];
-    const lines = text.split('\n');
+    const lines = cleanedText.split('\n');
     
     let currentDate = referenceDate;
     let currentSender = null;
@@ -198,8 +232,11 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
  * @returns {Array<{date: string, time: string, sender: string, message: string}>}
  */
 function parseSalesNavRaw(text, clientFirstName = 'Me', referenceDate = new Date()) {
+    // Pre-clean the text to remove LinkedIn artifacts
+    const cleanedText = cleanLinkedInNoise(text);
+    
     const messages = [];
-    const lines = text.split('\n');
+    const lines = cleanedText.split('\n');
     
     let currentDate = referenceDate;
     let currentSender = null;
@@ -376,5 +413,6 @@ module.exports = {
     parseAIBlaze,
     formatMessages,
     parseFlexibleDate,
-    formatDateDDMMYY
+    formatDateDDMMYY,
+    cleanLinkedInNoise
 };
