@@ -163,11 +163,21 @@ function CalendarBookingContent() {
 
   // Verify calendar access on page load when calendar email is configured
   useEffect(() => {
+    console.log('[CalendarBooking] Verify check:', {
+      calendarConnected: clientInfo?.calendarConnected,
+      calendarEmail: clientInfo?.calendarEmail,
+      calendarVerified,
+      verifyingOnLoad,
+      calendarAccessError
+    });
+    
     if (clientInfo?.calendarConnected && clientInfo?.calendarEmail && !calendarVerified && !verifyingOnLoad && !calendarAccessError) {
+      console.log('[CalendarBooking] Starting calendar verification...');
       setVerifyingOnLoad(true);
       
       verifyCalendarConnection(clientInfo.calendarEmail)
         .then(data => {
+          console.log('[CalendarBooking] Verify response:', data);
           if (data.success) {
             setCalendarVerified(true);
             setCalendarAccessError(null);
@@ -176,6 +186,7 @@ function CalendarBookingContent() {
           }
         })
         .catch((err: Error) => {
+          console.error('[CalendarBooking] Verify error:', err);
           setCalendarAccessError(err.message || 'Failed to verify calendar access');
         })
         .finally(() => {
