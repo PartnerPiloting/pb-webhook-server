@@ -15,8 +15,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'rawText is required' }, { status: 400 });
     }
 
-    // Get backend URL from environment
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server-staging.onrender.com';
+    // Get backend URL from environment (strip /api/linkedin suffix if present)
+    const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server-staging.onrender.com';
+    
+    console.log(`Calling backend: ${backendUrl}/api/calendar/extract-profile`);
     
     // Call the backend's extract-profile endpoint
     const backendResponse = await fetch(`${backendUrl}/api/calendar/extract-profile`, {
