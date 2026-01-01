@@ -14,8 +14,8 @@ const cleanLinkedInNoise = (text) => {
   
   return text
     // Remove "View X's profileName LastName" patterns (name concatenated after profile)
-    // Matches: "View Guy's profileGuy Wilson" or "View Jenny's profileJenny Yan"
-    .replace(/View \w+[''''']s profile[A-Za-z ]+/gi, '')
+    // Uses \S to match any non-whitespace for apostrophe (covers all Unicode variants)
+    .replace(/View \w+\Ss profile[A-Za-z ]+/gi, '')
     // Remove "Remove reaction" 
     .replace(/\s*Remove\s+reaction/gi, '')
     // Remove pronouns like (She/Her), (He/Him), (They/Them)
