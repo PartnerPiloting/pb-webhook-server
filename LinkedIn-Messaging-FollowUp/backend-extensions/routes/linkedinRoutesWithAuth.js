@@ -1631,4 +1631,166 @@ router.patch('/client/timezone', async (req, res) => {
   }
 });
 
+/**
+ * GET /client/service-account-email
+ * Returns the service account email that clients need to share their calendar with
+ */
+router.get('/client/service-account-email', async (req, res) => {
+  try {
+    const { serviceAccountEmail } = require('../../../config/calendarServiceAccount');
+    
+    if (!serviceAccountEmail) {
+      return res.status(503).json({ 
+        error: 'Calendar service not configured',
+        message: 'Service account email not available. Please contact support.'
+      });
+    }
+    
+    res.json({
+      success: true,
+      serviceAccountEmail
+    });
+    
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error getting service account email:', error);
+    res.status(500).json({ error: 'Failed to get service account email', details: error.message });
+  }
+});
+
+/**
+ * PATCH /client/calendar
+ * Self-service calendar email configuration for clients
+ * Allows users to set their Google Calendar email
+ */
+router.patch('/client/calendar', async (req, res) => {
+  try {
+    const clientId = req.client?.clientId;
+    if (!clientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const { calendarEmail } = req.body;
+    if (!calendarEmail) {
+      return res.status(400).json({ error: 'Calendar email is required' });
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(calendarEmail)) {
+      return res.status(400).json({ 
+        error: 'Invalid email format',
+        message: 'Please enter a valid email address'
+      });
+    }
+    
+    logger.info(`LinkedIn Routes: Updating calendar email for client ${clientId} to ${calendarEmail}`);
+    
+    // Update calendar email in Master Clients base
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    // Find the client record
+    const records = await masterBase('Clients').select({
+      filterByFormula: `LOWER({Client ID}) = LOWER('${clientId}')`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (!records || records.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    const clientRecord = records[0];
+    
+    // Update the Google Calendar Email field
+    await masterBase('Clients').update(clientRecord.id, {
+      'Google Calendar Email': calendarEmail
+    });
+    
+    logger.info(`LinkedIn Routes: Successfully updated calendar email for ${clientId} to ${calendarEmail}`);
+    
+    res.json({
+      success: true,
+      clientId,
+      calendarEmail,
+      message: `Calendar email updated to ${calendarEmail}`
+    });
+    
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error updating client calendar email:', error);
+    res.status(500).json({ error: 'Failed to update calendar email', details: error.message });
+  }
+});
+
+/**
+ * POST /client/verify-calendar
+ * Test if the client's calendar is properly shared with the service account
+ * Attempts a free/busy query to verify access
+ */
+router.post('/client/verify-calendar', async (req, res) => {
+  try {
+    const clientId = req.client?.clientId;
+    if (!clientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const { calendarEmail } = req.body;
+    if (!calendarEmail) {
+      return res.status(400).json({ error: 'Calendar email is required' });
+    }
+    
+    logger.info(`LinkedIn Routes: Verifying calendar access for ${clientId} - calendar: ${calendarEmail}`);
+    
+    const { getFreeBusy, serviceAccountEmail } = require('../../../config/calendarServiceAccount');
+    
+    if (!serviceAccountEmail) {
+      return res.status(503).json({ 
+        error: 'Calendar service not configured',
+        message: 'Service account not available. Please contact support.'
+      });
+    }
+    
+    // Try to query free/busy for the next hour (minimal query to test access)
+    const now = new Date();
+    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+    
+    const { busy, error } = await getFreeBusy(calendarEmail, now, oneHourLater);
+    
+    if (error) {
+      // Check if it's a sharing error
+      if (error.includes('not shared') || error.includes('notFound')) {
+        return res.json({
+          success: false,
+          connected: false,
+          error: 'Calendar not shared',
+          message: `Your calendar is not shared with our service. Please share your Google Calendar with: ${serviceAccountEmail}`,
+          serviceAccountEmail
+        });
+      }
+      
+      // Other error
+      return res.json({
+        success: false,
+        connected: false,
+        error: 'Calendar access error',
+        message: error,
+        serviceAccountEmail
+      });
+    }
+    
+    // Success! We can access the calendar
+    logger.info(`LinkedIn Routes: Calendar verified successfully for ${clientId} - ${calendarEmail}`);
+    
+    res.json({
+      success: true,
+      connected: true,
+      message: 'Calendar connected successfully! We can now check your availability.',
+      calendarEmail
+    });
+    
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error verifying calendar:', error);
+    res.status(500).json({ error: 'Failed to verify calendar', details: error.message });
+  }
+});
+
 module.exports = router;

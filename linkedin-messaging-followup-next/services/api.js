@@ -1386,4 +1386,72 @@ export const updateClientTimezone = async (timezone) => {
   }
 };
 
+/**
+ * Get service account email for calendar sharing instructions
+ * @returns {Promise<{success: boolean, serviceAccountEmail: string}>}
+ */
+export const getServiceAccountEmail = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.get('/client/service-account-email', {
+      params: { testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Get service account email error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to get service account email');
+  }
+};
+
+/**
+ * Update client calendar email (self-service configuration)
+ * @param {string} calendarEmail - Google Calendar email address
+ * @returns {Promise<{success: boolean, calendarEmail: string}>}
+ */
+export const updateClientCalendarEmail = async (calendarEmail) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.patch('/client/calendar', { calendarEmail }, {
+      params: { testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Update calendar email error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to update calendar email');
+  }
+};
+
+/**
+ * Verify calendar connection - tests if calendar is properly shared
+ * @param {string} calendarEmail - Google Calendar email to verify
+ * @returns {Promise<{success: boolean, connected: boolean, message: string}>}
+ */
+export const verifyCalendarConnection = async (calendarEmail) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.post('/client/verify-calendar', { calendarEmail }, {
+      params: { testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Verify calendar error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to verify calendar connection');
+  }
+};
+
 export default api;
