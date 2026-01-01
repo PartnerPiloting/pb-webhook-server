@@ -7027,12 +7027,21 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
       logger.info(`Next month query detected: starting ${startDayOffset} days from now, fetching ${daysToFetch} days`);
     }
     
-    // Check for "in X weeks" pattern
+    // Check for "in X weeks" pattern (start X weeks from now)
     const inWeeksMatch = msgLower.match(/in\s*(\d+)\s*weeks?/);
     if (inWeeksMatch) {
       startDayOffset = parseInt(inWeeksMatch[1], 10) * 7;
       daysToFetch = 7;
       logger.info(`"In X weeks" query detected: starting ${startDayOffset} days from now`);
+    }
+    
+    // Check for "next X weeks" or "for the next X weeks" pattern (fetch X weeks of data)
+    const nextWeeksMatch = msgLower.match(/(?:next|for the next|for)\s*(\d+)\s*weeks?/);
+    if (nextWeeksMatch) {
+      const numWeeks = parseInt(nextWeeksMatch[1], 10);
+      daysToFetch = Math.min(numWeeks * 7, 21); // Cap at 3 weeks to avoid MAX_TOKENS
+      startDayOffset = 0; // Start from today
+      logger.info(`"Next X weeks" query detected: fetching ${daysToFetch} days`);
     }
     
     // Fetch BOTH appointments AND availability
