@@ -85,13 +85,15 @@ function CalendarBookingContent() {
   const [selectedTimezone, setSelectedTimezone] = useState('');
   const [customTimezone, setCustomTimezone] = useState('');
   const [calendarEmail, setCalendarEmail] = useState('');
-  const [serviceAccountEmail, setServiceAccountEmail] = useState('');
   const [setupSaving, setSetupSaving] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [verifyingCalendar, setVerifyingCalendar] = useState(false);
   const [calendarVerified, setCalendarVerified] = useState(false);
   const [calendarAccessError, setCalendarAccessError] = useState<string | null>(null);
   const [verifyingOnLoad, setVerifyingOnLoad] = useState(false);
+  
+  // Service account email from environment variable
+  const serviceAccountEmail = process.env.NEXT_PUBLIC_GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
   
   // Timezone options
   const TIMEZONE_OPTIONS = [
@@ -152,20 +154,6 @@ function CalendarBookingContent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookTime, includeEmailInConfirm, showConfirmation, leadDisplayTime]);
-
-  // Load service account email when setup is opened
-  useEffect(() => {
-    if (showSetup && !serviceAccountEmail && clientInfo) {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/service-account-email`, {
-        headers: { 'x-client-id': clientInfo.clientId }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.email) setServiceAccountEmail(data.email);
-        })
-        .catch(() => {});
-    }
-  }, [showSetup, serviceAccountEmail, clientInfo]);
 
   // Verify calendar access on page load when calendar email is configured
   useEffect(() => {
@@ -653,7 +641,9 @@ ${yourFirstName}`;
           {showSetup && (
             <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-700">Quick Setup</h3>
+                <h3 className="text-sm font-medium text-gray-700">
+                  {clientInfo.timezoneConfigured && clientInfo.calendarConnected ? 'Edit Settings' : 'Quick Setup'}
+                </h3>
                 <button
                   onClick={() => setShowSetup(false)}
                   className="text-gray-500 hover:text-gray-700 text-sm"
@@ -662,13 +652,14 @@ ${yourFirstName}`;
                 </button>
               </div>
 
-              {/* Timezone Section */}
-              {!clientInfo.timezoneConfigured && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-600">Your Timezone</label>
-                  <select
-                    value={selectedTimezone === 'OTHER' ? 'OTHER' : selectedTimezone}
-                    onChange={(e) => {
+              {/* Timezone Section - always show in setup */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-600">
+                  Your Timezone {clientInfo.timezoneConfigured && <span className="text-xs text-gray-400">(current: {yourTimezone})</span>}
+                </label>
+                <select
+                  value={selectedTimezone === 'OTHER' ? 'OTHER' : selectedTimezone}
+                  onChange={(e) => {
                       if (e.target.value === 'OTHER') {
                         setSelectedTimezone('OTHER');
                         setCustomTimezone('');
@@ -716,13 +707,13 @@ ${yourFirstName}`;
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   )}
-                </div>
-              )}
+              </div>
 
-              {/* Calendar Section */}
-              {!clientInfo.calendarConnected && (
-                <div className="space-y-3">
-                  <label className="block text-sm font-medium text-gray-600">Google Calendar Setup</label>
+              {/* Calendar Section - always show in setup */}
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-600">
+                  Google Calendar {clientInfo.calendarConnected && <span className="text-xs text-gray-400">(configured)</span>}
+                </label>
                   
                   {/* Step 1: Share calendar */}
                   <div className="p-3 bg-white rounded border border-gray-200">
@@ -756,8 +747,7 @@ ${yourFirstName}`;
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     />
                   </div>
-                </div>
-              )}
+              </div>
 
               {/* Error message */}
               {setupError && (
@@ -778,7 +768,7 @@ ${yourFirstName}`;
                 >
                   {setupSaving ? 'Saving...' : 'Save'}
                 </button>
-                {calendarEmail && clientInfo.calendarConnected === false && (
+                {calendarEmail && (
                   <button
                     onClick={handleVerifyCalendar}
                     disabled={verifyingCalendar}
@@ -801,9 +791,17 @@ ${yourFirstName}`;
                 </p>
               )}
               {!verifyingOnLoad && calendarVerified && !calendarAccessError && (
-                <p className="mt-2 text-green-600 font-medium">
-                  ✅ Ready ({yourTimezone})
-                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <p className="text-green-600 font-medium">
+                    ✅ Ready ({yourTimezone})
+                  </p>
+                  <button
+                    onClick={() => setShowSetup(true)}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Edit
+                  </button>
+                </div>
               )}
               {!verifyingOnLoad && calendarAccessError && (
                 <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, getServiceAccountEmail, updateClientCalendarEmail, verifyCalendarConnection } from '../services/api';
+import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone } from '../services/api';
 
 /**
  * QuickUpdateModal - Rapid lead notes and contact update modal
@@ -57,11 +57,8 @@ export default function QuickUpdateModal({
   onClose, 
   initialLeadId = null, 
   clientId = null,
-  clientTimezone = null, 
-  clientCalendarEmail = null,
-  calendarConfigured = false,
-  onTimezoneUpdate = null,
-  onCalendarUpdate = null
+  clientTimezone = null,
+  onTimezoneUpdate = null
 }) {
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,16 +73,6 @@ export default function QuickUpdateModal({
   const [customTimezone, setCustomTimezone] = useState('');
   const [isSavingTimezone, setIsSavingTimezone] = useState(false);
   const [timezoneError, setTimezoneError] = useState(null);
-  
-  // Calendar configuration state
-  const [showCalendarConfig, setShowCalendarConfig] = useState(false);
-  const [calendarEmail, setCalendarEmail] = useState('');
-  const [serviceAccountEmail, setServiceAccountEmail] = useState('');
-  const [isSavingCalendar, setIsSavingCalendar] = useState(false);
-  const [isVerifyingCalendar, setIsVerifyingCalendar] = useState(false);
-  const [calendarError, setCalendarError] = useState(null);
-  const [calendarVerified, setCalendarVerified] = useState(false);
-  const [copiedServiceEmail, setCopiedServiceEmail] = useState(false);
   
   const [activeSection, setActiveSection] = useState('linkedin');
   const [noteContent, setNoteContent] = useState('');
@@ -298,94 +285,6 @@ export default function QuickUpdateModal({
     }
   };
 
-  // Open calendar config and load service account email
-  const handleOpenCalendarConfig = async () => {
-    setShowCalendarConfig(true);
-    setCalendarEmail(clientCalendarEmail || '');
-    setCalendarError(null);
-    setCalendarVerified(calendarConfigured);
-    
-    // Load service account email if not already loaded
-    if (!serviceAccountEmail) {
-      try {
-        const { serviceAccountEmail: email } = await getServiceAccountEmail();
-        setServiceAccountEmail(email);
-      } catch (err) {
-        console.error('Failed to get service account email:', err);
-        setCalendarError('Failed to load service account email');
-      }
-    }
-  };
-
-  // Handle calendar email save
-  const handleSaveCalendarEmail = async () => {
-    if (!calendarEmail.trim()) {
-      setCalendarError('Please enter your calendar email');
-      return;
-    }
-    
-    setIsSavingCalendar(true);
-    setCalendarError(null);
-    
-    try {
-      await updateClientCalendarEmail(calendarEmail.trim());
-      
-      // Notify parent to update clientProfile
-      if (onCalendarUpdate) {
-        onCalendarUpdate(calendarEmail.trim());
-      }
-      
-    } catch (err) {
-      console.error('Failed to save calendar email:', err);
-      setCalendarError(err.message || 'Failed to save calendar email');
-    } finally {
-      setIsSavingCalendar(false);
-    }
-  };
-
-  // Handle calendar verification
-  const handleVerifyCalendar = async () => {
-    if (!calendarEmail.trim()) {
-      setCalendarError('Please enter your calendar email first');
-      return;
-    }
-    
-    setIsVerifyingCalendar(true);
-    setCalendarError(null);
-    setCalendarVerified(false);
-    
-    try {
-      const result = await verifyCalendarConnection(calendarEmail.trim());
-      
-      if (result.connected) {
-        setCalendarVerified(true);
-        // Also save the email if verification succeeded
-        await updateClientCalendarEmail(calendarEmail.trim());
-        if (onCalendarUpdate) {
-          onCalendarUpdate(calendarEmail.trim());
-        }
-      } else {
-        setCalendarError(result.message || 'Calendar not connected');
-      }
-    } catch (err) {
-      console.error('Failed to verify calendar:', err);
-      setCalendarError(err.message || 'Failed to verify calendar connection');
-    } finally {
-      setIsVerifyingCalendar(false);
-    }
-  };
-
-  // Copy service account email to clipboard
-  const handleCopyServiceEmail = async () => {
-    try {
-      await navigator.clipboard.writeText(serviceAccountEmail);
-      setCopiedServiceEmail(true);
-      setTimeout(() => setCopiedServiceEmail(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
   const handleSave = async () => {
     if (!selectedLead) {
       setError('Please select a lead first');
@@ -491,6 +390,18 @@ export default function QuickUpdateModal({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Quick Update</h2>
+              {/* Show current timezone with edit link when configured */}
+              {isValidTimezone(clientTimezone) && !showTimezoneSelector && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Timezone: {clientTimezone}
+                  <button
+                    onClick={() => setShowTimezoneSelector(true)}
+                    className="ml-2 text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Edit
+                  </button>
+                </p>
+              )}
             </div>
             <button
               onClick={handleClose}
@@ -503,10 +414,10 @@ export default function QuickUpdateModal({
             </button>
           </div>
           
-          {/* Timezone Configuration Prompt */}
-          {!isValidTimezone(clientTimezone) && (
+          {/* Timezone Configuration/Edit Panel */}
+          {(!isValidTimezone(clientTimezone) || showTimezoneSelector) && (
             <div className="mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
-              {!showTimezoneSelector ? (
+              {!showTimezoneSelector && !isValidTimezone(clientTimezone) ? (
                 // Show friendly prompt with configure button
                 <div className="flex items-start gap-3">
                   <svg className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
