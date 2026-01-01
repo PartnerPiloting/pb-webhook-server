@@ -1149,7 +1149,7 @@ ${yourFirstName}`;
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-semibold text-gray-800">Lead Details</h2>
                 {leadRecordId && (
                   <button
@@ -1157,10 +1157,15 @@ ${yourFirstName}`;
                     disabled={lookingUpLead}
                     className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
                   >
-                    {lookingUpLead ? 'Saving...' : '💾 Save to Airtable'}
+                    {lookingUpLead ? 'Saving...' : '💾 Save'}
                   </button>
                 )}
               </div>
+              {leadRecordId && (
+                <p className="text-xs text-gray-500 mb-3">
+                  Note: Changes to Location, Email, or Phone will be saved to the lead&apos;s Airtable record.
+                </p>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
