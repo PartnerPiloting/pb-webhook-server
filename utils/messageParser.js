@@ -173,7 +173,22 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
         if (line.match(/^\(She\/Her\)$|^\(He\/Him\)$/i)) continue;
         
         // Check for date header
+        // IMPORTANT: Save pending message BEFORE updating date, otherwise the message
+        // gets assigned to the wrong date when date changes mid-conversation
         if (datePattern.test(line)) {
+            // Save any pending message with the CURRENT date before changing it
+            if (currentSender && currentMessage.length > 0) {
+                const msgText = cleanLinkedInNoise(currentMessage.join(' ').trim());
+                if (msgText && !/^[\u{1F300}-\u{1F9FF}\s]+$/u.test(msgText)) {
+                    messages.push({
+                        date: formatDateDDMMYY(currentDate),
+                        time: currentTime,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                }
+                currentMessage = [];
+            }
             currentDate = parseFlexibleDate(line, referenceDate);
             continue;
         }
@@ -181,6 +196,19 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
         // Check for sender + time line like "Guy Wilson   1:41 PM"
         const senderMatch = line.match(senderTimePattern);
         if (senderMatch) {
+            const potentialSender = senderMatch[1].trim();
+            
+            // Skip false positives: lines starting with bullet points, hyphens, or numbers
+            // These are likely list items in message content, not sender names
+            // e.g., "- Monday, Jan 12 at 10:30 AM" or "• Wednesday at 2:00 PM"
+            if (/^[-•*\d]/.test(potentialSender)) {
+                // This is message content, not a sender line
+                if (currentSender) {
+                    currentMessage.push(line);
+                }
+                continue;
+            }
+            
             // Save previous message if exists
             if (currentSender && currentMessage.length > 0) {
                 const msgText = cleanLinkedInNoise(currentMessage.join(' ').trim());
@@ -195,7 +223,7 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
                 }
             }
             
-            currentSender = senderMatch[1].trim();
+            currentSender = potentialSender;
             currentTime = senderMatch[2].trim();
             currentMessage = [];
             continue;
