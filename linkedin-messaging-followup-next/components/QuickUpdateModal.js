@@ -528,25 +528,16 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
               </div>
             )}
             
-            {/* Full Notes View */}
+            {/* Full Notes View Button */}
             {selectedLead?.notes && (
               <div className="mt-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-medium text-gray-700">Full Notes</h4>
-                  <button
-                    onClick={() => setShowNotesPreview(!showNotesPreview)}
-                    className="text-xs text-blue-600 hover:text-blue-800"
-                  >
-                    {showNotesPreview ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-                {showNotesPreview && (
-                  <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-60 overflow-y-auto">
-                    <pre className="whitespace-pre-wrap text-xs text-gray-600 font-mono">
-                      {selectedLead.notes}
-                    </pre>
-                  </div>
-                )}
+                <button
+                  onClick={() => setShowNotesPreview(true)}
+                  className="w-full px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  View Full Notes
+                </button>
+              </div>
               </div>
             )}
           </div>
@@ -742,6 +733,53 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
                 >
                   Discard & Continue
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Full Notes Popup */}
+        {showNotesPreview && selectedLead?.notes && (
+          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-8">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col">
+              {/* Popup Header */}
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between rounded-t-lg">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Full Notes - {selectedLead.firstName} {selectedLead.lastName}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {selectedLead.notes.split('\n').length} lines
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowNotesPreview(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-md hover:bg-gray-200"
+                  title="Close"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              {/* Notes Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
+                  {selectedLead.notes}
+                </pre>
+              </div>
+              
+              {/* Popup Footer */}
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowNotesPreview(false)}
+                    className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
