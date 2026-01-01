@@ -471,17 +471,21 @@ function CalendarBookingContent() {
         return;
       }
 
-      // Found the lead - populate form
+      // Found the lead - populate form and clear previous booking data
       setLeadFound(true);
       setLeadRecordId(data.recordId);
       setFormData(prev => ({
         ...prev,
-        leadName: data.fullName || prev.leadName,
-        leadLocation: data.location || prev.leadLocation,
-        leadEmail: data.email || prev.leadEmail,
-        leadPhone: data.phone || prev.leadPhone,
+        leadName: data.fullName || '',
+        leadLocation: data.location || '',
+        leadEmail: data.email || '',
+        leadPhone: data.phone || '',
         leadLinkedIn: data.linkedInUrl || prev.leadLinkedIn,
+        conversationHint: '', // Clear previous booking context
       }));
+      
+      // Clear previous smart booking conversation
+      setChatMessages([]);
 
       // Build success message
       const foundFields = [];
@@ -1028,18 +1032,6 @@ ${yourFirstName}`;
         </div>
 
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="mb-6">
-            <button
-              onClick={handleFillFromClipboard}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-md font-medium"
-            >
-              📋 Fill from Clipboard
-            </button>
-            <p className="text-sm text-gray-500 mt-2 text-center">
-              Paste AI Blaze output (7-10 fields with |||)
-            </p>
-          </div>
-
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-800">
               {error}
