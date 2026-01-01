@@ -959,7 +959,7 @@ router.get('/leads/lookup', async (req, res) => {
       }
       
       const records = await airtableBase('Leads').select({
-        filterByFormula,
+        filterByFormula: filterFormula,
         maxRecords: 10
       }).firstPage();
       
