@@ -7012,21 +7012,26 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
       
-      const dateExtractionPrompt = `Today is ${todayStr}. Extract the date range from this message. If no specific dates mentioned, return defaults.
+      // Include recent conversation for context (e.g., "the week after" needs to know after what)
+      const recentContext = messages.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
+      
+      const dateExtractionPrompt = `Today is ${todayStr}. Extract the date range the user wants to see.
 
-Message: "${message}"
+Recent conversation:
+${recentContext}
+
+Current message: "${message}"
 
 Return JSON only: {"startOffset": <days from today to start>, "numDays": <number of days to fetch, max 21>}
 
 Examples:
-- "What's available tomorrow?" → {"startOffset": 1, "numDays": 3}
-- "next week" → {"startOffset": 0, "numDays": 7}
+- "next 3 weeks" → {"startOffset": 0, "numDays": 21}
+- "the week after" (after Jan 7) → {"startOffset": 7, "numDays": 7}
 - "in 2 weeks" → {"startOffset": 14, "numDays": 7}
-- "next month" or "early July" → {"startOffset": days until that period, "numDays": 14}
-- "the 15th" → {"startOffset": days until 15th, "numDays": 3}
+- "next month" → {"startOffset": days until next month, "numDays": 14}
 - No date mentioned → {"startOffset": 0, "numDays": 7}
 
-JSON only, no explanation:`;
+JSON only:`;
 
       const dateResult = await geminiConfig.geminiModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
@@ -7040,6 +7045,8 @@ JSON only, no explanation:`;
         dateResponseText = dateResult.response.candidates[0].content.parts[0].text;
       }
       
+      logger.info(`AI date extraction response: "${dateResponseText}"`);
+      
       // Extract JSON from response
       const jsonMatch = dateResponseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -7047,6 +7054,8 @@ JSON only, no explanation:`;
         startDayOffset = Math.max(0, Math.min(parsed.startOffset || 0, 60)); // Cap at 60 days out
         daysToFetch = Math.max(3, Math.min(parsed.numDays || 7, 21)); // Between 3-21 days
         logger.info(`AI extracted date range: startOffset=${startDayOffset}, numDays=${daysToFetch}`);
+      } else {
+        logger.warn(`No JSON found in date extraction response, using defaults`);
       }
     } catch (dateError) {
       logger.warn(`Date extraction failed, using defaults: ${dateError.message}`);
