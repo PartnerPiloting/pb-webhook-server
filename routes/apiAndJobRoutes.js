@@ -6863,10 +6863,10 @@ router.post("/api/calendar/chat", async (req, res) => {
       return res.status(401).json({ error: calendarError });
     }
 
-    // Get today's date and next 60 days (~2 months) for potential calendar queries
+    // Get today's date and next 150 days (~5 months) for potential calendar queries
     const today = new Date();
     const dates = [];
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 150; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() + i);
       dates.push(d.toISOString().split('T')[0]);
@@ -7005,7 +7005,7 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
     
     // Use AI to extract date range from user query
     // This is more robust than regex patterns for natural language like "mid-July" or "early next month"
-    let daysToFetch = 7;
+    let daysToFetch = 14;
     let startDayOffset = 0;
     
     try {
@@ -7015,22 +7015,34 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
       // Include recent conversation for context (e.g., "the week after" needs to know after what)
       const recentContext = messages.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
       
-      const dateExtractionPrompt = `Today is ${todayStr}. Extract date range from user message.
+      const dateExtractionPrompt = `Today is ${todayStr}. Extract the date range from the user's message.
 
 ${recentContext ? `Recent conversation:\n${recentContext}\n\n` : ''}Current message: "${message}"
 
-Reply with ONLY raw JSON, no code blocks, no explanation:
-{"startOffset": <days from today>, "numDays": <days to fetch, max 21>}
+Return startOffset (days from today to start) and numDays (how many days to fetch, max 21).
 
 Examples:
-"next 3 weeks" → {"startOffset": 0, "numDays": 21}
-"in 2 weeks" → {"startOffset": 14, "numDays": 7}
-"next month" → {"startOffset": 30, "numDays": 14}
-No date → {"startOffset": 0, "numDays": 7}`;
+- "next 3 weeks" → startOffset=0, numDays=21
+- "in 2 weeks" → startOffset=14, numDays=7  
+- "3 months from now" → startOffset=90, numDays=7
+- "first week of March" → startOffset=days until March 1, numDays=7
+- No specific date mentioned → startOffset=0, numDays=14`;
 
       const dateResult = await geminiConfig.geminiModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 100 },
+        generationConfig: { 
+          temperature: 0, 
+          maxOutputTokens: 50,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              startOffset: { type: 'integer' },
+              numDays: { type: 'integer' }
+            },
+            required: ['startOffset', 'numDays']
+          }
+        },
       });
       
       let dateResponseText = '';
@@ -7042,19 +7054,10 @@ No date → {"startOffset": 0, "numDays": 7}`;
       
       logger.info(`AI date extraction response: "${dateResponseText}"`);
       
-      // Extract JSON from response (strip code blocks if present)
-      let cleanResponse = dateResponseText.replace(/```json\s*|\s*```/g, '').trim();
-      logger.info(`Cleaned date response: "${cleanResponse}"`);
-      
-      const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        startDayOffset = Math.max(0, Math.min(parsed.startOffset || 0, 60)); // Cap at 60 days out
-        daysToFetch = Math.max(3, Math.min(parsed.numDays || 7, 21)); // Between 3-21 days
-        logger.info(`AI extracted date range: startOffset=${startDayOffset}, numDays=${daysToFetch}`);
-      } else {
-        logger.warn(`No JSON found in date extraction response, using defaults`);
-      }
+      const parsed = JSON.parse(dateResponseText);
+      startDayOffset = Math.max(0, Math.min(parsed.startOffset || 0, 120)); // Cap at 4 months
+      daysToFetch = Math.max(3, Math.min(parsed.numDays || 14, 21)); // Between 3-21 days
+      logger.info(`AI extracted date range: startOffset=${startDayOffset}, numDays=${daysToFetch}`);
     } catch (dateError) {
       logger.warn(`Date extraction failed, using defaults: ${dateError.message}`);
       // Fall back to 7 days from today
