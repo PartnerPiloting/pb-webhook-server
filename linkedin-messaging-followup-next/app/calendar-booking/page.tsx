@@ -26,6 +26,10 @@ interface ClientInfo {
   calendarEmail: string | null;
   timezone: string | null;
   timezoneConfigured: boolean;
+  // Profile fields for form auto-fill
+  linkedInUrl: string | null;
+  phone: string | null;
+  zoomLink: string | null;
 }
 
 interface ChatMessage {
@@ -83,6 +87,11 @@ function CalendarBookingContent() {
   const [promptError, setPromptError] = useState<string>('');
   const router = useRouter();
   
+  // Raw LinkedIn paste extraction
+  const [rawPasteText, setRawPasteText] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractionError, setExtractionError] = useState('');
+  
   // Setup state for self-service configuration
   const [showSetup, setShowSetup] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState('');
@@ -139,6 +148,14 @@ function CalendarBookingContent() {
           if (data.timezoneConfigured && data.timezone) {
             setYourTimezone(data.timezone);
           }
+          // Auto-fill "Your Details" from client profile
+          setFormData(prev => ({
+            ...prev,
+            yourName: data.clientName || prev.yourName,
+            yourLinkedIn: data.linkedInUrl || prev.yourLinkedIn,
+            yourPhone: data.phone || prev.yourPhone,
+            yourZoom: data.zoomLink || prev.yourZoom,
+          }));
         }
       })
       .catch(() => {
@@ -346,6 +363,59 @@ function CalendarBookingContent() {
       };
     } catch (e) {
       return null;
+    }
+  };
+
+  // Extract lead data from raw LinkedIn paste using AI
+  const handleExtractFromPaste = async () => {
+    if (!rawPasteText.trim()) {
+      setExtractionError('Please paste LinkedIn profile content first');
+      return;
+    }
+    
+    setExtracting(true);
+    setExtractionError('');
+    
+    try {
+      const response = await fetch('/api/calendar/extract-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText: rawPasteText }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok || !data.success) {
+        setExtractionError(data.error || 'Failed to extract profile data');
+        return;
+      }
+      
+      const { extracted } = data;
+      
+      // Update lead fields from extraction
+      setFormData(prev => ({
+        ...prev,
+        leadName: extracted.leadName || prev.leadName,
+        leadLocation: extracted.leadLocation || prev.leadLocation,
+        leadEmail: extracted.leadEmail || prev.leadEmail,
+        leadPhone: extracted.leadPhone || prev.leadPhone,
+        conversationHint: extracted.bookingTimeHint || prev.conversationHint,
+      }));
+      
+      setSuccess(`✅ Extracted lead: ${extracted.leadName}${extracted.headline ? ` - ${extracted.headline}` : ''}`);
+      setRawPasteText(''); // Clear paste area on success
+      
+      // If there's a booking hint, add it to chat
+      if (extracted.bookingTimeHint) {
+        setChatMessages([{
+          role: 'assistant',
+          content: `📋 Found booking hint: "${extracted.bookingTimeHint}"\n\nHow can I help you schedule this meeting?`
+        }]);
+      }
+    } catch (err) {
+      setExtractionError('Failed to extract profile data. Please try again.');
+    } finally {
+      setExtracting(false);
     }
   };
 
@@ -910,6 +980,40 @@ ${yourFirstName}`;
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Raw LinkedIn Paste Extraction */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h2 className="text-lg font-semibold text-blue-800 mb-2">📋 Paste LinkedIn Profile</h2>
+              <p className="text-sm text-blue-600 mb-3">
+                Copy the entire LinkedIn profile page (Ctrl+A, Ctrl+C) and paste below. We&apos;ll extract the lead details automatically.
+              </p>
+              <textarea
+                value={rawPasteText}
+                onChange={(e) => setRawPasteText(e.target.value)}
+                placeholder="Paste raw LinkedIn profile content here..."
+                className="w-full h-32 px-3 py-2 border border-blue-300 rounded-md text-sm font-mono resize-y"
+              />
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  onClick={handleExtractFromPaste}
+                  disabled={extracting || !rawPasteText.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {extracting ? '🔄 Extracting...' : '✨ Extract Lead Details'}
+                </button>
+                {rawPasteText && (
+                  <button
+                    onClick={() => setRawPasteText('')}
+                    className="px-3 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {extractionError && (
+                <p className="mt-2 text-sm text-red-600">{extractionError}</p>
+              )}
             </div>
 
             <div>

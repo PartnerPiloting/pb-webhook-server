@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     // Query Airtable Master Clients base (case-insensitive)
     // Check for Google Calendar Email (service account approach) and Timezone
     const airtableResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Client ID&fields[]=Client Name&fields[]=Status&fields[]=Google Calendar Email&fields[]=Timezone`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Client ID&fields[]=Client Name&fields[]=Status&fields[]=Google Calendar Email&fields[]=Timezone&fields[]=LinkedIn URL&fields[]=Phone&fields[]=Zoom Link`,
       {
         headers: {
           'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
@@ -54,6 +54,11 @@ export async function GET(request: Request) {
     const calendarEmail = client['Google Calendar Email'];
     const timezone = client['Timezone'];
     
+    // Client profile fields for form auto-fill
+    const linkedInUrl = client['LinkedIn URL'];
+    const phone = client['Phone'];
+    const zoomLink = client['Zoom Link'];
+    
     // Validate timezone using Intl.DateTimeFormat
     const isValidTimezone = (tz: string | undefined): boolean => {
       if (!tz) return false;
@@ -72,6 +77,10 @@ export async function GET(request: Request) {
       calendarEmail: calendarEmail || null,
       timezone: timezone || null,
       timezoneConfigured: isValidTimezone(timezone),
+      // Profile fields for booking form
+      linkedInUrl: linkedInUrl || null,
+      phone: phone || null,
+      zoomLink: zoomLink || null,
     });
 
   } catch (error) {
