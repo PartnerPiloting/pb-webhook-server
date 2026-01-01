@@ -7274,4 +7274,178 @@ RESPOND WITH ONLY THIS JSON FORMAT (no markdown):
   }
 });
 
+// ============================================================================
+// CALENDAR - LOOKUP LEAD BY LINKEDIN URL
+// ============================================================================
+/**
+ * GET /api/calendar/lookup-lead
+ * Lookup a lead in Airtable by LinkedIn URL
+ * Returns lead details if found, or 404 if not
+ */
+router.get("/api/calendar/lookup-lead", async (req, res) => {
+  const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ runId: 'CALENDAR', clientId: clientId || 'unknown', operation: 'lookup-lead' });
+  
+  try {
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    let { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'LinkedIn URL required' });
+    }
+
+    // Normalize URL: strip query params and trailing slash
+    url = url.split('?')[0].replace(/\/$/, '');
+    
+    // Ensure it's a LinkedIn profile URL
+    if (!url.includes('linkedin.com/in/')) {
+      return res.status(400).json({ error: 'Invalid LinkedIn profile URL. Expected format: https://www.linkedin.com/in/username' });
+    }
+
+    logger.info(`Looking up lead by URL: ${url}`);
+
+    // Get client's Airtable base
+    const { getClientBase } = require('../config/airtableClient.js');
+    const clientBase = await getClientBase(clientId);
+    
+    if (!clientBase) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Query Airtable for lead by LinkedIn URL
+    // Try exact match first, then with/without trailing slash
+    const formula = `OR(
+      {LinkedIn Profile URL}='${url}',
+      {LinkedIn Profile URL}='${url}/',
+      LOWER({LinkedIn Profile URL})=LOWER('${url}'),
+      LOWER({LinkedIn Profile URL})=LOWER('${url}/')
+    )`;
+
+    const records = await clientBase('Leads')
+      .select({
+        filterByFormula: formula,
+        maxRecords: 1,
+        fields: [
+          'First Name',
+          'Last Name',
+          'LinkedIn Profile URL',
+          'Location',
+          'Email',
+          'Phone',
+          'Headline',
+          'Company Name',
+          'Raw Profile Data'
+        ]
+      })
+      .firstPage();
+
+    if (!records || records.length === 0) {
+      logger.info(`Lead not found for URL: ${url}`);
+      return res.status(404).json({ 
+        found: false, 
+        message: 'Lead not found in system',
+        url: url 
+      });
+    }
+
+    const record = records[0];
+    const fields = record.fields;
+    
+    // Try to get location from field, or fall back to Raw Profile Data
+    let location = fields['Location'] || '';
+    if (!location && fields['Raw Profile Data']) {
+      try {
+        const rawData = JSON.parse(fields['Raw Profile Data']);
+        location = rawData.location_name || rawData.location || '';
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
+    }
+
+    const leadData = {
+      found: true,
+      recordId: record.id,
+      firstName: fields['First Name'] || '',
+      lastName: fields['Last Name'] || '',
+      fullName: `${fields['First Name'] || ''} ${fields['Last Name'] || ''}`.trim(),
+      linkedInUrl: fields['LinkedIn Profile URL'] || url,
+      location: location,
+      email: fields['Email'] || '',
+      phone: fields['Phone'] || '',
+      headline: fields['Headline'] || '',
+      company: fields['Company Name'] || '',
+    };
+
+    logger.info(`Found lead: ${leadData.fullName} (${leadData.location})`);
+
+    res.json(leadData);
+
+  } catch (error) {
+    logger.error('Lead lookup error:', error.message, error.stack);
+    res.status(500).json({ error: `Lead lookup failed: ${error.message}` });
+  }
+});
+
+// ============================================================================
+// CALENDAR - UPDATE LEAD DETAILS
+// ============================================================================
+/**
+ * PATCH /api/calendar/update-lead
+ * Update a lead's details in Airtable (location, email, phone)
+ */
+router.patch("/api/calendar/update-lead", async (req, res) => {
+  const clientId = req.headers['x-client-id'];
+  const logger = createLogger({ runId: 'CALENDAR', clientId: clientId || 'unknown', operation: 'update-lead' });
+  
+  try {
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    const { recordId, location, email, phone } = req.body;
+    
+    if (!recordId) {
+      return res.status(400).json({ error: 'Record ID required' });
+    }
+
+    logger.info(`Updating lead ${recordId}: location=${location}, email=${email}, phone=${phone}`);
+
+    // Get client's Airtable base
+    const { getClientBase } = require('../config/airtableClient.js');
+    const clientBase = await getClientBase(clientId);
+    
+    if (!clientBase) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Build update fields (only include non-empty values)
+    const updateFields = {};
+    if (location) updateFields['Location'] = location;
+    if (email) updateFields['Email'] = email;
+    if (phone) updateFields['Phone'] = phone;
+
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    // Update the record
+    const updatedRecord = await clientBase('Leads').update(recordId, updateFields);
+
+    logger.info(`Lead ${recordId} updated successfully`);
+
+    res.json({
+      success: true,
+      recordId: updatedRecord.id,
+      updated: updateFields
+    });
+
+  } catch (error) {
+    logger.error('Lead update error:', error.message, error.stack);
+    res.status(500).json({ error: `Lead update failed: ${error.message}` });
+  }
+});
+
 module.exports = router;

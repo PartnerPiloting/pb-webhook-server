@@ -87,7 +87,13 @@ function CalendarBookingContent() {
   const [promptError, setPromptError] = useState<string>('');
   const router = useRouter();
   
-  // Raw LinkedIn paste extraction
+  // Lead lookup state (URL-based lookup)
+  const [lookingUpLead, setLookingUpLead] = useState(false);
+  const [leadLookupError, setLeadLookupError] = useState('');
+  const [leadRecordId, setLeadRecordId] = useState<string | null>(null);
+  const [leadFound, setLeadFound] = useState<boolean | null>(null);
+  
+  // Raw LinkedIn paste extraction (legacy - kept for fallback)
   const [rawPasteText, setRawPasteText] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState('');
@@ -428,6 +434,108 @@ function CalendarBookingContent() {
       setExtractionError('Failed to extract profile data. Please try again.');
     } finally {
       setExtracting(false);
+    }
+  };
+
+  // Look up lead by LinkedIn URL in Airtable
+  const handleLookupLead = async () => {
+    const url = formData.leadLinkedIn.trim();
+    
+    if (!url) {
+      setLeadLookupError('Please enter a LinkedIn URL');
+      return;
+    }
+
+    if (!url.includes('linkedin.com/in/')) {
+      setLeadLookupError('Please enter a valid LinkedIn profile URL (e.g., https://www.linkedin.com/in/username)');
+      return;
+    }
+
+    setLookingUpLead(true);
+    setLeadLookupError('');
+    setLeadFound(null);
+    setLeadRecordId(null);
+
+    try {
+      const response = await fetch(`/api/calendar/lookup-lead?url=${encodeURIComponent(url)}`, {
+        headers: {
+          'x-client-id': clientInfo?.clientId || '',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.found) {
+        setLeadFound(false);
+        setLeadLookupError(data.message || 'Lead not found in system');
+        return;
+      }
+
+      // Found the lead - populate form
+      setLeadFound(true);
+      setLeadRecordId(data.recordId);
+      setFormData(prev => ({
+        ...prev,
+        leadName: data.fullName || prev.leadName,
+        leadLocation: data.location || prev.leadLocation,
+        leadEmail: data.email || prev.leadEmail,
+        leadPhone: data.phone || prev.leadPhone,
+        leadLinkedIn: data.linkedInUrl || prev.leadLinkedIn,
+      }));
+
+      // Build success message
+      const foundFields = [];
+      if (data.fullName) foundFields.push(data.fullName);
+      if (data.location) foundFields.push(data.location);
+      if (data.headline) foundFields.push(data.headline);
+      
+      setSuccess(`✅ Found: ${foundFields.join(' | ')}`);
+
+    } catch (err) {
+      setLeadLookupError('Failed to look up lead. Please try again.');
+    } finally {
+      setLookingUpLead(false);
+    }
+  };
+
+  // Save updated lead details back to Airtable
+  const handleSaveLeadDetails = async () => {
+    if (!leadRecordId) {
+      setLeadLookupError('No lead record to update');
+      return;
+    }
+
+    setLookingUpLead(true);
+    setLeadLookupError('');
+
+    try {
+      const response = await fetch('/api/calendar/update-lead', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientInfo?.clientId || '',
+        },
+        body: JSON.stringify({
+          recordId: leadRecordId,
+          location: formData.leadLocation,
+          email: formData.leadEmail,
+          phone: formData.leadPhone,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setLeadLookupError(data.error || 'Failed to save lead details');
+        return;
+      }
+
+      setSuccess('✅ Lead details saved to Airtable');
+
+    } catch (err) {
+      setLeadLookupError('Failed to save lead details. Please try again.');
+    } finally {
+      setLookingUpLead(false);
     }
   };
 
@@ -994,57 +1102,64 @@ ${yourFirstName}`;
               </div>
             </div>
 
-            {/* Raw LinkedIn Paste Extraction */}
+            {/* Lead Lookup by LinkedIn URL */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h2 className="text-lg font-semibold text-blue-800 mb-2">📋 Paste LinkedIn Profile</h2>
+              <h2 className="text-lg font-semibold text-blue-800 mb-2">🔍 Find Lead</h2>
               <p className="text-sm text-blue-600 mb-3">
-                Copy the entire LinkedIn profile page (Ctrl+A, Ctrl+C) and paste below. We&apos;ll extract the lead details automatically.
+                Paste the lead&apos;s LinkedIn URL from your browser address bar. We&apos;ll look them up in your Airtable.
               </p>
               
-              {/* LinkedIn URL - needs manual paste from address bar */}
-              <div className="mb-3">
-                <label className="block text-sm font-medium text-blue-700 mb-1">
-                  Lead&apos;s LinkedIn URL <span className="text-blue-500 text-xs">(paste from address bar)</span>
-                </label>
+              {/* LinkedIn URL input with lookup button */}
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={formData.leadLinkedIn}
-                  onChange={(e) => setFormData({...formData, leadLinkedIn: e.target.value})}
-                  placeholder="https://www.linkedin.com/in/..."
-                  className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm"
+                  onChange={(e) => {
+                    setFormData({...formData, leadLinkedIn: e.target.value});
+                    setLeadFound(null);
+                    setLeadLookupError('');
+                  }}
+                  placeholder="https://www.linkedin.com/in/username"
+                  className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-sm"
                 />
+                <button
+                  onClick={handleLookupLead}
+                  disabled={lookingUpLead || !formData.leadLinkedIn.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {lookingUpLead ? '🔄 Looking...' : '🔍 Find Lead'}
+                </button>
               </div>
               
-              <textarea
-                value={rawPasteText}
-                onChange={(e) => setRawPasteText(e.target.value)}
-                placeholder="Paste raw LinkedIn profile content here..."
-                className="w-full h-32 px-3 py-2 border border-blue-300 rounded-md text-sm font-mono resize-y"
-              />
-              <div className="mt-2 flex items-center gap-3">
-                <button
-                  onClick={handleExtractFromPaste}
-                  disabled={extracting || !rawPasteText.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {extracting ? '🔄 Extracting...' : '✨ Extract Lead Details'}
-                </button>
-                {rawPasteText && (
-                  <button
-                    onClick={() => setRawPasteText('')}
-                    className="px-3 py-2 text-gray-600 hover:text-gray-800"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              {extractionError && (
-                <p className="mt-2 text-sm text-red-600">{extractionError}</p>
+              {/* Lookup result feedback */}
+              {leadLookupError && (
+                <p className="mt-2 text-sm text-red-600">{leadLookupError}</p>
+              )}
+              {leadFound === false && (
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                  <p className="text-yellow-800">⚠️ Lead not found in Airtable. You can still enter details manually below.</p>
+                </div>
+              )}
+              {leadFound === true && (
+                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-sm">
+                  <p className="text-green-800">✅ Lead found! Details loaded below. Edit if needed and save.</p>
+                </div>
               )}
             </div>
 
             <div>
-              <h2 className="text-lg font-semibold text-gray-800 mb-3">Lead Details</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-gray-800">Lead Details</h2>
+                {leadRecordId && (
+                  <button
+                    onClick={handleSaveLeadDetails}
+                    disabled={lookingUpLead}
+                    className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {lookingUpLead ? 'Saving...' : '💾 Save to Airtable'}
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1054,17 +1169,6 @@ ${yourFirstName}`;
                     type="text"
                     value={formData.leadName}
                     onChange={(e) => setFormData({...formData, leadName: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lead LinkedIn
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.leadLinkedIn}
-                    onChange={(e) => setFormData({...formData, leadLinkedIn: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
