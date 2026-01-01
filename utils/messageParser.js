@@ -32,6 +32,11 @@ function cleanLinkedInNoise(text) {
         .replace(/\s*·?\s*1st(?:\s+degree)?\s*(?:connection)?/gi, '')
         // Remove UI labels that might get copied
         .replace(/^Current Notes\s*$/gim, '')
+        // Remove LinkedIn message compose UI elements that get copied
+        .replace(/Maximize compose field/gi, '')
+        .replace(/Attach an? (?:image|file) to your conversation with .+?(?=\s*(?:Attach|Open|$))/gi, '')
+        .replace(/Open (?:GIF|Emoji) Keyboard/gi, '')
+        .replace(/Open send options/gi, '')
         // Clean up multiple spaces (but not newlines)
         .replace(/[ \t]+/g, ' ')
         // Clean up lines that are just whitespace
