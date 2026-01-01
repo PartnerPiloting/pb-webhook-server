@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     // Client profile fields for form auto-fill
     const linkedInUrl = client['LinkedIn URL'];
     const phone = client['Phone'];
-    const zoomLink = client['Zoom Link'];
+    const meetingLink = client['Meeting Link'];
     
     // Validate timezone using Intl.DateTimeFormat
     const isValidTimezone = (tz: string | undefined): boolean => {
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
       // Profile fields for booking form
       linkedInUrl: linkedInUrl || null,
       phone: phone || null,
-      zoomLink: zoomLink || null,
+      meetingLink: meetingLink || null,
     });
 
   } catch (error) {

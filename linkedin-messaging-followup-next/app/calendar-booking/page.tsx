@@ -29,7 +29,7 @@ interface ClientInfo {
   // Profile fields for form auto-fill
   linkedInUrl: string | null;
   phone: string | null;
-  zoomLink: string | null;
+  meetingLink: string | null;
 }
 
 interface ChatMessage {
@@ -154,7 +154,7 @@ function CalendarBookingContent() {
             yourName: data.clientName || prev.yourName,
             yourLinkedIn: data.linkedInUrl || prev.yourLinkedIn,
             yourPhone: data.phone || prev.yourPhone,
-            yourZoom: data.zoomLink || prev.yourZoom,
+            yourZoom: data.meetingLink || prev.yourZoom,
           }));
         }
       })
