@@ -7004,66 +7004,63 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
     logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
     
     // Use AI to extract date range from user query
-    // This is more robust than regex patterns for natural language like "mid-July" or "early next month"
-    let daysToFetch = 14;
+    let daysToFetch = 21;
     let startDayOffset = 0;
     
     try {
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
       
-      // Include recent conversation for context (e.g., "the week after" needs to know after what)
       const recentContext = messages.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
       
-      const dateExtractionPrompt = `Today is ${todayStr}. Extract the date range from the user's message.
+      const datePrompt = `Today is ${todayStr}. Parse the date range from this message.
+${recentContext ? `Context:\n${recentContext}\n` : ''}
+Message: "${message}"
 
-${recentContext ? `Recent conversation:\n${recentContext}\n\n` : ''}Current message: "${message}"
-
-Return startOffset (days from today to start) and numDays (how many days to fetch, max 21).
+Respond with exactly two numbers separated by comma: startOffset,numDays
+- startOffset = days from today to start (0 = today)
+- numDays = how many days to fetch (max 21)
 
 Examples:
-- "next 3 weeks" → startOffset=0, numDays=21
-- "in 2 weeks" → startOffset=14, numDays=7  
-- "3 months from now" → startOffset=90, numDays=7
-- "first week of March" → startOffset=days until March 1, numDays=7
-- No specific date mentioned → startOffset=0, numDays=14`;
+"next 3 weeks" → 0,21
+"in 2 weeks" → 14,7
+"middle of next month" → 40,7
+"3 months from now" → 90,7
+"tomorrow" → 1,3
+No date mentioned → 0,21
 
+Just the two numbers, nothing else:`;
+
+      logger.info('Calling AI for date extraction...');
+      
       const dateResult = await geminiConfig.geminiModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
-        generationConfig: { 
-          temperature: 0, 
-          maxOutputTokens: 50,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'object',
-            properties: {
-              startOffset: { type: 'integer' },
-              numDays: { type: 'integer' }
-            },
-            required: ['startOffset', 'numDays']
-          }
-        },
+        contents: [{ role: 'user', parts: [{ text: datePrompt }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 20 },
       });
       
-      let dateResponseText = '';
+      let response = '';
       if (dateResult.response && typeof dateResult.response.text === 'function') {
-        dateResponseText = dateResult.response.text();
+        response = dateResult.response.text().trim();
       } else if (dateResult.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        dateResponseText = dateResult.response.candidates[0].content.parts[0].text;
+        response = dateResult.response.candidates[0].content.parts[0].text.trim();
       }
       
-      logger.info(`AI date extraction response: "${dateResponseText}"`);
+      logger.info(`AI date response: "${response}"`);
       
-      const parsed = JSON.parse(dateResponseText);
-      startDayOffset = Math.max(0, Math.min(parsed.startOffset || 0, 120)); // Cap at 4 months
-      daysToFetch = Math.max(3, Math.min(parsed.numDays || 14, 21)); // Between 3-21 days
-      logger.info(`AI extracted date range: startOffset=${startDayOffset}, numDays=${daysToFetch}`);
-    } catch (dateError) {
-      logger.warn(`Date extraction failed, using defaults: ${dateError.message}`);
-      // Fall back to 7 days from today
-      startDayOffset = 0;
-      daysToFetch = 7;
+      // Parse "X,Y" format
+      const match = response.match(/(\d+)\s*,\s*(\d+)/);
+      if (match) {
+        startDayOffset = Math.max(0, Math.min(parseInt(match[1], 10), 120));
+        daysToFetch = Math.max(3, Math.min(parseInt(match[2], 10), 21));
+        logger.info(`Parsed date range: startOffset=${startDayOffset}, numDays=${daysToFetch}`);
+      } else {
+        logger.warn(`Could not parse date response, using defaults`);
+      }
+    } catch (err) {
+      logger.warn(`Date extraction error: ${err.message}`);
     }
+    
+    logger.info(`FINAL: Fetching ${daysToFetch} days starting ${startDayOffset} days from today`);
     
     // Fetch BOTH appointments AND availability
     const eventDays = [];
