@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 
 // Lazy-load the help panel to keep initial bundle lean
@@ -43,6 +43,7 @@ const useClientInitialization = () => {
 const NavigationWithParams = ({ pathname }) => {
   const searchParams = useSearchParams();
   const serviceLevel = parseInt(searchParams.get('level') || '2', 10);
+  const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
   const nav = [
     { name: 'Lead Search & Update', href: '/', icon: MagnifyingGlassIcon, description: 'Find and update existing leads', minLevel: 1 },
     { name: 'Follow-Up Manager', href: '/follow-up', icon: CalendarDaysIcon, description: 'Manage scheduled follow-ups', minLevel: 1 },
@@ -89,25 +90,15 @@ const NavigationWithParams = ({ pathname }) => {
 
 const Layout = ({ children }) => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [clientProfile, setClientProfile] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpAreaOverride, setHelpAreaOverride] = useState(null);
   const [quickUpdateOpen, setQuickUpdateOpen] = useState(false);
   const { isInitialized, error } = useClientInitialization();
   
-  // Quick Update keyboard shortcut (Ctrl+Shift+U)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.shiftKey && (e.key === 'u' || e.key === 'U')) {
-        e.preventDefault();
-        e.stopPropagation();
-        setQuickUpdateOpen(true);
-      }
-    };
-    
-    document.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, []);
+  // Get client param for Calendar Booking link
+  const clientParam = searchParams.get('client') || searchParams.get('testClient') || '';
   
   // Allow child pages to open the Help panel via a simple custom event
   useEffect(() => {
@@ -226,17 +217,26 @@ const Layout = ({ children }) => {
                 })()}
               </h1>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               {/* Quick Update Button */}
               <button
                 onClick={() => setQuickUpdateOpen(true)}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                title="Quick Update (Ctrl+Shift+U)"
+                title="Quick Update - rapid notes entry"
               >
                 <PencilSquareIcon className="h-5 w-5" />
                 <span className="hidden sm:inline">Quick Update</span>
-                <kbd className="hidden lg:inline-block px-1.5 py-0.5 text-xs bg-blue-100 rounded">Ctrl+Shift+U</kbd>
               </button>
+              
+              {/* Calendar Booking Button */}
+              <Link
+                href={`/calendar-booking${clientParam ? `?client=${clientParam}` : ''}`}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                title="Book a meeting with a lead"
+              >
+                <CalendarIcon className="h-5 w-5" />
+                <span className="hidden sm:inline">Book Meeting</span>
+              </Link>
               {/* Per-page Help buttons are rendered within individual components via HelpButton */}
             </div>
           </div>
