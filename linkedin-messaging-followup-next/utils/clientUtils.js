@@ -227,10 +227,21 @@ export function clearClientData() {
   console.log('ClientUtils: Client data cleared');
 }
 
+/**
+ * Manually set the current client ID (for pages that don't use WordPress auth)
+ * Used by calendar-booking page which gets clientId from URL params
+ * @param {string} clientId - The client ID to set
+ */
+export function setCurrentClientId(clientId) {
+  currentClientId = clientId;
+  console.log('ClientUtils: Client ID manually set to:', clientId);
+}
+
 export default {
   getCurrentClientProfile,
   getCurrentClientId,
   getClientProfile,
   initializeClient,
-  clearClientData
+  clearClientData,
+  setCurrentClientId
 };
