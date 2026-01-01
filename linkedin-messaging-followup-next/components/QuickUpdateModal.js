@@ -60,6 +60,7 @@ export default function QuickUpdateModal({
   // Timezone configuration state
   const [showTimezoneSelector, setShowTimezoneSelector] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState('');
+  const [customTimezone, setCustomTimezone] = useState('');
   const [isSavingTimezone, setIsSavingTimezone] = useState(false);
   const [timezoneError, setTimezoneError] = useState(null);
   
@@ -242,8 +243,11 @@ export default function QuickUpdateModal({
 
   // Handle timezone save
   const handleSaveTimezone = async () => {
-    if (!selectedTimezone) {
-      setTimezoneError('Please select a timezone');
+    // Determine the actual timezone value to save
+    const timezoneToSave = selectedTimezone === 'OTHER' ? customTimezone.trim() : selectedTimezone;
+    
+    if (!timezoneToSave) {
+      setTimezoneError('Please select or enter a timezone');
       return;
     }
     
@@ -251,16 +255,17 @@ export default function QuickUpdateModal({
     setTimezoneError(null);
     
     try {
-      await updateClientTimezone(selectedTimezone);
+      await updateClientTimezone(timezoneToSave);
       
       // Notify parent to update clientProfile
       if (onTimezoneUpdate) {
-        onTimezoneUpdate(selectedTimezone);
+        onTimezoneUpdate(timezoneToSave);
       }
       
       // Hide the selector
       setShowTimezoneSelector(false);
       setSelectedTimezone('');
+      setCustomTimezone('');
       
     } catch (err) {
       console.error('Failed to save timezone:', err);
@@ -430,8 +435,16 @@ export default function QuickUpdateModal({
                     </button>
                   </div>
                   <select
-                    value={selectedTimezone}
-                    onChange={(e) => setSelectedTimezone(e.target.value)}
+                    value={selectedTimezone === 'OTHER' || (selectedTimezone && !TIMEZONE_OPTIONS.find(tz => tz.value === selectedTimezone)) ? 'OTHER' : selectedTimezone}
+                    onChange={(e) => {
+                      if (e.target.value === 'OTHER') {
+                        setSelectedTimezone('OTHER');
+                        setCustomTimezone('');
+                      } else {
+                        setSelectedTimezone(e.target.value);
+                        setCustomTimezone('');
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   >
                     <option value="">Choose timezone...</option>
@@ -460,13 +473,31 @@ export default function QuickUpdateModal({
                         <option key={tz.value} value={tz.value}>{tz.label}</option>
                       ))}
                     </optgroup>
+                    <option value="OTHER">Other (enter manually)...</option>
                   </select>
+                  
+                  {/* Custom timezone input */}
+                  {selectedTimezone === 'OTHER' && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={customTimezone}
+                        onChange={(e) => setCustomTimezone(e.target.value)}
+                        placeholder="e.g. Europe/Paris, America/Denver"
+                        className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                      />
+                      <p className="text-xs text-amber-600 mt-1">
+                        Enter an IANA timezone like "Europe/Paris" or "America/Denver"
+                      </p>
+                    </div>
+                  )}
+                  
                   {timezoneError && (
                     <p className="text-sm text-red-600">{timezoneError}</p>
                   )}
                   <button
                     onClick={handleSaveTimezone}
-                    disabled={!selectedTimezone || isSavingTimezone}
+                    disabled={(!selectedTimezone || (selectedTimezone === 'OTHER' && !customTimezone.trim())) || isSavingTimezone}
                     className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     {isSavingTimezone ? (

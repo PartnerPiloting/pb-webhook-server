@@ -1581,29 +1581,15 @@ router.patch('/client/timezone', async (req, res) => {
       return res.status(400).json({ error: 'Timezone is required' });
     }
     
-    // Validate timezone format (IANA timezone identifier)
-    const validTimezones = [
-      'Australia/Perth',
-      'Australia/Adelaide', 
-      'Australia/Darwin',
-      'Australia/Brisbane',
-      'Australia/Sydney',
-      'Australia/Melbourne',
-      'Australia/Hobart',
-      'Pacific/Auckland',
-      'Asia/Singapore',
-      'Asia/Hong_Kong',
-      'Asia/Tokyo',
-      'Europe/London',
-      'America/New_York',
-      'America/Los_Angeles',
-      'America/Chicago'
-    ];
-    
-    if (!validTimezones.includes(timezone)) {
+    // Validate timezone using JavaScript's Intl API
+    // This accepts any valid IANA timezone identifier
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    } catch (e) {
       return res.status(400).json({ 
-        error: 'Invalid timezone', 
-        validOptions: validTimezones 
+        error: 'Invalid timezone identifier',
+        message: `"${timezone}" is not a valid IANA timezone. Examples: Europe/Paris, America/Denver, Asia/Dubai`,
+        hint: 'See https://en.wikipedia.org/wiki/List_of_tz_database_time_zones for valid options'
       });
     }
     
