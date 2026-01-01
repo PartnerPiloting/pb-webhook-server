@@ -80,6 +80,35 @@ function CalendarBookingContent() {
   const [promptError, setPromptError] = useState<string>('');
   const router = useRouter();
   
+  // Setup state for self-service configuration
+  const [showSetup, setShowSetup] = useState(false);
+  const [selectedTimezone, setSelectedTimezone] = useState('');
+  const [customTimezone, setCustomTimezone] = useState('');
+  const [calendarEmail, setCalendarEmail] = useState('');
+  const [serviceAccountEmail, setServiceAccountEmail] = useState('');
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [setupError, setSetupError] = useState('');
+  const [verifyingCalendar, setVerifyingCalendar] = useState(false);
+  const [calendarVerified, setCalendarVerified] = useState(false);
+  const [calendarAccessError, setCalendarAccessError] = useState<string | null>(null);
+  const [verifyingOnLoad, setVerifyingOnLoad] = useState(false);
+  
+  // Timezone options
+  const TIMEZONE_OPTIONS = [
+    { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)', region: 'Australia' },
+    { value: 'Australia/Melbourne', label: 'Melbourne (AEST/AEDT)', region: 'Australia' },
+    { value: 'Australia/Brisbane', label: 'Brisbane (AEST)', region: 'Australia' },
+    { value: 'Australia/Perth', label: 'Perth (AWST)', region: 'Australia' },
+    { value: 'Australia/Adelaide', label: 'Adelaide (ACST/ACDT)', region: 'Australia' },
+    { value: 'Pacific/Auckland', label: 'Auckland (NZST/NZDT)', region: 'Pacific' },
+    { value: 'Asia/Singapore', label: 'Singapore (SGT)', region: 'Asia' },
+    { value: 'Asia/Hong_Kong', label: 'Hong Kong (HKT)', region: 'Asia' },
+    { value: 'Asia/Tokyo', label: 'Tokyo (JST)', region: 'Asia' },
+    { value: 'Europe/London', label: 'London (GMT/BST)', region: 'Europe' },
+    { value: 'America/New_York', label: 'New York (EST/EDT)', region: 'Americas' },
+    { value: 'America/Los_Angeles', label: 'Los Angeles (PST/PDT)', region: 'Americas' },
+  ];
+  
   useEffect(() => {
     const clientId = searchParams.get('client');
     if (!clientId) {
@@ -123,6 +152,180 @@ function CalendarBookingContent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookTime, includeEmailInConfirm, showConfirmation, leadDisplayTime]);
+
+  // Load service account email when setup is opened
+  useEffect(() => {
+    if (showSetup && !serviceAccountEmail && clientInfo) {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/service-account-email`, {
+        headers: { 'x-client-id': clientInfo.clientId }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.email) setServiceAccountEmail(data.email);
+        })
+        .catch(() => {});
+    }
+  }, [showSetup, serviceAccountEmail, clientInfo]);
+
+  // Verify calendar access on page load when calendar email is configured
+  useEffect(() => {
+    if (clientInfo?.calendarConnected && !calendarVerified && !verifyingOnLoad && !calendarAccessError) {
+      setVerifyingOnLoad(true);
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/verify-calendar`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientInfo.clientId,
+        },
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setCalendarVerified(true);
+            setCalendarAccessError(null);
+          } else {
+            setCalendarAccessError(data.error || 'Calendar sharing may have been removed');
+          }
+        })
+        .catch(() => {
+          setCalendarAccessError('Failed to verify calendar access');
+        })
+        .finally(() => {
+          setVerifyingOnLoad(false);
+        });
+    }
+  }, [clientInfo, calendarVerified, verifyingOnLoad, calendarAccessError]);
+
+  // Helper to validate timezone
+  const isValidTimezone = (tz: string): boolean => {
+    if (!tz) return false;
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Save setup (timezone + calendar email)
+  const handleSaveSetup = async () => {
+    if (!clientInfo) return;
+    
+    const timezoneToSave = selectedTimezone === 'OTHER' ? customTimezone.trim() : selectedTimezone;
+    
+    // Validate timezone if provided
+    if (timezoneToSave && !isValidTimezone(timezoneToSave)) {
+      setSetupError(`Invalid timezone: "${timezoneToSave}"`);
+      return;
+    }
+    
+    // Validate email if provided
+    if (calendarEmail && !calendarEmail.includes('@')) {
+      setSetupError('Please enter a valid email address');
+      return;
+    }
+    
+    setSetupSaving(true);
+    setSetupError('');
+    
+    try {
+      // Save timezone if changed
+      if (timezoneToSave) {
+        const tzRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/timezone`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': clientInfo.clientId,
+          },
+          body: JSON.stringify({ timezone: timezoneToSave }),
+        });
+        if (!tzRes.ok) {
+          const err = await tzRes.json();
+          throw new Error(err.error || 'Failed to save timezone');
+        }
+        setYourTimezone(timezoneToSave);
+      }
+      
+      // Save calendar email if changed
+      if (calendarEmail) {
+        const calRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/calendar`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': clientInfo.clientId,
+          },
+          body: JSON.stringify({ calendarEmail }),
+        });
+        if (!calRes.ok) {
+          const err = await calRes.json();
+          throw new Error(err.error || 'Failed to save calendar email');
+        }
+      }
+      
+      // Refresh client info
+      const refreshRes = await fetch(`/api/calendar/client-info?clientId=${clientInfo.clientId}`);
+      const refreshData = await refreshRes.json();
+      if (!refreshData.error) {
+        setClientInfo(refreshData);
+        if (refreshData.timezoneConfigured && refreshData.timezone) {
+          setYourTimezone(refreshData.timezone);
+        }
+      }
+      
+      // If both are now configured, close setup
+      if ((timezoneToSave || clientInfo.timezoneConfigured) && (calendarEmail || clientInfo.calendarConnected)) {
+        setShowSetup(false);
+      }
+      
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : 'Setup failed');
+    } finally {
+      setSetupSaving(false);
+    }
+  };
+
+  // Verify calendar connection
+  const handleVerifyCalendar = async () => {
+    if (!clientInfo) return;
+    
+    setVerifyingCalendar(true);
+    setSetupError('');
+    
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/verify-calendar`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientInfo.clientId,
+        },
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        setCalendarVerified(true);
+        // Refresh client info
+        const refreshRes = await fetch(`/api/calendar/client-info?clientId=${clientInfo.clientId}`);
+        const refreshData = await refreshRes.json();
+        if (!refreshData.error) {
+          setClientInfo(refreshData);
+        }
+      } else {
+        setSetupError(data.error || 'Calendar verification failed');
+      }
+    } catch {
+      setSetupError('Failed to verify calendar connection');
+    } finally {
+      setVerifyingCalendar(false);
+    }
+  };
+
+  // Copy service account email to clipboard
+  const handleCopyServiceEmail = async () => {
+    if (serviceAccountEmail) {
+      await navigator.clipboard.writeText(serviceAccountEmail);
+    }
+  };
 
   const parseClipboardData = (text: string): FormData | null => {
     try {
@@ -411,8 +614,8 @@ ${yourFirstName}`;
             Client: <span className="font-medium">{clientInfo.clientName}</span>
           </p>
           
-          {/* Configuration prompts - friendly style */}
-          {(!clientInfo.timezoneConfigured || !clientInfo.calendarConnected) && (
+          {/* Configuration prompts - friendly style with Set Up button */}
+          {(!clientInfo.timezoneConfigured || !clientInfo.calendarConnected) && !showSetup && (
             <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
               <div className="flex items-start gap-3">
                 <svg className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -435,18 +638,189 @@ ${yourFirstName}`;
                       </li>
                     )}
                   </ul>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Open Quick Update from any lead to configure.
-                  </p>
                 </div>
+                <button
+                  onClick={() => setShowSetup(true)}
+                  className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  Set Up
+                </button>
               </div>
             </div>
           )}
 
-          {clientInfo.calendarConnected && clientInfo.timezoneConfigured && (
-            <p className="mt-2 text-green-600 font-medium">
-              ✅ Ready ({yourTimezone})
-            </p>
+          {/* Setup Panel - shown when user clicks Set Up */}
+          {showSetup && (
+            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-700">Quick Setup</h3>
+                <button
+                  onClick={() => setShowSetup(false)}
+                  className="text-gray-500 hover:text-gray-700 text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {/* Timezone Section */}
+              {!clientInfo.timezoneConfigured && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-600">Your Timezone</label>
+                  <select
+                    value={selectedTimezone === 'OTHER' ? 'OTHER' : selectedTimezone}
+                    onChange={(e) => {
+                      if (e.target.value === 'OTHER') {
+                        setSelectedTimezone('OTHER');
+                        setCustomTimezone('');
+                      } else {
+                        setSelectedTimezone(e.target.value);
+                        setCustomTimezone('');
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Choose timezone...</option>
+                    <optgroup label="Australia">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Australia').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Pacific">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Pacific').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Asia">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Asia').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Europe">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Europe').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Americas">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Americas').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <option value="OTHER">Other (enter manually)...</option>
+                  </select>
+                  {selectedTimezone === 'OTHER' && (
+                    <input
+                      type="text"
+                      value={customTimezone}
+                      onChange={(e) => setCustomTimezone(e.target.value)}
+                      placeholder="e.g. Europe/Paris, America/Denver"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Calendar Section */}
+              {!clientInfo.calendarConnected && (
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-600">Google Calendar Setup</label>
+                  
+                  {/* Step 1: Share calendar */}
+                  <div className="p-3 bg-white rounded border border-gray-200">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Step 1: Share your calendar</p>
+                    {serviceAccountEmail ? (
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs bg-gray-100 p-2 rounded break-all">{serviceAccountEmail}</code>
+                        <button
+                          onClick={handleCopyServiceEmail}
+                          className="px-2 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">Loading...</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">
+                      In Google Calendar → Settings → Share with specific people → Add this email with "Make changes to events" permission
+                    </p>
+                  </div>
+
+                  {/* Step 2: Enter your email */}
+                  <div className="p-3 bg-white rounded border border-gray-200">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Step 2: Enter your calendar email</p>
+                    <input
+                      type="email"
+                      value={calendarEmail}
+                      onChange={(e) => setCalendarEmail(e.target.value)}
+                      placeholder="your.email@gmail.com"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Error message */}
+              {setupError && (
+                <p className="text-sm text-red-600">{setupError}</p>
+              )}
+
+              {/* Calendar verified message */}
+              {calendarVerified && (
+                <p className="text-sm text-green-600">✅ Calendar connected successfully!</p>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveSetup}
+                  disabled={setupSaving || (!selectedTimezone && !calendarEmail)}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                >
+                  {setupSaving ? 'Saving...' : 'Save'}
+                </button>
+                {calendarEmail && clientInfo.calendarConnected === false && (
+                  <button
+                    onClick={handleVerifyCalendar}
+                    disabled={verifyingCalendar}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                  >
+                    {verifyingCalendar ? 'Verifying...' : 'Verify Calendar'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Status indicators */}
+          {clientInfo.calendarConnected && clientInfo.timezoneConfigured && !showSetup && (
+            <>
+              {verifyingOnLoad && (
+                <p className="mt-2 text-gray-500 font-medium flex items-center gap-2">
+                  <span className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full" />
+                  Verifying calendar...
+                </p>
+              )}
+              {!verifyingOnLoad && calendarVerified && !calendarAccessError && (
+                <p className="mt-2 text-green-600 font-medium">
+                  ✅ Ready ({yourTimezone})
+                </p>
+              )}
+              {!verifyingOnLoad && calendarAccessError && (
+                <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800 font-medium">⚠️ Calendar access issue</p>
+                  <p className="text-xs text-amber-600 mt-1">{calendarAccessError}</p>
+                  <button
+                    onClick={() => {
+                      setCalendarAccessError(null);
+                      setShowSetup(true);
+                    }}
+                    className="mt-2 px-3 py-1 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded"
+                  >
+                    Fix Now
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
