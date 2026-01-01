@@ -30,6 +30,8 @@ function cleanLinkedInNoise(text) {
         .replace(/\s*\((?:She\/Her|He\/Him|They\/Them)\)/gi, '')
         // Remove "1st degree connection" markers
         .replace(/\s*·?\s*1st(?:\s+degree)?\s*(?:connection)?/gi, '')
+        // Remove UI labels that might get copied
+        .replace(/^Current Notes\s*$/gim, '')
         // Clean up multiple spaces (but not newlines)
         .replace(/[ \t]+/g, ' ')
         // Clean up lines that are just whitespace
