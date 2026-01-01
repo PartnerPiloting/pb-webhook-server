@@ -22,6 +22,17 @@ const SECTIONS = [
   { key: 'manual', label: 'Manual', description: 'Type a note (auto-dated)' }
 ];
 
+// Helper function to validate IANA timezone identifiers
+const isValidTimezone = (tz) => {
+  if (!tz) return false;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
 // Available timezone options for self-service configuration
 const TIMEZONE_OPTIONS = [
   { value: 'Australia/Perth', label: 'Perth (AWST)', region: 'Australia' },
@@ -393,7 +404,7 @@ export default function QuickUpdateModal({
           </div>
           
           {/* Configuration Warning Banner / Timezone Selector */}
-          {!clientTimezone && (
+          {!isValidTimezone(clientTimezone) && (
             <div className="mt-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
               {!showTimezoneSelector ? (
                 // Show warning with configure button
@@ -403,10 +414,10 @@ export default function QuickUpdateModal({
                   </svg>
                   <div className="flex-1">
                     <p className="text-sm font-medium text-amber-800">
-                      Brisbane timezone in use
+                      {clientTimezone ? `Invalid timezone: "${clientTimezone}"` : 'Brisbane timezone in use'}
                     </p>
                     <p className="text-xs text-amber-600 mt-1">
-                      Follow-up dates will default to Australia/Brisbane.
+                      {clientTimezone ? 'Please configure a valid timezone.' : 'Follow-up dates will default to Australia/Brisbane.'}
                     </p>
                   </div>
                   <button
