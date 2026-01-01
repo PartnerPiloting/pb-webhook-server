@@ -266,6 +266,7 @@ const Layout = ({ children }) => {
         onClose={() => setQuickUpdateOpen(false)}
         clientId={clientProfile?.client?.clientId || clientProfile?.clientId || null}
         clientTimezone={clientProfile?.client?.timezone || clientProfile?.timezone || null}
+        clientCalendarEmail={clientProfile?.client?.googleCalendarEmail || clientProfile?.googleCalendarEmail || null}
         calendarConfigured={!!clientProfile?.client?.googleCalendarEmail || !!clientProfile?.googleCalendarEmail}
         onTimezoneUpdate={(newTimezone) => {
           // Update the local clientProfile with the new timezone
@@ -274,6 +275,16 @@ const Layout = ({ children }) => {
             client: {
               ...prev?.client,
               timezone: newTimezone
+            }
+          }));
+        }}
+        onCalendarUpdate={(newCalendarEmail) => {
+          // Update the local clientProfile with the new calendar email
+          setClientProfile(prev => ({
+            ...prev,
+            client: {
+              ...prev?.client,
+              googleCalendarEmail: newCalendarEmail
             }
           }));
         }}

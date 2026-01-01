@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone } from '../services/api';
+import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, getServiceAccountEmail, updateClientCalendarEmail, verifyCalendarConnection } from '../services/api';
 
 /**
  * QuickUpdateModal - Rapid lead notes and contact update modal
@@ -58,8 +58,10 @@ export default function QuickUpdateModal({
   initialLeadId = null, 
   clientId = null,
   clientTimezone = null, 
+  clientCalendarEmail = null,
   calendarConfigured = false,
-  onTimezoneUpdate = null
+  onTimezoneUpdate = null,
+  onCalendarUpdate = null
 }) {
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +76,16 @@ export default function QuickUpdateModal({
   const [customTimezone, setCustomTimezone] = useState('');
   const [isSavingTimezone, setIsSavingTimezone] = useState(false);
   const [timezoneError, setTimezoneError] = useState(null);
+  
+  // Calendar configuration state
+  const [showCalendarConfig, setShowCalendarConfig] = useState(false);
+  const [calendarEmail, setCalendarEmail] = useState('');
+  const [serviceAccountEmail, setServiceAccountEmail] = useState('');
+  const [isSavingCalendar, setIsSavingCalendar] = useState(false);
+  const [isVerifyingCalendar, setIsVerifyingCalendar] = useState(false);
+  const [calendarError, setCalendarError] = useState(null);
+  const [calendarVerified, setCalendarVerified] = useState(false);
+  const [copiedServiceEmail, setCopiedServiceEmail] = useState(false);
   
   const [activeSection, setActiveSection] = useState('linkedin');
   const [noteContent, setNoteContent] = useState('');
@@ -283,6 +295,94 @@ export default function QuickUpdateModal({
       setTimezoneError(err.message || 'Failed to save timezone');
     } finally {
       setIsSavingTimezone(false);
+    }
+  };
+
+  // Open calendar config and load service account email
+  const handleOpenCalendarConfig = async () => {
+    setShowCalendarConfig(true);
+    setCalendarEmail(clientCalendarEmail || '');
+    setCalendarError(null);
+    setCalendarVerified(calendarConfigured);
+    
+    // Load service account email if not already loaded
+    if (!serviceAccountEmail) {
+      try {
+        const { serviceAccountEmail: email } = await getServiceAccountEmail();
+        setServiceAccountEmail(email);
+      } catch (err) {
+        console.error('Failed to get service account email:', err);
+        setCalendarError('Failed to load service account email');
+      }
+    }
+  };
+
+  // Handle calendar email save
+  const handleSaveCalendarEmail = async () => {
+    if (!calendarEmail.trim()) {
+      setCalendarError('Please enter your calendar email');
+      return;
+    }
+    
+    setIsSavingCalendar(true);
+    setCalendarError(null);
+    
+    try {
+      await updateClientCalendarEmail(calendarEmail.trim());
+      
+      // Notify parent to update clientProfile
+      if (onCalendarUpdate) {
+        onCalendarUpdate(calendarEmail.trim());
+      }
+      
+    } catch (err) {
+      console.error('Failed to save calendar email:', err);
+      setCalendarError(err.message || 'Failed to save calendar email');
+    } finally {
+      setIsSavingCalendar(false);
+    }
+  };
+
+  // Handle calendar verification
+  const handleVerifyCalendar = async () => {
+    if (!calendarEmail.trim()) {
+      setCalendarError('Please enter your calendar email first');
+      return;
+    }
+    
+    setIsVerifyingCalendar(true);
+    setCalendarError(null);
+    setCalendarVerified(false);
+    
+    try {
+      const result = await verifyCalendarConnection(calendarEmail.trim());
+      
+      if (result.connected) {
+        setCalendarVerified(true);
+        // Also save the email if verification succeeded
+        await updateClientCalendarEmail(calendarEmail.trim());
+        if (onCalendarUpdate) {
+          onCalendarUpdate(calendarEmail.trim());
+        }
+      } else {
+        setCalendarError(result.message || 'Calendar not connected');
+      }
+    } catch (err) {
+      console.error('Failed to verify calendar:', err);
+      setCalendarError(err.message || 'Failed to verify calendar connection');
+    } finally {
+      setIsVerifyingCalendar(false);
+    }
+  };
+
+  // Copy service account email to clipboard
+  const handleCopyServiceEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(serviceAccountEmail);
+      setCopiedServiceEmail(true);
+      setTimeout(() => setCopiedServiceEmail(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
     }
   };
 
@@ -520,6 +620,138 @@ export default function QuickUpdateModal({
                       'Save Timezone'
                     )}
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Calendar Configuration Banner */}
+          {!calendarConfigured && !showCalendarConfig && (
+            <div className="mt-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <svg className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-blue-800">
+                    Calendar not connected
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Connect your Google Calendar for meeting booking.
+                  </p>
+                </div>
+                <button
+                  onClick={handleOpenCalendarConfig}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  Configure
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Calendar Configuration Panel */}
+          {showCalendarConfig && (
+            <div className="mt-3 px-4 py-4 bg-blue-50 border border-blue-200 rounded-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Calendar Setup
+                </h3>
+                <button
+                  onClick={() => setShowCalendarConfig(false)}
+                  className="text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+              
+              {/* Step 1: Calendar Email */}
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-blue-700">
+                  Step 1: Enter your Google Calendar email
+                </label>
+                <input
+                  type="email"
+                  value={calendarEmail}
+                  onChange={(e) => {
+                    setCalendarEmail(e.target.value);
+                    setCalendarVerified(false);
+                  }}
+                  placeholder="your.email@gmail.com"
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              
+              {/* Step 2: Share Calendar */}
+              {serviceAccountEmail && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-blue-700">
+                    Step 2: Share your calendar with this email
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={serviceAccountEmail}
+                      readOnly
+                      className="flex-1 px-3 py-2 border border-blue-300 rounded-lg bg-gray-50 text-gray-700 text-sm font-mono"
+                    />
+                    <button
+                      onClick={handleCopyServiceEmail}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        copiedServiceEmail 
+                          ? 'bg-green-600 text-white' 
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}
+                    >
+                      {copiedServiceEmail ? '✓ Copied' : '📋 Copy'}
+                    </button>
+                  </div>
+                  <div className="text-xs text-blue-600 space-y-1 mt-2">
+                    <p className="font-medium">To share your calendar:</p>
+                    <ol className="list-decimal list-inside space-y-0.5 ml-2">
+                      <li>Open <a href="https://calendar.google.com/calendar/r/settings" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-800">Google Calendar Settings</a></li>
+                      <li>Click your calendar on the left → "Share with specific people"</li>
+                      <li>Paste the email above → Set to "See all event details"</li>
+                      <li>Click "Send" to save</li>
+                    </ol>
+                  </div>
+                </div>
+              )}
+              
+              {/* Step 3: Verify */}
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-blue-700">
+                  Step 3: Test the connection
+                </label>
+                <button
+                  onClick={handleVerifyCalendar}
+                  disabled={!calendarEmail.trim() || isVerifyingCalendar}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {isVerifyingCalendar ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                      Testing...
+                    </>
+                  ) : (
+                    <>🔍 Test Calendar Connection</>
+                  )}
+                </button>
+              </div>
+              
+              {/* Status Messages */}
+              {calendarError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">❌ {calendarError}</p>
+                </div>
+              )}
+              
+              {calendarVerified && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-green-700">✅ Calendar connected successfully! We can now check your availability.</p>
                 </div>
               )}
             </div>
