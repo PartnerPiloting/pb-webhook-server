@@ -7042,7 +7042,7 @@ Just the two numbers, nothing else:`;
       
       const dateResult = await geminiConfig.geminiModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: datePrompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 256 },
+        generationConfig: { temperature: 0, maxOutputTokens: 1024 },
       });
       
       // Log full response structure for debugging
