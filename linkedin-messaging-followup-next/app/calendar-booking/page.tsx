@@ -1163,7 +1163,7 @@ ${yourFirstName}`;
               </div>
               {leadRecordId && (
                 <p className="text-xs text-gray-500 mb-3">
-                  Note: Changes to Location, Email, or Phone will be saved to the lead&apos;s Airtable record.
+                  If you click Save, changes to Location, Email, or Phone will be saved to the lead&apos;s record.
                 </p>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -7003,45 +7003,56 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
     
     logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
     
-    // Determine date range to fetch based on user query
-    // Default: next 7 days. But if user asks about specific future dates, fetch those instead.
+    // Use AI to extract date range from user query
+    // This is more robust than regex patterns for natural language like "mid-July" or "early next month"
     let daysToFetch = 7;
     let startDayOffset = 0;
     
-    // Check for "next month" or specific month references
-    const nextMonthMatch = msgLower.match(/next month|first.*(week|2 weeks|two weeks).*next month/);
-    if (nextMonthMatch) {
-      // Calculate days until start of next month
-      const now = new Date();
-      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      startDayOffset = Math.ceil((nextMonth - now) / (1000 * 60 * 60 * 24));
+    try {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
       
-      // Determine how many days to fetch
-      if (msgLower.includes('2 weeks') || msgLower.includes('two weeks')) {
-        daysToFetch = 14;
-      } else if (msgLower.includes('first week')) {
-        daysToFetch = 7;
-      } else {
-        daysToFetch = 7; // Default for "next month"
+      const dateExtractionPrompt = `Today is ${todayStr}. Extract the date range from this message. If no specific dates mentioned, return defaults.
+
+Message: "${message}"
+
+Return JSON only: {"startOffset": <days from today to start>, "numDays": <number of days to fetch, max 21>}
+
+Examples:
+- "What's available tomorrow?" → {"startOffset": 1, "numDays": 3}
+- "next week" → {"startOffset": 0, "numDays": 7}
+- "in 2 weeks" → {"startOffset": 14, "numDays": 7}
+- "next month" or "early July" → {"startOffset": days until that period, "numDays": 14}
+- "the 15th" → {"startOffset": days until 15th, "numDays": 3}
+- No date mentioned → {"startOffset": 0, "numDays": 7}
+
+JSON only, no explanation:`;
+
+      const dateResult = await geminiConfig.geminiModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 100 },
+      });
+      
+      let dateResponseText = '';
+      if (dateResult.response && typeof dateResult.response.text === 'function') {
+        dateResponseText = dateResult.response.text();
+      } else if (dateResult.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        dateResponseText = dateResult.response.candidates[0].content.parts[0].text;
       }
-      logger.info(`Next month query detected: starting ${startDayOffset} days from now, fetching ${daysToFetch} days`);
-    }
-    
-    // Check for "in X weeks" pattern (start X weeks from now)
-    const inWeeksMatch = msgLower.match(/in\s*(\d+)\s*weeks?/);
-    if (inWeeksMatch) {
-      startDayOffset = parseInt(inWeeksMatch[1], 10) * 7;
+      
+      // Extract JSON from response
+      const jsonMatch = dateResponseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        startDayOffset = Math.max(0, Math.min(parsed.startOffset || 0, 60)); // Cap at 60 days out
+        daysToFetch = Math.max(3, Math.min(parsed.numDays || 7, 21)); // Between 3-21 days
+        logger.info(`AI extracted date range: startOffset=${startDayOffset}, numDays=${daysToFetch}`);
+      }
+    } catch (dateError) {
+      logger.warn(`Date extraction failed, using defaults: ${dateError.message}`);
+      // Fall back to 7 days from today
+      startDayOffset = 0;
       daysToFetch = 7;
-      logger.info(`"In X weeks" query detected: starting ${startDayOffset} days from now`);
-    }
-    
-    // Check for "next X weeks" or "for the next X weeks" pattern (fetch X weeks of data)
-    const nextWeeksMatch = msgLower.match(/(?:next|for the next|for)\s*(\d+)\s*weeks?/);
-    if (nextWeeksMatch) {
-      const numWeeks = parseInt(nextWeeksMatch[1], 10);
-      daysToFetch = Math.min(numWeeks * 7, 21); // Cap at 3 weeks to avoid MAX_TOKENS
-      startDayOffset = 0; // Start from today
-      logger.info(`"Next X weeks" query detected: fetching ${daysToFetch} days`);
     }
     
     // Fetch BOTH appointments AND availability
