@@ -6952,16 +6952,16 @@ CRITICAL RULES:
 - Calendar data is ALWAYS provided with every message - use it to verify availability before suggesting times
 - When suggesting meeting times, pick slots from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
 
-ACTIONS:
-1. When the user picks/confirms a time, include this to SET the booking time:
+ACTIONS (IMPORTANT - always put at the VERY END of your response, on its own line):
+1. When the user picks/confirms a time, add this at the END:
    ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
 
-2. When the user says to BOOK IT (phrases like "book it", "lock it in", "add to calendar", "schedule it", "confirm", "yes book that"), include this to OPEN the calendar:
+2. When the user says to BOOK IT (phrases like "book it", "lock it in", "add to calendar", "schedule it", "confirm", "yes book that"), add this at the END:
    ACTION: {"type":"openCalendar"}
    
    Note: Only use openCalendar if a time has already been set. If no time is set yet, ask which time they want.
 
-The frontend parses these actions - setBookingTime fills the form, openCalendar opens Google Calendar.`;
+CRITICAL: Write your full message FIRST, then add the ACTION line at the very end. Never put ACTION in the middle of text.`;
 
     // ALWAYS fetch calendar data for every query to ensure AI never hallucinates
     // This adds ~200-500ms but guarantees 100% reliability
@@ -7104,9 +7104,9 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     logger.info(`Gemini response received (${responseText.length} chars)`);
     logger.info(`Gemini response preview: ${responseText.substring(0, 500)}...`);
 
-    // Parse any ACTION from the response
+    // Parse any ACTION from the response (should be at the end)
     let action = null;
-    const actionMatch = responseText.match(/ACTION:\s*({.*})/);
+    const actionMatch = responseText.match(/\nACTION:\s*(\{.*\})\s*$/s);
     
     if (actionMatch) {
       try {
@@ -7161,9 +7161,8 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
       }
     }
 
-    // Remove the ACTION line from the message shown to user
-    // Use non-greedy match and ensure we only match valid JSON
-    const cleanMessage = responseText.replace(/ACTION:\s*\{[^}]*\}/g, '').trim();
+    // Remove the ACTION line from the message shown to user (it's at the end)
+    const cleanMessage = responseText.replace(/\nACTION:\s*\{.*\}\s*$/s, '').trim();
 
     res.json({
       message: cleanMessage,
