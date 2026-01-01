@@ -117,6 +117,10 @@ async function getAllClients() {
                 const floorStrategy = record.get('Floor Strategy') || 'Progressive';
                 const autoAdjustFloors = record.get('Auto Adjust Floors') || false;
                 
+                // Calendar/timezone configuration
+                const timezone = record.get(CLIENT_FIELDS.TIMEZONE) || null;
+                const googleCalendarEmail = record.get(CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL) || null;
+                
                 clients.push({
                     id: record.id,
                     clientId: clientId,
@@ -144,6 +148,9 @@ async function getAllClients() {
                     minimumFloor: minimumFloor,
                     floorStrategy: floorStrategy,
                     autoAdjustFloors: autoAdjustFloors,
+                    // Calendar/timezone configuration
+                    timezone: timezone,
+                    googleCalendarEmail: googleCalendarEmail,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });

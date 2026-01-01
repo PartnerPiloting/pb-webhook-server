@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary } from '../services/api';
+import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone } from '../services/api';
 
 /**
  * QuickUpdateModal - Rapid lead notes and contact update modal
@@ -22,13 +22,46 @@ const SECTIONS = [
   { key: 'manual', label: 'Manual', description: 'Type a note (auto-dated)' }
 ];
 
-export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null }) {
+// Available timezone options for self-service configuration
+const TIMEZONE_OPTIONS = [
+  { value: 'Australia/Perth', label: 'Perth (AWST)', region: 'Australia' },
+  { value: 'Australia/Adelaide', label: 'Adelaide (ACST/ACDT)', region: 'Australia' },
+  { value: 'Australia/Darwin', label: 'Darwin (ACST)', region: 'Australia' },
+  { value: 'Australia/Brisbane', label: 'Brisbane (AEST)', region: 'Australia' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)', region: 'Australia' },
+  { value: 'Australia/Melbourne', label: 'Melbourne (AEST/AEDT)', region: 'Australia' },
+  { value: 'Australia/Hobart', label: 'Hobart (AEST/AEDT)', region: 'Australia' },
+  { value: 'Pacific/Auckland', label: 'Auckland (NZST/NZDT)', region: 'Pacific' },
+  { value: 'Asia/Singapore', label: 'Singapore (SGT)', region: 'Asia' },
+  { value: 'Asia/Hong_Kong', label: 'Hong Kong (HKT)', region: 'Asia' },
+  { value: 'Asia/Tokyo', label: 'Tokyo (JST)', region: 'Asia' },
+  { value: 'Europe/London', label: 'London (GMT/BST)', region: 'Europe' },
+  { value: 'America/New_York', label: 'New York (EST/EDT)', region: 'Americas' },
+  { value: 'America/Los_Angeles', label: 'Los Angeles (PST/PDT)', region: 'Americas' },
+  { value: 'America/Chicago', label: 'Chicago (CST/CDT)', region: 'Americas' }
+];
+
+export default function QuickUpdateModal({ 
+  isOpen, 
+  onClose, 
+  initialLeadId = null, 
+  clientId = null,
+  clientTimezone = null, 
+  calendarConfigured = false,
+  onTimezoneUpdate = null
+}) {
   // State
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedLead, setSelectedLead] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
   const [lookupMethod, setLookupMethod] = useState(null);
+  
+  // Timezone configuration state
+  const [showTimezoneSelector, setShowTimezoneSelector] = useState(false);
+  const [selectedTimezone, setSelectedTimezone] = useState('');
+  const [isSavingTimezone, setIsSavingTimezone] = useState(false);
+  const [timezoneError, setTimezoneError] = useState(null);
   
   const [activeSection, setActiveSection] = useState('linkedin');
   const [noteContent, setNoteContent] = useState('');
@@ -207,6 +240,36 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
     setTimeout(() => noteInputRef.current?.focus(), 100);
   };
 
+  // Handle timezone save
+  const handleSaveTimezone = async () => {
+    if (!selectedTimezone) {
+      setTimezoneError('Please select a timezone');
+      return;
+    }
+    
+    setIsSavingTimezone(true);
+    setTimezoneError(null);
+    
+    try {
+      await updateClientTimezone(selectedTimezone);
+      
+      // Notify parent to update clientProfile
+      if (onTimezoneUpdate) {
+        onTimezoneUpdate(selectedTimezone);
+      }
+      
+      // Hide the selector
+      setShowTimezoneSelector(false);
+      setSelectedTimezone('');
+      
+    } catch (err) {
+      console.error('Failed to save timezone:', err);
+      setTimezoneError(err.message || 'Failed to save timezone');
+    } finally {
+      setIsSavingTimezone(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!selectedLead) {
       setError('Please select a lead first');
@@ -323,6 +386,102 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
               </svg>
             </button>
           </div>
+          
+          {/* Configuration Warning Banner / Timezone Selector */}
+          {!clientTimezone && (
+            <div className="mt-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+              {!showTimezoneSelector ? (
+                // Show warning with configure button
+                <div className="flex items-start gap-3">
+                  <svg className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-800">
+                      Brisbane timezone in use
+                    </p>
+                    <p className="text-xs text-amber-600 mt-1">
+                      Follow-up dates will default to Australia/Brisbane.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowTimezoneSelector(true)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Configure
+                  </button>
+                </div>
+              ) : (
+                // Show timezone selector
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-amber-800">
+                      Select Your Timezone
+                    </label>
+                    <button
+                      onClick={() => {
+                        setShowTimezoneSelector(false);
+                        setSelectedTimezone('');
+                        setTimezoneError(null);
+                      }}
+                      className="text-amber-600 hover:text-amber-800 text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <select
+                    value={selectedTimezone}
+                    onChange={(e) => setSelectedTimezone(e.target.value)}
+                    className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                  >
+                    <option value="">Choose timezone...</option>
+                    <optgroup label="Australia">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Australia').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Pacific">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Pacific').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Asia">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Asia').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Europe">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Europe').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Americas">
+                      {TIMEZONE_OPTIONS.filter(tz => tz.region === 'Americas').map(tz => (
+                        <option key={tz.value} value={tz.value}>{tz.label}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  {timezoneError && (
+                    <p className="text-sm text-red-600">{timezoneError}</p>
+                  )}
+                  <button
+                    onClick={handleSaveTimezone}
+                    disabled={!selectedTimezone || isSavingTimezone}
+                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isSavingTimezone ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Timezone'
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           
           {/* Lead Search */}
           <div className="mt-4 relative">
