@@ -7007,11 +7007,16 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
     let daysToFetch = 21;
     let startDayOffset = 0;
     
+    logger.info('Starting date extraction...');
+    
     try {
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
       
-      const recentContext = messages.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
+      const messageList = Array.isArray(messages) ? messages : [];
+      const recentContext = messageList.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
+      
+      logger.info('Calling AI for date extraction...');
       
       const datePrompt = `Today is ${todayStr}. Parse the date range from this message.
 ${recentContext ? `Context:\n${recentContext}\n` : ''}
