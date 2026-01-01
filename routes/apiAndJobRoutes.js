@@ -7023,14 +7023,16 @@ ${recentContext ? `Context:\n${recentContext}\n` : ''}
 Message: "${message}"
 
 Respond with exactly two numbers separated by comma: startOffset,numDays
-- startOffset = days from today to start (0 = today)
-- numDays = how many days to fetch (max 21)
+- startOffset = days from today until the START of requested period
+- numDays = how many days to fetch (1 week=7, 2 weeks=14, 3 weeks=21)
 
 Examples:
+"first 2 weeks of March" (if today is Jan 2) → 58,14
+"first week of March" → 58,7
 "next 3 weeks" → 0,21
+"next 2 weeks" → 0,14
 "in 2 weeks" → 14,7
-"middle of next month" → 40,7
-"3 months from now" → 90,7
+"March appointments" → 58,21
 "tomorrow" → 1,3
 No date mentioned → 0,21
 
