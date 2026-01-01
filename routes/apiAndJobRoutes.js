@@ -7043,6 +7043,11 @@ Just the two numbers, nothing else:`;
         generationConfig: { temperature: 0, maxOutputTokens: 20 },
       });
       
+      // Log full response structure for debugging
+      const finishReason = dateResult.response?.candidates?.[0]?.finishReason;
+      const blockReason = dateResult.response?.promptFeedback?.blockReason;
+      logger.info(`Date extraction finish: ${finishReason}, block: ${blockReason || 'none'}`);
+      
       let response = '';
       if (dateResult.response && typeof dateResult.response.text === 'function') {
         response = dateResult.response.text().trim();
