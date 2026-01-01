@@ -1243,7 +1243,7 @@ ${yourFirstName}`;
                   </div>
                 )}
                 
-                <div className="bg-gray-50 rounded-lg p-4 mb-4 h-72 overflow-y-auto">
+                <div className="bg-gray-50 rounded-lg p-4 mb-4 min-h-72 max-h-96 overflow-y-auto">
                   {chatMessages.length === 0 ? (
                     <div className="text-gray-500 text-center py-8">
                       <p className="mb-2">🤖 Ask me about your availability!</p>

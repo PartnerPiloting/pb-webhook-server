@@ -7074,7 +7074,7 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
       systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 1000,
+        maxOutputTokens: 2048,
       },
     });
 
