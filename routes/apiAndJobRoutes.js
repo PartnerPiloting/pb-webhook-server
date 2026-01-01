@@ -7051,12 +7051,16 @@ Just the two numbers, nothing else:`;
       logger.info(`Date extraction finish: ${finishReason}, block: ${blockReason || 'none'}`);
       
       let response = '';
+      let rawResponse = '';
       if (dateResult.response && typeof dateResult.response.text === 'function') {
-        response = dateResult.response.text().trim();
+        rawResponse = dateResult.response.text();
+        response = rawResponse.trim();
       } else if (dateResult.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        response = dateResult.response.candidates[0].content.parts[0].text.trim();
+        rawResponse = dateResult.response.candidates[0].content.parts[0].text;
+        response = rawResponse.trim();
       }
       
+      logger.info(`AI date RAW response: "${rawResponse}"`);
       logger.info(`AI date response: "${response}"`);
       
       // Parse "X,Y" format
