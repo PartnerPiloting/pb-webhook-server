@@ -4,6 +4,35 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone } from '../services/api';
 
 /**
+ * Clean up LinkedIn message noise from notes
+ * Removes artifacts like "View X's profile", "Remove reaction", pronouns, concatenated names
+ * @param {string} text - Raw notes text
+ * @returns {string} Cleaned text
+ */
+const cleanLinkedInNoise = (text) => {
+  if (!text) return '';
+  
+  return text
+    // Remove "View X's profileName" patterns (concatenated)
+    .replace(/\s*View\s+[^']+['']s\s*profile[A-Za-z\s]*/gi, '')
+    // Remove standalone "View X's profile" 
+    .replace(/\s*View\s+[^']+['']s\s*profile/gi, '')
+    // Remove "Remove reaction" 
+    .replace(/\s*Remove\s+reaction/gi, '')
+    // Remove pronouns like (She/Her), (He/Him), (They/Them)
+    .replace(/\s*\((?:She\/Her|He\/Him|They\/Them)\)/gi, '')
+    // Remove "1st degree connection" markers
+    .replace(/\s*·?\s*1st(?:\s+degree)?\s*(?:connection)?/gi, '')
+    // Clean up multiple spaces
+    .replace(/  +/g, ' ')
+    // Clean up lines that are just whitespace
+    .replace(/^\s*$/gm, '')
+    // Remove excessive blank lines (more than 2 consecutive)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+/**
  * QuickUpdateModal - Rapid lead notes and contact update modal
  * 
  * Features:
@@ -960,7 +989,7 @@ export default function QuickUpdateModal({
                     Full Notes - {selectedLead.firstName} {selectedLead.lastName}
                   </h3>
                   <p className="text-sm text-gray-500">
-                    {selectedLead.notes.split('\n').length} lines
+                    {cleanLinkedInNoise(selectedLead.notes).split('\n').filter(l => l.trim()).length} lines
                   </p>
                 </div>
                 <button
@@ -977,7 +1006,7 @@ export default function QuickUpdateModal({
               {/* Notes Content */}
               <div className="flex-1 overflow-y-auto p-6">
                 <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
-                  {selectedLead.notes}
+                  {cleanLinkedInNoise(selectedLead.notes)}
                 </pre>
               </div>
               
