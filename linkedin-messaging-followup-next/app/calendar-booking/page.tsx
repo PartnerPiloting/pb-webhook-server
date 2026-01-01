@@ -158,7 +158,7 @@ function CalendarBookingContent() {
 
   // Verify calendar access on page load when calendar email is configured
   useEffect(() => {
-    if (clientInfo?.calendarConnected && !calendarVerified && !verifyingOnLoad && !calendarAccessError) {
+    if (clientInfo?.calendarConnected && clientInfo?.calendarEmail && !calendarVerified && !verifyingOnLoad && !calendarAccessError) {
       setVerifyingOnLoad(true);
       fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/verify-calendar`, {
         method: 'POST',
@@ -166,6 +166,7 @@ function CalendarBookingContent() {
           'Content-Type': 'application/json',
           'x-client-id': clientInfo.clientId,
         },
+        body: JSON.stringify({ calendarEmail: clientInfo.calendarEmail }),
       })
         .then(res => res.json())
         .then(data => {
@@ -173,7 +174,7 @@ function CalendarBookingContent() {
             setCalendarVerified(true);
             setCalendarAccessError(null);
           } else {
-            setCalendarAccessError(data.error || 'Calendar sharing may have been removed');
+            setCalendarAccessError(data.message || data.error || 'Calendar sharing may have been removed');
           }
         })
         .catch(() => {
