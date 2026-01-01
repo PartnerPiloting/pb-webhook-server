@@ -7102,6 +7102,7 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     }
     
     logger.info(`Gemini response received (${responseText.length} chars)`);
+    logger.info(`Gemini response preview: ${responseText.substring(0, 500)}...`);
 
     // Parse any ACTION from the response
     let action = null;
@@ -7161,7 +7162,8 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     }
 
     // Remove the ACTION line from the message shown to user
-    const cleanMessage = responseText.replace(/ACTION:\s*{.*}/, '').trim();
+    // Use non-greedy match and ensure we only match valid JSON
+    const cleanMessage = responseText.replace(/ACTION:\s*\{[^}]*\}/g, '').trim();
 
     res.json({
       message: cleanMessage,
