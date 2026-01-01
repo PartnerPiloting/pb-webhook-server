@@ -839,17 +839,30 @@ ${yourFirstName}`;
                 </div>
               )}
               {!verifyingOnLoad && calendarAccessError && (
-                <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm text-amber-800 font-medium">⚠️ Calendar access issue</p>
-                  <p className="text-xs text-amber-600 mt-1">{calendarAccessError}</p>
+                <div className="mt-2 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800 font-medium">⚠️ Calendar sharing needed</p>
+                  <p className="text-xs text-amber-700 mt-2">
+                    Share your Google Calendar with this email (set to <span className="font-semibold">"Make changes to events"</span>):
+                  </p>
+                  {serviceAccountEmail && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <code className="flex-1 text-xs bg-white p-2 rounded border border-amber-200 break-all">{serviceAccountEmail}</code>
+                      <button
+                        onClick={handleCopyServiceEmail}
+                        className="px-2 py-1 text-xs bg-amber-200 hover:bg-amber-300 rounded"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  )}
                   <button
                     onClick={() => {
                       setCalendarAccessError(null);
                       openSetup();
                     }}
-                    className="mt-2 px-3 py-1 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded"
+                    className="mt-3 px-3 py-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded font-medium"
                   >
-                    Fix Now
+                    Open Setup
                   </button>
                 </div>
               )}
