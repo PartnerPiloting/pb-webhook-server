@@ -7003,12 +7003,12 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
     
     logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
     
-    // Fetch BOTH appointments AND availability for next 14 days
-    // This ensures AI always has full context regardless of how user phrases the question
+    // Fetch BOTH appointments AND availability for next 7 days
+    // Reduced from 14 days to save context window space for AI response
     const eventDays = [];
     const availabilitySlots = [];
     
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 7; i++) {
       const dateStr = dates[i];
       const date = new Date(dateStr);
       
@@ -7017,7 +7017,7 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
       if (!eventsError) {
         eventDays.push({
           date: dateStr,
-          day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
+          day: date.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', timeZone: yourTimezone }),
           events: events.map(e => ({
             ...e,
             displayTime: formatTimeInTimezone(e.start, yourTimezone),
@@ -7034,21 +7034,21 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
       
       availabilitySlots.push({
         date: dateStr,
-        day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
+        day: date.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', timeZone: yourTimezone }),
         freeSlots: slotsWithLeadTime,
       });
     }
     
-    // Build calendar context with both appointments and availability
+    // Build calendar context with both appointments and availability (compact format)
     if (eventDays.length > 0) {
-      calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS (next 14 days):\n${eventDays.map(d => 
-        `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
+      calendarContext = `\n\nAPPOINTMENTS:\n${eventDays.map(d => 
+        `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime}-${e.summary}`).join(', ') : '-'}`
       ).join('\n')}`;
     }
     
     if (availabilitySlots.length > 0) {
-      calendarContext += `\n\nCALENDAR AVAILABILITY - FREE 30-MINUTE SLOTS (next 14 days):\n${availabilitySlots.map(s => 
-        `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 10).map(f => f.displayRange || f.display).join(', ') : 'Fully booked'}`
+      calendarContext += `\n\nFREE SLOTS (30min):\n${availabilitySlots.map(s => 
+        `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 6).map(f => f.displayRange || f.display).join(', ') : 'Busy'}`
       ).join('\n')}`;
     }
     
