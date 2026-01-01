@@ -14,8 +14,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // Get backend URL - MUST be staging for calendar chat
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server-staging.onrender.com';
+    // Get backend URL - strip /api/linkedin suffix if present
+    const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server-staging.onrender.com';
     const targetUrl = `${backendUrl}/api/calendar/chat`;
     
     console.log(`[Calendar Chat Proxy] Calling: ${targetUrl}`);
