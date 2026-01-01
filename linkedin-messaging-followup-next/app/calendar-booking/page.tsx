@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import ClientIdPrompt from '../../components/ClientIdPrompt';
+import { verifyCalendarConnection, updateClientTimezone, updateClientCalendarEmail } from '../../services/api';
 
 interface FormData {
   yourName: string;
@@ -160,25 +161,18 @@ function CalendarBookingContent() {
   useEffect(() => {
     if (clientInfo?.calendarConnected && clientInfo?.calendarEmail && !calendarVerified && !verifyingOnLoad && !calendarAccessError) {
       setVerifyingOnLoad(true);
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/verify-calendar`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-id': clientInfo.clientId,
-        },
-        body: JSON.stringify({ calendarEmail: clientInfo.calendarEmail }),
-      })
-        .then(res => res.json())
+      
+      verifyCalendarConnection(clientInfo.calendarEmail)
         .then(data => {
           if (data.success) {
             setCalendarVerified(true);
             setCalendarAccessError(null);
           } else {
-            setCalendarAccessError(data.message || data.error || 'Calendar sharing may have been removed');
+            setCalendarAccessError(data.message || 'Calendar sharing may have been removed');
           }
         })
-        .catch(() => {
-          setCalendarAccessError('Failed to verify calendar access');
+        .catch((err: Error) => {
+          setCalendarAccessError(err.message || 'Failed to verify calendar access');
         })
         .finally(() => {
           setVerifyingOnLoad(false);
@@ -221,35 +215,13 @@ function CalendarBookingContent() {
     try {
       // Save timezone if changed
       if (timezoneToSave) {
-        const tzRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/timezone`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-client-id': clientInfo.clientId,
-          },
-          body: JSON.stringify({ timezone: timezoneToSave }),
-        });
-        if (!tzRes.ok) {
-          const err = await tzRes.json();
-          throw new Error(err.error || 'Failed to save timezone');
-        }
+        await updateClientTimezone(timezoneToSave);
         setYourTimezone(timezoneToSave);
       }
       
       // Save calendar email if changed
       if (calendarEmail) {
-        const calRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/calendar`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-client-id': clientInfo.clientId,
-          },
-          body: JSON.stringify({ calendarEmail }),
-        });
-        if (!calRes.ok) {
-          const err = await calRes.json();
-          throw new Error(err.error || 'Failed to save calendar email');
-        }
+        await updateClientCalendarEmail(calendarEmail);
       }
       
       // Refresh client info
@@ -282,25 +254,16 @@ function CalendarBookingContent() {
     setSetupError('');
     
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/linkedin/client/verify-calendar`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-id': clientInfo.clientId,
-        },
-      });
-      
-      // Handle non-JSON responses
-      const text = await res.text();
-      let data;
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        setSetupError('Server error - please try again');
+      // Use the calendar email from input if provided, otherwise from clientInfo
+      const emailToVerify = calendarEmail || clientInfo.calendarEmail;
+      if (!emailToVerify) {
+        setSetupError('Please enter a calendar email first');
         return;
       }
       
-      if (res.ok && data.success) {
+      const data = await verifyCalendarConnection(emailToVerify);
+      
+      if (data.success) {
         setCalendarVerified(true);
         setCalendarAccessError(null);
         // Refresh client info
@@ -310,10 +273,10 @@ function CalendarBookingContent() {
           setClientInfo(refreshData);
         }
       } else {
-        setSetupError(data.error || 'Calendar not accessible - check sharing permissions');
+        setSetupError(data.message || 'Calendar not accessible - check sharing permissions');
       }
-    } catch {
-      setSetupError('Failed to connect to server');
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : 'Failed to connect to server');
     } finally {
       setVerifyingCalendar(false);
     }
