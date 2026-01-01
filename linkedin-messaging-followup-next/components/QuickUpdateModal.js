@@ -503,35 +503,35 @@ export default function QuickUpdateModal({
             </button>
           </div>
           
-          {/* Configuration Warning Banner / Timezone Selector */}
+          {/* Timezone Configuration Prompt */}
           {!isValidTimezone(clientTimezone) && (
-            <div className="mt-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
               {!showTimezoneSelector ? (
-                // Show warning with configure button
+                // Show friendly prompt with configure button
                 <div className="flex items-start gap-3">
-                  <svg className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <svg className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-amber-800">
-                      {clientTimezone ? `Invalid timezone: "${clientTimezone}"` : 'Brisbane timezone in use'}
+                    <p className="text-sm font-medium text-gray-700">
+                      {clientTimezone ? `Update timezone` : 'Set your timezone'}
                     </p>
-                    <p className="text-xs text-amber-600 mt-1">
-                      {clientTimezone ? 'Please configure a valid timezone.' : 'Follow-up dates will default to Australia/Brisbane.'}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {clientTimezone ? `Current: "${clientTimezone}" - click to update.` : 'Quick setup for accurate follow-up scheduling.'}
                     </p>
                   </div>
                   <button
                     onClick={() => setShowTimezoneSelector(true)}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    Configure
+                    Set Up
                   </button>
                 </div>
               ) : (
                 // Show timezone selector
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium text-amber-800">
+                    <label className="block text-sm font-medium text-gray-700">
                       Select Your Timezone
                     </label>
                     <button
@@ -540,7 +540,7 @@ export default function QuickUpdateModal({
                         setSelectedTimezone('');
                         setTimezoneError(null);
                       }}
-                      className="text-amber-600 hover:text-amber-800 text-sm"
+                      className="text-gray-500 hover:text-gray-700 text-sm"
                     >
                       Cancel
                     </button>
@@ -556,7 +556,7 @@ export default function QuickUpdateModal({
                         setCustomTimezone('');
                       }
                     }}
-                    className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Choose timezone...</option>
                     <optgroup label="Australia">
@@ -595,9 +595,9 @@ export default function QuickUpdateModal({
                         value={customTimezone}
                         onChange={(e) => setCustomTimezone(e.target.value)}
                         placeholder="e.g. Europe/Paris, America/Denver"
-                        className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
-                      <p className="text-xs text-amber-600 mt-1">
+                      <p className="text-xs text-gray-500 mt-1">
                         Enter an IANA timezone like "Europe/Paris" or "America/Denver"
                       </p>
                     </div>

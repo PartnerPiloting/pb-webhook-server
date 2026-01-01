@@ -12,9 +12,9 @@ export async function GET(request: Request) {
     }
 
     // Query Airtable Master Clients base (case-insensitive)
-    // Check for Google Calendar Email (service account approach)
+    // Check for Google Calendar Email (service account approach) and Timezone
     const airtableResponse = await fetch(
-      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Client ID&fields[]=Client Name&fields[]=Status&fields[]=Google Calendar Email`,
+      `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Client ID&fields[]=Client Name&fields[]=Status&fields[]=Google Calendar Email&fields[]=Timezone`,
       {
         headers: {
           'Authorization': `Bearer ${process.env.AIRTABLE_API_KEY}`,
@@ -52,12 +52,26 @@ export async function GET(request: Request) {
 
     // Calendar is connected if they have set their calendar email
     const calendarEmail = client['Google Calendar Email'];
+    const timezone = client['Timezone'];
+    
+    // Validate timezone using Intl.DateTimeFormat
+    const isValidTimezone = (tz: string | undefined): boolean => {
+      if (!tz) return false;
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz });
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
     return NextResponse.json({
       clientId: client['Client ID'],
       clientName: client['Client Name'],
       calendarConnected: !!calendarEmail,
       calendarEmail: calendarEmail || null,
+      timezone: timezone || null,
+      timezoneConfigured: isValidTimezone(timezone),
     });
 
   } catch (error) {
