@@ -6803,15 +6803,25 @@ router.post("/api/calendar/chat", async (req, res) => {
         return [];
       }
 
-      return slots.map(slot => ({
-        time: slot.start,
-        display: new Date(slot.start).toLocaleTimeString('en-AU', {
+      return slots.map(slot => {
+        const startDisplay = new Date(slot.start).toLocaleTimeString('en-AU', {
           hour: 'numeric',
           minute: '2-digit',
           hour12: true,
           timeZone: timezone,
-        }),
-      }));
+        });
+        const endDisplay = new Date(slot.end).toLocaleTimeString('en-AU', {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: timezone,
+        });
+        return {
+          time: slot.start,
+          display: startDisplay,
+          displayRange: `${startDisplay}-${endDisplay}`,
+        };
+      });
     };
 
     // Detect lead timezone from location
@@ -6932,13 +6942,15 @@ MESSAGE GENERATION RULES (when asked to generate a message for the lead):
 
 RESPONSE STYLE:
 - Be conversational but concise
-- When showing availability, show times in your timezone
-- For vague requests like "next week", show all days or ask which specific days
+- When showing availability, show the exact slot times from CALENDAR AVAILABILITY (they are 30-minute slots)
+- Do NOT combine or expand slots - show them exactly as provided
+- For vague requests like "next week", summarize the key available times
 
 CRITICAL RULES:
 - ONLY report appointments/meetings that are provided in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
 - NEVER make up or invent fake appointments
 - Calendar data is ALWAYS provided with every message - use it to verify availability before suggesting times
+- When suggesting meeting times, pick slots from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
 
 ACTIONS:
 1. When the user picks/confirms a time, include this to SET the booking time:
@@ -7035,8 +7047,8 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
     }
     
     if (availabilitySlots.length > 0) {
-      calendarContext += `\n\nCALENDAR AVAILABILITY (next 14 days, ${startHour > 9 || endHour < 17 ? `${startHour}:00-${endHour}:00 filter applied` : 'business hours 9am-5pm'}):\n${availabilitySlots.map(s => 
-        `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 8).map(f => `${f.display} Brisbane (${f.leadDisplay} for lead)`).join(', ') : 'Fully booked'}`
+      calendarContext += `\n\nCALENDAR AVAILABILITY - FREE 30-MINUTE SLOTS (next 14 days):\n${availabilitySlots.map(s => 
+        `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 10).map(f => f.displayRange || f.display).join(', ') : 'Fully booked'}`
       ).join('\n')}`;
     }
     
