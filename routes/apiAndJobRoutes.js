@@ -7003,13 +7003,45 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
     
     logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
     
-    // Fetch BOTH appointments AND availability for next 7 days
-    // Reduced from 14 days to save context window space for AI response
+    // Determine date range to fetch based on user query
+    // Default: next 7 days. But if user asks about specific future dates, fetch those instead.
+    let daysToFetch = 7;
+    let startDayOffset = 0;
+    
+    // Check for "next month" or specific month references
+    const nextMonthMatch = msgLower.match(/next month|first.*(week|2 weeks|two weeks).*next month/);
+    if (nextMonthMatch) {
+      // Calculate days until start of next month
+      const now = new Date();
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      startDayOffset = Math.ceil((nextMonth - now) / (1000 * 60 * 60 * 24));
+      
+      // Determine how many days to fetch
+      if (msgLower.includes('2 weeks') || msgLower.includes('two weeks')) {
+        daysToFetch = 14;
+      } else if (msgLower.includes('first week')) {
+        daysToFetch = 7;
+      } else {
+        daysToFetch = 7; // Default for "next month"
+      }
+      logger.info(`Next month query detected: starting ${startDayOffset} days from now, fetching ${daysToFetch} days`);
+    }
+    
+    // Check for "in X weeks" pattern
+    const inWeeksMatch = msgLower.match(/in\s*(\d+)\s*weeks?/);
+    if (inWeeksMatch) {
+      startDayOffset = parseInt(inWeeksMatch[1], 10) * 7;
+      daysToFetch = 7;
+      logger.info(`"In X weeks" query detected: starting ${startDayOffset} days from now`);
+    }
+    
+    // Fetch BOTH appointments AND availability
     const eventDays = [];
     const availabilitySlots = [];
     
-    for (let i = 0; i < 7; i++) {
-      const dateStr = dates[i];
+    for (let i = 0; i < daysToFetch; i++) {
+      const dateStr = dates[startDayOffset + i];
+      if (!dateStr) continue; // Safety check
       const date = new Date(dateStr);
       
       // Fetch appointments
