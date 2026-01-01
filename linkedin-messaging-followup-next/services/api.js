@@ -1258,4 +1258,109 @@ export const getHelpTopic = async (id, opts = {}) => {
   }
 };
 
+// =========================================================================
+// QUICK UPDATE API FUNCTIONS
+// For rapid notes and contact info updates
+// =========================================================================
+
+/**
+ * Lookup lead by LinkedIn URL, email, or name
+ * @param {string} query - URL, email, or name to search
+ * @returns {Promise<{lookupMethod: string, count: number, leads: Array}>}
+ */
+export const lookupLead = async (query) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.get('/leads/lookup', {
+      params: { query, testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Lead lookup error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to lookup lead');
+  }
+};
+
+/**
+ * Get notes section summary for a lead
+ * @param {string} leadId - Airtable record ID
+ * @returns {Promise<{leadId: string, summary: Object, totalLength: number}>}
+ */
+export const getLeadNotesSummary = async (leadId) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.get(`/leads/${leadId}/notes-summary`, {
+      params: { testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Notes summary error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to get notes summary');
+  }
+};
+
+/**
+ * Quick update lead - notes section and/or contact info
+ * @param {string} leadId - Airtable record ID
+ * @param {Object} updates - Update data
+ * @param {string} updates.section - 'linkedin' | 'salesnav' | 'manual'
+ * @param {string} updates.content - Note content (raw or formatted)
+ * @param {string} updates.followUpDate - ISO date string
+ * @param {string} updates.email - Email address
+ * @param {string} updates.phone - Phone number
+ * @param {boolean} updates.parseRaw - Auto-parse raw content (default true)
+ * @returns {Promise<Object>}
+ */
+export const quickUpdateLead = async (leadId, updates) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.patch(`/leads/${leadId}/quick-update`, updates, {
+      params: { testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Quick update error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to update lead');
+  }
+};
+
+/**
+ * Preview how content will be parsed
+ * @param {string} content - Raw content to parse
+ * @param {string} section - Target section
+ * @returns {Promise<{detectedFormat: string, messageCount: number, formatted: string}>}
+ */
+export const previewParse = async (content, section) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.post('/leads/parse-preview', { content, section }, {
+      params: { testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Parse preview error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to preview parse');
+  }
+};
+
 export default api;
