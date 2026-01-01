@@ -38,7 +38,9 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         clientName: req.client.clientName || 'unknown',
         status: req.client.status || 'unknown',
         airtableBaseId: req.client.airtableBaseId || null,
-        serviceLevel: req.client.serviceLevel || 1
+        serviceLevel: req.client.serviceLevel || 1,
+        timezone: req.client.timezone || null,
+        googleCalendarEmail: req.client.googleCalendarEmail || null
       },
       authentication: {
         wpUserId: req.wpUserId || 'test mode',

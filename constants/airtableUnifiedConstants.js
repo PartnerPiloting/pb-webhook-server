@@ -51,7 +51,9 @@ const CLIENT_FIELDS = {
   MINIMUM_FLOOR: 'Minimum Floor',
   FLOOR_STRATEGY: 'Floor Strategy',
   AUTO_ADJUST_FLOORS: 'Auto Adjust Floors',
-  ACTIVE: 'Active'
+  ACTIVE: 'Active',
+  TIMEZONE: 'Timezone',
+  GOOGLE_CALENDAR_EMAIL: 'Google Calendar Email'
 };
 
 // Field names for Leads table

@@ -1363,4 +1363,27 @@ export const previewParse = async (content, section) => {
   }
 };
 
+/**
+ * Update client timezone (self-service configuration)
+ * @param {string} timezone - IANA timezone identifier
+ * @returns {Promise<{success: boolean, timezone: string}>}
+ */
+export const updateClientTimezone = async (timezone) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.patch('/client/timezone', { timezone }, {
+      params: { testClient: clientId }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Update timezone error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to update timezone');
+  }
+};
+
 export default api;

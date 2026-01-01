@@ -1560,4 +1560,89 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
   }
 });
 
+// ============================================================
+// CLIENT CONFIGURATION ENDPOINTS
+// ============================================================
+
+/**
+ * PATCH /client/timezone
+ * Self-service timezone configuration for clients
+ * Allows users to set their own timezone without coach intervention
+ */
+router.patch('/client/timezone', async (req, res) => {
+  try {
+    const clientId = req.client?.clientId;
+    if (!clientId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const { timezone } = req.body;
+    if (!timezone) {
+      return res.status(400).json({ error: 'Timezone is required' });
+    }
+    
+    // Validate timezone format (IANA timezone identifier)
+    const validTimezones = [
+      'Australia/Perth',
+      'Australia/Adelaide', 
+      'Australia/Darwin',
+      'Australia/Brisbane',
+      'Australia/Sydney',
+      'Australia/Melbourne',
+      'Australia/Hobart',
+      'Pacific/Auckland',
+      'Asia/Singapore',
+      'Asia/Hong_Kong',
+      'Asia/Tokyo',
+      'Europe/London',
+      'America/New_York',
+      'America/Los_Angeles',
+      'America/Chicago'
+    ];
+    
+    if (!validTimezones.includes(timezone)) {
+      return res.status(400).json({ 
+        error: 'Invalid timezone', 
+        validOptions: validTimezones 
+      });
+    }
+    
+    logger.info(`LinkedIn Routes: Updating timezone for client ${clientId} to ${timezone}`);
+    
+    // Update timezone in Master Clients base
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    // Find the client record
+    const records = await masterBase('Clients').select({
+      filterByFormula: `LOWER({Client ID}) = LOWER('${clientId}')`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (!records || records.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    const clientRecord = records[0];
+    
+    // Update the timezone field
+    await masterBase('Clients').update(clientRecord.id, {
+      'Timezone': timezone
+    });
+    
+    logger.info(`LinkedIn Routes: Successfully updated timezone for ${clientId} to ${timezone}`);
+    
+    res.json({
+      success: true,
+      clientId,
+      timezone,
+      message: `Timezone updated to ${timezone}`
+    });
+    
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error updating client timezone:', error);
+    res.status(500).json({ error: 'Failed to update timezone', details: error.message });
+  }
+});
+
 module.exports = router;

@@ -263,7 +263,20 @@ const Layout = ({ children }) => {
       {/* Quick Update Modal */}
       <QuickUpdateModal 
         isOpen={quickUpdateOpen} 
-        onClose={() => setQuickUpdateOpen(false)} 
+        onClose={() => setQuickUpdateOpen(false)}
+        clientId={clientProfile?.client?.clientId || clientProfile?.clientId || null}
+        clientTimezone={clientProfile?.client?.timezone || clientProfile?.timezone || null}
+        calendarConfigured={!!clientProfile?.client?.googleCalendarEmail || !!clientProfile?.googleCalendarEmail}
+        onTimezoneUpdate={(newTimezone) => {
+          // Update the local clientProfile with the new timezone
+          setClientProfile(prev => ({
+            ...prev,
+            client: {
+              ...prev?.client,
+              timezone: newTimezone
+            }
+          }));
+        }}
       />
     </div>
   );
