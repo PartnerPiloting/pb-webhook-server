@@ -20,10 +20,9 @@ function cleanLinkedInNoise(text) {
     if (!text) return '';
     
     return text
-        // Remove "View X's profileName" patterns (concatenated at end of lines)
-        .replace(/\s*View\s+[^'\n]+['']s\s*profile[A-Za-z\s]*/gi, '')
-        // Remove standalone "View X's profile" 
-        .replace(/\s*View\s+[^'\n]+['']s\s*profile/gi, '')
+        // Remove "View X's profileName LastName" patterns (name concatenated after profile)
+        // Matches: "View Guy's profileGuy Wilson" or "View Jenny's profileJenny Yan"
+        .replace(/View \w+[''''']s profile[A-Za-z ]+/gi, '')
         // Remove "Remove reaction" 
         .replace(/\s*Remove\s+reaction/gi, '')
         // Remove pronouns like (She/Her), (He/Him), (They/Them)
