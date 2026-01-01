@@ -7176,4 +7176,102 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
   }
 });
 
+// ============================================================================
+// CALENDAR - EXTRACT PROFILE FROM RAW LINKEDIN PASTE
+// ============================================================================
+/**
+ * POST /api/calendar/extract-profile
+ * Uses Gemini to extract lead profile data from raw LinkedIn copy-paste
+ * This is the backend endpoint - frontend calls this instead of Gemini directly
+ */
+router.post("/api/calendar/extract-profile", async (req, res) => {
+  const logger = createLogger({ runId: 'CALENDAR', clientId: req.headers['x-client-id'] || 'unknown', operation: 'extract-profile' });
+  
+  try {
+    const { rawText } = req.body;
+
+    if (!rawText || typeof rawText !== 'string') {
+      return res.status(400).json({ error: 'rawText is required' });
+    }
+
+    // Get Gemini model from config
+    const geminiConfig = require('../config/geminiClient.js');
+    if (!geminiConfig || !geminiConfig.geminiModel) {
+      logger.error('Gemini model not available for profile extraction');
+      return res.status(500).json({ error: 'AI service not available' });
+    }
+
+    // Truncate if too long (first 15000 chars should have all profile info)
+    const text = rawText.substring(0, 15000);
+
+    logger.info(`Extracting profile from ${text.length} chars of raw LinkedIn paste`);
+
+    const prompt = `You are a LinkedIn profile data extractor. Extract the following fields from this raw LinkedIn profile copy-paste.
+
+EXTRACT THESE FIELDS:
+1. leadName - The person's full name (first and last name). Look for the name that appears prominently at the top of the profile, often after "Background Image" or similar. Ignore pronouns like (She/Her).
+2. leadLocation - Their location (city, region, country). Look for patterns like "Greater Brisbane Area" or "Sydney, Australia".
+3. leadEmail - Their email if visible on the profile. If not found, return empty string.
+4. leadPhone - Their phone number if visible on the profile. If not found, return empty string.
+5. bookingTimeHint - If there's any conversation visible that mentions meeting times (e.g., "next week", "Thursday afternoon", "after Christmas"), extract that hint. If not found, return empty string.
+6. headline - Their job title/headline (the line that describes what they do)
+7. company - Their current company if identifiable from headline or experience
+
+IMPORTANT RULES:
+- For leadName: Get the actual person's name, not "LinkedIn" or UI text. The name typically appears 2-3 times at the start.
+- For leadLocation: Extract just the location, not "Contact info" or other UI text.
+- For bookingTimeHint: Look in any messaging/conversation section for time-related phrases.
+- Return ONLY valid JSON, no markdown, no explanation.
+
+RAW LINKEDIN TEXT:
+${text}
+
+RESPOND WITH ONLY THIS JSON FORMAT (no markdown):
+{"leadName":"","leadLocation":"","leadEmail":"","leadPhone":"","bookingTimeHint":"","headline":"","company":""}`;
+
+    // Use the properly configured Gemini model (Vertex AI)
+    const result = await geminiConfig.geminiModel.generateContent(prompt);
+    const responseText = result.response.candidates[0].content.parts[0].text;
+
+    if (!responseText) {
+      logger.error('No response from Gemini for profile extraction');
+      return res.status(500).json({ error: 'No response from AI' });
+    }
+
+    // Parse JSON from response (handle potential markdown wrapping)
+    let extracted;
+    try {
+      let cleanJson = responseText.trim();
+      if (cleanJson.startsWith('```json')) {
+        cleanJson = cleanJson.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      extracted = JSON.parse(cleanJson);
+    } catch (parseError) {
+      logger.error('Failed to parse Gemini response:', responseText);
+      return res.status(500).json({ error: 'Failed to parse AI response', raw: responseText });
+    }
+
+    logger.info(`Successfully extracted profile for: ${extracted.leadName || 'unknown'}`);
+
+    res.json({
+      success: true,
+      extracted: {
+        leadName: extracted.leadName || '',
+        leadLocation: extracted.leadLocation || '',
+        leadEmail: extracted.leadEmail || '',
+        leadPhone: extracted.leadPhone || '',
+        bookingTimeHint: extracted.bookingTimeHint || '',
+        headline: extracted.headline || '',
+        company: extracted.company || '',
+      },
+    });
+
+  } catch (error) {
+    logger.error('Profile extraction error:', error.message, error.stack);
+    res.status(500).json({ error: `Profile extraction failed: ${error.message}` });
+  }
+});
+
 module.exports = router;
