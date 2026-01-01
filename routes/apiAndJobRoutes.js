@@ -7015,23 +7015,18 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
       // Include recent conversation for context (e.g., "the week after" needs to know after what)
       const recentContext = messages.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
       
-      const dateExtractionPrompt = `Today is ${todayStr}. Extract the date range the user wants to see.
+      const dateExtractionPrompt = `Today is ${todayStr}. Extract date range from user message.
 
-Recent conversation:
-${recentContext}
+${recentContext ? `Recent conversation:\n${recentContext}\n\n` : ''}Current message: "${message}"
 
-Current message: "${message}"
-
-Return JSON only: {"startOffset": <days from today to start>, "numDays": <number of days to fetch, max 21>}
+Reply with ONLY raw JSON, no code blocks, no explanation:
+{"startOffset": <days from today>, "numDays": <days to fetch, max 21>}
 
 Examples:
-- "next 3 weeks" → {"startOffset": 0, "numDays": 21}
-- "the week after" (after Jan 7) → {"startOffset": 7, "numDays": 7}
-- "in 2 weeks" → {"startOffset": 14, "numDays": 7}
-- "next month" → {"startOffset": days until next month, "numDays": 14}
-- No date mentioned → {"startOffset": 0, "numDays": 7}
-
-JSON only:`;
+"next 3 weeks" → {"startOffset": 0, "numDays": 21}
+"in 2 weeks" → {"startOffset": 14, "numDays": 7}
+"next month" → {"startOffset": 30, "numDays": 14}
+No date → {"startOffset": 0, "numDays": 7}`;
 
       const dateResult = await geminiConfig.geminiModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: dateExtractionPrompt }] }],
@@ -7047,8 +7042,11 @@ JSON only:`;
       
       logger.info(`AI date extraction response: "${dateResponseText}"`);
       
-      // Extract JSON from response
-      const jsonMatch = dateResponseText.match(/\{[\s\S]*\}/);
+      // Extract JSON from response (strip code blocks if present)
+      let cleanResponse = dateResponseText.replace(/```json\s*|\s*```/g, '').trim();
+      logger.info(`Cleaned date response: "${cleanResponse}"`);
+      
+      const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         startDayOffset = Math.max(0, Math.min(parsed.startOffset || 0, 60)); // Cap at 60 days out
