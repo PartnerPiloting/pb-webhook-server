@@ -538,7 +538,6 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
                   View Full Notes
                 </button>
               </div>
-              </div>
             )}
           </div>
           
