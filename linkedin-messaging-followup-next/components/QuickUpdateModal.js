@@ -588,16 +588,20 @@ export default function QuickUpdateModal({
             {/* Search Results Dropdown */}
             {searchResults.length > 0 && !selectedLead && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                {searchResults.length > 1 && (
+                {searchResults.length > 1 ? (
                   <div className="px-3 py-2 text-xs text-gray-500 border-b">
                     Found {searchResults.length} matches via {lookupMethod}
+                  </div>
+                ) : (
+                  <div className="px-3 py-2 text-xs text-gray-500 border-b bg-blue-50">
+                    👆 Click to select this lead
                   </div>
                 )}
                 {searchResults.map((lead) => (
                   <button
                     key={lead.id}
                     onClick={() => selectLead(lead)}
-                    className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b last:border-b-0 transition-colors"
+                    className={`w-full px-4 py-3 text-left hover:bg-blue-50 border-b last:border-b-0 transition-colors cursor-pointer ${searchResults.length === 1 ? 'bg-gray-50 hover:bg-blue-100' : ''}`}
                   >
                     <div className="font-medium text-gray-900">
                       {lead.firstName} {lead.lastName}
