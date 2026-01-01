@@ -7080,6 +7080,14 @@ The frontend parses these actions - setBookingTime fills the form, openCalendar 
 
     const result = await chat.sendMessage(conversationHistory[conversationHistory.length - 1].parts[0].text);
     
+    // Log the full response structure for debugging
+    const finishReason = result.response?.candidates?.[0]?.finishReason;
+    const safetyRatings = result.response?.candidates?.[0]?.safetyRatings;
+    logger.info(`Gemini finish reason: ${finishReason}`);
+    if (finishReason !== 'STOP') {
+      logger.warn(`Unexpected finish reason: ${finishReason}`, JSON.stringify(safetyRatings));
+    }
+    
     // Handle different response formats from Vertex AI SDK
     let responseText;
     if (result.response && typeof result.response.text === 'function') {
