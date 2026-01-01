@@ -181,7 +181,7 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
         if (senderMatch) {
             // Save previous message if exists
             if (currentSender && currentMessage.length > 0) {
-                const msgText = currentMessage.join(' ').trim();
+                const msgText = cleanLinkedInNoise(currentMessage.join(' ').trim());
                 // Skip emoji-only messages
                 if (msgText && !/^[\u{1F300}-\u{1F9FF}\s]+$/u.test(msgText)) {
                     messages.push({
@@ -210,7 +210,7 @@ function parseLinkedInRaw(text, clientFirstName = 'Me', referenceDate = new Date
     
     // Don't forget the last message
     if (currentSender && currentMessage.length > 0) {
-        const msgText = currentMessage.join(' ').trim();
+        const msgText = cleanLinkedInNoise(currentMessage.join(' ').trim());
         if (msgText && !/^[\u{1F300}-\u{1F9FF}\s]+$/u.test(msgText)) {
             messages.push({
                 date: formatDateDDMMYY(currentDate),
@@ -275,7 +275,7 @@ function parseSalesNavRaw(text, clientFirstName = 'Me', referenceDate = new Date
         if (senderMatch) {
             // Save previous message if exists
             if (currentSender && currentMessage.length > 0) {
-                const msgText = currentMessage.join(' ').trim();
+                const msgText = cleanLinkedInNoise(currentMessage.join(' ').trim());
                 if (msgText) {
                     messages.push({
                         date: formatDateDDMMYY(currentDate),
@@ -300,7 +300,7 @@ function parseSalesNavRaw(text, clientFirstName = 'Me', referenceDate = new Date
     
     // Don't forget the last message
     if (currentSender && currentMessage.length > 0) {
-        const msgText = currentMessage.join(' ').trim();
+        const msgText = cleanLinkedInNoise(currentMessage.join(' ').trim());
         if (msgText) {
             messages.push({
                 date: formatDateDDMMYY(currentDate),
@@ -332,11 +332,13 @@ function parseAIBlaze(text) {
         
         const match = trimmed.match(pattern);
         if (match) {
+            // Clean noise from message content
+            const cleanMessage = cleanLinkedInNoise(match[4].trim());
             messages.push({
                 date: match[1],
                 time: match[2].trim(),
                 sender: match[3].trim(),
-                message: match[4].trim()
+                message: cleanMessage
             });
         }
     }
