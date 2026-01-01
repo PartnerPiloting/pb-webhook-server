@@ -30,6 +30,7 @@ interface ClientInfo {
   linkedInUrl: string | null;
   phone: string | null;
   meetingLink: string | null;
+  location: string | null;
 }
 
 interface ChatMessage {
@@ -438,8 +439,8 @@ function CalendarBookingContent() {
   };
 
   // Look up lead by LinkedIn URL in Airtable
-  const handleLookupLead = async () => {
-    const url = formData.leadLinkedIn.trim();
+  const handleLookupLead = async (urlOverride?: string) => {
+    const url = (urlOverride || formData.leadLinkedIn).trim();
     
     if (!url) {
       setLeadLookupError('Please enter a LinkedIn URL');
@@ -989,8 +990,9 @@ ${yourFirstName}`;
               {!verifyingOnLoad && calendarVerified && !calendarAccessError && (
                 <div className="mt-2 flex items-center gap-2">
                   <p className="text-green-600 font-medium">
-                    ✅ Ready ({yourTimezone})
+                    ✅ Ready ({clientInfo.location || yourTimezone.split('/').pop()?.replace('_', ' ')})
                   </p>
+                  <span className="text-xs text-gray-400">Your timezone: {yourTimezone}</span>
                   <button
                     onClick={openSetup}
                     className="text-xs text-gray-500 hover:text-gray-700 underline"
@@ -1101,25 +1103,32 @@ ${yourFirstName}`;
                 Paste the lead&apos;s LinkedIn URL from your browser address bar. We&apos;ll look them up in your Airtable.
               </p>
               
-              {/* LinkedIn URL input with lookup button */}
+              {/* LinkedIn URL input - auto-lookups on paste */}
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={formData.leadLinkedIn}
                   onChange={(e) => {
-                    setFormData({...formData, leadLinkedIn: e.target.value});
+                    const newValue = e.target.value;
+                    setFormData({...formData, leadLinkedIn: newValue});
                     setLeadFound(null);
                     setLeadLookupError('');
+                    
+                    // Auto-lookup if a LinkedIn URL is pasted
+                    if (newValue.includes('linkedin.com/in/') && newValue.length > 30) {
+                      // Pass URL directly since state won't be updated yet
+                      handleLookupLead(newValue);
+                    }
                   }}
                   placeholder="https://www.linkedin.com/in/username"
                   className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-sm"
                 />
                 <button
-                  onClick={handleLookupLead}
+                  onClick={() => handleLookupLead()}
                   disabled={lookingUpLead || !formData.leadLinkedIn.trim()}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                  {lookingUpLead ? '🔄 Looking...' : '🔍 Find Lead'}
+                  {lookingUpLead ? '🔄' : '🔍'}
                 </button>
               </div>
               
