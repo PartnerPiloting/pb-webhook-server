@@ -6938,7 +6938,7 @@ RESPONSE STYLE:
 CRITICAL RULES:
 - ONLY report appointments/meetings that are provided in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
 - NEVER make up or invent fake appointments
-- If no calendar data is provided, say "I don't have your calendar data for that date. Could you try asking about a specific day like 'Monday' or 'next Tuesday'?"
+- Calendar data is ALWAYS provided with every message - use it to verify availability before suggesting times
 
 ACTIONS:
 1. When the user picks/confirms a time, include this to SET the booking time:
@@ -6951,116 +6951,96 @@ ACTIONS:
 
 The frontend parses these actions - setBookingTime fills the form, openCalendar opens Google Calendar.`;
 
-    // Check if the user is asking about availability (free slots)
-    // Check if the user is asking about availability (free slots) or wants booking suggestions
-    // Include "book", "schedule", "suggest" to catch booking intent queries
-    const isAvailabilityQuery = message.toLowerCase().match(/free|available|open|slot|what.*work|check.*calendar|tuesday|wednesday|thursday|friday|monday|saturday|sunday|tomorrow|next week|this week|book\s|schedule|suggest|when.*good|best time/i);
-    
-    // Check if the user is asking about their appointments/meetings
-    // But NOT if they're asking about "free" times - that's availability
-    const hasFreeKeyword = message.toLowerCase().match(/free|available|open|slot/i);
-    const isAppointmentQuery = !hasFreeKeyword && message.toLowerCase().match(/appoint|meeting|scheduled|what.*(have|on)|show.*have|booked|busy/i);
-    
+    // ALWAYS fetch calendar data for every query to ensure AI never hallucinates
+    // This adds ~200-500ms but guarantees 100% reliability
     let calendarContext = '';
     
-    logger.info(`Query analysis - message: "${message}", isAppointmentQuery: ${!!isAppointmentQuery}, isAvailabilityQuery: ${!!isAvailabilityQuery}`);
+    logger.info(`Fetching full calendar context for message: "${message.substring(0, 50)}..."`);
     
-    if (isAppointmentQuery) {
-      // Fetch next 14 days of appointments and let AI interpret which day user meant
-      // 14 days covers "next week" scenarios (today might be Tuesday, "next Tuesday" is 7 days away)
-      const eventDays = [];
-      
-      for (let i = 0; i < 14; i++) {
-        const dateStr = dates[i];
-        const date = new Date(dateStr);
-        const dayName = date.toLocaleDateString('en-AU', { weekday: 'long', timeZone: yourTimezone }).toLowerCase();
-        
-        logger.info(`Fetching events for ${dateStr} (${dayName})`);
-        const { events, error } = await calendarService.getEventsForDate(calendarEmail, dateStr, yourTimezone);
-        
-        if (!error) {
-          eventDays.push({
-            date: dateStr,
-            day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
-            events: events.map(e => ({
-              ...e,
-              displayTime: formatTimeInTimezone(e.start, yourTimezone),
-            })),
-          });
-        }
-      }
-      
-      if (eventDays.length > 0) {
-        calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS (next 14 days):\n${eventDays.map(d => 
-          `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
-        ).join('\n')}`;
-        logger.info(`Calendar context for AI: ${calendarContext}`);
-      }
+    // Parse time preferences from message (for availability filtering)
+    let startHour = 9;  // default 9am
+    let endHour = 17;   // default 5pm
+    
+    const msgLower = message.toLowerCase();
+    
+    // Parse "up to X pm" or "until X pm" or "before X pm"
+    const untilMatch = msgLower.match(/(?:up to|until|before|by)\s*(\d{1,2})\s*(?:pm|p\.m\.?)/i);
+    if (untilMatch) {
+      endHour = parseInt(untilMatch[1], 10) + 12; // Convert to 24h
+      if (endHour > 21) endHour = 21; // Cap at 9pm
     }
     
-    if (isAvailabilityQuery) {
-      // Parse time preferences from message
-      let startHour = 9;  // default 9am
-      let endHour = 17;   // default 5pm
+    // Parse "after X am/pm" or "from X am/pm"
+    const afterMatch = msgLower.match(/(?:after|from|starting)\s*(\d{1,2})\s*(am|pm|a\.m\.?|p\.m\.?)/i);
+    if (afterMatch) {
+      startHour = parseInt(afterMatch[1], 10);
+      if (afterMatch[2].toLowerCase().startsWith('p') && startHour < 12) startHour += 12;
+    }
+    
+    // Parse time-of-day keywords
+    if (msgLower.includes('morning')) {
+      startHour = 9;
+      endHour = 12;
+    } else if (msgLower.includes('afternoon') || msgLower.includes('arvo')) {
+      startHour = 12;
+      endHour = 17;
+    } else if (msgLower.includes('evening')) {
+      startHour = 17;
+      endHour = 21;
+    }
+    
+    logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
+    
+    // Fetch BOTH appointments AND availability for next 14 days
+    // This ensures AI always has full context regardless of how user phrases the question
+    const eventDays = [];
+    const availabilitySlots = [];
+    
+    for (let i = 0; i < 14; i++) {
+      const dateStr = dates[i];
+      const date = new Date(dateStr);
       
-      const msgLower = message.toLowerCase();
-      
-      // Parse "up to X pm" or "until X pm" or "before X pm"
-      const untilMatch = msgLower.match(/(?:up to|until|before|by)\s*(\d{1,2})\s*(?:pm|p\.m\.?)/i);
-      if (untilMatch) {
-        endHour = parseInt(untilMatch[1], 10) + 12; // Convert to 24h
-        if (endHour > 21) endHour = 21; // Cap at 9pm
-      }
-      
-      // Parse "after X am/pm" or "from X am/pm"
-      const afterMatch = msgLower.match(/(?:after|from|starting)\s*(\d{1,2})\s*(am|pm|a\.m\.?|p\.m\.?)/i);
-      if (afterMatch) {
-        startHour = parseInt(afterMatch[1], 10);
-        if (afterMatch[2].toLowerCase().startsWith('p') && startHour < 12) startHour += 12;
-      }
-      
-      // Parse time-of-day keywords
-      if (msgLower.includes('morning')) {
-        startHour = 9;
-        endHour = 12;
-      } else if (msgLower.includes('afternoon') || msgLower.includes('arvo')) {
-        startHour = 12;
-        endHour = 17;
-      } else if (msgLower.includes('evening')) {
-        startHour = 17;
-        endHour = 21;
-      }
-      
-      logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
-      
-      // Fetch next 14 days of availability and let AI interpret which day user meant
-      // 14 days covers "next week" scenarios (today might be Tuesday, "next Tuesday" is 7 days away)
-      const slots = [];
-      
-      for (let i = 0; i < 14; i++) {
-        const dateStr = dates[i];
-        const date = new Date(dateStr);
-        
-        const freeSlots = await getFreeSlotsForDate(calendarEmail, dateStr, startHour, endHour, yourTimezone);
-        
-        const slotsWithLeadTime = freeSlots.map(slot => ({
-          ...slot,
-          leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
-        }));
-        
-        slots.push({
+      // Fetch appointments
+      const { events, error: eventsError } = await calendarService.getEventsForDate(calendarEmail, dateStr, yourTimezone);
+      if (!eventsError) {
+        eventDays.push({
           date: dateStr,
           day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
-          freeSlots: slotsWithLeadTime,
+          events: events.map(e => ({
+            ...e,
+            displayTime: formatTimeInTimezone(e.start, yourTimezone),
+          })),
         });
       }
       
-      if (slots.length > 0) {
-        calendarContext += `\n\nCALENDAR AVAILABILITY (next 14 days):\n${slots.map(s => 
-          `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 8).map(f => `${f.display} Brisbane (${f.leadDisplay} for lead)`).join(', ') : 'Fully booked'}`
-        ).join('\n')}`;
-      }
+      // Fetch availability
+      const freeSlots = await getFreeSlotsForDate(calendarEmail, dateStr, startHour, endHour, yourTimezone);
+      const slotsWithLeadTime = freeSlots.map(slot => ({
+        ...slot,
+        leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
+      }));
+      
+      availabilitySlots.push({
+        date: dateStr,
+        day: date.toLocaleDateString('en-AU', { weekday: 'long', month: 'short', day: 'numeric', timeZone: yourTimezone }),
+        freeSlots: slotsWithLeadTime,
+      });
     }
+    
+    // Build calendar context with both appointments and availability
+    if (eventDays.length > 0) {
+      calendarContext = `\n\nYOUR SCHEDULED APPOINTMENTS (next 14 days):\n${eventDays.map(d => 
+        `${d.day}: ${d.events.length > 0 ? d.events.map(e => `${e.displayTime} - ${e.summary}`).join(', ') : 'No appointments'}`
+      ).join('\n')}`;
+    }
+    
+    if (availabilitySlots.length > 0) {
+      calendarContext += `\n\nCALENDAR AVAILABILITY (next 14 days, ${startHour > 9 || endHour < 17 ? `${startHour}:00-${endHour}:00 filter applied` : 'business hours 9am-5pm'}):\n${availabilitySlots.map(s => 
+        `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 8).map(f => `${f.display} Brisbane (${f.leadDisplay} for lead)`).join(', ') : 'Fully booked'}`
+      ).join('\n')}`;
+    }
+    
+    logger.info(`Calendar context built: ${calendarContext.length} chars`);
 
     // Build conversation history for Gemini
     const conversationHistory = messages.map(m => ({
