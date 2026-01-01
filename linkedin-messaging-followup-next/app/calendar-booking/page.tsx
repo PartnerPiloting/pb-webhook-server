@@ -380,7 +380,10 @@ function CalendarBookingContent() {
       const response = await fetch('/api/calendar/extract-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawText: rawPasteText }),
+        body: JSON.stringify({ 
+          rawText: rawPasteText,
+          clientId: clientInfo?.clientId || 'unknown'
+        }),
       });
       
       const data = await response.json();
