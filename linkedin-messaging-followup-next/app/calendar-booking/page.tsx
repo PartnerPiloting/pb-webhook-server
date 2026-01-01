@@ -21,6 +21,8 @@ interface ClientInfo {
   clientId: string;
   clientName: string;
   calendarConnected: boolean;
+  timezone: string | null;
+  timezoneConfigured: boolean;
 }
 
 interface ChatMessage {
@@ -63,7 +65,7 @@ function CalendarBookingContent() {
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [leadTimezone, setLeadTimezone] = useState<string>('');
-  const [yourTimezone] = useState<string>('Australia/Brisbane');
+  const [yourTimezone, setYourTimezone] = useState<string>('Australia/Brisbane');
   const [leadDisplayTime, setLeadDisplayTime] = useState<string>('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
@@ -96,6 +98,10 @@ function CalendarBookingContent() {
           window.history.replaceState({}, '', window.location.pathname);
         } else {
           setClientInfo(data);
+          // Set timezone from client config, fallback to Brisbane
+          if (data.timezoneConfigured && data.timezone) {
+            setYourTimezone(data.timezone);
+          }
         }
       })
       .catch(() => {
@@ -405,17 +411,41 @@ ${yourFirstName}`;
             Client: <span className="font-medium">{clientInfo.clientName}</span>
           </p>
           
-          {!clientInfo.calendarConnected && (
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-              <p className="text-yellow-800 mb-3">
-                📅 Calendar not configured - contact admin to set up calendar sharing
-              </p>
+          {/* Configuration prompts - friendly style */}
+          {(!clientInfo.timezoneConfigured || !clientInfo.calendarConnected) && (
+            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <svg className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-700 mb-1">Quick setup needed</p>
+                  <ul className="text-xs text-gray-500 space-y-1">
+                    {!clientInfo.timezoneConfigured && (
+                      <li className="flex items-center gap-2">
+                        <span className="text-gray-400">•</span>
+                        <span>Set your timezone {clientInfo.timezone ? `(current: "${clientInfo.timezone}")` : ''}</span>
+                      </li>
+                    )}
+                    {!clientInfo.calendarConnected && (
+                      <li className="flex items-center gap-2">
+                        <span className="text-gray-400">•</span>
+                        <span>Connect your Google Calendar</span>
+                      </li>
+                    )}
+                  </ul>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Open Quick Update from any lead to configure.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
-          {clientInfo.calendarConnected && (
+          {clientInfo.calendarConnected && clientInfo.timezoneConfigured && (
             <p className="mt-2 text-green-600 font-medium">
-              ✅ Calendar Ready
+              ✅ Ready ({yourTimezone})
             </p>
           )}
         </div>
