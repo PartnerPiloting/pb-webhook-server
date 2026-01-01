@@ -849,6 +849,188 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
   }
 });
 
+// =========================================================================
+// QUICK UPDATE ENDPOINTS
+// For rapid notes and contact info updates with section-based notes management
+// IMPORTANT: These routes with static paths MUST come BEFORE /leads/:id 
+// to avoid being matched as an ID parameter
+// =========================================================================
+
+const { parseConversation } = require('../../../utils/messageParser');
+const { updateSection, getSectionsSummary, addManualNote } = require('../../../utils/notesSectionManager');
+
+/**
+ * GET /api/linkedin/leads/lookup
+ * Lookup lead by LinkedIn URL, email, or name
+ * Priority: LinkedIn URL > Email > Name search
+ * IMPORTANT: Must be defined BEFORE /leads/:id route
+ */
+router.get('/leads/lookup', async (req, res) => {
+  logger.info('LinkedIn Routes: GET /leads/lookup called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const { query } = req.query;
+    
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'Query parameter is required' });
+    }
+    
+    const trimmedQuery = query.trim();
+    let leads = [];
+    let lookupMethod = 'name';
+    
+    // Detect query type
+    const isLinkedInUrl = /linkedin\.com\/in\//i.test(trimmedQuery);
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedQuery);
+    
+    if (isLinkedInUrl) {
+      // Extract profile slug for matching
+      const slugMatch = trimmedQuery.match(/linkedin\.com\/in\/([^\/\?]+)/i);
+      const slug = slugMatch ? slugMatch[1].toLowerCase() : null;
+      
+      if (slug) {
+        lookupMethod = 'linkedin_url';
+        const records = await airtableBase('Leads').select({
+          filterByFormula: `SEARCH("${slug}", LOWER({LinkedIn Profile URL}))`,
+          maxRecords: 5
+        }).firstPage();
+        
+        leads = records.map(r => ({
+          id: r.id,
+          firstName: r.fields['First Name'] || '',
+          lastName: r.fields['Last Name'] || '',
+          linkedinProfileUrl: r.fields['LinkedIn Profile URL'] || '',
+          email: r.fields['Email'] || '',
+          phone: r.fields['Phone'] || '',
+          company: r.fields['Company Name'] || r.fields['Company'] || '',
+          title: r.fields['Job Title'] || r.fields['Headline'] || '',
+          aiScore: r.fields['AI Score'],
+          status: r.fields['Status'] || '',
+          followUpDate: r.fields['Follow-Up Date'] || '',
+          notes: r.fields['Notes'] || ''
+        }));
+      }
+    } else if (isEmail) {
+      lookupMethod = 'email';
+      const records = await airtableBase('Leads').select({
+        filterByFormula: `LOWER({Email}) = "${trimmedQuery.toLowerCase()}"`,
+        maxRecords: 5
+      }).firstPage();
+      
+      leads = records.map(r => ({
+        id: r.id,
+        firstName: r.fields['First Name'] || '',
+        lastName: r.fields['Last Name'] || '',
+        linkedinProfileUrl: r.fields['LinkedIn Profile URL'] || '',
+        email: r.fields['Email'] || '',
+        phone: r.fields['Phone'] || '',
+        company: r.fields['Company Name'] || r.fields['Company'] || '',
+        title: r.fields['Job Title'] || r.fields['Headline'] || '',
+        aiScore: r.fields['AI Score'],
+        status: r.fields['Status'] || '',
+        followUpDate: r.fields['Follow-Up Date'] || '',
+        notes: r.fields['Notes'] || ''
+      }));
+    }
+    
+    // If no matches by URL or email, or if it's a name search
+    if (leads.length === 0 && !isLinkedInUrl && !isEmail) {
+      lookupMethod = 'name';
+      // Split into first/last name parts
+      const nameParts = trimmedQuery.split(/\s+/);
+      
+      let filterFormula;
+      if (nameParts.length >= 2) {
+        // Search for first AND last name
+        const firstName = nameParts[0];
+        const lastName = nameParts.slice(1).join(' ');
+        filterFormula = `AND(
+          SEARCH("${firstName.toLowerCase()}", LOWER({First Name})),
+          SEARCH("${lastName.toLowerCase()}", LOWER({Last Name}))
+        )`;
+      } else {
+        // Single word - search in both fields
+        filterFormula = `OR(
+          SEARCH("${nameParts[0].toLowerCase()}", LOWER({First Name})),
+          SEARCH("${nameParts[0].toLowerCase()}", LOWER({Last Name}))
+        )`;
+      }
+      
+      const records = await airtableBase('Leads').select({
+        filterByFormula,
+        maxRecords: 10
+      }).firstPage();
+      
+      leads = records.map(r => ({
+        id: r.id,
+        firstName: r.fields['First Name'] || '',
+        lastName: r.fields['Last Name'] || '',
+        linkedinProfileUrl: r.fields['LinkedIn Profile URL'] || '',
+        email: r.fields['Email'] || '',
+        phone: r.fields['Phone'] || '',
+        company: r.fields['Company Name'] || r.fields['Company'] || '',
+        title: r.fields['Job Title'] || r.fields['Headline'] || '',
+        aiScore: r.fields['AI Score'],
+        status: r.fields['Status'] || '',
+        followUpDate: r.fields['Follow-Up Date'] || '',
+        notes: r.fields['Notes'] || ''
+      }));
+    }
+    
+    logger.info(`LinkedIn Routes: Lookup found ${leads.length} leads via ${lookupMethod}`);
+    
+    res.json({
+      lookupMethod,
+      query: trimmedQuery,
+      count: leads.length,
+      leads
+    });
+    
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /leads/lookup:', error);
+    res.status(500).json({ error: 'Lead lookup failed', details: error.message });
+  }
+});
+
+/**
+ * POST /api/linkedin/leads/parse-preview
+ * Preview how content will be parsed without saving
+ * Useful for showing user what will be saved
+ * IMPORTANT: Must be defined BEFORE /leads/:id route
+ */
+router.post('/leads/parse-preview', async (req, res) => {
+  logger.info('LinkedIn Routes: POST /leads/parse-preview called');
+  
+  try {
+    const { content, section } = req.body;
+    
+    if (!content) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+    
+    // Get client's first name for "You" replacement
+    const clientFirstName = req.client?.clientName?.split(' ')[0] || 'Me';
+    
+    const result = parseConversation(content, {
+      clientFirstName,
+      newestFirst: true
+    });
+    
+    res.json({
+      detectedFormat: result.format,
+      messageCount: result.messageCount || 0,
+      formatted: result.formatted,
+      messages: result.messages || []
+    });
+    
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /leads/parse-preview:', error);
+    res.status(500).json({ error: 'Parse preview failed', details: error.message });
+  }
+});
+
 /**
  * GET /api/linkedin/leads/:id
  * Get a specific lead by ID
@@ -1204,148 +1386,6 @@ router.post('/leads', async (req, res) => {
   }
 });
 
-// =========================================================================
-// QUICK UPDATE ENDPOINTS
-// For rapid notes and contact info updates with section-based notes management
-// =========================================================================
-
-const { parseConversation } = require('../../../utils/messageParser');
-const { updateSection, getSectionsSummary, addManualNote } = require('../../../utils/notesSectionManager');
-
-/**
- * GET /api/linkedin/leads/lookup
- * Lookup lead by LinkedIn URL, email, or name
- * Priority: LinkedIn URL > Email > Name search
- */
-router.get('/leads/lookup', async (req, res) => {
-  logger.info('LinkedIn Routes: GET /leads/lookup called');
-  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
-  
-  try {
-    const airtableBase = await getAirtableBase(req);
-    const { query } = req.query;
-    
-    if (!query || typeof query !== 'string') {
-      return res.status(400).json({ error: 'Query parameter is required' });
-    }
-    
-    const trimmedQuery = query.trim();
-    let leads = [];
-    let lookupMethod = 'name';
-    
-    // Detect query type
-    const isLinkedInUrl = /linkedin\.com\/in\//i.test(trimmedQuery);
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedQuery);
-    
-    if (isLinkedInUrl) {
-      // Extract profile slug for matching
-      const slugMatch = trimmedQuery.match(/linkedin\.com\/in\/([^\/\?]+)/i);
-      const slug = slugMatch ? slugMatch[1].toLowerCase() : null;
-      
-      if (slug) {
-        lookupMethod = 'linkedin_url';
-        const records = await airtableBase('Leads').select({
-          filterByFormula: `SEARCH("${slug}", LOWER({LinkedIn Profile URL}))`,
-          maxRecords: 5
-        }).firstPage();
-        
-        leads = records.map(r => ({
-          id: r.id,
-          firstName: r.fields['First Name'] || '',
-          lastName: r.fields['Last Name'] || '',
-          linkedinProfileUrl: r.fields['LinkedIn Profile URL'] || '',
-          email: r.fields['Email'] || '',
-          phone: r.fields['Phone'] || '',
-          company: r.fields['Company Name'] || r.fields['Company'] || '',
-          title: r.fields['Job Title'] || r.fields['Headline'] || '',
-          aiScore: r.fields['AI Score'],
-          status: r.fields['Status'] || '',
-          followUpDate: r.fields['Follow-Up Date'] || '',
-          notes: r.fields['Notes'] || ''
-        }));
-      }
-    } else if (isEmail) {
-      lookupMethod = 'email';
-      const records = await airtableBase('Leads').select({
-        filterByFormula: `LOWER({Email}) = "${trimmedQuery.toLowerCase()}"`,
-        maxRecords: 5
-      }).firstPage();
-      
-      leads = records.map(r => ({
-        id: r.id,
-        firstName: r.fields['First Name'] || '',
-        lastName: r.fields['Last Name'] || '',
-        linkedinProfileUrl: r.fields['LinkedIn Profile URL'] || '',
-        email: r.fields['Email'] || '',
-        phone: r.fields['Phone'] || '',
-        company: r.fields['Company Name'] || r.fields['Company'] || '',
-        title: r.fields['Job Title'] || r.fields['Headline'] || '',
-        aiScore: r.fields['AI Score'],
-        status: r.fields['Status'] || '',
-        followUpDate: r.fields['Follow-Up Date'] || '',
-        notes: r.fields['Notes'] || ''
-      }));
-    }
-    
-    // If no matches by URL or email, or if it's a name search
-    if (leads.length === 0 && !isLinkedInUrl && !isEmail) {
-      lookupMethod = 'name';
-      // Split into first/last name parts
-      const nameParts = trimmedQuery.split(/\s+/);
-      
-      let filterFormula;
-      if (nameParts.length >= 2) {
-        // Search for first AND last name
-        const firstName = nameParts[0];
-        const lastName = nameParts.slice(1).join(' ');
-        filterFormula = `AND(
-          SEARCH("${firstName.toLowerCase()}", LOWER({First Name})),
-          SEARCH("${lastName.toLowerCase()}", LOWER({Last Name}))
-        )`;
-      } else {
-        // Single word - search in both fields
-        filterFormula = `OR(
-          SEARCH("${nameParts[0].toLowerCase()}", LOWER({First Name})),
-          SEARCH("${nameParts[0].toLowerCase()}", LOWER({Last Name}))
-        )`;
-      }
-      
-      const records = await airtableBase('Leads').select({
-        filterByFormula,
-        maxRecords: 10
-      }).firstPage();
-      
-      leads = records.map(r => ({
-        id: r.id,
-        firstName: r.fields['First Name'] || '',
-        lastName: r.fields['Last Name'] || '',
-        linkedinProfileUrl: r.fields['LinkedIn Profile URL'] || '',
-        email: r.fields['Email'] || '',
-        phone: r.fields['Phone'] || '',
-        company: r.fields['Company Name'] || r.fields['Company'] || '',
-        title: r.fields['Job Title'] || r.fields['Headline'] || '',
-        aiScore: r.fields['AI Score'],
-        status: r.fields['Status'] || '',
-        followUpDate: r.fields['Follow-Up Date'] || '',
-        notes: r.fields['Notes'] || ''
-      }));
-    }
-    
-    logger.info(`LinkedIn Routes: Lookup found ${leads.length} leads via ${lookupMethod}`);
-    
-    res.json({
-      lookupMethod,
-      query: trimmedQuery,
-      count: leads.length,
-      leads
-    });
-    
-  } catch (error) {
-    logger.error('LinkedIn Routes: Error in /leads/lookup:', error);
-    res.status(500).json({ error: 'Lead lookup failed', details: error.message });
-  }
-});
-
 /**
  * GET /api/linkedin/leads/:id/notes-summary
  * Get summary of notes sections for a lead
@@ -1517,42 +1557,6 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
   } catch (error) {
     logger.error('LinkedIn Routes: Error in /leads/:id/quick-update:', error);
     res.status(500).json({ error: 'Quick update failed', details: error.message });
-  }
-});
-
-/**
- * POST /api/linkedin/leads/parse-preview
- * Preview how content will be parsed without saving
- * Useful for showing user what will be saved
- */
-router.post('/leads/parse-preview', async (req, res) => {
-  logger.info('LinkedIn Routes: POST /leads/parse-preview called');
-  
-  try {
-    const { content, section } = req.body;
-    
-    if (!content) {
-      return res.status(400).json({ error: 'Content is required' });
-    }
-    
-    // Get client's first name for "You" replacement
-    const clientFirstName = req.client?.clientName?.split(' ')[0] || 'Me';
-    
-    const result = parseConversation(content, {
-      clientFirstName,
-      newestFirst: true
-    });
-    
-    res.json({
-      detectedFormat: result.format,
-      messageCount: result.messageCount || 0,
-      formatted: result.formatted,
-      messages: result.messages || []
-    });
-    
-  } catch (error) {
-    logger.error('LinkedIn Routes: Error in /leads/parse-preview:', error);
-    res.status(500).json({ error: 'Parse preview failed', details: error.message });
   }
 });
 
