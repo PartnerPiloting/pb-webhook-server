@@ -395,7 +395,10 @@ function CalendarBookingContent() {
       
       const { extracted } = data;
       
+      console.log('Extracted data:', extracted);
+      
       // Update lead fields from extraction
+      // Keep leadLinkedIn if already set (user pasted URL separately)
       setFormData(prev => ({
         ...prev,
         leadName: extracted.leadName || prev.leadName,
@@ -405,7 +408,13 @@ function CalendarBookingContent() {
         conversationHint: extracted.bookingTimeHint || prev.conversationHint,
       }));
       
-      setSuccess(`✅ Extracted lead: ${extracted.leadName}${extracted.headline ? ` - ${extracted.headline}` : ''}`);
+      // Build success message with extracted fields
+      const extractedFields = [];
+      if (extracted.leadName) extractedFields.push(`Name: ${extracted.leadName}`);
+      if (extracted.leadLocation) extractedFields.push(`Location: ${extracted.leadLocation}`);
+      if (extracted.headline) extractedFields.push(`Title: ${extracted.headline}`);
+      
+      setSuccess(`✅ Extracted: ${extractedFields.join(' | ') || extracted.leadName}`);
       setRawPasteText(''); // Clear paste area on success
       
       // If there's a booking hint, add it to chat
@@ -991,6 +1000,21 @@ ${yourFirstName}`;
               <p className="text-sm text-blue-600 mb-3">
                 Copy the entire LinkedIn profile page (Ctrl+A, Ctrl+C) and paste below. We&apos;ll extract the lead details automatically.
               </p>
+              
+              {/* LinkedIn URL - needs manual paste from address bar */}
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-blue-700 mb-1">
+                  Lead&apos;s LinkedIn URL <span className="text-blue-500 text-xs">(paste from address bar)</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.leadLinkedIn}
+                  onChange={(e) => setFormData({...formData, leadLinkedIn: e.target.value})}
+                  placeholder="https://www.linkedin.com/in/..."
+                  className="w-full px-3 py-2 border border-blue-300 rounded-md text-sm"
+                />
+              </div>
+              
               <textarea
                 value={rawPasteText}
                 onChange={(e) => setRawPasteText(e.target.value)}
