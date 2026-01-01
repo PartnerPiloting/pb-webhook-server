@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import ClientIdPrompt from '../../components/ClientIdPrompt';
 import { verifyCalendarConnection, updateClientTimezone, updateClientCalendarEmail } from '../../services/api';
+import { setCurrentClientId } from '../../utils/clientUtils';
 
 interface FormData {
   yourName: string;
@@ -119,6 +120,9 @@ function CalendarBookingContent() {
       setShowClientPrompt(true);
       return;
     }
+
+    // Set the client ID for api.js functions to use
+    setCurrentClientId(clientId);
 
     fetch(`/api/calendar/client-info?clientId=${clientId}`)
       .then(res => res.json())
