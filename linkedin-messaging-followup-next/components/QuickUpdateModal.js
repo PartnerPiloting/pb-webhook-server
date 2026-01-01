@@ -10,6 +10,8 @@ import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary } from '
  * - Lead lookup by URL, email, or name
  * - Section-based notes (LinkedIn, Sales Nav, Manual)
  * - Auto-parsing of raw LinkedIn/Sales Nav content
+ * - Live preview of formatted output
+ * - Full notes display (scrollable)
  * - Contact info updates (email, phone, follow-up date)
  * - Keyboard shortcuts (Esc, Ctrl+Enter, Ctrl+N)
  */
@@ -42,6 +44,9 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [error, setError] = useState(null);
+  
+  // View toggle for notes
+  const [showNotesPreview, setShowNotesPreview] = useState(false);
   
   const searchInputRef = useRef(null);
   const noteInputRef = useRef(null);
@@ -172,6 +177,7 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
     setShowUnsavedWarning(false);
     setSaveSuccess(null);
     setError(null);
+    setShowNotesPreview(false);
   };
 
   const loadLeadById = async (leadId) => {
@@ -300,13 +306,12 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
 
   return (
     <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Quick Update</h2>
-              <p className="text-sm text-gray-500">Ctrl+Shift+U to open</p>
             </div>
             <button
               onClick={handleClose}
@@ -320,7 +325,7 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
           </div>
           
           {/* Lead Search */}
-          <div className="mt-4">
+          <div className="mt-4 relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Find Lead
             </label>
@@ -342,7 +347,7 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
             
             {/* Search Results Dropdown */}
             {searchResults.length > 0 && !selectedLead && (
-              <div className="absolute z-10 mt-1 w-full max-w-lg bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                 {searchResults.length > 1 && (
                   <div className="px-3 py-2 text-xs text-gray-500 border-b">
                     Found {searchResults.length} matches via {lookupMethod}
@@ -371,12 +376,18 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
                 ))}
               </div>
             )}
-            
-            {/* Selected Lead Info */}
+          </div>
+        </div>
+        
+        {/* Main Content - Three Columns */}
+        <div className="flex-1 overflow-hidden flex">
+          {/* Left Column - Notes Input */}
+          <div className="flex-1 min-w-0 p-6 overflow-y-auto border-r border-gray-200">
+            {/* Selected Lead Bar */}
             {selectedLead && (
-              <div className="mt-2 flex items-center justify-between bg-blue-50 px-4 py-2 rounded-lg">
+              <div className="mb-4 flex items-center justify-between bg-blue-50 px-4 py-3 rounded-lg">
                 <div>
-                  <span className="font-medium text-blue-900">
+                  <span className="font-semibold text-blue-900 text-lg">
                     {selectedLead.firstName} {selectedLead.lastName}
                   </span>
                   {selectedLead.title && selectedLead.company && (
@@ -385,243 +396,280 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
                     </span>
                   )}
                   {selectedLead.aiScore && (
-                    <span className="text-blue-600 text-sm ml-2">
-                      · Score: {selectedLead.aiScore}
+                    <span className="text-blue-600 text-sm ml-2 font-medium">
+                      Score: {selectedLead.aiScore}
                     </span>
                   )}
                 </div>
                 <button
                   onClick={resetForm}
-                  className="text-blue-600 hover:text-blue-800 text-sm"
+                  className="text-blue-600 hover:text-blue-800 text-sm px-3 py-1 bg-blue-100 rounded hover:bg-blue-200 transition-colors"
                 >
-                  Change
+                  Change Lead
                 </button>
+              </div>
+            )}
+            
+            {/* Source Tabs */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Source
+              </label>
+              <div className="flex gap-2">
+                {SECTIONS.map((section) => (
+                  <button
+                    key={section.key}
+                    onClick={() => setActiveSection(section.key)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      activeSection === section.key
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {section.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {SECTIONS.find(s => s.key === activeSection)?.description}
+              </p>
+            </div>
+            
+            {/* Notes Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {activeSection === 'manual' ? 'Note (date auto-added)' : 'Paste Conversation'}
+              </label>
+              <textarea
+                ref={noteInputRef}
+                value={noteContent}
+                onChange={(e) => setNoteContent(e.target.value)}
+                rows={12}
+                placeholder={activeSection === 'manual' 
+                  ? 'Type your note here...' 
+                  : 'Paste conversation here (raw or AIBlaze format)...'
+                }
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+              />
+            </div>
+            
+            {/* Parse Status */}
+            {parsePreview && parsePreview.format !== 'manual' && (
+              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-green-800">
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span>
+                    Detected: <strong>{parsePreview.detectedFormat}</strong>
+                    {parsePreview.messageCount > 0 && (
+                      <span> · {parsePreview.messageCount} messages</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {/* Replace Warning */}
+            {noteContent.trim() && activeSection !== 'manual' && notesSummary?.[activeSection]?.hasContent && (
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="text-sm text-yellow-800">
+                  ⚠️ This will replace {notesSummary[activeSection].lineCount} existing lines in {SECTIONS.find(s => s.key === activeSection)?.label}.
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Middle Column - Preview */}
+          <div className="w-80 flex-shrink-0 p-6 overflow-y-auto border-r border-gray-200 bg-gray-50">
+            <h3 className="font-medium text-gray-900 mb-3">
+              {parsePreview?.formatted || noteContent.trim() ? 'Preview (how it will look)' : 'Preview'}
+            </h3>
+            
+            {(parsePreview?.formatted || (activeSection === 'manual' && noteContent.trim())) ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-4 max-h-96 overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
+                  {parsePreview?.formatted || (activeSection === 'manual' ? `${new Date().toLocaleDateString('en-AU')} - ${noteContent}` : noteContent)}
+                </pre>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-400 italic">
+                {noteContent.trim() 
+                  ? 'Processing...'
+                  : 'Paste content on the left to see how it will be formatted'
+                }
+              </div>
+            )}
+            
+            {/* Current Notes Summary */}
+            {selectedLead && notesSummary && (
+              <div className="mt-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Current Notes</h4>
+                <div className="space-y-2">
+                  {Object.entries(notesSummary).map(([key, info]) => (
+                    info.hasContent && (
+                      <div key={key} className="bg-white border border-gray-200 rounded p-3">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="font-medium capitalize text-gray-700">{key}</span>
+                          <span className="text-gray-500">{info.lineCount} lines</span>
+                        </div>
+                        {info.lastDate && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            Last update: {info.lastDate}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  ))}
+                  {!Object.values(notesSummary).some(s => s.hasContent) && (
+                    <div className="text-sm text-gray-400 italic">No notes yet</div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Full Notes View */}
+            {selectedLead?.notes && (
+              <div className="mt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-medium text-gray-700">Full Notes</h4>
+                  <button
+                    onClick={() => setShowNotesPreview(!showNotesPreview)}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    {showNotesPreview ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {showNotesPreview && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-3 max-h-60 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap text-xs text-gray-600 font-mono">
+                      {selectedLead.notes}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* Right Column - Details */}
+          <div className="w-72 flex-shrink-0 p-6 overflow-y-auto">
+            <h3 className="font-medium text-gray-900 mb-4">Details</h3>
+            
+            {/* Follow-up Date */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Follow-up Date
+              </label>
+              <input
+                type="date"
+                value={followUpDate}
+                onChange={(e) => setFollowUpDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 7);
+                    setFollowUpDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                >
+                  +7 days
+                </button>
+                <button
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 14);
+                    setFollowUpDate(d.toISOString().split('T')[0]);
+                  }}
+                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                >
+                  +14 days
+                </button>
+                {followUpDate && (
+                  <button
+                    onClick={() => setFollowUpDate('')}
+                    className="px-3 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            {/* Email */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@example.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+            </div>
+            
+            {/* Phone */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="0400 000 000"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+            </div>
+            
+            {/* Lead Info */}
+            {selectedLead && (
+              <div className="pt-4 border-t border-gray-200">
+                <h4 className="text-xs font-medium text-gray-500 uppercase mb-3">Lead Info</h4>
+                <div className="space-y-2 text-sm">
+                  {selectedLead.linkedinProfileUrl && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-500">LinkedIn:</span>
+                      <a 
+                        href={selectedLead.linkedinProfileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline truncate"
+                      >
+                        View Profile
+                      </a>
+                    </div>
+                  )}
+                  {selectedLead.company && (
+                    <div>
+                      <span className="text-gray-500">Company:</span>{' '}
+                      <span className="text-gray-900">{selectedLead.company}</span>
+                    </div>
+                  )}
+                  {selectedLead.title && (
+                    <div>
+                      <span className="text-gray-500">Title:</span>{' '}
+                      <span className="text-gray-900">{selectedLead.title}</span>
+                    </div>
+                  )}
+                  {selectedLead.status && (
+                    <div>
+                      <span className="text-gray-500">Status:</span>{' '}
+                      <span className="text-gray-900">{selectedLead.status}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
         </div>
         
-        {/* Main Content - Two Columns */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="flex flex-col lg:flex-row gap-6 p-6">
-            {/* Left Column - Notes */}
-            <div className="flex-1 min-w-0">
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Source
-                </label>
-                <div className="flex gap-2">
-                  {SECTIONS.map((section) => (
-                    <button
-                      key={section.key}
-                      onClick={() => setActiveSection(section.key)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        activeSection === section.key
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {section.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {SECTIONS.find(s => s.key === activeSection)?.description}
-                </p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {activeSection === 'manual' ? 'Note (date auto-added)' : 'Paste Conversation'}
-                </label>
-                <textarea
-                  ref={noteInputRef}
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  rows={10}
-                  placeholder={activeSection === 'manual' 
-                    ? 'Type your note here...' 
-                    : 'Paste conversation here (raw or AIBlaze format)...'
-                  }
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                />
-              </div>
-              
-              {/* Parse Preview */}
-              {parsePreview && parsePreview.format !== 'manual' && (
-                <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-green-800">
-                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span>
-                      Detected: <strong>{parsePreview.detectedFormat}</strong>
-                      {parsePreview.messageCount > 0 && (
-                        <span> · {parsePreview.messageCount} messages</span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
-              
-              {/* Confirmation for Replace */}
-              {noteContent.trim() && activeSection !== 'manual' && notesSummary?.[activeSection]?.hasContent && (
-                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="text-sm text-yellow-800">
-                    ⚠️ This will replace {notesSummary[activeSection].lineCount} existing lines in {SECTIONS.find(s => s.key === activeSection)?.label}.
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Right Column - Details */}
-            <div className="w-full lg:w-72 flex-shrink-0">
-              <h3 className="font-medium text-gray-900 mb-4">Details</h3>
-              
-              {/* Follow-up Date */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Follow-up Date
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="date"
-                    value={followUpDate}
-                    onChange={(e) => setFollowUpDate(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                  />
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={() => {
-                      const d = new Date();
-                      d.setDate(d.getDate() + 7);
-                      setFollowUpDate(d.toISOString().split('T')[0]);
-                    }}
-                    className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
-                  >
-                    +7 days
-                  </button>
-                  <button
-                    onClick={() => {
-                      const d = new Date();
-                      d.setDate(d.getDate() + 14);
-                      setFollowUpDate(d.toISOString().split('T')[0]);
-                    }}
-                    className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition-colors"
-                  >
-                    +14 days
-                  </button>
-                  {followUpDate && (
-                    <button
-                      onClick={() => setFollowUpDate('')}
-                      className="px-3 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded transition-colors"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              {/* Email */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@example.com"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                />
-              </div>
-              
-              {/* Phone */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0400 000 000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                />
-              </div>
-              
-              {/* Display-Only Fields */}
-              {selectedLead && (
-                <div className="pt-4 border-t border-gray-200">
-                  <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Lead Info</h4>
-                  <div className="space-y-2 text-sm">
-                    {selectedLead.linkedinProfileUrl && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">LinkedIn:</span>
-                        <a 
-                          href={selectedLead.linkedinProfileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline truncate"
-                        >
-                          View Profile
-                        </a>
-                      </div>
-                    )}
-                    {selectedLead.company && (
-                      <div>
-                        <span className="text-gray-500">Company:</span>{' '}
-                        <span className="text-gray-900">{selectedLead.company}</span>
-                      </div>
-                    )}
-                    {selectedLead.title && (
-                      <div>
-                        <span className="text-gray-500">Title:</span>{' '}
-                        <span className="text-gray-900">{selectedLead.title}</span>
-                      </div>
-                    )}
-                    {selectedLead.status && (
-                      <div>
-                        <span className="text-gray-500">Status:</span>{' '}
-                        <span className="text-gray-900">{selectedLead.status}</span>
-                      </div>
-                    )}
-                    {selectedLead.aiScore && (
-                      <div>
-                        <span className="text-gray-500">AI Score:</span>{' '}
-                        <span className="text-blue-600 font-medium">{selectedLead.aiScore}</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Notes Section Summary */}
-                  {notesSummary && (
-                    <div className="mt-4 pt-3 border-t border-gray-100">
-                      <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Notes Sections</h4>
-                      <div className="space-y-1 text-xs">
-                        {Object.entries(notesSummary).map(([key, info]) => (
-                          info.hasContent && (
-                            <div key={key} className="flex justify-between text-gray-600">
-                              <span className="capitalize">{key}:</span>
-                              <span>
-                                {info.lineCount} lines
-                                {info.lastDate && ` · ${info.lastDate}`}
-                              </span>
-                            </div>
-                          )
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
           {/* Error Message */}
           {error && (
             <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
@@ -653,7 +701,7 @@ export default function QuickUpdateModal({ isOpen, onClose, initialLeadId = null
               <button
                 onClick={handleSave}
                 disabled={!selectedLead || isSaving}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
                   selectedLead && !isSaving
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
