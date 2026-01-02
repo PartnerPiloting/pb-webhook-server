@@ -358,12 +358,13 @@ export default function QuickUpdateModal({
         noteUpdate: result.noteUpdate
       });
       
-      // Update local state with saved values
+      // Update local state with saved values (including notes for View Full Notes)
       setSelectedLead(prev => ({
         ...prev,
         email: result.lead?.email || email,
         phone: result.lead?.phone || phone,
-        followUpDate: result.lead?.followUpDate || followUpDate
+        followUpDate: result.lead?.followUpDate || followUpDate,
+        notes: result.lead?.notes || prev.notes
       }));
       setNotesSummary(result.lead?.notesSummary);
       setNoteContent('');

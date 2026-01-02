@@ -1550,6 +1550,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         email: updatedLead.fields['Email'] || '',
         phone: updatedLead.fields['Phone'] || '',
         followUpDate: updatedLead.fields['Follow-Up Date'] || '',
+        notes: updatedLead.fields['Notes'] || '',
         notesSummary: getSectionsSummary(updatedLead.fields['Notes'] || '')
       }
     });
