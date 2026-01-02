@@ -6911,6 +6911,13 @@ router.post("/api/calendar/chat", async (req, res) => {
     };
     const leadCity = getDisplayCity(leadTimezone, context.leadLocation);
 
+    // Build lead contact info section (only include if available)
+    const leadContactInfo = [
+      context.leadEmail ? `- Lead's email: ${context.leadEmail}` : null,
+      context.leadPhone ? `- Lead's phone: ${context.leadPhone}` : null,
+      context.leadLinkedIn ? `- Lead's LinkedIn: ${context.leadLinkedIn}` : null,
+    ].filter(Boolean).join('\n');
+
     // Build system prompt with context
     const systemPrompt = `You are a helpful calendar booking assistant for ${context.yourName}.
 
@@ -6919,7 +6926,7 @@ CONTEXT:
 - Lead's name: ${context.leadName} (use "${leadFirstName}" in messages)
 - Lead's location: ${context.leadLocation || 'Unknown'}
 - Lead's timezone: ${leadTimezone}
-- Timezone difference: ${sameTimezone ? 'SAME timezone - do NOT mention timezone in messages' : `DIFFERENT timezone - include "(${leadCity} time)" when stating times for the lead`}
+${leadContactInfo ? leadContactInfo + '\n' : ''}- Timezone difference: ${sameTimezone ? 'SAME timezone - do NOT mention timezone in messages' : `DIFFERENT timezone - include "(${leadCity} time)" when stating times for the lead`}
 - Today's date: ${today.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 ${context.conversationHint ? `- From conversation: "${context.conversationHint}"` : ''}
 
@@ -6963,11 +6970,15 @@ ACTIONS (IMPORTANT - always put at the VERY END of your response, on its own lin
 
 CRITICAL: Write your full message FIRST, then add the ACTION line at the very end. Never put ACTION in the middle of text.`;
 
-    // ALWAYS fetch calendar data for every query to ensure AI never hallucinates
-    // This adds ~200-500ms but guarantees 100% reliability
+    // Check if message likely needs calendar access (keyword detection)
+    // Skip calendar fetch for pure messaging requests to speed up response
+    const calendarKeywords = /\b(free|available|availab|busy|slot|book|schedule|check|calendar|meeting|appointment|zoom|call|when|what.*time|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|next\s*week|next\s*month|this\s*week|january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i;
+    const needsCalendar = calendarKeywords.test(message);
+    
     let calendarContext = '';
     
-    logger.info(`Fetching full calendar context for message: "${message.substring(0, 50)}..."`);
+    if (needsCalendar) {
+      logger.info(`Calendar keywords detected - fetching calendar data for: "${message.substring(0, 50)}..."`);
     
     // Parse time preferences from message (for availability filtering)
     let startHour = 9;  // default 9am
@@ -7078,41 +7089,39 @@ Just the two numbers, nothing else:`;
     
     logger.info(`FINAL: Fetching ${daysToFetch} days starting ${startDayOffset} days from today`);
     
-    // Fetch BOTH appointments AND availability
-    const eventDays = [];
-    const availabilitySlots = [];
-    
+    // OPTIMIZED: Fetch calendar data in a single batch call (2 API calls instead of 42!)
+    const batchDates = [];
     for (let i = 0; i < daysToFetch; i++) {
       const dateStr = dates[startDayOffset + i];
-      if (!dateStr) continue; // Safety check
-      const date = new Date(dateStr);
-      
-      // Fetch appointments
-      const { events, error: eventsError } = await calendarService.getEventsForDate(calendarEmail, dateStr, yourTimezone);
-      if (!eventsError) {
-        eventDays.push({
-          date: dateStr,
-          day: date.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', timeZone: yourTimezone }),
-          events: events.map(e => ({
-            ...e,
-            displayTime: formatTimeInTimezone(e.start, yourTimezone),
-          })),
-        });
-      }
-      
-      // Fetch availability
-      const freeSlots = await getFreeSlotsForDate(calendarEmail, dateStr, startHour, endHour, yourTimezone);
-      const slotsWithLeadTime = freeSlots.map(slot => ({
+      if (dateStr) batchDates.push(dateStr);
+    }
+    
+    const batchStart = Date.now();
+    const { days: calendarDays, error: batchError } = await calendarService.getBatchAvailability(
+      calendarEmail, batchDates, startHour, endHour, yourTimezone
+    );
+    logger.info(`Batch calendar fetch completed in ${Date.now() - batchStart}ms for ${batchDates.length} days`);
+    
+    if (batchError) {
+      logger.error(`Batch calendar error: ${batchError}`);
+    }
+    
+    // Format for AI context with lead timezone conversion
+    const eventDays = calendarDays.map(d => ({
+      ...d,
+      events: d.events.map(e => ({
+        ...e,
+        displayTime: formatTimeInTimezone(e.start, yourTimezone),
+      })),
+    }));
+    
+    const availabilitySlots = calendarDays.map(d => ({
+      ...d,
+      freeSlots: d.freeSlots.map(slot => ({
         ...slot,
         leadDisplay: formatTimeInTimezone(slot.time, leadTimezone),
-      }));
-      
-      availabilitySlots.push({
-        date: dateStr,
-        day: date.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', timeZone: yourTimezone }),
-        freeSlots: slotsWithLeadTime,
-      });
-    }
+      })),
+    }));
     
     // Build calendar context with both appointments and availability (compact format)
     if (eventDays.length > 0) {
@@ -7128,6 +7137,9 @@ Just the two numbers, nothing else:`;
     }
     
     logger.info(`Calendar context built: ${calendarContext.length} chars`);
+    } else {
+      logger.info(`No calendar keywords detected - skipping calendar fetch for faster response`);
+    }
 
     // Build conversation history for Gemini
     const conversationHistory = messages.map(m => ({
