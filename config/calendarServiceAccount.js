@@ -225,10 +225,173 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
     }
 }
 
+/**
+ * BATCH: Get availability for multiple days in a single freebusy query + events query
+ * This is MUCH faster than calling getEventsForDate/getFreeSlotsForDate in a loop
+ * 
+ * @param {string} calendarEmail - The email of the calendar to check
+ * @param {string[]} dates - Array of dates in YYYY-MM-DD format
+ * @param {number} startHour - Start hour for availability (0-23)
+ * @param {number} endHour - End hour for availability (0-23)
+ * @param {string} timezone - Timezone string (e.g., 'Australia/Brisbane')
+ * @returns {Promise<{days: Array<{date, day, events, freeSlots}>, error?: string}>}
+ */
+async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour = 17, timezone = 'Australia/Brisbane') {
+    if (!calendarClient) {
+        return { days: [], error: 'Calendar service not initialized' };
+    }
+    
+    if (!dates || dates.length === 0) {
+        return { days: [], error: 'No dates provided' };
+    }
+    
+    console.log(`[CalendarServiceAccount] getBatchAvailability: ${dates.length} days, ${startHour}:00-${endHour}:00 ${timezone}`);
+    
+    // Helper to get timezone offset
+    const getTimezoneOffset = (tz, dateStr) => {
+        const testDate = new Date(`${dateStr}T12:00:00Z`);
+        const formatter = new Intl.DateTimeFormat('en-US', { 
+            timeZone: tz, 
+            timeZoneName: 'shortOffset' 
+        });
+        const parts = formatter.formatToParts(testDate);
+        const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+        const match = offsetPart.match(/GMT([+-])(\d+)(?::(\d+))?/);
+        if (!match) return 10 * 60; // Default to Brisbane UTC+10
+        const sign = match[1] === '+' ? 1 : -1;
+        const hours = parseInt(match[2], 10);
+        const minutes = parseInt(match[3] || '0', 10);
+        return sign * (hours * 60 + minutes);
+    };
+    
+    try {
+        const offsetMinutes = getTimezoneOffset(timezone, dates[0]);
+        
+        // Get the full date range for batch query
+        const firstDate = dates[0];
+        const lastDate = dates[dates.length - 1];
+        
+        // Query the entire range at once for freebusy
+        const rangeStart = new Date(`${firstDate}T00:00:00Z`);
+        rangeStart.setMinutes(rangeStart.getMinutes() - offsetMinutes);
+        
+        const rangeEnd = new Date(`${lastDate}T23:59:59Z`);
+        rangeEnd.setMinutes(rangeEnd.getMinutes() - offsetMinutes);
+        
+        console.log(`[CalendarServiceAccount] Batch query range: ${rangeStart.toISOString()} to ${rangeEnd.toISOString()}`);
+        
+        // Run freebusy and events queries in parallel (2 API calls instead of 42!)
+        const [freebusyResponse, eventsResponse] = await Promise.all([
+            calendarClient.freebusy.query({
+                requestBody: {
+                    timeMin: rangeStart.toISOString(),
+                    timeMax: rangeEnd.toISOString(),
+                    items: [{ id: calendarEmail }],
+                },
+            }),
+            calendarClient.events.list({
+                calendarId: calendarEmail,
+                timeMin: rangeStart.toISOString(),
+                timeMax: rangeEnd.toISOString(),
+                singleEvents: true,
+                orderBy: 'startTime',
+                maxResults: 250, // Reasonable limit for multi-week range
+            }),
+        ]);
+        
+        // Extract busy periods
+        const calendars = freebusyResponse.data.calendars || {};
+        const calendarData = calendars[calendarEmail];
+        
+        if (calendarData?.errors?.length > 0) {
+            const error = calendarData.errors[0];
+            if (error.reason === 'notFound') {
+                return { days: [], error: `Calendar not shared. Share with: ${serviceAccountEmail}` };
+            }
+            return { days: [], error: `Calendar error: ${error.reason}` };
+        }
+        
+        const allBusyPeriods = calendarData?.busy || [];
+        const allEvents = (eventsResponse.data.items || []).map(event => ({
+            summary: event.summary || '(No title)',
+            start: event.start?.dateTime || event.start?.date,
+            end: event.end?.dateTime || event.end?.date,
+            location: event.location || '',
+        }));
+        
+        console.log(`[CalendarServiceAccount] Batch result: ${allBusyPeriods.length} busy periods, ${allEvents.length} events`);
+        
+        // Process each date
+        const days = dates.map(date => {
+            const dateObj = new Date(date);
+            const dayLabel = dateObj.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', timeZone: timezone });
+            
+            // Filter events for this date
+            const dayEvents = allEvents.filter(event => {
+                const eventDate = event.start.split('T')[0];
+                return eventDate === date;
+            });
+            
+            // Calculate free slots for this date
+            const dayStart = new Date(`${date}T${String(startHour).padStart(2, '0')}:00:00Z`);
+            dayStart.setMinutes(dayStart.getMinutes() - offsetMinutes);
+            
+            const dayEnd = new Date(`${date}T${String(endHour).padStart(2, '0')}:00:00Z`);
+            dayEnd.setMinutes(dayEnd.getMinutes() - offsetMinutes);
+            
+            // Filter busy periods that overlap with this day's working hours
+            const dayBusy = allBusyPeriods.filter(period => {
+                const busyStart = new Date(period.start);
+                const busyEnd = new Date(period.end);
+                return busyStart < dayEnd && busyEnd > dayStart;
+            });
+            
+            // Calculate free 30-minute slots
+            const freeSlots = [];
+            const slotDuration = 30 * 60 * 1000;
+            let current = new Date(dayStart);
+            
+            while (current.getTime() + slotDuration <= dayEnd.getTime()) {
+                const slotEnd = new Date(current.getTime() + slotDuration);
+                
+                const isBusy = dayBusy.some(period => {
+                    const busyStart = new Date(period.start);
+                    const busyEnd = new Date(period.end);
+                    return current < busyEnd && slotEnd > busyStart;
+                });
+                
+                if (!isBusy) {
+                    freeSlots.push({
+                        time: current.toISOString(),
+                        display: current.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', timeZone: timezone }),
+                        displayRange: `${current.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', timeZone: timezone })}`,
+                    });
+                }
+                
+                current = slotEnd;
+            }
+            
+            return {
+                date,
+                day: dayLabel,
+                events: dayEvents,
+                freeSlots,
+            };
+        });
+        
+        return { days };
+        
+    } catch (error) {
+        console.error('[CalendarServiceAccount] Batch error:', error.message, error.code);
+        return { days: [], error: error.message };
+    }
+}
+
 module.exports = {
     calendarClient,
     serviceAccountEmail,
     getFreeBusy,
     getFreeSlotsForDate,
     getEventsForDate,
+    getBatchAvailability,
 };
