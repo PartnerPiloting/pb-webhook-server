@@ -86,7 +86,8 @@ export default function QuickUpdateModal({
   initialLeadId = null, 
   clientId = null,
   clientTimezone = null,
-  onTimezoneUpdate = null
+  onTimezoneUpdate = null,
+  standalone = false  // When true, hides close button and disables escape
 }) {
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -210,8 +211,8 @@ export default function QuickUpdateModal({
     if (!isOpen) return;
     
     const handleKeyDown = (e) => {
-      // Escape - close (with unsaved warning if needed)
-      if (e.key === 'Escape') {
+      // Escape - close (with unsaved warning if needed) - skip in standalone mode
+      if (e.key === 'Escape' && !standalone) {
         e.preventDefault();
         handleClose();
       }
@@ -411,9 +412,18 @@ export default function QuickUpdateModal({
 
   if (!isOpen) return null;
 
+  // Wrapper classes differ for standalone vs modal mode
+  const wrapperClasses = standalone 
+    ? "w-full" // Standalone: no fixed overlay
+    : "fixed inset-0 z-[9999] overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4"; // Modal: full overlay
+  
+  const containerClasses = standalone
+    ? "bg-white w-full min-h-screen" // Standalone: full page
+    : "bg-white rounded-lg shadow-xl w-full max-w-6xl h-[85vh] overflow-hidden flex flex-col"; // Modal: centered box
+
   return (
-    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-[85vh] overflow-hidden flex flex-col">
+    <div className={wrapperClasses}>
+      <div className={containerClasses}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between">
@@ -432,15 +442,17 @@ export default function QuickUpdateModal({
                 </p>
               )}
             </div>
-            <button
-              onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-md hover:bg-gray-200"
-              title="Close (Esc)"
-            >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            {!standalone && (
+              <button
+                onClick={handleClose}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-md hover:bg-gray-200"
+                title="Close (Esc)"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           
           {/* Timezone Configuration/Edit Panel */}

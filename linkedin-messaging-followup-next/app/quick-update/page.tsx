@@ -49,22 +49,17 @@ function QuickUpdateContent() {
     );
   }
 
-  // Render the Quick Update modal in standalone mode
+  // Render the Quick Update as a standalone page (not modal)
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          <QuickUpdateModal
-            isOpen={true}
-            onClose={() => {
-              // In standalone mode, redirect to main page
-              window.location.href = `/?client=${clientId}`;
-            }}
-            clientId={clientId as unknown as null}
-          />
-        </div>
-      </div>
-    </div>
+    <QuickUpdateModal
+      isOpen={true}
+      onClose={() => {
+        // In standalone mode, this shouldn't be called but just in case
+        window.location.href = `/?client=${clientId}`;
+      }}
+      clientId={clientId as unknown as null}
+      standalone={true}
+    />
   );
 }
 
