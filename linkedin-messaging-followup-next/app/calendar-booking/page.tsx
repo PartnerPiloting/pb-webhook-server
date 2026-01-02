@@ -1444,8 +1444,8 @@ ${yourFirstName}`;
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
                     placeholder="Book a call anytime in the next 90 days..."
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm resize-none"
-                    rows={2}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm resize-y min-h-[80px]"
+                    rows={4}
                     disabled={chatLoading}
                   />
                   <button
