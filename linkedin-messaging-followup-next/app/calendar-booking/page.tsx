@@ -1229,7 +1229,7 @@ ${yourFirstName}`;
               )}
               {leadFound === false && !lookingUpLead && searchQuery.trim().length >= 2 && (
                 <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                  <p className="text-yellow-800">⚠️ Lead not found in Airtable. You can still enter details manually below.</p>
+                  <p className="text-yellow-800">⚠️ Lead not found. You can still enter details manually below.</p>
                 </div>
               )}
               {leadFound === true && (
