@@ -6960,13 +6960,15 @@ CRITICAL RULES:
 - When suggesting meeting times, pick slots from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
 
 ACTIONS (IMPORTANT - always put at the VERY END of your response, on its own line):
-1. When the user picks/confirms a time, add this at the END:
+1. When the user picks/confirms a time OR you suggest a specific time, ALWAYS add this at the END:
    ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
-
-2. When the user says to BOOK IT (phrases like "book it", "lock it in", "add to calendar", "schedule it", "confirm", "yes book that"), add this at the END:
-   ACTION: {"type":"openCalendar"}
    
-   Note: Only use openCalendar if a time has already been set. If no time is set yet, ask which time they want.
+   IMPORTANT: Always include this action whenever you confirm or suggest a specific meeting time, even if just acknowledging it.
+
+2. When the user wants to BOOK IT and open their calendar (phrases like "book it", "lock it in", "add to calendar", "open my calendar", "schedule it", "confirm", "yes book that"), add BOTH actions:
+   ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}","openCalendar":true}
+   
+   The "openCalendar":true flag tells the system to also open the calendar after setting the time.
 
 CRITICAL: Write your full message FIRST, then add the ACTION line at the very end. Never put ACTION in the middle of text.
 
@@ -7158,6 +7160,8 @@ CALENDAR DATA RANGE:
               leadDateTime: dateTimeStr,
               displayTime: displayTime,
               leadDisplayTime: formatTimeInTimezone(dateTimeStr, leadTimezone),
+              // Preserve openCalendar flag if present
+              openCalendar: actionData.openCalendar || false,
             };
           } else {
             // Has timezone info, use normal formatting
@@ -7167,6 +7171,8 @@ CALENDAR DATA RANGE:
               leadDateTime: actionData.dateTime,
               displayTime: formatTimeInTimezone(actionData.dateTime, yourTimezone),
               leadDisplayTime: formatTimeInTimezone(actionData.dateTime, leadTimezone),
+              // Preserve openCalendar flag if present
+              openCalendar: actionData.openCalendar || false,
             };
           }
         } else if (actionData.type === 'openCalendar') {
