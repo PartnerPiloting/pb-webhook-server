@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Network Accelerator",
+  title: "🚀 Network Accelerator",
   description: "Score leads — Start conversations — Close deals",
 };
 
