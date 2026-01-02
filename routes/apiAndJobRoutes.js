@@ -6968,17 +6968,19 @@ ACTIONS (IMPORTANT - always put at the VERY END of your response, on its own lin
    
    Note: Only use openCalendar if a time has already been set. If no time is set yet, ask which time they want.
 
-CRITICAL: Write your full message FIRST, then add the ACTION line at the very end. Never put ACTION in the middle of text.`;
+CRITICAL: Write your full message FIRST, then add the ACTION line at the very end. Never put ACTION in the middle of text.
 
-    // Check if message likely needs calendar access (keyword detection)
-    // Skip calendar fetch for pure messaging requests to speed up response
-    const calendarKeywords = /\b(free|available|availab|busy|slot|book|schedule|check|calendar|meeting|appointment|zoom|call|when|what.*time|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|next\s*week|next\s*month|this\s*week|january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}(?:st|nd|rd|th)?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i;
-    const needsCalendar = calendarKeywords.test(message);
+CALENDAR DATA RANGE:
+- You have calendar data for the next 90 days (through early ${new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })})
+- If the user asks about a date beyond 90 days, politely explain: "I can check availability up to 90 days out. That date is a bit further - would you like to look at [alternative within range] instead, or we can revisit closer to the date?"`;
+
+    // Always fetch 90 days of calendar data - simple and reliable
+    const needsCalendar = true; // Always fetch calendar for booking assistant
     
     let calendarContext = '';
     
     if (needsCalendar) {
-      logger.info(`Calendar keywords detected - fetching calendar data for: "${message.substring(0, 50)}..."`);
+      logger.info(`Fetching 90 days of calendar data for: "${message.substring(0, 50)}..."`);
     
     // Parse time preferences from message (for availability filtering)
     let startHour = 9;  // default 9am
@@ -7014,87 +7016,14 @@ CRITICAL: Write your full message FIRST, then add the ACTION line at the very en
     
     logger.info(`Time preferences: ${startHour}:00 - ${endHour}:00`);
     
-    // Use AI to extract date range from user query
-    let daysToFetch = 21;
-    let startDayOffset = 0;
+    // SIMPLIFIED: Always fetch 90 days - no AI call needed for date extraction
+    // This eliminates the fragile date parsing AI call and provides reliable coverage
+    const daysToFetch = 90;
     
-    logger.info('Starting date extraction...');
+    logger.info(`Fetching ${daysToFetch} days of calendar data`);
     
-    try {
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      
-      const messageList = Array.isArray(messages) ? messages : [];
-      const recentContext = messageList.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
-      
-      logger.info('Calling AI for date extraction...');
-      
-      const datePrompt = `Today is ${todayStr}. Parse the date range from this message.
-${recentContext ? `Context:\n${recentContext}\n` : ''}
-Message: "${message}"
-
-Respond with exactly two numbers separated by comma: startOffset,numDays
-- startOffset = days from today until the START of requested period
-- numDays = how many days to fetch (1 week=7, 2 weeks=14, 3 weeks=21)
-
-Examples:
-"first 2 weeks of March" (if today is Jan 2) → 58,14
-"first week of March" → 58,7
-"next 3 weeks" → 0,21
-"next 2 weeks" → 0,14
-"in 2 weeks" → 14,7
-"March appointments" → 58,21
-"tomorrow" → 1,3
-No date mentioned → 0,21
-
-Just the two numbers, nothing else:`;
-
-      logger.info('Calling AI for date extraction...');
-      
-      const dateResult = await geminiConfig.geminiModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: datePrompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 1024 },
-      });
-      
-      // Log full response structure for debugging
-      const finishReason = dateResult.response?.candidates?.[0]?.finishReason;
-      const blockReason = dateResult.response?.promptFeedback?.blockReason;
-      logger.info(`Date extraction finish: ${finishReason}, block: ${blockReason || 'none'}`);
-      
-      let response = '';
-      let rawResponse = '';
-      if (dateResult.response && typeof dateResult.response.text === 'function') {
-        rawResponse = dateResult.response.text();
-        response = rawResponse.trim();
-      } else if (dateResult.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
-        rawResponse = dateResult.response.candidates[0].content.parts[0].text;
-        response = rawResponse.trim();
-      }
-      
-      logger.info(`AI date RAW response: "${rawResponse}"`);
-      logger.info(`AI date response: "${response}"`);
-      
-      // Parse "X,Y" format
-      const match = response.match(/(\d+)\s*,\s*(\d+)/);
-      if (match) {
-        startDayOffset = Math.max(0, Math.min(parseInt(match[1], 10), 120));
-        daysToFetch = Math.max(3, Math.min(parseInt(match[2], 10), 21));
-        logger.info(`Parsed date range: startOffset=${startDayOffset}, numDays=${daysToFetch}`);
-      } else {
-        logger.warn(`Could not parse date response, using defaults`);
-      }
-    } catch (err) {
-      logger.warn(`Date extraction error: ${err.message}`);
-    }
-    
-    logger.info(`FINAL: Fetching ${daysToFetch} days starting ${startDayOffset} days from today`);
-    
-    // OPTIMIZED: Fetch calendar data in a single batch call (2 API calls instead of 42!)
-    const batchDates = [];
-    for (let i = 0; i < daysToFetch; i++) {
-      const dateStr = dates[startDayOffset + i];
-      if (dateStr) batchDates.push(dateStr);
-    }
+    // Build batch dates array for 90 days starting from today
+    const batchDates = dates.slice(0, daysToFetch);
     
     const batchStart = Date.now();
     const { days: calendarDays, error: batchError } = await calendarService.getBatchAvailability(
@@ -7136,9 +7065,9 @@ Just the two numbers, nothing else:`;
       ).join('\n')}`;
     }
     
-    logger.info(`Calendar context built: ${calendarContext.length} chars`);
+    logger.info(`Calendar context built: ${calendarContext.length} chars, ~${Math.ceil(calendarContext.length / 4)} tokens`);
     } else {
-      logger.info(`No calendar keywords detected - skipping calendar fetch for faster response`);
+      logger.info(`Calendar fetch skipped`);
     }
 
     // Build conversation history for Gemini
@@ -7363,11 +7292,11 @@ RESPOND WITH ONLY THIS JSON FORMAT (no markdown):
 });
 
 // ============================================================================
-// CALENDAR - LOOKUP LEAD BY LINKEDIN URL
+// CALENDAR - LOOKUP LEAD BY URL, EMAIL, OR NAME
 // ============================================================================
 /**
  * GET /api/calendar/lookup-lead
- * Lookup a lead in Airtable by LinkedIn URL
+ * Lookup a lead in Airtable by LinkedIn URL, email, or name
  * Returns lead details if found, or 404 if not
  */
 router.get("/api/calendar/lookup-lead", async (req, res) => {
@@ -7379,21 +7308,15 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
       return res.status(400).json({ error: 'Client ID required' });
     }
 
-    let { url } = req.query;
+    // Support both 'url' (legacy) and 'query' (new) parameters
+    let query = req.query.query || req.query.url;
     
-    if (!url) {
-      return res.status(400).json({ error: 'LinkedIn URL required' });
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'Search query required (URL, email, or name)' });
     }
 
-    // Normalize URL: strip query params and trailing slash
-    url = url.split('?')[0].replace(/\/$/, '');
-    
-    // Ensure it's a LinkedIn profile URL
-    if (!url.includes('linkedin.com/in/')) {
-      return res.status(400).json({ error: 'Invalid LinkedIn profile URL. Expected format: https://www.linkedin.com/in/username' });
-    }
-
-    logger.info(`Looking up lead by URL: ${url}`);
+    query = query.trim();
+    logger.info(`Looking up lead by query: ${query}`);
 
     // Get client's Airtable base
     const { getClientBase } = require('../config/airtableClient.js');
@@ -7403,19 +7326,56 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    // Query Airtable for lead by LinkedIn URL
-    // Try exact match first, then with/without trailing slash
-    const formula = `OR(
-      {LinkedIn Profile URL}='${url}',
-      {LinkedIn Profile URL}='${url}/',
-      LOWER({LinkedIn Profile URL})=LOWER('${url}'),
-      LOWER({LinkedIn Profile URL})=LOWER('${url}/')
-    )`;
+    // Detect query type
+    const isLinkedInUrl = /linkedin\.com\/in\//i.test(query);
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(query);
+    
+    let formula = '';
+    let lookupMethod = 'name';
+    
+    if (isLinkedInUrl) {
+      // LinkedIn URL lookup
+      lookupMethod = 'linkedin_url';
+      const url = query.split('?')[0].replace(/\/$/, ''); // Normalize
+      formula = `OR(
+        {LinkedIn Profile URL}='${url}',
+        {LinkedIn Profile URL}='${url}/',
+        LOWER({LinkedIn Profile URL})=LOWER('${url}'),
+        LOWER({LinkedIn Profile URL})=LOWER('${url}/')
+      )`;
+    } else if (isEmail) {
+      // Email lookup
+      lookupMethod = 'email';
+      formula = `LOWER({Email}) = LOWER('${query}')`;
+    } else {
+      // Name lookup
+      lookupMethod = 'name';
+      const nameParts = query.split(/\s+/);
+      
+      if (nameParts.length >= 2) {
+        // First AND last name
+        const firstName = nameParts[0].toLowerCase();
+        const lastName = nameParts.slice(1).join(' ').toLowerCase();
+        formula = `AND(
+          SEARCH("${firstName}", LOWER({First Name})),
+          SEARCH("${lastName}", LOWER({Last Name}))
+        )`;
+      } else {
+        // Single word - search in both fields
+        const term = nameParts[0].toLowerCase();
+        formula = `OR(
+          SEARCH("${term}", LOWER({First Name})),
+          SEARCH("${term}", LOWER({Last Name}))
+        )`;
+      }
+    }
+
+    logger.info(`Lookup method: ${lookupMethod}`);
 
     const records = await clientBase('Leads')
       .select({
         filterByFormula: formula,
-        maxRecords: 1,
+        maxRecords: 10, // Allow multiple matches for name search
         fields: [
           'First Name',
           'Last Name',
@@ -7425,51 +7385,71 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
           'Phone',
           'Headline',
           'Company Name',
+          'AI Score',
           'Raw Profile Data'
         ]
       })
       .firstPage();
 
     if (!records || records.length === 0) {
-      logger.info(`Lead not found for URL: ${url}`);
+      logger.info(`No leads found for: ${query}`);
       return res.status(404).json({ 
         found: false, 
         message: 'Lead not found in system',
-        url: url 
+        query: query,
+        lookupMethod: lookupMethod 
       });
     }
 
-    const record = records[0];
-    const fields = record.fields;
-    
-    // Try to get location from field, or fall back to Raw Profile Data
-    let location = fields['Location'] || '';
-    if (!location && fields['Raw Profile Data']) {
-      try {
-        const rawData = JSON.parse(fields['Raw Profile Data']);
-        location = rawData.location_name || rawData.location || '';
-      } catch (e) {
-        // Ignore JSON parse errors
+    // Map records to lead data
+    const leads = records.map(record => {
+      const fields = record.fields;
+      
+      // Try to get location from field, or fall back to Raw Profile Data
+      let location = fields['Location'] || '';
+      if (!location && fields['Raw Profile Data']) {
+        try {
+          const rawData = JSON.parse(fields['Raw Profile Data']);
+          location = rawData.location_name || rawData.location || '';
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
       }
+
+      return {
+        recordId: record.id,
+        firstName: fields['First Name'] || '',
+        lastName: fields['Last Name'] || '',
+        fullName: `${fields['First Name'] || ''} ${fields['Last Name'] || ''}`.trim(),
+        linkedInUrl: fields['LinkedIn Profile URL'] || '',
+        location: location,
+        email: fields['Email'] || '',
+        phone: fields['Phone'] || '',
+        headline: fields['Headline'] || '',
+        company: fields['Company Name'] || '',
+        aiScore: fields['AI Score'] || null,
+      };
+    });
+
+    logger.info(`Found ${leads.length} lead(s) via ${lookupMethod}`);
+
+    // Return single lead format for backward compatibility if exactly 1 match
+    // Otherwise return array for selection
+    if (leads.length === 1) {
+      res.json({
+        found: true,
+        lookupMethod,
+        count: 1,
+        ...leads[0]
+      });
+    } else {
+      res.json({
+        found: true,
+        lookupMethod,
+        count: leads.length,
+        leads: leads
+      });
     }
-
-    const leadData = {
-      found: true,
-      recordId: record.id,
-      firstName: fields['First Name'] || '',
-      lastName: fields['Last Name'] || '',
-      fullName: `${fields['First Name'] || ''} ${fields['Last Name'] || ''}`.trim(),
-      linkedInUrl: fields['LinkedIn Profile URL'] || url,
-      location: location,
-      email: fields['Email'] || '',
-      phone: fields['Phone'] || '',
-      headline: fields['Headline'] || '',
-      company: fields['Company Name'] || '',
-    };
-
-    logger.info(`Found lead: ${leadData.fullName} (${leadData.location})`);
-
-    res.json(leadData);
 
   } catch (error) {
     logger.error('Lead lookup error:', error.message, error.stack);
