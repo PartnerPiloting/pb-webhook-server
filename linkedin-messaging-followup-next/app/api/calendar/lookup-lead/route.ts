@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/calendar/lookup-lead
- * Proxy to backend - lookup lead by LinkedIn URL
+ * Proxy to backend - lookup lead by LinkedIn URL, email, or name
  */
 export async function GET(request: Request) {
   try {
@@ -14,10 +14,11 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const url = searchParams.get('url');
+    // Support both 'query' (new) and 'url' (legacy) parameters
+    const query = searchParams.get('query') || searchParams.get('url');
 
-    if (!url) {
-      return NextResponse.json({ error: 'LinkedIn URL required' }, { status: 400 });
+    if (!query) {
+      return NextResponse.json({ error: 'Search query required (URL, email, or name)' }, { status: 400 });
     }
 
     // Get backend URL - strip /api/linkedin suffix if present
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
     const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server-staging.onrender.com';
 
     const backendResponse = await fetch(
-      `${backendUrl}/api/calendar/lookup-lead?url=${encodeURIComponent(url)}`,
+      `${backendUrl}/api/calendar/lookup-lead?query=${encodeURIComponent(query)}`,
       {
         headers: {
           'x-client-id': clientId,
