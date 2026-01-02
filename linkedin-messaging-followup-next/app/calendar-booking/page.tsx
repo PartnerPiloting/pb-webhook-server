@@ -88,11 +88,27 @@ function CalendarBookingContent() {
   const [promptError, setPromptError] = useState<string>('');
   const router = useRouter();
   
-  // Lead lookup state (URL-based lookup)
+  // Lead lookup state (URL/email/name-based lookup)
   const [lookingUpLead, setLookingUpLead] = useState(false);
   const [leadLookupError, setLeadLookupError] = useState('');
   const [leadRecordId, setLeadRecordId] = useState<string | null>(null);
   const [leadFound, setLeadFound] = useState<boolean | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Array<{
+    recordId: string;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    linkedInUrl: string;
+    location: string;
+    email: string;
+    phone: string;
+    headline: string;
+    company: string;
+    aiScore: number | null;
+  }>>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Raw LinkedIn paste extraction (legacy - kept for fallback)
   const [rawPasteText, setRawPasteText] = useState('');
@@ -438,27 +454,20 @@ function CalendarBookingContent() {
     }
   };
 
-  // Look up lead by LinkedIn URL in Airtable
-  const handleLookupLead = async (urlOverride?: string) => {
-    const url = (urlOverride || formData.leadLinkedIn).trim();
-    
-    if (!url) {
-      setLeadLookupError('Please enter a LinkedIn URL');
-      return;
-    }
-
-    if (!url.includes('linkedin.com/in/')) {
-      setLeadLookupError('Please enter a valid LinkedIn profile URL (e.g., https://www.linkedin.com/in/username)');
+  // Look up lead by LinkedIn URL, email, or name in Airtable
+  const handleSearchLead = async (query: string) => {
+    if (!query || query.trim().length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
       return;
     }
 
     setLookingUpLead(true);
     setLeadLookupError('');
     setLeadFound(null);
-    setLeadRecordId(null);
 
     try {
-      const response = await fetch(`/api/calendar/lookup-lead?url=${encodeURIComponent(url)}`, {
+      const response = await fetch(`/api/calendar/lookup-lead?query=${encodeURIComponent(query.trim())}`, {
         headers: {
           'x-client-id': clientInfo?.clientId || '',
         },
@@ -467,40 +476,73 @@ function CalendarBookingContent() {
       const data = await response.json();
 
       if (!response.ok || !data.found) {
+        setSearchResults([]);
+        setShowSearchResults(false);
         setLeadFound(false);
-        setLeadLookupError(data.message || 'Lead not found in system');
+        setLeadLookupError(data.message || 'Lead not found');
         return;
       }
 
-      // Found the lead - populate form and clear previous booking data
-      setLeadFound(true);
-      setLeadRecordId(data.recordId);
-      setFormData(prev => ({
-        ...prev,
-        leadName: data.fullName || '',
-        leadLocation: data.location || '',
-        leadEmail: data.email || '',
-        leadPhone: data.phone || '',
-        leadLinkedIn: data.linkedInUrl || prev.leadLinkedIn,
-        conversationHint: '', // Clear previous booking context
-      }));
-      
-      // Clear previous smart booking conversation
-      setChatMessages([]);
-
-      // Build success message
-      const foundFields = [];
-      if (data.fullName) foundFields.push(data.fullName);
-      if (data.location) foundFields.push(data.location);
-      if (data.headline) foundFields.push(data.headline);
-      
-      setSuccess(`✅ Found: ${foundFields.join(' | ')}`);
+      // Check if single result or multiple
+      if (data.leads) {
+        // Multiple results - show dropdown
+        setSearchResults(data.leads);
+        setShowSearchResults(true);
+        setLeadFound(null);
+      } else {
+        // Single result - auto-select
+        selectLead(data);
+      }
 
     } catch (err) {
       setLeadLookupError('Failed to look up lead. Please try again.');
+      setSearchResults([]);
+      setShowSearchResults(false);
     } finally {
       setLookingUpLead(false);
     }
+  };
+
+  // Select a lead from search results
+  const selectLead = (lead: { recordId: string; fullName: string; location: string; email: string; phone: string; linkedInUrl: string; headline?: string }) => {
+    setLeadFound(true);
+    setLeadRecordId(lead.recordId);
+    setFormData(prev => ({
+      ...prev,
+      leadName: lead.fullName || '',
+      leadLocation: lead.location || '',
+      leadEmail: lead.email || '',
+      leadPhone: lead.phone || '',
+      leadLinkedIn: lead.linkedInUrl || prev.leadLinkedIn,
+      conversationHint: '', // Clear previous booking context
+    }));
+    
+    // Clear search state
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchResults(false);
+    setChatMessages([]);
+
+    // Build success message
+    const foundFields = [];
+    if (lead.fullName) foundFields.push(lead.fullName);
+    if (lead.location) foundFields.push(lead.location);
+    if (lead.headline) foundFields.push(lead.headline);
+    
+    setSuccess(`✅ Found: ${foundFields.join(' | ')}`);
+  };
+
+  // Legacy: Look up lead by LinkedIn URL directly (for paste events)
+  const handleLookupLead = async (urlOverride?: string) => {
+    const url = (urlOverride || formData.leadLinkedIn).trim();
+    
+    if (!url) {
+      setLeadLookupError('Please enter a search term');
+      return;
+    }
+
+    // Use the new search function
+    await handleSearchLead(url);
   };
 
   // Save updated lead details back to Airtable
@@ -1099,47 +1141,93 @@ ${yourFirstName}`;
               </div>
             </div>
 
-            {/* Lead Lookup by LinkedIn URL */}
+            {/* Lead Lookup by URL, Email, or Name */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h2 className="text-lg font-semibold text-blue-800 mb-2">🔍 Find Lead</h2>
               <p className="text-sm text-blue-600 mb-3">
-                Paste the lead&apos;s LinkedIn URL from your browser address bar. We&apos;ll look them up in your Airtable.
+                Search by LinkedIn URL, email, or name to find the lead in your Airtable.
               </p>
               
-              {/* LinkedIn URL input - auto-lookups on paste */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={formData.leadLinkedIn}
-                  onChange={(e) => {
-                    const newValue = e.target.value;
-                    setFormData({...formData, leadLinkedIn: newValue});
-                    setLeadFound(null);
-                    setLeadLookupError('');
-                    
-                    // Auto-lookup if a LinkedIn URL is pasted
-                    if (newValue.includes('linkedin.com/in/') && newValue.length > 30) {
-                      // Pass URL directly since state won't be updated yet
-                      handleLookupLead(newValue);
-                    }
-                  }}
-                  placeholder="https://www.linkedin.com/in/username"
-                  className="flex-1 px-3 py-2 border border-blue-300 rounded-md text-sm"
-                />
-                <button
-                  onClick={() => handleLookupLead()}
-                  disabled={lookingUpLead || !formData.leadLinkedIn.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                >
-                  {lookingUpLead ? '🔄' : '🔍'}
-                </button>
+              {/* Search input with debounced lookup */}
+              <div className="relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        const newValue = e.target.value;
+                        setSearchQuery(newValue);
+                        setLeadFound(null);
+                        setLeadLookupError('');
+                        
+                        // Clear existing timeout
+                        if (searchTimeoutRef.current) {
+                          clearTimeout(searchTimeoutRef.current);
+                        }
+                        
+                        // Debounced search (300ms)
+                        if (newValue.trim().length >= 2) {
+                          searchTimeoutRef.current = setTimeout(() => {
+                            handleSearchLead(newValue);
+                          }, 300);
+                        } else {
+                          setSearchResults([]);
+                          setShowSearchResults(false);
+                        }
+                      }}
+                      placeholder="LinkedIn URL, email, or name..."
+                      className="w-full pl-10 pr-4 py-2 border border-blue-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <button
+                    onClick={() => handleSearchLead(searchQuery)}
+                    disabled={lookingUpLead || searchQuery.trim().length < 2}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {lookingUpLead ? '🔄' : '🔍'}
+                  </button>
+                </div>
+                
+                {/* Search results dropdown */}
+                {showSearchResults && searchResults.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {searchResults.map((lead) => (
+                      <button
+                        key={lead.recordId}
+                        onClick={() => selectLead(lead)}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b last:border-b-0 transition-colors"
+                      >
+                        <div className="font-medium text-gray-900">
+                          {lead.firstName} {lead.lastName}
+                          {lead.aiScore && (
+                            <span className="ml-2 text-xs text-blue-600 font-normal">
+                              Score: {lead.aiScore}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-500 truncate">
+                          {lead.headline && <span>{lead.headline}</span>}
+                          {lead.headline && lead.company && <span> @ </span>}
+                          {lead.company && <span>{lead.company}</span>}
+                        </div>
+                        {lead.email && (
+                          <div className="text-xs text-gray-400">{lead.email}</div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               
               {/* Lookup result feedback */}
               {leadLookupError && (
                 <p className="mt-2 text-sm text-red-600">{leadLookupError}</p>
               )}
-              {leadFound === false && (
+              {leadFound === false && !lookingUpLead && searchQuery.trim().length >= 2 && (
                 <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
                   <p className="text-yellow-800">⚠️ Lead not found in Airtable. You can still enter details manually below.</p>
                 </div>
@@ -1250,7 +1338,8 @@ ${yourFirstName}`;
                   {chatMessages.length === 0 ? (
                     <div className="text-gray-500 text-center py-8">
                       <p className="mb-2">🤖 Ask me about your availability!</p>
-                      <p className="text-sm">Try: &quot;What&apos;s free Thursday?&quot; or &quot;Check next Tuesday lunch&quot;</p>
+                      <p className="text-sm">I can check any date in the next 90 days.</p>
+                      <p className="text-sm mt-1">Try: &quot;What&apos;s free Thursday?&quot; or &quot;Check end of February&quot;</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -1354,7 +1443,7 @@ ${yourFirstName}`;
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleChatSend())}
-                    placeholder="What's free Thursday afternoon?"
+                    placeholder="Book a call anytime in the next 90 days..."
                     className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm resize-none"
                     rows={2}
                     disabled={chatLoading}
