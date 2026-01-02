@@ -638,8 +638,8 @@ export default function QuickUpdateModal({
         
         {/* Main Content - Three Columns */}
         <div className="flex-1 overflow-hidden flex">
-          {/* Left Column - Notes Input */}
-          <div className="flex-1 min-w-0 p-6 overflow-y-auto border-r border-gray-200">
+          {/* Left Column - Notes Input (narrower) */}
+          <div className="w-[420px] flex-shrink-0 p-6 overflow-y-auto border-r border-gray-200">
             {/* Selected Lead Bar */}
             {selectedLead && (
               <div className="mb-4 flex items-center justify-between bg-blue-50 px-4 py-3 rounded-lg">
@@ -737,8 +737,8 @@ export default function QuickUpdateModal({
             )}
           </div>
           
-          {/* Middle Column - Preview */}
-          <div className="w-80 flex-shrink-0 p-6 overflow-y-auto border-r border-gray-200 bg-gray-50">
+          {/* Middle Column - Preview (wider) */}
+          <div className="flex-1 min-w-0 p-6 overflow-y-auto border-r border-gray-200 bg-gray-50">
             <h3 className="font-medium text-gray-900 mb-3">
               {parsePreview?.formatted || noteContent.trim() ? 'Preview (how it will look)' : 'Preview'}
             </h3>
