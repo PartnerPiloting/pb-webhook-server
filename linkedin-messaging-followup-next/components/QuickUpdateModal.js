@@ -773,7 +773,7 @@ export default function QuickUpdateModal({
             )}
             
             {/* Full Notes View Button */}
-            {selectedLead?.notes && (
+            {(selectedLead?.notes || (notesSummary && Object.values(notesSummary).some(s => s.hasContent))) && (
               <div className="mt-6">
                 <button
                   onClick={() => setShowNotesPreview(true)}
