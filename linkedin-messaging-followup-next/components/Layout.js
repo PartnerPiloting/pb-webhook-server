@@ -9,8 +9,6 @@ import ClientCodeEntry from './ClientCodeEntry';
 
 // Lazy-load the help panel to keep initial bundle lean
 const ContextHelpPanel = dynamic(() => import('./ContextHelpPanel'), { ssr: false });
-// Lazy-load the Quick Update modal
-const QuickUpdateModal = dynamic(() => import('./QuickUpdateModal'), { ssr: false });
 
 // Client initialization hook (encapsulated)
 const useClientInitialization = () => {
@@ -94,7 +92,6 @@ const Layout = ({ children }) => {
   const [clientProfile, setClientProfile] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpAreaOverride, setHelpAreaOverride] = useState(null);
-  const [quickUpdateOpen, setQuickUpdateOpen] = useState(false);
   const { isInitialized, error } = useClientInitialization();
   
   // Get client param for Calendar Booking link
@@ -218,17 +215,17 @@ const Layout = ({ children }) => {
               </h1>
             </div>
             <div className="flex items-center space-x-3">
-              {/* Quick Update Button */}
-              <button
-                onClick={() => setQuickUpdateOpen(true)}
+              {/* Quick Update Link */}
+              <Link
+                href={`/quick-update${clientParam ? `?client=${clientParam}` : ''}`}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                 title="Quick Update - rapid notes entry"
               >
                 <PencilSquareIcon className="h-5 w-5" />
                 <span className="hidden sm:inline">Quick Update</span>
-              </button>
+              </Link>
               
-              {/* Calendar Booking Button */}
+              {/* Calendar Booking Link */}
               <Link
                 href={`/calendar-booking${clientParam ? `?client=${clientParam}` : ''}`}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
@@ -259,24 +256,6 @@ const Layout = ({ children }) => {
       {helpOpen && (
         <ContextHelpPanel area={helpAreaOverride || helpArea} isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
       )}
-      
-      {/* Quick Update Modal */}
-      <QuickUpdateModal 
-        isOpen={quickUpdateOpen} 
-        onClose={() => setQuickUpdateOpen(false)}
-        clientId={clientProfile?.client?.clientId || clientProfile?.clientId || null}
-        clientTimezone={clientProfile?.client?.timezone || clientProfile?.timezone || null}
-        onTimezoneUpdate={(newTimezone) => {
-          // Update the local clientProfile with the new timezone
-          setClientProfile(prev => ({
-            ...prev,
-            client: {
-              ...prev?.client,
-              timezone: newTimezone
-            }
-          }));
-        }}
-      />
     </div>
   );
 };
