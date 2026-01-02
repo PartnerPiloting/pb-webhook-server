@@ -681,16 +681,24 @@ function CalendarBookingContent() {
         
         // Handle booking action - auto-fill the picker
         if (data.action?.type === 'setBookingTime') {
-          const action = data.action as BookingAction;
+          const action = data.action as BookingAction & { openCalendar?: boolean };
           // Convert ISO to datetime-local format
           const dt = new Date(action.dateTime);
           const localDateTime = dt.toISOString().slice(0, 16);
           setBookTime(localDateTime);
           setLeadDisplayTime(action.leadDisplayTime || '');
           setSuccess(`✅ Time set: ${action.displayTime} (${action.leadDisplayTime} for lead)`);
+          
+          // If openCalendar flag is set, also open the calendar
+          if (action.openCalendar) {
+            // Small delay so user sees the time set first
+            setTimeout(() => {
+              handleBookMeeting();
+            }, 500);
+          }
         }
         
-        // Handle openCalendar action - auto-open Google Calendar
+        // Handle standalone openCalendar action (legacy support)
         if (data.action?.type === 'openCalendar') {
           // Small delay so user sees the AI response first
           setTimeout(() => {
