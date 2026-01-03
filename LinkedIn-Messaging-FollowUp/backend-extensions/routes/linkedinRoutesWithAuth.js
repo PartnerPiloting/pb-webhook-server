@@ -1013,9 +1013,24 @@ router.post('/leads/parse-preview', async (req, res) => {
     // Get client's first name for "You" replacement
     const clientFirstName = req.client?.clientName?.split(' ')[0] || 'Me';
     
+    // Use client's timezone to determine correct reference date
+    // This fixes relative dates like "Friday", "Today", "Saturday" when server is in UTC
+    let referenceDate = new Date();
+    const clientTimezone = req.client?.timezone;
+    if (clientTimezone) {
+      try {
+        // Get current date/time in client's timezone
+        const clientDateStr = new Date().toLocaleString('en-US', { timeZone: clientTimezone });
+        referenceDate = new Date(clientDateStr);
+      } catch (e) {
+        logger.warn(`Invalid client timezone: ${clientTimezone}, using server time`);
+      }
+    }
+    
     const result = parseConversation(content, {
       clientFirstName,
-      newestFirst: true
+      newestFirst: true,
+      referenceDate
     });
     
     res.json({
@@ -1444,7 +1459,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     const { section, content, followUpDate, email, phone, parseRaw = true } = req.body;
     
     // Validate section if content is provided
-    const validSections = ['linkedin', 'salesnav', 'manual'];
+    const validSections = ['linkedin', 'salesnav', 'email', 'manual'];
     if (content && (!section || !validSections.includes(section))) {
       return res.status(400).json({ 
         error: 'Invalid section', 
@@ -1479,9 +1494,22 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         // Get client's first name for "You" replacement
         const clientFirstName = req.client?.clientName?.split(' ')[0] || 'Me';
         
+        // Use client's timezone to determine correct reference date
+        let referenceDate = new Date();
+        const clientTimezone = req.client?.timezone;
+        if (clientTimezone) {
+          try {
+            const clientDateStr = new Date().toLocaleString('en-US', { timeZone: clientTimezone });
+            referenceDate = new Date(clientDateStr);
+          } catch (e) {
+            logger.warn(`Invalid client timezone: ${clientTimezone}, using server time`);
+          }
+        }
+        
         parsedResult = parseConversation(content, {
           clientFirstName,
-          newestFirst: true
+          newestFirst: true,
+          referenceDate
         });
         
         // Use formatted output if parsing was successful
@@ -1493,6 +1521,10 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
       // For manual notes, auto-add date prefix
       if (section === 'manual') {
         noteUpdateResult = addManualNote(currentNotes, processedContent);
+        updates['Notes'] = noteUpdateResult.notes;
+      } else if (section === 'email') {
+        // For Email, APPEND to existing content (prepend new messages, keeping chronological order)
+        noteUpdateResult = updateSection(currentNotes, section, processedContent, { append: true, replace: false });
         updates['Notes'] = noteUpdateResult.notes;
       } else {
         // For LinkedIn/SalesNav, replace section

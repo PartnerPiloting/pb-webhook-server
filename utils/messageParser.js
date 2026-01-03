@@ -77,6 +77,17 @@ function detectFormat(text) {
         return 'salesnav_raw';
     }
     
+    // Email format: Name <email@domain.com> followed by date
+    // Pattern: "Name <email>" OR "to me" (Gmail indicator) OR reply header "On Date, Name wrote:"
+    const emailHeaderPattern = /^[A-Za-z\s]+<[^>]+@[^>]+>/m;
+    const gmailToMePattern = /^to\s+(me|[A-Za-z\s,]+)$/m;
+    const replyHeaderPattern = /^On\s+.+wrote:$/m;
+    if (emailHeaderPattern.test(trimmed) || 
+        (gmailToMePattern.test(trimmed) && trimmed.includes('@')) ||
+        replyHeaderPattern.test(trimmed)) {
+        return 'email_raw';
+    }
+    
     return 'manual';
 }
 
@@ -103,13 +114,18 @@ function parseFlexibleDate(dateStr, referenceDate = new Date()) {
     }
     
     // Relative days: "Monday", "Tuesday", etc.
+    // LinkedIn shows day names for the current week, so "Friday" when today is Saturday means yesterday
+    // And "Saturday" when today is Saturday means today (not last week)
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayIndex = daysOfWeek.indexOf(trimmed.toLowerCase());
     if (dayIndex !== -1) {
         const today = new Date(referenceDate);
         const todayDay = today.getDay();
         let diff = todayDay - dayIndex;
-        if (diff <= 0) diff += 7; // Go back to last occurrence
+        // Only go back if it's a past day this week (diff > 0)
+        // If diff <= 0, it would be in the future, so go back to last week
+        // BUT if diff == 0, it means today - keep it as today
+        if (diff < 0) diff += 7; // Go back to last occurrence (e.g., "Monday" when today is Sunday)
         const result = new Date(today);
         result.setDate(today.getDate() - diff);
         return result;
@@ -350,6 +366,151 @@ function parseSalesNavRaw(text, clientFirstName = 'Me', referenceDate = new Date
 }
 
 /**
+ * Parse raw email text (from Gmail copy-paste)
+ * Handles formats like:
+ *   "Name <email@domain.com>
+ *    3 Jan 2026, 00:00 (1 day ago)
+ *    to me
+ *    
+ *    Message body..."
+ * 
+ * @param {string} text - Raw email copy-paste
+ * @param {string} clientFirstName - Client's first name for "Me" replacement
+ * @param {Date} referenceDate - Reference date for relative dates
+ * @returns {Array<{date: string, time: string, sender: string, message: string}>}
+ */
+function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date()) {
+    const messages = [];
+    const lines = text.split('\n');
+    
+    // Email header pattern: "Name <email@domain.com>"
+    const emailHeaderPattern = /^([A-Za-z\s]+)\s*<([^>]+@[^>]+)>/;
+    // Date pattern: "3 Jan 2026, 00:00" or "3 Jan 2026, 00:00 (1 day ago)"
+    const datePattern = /^(\d{1,2}\s+[A-Za-z]+\s+\d{4}),?\s*(\d{1,2}:\d{2})/;
+    // "to me" or "to Name Name, ..."
+    const toPattern = /^to\s+/i;
+    // Reply header: "On Mon, Jan 3, 2026 at 12:00 PM Name <email> wrote:"
+    const replyHeaderPattern = /^On\s+.+wrote:\s*$/i;
+    
+    let currentSender = null;
+    let currentDate = null;
+    let currentTime = '12:00 PM';
+    let currentMessage = [];
+    let inBody = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines unless we're in message body
+        if (!line && !inBody) continue;
+        
+        // Check for email header "Name <email>"
+        const headerMatch = line.match(emailHeaderPattern);
+        if (headerMatch) {
+            // Save previous message if exists
+            if (currentSender && currentMessage.length > 0) {
+                const msgText = currentMessage.join('\n').trim();
+                if (msgText) {
+                    messages.push({
+                        date: currentDate || formatDateDDMMYY(referenceDate),
+                        time: currentTime,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                }
+            }
+            
+            currentSender = headerMatch[1].trim();
+            currentDate = null;
+            currentTime = '12:00 PM';
+            currentMessage = [];
+            inBody = false;
+            continue;
+        }
+        
+        // Check for date line
+        const dateMatch = line.match(datePattern);
+        if (dateMatch && currentSender && !currentDate) {
+            const parsedDate = parseFlexibleDate(dateMatch[1], referenceDate);
+            currentDate = formatDateDDMMYY(parsedDate);
+            // Extract time and format to AM/PM
+            const timeParts = dateMatch[2].split(':');
+            const hours = parseInt(timeParts[0], 10);
+            const minutes = timeParts[1];
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+            currentTime = `${hours12}:${minutes} ${ampm}`;
+            continue;
+        }
+        
+        // Check for "to me" line - marks start of body on next line
+        if (toPattern.test(line) && currentSender && !inBody) {
+            inBody = true;
+            continue;
+        }
+        
+        // Check for reply header "On Date, Name wrote:"
+        if (replyHeaderPattern.test(line)) {
+            // This indicates quoted reply - save current message and look for quoted content
+            if (currentSender && currentMessage.length > 0) {
+                const msgText = currentMessage.join('\n').trim();
+                if (msgText) {
+                    messages.push({
+                        date: currentDate || formatDateDDMMYY(referenceDate),
+                        time: currentTime,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                }
+            }
+            
+            // Parse the reply header to extract sender of quoted message
+            const replyMatch = line.match(/On\s+(.+?),\s+([A-Za-z\s]+)\s*<([^>]+)>\s*wrote:/i);
+            if (replyMatch) {
+                currentSender = replyMatch[2].trim();
+                const parsedDate = parseFlexibleDate(replyMatch[1], referenceDate);
+                currentDate = formatDateDDMMYY(parsedDate);
+                currentTime = '12:00 PM';
+            }
+            currentMessage = [];
+            inBody = true;
+            continue;
+        }
+        
+        // Skip quoted lines (starting with >)
+        if (line.startsWith('>')) {
+            continue;
+        }
+        
+        // If we're in the body, collect message content
+        if (inBody && currentSender) {
+            // Skip email signature markers
+            if (line === '--' || line.toLowerCase() === 'regards,' || 
+                line.toLowerCase() === 'best regards,' || line.toLowerCase() === 'cheers,') {
+                // End of main content, stop collecting
+                continue;
+            }
+            currentMessage.push(line);
+        }
+    }
+    
+    // Don't forget the last message
+    if (currentSender && currentMessage.length > 0) {
+        const msgText = currentMessage.join('\n').trim();
+        if (msgText) {
+            messages.push({
+                date: currentDate || formatDateDDMMYY(referenceDate),
+                time: currentTime,
+                sender: currentSender,
+                message: msgText
+            });
+        }
+    }
+    
+    return messages;
+}
+
+/**
  * Parse AIBlaze formatted text (already clean)
  * @param {string} text - AIBlaze formatted text
  * @returns {Array<{date: string, time: string, sender: string, message: string}>}
@@ -424,6 +585,9 @@ function parseConversation(text, options = {}) {
         case 'salesnav_raw':
             messages = parseSalesNavRaw(text, clientFirstName, referenceDate);
             break;
+        case 'email_raw':
+            messages = parseEmailRaw(text, clientFirstName, referenceDate);
+            break;
         case 'manual':
         default:
             // For manual notes, just return as-is with timestamp
@@ -450,6 +614,7 @@ module.exports = {
     parseConversation,
     parseLinkedInRaw,
     parseSalesNavRaw,
+    parseEmailRaw,
     parseAIBlaze,
     formatMessages,
     parseFlexibleDate,

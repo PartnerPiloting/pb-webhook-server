@@ -47,6 +47,7 @@ const cleanLinkedInNoise = (text) => {
 const SECTIONS = [
   { key: 'linkedin', label: 'LinkedIn', description: 'Paste LinkedIn DM conversation' },
   { key: 'salesnav', label: 'Sales Nav', description: 'Paste Sales Navigator messages' },
+  { key: 'email', label: 'Email', description: 'Paste email thread (appends to existing)' },
   { key: 'manual', label: 'Manual', description: 'Type a note (auto-dated)' }
 ];
 
@@ -695,7 +696,7 @@ export default function QuickUpdateModal({
             {/* Notes Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {activeSection === 'manual' ? 'Note (date auto-added)' : 'Paste Conversation'}
+                {activeSection === 'manual' ? 'Note (date auto-added)' : activeSection === 'email' ? 'Paste Email Thread' : 'Paste Conversation'}
               </label>
               <textarea
                 ref={noteInputRef}
@@ -704,7 +705,9 @@ export default function QuickUpdateModal({
                 rows={12}
                 placeholder={activeSection === 'manual' 
                   ? 'Type your note here...' 
-                  : 'Paste conversation here (raw or AIBlaze format)...'
+                  : activeSection === 'email'
+                    ? 'Paste email thread from Gmail...\n\nExample:\nSumit Singh <sumitsinghbir@gmail.com>\n3 Jan 2026, 00:00\nto me\n\nHello Guy...'
+                    : 'Paste conversation here (raw or AIBlaze format)...'
                 }
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
               />
@@ -727,11 +730,14 @@ export default function QuickUpdateModal({
               </div>
             )}
             
-            {/* Replace Warning */}
+            {/* Replace Warning (for LinkedIn/SalesNav) or Append Info (for Email) */}
             {noteContent.trim() && activeSection !== 'manual' && notesSummary?.[activeSection]?.hasContent && (
-              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="text-sm text-yellow-800">
-                  ⚠️ This will replace {notesSummary[activeSection].lineCount} existing lines in {SECTIONS.find(s => s.key === activeSection)?.label}.
+              <div className={`mt-3 p-3 rounded-lg ${activeSection === 'email' ? 'bg-blue-50 border border-blue-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+                <div className={`text-sm ${activeSection === 'email' ? 'text-blue-800' : 'text-yellow-800'}`}>
+                  {activeSection === 'email' 
+                    ? `ℹ️ This will append to ${notesSummary[activeSection].lineCount} existing lines in Email.`
+                    : `⚠️ This will replace ${notesSummary[activeSection].lineCount} existing lines in ${SECTIONS.find(s => s.key === activeSection)?.label}.`
+                  }
                 </div>
               </div>
             )}
