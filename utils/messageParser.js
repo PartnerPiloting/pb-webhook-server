@@ -409,7 +409,7 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
         if (headerMatch) {
             // Save previous message if exists
             if (currentSender && currentMessage.length > 0) {
-                const msgText = currentMessage.join('\n').trim();
+                const msgText = currentMessage.join(' ').trim();
                 if (msgText) {
                     messages.push({
                         date: currentDate || formatDateDDMMYY(referenceDate),
@@ -453,7 +453,7 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
         if (replyHeaderPattern.test(line)) {
             // This indicates quoted reply - save current message and look for quoted content
             if (currentSender && currentMessage.length > 0) {
-                const msgText = currentMessage.join('\n').trim();
+                const msgText = currentMessage.join(' ').trim();
                 if (msgText) {
                     messages.push({
                         date: currentDate || formatDateDDMMYY(referenceDate),
@@ -496,7 +496,7 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
     
     // Don't forget the last message
     if (currentSender && currentMessage.length > 0) {
-        const msgText = currentMessage.join('\n').trim();
+        const msgText = currentMessage.join(' ').trim();
         if (msgText) {
             messages.push({
                 date: currentDate || formatDateDDMMYY(referenceDate),
