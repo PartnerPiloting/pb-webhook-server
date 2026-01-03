@@ -16,25 +16,26 @@
 const SECTION_HEADERS = {
     linkedin: '=== LINKEDIN MESSAGES ===',
     manual: '=== MANUAL NOTES ===',
-    salesnav: '=== SALES NAVIGATOR ==='
+    salesnav: '=== SALES NAVIGATOR ===',
+    email: '=== EMAIL CORRESPONDENCE ==='
 };
 
 const LEGACY_SEPARATOR = '───────────────────────────────';
 
 // Section display order (first = top of notes)
-const SECTION_ORDER = ['linkedin', 'manual', 'salesnav'];
+const SECTION_ORDER = ['linkedin', 'manual', 'salesnav', 'email'];
 
 /**
  * Parse existing notes into sections
  * @param {string} notes - Current notes content
- * @returns {Object} Parsed sections { linkedin, manual, salesnav, legacy }
+ * @returns {Object} Parsed sections { linkedin, manual, salesnav, email, legacy }
  */
 function parseNotesIntoSections(notes) {
     if (!notes || typeof notes !== 'string') {
-        return { linkedin: '', manual: '', salesnav: '', legacy: '' };
+        return { linkedin: '', manual: '', salesnav: '', email: '', legacy: '' };
     }
 
-    const sections = { linkedin: '', manual: '', salesnav: '', legacy: '' };
+    const sections = { linkedin: '', manual: '', salesnav: '', email: '', legacy: '' };
     
     // Find each section's content
     let remainingContent = notes;
