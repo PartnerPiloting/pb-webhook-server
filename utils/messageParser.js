@@ -374,6 +374,13 @@ function parseSalesNavRaw(text, clientFirstName = 'Me', referenceDate = new Date
  *    
  *    Message body..."
  * 
+ * Also handles today's emails:
+ *   "Name <email@domain.com>
+ *    06:25 (3 minutes ago)
+ *    to Ben
+ *    
+ *    Message body..."
+ * 
  * @param {string} text - Raw email copy-paste
  * @param {string} clientFirstName - Client's first name for "Me" replacement
  * @param {Date} referenceDate - Reference date for relative dates
@@ -385,8 +392,10 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
     
     // Email header pattern: "Name <email@domain.com>"
     const emailHeaderPattern = /^([A-Za-z\s]+)\s*<([^>]+@[^>]+)>/;
-    // Date pattern: "3 Jan 2026, 00:00" or "3 Jan 2026, 00:00 (1 day ago)"
-    const datePattern = /^(\d{1,2}\s+[A-Za-z]+\s+\d{4}),?\s*(\d{1,2}:\d{2})/;
+    // Full date pattern: "3 Jan 2026, 00:00" or "3 Jan 2026, 00:00 (1 day ago)"
+    const fullDatePattern = /^(\d{1,2}\s+[A-Za-z]+\s+\d{4}),?\s*(\d{1,2}:\d{2})/;
+    // Time-only pattern for today's emails: "06:25" or "06:25 (3 minutes ago)"
+    const timeOnlyPattern = /^(\d{1,2}:\d{2})(?:\s*\(.+\))?$/;
     // "to me" or "to Name Name, ..."
     const toPattern = /^to\s+/i;
     // Reply header: "On Mon, Jan 3, 2026 at 12:00 PM Name <email> wrote:"
@@ -428,13 +437,28 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
             continue;
         }
         
-        // Check for date line
-        const dateMatch = line.match(datePattern);
-        if (dateMatch && currentSender && !currentDate) {
-            const parsedDate = parseFlexibleDate(dateMatch[1], referenceDate);
+        // Check for full date line: "3 Jan 2026, 00:00"
+        const fullDateMatch = line.match(fullDatePattern);
+        if (fullDateMatch && currentSender && !currentDate) {
+            const parsedDate = parseFlexibleDate(fullDateMatch[1], referenceDate);
             currentDate = formatDateDDMMYY(parsedDate);
             // Extract time and format to AM/PM
-            const timeParts = dateMatch[2].split(':');
+            const timeParts = fullDateMatch[2].split(':');
+            const hours = parseInt(timeParts[0], 10);
+            const minutes = timeParts[1];
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+            currentTime = `${hours12}:${minutes} ${ampm}`;
+            continue;
+        }
+        
+        // Check for time-only line (today's emails): "06:25" or "06:25 (3 minutes ago)"
+        const timeOnlyMatch = line.match(timeOnlyPattern);
+        if (timeOnlyMatch && currentSender && !currentDate) {
+            // Time-only means today
+            currentDate = formatDateDDMMYY(referenceDate);
+            // Extract time and format to AM/PM
+            const timeParts = timeOnlyMatch[1].split(':');
             const hours = parseInt(timeParts[0], 10);
             const minutes = timeParts[1];
             const ampm = hours >= 12 ? 'PM' : 'AM';
