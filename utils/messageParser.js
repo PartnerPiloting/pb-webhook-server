@@ -381,6 +381,12 @@ function parseSalesNavRaw(text, clientFirstName = 'Me', referenceDate = new Date
  *    
  *    Message body..."
  * 
+ * Also handles day-of-week format:
+ *   "Name <email@domain.com>
+ *    Fri 2 Jan, 14:26 (3 days ago)
+ *    to me
+ *    ..."
+ * 
  * @param {string} text - Raw email copy-paste
  * @param {string} clientFirstName - Client's first name for "Me" replacement
  * @param {Date} referenceDate - Reference date for relative dates
@@ -394,6 +400,8 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
     const emailHeaderPattern = /^([A-Za-z\s]+)\s*<([^>]+@[^>]+)>/;
     // Full date pattern: "3 Jan 2026, 00:00" or "3 Jan 2026, 00:00 (1 day ago)"
     const fullDatePattern = /^(\d{1,2}\s+[A-Za-z]+\s+\d{4}),?\s*(\d{1,2}:\d{2})/;
+    // Day-of-week date pattern: "Fri 2 Jan, 14:26" or "Fri 2 Jan, 14:26 (3 days ago)" (no year)
+    const dayOfWeekDatePattern = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\s+[A-Za-z]+),?\s*(\d{1,2}:\d{2})/i;
     // Time-only pattern for today's emails: "06:25" or "06:25 (3 minutes ago)"
     const timeOnlyPattern = /^(\d{1,2}:\d{2})(?:\s*\(.+\))?$/;
     // "to me" or "to Name Name, ..."
@@ -444,6 +452,22 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
             currentDate = formatDateDDMMYY(parsedDate);
             // Extract time and format to AM/PM
             const timeParts = fullDateMatch[2].split(':');
+            const hours = parseInt(timeParts[0], 10);
+            const minutes = timeParts[1];
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+            currentTime = `${hours12}:${minutes} ${ampm}`;
+            continue;
+        }
+        
+        // Check for day-of-week date line: "Fri 2 Jan, 14:26 (3 days ago)"
+        const dayOfWeekMatch = line.match(dayOfWeekDatePattern);
+        if (dayOfWeekMatch && currentSender && !currentDate) {
+            // Parse date without year (assumes current year)
+            const parsedDate = parseFlexibleDate(dayOfWeekMatch[1], referenceDate);
+            currentDate = formatDateDDMMYY(parsedDate);
+            // Extract time and format to AM/PM
+            const timeParts = dayOfWeekMatch[2].split(':');
             const hours = parseInt(timeParts[0], 10);
             const minutes = timeParts[1];
             const ampm = hours >= 12 ? 'PM' : 'AM';
