@@ -7995,4 +7995,86 @@ router.get("/api/client/:clientId", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/ai-endpoint-search
+ * 
+ * AI-powered endpoint search using Gemini.
+ * Takes a natural language query and returns relevant API endpoints.
+ */
+router.post("/api/ai-endpoint-search", async (req, res) => {
+  const { query, endpoints } = req.body;
+  
+  if (!query) {
+    return res.status(400).json({ success: false, error: 'Query is required' });
+  }
+  
+  if (!endpoints || !Array.isArray(endpoints)) {
+    return res.status(400).json({ success: false, error: 'Endpoints array is required' });
+  }
+  
+  try {
+    const geminiConfig = require('../config/geminiClient.js');
+    const geminiModel = geminiConfig?.geminiModel;
+    
+    if (!geminiModel) {
+      return res.status(500).json({ success: false, error: 'Gemini not available' });
+    }
+    
+    // Build a compact endpoint list for the prompt
+    const endpointList = endpoints.map(ep => 
+      `- ${ep.method} ${ep.path}: ${ep.description} [${ep.category}]`
+    ).join('\n');
+    
+    const prompt = `You are an API assistant helping find relevant endpoints.
+
+The user asked: "${query}"
+
+Here are all available endpoints:
+${endpointList}
+
+Return a JSON response with:
+1. "matches": array of endpoint IDs (from the path, e.g., "/health" -> "health", "/api/onboard-client" -> "onboard-client") that match the user's intent. Order by relevance, max 8.
+2. "explanation": A brief (1-2 sentence) explanation of what these endpoints do and which one is most likely what they need.
+3. "suggestion": If the user's request is unclear, suggest a clarifying question.
+
+Examples of what users might ask:
+- "score some leads" -> batch scoring endpoints
+- "check if system is working" -> health check endpoints
+- "add a new client" -> onboard-client endpoint
+- "see what errors happened" -> production issues endpoints
+
+Respond ONLY with valid JSON, no markdown.`;
+
+    const result = await geminiModel.generateContent(prompt);
+    const responseText = result.response.text().trim();
+    
+    // Parse the JSON response
+    let parsed;
+    try {
+      // Handle potential markdown code blocks
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : responseText);
+    } catch {
+      // If parsing fails, return a fallback
+      parsed = {
+        matches: [],
+        explanation: "I couldn't understand that query. Try describing what you want to do, like 'score leads' or 'check system health'.",
+        suggestion: "Try being more specific about what action you want to perform."
+      };
+    }
+    
+    res.json({
+      success: true,
+      ...parsed
+    });
+    
+  } catch (error) {
+    console.error('AI endpoint search error:', error.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'AI search failed. Try the regular search instead.' 
+    });
+  }
+});
+
 module.exports = router;
