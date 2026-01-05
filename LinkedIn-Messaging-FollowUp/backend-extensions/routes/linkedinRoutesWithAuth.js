@@ -1038,7 +1038,8 @@ router.post('/leads/parse-preview', async (req, res) => {
       messageCount: result.messageCount || 0,
       formatted: result.formatted,
       messages: result.messages || [],
-      usedAI: result.usedAI || false
+      usedAI: result.usedAI || false,
+      aiError: result.aiError || null  // Tells user if AI failed and why
     });
     
   } catch (error) {
