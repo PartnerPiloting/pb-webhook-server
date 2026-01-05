@@ -7686,16 +7686,8 @@ router.post("/api/onboard-client", async (req, res) => {
         maxPostBatchesPerDayGuardrail: 3,
         postScrapeBatchSize: 10,
         processingStream: 1
-      },
-      '3-Full Service': {
-        profileScoringTokenLimit: 10000,
-        postScoringTokenLimit: 5000,
-        postsDailyTarget: 20,
-        leadsBatchSizeForPostCollection: 15,
-        maxPostBatchesPerDayGuardrail: 5,
-        postScrapeBatchSize: 15,
-        processingStream: 1
       }
+      // Note: Only 2 service levels exist (Lead Scoring and Post Scoring)
     };
     
     const defaults = serviceLevelDefaults[serviceLevel] || serviceLevelDefaults['1-Lead Scoring'];
