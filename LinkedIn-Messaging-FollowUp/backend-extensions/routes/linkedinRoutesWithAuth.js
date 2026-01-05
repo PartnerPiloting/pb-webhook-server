@@ -1443,6 +1443,7 @@ router.get('/leads/:id/notes-summary', async (req, res) => {
  * Body: {
  *   section: 'linkedin' | 'salesnav' | 'manual',
  *   content: string (raw or pre-formatted),
+ *   replaceNotes?: string (complete replacement of Notes field),
  *   followUpDate?: string (ISO date),
  *   email?: string,
  *   phone?: string,
@@ -1456,14 +1457,15 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
-    const { section, content, followUpDate, email, phone, parseRaw = true } = req.body;
+    const { section, content, replaceNotes, followUpDate, email, phone, parseRaw = true } = req.body;
     
-    // Validate section if content is provided
-    const validSections = ['linkedin', 'salesnav', 'email', 'manual'];
-    if (content && (!section || !validSections.includes(section))) {
+    // If replaceNotes is provided, skip section validation (full replacement mode)
+    if (replaceNotes !== undefined) {
+      logger.info('LinkedIn Routes: Full notes replacement mode');
+    } else if (content && (!section || !['linkedin', 'salesnav', 'email', 'manual'].includes(section))) {
       return res.status(400).json({ 
         error: 'Invalid section', 
-        validSections 
+        validSections: ['linkedin', 'salesnav', 'email', 'manual']
       });
     }
     
@@ -1486,7 +1488,11 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
     let noteUpdateResult = null;
     
     // Process notes content if provided
-    if (content && section) {
+    // Full replacement mode - replaceNotes takes precedence
+    if (replaceNotes !== undefined) {
+      updates['Notes'] = replaceNotes;
+      logger.info('LinkedIn Routes: Replacing entire notes field');
+    } else if (content && section) {
       let processedContent = content;
       
       // Parse raw content if needed (and not manual notes)

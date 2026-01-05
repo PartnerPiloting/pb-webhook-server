@@ -122,6 +122,11 @@ export default function QuickUpdateModal({
   // View toggle for notes
   const [showNotesPreview, setShowNotesPreview] = useState(false);
   
+  // Edit mode for notes in popup
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [editedNotes, setEditedNotes] = useState('');
+  const [isSavingEditedNotes, setIsSavingEditedNotes] = useState(false);
+  
   const searchInputRef = useRef(null);
   const noteInputRef = useRef(null);
   const searchTimeoutRef = useRef(null);
@@ -252,6 +257,28 @@ export default function QuickUpdateModal({
     setSaveSuccess(null);
     setError(null);
     setShowNotesPreview(false);
+    setIsEditingNotes(false);
+    setEditedNotes('');
+  };
+  
+  // Handle search input change - clear selected lead when user types a new search
+  const handleSearchChange = (e) => {
+    const newQuery = e.target.value;
+    setSearchQuery(newQuery);
+    
+    // If a lead is selected and user starts typing something different, clear selection
+    if (selectedLead) {
+      const currentLeadName = `${selectedLead.firstName} ${selectedLead.lastName}`;
+      if (newQuery !== currentLeadName) {
+        setSelectedLead(null);
+        setNotesSummary(null);
+        setFollowUpDate('');
+        setEmail('');
+        setPhone('');
+        setNoteContent('');
+        setParsePreview(null);
+      }
+    }
   };
 
   const loadLeadById = async (leadId) => {
@@ -588,7 +615,7 @@ export default function QuickUpdateModal({
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={handleSearchChange}
                 placeholder="Paste LinkedIn URL, email, or type name..."
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
@@ -643,28 +670,22 @@ export default function QuickUpdateModal({
           <div className="w-[420px] flex-shrink-0 p-6 overflow-y-auto border-r border-gray-200">
             {/* Selected Lead Bar */}
             {selectedLead && (
-              <div className="mb-4 flex items-center justify-between bg-blue-50 px-4 py-3 rounded-lg">
-                <div>
+              <div className="mb-4 bg-blue-50 px-4 py-3 rounded-lg">
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-blue-900 text-lg">
                     {selectedLead.firstName} {selectedLead.lastName}
                   </span>
-                  {selectedLead.title && selectedLead.company && (
-                    <span className="text-blue-700 text-sm ml-2">
-                      {selectedLead.title} @ {selectedLead.company}
-                    </span>
-                  )}
                   {selectedLead.aiScore && (
-                    <span className="text-blue-600 text-sm ml-2 font-medium">
+                    <span className="text-blue-600 text-sm font-medium">
                       Score: {selectedLead.aiScore}
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={resetForm}
-                  className="text-blue-600 hover:text-blue-800 text-sm px-3 py-1 bg-blue-100 rounded hover:bg-blue-200 transition-colors"
-                >
-                  Change Lead
-                </button>
+                {selectedLead.title && selectedLead.company && (
+                  <div className="text-blue-700 text-sm">
+                    {selectedLead.title} @ {selectedLead.company}
+                  </div>
+                )}
               </div>
             )}
             
@@ -1008,14 +1029,21 @@ export default function QuickUpdateModal({
               <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between rounded-t-lg">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Full Notes - {selectedLead.firstName} {selectedLead.lastName}
+                    {isEditingNotes ? 'Edit Notes' : 'Full Notes'} - {selectedLead.firstName} {selectedLead.lastName}
                   </h3>
                   <p className="text-sm text-gray-500">
-                    {cleanLinkedInNoise(selectedLead.notes).split('\n').filter(l => l.trim()).length} lines
+                    {isEditingNotes 
+                      ? 'Edit the notes below and save when done'
+                      : `${cleanLinkedInNoise(selectedLead.notes).split('\n').filter(l => l.trim()).length} lines`
+                    }
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowNotesPreview(false)}
+                  onClick={() => {
+                    setShowNotesPreview(false);
+                    setIsEditingNotes(false);
+                    setEditedNotes('');
+                  }}
                   className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-md hover:bg-gray-200"
                   title="Close"
                 >
@@ -1025,22 +1053,95 @@ export default function QuickUpdateModal({
                 </button>
               </div>
               
-              {/* Notes Content */}
+              {/* Notes Content - View or Edit mode */}
               <div className="flex-1 overflow-y-auto p-6">
-                <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
-                  {cleanLinkedInNoise(selectedLead.notes)}
-                </pre>
+                {isEditingNotes ? (
+                  <textarea
+                    value={editedNotes}
+                    onChange={(e) => setEditedNotes(e.target.value)}
+                    className="w-full h-full min-h-[400px] p-4 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Edit notes here..."
+                  />
+                ) : (
+                  <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
+                    {cleanLinkedInNoise(selectedLead.notes)}
+                  </pre>
+                )}
               </div>
               
               {/* Popup Footer */}
               <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => setShowNotesPreview(false)}
-                    className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Close
-                  </button>
+                <div className="flex justify-between">
+                  {isEditingNotes ? (
+                    <>
+                      <button
+                        onClick={() => {
+                          setIsEditingNotes(false);
+                          setEditedNotes('');
+                        }}
+                        className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setIsSavingEditedNotes(true);
+                          try {
+                            await quickUpdateLead(selectedLead.id, {
+                              section: 'manual',
+                              content: '',
+                              replaceNotes: editedNotes
+                            });
+                            // Update local state
+                            setSelectedLead(prev => ({ ...prev, notes: editedNotes }));
+                            setIsEditingNotes(false);
+                            setEditedNotes('');
+                            setSaveSuccess('Notes updated successfully!');
+                            setTimeout(() => setSaveSuccess(null), 3000);
+                          } catch (err) {
+                            setError(err.message || 'Failed to save notes');
+                          } finally {
+                            setIsSavingEditedNotes(false);
+                          }
+                        }}
+                        disabled={isSavingEditedNotes}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors flex items-center gap-2"
+                      >
+                        {isSavingEditedNotes ? (
+                          <>
+                            <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => {
+                          setEditedNotes(selectedLead.notes || '');
+                          setIsEditingNotes(true);
+                        }}
+                        className="px-4 py-2 text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-2"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit Notes
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowNotesPreview(false);
+                          setIsEditingNotes(false);
+                        }}
+                        className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        Close
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
