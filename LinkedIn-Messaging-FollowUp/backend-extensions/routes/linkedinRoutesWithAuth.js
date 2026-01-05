@@ -1027,10 +1027,13 @@ router.post('/leads/parse-preview', async (req, res) => {
       }
     }
     
+    // If user selected a specific source (email, linkedin, etc.), force that format
+    // Otherwise auto-detect from content
     const result = await parseConversation(content, {
       clientFirstName,
       newestFirst: true,
-      referenceDate
+      referenceDate,
+      forceFormat: section  // e.g., 'email', 'linkedin', 'salesnav'
     });
     
     res.json({
@@ -1039,7 +1042,8 @@ router.post('/leads/parse-preview', async (req, res) => {
       formatted: result.formatted,
       messages: result.messages || [],
       usedAI: result.usedAI || false,
-      aiError: result.aiError || null  // Tells user if AI failed and why
+      aiError: result.aiError || null,  // Tells user if AI failed and why
+      forcedFormat: section || null  // What format user requested
     });
     
   } catch (error) {

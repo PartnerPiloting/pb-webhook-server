@@ -55,7 +55,7 @@ function cleanLinkedInNoise(text) {
 /**
  * Detect the format of pasted text
  * @param {string} text - Raw pasted text
- * @returns {'aiblaze' | 'linkedin_raw' | 'salesnav_raw' | 'manual'} Format type
+ * @returns {'aiblaze' | 'linkedin_raw' | 'salesnav_raw' | 'email_raw' | 'manual'} Format type
  */
 function detectFormat(text) {
     if (!text || typeof text !== 'string') return 'manual';
@@ -86,15 +86,21 @@ function detectFormat(text) {
     // Pattern 2: "to me" (Gmail indicator)
     // Pattern 3: Reply header "On Date, Name wrote:"
     // Pattern 4: "From: Name" / "To: Name" / "Date:" headers (Gmail paste)
+    // Pattern 5: Contains email address anywhere (likely email content)
+    // Pattern 6: Common email closings with signature-like content
     const emailHeaderPattern = /^[A-Za-z\s]+<[^>]+@[^>]+>/m;
     const gmailToMePattern = /^to\s+(me|[A-Za-z\s,]+)$/m;
     const replyHeaderPattern = /^On\s+.+wrote:$/m;
     const fromToPattern = /^From:\s*.+$/m;
     const hasDateHeader = /^Date:\s*.+$/m;
+    const hasEmailAddress = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+    const emailClosingPattern = /\n(Cheers|Best regards|Kind regards|Thanks|Regards|Best|Warmly|Sincerely),?\s*\n/i;
+    
     if (emailHeaderPattern.test(trimmed) || 
         (gmailToMePattern.test(trimmed) && trimmed.includes('@')) ||
         replyHeaderPattern.test(trimmed) ||
-        (fromToPattern.test(trimmed) && hasDateHeader.test(trimmed))) {
+        (fromToPattern.test(trimmed) && hasDateHeader.test(trimmed)) ||
+        (hasEmailAddress.test(trimmed) && emailClosingPattern.test(trimmed))) {
         return 'email_raw';
     }
     
@@ -799,6 +805,7 @@ function formatMessages(messages, newestFirst = true) {
  * @param {Date} options.referenceDate - Reference date for relative dates
  * @param {boolean} options.newestFirst - Output with newest messages first
  * @param {boolean} options.useAI - Use AI for email parsing (default true if available)
+ * @param {string} options.forceFormat - Force a specific format (email, linkedin, salesnav) instead of auto-detect
  * @returns {Promise<{ format: string, messages: Array, formatted: string, usedAI: boolean, aiError: string|null }>}
  */
 async function parseConversation(text, options = {}) {
@@ -806,10 +813,20 @@ async function parseConversation(text, options = {}) {
         clientFirstName = 'Me',
         referenceDate = new Date(),
         newestFirst = true,
-        useAI = true
+        useAI = true,
+        forceFormat = null
     } = options;
     
-    const format = detectFormat(text);
+    // Map section names to format names
+    const sectionToFormat = {
+        'email': 'email_raw',
+        'linkedin': 'linkedin_raw',
+        'salesnav': 'salesnav_raw',
+        'manual': 'manual'
+    };
+    
+    // Use forced format if provided, otherwise auto-detect
+    const format = forceFormat ? (sectionToFormat[forceFormat] || detectFormat(text)) : detectFormat(text);
     let messages = [];
     let usedAI = false;
     let aiError = null;
