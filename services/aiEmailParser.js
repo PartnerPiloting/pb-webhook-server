@@ -57,6 +57,7 @@ CRITICAL RULES:
 3. Extract the date and time for each message if present
 4. For reply threads, separate each message in the conversation
 5. Remove email headers, "On [date], [person] wrote:" lines, and forwarded message markers
+6. COLLAPSE all newlines into spaces - the message should be ONE LINE with no line breaks
 
 SIGNATURE REMOVAL (VERY IMPORTANT):
 The message should END at the LAST sentence of actual content. Remove EVERYTHING after that:
@@ -71,15 +72,15 @@ The message should END at the LAST sentence of actual content. Remove EVERYTHING
 - Remove any text in parentheses after names like "(I know a) Guy" or "(mobile)"
 
 EXAMPLE - What to extract:
-Input: "Hi Michelle, Great speaking with you. Look forward to meeting Monday. Cheers (I know a) Guy"
+Input: "Hi Michelle,\n\nGreat speaking with you.\nLook forward to meeting Monday.\n\nCheers\n(I know a) Guy"
 Output message: "Hi Michelle, Great speaking with you. Look forward to meeting Monday."
-(Note: "Cheers (I know a) Guy" is the signature - REMOVE IT)
+(Note: "Cheers (I know a) Guy" is the signature - REMOVE IT. Newlines become spaces.)
 
 OUTPUT FORMAT:
 Return a JSON array of message objects. Each message should have:
 - "sender": The name of the person who sent the message (string)
 - "timestamp": ISO 8601 date-time string (e.g., "2025-01-15T14:30:00Z") - use reference date if not found in email
-- "message": The actual message content, with signature COMPLETELY REMOVED (string)
+- "message": The message as a SINGLE LINE with no newlines, signature COMPLETELY REMOVED (string)
 
 Order messages chronologically (oldest first).
 
@@ -199,11 +200,17 @@ ${rawEmailText}`;
                 sender = clientFirstName;
             }
 
+            // Collapse all newlines to single spaces (ensure single-line message)
+            const cleanedMessage = (msg.message || '')
+                .replace(/\r?\n/g, ' ')  // Replace newlines with spaces
+                .replace(/\s+/g, ' ')     // Collapse multiple spaces
+                .trim();
+
             return {
                 date: formatDateDDMMYY(messageDate),
                 time: formatTime12Hour(messageDate),
                 sender: sender,
-                message: (msg.message || '').trim()
+                message: cleanedMessage
             };
         }).filter(msg => msg.message.length > 0);
 
