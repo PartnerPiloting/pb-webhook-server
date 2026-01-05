@@ -104,7 +104,7 @@ export default function QuickUpdateModal({
   const [isSavingTimezone, setIsSavingTimezone] = useState(false);
   const [timezoneError, setTimezoneError] = useState(null);
   
-  const [activeSection, setActiveSection] = useState('linkedin');
+  const [activeSection, setActiveSection] = useState(null);  // No default - user must select
   const [noteContent, setNoteContent] = useState('');
   const [parsePreview, setParsePreview] = useState(null);
   
@@ -194,7 +194,7 @@ export default function QuickUpdateModal({
 
   // Parse preview on content change (debounced)
   useEffect(() => {
-    if (!noteContent.trim() || activeSection === 'manual') {
+    if (!noteContent.trim() || !activeSection || activeSection === 'manual') {
       setParsePreview(null);
       return;
     }
@@ -245,7 +245,7 @@ export default function QuickUpdateModal({
     setSearchResults([]);
     setSelectedLead(null);
     setLookupMethod(null);
-    setActiveSection('linkedin');
+    setActiveSection(null);  // No default - user must select
     setNoteContent('');
     setParsePreview(null);
     setFollowUpDate('');
@@ -692,7 +692,7 @@ export default function QuickUpdateModal({
             {/* Source Tabs */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Source
+                Source {!activeSection && <span className="text-red-500">*</span>}
               </label>
               <div className="flex gap-2">
                 {SECTIONS.map((section) => (
@@ -702,36 +702,56 @@ export default function QuickUpdateModal({
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       activeSection === section.key
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : !activeSection 
+                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 ring-2 ring-orange-300'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
                     {section.label}
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {SECTIONS.find(s => s.key === activeSection)?.description}
+              <p className="text-xs mt-1">
+                {activeSection 
+                  ? <span className="text-gray-500">{SECTIONS.find(s => s.key === activeSection)?.description}</span>
+                  : <span className="text-orange-600 font-medium">👆 Please select a source before pasting</span>
+                }
               </p>
             </div>
             
             {/* Notes Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {activeSection === 'manual' ? 'Note (date auto-added)' : activeSection === 'email' ? 'Paste Email Thread' : 'Paste Conversation'}
+                {activeSection === 'manual' ? 'Note (date auto-added)' : activeSection === 'email' ? 'Paste Email Thread' : activeSection ? 'Paste Conversation' : 'Content'}
               </label>
               <textarea
                 ref={noteInputRef}
                 value={noteContent}
                 onChange={(e) => setNoteContent(e.target.value)}
                 rows={12}
-                placeholder={activeSection === 'manual' 
-                  ? 'Type your note here...' 
-                  : activeSection === 'email'
-                    ? 'Paste email thread from Gmail...\n\nExample:\nSumit Singh <sumitsinghbir@gmail.com>\n3 Jan 2026, 00:00\nto me\n\nHello Guy...'
-                    : 'Paste conversation here (raw or AIBlaze format)...'
+                placeholder={!activeSection
+                  ? '👆 First select a source above (LinkedIn, Sales Nav, Email, or Manual)'
+                  : activeSection === 'manual' 
+                    ? 'Type your note here...' 
+                    : activeSection === 'email'
+                      ? 'Paste email thread from Gmail...\n\nExample:\nSumit Singh <sumitsinghbir@gmail.com>\n3 Jan 2026, 00:00\nto me\n\nHello Guy...'
+                      : 'Paste conversation here (raw or AIBlaze format)...'
                 }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm ${
+                  !activeSection && noteContent.trim() ? 'border-orange-400 bg-orange-50' : 'border-gray-300'
+                }`}
               />
+              {/* No source selected warning */}
+              {!activeSection && noteContent.trim() && (
+                <div className="mt-2 p-3 bg-red-50 border border-red-300 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-red-700">
+                    <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span><strong>Please select a source</strong> above before saving (LinkedIn, Sales Nav, Email, or Manual)</span>
+                  </div>
+                </div>
+              )}
             </div>
             
             {/* Parse Status */}
@@ -995,14 +1015,15 @@ export default function QuickUpdateModal({
               </button>
               <button
                 onClick={handleSave}
-                disabled={!selectedLead || isSaving}
+                disabled={!selectedLead || isSaving || (!activeSection && noteContent.trim())}
+                title={!activeSection && noteContent.trim() ? 'Please select a source first' : ''}
                 className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                  selectedLead && !isSaving
+                  selectedLead && !isSaving && (activeSection || !noteContent.trim())
                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                     : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 }`}
               >
-                {isSaving ? 'Saving...' : 'Save'}
+                {isSaving ? 'Saving...' : !activeSection && noteContent.trim() ? 'Select Source' : 'Save'}
               </button>
               <button
                 onClick={handleNew}
