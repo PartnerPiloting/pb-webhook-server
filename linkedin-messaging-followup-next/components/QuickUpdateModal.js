@@ -291,6 +291,11 @@ export default function QuickUpdateModal({
     setSearchResults([]);
     setSearchQuery(`${lead.firstName} ${lead.lastName}`);
     
+    // Reset source selection - user must choose for each new lead
+    setActiveSection(null);
+    setNoteContent('');
+    setParsePreview(null);
+    
     // Pre-fill contact fields
     setFollowUpDate(lead.followUpDate || '');
     setEmail(lead.email || '');
