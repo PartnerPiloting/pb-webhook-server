@@ -1027,7 +1027,7 @@ router.post('/leads/parse-preview', async (req, res) => {
       }
     }
     
-    const result = parseConversation(content, {
+    const result = await parseConversation(content, {
       clientFirstName,
       newestFirst: true,
       referenceDate
@@ -1037,7 +1037,8 @@ router.post('/leads/parse-preview', async (req, res) => {
       detectedFormat: result.format,
       messageCount: result.messageCount || 0,
       formatted: result.formatted,
-      messages: result.messages || []
+      messages: result.messages || [],
+      usedAI: result.usedAI || false
     });
     
   } catch (error) {
@@ -1512,7 +1513,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
           }
         }
         
-        parsedResult = parseConversation(content, {
+        parsedResult = await parseConversation(content, {
           clientFirstName,
           newestFirst: true,
           referenceDate

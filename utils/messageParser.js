@@ -6,9 +6,13 @@
  * - AIBlaze pre-formatted output (already clean)
  * - Raw LinkedIn messaging copy-paste
  * - Raw Sales Navigator copy-paste
+ * - Email threads (AI-powered with regex fallback)
  * 
  * Output format: DD-MM-YY HH:MM AM/PM - Sender Name - Message content
  */
+
+// AI-powered email parsing (uses Gemini Flash for speed)
+const { parseEmailWithAI, isAIParsingAvailable } = require('../services/aiEmailParser');
 
 /**
  * Clean up LinkedIn/Sales Navigator noise from text
@@ -788,22 +792,26 @@ function formatMessages(messages, newestFirst = true) {
 
 /**
  * Main parser function - auto-detects format and parses
+ * Now async to support AI-powered email parsing
  * @param {string} text - Raw or pre-formatted text
  * @param {Object} options - Parser options
  * @param {string} options.clientFirstName - Client's first name for "You" replacement
  * @param {Date} options.referenceDate - Reference date for relative dates
  * @param {boolean} options.newestFirst - Output with newest messages first
- * @returns {{ format: string, messages: Array, formatted: string }}
+ * @param {boolean} options.useAI - Use AI for email parsing (default true if available)
+ * @returns {Promise<{ format: string, messages: Array, formatted: string }>}
  */
-function parseConversation(text, options = {}) {
+async function parseConversation(text, options = {}) {
     const {
         clientFirstName = 'Me',
         referenceDate = new Date(),
-        newestFirst = true
+        newestFirst = true,
+        useAI = true
     } = options;
     
     const format = detectFormat(text);
     let messages = [];
+    let usedAI = false;
     
     switch (format) {
         case 'aiblaze':
@@ -816,7 +824,27 @@ function parseConversation(text, options = {}) {
             messages = parseSalesNavRaw(text, clientFirstName, referenceDate);
             break;
         case 'email_raw':
-            messages = parseEmailRaw(text, clientFirstName, referenceDate);
+            // Try AI parsing first if available and enabled
+            if (useAI && isAIParsingAvailable()) {
+                try {
+                    const aiMessages = await parseEmailWithAI(text, clientFirstName, referenceDate);
+                    if (aiMessages && aiMessages.length > 0) {
+                        messages = aiMessages;
+                        usedAI = true;
+                    } else {
+                        // AI returned empty/null, fall back to regex
+                        console.log('[MessageParser] AI parsing returned empty, falling back to regex');
+                        messages = parseEmailRaw(text, clientFirstName, referenceDate);
+                    }
+                } catch (aiError) {
+                    // AI failed, fall back to regex
+                    console.log('[MessageParser] AI parsing failed, falling back to regex:', aiError.message);
+                    messages = parseEmailRaw(text, clientFirstName, referenceDate);
+                }
+            } else {
+                // AI not available, use regex
+                messages = parseEmailRaw(text, clientFirstName, referenceDate);
+            }
             break;
         case 'manual':
         default:
@@ -832,10 +860,11 @@ function parseConversation(text, options = {}) {
     const formatted = cleanLinkedInNoise(formatMessages(messages, newestFirst));
     
     return {
-        format,
+        format: usedAI ? 'email_ai' : format,
         messages,
         formatted,
-        messageCount: messages.length
+        messageCount: messages.length,
+        usedAI
     };
 }
 
