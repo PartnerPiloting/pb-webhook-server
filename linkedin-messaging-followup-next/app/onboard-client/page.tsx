@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, ChangeEvent, FormEvent } from 'react';
-import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search, Settings, ChevronDown, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 
 // Detect backend URL from current hostname (same pattern as api.js)
@@ -48,6 +48,14 @@ interface ClientData {
   phone: string;
   googleCalendarEmail: string;
   status?: string;
+  // Advanced settings
+  profileScoringTokenLimit: string;
+  postScoringTokenLimit: string;
+  postsDailyTarget: string;
+  leadsBatchSizeForPostCollection: string;
+  maxPostBatchesPerDayGuardrail: string;
+  postScrapeBatchSize: string;
+  processingStream: string;
 }
 
 // Only two actual service levels in the system
@@ -67,6 +75,36 @@ const TIMEZONES = [
   { value: 'Europe/London', label: 'London (GMT)' }
 ];
 
+// Default values by service level
+const SERVICE_LEVEL_DEFAULTS: Record<string, {
+  profileScoringTokenLimit: string;
+  postScoringTokenLimit: string;
+  postsDailyTarget: string;
+  leadsBatchSizeForPostCollection: string;
+  maxPostBatchesPerDayGuardrail: string;
+  postScrapeBatchSize: string;
+  processingStream: string;
+}> = {
+  '1-Lead Scoring': {
+    profileScoringTokenLimit: '5000',
+    postScoringTokenLimit: '0',
+    postsDailyTarget: '0',
+    leadsBatchSizeForPostCollection: '0',
+    maxPostBatchesPerDayGuardrail: '0',
+    postScrapeBatchSize: '0',
+    processingStream: ''
+  },
+  '2-Post Scoring': {
+    profileScoringTokenLimit: '5000',
+    postScoringTokenLimit: '3000',
+    postsDailyTarget: '10',
+    leadsBatchSizeForPostCollection: '10',
+    maxPostBatchesPerDayGuardrail: '3',
+    postScrapeBatchSize: '10',
+    processingStream: '1'
+  }
+};
+
 const EMPTY_FORM: ClientData = {
   clientName: '',
   email: '',
@@ -76,7 +114,15 @@ const EMPTY_FORM: ClientData = {
   linkedinUrl: '',
   timezone: 'Australia/Brisbane',
   phone: '',
-  googleCalendarEmail: ''
+  googleCalendarEmail: '',
+  // Advanced settings (Post Scoring defaults)
+  profileScoringTokenLimit: '5000',
+  postScoringTokenLimit: '3000',
+  postsDailyTarget: '10',
+  leadsBatchSizeForPostCollection: '10',
+  maxPostBatchesPerDayGuardrail: '3',
+  postScrapeBatchSize: '10',
+  processingStream: '1'
 };
 
 export default function OnboardClientPage() {
@@ -93,9 +139,19 @@ export default function OnboardClientPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // When service level changes in Add mode, update defaults
+    if (name === 'serviceLevel' && mode === 'add') {
+      const defaults = SERVICE_LEVEL_DEFAULTS[value] || SERVICE_LEVEL_DEFAULTS['2-Post Scoring'];
+      setFormData(prev => ({ ...prev, [name]: value, ...defaults }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+    
     if (name === 'airtableBaseId') {
       setValidationResult(null);
     }
@@ -110,7 +166,7 @@ export default function OnboardClientPage() {
   // Load client for editing
   const loadClient = async () => {
     if (!searchClientId.trim()) {
-      setError('Please enter a Client ID to search');
+      setError('Please enter a Client Code to search');
       return;
     }
     
@@ -142,8 +198,17 @@ export default function OnboardClientPage() {
         timezone: fields['Timezone'] || 'Australia/Brisbane',
         phone: fields['Phone'] || '',
         googleCalendarEmail: fields['Google Calendar Email'] || '',
-        status: fields['Status'] || 'Active'
+        status: fields['Status'] || 'Active',
+        // Advanced settings
+        profileScoringTokenLimit: String(fields['Profile Scoring Token Limit'] || '5000'),
+        postScoringTokenLimit: String(fields['Post Scoring Token Limit'] || '0'),
+        postsDailyTarget: String(fields['Posts Daily Target'] || '0'),
+        leadsBatchSizeForPostCollection: String(fields['Leads Batch Size For Post Collection'] || '0'),
+        maxPostBatchesPerDayGuardrail: String(fields['Max Post Batches Per Day Guardrail'] || '0'),
+        postScrapeBatchSize: String(fields['Post Scrape Batch Size'] || '0'),
+        processingStream: String(fields['Processing Stream'] || '')
       });
+      setShowAdvanced(true); // Show advanced settings when editing
       setEditClientId(searchClientId.trim());
       setValidationResult({ success: true, message: 'Base already validated (existing client)' });
       
@@ -371,7 +436,7 @@ export default function OnboardClientPage() {
                 type="text"
                 value={searchClientId}
                 onChange={(e) => setSearchClientId(e.target.value)}
-                placeholder="Enter Client ID (e.g., Keith-Sinclair)"
+                placeholder="Enter Client Code (e.g., Keith-Sinclair)"
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 onKeyDown={(e) => e.key === 'Enter' && loadClient()}
               />
@@ -420,7 +485,7 @@ export default function OnboardClientPage() {
                   />
                   {mode === 'add' && formData.clientName && (
                     <p className="mt-1 text-sm text-gray-500">
-                      Client ID will be: <code className="bg-gray-100 px-1 rounded">{generateClientId(formData.clientName)}</code>
+                      Client Code will be: <code className="bg-gray-100 px-1 rounded">{generateClientId(formData.clientName)}</code>
                     </p>
                   )}
                 </div>
@@ -632,6 +697,124 @@ export default function OnboardClientPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Advanced Settings */}
+            <div className="p-6 border-b border-gray-200">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-lg font-semibold text-gray-900 hover:text-gray-700"
+              >
+                {showAdvanced ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                <Settings className="w-5 h-5 text-gray-600" />
+                Advanced Settings
+                <span className="text-sm font-normal text-gray-500">
+                  (Token limits, batch sizes)
+                </span>
+              </button>
+              
+              {showAdvanced && (
+                <div className="mt-4 grid gap-4">
+                  <p className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                    💡 These values are automatically set based on service level. Only change if you need custom limits.
+                  </p>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Profile Scoring Token Limit
+                      </label>
+                      <input
+                        type="number"
+                        name="profileScoringTokenLimit"
+                        value={formData.profileScoringTokenLimit}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Post Scoring Token Limit
+                      </label>
+                      <input
+                        type="number"
+                        name="postScoringTokenLimit"
+                        value={formData.postScoringTokenLimit}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Posts Daily Target
+                      </label>
+                      <input
+                        type="number"
+                        name="postsDailyTarget"
+                        value={formData.postsDailyTarget}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Leads Batch Size for Post Collection
+                      </label>
+                      <input
+                        type="number"
+                        name="leadsBatchSizeForPostCollection"
+                        value={formData.leadsBatchSizeForPostCollection}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Max Post Batches/Day
+                      </label>
+                      <input
+                        type="number"
+                        name="maxPostBatchesPerDayGuardrail"
+                        value={formData.maxPostBatchesPerDayGuardrail}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Post Scrape Batch Size
+                      </label>
+                      <input
+                        type="number"
+                        name="postScrapeBatchSize"
+                        value={formData.postScrapeBatchSize}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Processing Stream
+                      </label>
+                      <input
+                        type="number"
+                        name="processingStream"
+                        value={formData.processingStream}
+                        onChange={handleChange}
+                        placeholder="1, 2, or 3"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}
