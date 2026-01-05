@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useSession } from 'next-auth/react';
+import React, { useState, ChangeEvent, FormEvent } from 'react';
 import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
@@ -22,6 +21,24 @@ function getBackendUrl(): string {
   return 'https://pb-webhook-server.onrender.com';
 }
 
+interface ValidationResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  validation?: {
+    tables?: Record<string, { exists: boolean; error?: string }>;
+    warnings?: string[];
+  };
+}
+
+interface OnboardingResult {
+  success: boolean;
+  message?: string;
+  clientId?: string;
+  recordId?: string;
+  error?: string;
+}
+
 const SERVICE_LEVELS = [
   { value: '1-Lead Scoring', label: 'Lead Scoring', description: 'Profile scoring only' },
   { value: '2-Post Scoring', label: 'Post Scoring', description: 'Lead + post analysis' },
@@ -40,7 +57,6 @@ const TIMEZONES = [
 ];
 
 export default function OnboardClientPage() {
-  const { data: session } = useSession();
   const [formData, setFormData] = useState({
     clientName: '',
     email: '',
@@ -53,13 +69,13 @@ export default function OnboardClientPage() {
     googleCalendarEmail: ''
   });
   
-  const [validationResult, setValidationResult] = useState(null);
-  const [onboardingResult, setOnboardingResult] = useState(null);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [onboardingResult, setOnboardingResult] = useState<OnboardingResult | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleChange = (e) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     // Clear results when form changes
@@ -70,7 +86,7 @@ export default function OnboardClientPage() {
     setError(null);
   };
 
-  const generateClientId = (name) => {
+  const generateClientId = (name: string): string => {
     return name.trim().replace(/\s+/g, '-');
   };
 
@@ -102,13 +118,14 @@ export default function OnboardClientPage() {
         setError(result.error || 'Base validation failed');
       }
     } catch (err) {
-      setError(`Validation request failed: ${err.message}`);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Validation request failed: ${message}`);
     } finally {
       setIsValidating(false);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     // Validate required fields
@@ -146,7 +163,8 @@ export default function OnboardClientPage() {
         setError(result.error || 'Onboarding failed');
       }
     } catch (err) {
-      setError(`Onboarding request failed: ${err.message}`);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Onboarding request failed: ${message}`);
     } finally {
       setIsOnboarding(false);
     }
@@ -377,9 +395,9 @@ export default function OnboardClientPage() {
                     </div>
                   )}
 
-                  {validationResult.validation?.warnings?.length > 0 && (
+                  {validationResult.validation?.warnings && validationResult.validation.warnings.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-yellow-200">
-                      {validationResult.validation.warnings.map((warning, i) => (
+                      {validationResult.validation.warnings.map((warning: string, i: number) => (
                         <div key={i} className="flex items-center gap-2 text-sm text-yellow-700">
                           <AlertCircle className="w-4 h-4" />
                           {warning}
