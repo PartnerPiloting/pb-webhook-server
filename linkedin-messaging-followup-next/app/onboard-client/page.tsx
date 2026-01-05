@@ -383,13 +383,13 @@ export default function OnboardClientPage() {
           <div className="mb-6 p-6 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-start gap-3">
               <CheckCircle className="w-6 h-6 text-green-600 mt-0.5" />
-              <div>
+              <div className="flex-1">
                 <h3 className="font-semibold text-green-800 text-lg">
                   {result.message}
                 </h3>
                 {result.clientId && (
                   <p className="text-green-700 mt-1">
-                    Client ID: <code className="bg-green-100 px-2 py-0.5 rounded">{result.clientId}</code>
+                    Client Code: <code className="bg-green-100 px-2 py-0.5 rounded">{result.clientId}</code>
                   </p>
                 )}
                 {result.updatedFields && (
@@ -397,6 +397,27 @@ export default function OnboardClientPage() {
                     Updated fields: {result.updatedFields.join(', ')}
                   </p>
                 )}
+                
+                {/* Client Dashboard URL */}
+                {(result.clientId || editClientId) && (
+                  <div className="mt-4 p-3 bg-white border border-green-200 rounded-lg">
+                    <p className="text-sm font-medium text-gray-700 mb-2">📧 Client Dashboard URL (copy & send):</p>
+                    <div className="flex gap-2 items-center">
+                      <code className="flex-1 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all">
+                        https://network-accelerator.vercel.app/?client={result.clientId || editClientId}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`https://network-accelerator.vercel.app/?client=${result.clientId || editClientId}`);
+                        }}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
+                      >
+                        Copy URL
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="mt-4 flex gap-2">
                   <button
                     onClick={resetForm}
