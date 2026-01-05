@@ -559,12 +559,36 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
             continue;
         }
         
-        // Skip To and Subject headers
-        if (toHeaderPattern.test(line) || subjectPattern.test(line) || sentHeaderPattern.test(line)) {
-            // After Subject, the body usually starts
-            if (subjectPattern.test(line)) {
-                inBody = true;
+        // Handle Sent header for date extraction: "Sent: 02 December 2025 16:21"
+        const sentMatch = line.match(sentHeaderPattern);
+        if (sentMatch && currentSender && !currentDate) {
+            const sentValue = sentMatch[1].trim();
+            // Parse "02 December 2025 16:21" format
+            const fullMatch = sentValue.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+            if (fullMatch) {
+                const months = { jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3, 
+                                 may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, 
+                                 sep: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11 };
+                const month = months[fullMatch[2].toLowerCase()];
+                if (month !== undefined) {
+                    const parsedDate = new Date(parseInt(fullMatch[3]), month, parseInt(fullMatch[1]));
+                    currentDate = formatDateDDMMYY(parsedDate);
+                    if (fullMatch[4] && fullMatch[5]) {
+                        const hours = parseInt(fullMatch[4], 10);
+                        const minutes = fullMatch[5];
+                        const ampm = hours >= 12 ? 'PM' : 'AM';
+                        const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                        currentTime = `${hours12}:${minutes} ${ampm}`;
+                    }
+                }
             }
+            continue;
+        }
+        
+        // Skip To and Subject headers, but mark body start
+        if (toHeaderPattern.test(line) || subjectPattern.test(line)) {
+            // After To: or Subject:, the body usually starts (next non-empty line)
+            inBody = true;
             continue;
         }
         
@@ -655,13 +679,47 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
         
         // If we're in the body, collect message content
         if (inBody && currentSender) {
+            // Stop at signature closings
+            const closingPattern = /^(regards|best regards|cheers|thanks|thank you|kind regards|best|sincerely|talk soon),?\s*$/i;
+            if (closingPattern.test(line)) {
+                // Include the closing line but stop after
+                currentMessage.push(line);
+                // Save the message now
+                const msgText = currentMessage.join(' ').trim();
+                if (msgText) {
+                    messages.push({
+                        date: currentDate || formatDateDDMMYY(referenceDate),
+                        time: currentTime,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                }
+                currentMessage = [];
+                currentSender = null;
+                currentDate = null;
+                inBody = false;
+                continue;
+            }
+            
             // Skip email signature markers and disclaimers
             if (line === '--' || 
                 line.toLowerCase().startsWith('this email and any attachments') ||
                 line.toLowerCase().startsWith('although precautions')) {
-                // End of main content, stop collecting
                 continue;
             }
+            
+            // Skip signature-like lines (phone numbers, URLs, single-word titles)
+            const signaturePattern = /^(\+?\d[\d\s\-]{8,}|www\..+|https?:\/\/.+|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|founder|cto|ceo|director|manager|president|vp)$/i;
+            if (signaturePattern.test(line)) {
+                continue;
+            }
+            
+            // Skip lines that are just a name (likely part of signature)
+            if (currentMessage.length > 0 && /^[A-Z][a-z]+(\s+[A-Z][a-z]+)?$/.test(line)) {
+                // Could be signature name, check if next lines look like signature
+                continue;
+            }
+            
             currentMessage.push(line);
         }
     }
