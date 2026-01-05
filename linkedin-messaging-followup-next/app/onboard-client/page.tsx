@@ -5,6 +5,23 @@ import { useSession } from 'next-auth/react';
 import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
+// Detect backend URL from current hostname (same pattern as api.js)
+function getBackendUrl(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname || '';
+    // Local development
+    if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+      return 'http://localhost:3001';
+    }
+    // Staging (URL contains "staging")
+    if (/staging/i.test(host)) {
+      return 'https://pb-webhook-server-staging.onrender.com';
+    }
+  }
+  // Default to production
+  return 'https://pb-webhook-server.onrender.com';
+}
+
 const SERVICE_LEVELS = [
   { value: '1-Lead Scoring', label: 'Lead Scoring', description: 'Profile scoring only' },
   { value: '2-Post Scoring', label: 'Post Scoring', description: 'Lead + post analysis' },
@@ -68,7 +85,7 @@ export default function OnboardClientPage() {
     setValidationResult(null);
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pb-webhook-server-staging.onrender.com';
+      const apiUrl = getBackendUrl();
       const response = await fetch(`${apiUrl}/api/validate-client-base`, {
         method: 'POST',
         headers: {
@@ -111,7 +128,7 @@ export default function OnboardClientPage() {
     setOnboardingResult(null);
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pb-webhook-server-staging.onrender.com';
+      const apiUrl = getBackendUrl();
       const response = await fetch(`${apiUrl}/api/onboard-client`, {
         method: 'POST',
         headers: {
