@@ -1,23 +1,20 @@
 'use client';
 
 import React, { useState, ChangeEvent, FormEvent } from 'react';
-import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search } from 'lucide-react';
 import Link from 'next/link';
 
 // Detect backend URL from current hostname (same pattern as api.js)
 function getBackendUrl(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname || '';
-    // Local development
     if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
       return 'http://localhost:3001';
     }
-    // Staging (URL contains "staging")
     if (/staging/i.test(host)) {
       return 'https://pb-webhook-server-staging.onrender.com';
     }
   }
-  // Default to production
   return 'https://pb-webhook-server.onrender.com';
 }
 
@@ -37,12 +34,26 @@ interface OnboardingResult {
   clientId?: string;
   recordId?: string;
   error?: string;
+  updatedFields?: string[];
 }
 
+interface ClientData {
+  clientName: string;
+  email: string;
+  wordpressUserId: string;
+  airtableBaseId: string;
+  serviceLevel: string;
+  linkedinUrl: string;
+  timezone: string;
+  phone: string;
+  googleCalendarEmail: string;
+  status?: string;
+}
+
+// Only two actual service levels in the system
 const SERVICE_LEVELS = [
   { value: '1-Lead Scoring', label: 'Lead Scoring', description: 'Profile scoring only' },
-  { value: '2-Post Scoring', label: 'Post Scoring', description: 'Lead + post analysis' },
-  { value: '3-Full Service', label: 'Full Service', description: 'Complete service package' }
+  { value: '2-Post Scoring', label: 'Post Scoring', description: 'Lead + post analysis' }
 ];
 
 const TIMEZONES = [
@@ -56,38 +67,92 @@ const TIMEZONES = [
   { value: 'Europe/London', label: 'London (GMT)' }
 ];
 
+const EMPTY_FORM: ClientData = {
+  clientName: '',
+  email: '',
+  wordpressUserId: '',
+  airtableBaseId: '',
+  serviceLevel: '2-Post Scoring',
+  linkedinUrl: '',
+  timezone: 'Australia/Brisbane',
+  phone: '',
+  googleCalendarEmail: ''
+};
+
 export default function OnboardClientPage() {
-  const [formData, setFormData] = useState({
-    clientName: '',
-    email: '',
-    wordpressUserId: '',
-    airtableBaseId: '',
-    serviceLevel: '1-Lead Scoring',
-    linkedinUrl: '',
-    timezone: 'Australia/Brisbane',
-    phone: '',
-    googleCalendarEmail: ''
-  });
+  // Mode: 'add' or 'edit'
+  const [mode, setMode] = useState<'add' | 'edit'>('add');
+  const [formData, setFormData] = useState<ClientData>(EMPTY_FORM);
+  const [editClientId, setEditClientId] = useState('');
+  const [searchClientId, setSearchClientId] = useState('');
   
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-  const [onboardingResult, setOnboardingResult] = useState<OnboardingResult | null>(null);
+  const [result, setResult] = useState<OnboardingResult | null>(null);
   const [isValidating, setIsValidating] = useState(false);
-  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    // Clear results when form changes
     if (name === 'airtableBaseId') {
       setValidationResult(null);
     }
-    setOnboardingResult(null);
+    setResult(null);
     setError(null);
   };
 
   const generateClientId = (name: string): string => {
     return name.trim().replace(/\s+/g, '-');
+  };
+
+  // Load client for editing
+  const loadClient = async () => {
+    if (!searchClientId.trim()) {
+      setError('Please enter a Client ID to search');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const apiUrl = getBackendUrl();
+      const response = await fetch(`${apiUrl}/api/client/${encodeURIComponent(searchClientId.trim())}`, {
+        headers: { 'x-client-id': 'SYSTEM' }
+      });
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        setError(data.error || 'Client not found');
+        return;
+      }
+      
+      // Map Airtable fields to form fields
+      const fields = data.fields;
+      setFormData({
+        clientName: fields['Client Name'] || '',
+        email: fields['Client Email Address'] || '',
+        wordpressUserId: String(fields['WordPress User ID'] || ''),
+        airtableBaseId: fields['Airtable Base ID'] || '',
+        serviceLevel: fields['Service Level'] || '2-Post Scoring',
+        linkedinUrl: fields['LinkedIn URL'] || '',
+        timezone: fields['Timezone'] || 'Australia/Brisbane',
+        phone: fields['Phone'] || '',
+        googleCalendarEmail: fields['Google Calendar Email'] || '',
+        status: fields['Status'] || 'Active'
+      });
+      setEditClientId(searchClientId.trim());
+      setValidationResult({ success: true, message: 'Base already validated (existing client)' });
+      
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to load client: ${message}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const validateBase = async () => {
@@ -111,11 +176,11 @@ export default function OnboardClientPage() {
         body: JSON.stringify({ airtableBaseId: formData.airtableBaseId })
       });
       
-      const result = await response.json();
-      setValidationResult(result);
+      const data = await response.json();
+      setValidationResult(data);
       
-      if (!result.success) {
-        setError(result.error || 'Base validation failed');
+      if (!data.success) {
+        setError(data.error || 'Base validation failed');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -128,85 +193,155 @@ export default function OnboardClientPage() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    // Validate required fields
     if (!formData.clientName || !formData.email || !formData.wordpressUserId || !formData.airtableBaseId) {
       setError('Please fill in all required fields');
       return;
     }
     
-    // Check if base was validated
-    if (!validationResult?.success) {
+    if (mode === 'add' && !validationResult?.success) {
       setError('Please validate the Airtable base first');
       return;
     }
     
-    setIsOnboarding(true);
+    setIsSubmitting(true);
     setError(null);
-    setOnboardingResult(null);
+    setResult(null);
     
     try {
       const apiUrl = getBackendUrl();
-      const response = await fetch(`${apiUrl}/api/onboard-client`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-client-id': 'SYSTEM'
-        },
-        body: JSON.stringify(formData)
-      });
       
-      const result = await response.json();
-      
-      if (result.success) {
-        setOnboardingResult(result);
+      if (mode === 'add') {
+        // Create new client
+        const response = await fetch(`${apiUrl}/api/onboard-client`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': 'SYSTEM'
+          },
+          body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          setResult(data);
+        } else {
+          setError(data.error || 'Onboarding failed');
+        }
       } else {
-        setError(result.error || 'Onboarding failed');
+        // Update existing client
+        const response = await fetch(`${apiUrl}/api/update-client/${encodeURIComponent(editClientId)}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': 'SYSTEM'
+          },
+          body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          setResult(data);
+        } else {
+          setError(data.error || 'Update failed');
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      setError(`Onboarding request failed: ${message}`);
+      setError(`Request failed: ${message}`);
     } finally {
-      setIsOnboarding(false);
+      setIsSubmitting(false);
     }
+  };
+
+  const resetForm = () => {
+    setFormData(EMPTY_FORM);
+    setEditClientId('');
+    setSearchClientId('');
+    setValidationResult(null);
+    setResult(null);
+    setError(null);
+  };
+
+  const switchMode = (newMode: 'add' | 'edit') => {
+    setMode(newMode);
+    resetForm();
   };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <Link href="/" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
             <ArrowLeft className="w-4 h-4 mr-1" />
             Back to Dashboard
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <UserPlus className="w-8 h-8 text-blue-600" />
-            Onboard New Client
+            {mode === 'add' ? (
+              <><UserPlus className="w-8 h-8 text-blue-600" /> Add New Client</>
+            ) : (
+              <><Pencil className="w-8 h-8 text-green-600" /> Edit Client</>
+            )}
           </h1>
-          <p className="text-gray-600 mt-2">
-            Create a new client record after duplicating the template Airtable base.
-          </p>
+        </div>
+
+        {/* Mode Toggle */}
+        <div className="mb-6 flex gap-2">
+          <button
+            onClick={() => switchMode('add')}
+            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+              mode === 'add' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <UserPlus className="w-4 h-4" />
+            Add New
+          </button>
+          <button
+            onClick={() => switchMode('edit')}
+            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+              mode === 'edit' 
+                ? 'bg-green-600 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <Pencil className="w-4 h-4" />
+            Edit Existing
+          </button>
         </div>
 
         {/* Success Result */}
-        {onboardingResult?.success && (
+        {result?.success && (
           <div className="mb-6 p-6 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-start gap-3">
               <CheckCircle className="w-6 h-6 text-green-600 mt-0.5" />
               <div>
                 <h3 className="font-semibold text-green-800 text-lg">
-                  {onboardingResult.message}
+                  {result.message}
                 </h3>
-                <p className="text-green-700 mt-1">
-                  Client ID: <code className="bg-green-100 px-2 py-0.5 rounded">{onboardingResult.clientId}</code>
-                </p>
-                <p className="text-green-700 text-sm mt-2">
-                  Record ID: {onboardingResult.recordId}
-                </p>
-                <div className="mt-4">
+                {result.clientId && (
+                  <p className="text-green-700 mt-1">
+                    Client ID: <code className="bg-green-100 px-2 py-0.5 rounded">{result.clientId}</code>
+                  </p>
+                )}
+                {result.updatedFields && (
+                  <p className="text-green-700 text-sm mt-2">
+                    Updated fields: {result.updatedFields.join(', ')}
+                  </p>
+                )}
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={resetForm}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    {mode === 'add' ? 'Add Another Client' : 'Edit Another Client'}
+                  </button>
                   <Link 
                     href="/"
-                    className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
                   >
                     Go to Dashboard
                   </Link>
@@ -224,12 +359,50 @@ export default function OnboardClientPage() {
           </div>
         )}
 
+        {/* Edit Mode: Client Search */}
+        {mode === 'edit' && !editClientId && !result?.success && (
+          <div className="mb-6 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Search className="w-5 h-5 text-gray-600" />
+              Find Client to Edit
+            </h2>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={searchClientId}
+                onChange={(e) => setSearchClientId(e.target.value)}
+                placeholder="Enter Client ID (e.g., Keith-Sinclair)"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                onKeyDown={(e) => e.key === 'Enter' && loadClient()}
+              />
+              <button
+                onClick={loadClient}
+                disabled={isLoading}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {isLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Loading...</>
+                ) : (
+                  <><Search className="w-4 h-4" /> Load Client</>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Form */}
-        {!onboardingResult?.success && (
+        {!result?.success && (mode === 'add' || editClientId) && (
           <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {/* Step 1: Client Details */}
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Step 1: Client Details</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                {mode === 'add' ? 'Step 1: Client Details' : 'Client Details'}
+                {mode === 'edit' && editClientId && (
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    Editing: {editClientId}
+                  </span>
+                )}
+              </h2>
               
               <div className="grid gap-4">
                 <div>
@@ -245,7 +418,7 @@ export default function OnboardClientPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     required
                   />
-                  {formData.clientName && (
+                  {mode === 'add' && formData.clientName && (
                     <p className="mt-1 text-sm text-gray-500">
                       Client ID will be: <code className="bg-gray-100 px-1 rounded">{generateClientId(formData.clientName)}</code>
                     </p>
@@ -326,7 +499,7 @@ export default function OnboardClientPage() {
             <div className="p-6 border-b border-gray-200 bg-gray-50">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Database className="w-5 h-5 text-gray-600" />
-                Step 2: Airtable Base Validation
+                {mode === 'add' ? 'Step 2: Airtable Base Validation' : 'Airtable Base'}
               </h2>
               
               <div className="mb-4">
@@ -342,22 +515,22 @@ export default function OnboardClientPage() {
                     placeholder="appXXXXXXXXXXXXXX"
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     required
+                    disabled={mode === 'edit'}
                   />
-                  <button
-                    type="button"
-                    onClick={validateBase}
-                    disabled={isValidating || !formData.airtableBaseId}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isValidating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Validating...
-                      </>
-                    ) : (
-                      'Validate Base'
-                    )}
-                  </button>
+                  {mode === 'add' && (
+                    <button
+                      type="button"
+                      onClick={validateBase}
+                      disabled={isValidating || !formData.airtableBaseId}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isValidating ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Validating...</>
+                      ) : (
+                        'Validate Base'
+                      )}
+                    </button>
+                  )}
                 </div>
                 <p className="mt-1 text-sm text-gray-500">
                   Find this in the Airtable URL: airtable.com/<strong>appXXXXXXX</strong>/...
@@ -411,7 +584,9 @@ export default function OnboardClientPage() {
 
             {/* Step 3: Optional Fields */}
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Step 3: Optional Details</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                {mode === 'add' ? 'Step 3: Optional Details' : 'Additional Details'}
+              </h2>
               
               <div className="grid gap-4">
                 <div>
@@ -463,23 +638,23 @@ export default function OnboardClientPage() {
             <div className="p-6 bg-gray-50">
               <button
                 type="submit"
-                disabled={isOnboarding || !validationResult?.success}
-                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium"
+                disabled={isSubmitting || (mode === 'add' && !validationResult?.success)}
+                className={`w-full px-6 py-3 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium ${
+                  mode === 'add' 
+                    ? 'bg-blue-600 hover:bg-blue-700' 
+                    : 'bg-green-600 hover:bg-green-700'
+                }`}
               >
-                {isOnboarding ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Creating Client...
-                  </>
+                {isSubmitting ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> {mode === 'add' ? 'Creating...' : 'Updating...'}</>
+                ) : mode === 'add' ? (
+                  <><UserPlus className="w-5 h-5" /> Create Client Record</>
                 ) : (
-                  <>
-                    <UserPlus className="w-5 h-5" />
-                    Create Client Record
-                  </>
+                  <><Pencil className="w-5 h-5" /> Update Client Record</>
                 )}
               </button>
               
-              {!validationResult?.success && (
+              {mode === 'add' && !validationResult?.success && (
                 <p className="text-center text-sm text-gray-500 mt-2">
                   Please validate the Airtable base first
                 </p>
@@ -488,17 +663,19 @@ export default function OnboardClientPage() {
           </form>
         )}
 
-        {/* Instructions */}
-        <div className="mt-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
-          <h3 className="font-semibold text-blue-900 mb-3">Before You Start</h3>
-          <ol className="list-decimal list-inside space-y-2 text-blue-800">
-            <li>Duplicate the template Airtable base <strong>(My Leads - Client Template)</strong></li>
-            <li>Rename it to "My Leads - [Client Name]"</li>
-            <li>Get the new Base ID from the URL</li>
-            <li>Look up the client's WordPress User ID from PMPro</li>
-            <li>Fill in this form and validate the base</li>
-          </ol>
-        </div>
+        {/* Instructions (Add mode only) */}
+        {mode === 'add' && !result?.success && (
+          <div className="mt-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
+            <h3 className="font-semibold text-blue-900 mb-3">Before You Start</h3>
+            <ol className="list-decimal list-inside space-y-2 text-blue-800">
+              <li>Duplicate the template Airtable base <strong>(My Leads - Client Template)</strong></li>
+              <li>Rename it to "My Leads - [Client Name]"</li>
+              <li>Get the new Base ID from the URL</li>
+              <li>Look up the client's WordPress User ID from PMPro</li>
+              <li>Fill in this form and validate the base</li>
+            </ol>
+          </div>
+        )}
       </div>
     </div>
   );
