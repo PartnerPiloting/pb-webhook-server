@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Star, Search, ArrowLeft, Copy, ExternalLink, Play, Check, ChevronDown, ChevronRight, Zap, Database, Users, Settings, AlertCircle, Calendar, FileText, Activity, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Star, Search, ArrowLeft, Copy, ExternalLink, Play, Check, ChevronDown, ChevronRight, Zap, Database, Users, Settings, AlertCircle, Calendar, FileText, Activity, RefreshCw, Sparkles, Send, Loader2, MessageCircle } from 'lucide-react';
 import Link from 'next/link';
 
 // Detect backend URL from current hostname
@@ -146,6 +146,13 @@ export default function ApiExplorerPage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Health & Debug']));
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; status: 'loading' | 'success' | 'error'; data?: unknown } | null>(null);
+  
+  // AI Search state
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiResult, setAiResult] = useState<{ matches: string[]; explanation: string; suggestion?: string } | null>(null);
+  const [searchMode, setSearchMode] = useState<'text' | 'ai'>('ai');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -176,6 +183,62 @@ export default function ApiExplorerPage() {
     setExpandedCategories(newExpanded);
   };
 
+  // AI Search function
+  const handleAiSearch = async () => {
+    if (!aiQuery.trim()) return;
+    
+    setAiSearching(true);
+    setAiResult(null);
+    
+    try {
+      const apiUrl = getBackendUrl();
+      const response = await fetch(`${apiUrl}/api/ai-endpoint-search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: aiQuery,
+          endpoints: ENDPOINTS.map(ep => ({
+            id: ep.id,
+            method: ep.method,
+            path: ep.path,
+            description: ep.description,
+            category: ep.category
+          }))
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setAiResult({
+          matches: data.matches || [],
+          explanation: data.explanation || '',
+          suggestion: data.suggestion
+        });
+      } else {
+        setAiResult({
+          matches: [],
+          explanation: data.error || 'Search failed. Try the text search instead.',
+          suggestion: undefined
+        });
+      }
+    } catch {
+      setAiResult({
+        matches: [],
+        explanation: 'Could not connect to AI. Try the text search instead.',
+        suggestion: undefined
+      });
+    } finally {
+      setAiSearching(false);
+    }
+  };
+
+  const clearAiSearch = () => {
+    setAiQuery('');
+    setAiResult(null);
+    inputRef.current?.focus();
+  };
+
   const copyToClipboard = (endpoint: Endpoint) => {
     const url = `${getBackendUrl()}${endpoint.path}${endpoint.params ? `?${endpoint.params.replace(/\?/, '')}` : ''}`;
     navigator.clipboard.writeText(url);
@@ -200,12 +263,19 @@ export default function ApiExplorerPage() {
     }
   };
 
-  // Filter endpoints
-  const filteredEndpoints = ENDPOINTS.filter(ep => 
-    ep.path.toLowerCase().includes(search.toLowerCase()) ||
-    ep.description.toLowerCase().includes(search.toLowerCase()) ||
-    ep.category.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filter endpoints based on search mode
+  const filteredEndpoints = searchMode === 'ai' && aiResult?.matches.length 
+    ? ENDPOINTS.filter(ep => aiResult.matches.includes(ep.id))
+    : ENDPOINTS.filter(ep => 
+        ep.path.toLowerCase().includes(search.toLowerCase()) ||
+        ep.description.toLowerCase().includes(search.toLowerCase()) ||
+        ep.category.toLowerCase().includes(search.toLowerCase())
+      );
+
+  // For AI mode with results, show them in order of AI ranking
+  const aiMatchedEndpoints = aiResult?.matches.length 
+    ? aiResult.matches.map(id => ENDPOINTS.find(ep => ep.id === id)).filter(Boolean) as Endpoint[]
+    : [];
 
   // Group by category
   const categories = [...new Set(ENDPOINTS.map(ep => ep.category))];
@@ -315,22 +385,130 @@ export default function ApiExplorerPage() {
           </p>
         </div>
 
-        {/* Search */}
-        <div className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search endpoints..."
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
+        {/* Search Mode Toggle */}
+        <div className="mb-4 flex gap-2">
+          <button
+            onClick={() => { setSearchMode('ai'); setSearch(''); }}
+            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+              searchMode === 'ai' 
+                ? 'bg-purple-600 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            AI Search
+          </button>
+          <button
+            onClick={() => { setSearchMode('text'); setAiQuery(''); setAiResult(null); }}
+            className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 ${
+              searchMode === 'text' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <Search className="w-4 h-4" />
+            Text Search
+          </button>
         </div>
 
-        {/* Favorites Section */}
-        {favoriteEndpoints.length > 0 && (
+        {/* AI Search */}
+        {searchMode === 'ai' && (
+          <div className="mb-6">
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <MessageCircle className="w-5 h-5 text-purple-600" />
+                <span className="font-medium text-purple-900">Ask me what you need</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={aiQuery}
+                  onChange={(e) => setAiQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAiSearch()}
+                  placeholder="e.g., 'I need to score some leads' or 'check if the system is healthy'"
+                  className="flex-1 px-4 py-3 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                  disabled={aiSearching}
+                />
+                <button
+                  onClick={handleAiSearch}
+                  disabled={aiSearching || !aiQuery.trim()}
+                  className="px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {aiSearching ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Send className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+              
+              {/* AI Response */}
+              {aiResult && (
+                <div className="mt-4 p-4 bg-white rounded-lg border border-purple-100">
+                  <p className="text-gray-800 mb-2">{aiResult.explanation}</p>
+                  {aiResult.suggestion && (
+                    <p className="text-purple-600 text-sm italic">{aiResult.suggestion}</p>
+                  )}
+                  {aiResult.matches.length > 0 && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+                      <span>Found {aiResult.matches.length} matching endpoint{aiResult.matches.length !== 1 ? 's' : ''}</span>
+                      <button onClick={clearAiSearch} className="text-purple-600 hover:underline">Clear</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Quick examples */}
+              {!aiResult && !aiSearching && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="text-xs text-gray-500">Try:</span>
+                  {['score leads', 'check health', 'add a client', 'see errors', 'token usage'].map(example => (
+                    <button
+                      key={example}
+                      onClick={() => { setAiQuery(example); }}
+                      className="text-xs px-2 py-1 bg-white border border-purple-200 rounded-full text-purple-700 hover:bg-purple-50"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Text Search */}
+        {searchMode === 'text' && (
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search endpoints by path, description, or category..."
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* AI Search Results */}
+        {searchMode === 'ai' && aiResult && aiResult.matches.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-purple-700 mb-3 flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              AI Recommended Endpoints
+            </h2>
+            <div className="space-y-2">
+              {aiMatchedEndpoints.map(renderEndpoint)}
+            </div>
+          </div>
+        )}
+
+        {/* Favorites Section - hide when AI has results */}
+        {favoriteEndpoints.length > 0 && !(searchMode === 'ai' && aiResult && aiResult.matches.length > 0) && (
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-yellow-700 mb-3 flex items-center gap-2">
               <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
@@ -342,7 +520,8 @@ export default function ApiExplorerPage() {
           </div>
         )}
 
-        {/* Categories */}
+        {/* Categories - hide when AI has results */}
+        {!(searchMode === 'ai' && aiResult && aiResult.matches.length > 0) && (
         <div className="space-y-4">
           {categories.map(category => {
             const endpoints = categorizedEndpoints[category];
@@ -371,9 +550,10 @@ export default function ApiExplorerPage() {
             );
           })}
         </div>
+        )}
 
         {/* Empty State */}
-        {filteredEndpoints.length === 0 && (
+        {searchMode === 'text' && filteredEndpoints.length === 0 && (
           <div className="text-center py-12 text-gray-500">
             No endpoints match your search.
           </div>
