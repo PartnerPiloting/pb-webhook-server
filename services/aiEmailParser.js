@@ -52,41 +52,46 @@ function buildEmailParserPrompt() {
     return `You are an expert email parser. Your task is to extract individual messages from a pasted email thread or single email.
 
 CRITICAL RULES:
-1. Extract ONLY the actual message content - remove signatures, disclaimers, and footers
+1. Extract ONLY the actual message content - AGGRESSIVELY remove signatures, disclaimers, and footers
 2. Identify the sender name for each message (use first name + last name if available)
-3. Extract the date and time for each message
+3. Extract the date and time for each message if present
 4. For reply threads, separate each message in the conversation
 5. Remove email headers, "On [date], [person] wrote:" lines, and forwarded message markers
-6. Remove common signature indicators like:
-   - Lines starting with "Sent from my iPhone/Android"
-   - Confidentiality notices
-   - Phone numbers at the end of messages
-   - Job titles and company names in signature blocks
-   - Social media links
-   - "Best regards", "Cheers", "Thanks," followed by a name (keep the closing phrase, remove the signature block)
+
+SIGNATURE REMOVAL (VERY IMPORTANT):
+The message should END at the LAST sentence of actual content. Remove EVERYTHING after that:
+- Remove closing phrases WITH the name: "Cheers", "Best regards", "Thanks", "Kind regards", "Best", "Regards", "Warmly" etc.
+- These closing phrases are NOT part of the message - they are signatures
+- Remove names that appear after closing phrases (this is the sender signing off)
+- Remove "Sent from my iPhone/Android"
+- Remove confidentiality notices
+- Remove phone numbers at the end
+- Remove job titles and company names
+- Remove social media links
+- Remove any text in parentheses after names like "(I know a) Guy" or "(mobile)"
+
+EXAMPLE - What to extract:
+Input: "Hi Michelle, Great speaking with you. Look forward to meeting Monday. Cheers (I know a) Guy"
+Output message: "Hi Michelle, Great speaking with you. Look forward to meeting Monday."
+(Note: "Cheers (I know a) Guy" is the signature - REMOVE IT)
 
 OUTPUT FORMAT:
 Return a JSON array of message objects. Each message should have:
 - "sender": The name of the person who sent the message (string)
-- "timestamp": ISO 8601 date-time string (e.g., "2025-01-15T14:30:00Z")
-- "message": The actual message content, cleaned of signatures (string)
+- "timestamp": ISO 8601 date-time string (e.g., "2025-01-15T14:30:00Z") - use reference date if not found in email
+- "message": The actual message content, with signature COMPLETELY REMOVED (string)
 
 Order messages chronologically (oldest first).
 
-If you cannot determine a timestamp, use the reference date provided.
-If you cannot determine a sender name, use "Unknown".
+If you cannot determine a sender name, look for it in the signature (before you remove it).
+The sender is usually the name after "Cheers", "Thanks", "Best regards" etc.
 
 Example output:
 [
   {
-    "sender": "John Smith",
+    "sender": "Guy Wilson",
     "timestamp": "2025-01-14T09:15:00Z",
-    "message": "Hi, just following up on our conversation about the project timeline."
-  },
-  {
-    "sender": "Jane Doe",
-    "timestamp": "2025-01-14T10:30:00Z",
-    "message": "Thanks for reaching out! I'll have the proposal ready by Friday."
+    "message": "Hi Michelle, Great speaking with you. Look forward to meeting Monday."
   }
 ]`;
 }
