@@ -68,7 +68,7 @@ export default function OnboardClientPage() {
     setValidationResult(null);
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pb-webhook-server-staging.onrender.com';
       const response = await fetch(`${apiUrl}/api/validate-client-base`, {
         method: 'POST',
         headers: {
@@ -111,7 +111,7 @@ export default function OnboardClientPage() {
     setOnboardingResult(null);
     
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pb-webhook-server-staging.onrender.com';
       const response = await fetch(`${apiUrl}/api/onboard-client`, {
         method: 'POST',
         headers: {
