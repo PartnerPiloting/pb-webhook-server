@@ -7674,21 +7674,27 @@ router.post("/api/onboard-client", async (req, res) => {
         postScoringTokenLimit: 0,
         postsDailyTarget: 0,
         leadsBatchSizeForPostCollection: 0,
-        maxPostBatchesPerDayGuardrail: 0
+        maxPostBatchesPerDayGuardrail: 0,
+        postScrapeBatchSize: 0,
+        processingStream: null
       },
       '2-Post Scoring': {
         profileScoringTokenLimit: 5000,
         postScoringTokenLimit: 3000,
         postsDailyTarget: 10,
         leadsBatchSizeForPostCollection: 10,
-        maxPostBatchesPerDayGuardrail: 3
+        maxPostBatchesPerDayGuardrail: 3,
+        postScrapeBatchSize: 10,
+        processingStream: 1
       },
       '3-Full Service': {
         profileScoringTokenLimit: 10000,
         postScoringTokenLimit: 5000,
         postsDailyTarget: 20,
         leadsBatchSizeForPostCollection: 15,
-        maxPostBatchesPerDayGuardrail: 5
+        maxPostBatchesPerDayGuardrail: 5,
+        postScrapeBatchSize: 15,
+        processingStream: 1
       }
     };
     
@@ -7710,8 +7716,14 @@ router.post("/api/onboard-client", async (req, res) => {
       [CLIENT_FIELDS.POST_SCORING_TOKEN_LIMIT]: defaults.postScoringTokenLimit,
       [CLIENT_FIELDS.POSTS_DAILY_TARGET]: defaults.postsDailyTarget,
       [CLIENT_FIELDS.LEADS_BATCH_SIZE_FOR_POST_COLLECTION]: defaults.leadsBatchSizeForPostCollection,
-      [CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL]: defaults.maxPostBatchesPerDayGuardrail
+      [CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL]: defaults.maxPostBatchesPerDayGuardrail,
+      [CLIENT_FIELDS.POST_SCRAPE_BATCH_SIZE]: defaults.postScrapeBatchSize,
     };
+    
+    // Add Processing Stream only if it has a value (not null for Lead Scoring tier)
+    if (defaults.processingStream !== null) {
+      newClientRecord[CLIENT_FIELDS.PROCESSING_STREAM] = defaults.processingStream;
+    }
     
     // Add optional fields if provided
     if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
@@ -7837,6 +7849,157 @@ router.post("/api/validate-client-base", async (req, res) => {
   } catch (error) {
     logger.error('Base validation error:', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/update-client/:clientId
+ * 
+ * Updates an existing client record in the Master Clients base.
+ * Only updates fields that are provided in the request body.
+ */
+router.put("/api/update-client/:clientId", async (req, res) => {
+  const Airtable = require('airtable');
+  const { clientId } = req.params;
+  const logger = createLogger({ runId: 'UPDATE', clientId, operation: 'update_client' });
+  
+  try {
+    const updateData = req.body;
+    
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
+    }
+    
+    if (!updateData || Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, error: 'No update data provided' });
+    }
+    
+    logger.info(`Updating client: ${clientId}`);
+    
+    // Find the client record
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    const existingClients = await masterBase('Clients').select({
+      filterByFormula: `{Client ID} = "${clientId}"`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (existingClients.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `Client "${clientId}" not found`
+      });
+    }
+    
+    const recordId = existingClients[0].id;
+    const currentFields = existingClients[0].fields;
+    
+    // Build update object - map incoming fields to Airtable field names
+    const fieldMapping = {
+      clientName: CLIENT_FIELDS.CLIENT_NAME,
+      email: CLIENT_FIELDS.CLIENT_EMAIL_ADDRESS,
+      wordpressUserId: CLIENT_FIELDS.WORDPRESS_USER_ID,
+      airtableBaseId: CLIENT_FIELDS.AIRTABLE_BASE_ID,
+      serviceLevel: CLIENT_FIELDS.SERVICE_LEVEL,
+      timezone: CLIENT_FIELDS.TIMEZONE,
+      status: CLIENT_FIELDS.STATUS,
+      statusManagement: CLIENT_FIELDS.STATUS_MANAGEMENT,
+      linkedinUrl: 'LinkedIn URL',
+      phone: 'Phone',
+      googleCalendarEmail: CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL,
+      profileScoringTokenLimit: CLIENT_FIELDS.PROFILE_SCORING_TOKEN_LIMIT,
+      postScoringTokenLimit: CLIENT_FIELDS.POST_SCORING_TOKEN_LIMIT,
+      postsDailyTarget: CLIENT_FIELDS.POSTS_DAILY_TARGET,
+      leadsBatchSizeForPostCollection: CLIENT_FIELDS.LEADS_BATCH_SIZE_FOR_POST_COLLECTION,
+      maxPostBatchesPerDayGuardrail: CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL,
+      postScrapeBatchSize: CLIENT_FIELDS.POST_SCRAPE_BATCH_SIZE,
+      processingStream: CLIENT_FIELDS.PROCESSING_STREAM
+    };
+    
+    const updateFields = {};
+    for (const [inputKey, airtableField] of Object.entries(fieldMapping)) {
+      if (updateData[inputKey] !== undefined) {
+        let value = updateData[inputKey];
+        // Parse integers for numeric fields
+        if (['wordpressUserId', 'profileScoringTokenLimit', 'postScoringTokenLimit', 
+             'postsDailyTarget', 'leadsBatchSizeForPostCollection', 'maxPostBatchesPerDayGuardrail',
+             'postScrapeBatchSize', 'processingStream'].includes(inputKey)) {
+          value = parseInt(value, 10);
+          if (isNaN(value)) continue; // Skip invalid numbers
+        }
+        updateFields[airtableField] = value;
+      }
+    }
+    
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+    
+    // Update the record
+    const updatedRecord = await masterBase('Clients').update(recordId, updateFields);
+    
+    logger.info(`Client ${clientId} updated successfully`);
+    
+    res.json({
+      success: true,
+      clientId,
+      recordId,
+      updatedFields: Object.keys(updateFields),
+      message: `Client "${clientId}" updated successfully!`
+    });
+    
+  } catch (error) {
+    logger.error('Client update error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Client update failed: ${error.message}` 
+    });
+  }
+});
+
+/**
+ * GET /api/client/:clientId
+ * 
+ * Gets an existing client record from the Master Clients base.
+ */
+router.get("/api/client/:clientId", async (req, res) => {
+  const Airtable = require('airtable');
+  const { clientId } = req.params;
+  const logger = createLogger({ runId: 'GET', clientId, operation: 'get_client' });
+  
+  try {
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
+    }
+    
+    // Find the client record
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    const existingClients = await masterBase('Clients').select({
+      filterByFormula: `{Client ID} = "${clientId}"`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (existingClients.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `Client "${clientId}" not found`
+      });
+    }
+    
+    const record = existingClients[0];
+    
+    res.json({
+      success: true,
+      clientId,
+      recordId: record.id,
+      fields: record.fields
+    });
+    
+  } catch (error) {
+    logger.error('Get client error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to get client: ${error.message}` 
+    });
   }
 });
 

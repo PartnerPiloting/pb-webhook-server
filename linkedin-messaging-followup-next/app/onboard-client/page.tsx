@@ -492,7 +492,7 @@ export default function OnboardClientPage() {
         <div className="mt-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
           <h3 className="font-semibold text-blue-900 mb-3">Before You Start</h3>
           <ol className="list-decimal list-inside space-y-2 text-blue-800">
-            <li>Duplicate the template Airtable base (Guy-Wilson's base)</li>
+            <li>Duplicate the template Airtable base <strong>(My Leads - Client Template)</strong></li>
             <li>Rename it to "My Leads - [Client Name]"</li>
             <li>Get the new Base ID from the URL</li>
             <li>Look up the client's WordPress User ID from PMPro</li>

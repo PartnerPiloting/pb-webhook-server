@@ -46,6 +46,8 @@ const CLIENT_FIELDS = {
   POSTS_DAILY_TARGET: 'Posts Daily Target',
   LEADS_BATCH_SIZE_FOR_POST_COLLECTION: 'Leads Batch Size for Post Collection',
   MAX_POST_BATCHES_PER_DAY_GUARDRAIL: 'Max Post Batches Per Day Guardrail',
+  POST_SCRAPE_BATCH_SIZE: 'Post Scrape Batch Size',
+  PROCESSING_STREAM: 'Processing Stream',
   PRIMARY_FLOOR: 'Primary Floor',
   SECONDARY_FLOOR: 'Secondary Floor',
   MINIMUM_FLOOR: 'Minimum Floor',
