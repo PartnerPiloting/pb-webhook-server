@@ -1036,14 +1036,39 @@ router.post('/leads/parse-preview', async (req, res) => {
       forceFormat: section  // e.g., 'email', 'linkedin', 'salesnav'
     });
     
+    // Map format names back to friendly section names for UI
+    const formatToSection = {
+      'email_raw': 'email',
+      'email_ai': 'email',
+      'linkedin_raw': 'linkedin',
+      'salesnav_raw': 'salesnav',
+      'aiblaze': 'linkedin',
+      'manual': 'manual'
+    };
+    
+    const autoDetectedSection = formatToSection[result.autoDetectedFormat] || 'manual';
+    const selectedSection = section || 'linkedin';
+    
+    // Check for mismatch between user's selection and auto-detected format
+    let formatMismatch = null;
+    if (selectedSection !== 'manual' && autoDetectedSection !== 'manual' && selectedSection !== autoDetectedSection) {
+      formatMismatch = {
+        selected: selectedSection,
+        detected: autoDetectedSection,
+        message: `This looks like ${autoDetectedSection} content. Consider switching to "${autoDetectedSection.charAt(0).toUpperCase() + autoDetectedSection.slice(1)}".`
+      };
+    }
+    
     res.json({
       detectedFormat: result.format,
       messageCount: result.messageCount || 0,
       formatted: result.formatted,
       messages: result.messages || [],
       usedAI: result.usedAI || false,
-      aiError: result.aiError || null,  // Tells user if AI failed and why
-      forcedFormat: section || null  // What format user requested
+      aiError: result.aiError || null,
+      forcedFormat: section || null,
+      autoDetectedFormat: autoDetectedSection,
+      formatMismatch  // Warning if user selected wrong format
     });
     
   } catch (error) {

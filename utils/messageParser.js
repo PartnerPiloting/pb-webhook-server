@@ -806,7 +806,7 @@ function formatMessages(messages, newestFirst = true) {
  * @param {boolean} options.newestFirst - Output with newest messages first
  * @param {boolean} options.useAI - Use AI for email parsing (default true if available)
  * @param {string} options.forceFormat - Force a specific format (email, linkedin, salesnav) instead of auto-detect
- * @returns {Promise<{ format: string, messages: Array, formatted: string, usedAI: boolean, aiError: string|null }>}
+ * @returns {Promise<{ format: string, messages: Array, formatted: string, usedAI: boolean, aiError: string|null, autoDetectedFormat: string }>}
  */
 async function parseConversation(text, options = {}) {
     const {
@@ -825,8 +825,11 @@ async function parseConversation(text, options = {}) {
         'manual': 'manual'
     };
     
-    // Use forced format if provided, otherwise auto-detect
-    const format = forceFormat ? (sectionToFormat[forceFormat] || detectFormat(text)) : detectFormat(text);
+    // Always run auto-detection (for mismatch warning)
+    const autoDetectedFormat = detectFormat(text);
+    
+    // Use forced format if provided, otherwise use auto-detected
+    const format = forceFormat ? (sectionToFormat[forceFormat] || autoDetectedFormat) : autoDetectedFormat;
     let messages = [];
     let usedAI = false;
     let aiError = null;
@@ -870,7 +873,8 @@ async function parseConversation(text, options = {}) {
                 messages: [],
                 formatted: text.trim(),
                 usedAI: false,
-                aiError: null
+                aiError: null,
+                autoDetectedFormat
             };
     }
     
@@ -883,7 +887,8 @@ async function parseConversation(text, options = {}) {
         formatted,
         messageCount: messages.length,
         usedAI,
-        aiError
+        aiError,
+        autoDetectedFormat  // What format was auto-detected (for mismatch warnings)
     };
 }
 
