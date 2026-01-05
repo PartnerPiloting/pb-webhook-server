@@ -58,6 +58,19 @@ interface ClientData {
   processingStream: string;
 }
 
+// Helper to get the service level number from the service level string
+function getServiceLevelNumber(serviceLevel: string): string {
+  if (serviceLevel.startsWith('1-')) return '1';
+  if (serviceLevel.startsWith('2-')) return '2';
+  return '2'; // Default to post scoring
+}
+
+// Build the client dashboard URL
+function buildClientUrl(clientCode: string, serviceLevel: string): string {
+  const level = getServiceLevelNumber(serviceLevel);
+  return `https://pb-webhook-server-staging.vercel.app/?testClient=${encodeURIComponent(clientCode)}&level=${level}`;
+}
+
 // Only two actual service levels in the system
 const SERVICE_LEVELS = [
   { value: '1-Lead Scoring', label: 'Lead Scoring', description: 'Profile scoring only' },
@@ -404,11 +417,12 @@ export default function OnboardClientPage() {
                     <p className="text-sm font-medium text-gray-700 mb-2">📧 Client Dashboard URL (copy & send):</p>
                     <div className="flex gap-2 items-center">
                       <code className="flex-1 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all">
-                        https://network-accelerator.vercel.app/?client={result.clientId || editClientId}
+                        {buildClientUrl(result.clientId || editClientId, formData.serviceLevel)}
                       </code>
                       <button
+                        type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(`https://network-accelerator.vercel.app/?client=${result.clientId || editClientId}`);
+                          navigator.clipboard.writeText(buildClientUrl(result.clientId || editClientId, formData.serviceLevel));
                         }}
                         className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
                       >
@@ -489,6 +503,27 @@ export default function OnboardClientPage() {
                   </span>
                 )}
               </h2>
+              
+              {/* Client URL - shown in edit mode */}
+              {mode === 'edit' && editClientId && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700 mb-2">📧 Client Dashboard URL:</p>
+                  <div className="flex gap-2 items-center">
+                    <code className="flex-1 text-sm bg-white px-3 py-2 rounded border border-blue-200 text-gray-800 break-all">
+                      {buildClientUrl(editClientId, formData.serviceLevel)}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(buildClientUrl(editClientId, formData.serviceLevel));
+                      }}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
               
               <div className="grid gap-4">
                 <div>
