@@ -93,7 +93,7 @@ function detectFormat(text) {
 
 /**
  * Parse date from various formats
- * @param {string} dateStr - Date string like "Dec 4, 2025", "Monday", "Nov 29"
+ * @param {string} dateStr - Date string like "Dec 4, 2025", "Monday", "Nov 29", "2 Jan"
  * @param {Date} referenceDate - Reference date for relative dates
  * @returns {Date} Parsed date
  */
@@ -101,15 +101,25 @@ function parseFlexibleDate(dateStr, referenceDate = new Date()) {
     if (!dateStr) return referenceDate;
     
     const trimmed = dateStr.trim();
+    const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
     
-    // Full date: "Dec 4, 2025" or "Nov 29"
+    // Full date (month first): "Dec 4, 2025" or "Nov 29"
     const monthDayYear = /^([A-Z][a-z]{2})\s+(\d{1,2})(?:,?\s*(\d{4}))?$/i;
     const match = trimmed.match(monthDayYear);
     if (match) {
-        const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
         const month = months[match[1].toLowerCase()];
         const day = parseInt(match[2], 10);
         const year = match[3] ? parseInt(match[3], 10) : referenceDate.getFullYear();
+        return new Date(year, month, day);
+    }
+    
+    // Full date (day first - Gmail format): "2 Jan" or "2 Jan 2026"
+    const dayMonthYear = /^(\d{1,2})\s+([A-Z][a-z]{2})(?:,?\s*(\d{4}))?$/i;
+    const match2 = trimmed.match(dayMonthYear);
+    if (match2) {
+        const day = parseInt(match2[1], 10);
+        const month = months[match2[2].toLowerCase()];
+        const year = match2[3] ? parseInt(match2[3], 10) : referenceDate.getFullYear();
         return new Date(year, month, day);
     }
     
