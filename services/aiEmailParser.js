@@ -12,35 +12,14 @@
  */
 
 require('dotenv').config();
-const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+const { HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
+
+// Use the existing Gemini client from config
+const { vertexAIClient } = require('../config/geminiClient');
 
 // Use Gemini Flash for speed (email parsing doesn't need Pro)
 const EMAIL_PARSER_MODEL = 'gemini-2.0-flash';
 const PARSER_TIMEOUT_MS = 30000; // 30 second timeout
-
-// Lazy-load Vertex AI client (only created when needed)
-let vertexClient = null;
-
-/**
- * Get or create the Vertex AI client
- */
-function getVertexClient() {
-    if (vertexClient) return vertexClient;
-    
-    const projectId = process.env.GCP_PROJECT_ID;
-    const location = process.env.GCP_LOCATION || 'us-central1';
-    
-    if (!projectId) {
-        throw new Error('GCP_PROJECT_ID environment variable not set');
-    }
-    
-    vertexClient = new VertexAI({
-        project: projectId,
-        location: location
-    });
-    
-    return vertexClient;
-}
 
 /**
  * Format date as DD-MM-YY
@@ -118,16 +97,20 @@ Example output:
  * @param {string} rawEmailText - The raw email text to parse
  * @param {string} clientFirstName - The client's first name (to identify "You" in messages)
  * @param {Date} referenceDate - Reference date for parsing relative dates
- * @returns {Promise<Array<{date: string, time: string, sender: string, message: string}>>}
+ * @returns {Promise<{messages: Array<{date: string, time: string, sender: string, message: string}>, error: string|null}>}
  */
 async function parseEmailWithAI(rawEmailText, clientFirstName = 'Me', referenceDate = new Date()) {
     if (!rawEmailText || typeof rawEmailText !== 'string' || rawEmailText.trim().length === 0) {
-        return [];
+        return { messages: [], error: null };
+    }
+
+    // Check if Gemini client is available
+    if (!vertexAIClient) {
+        return { messages: null, error: 'AI service not configured' };
     }
 
     try {
-        const client = getVertexClient();
-        const model = client.getGenerativeModel({
+        const model = vertexAIClient.getGenerativeModel({
             model: EMAIL_PARSER_MODEL,
             systemInstruction: { parts: [{ text: buildEmailParserPrompt() }] },
             safetySettings: [
@@ -166,7 +149,7 @@ ${rawEmailText}`;
 
         const candidate = result.response.candidates?.[0];
         if (!candidate?.content?.parts?.[0]?.text) {
-            throw new Error('Gemini API returned no content');
+            return { messages: null, error: 'AI returned no content' };
         }
 
         const responseText = candidate.content.parts[0].text;
@@ -181,12 +164,12 @@ ${rawEmailText}`;
             if (jsonMatch) {
                 parsedMessages = JSON.parse(jsonMatch[0]);
             } else {
-                throw new Error(`Failed to parse AI response as JSON: ${parseError.message}`);
+                return { messages: null, error: `Failed to parse AI response: ${parseError.message}` };
             }
         }
 
         if (!Array.isArray(parsedMessages)) {
-            throw new Error('AI response is not an array');
+            return { messages: null, error: 'AI response format invalid' };
         }
 
         // Convert AI format to internal format
@@ -219,20 +202,20 @@ ${rawEmailText}`;
             };
         }).filter(msg => msg.message.length > 0);
 
-        return messages;
+        return { messages, error: null };
 
     } catch (error) {
-        // Log error but don't throw - caller can fall back to regex
+        // Log error and return it - caller can fall back to regex
         console.error('[AI Email Parser] Error:', error.message);
-        return null; // Return null to signal failure (caller should fall back)
+        return { messages: null, error: error.message };
     }
 }
 
 /**
- * Check if AI parsing is available (credentials configured)
+ * Check if AI parsing is available (Gemini client initialized)
  */
 function isAIParsingAvailable() {
-    return !!(process.env.GCP_PROJECT_ID && process.env.GCP_LOCATION);
+    return !!vertexAIClient;
 }
 
 module.exports = {

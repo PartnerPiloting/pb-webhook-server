@@ -799,7 +799,7 @@ function formatMessages(messages, newestFirst = true) {
  * @param {Date} options.referenceDate - Reference date for relative dates
  * @param {boolean} options.newestFirst - Output with newest messages first
  * @param {boolean} options.useAI - Use AI for email parsing (default true if available)
- * @returns {Promise<{ format: string, messages: Array, formatted: string }>}
+ * @returns {Promise<{ format: string, messages: Array, formatted: string, usedAI: boolean, aiError: string|null }>}
  */
 async function parseConversation(text, options = {}) {
     const {
@@ -812,6 +812,7 @@ async function parseConversation(text, options = {}) {
     const format = detectFormat(text);
     let messages = [];
     let usedAI = false;
+    let aiError = null;
     
     switch (format) {
         case 'aiblaze':
@@ -826,23 +827,21 @@ async function parseConversation(text, options = {}) {
         case 'email_raw':
             // Try AI parsing first if available and enabled
             if (useAI && isAIParsingAvailable()) {
-                try {
-                    const aiMessages = await parseEmailWithAI(text, clientFirstName, referenceDate);
-                    if (aiMessages && aiMessages.length > 0) {
-                        messages = aiMessages;
-                        usedAI = true;
-                    } else {
-                        // AI returned empty/null, fall back to regex
-                        console.log('[MessageParser] AI parsing returned empty, falling back to regex');
-                        messages = parseEmailRaw(text, clientFirstName, referenceDate);
-                    }
-                } catch (aiError) {
-                    // AI failed, fall back to regex
-                    console.log('[MessageParser] AI parsing failed, falling back to regex:', aiError.message);
+                const aiResult = await parseEmailWithAI(text, clientFirstName, referenceDate);
+                if (aiResult.messages && aiResult.messages.length > 0) {
+                    messages = aiResult.messages;
+                    usedAI = true;
+                } else {
+                    // AI returned empty/null, fall back to regex
+                    aiError = aiResult.error || 'AI returned no messages';
+                    console.log('[MessageParser] AI parsing failed, falling back to regex:', aiError);
                     messages = parseEmailRaw(text, clientFirstName, referenceDate);
                 }
             } else {
                 // AI not available, use regex
+                if (!isAIParsingAvailable()) {
+                    aiError = 'AI service not available';
+                }
                 messages = parseEmailRaw(text, clientFirstName, referenceDate);
             }
             break;
@@ -852,7 +851,9 @@ async function parseConversation(text, options = {}) {
             return {
                 format: 'manual',
                 messages: [],
-                formatted: text.trim()
+                formatted: text.trim(),
+                usedAI: false,
+                aiError: null
             };
     }
     
@@ -864,7 +865,8 @@ async function parseConversation(text, options = {}) {
         messages,
         formatted,
         messageCount: messages.length,
-        usedAI
+        usedAI,
+        aiError
     };
 }
 
