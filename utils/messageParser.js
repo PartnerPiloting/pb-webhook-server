@@ -77,14 +77,20 @@ function detectFormat(text) {
         return 'salesnav_raw';
     }
     
-    // Email format: Name <email@domain.com> followed by date
-    // Pattern: "Name <email>" OR "to me" (Gmail indicator) OR reply header "On Date, Name wrote:"
+    // Email format: Various patterns
+    // Pattern 1: "Name <email>" header format
+    // Pattern 2: "to me" (Gmail indicator)
+    // Pattern 3: Reply header "On Date, Name wrote:"
+    // Pattern 4: "From: Name" / "To: Name" / "Date:" headers (Gmail paste)
     const emailHeaderPattern = /^[A-Za-z\s]+<[^>]+@[^>]+>/m;
     const gmailToMePattern = /^to\s+(me|[A-Za-z\s,]+)$/m;
     const replyHeaderPattern = /^On\s+.+wrote:$/m;
+    const fromToPattern = /^From:\s*.+$/m;
+    const hasDateHeader = /^Date:\s*.+$/m;
     if (emailHeaderPattern.test(trimmed) || 
         (gmailToMePattern.test(trimmed) && trimmed.includes('@')) ||
-        replyHeaderPattern.test(trimmed)) {
+        replyHeaderPattern.test(trimmed) ||
+        (fromToPattern.test(trimmed) && hasDateHeader.test(trimmed))) {
         return 'email_raw';
     }
     
@@ -408,28 +414,84 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
     
     // Email header pattern: "Name <email@domain.com>"
     const emailHeaderPattern = /^([A-Za-z\s]+)\s*<([^>]+@[^>]+)>/;
+    // Gmail From header: "From: Name" or "From: Name <email>"
+    const fromHeaderPattern = /^From:\s*([^<\n]+?)(?:\s*<[^>]+>)?\s*$/i;
+    // Gmail To header: "To: Name" or "To: Name <email>"
+    const toHeaderPattern = /^To:\s*.+$/i;
+    // Gmail Date header: "Date: HH:MM (X hours ago)" or "Date: 02 December 2025 16:21"
+    const dateHeaderPattern = /^Date:\s*(.+)$/i;
     // Full date pattern: "3 Jan 2026, 00:00" or "3 Jan 2026, 00:00 (1 day ago)"
     const fullDatePattern = /^(\d{1,2}\s+[A-Za-z]+\s+\d{4}),?\s*(\d{1,2}:\d{2})/;
     // Day-of-week date pattern: "Fri 2 Jan, 14:26" or "Fri 2 Jan, 14:26 (3 days ago)" (no year)
     const dayOfWeekDatePattern = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\s+[A-Za-z]+),?\s*(\d{1,2}:\d{2})/i;
-    // Time-only pattern for today's emails: "06:25" or "06:25 (3 minutes ago)"
+    // Time-only pattern for today's emails: "06:25" or "06:25 (3 minutes ago)" or "09:42 (11 hours ago)"
     const timeOnlyPattern = /^(\d{1,2}:\d{2})(?:\s*\(.+\))?$/;
     // "to me" or "to Name Name, ..."
     const toPattern = /^to\s+/i;
     // Reply header: "On Mon, Jan 3, 2026 at 12:00 PM Name <email> wrote:"
     const replyHeaderPattern = /^On\s+.+wrote:\s*$/i;
+    // Subject line
+    const subjectPattern = /^Subject:\s*.+$/i;
+    // Sent header (for forwarded/replied emails): "From: Name" or "Sent: Date"
+    const sentHeaderPattern = /^Sent:\s*(.+)$/i;
     
     let currentSender = null;
     let currentDate = null;
     let currentTime = '12:00 PM';
     let currentMessage = [];
     let inBody = false;
+    let skipUntilNextEmail = false;
     
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         
         // Skip empty lines unless we're in message body
         if (!line && !inBody) continue;
+        
+        // Check for "---" separator (email signature or thread separator)
+        if (line === '---') {
+            // Save current message before the separator
+            if (currentSender && currentMessage.length > 0) {
+                const msgText = currentMessage.join(' ').trim();
+                if (msgText) {
+                    messages.push({
+                        date: currentDate || formatDateDDMMYY(referenceDate),
+                        time: currentTime,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                }
+                currentMessage = [];
+            }
+            skipUntilNextEmail = true;
+            inBody = false;
+            continue;
+        }
+        
+        // Check for "From: Name" header (Gmail format)
+        const fromMatch = line.match(fromHeaderPattern);
+        if (fromMatch) {
+            // Save previous message if exists
+            if (currentSender && currentMessage.length > 0) {
+                const msgText = currentMessage.join(' ').trim();
+                if (msgText) {
+                    messages.push({
+                        date: currentDate || formatDateDDMMYY(referenceDate),
+                        time: currentTime,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                }
+            }
+            
+            currentSender = fromMatch[1].trim();
+            currentDate = null;
+            currentTime = '12:00 PM';
+            currentMessage = [];
+            inBody = false;
+            skipUntilNextEmail = false;
+            continue;
+        }
         
         // Check for email header "Name <email>"
         const headerMatch = line.match(emailHeaderPattern);
@@ -452,6 +514,57 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
             currentTime = '12:00 PM';
             currentMessage = [];
             inBody = false;
+            skipUntilNextEmail = false;
+            continue;
+        }
+        
+        // Skip if we're past a separator waiting for next email
+        if (skipUntilNextEmail) continue;
+        
+        // Check for Date header: "Date: 09:42 (11 hours ago)" or "Date: 02 December 2025 16:21"
+        const dateHeaderMatch = line.match(dateHeaderPattern);
+        if (dateHeaderMatch && currentSender && !currentDate) {
+            const dateValue = dateHeaderMatch[1].trim();
+            
+            // Check for time-only format: "09:42 (11 hours ago)"
+            const timeMatch = dateValue.match(/^(\d{1,2}):(\d{2})/);
+            if (timeMatch) {
+                currentDate = formatDateDDMMYY(referenceDate);
+                const hours = parseInt(timeMatch[1], 10);
+                const minutes = timeMatch[2];
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                currentTime = `${hours12}:${minutes} ${ampm}`;
+            } else {
+                // Try to parse full date: "02 December 2025 16:21"
+                const fullMatch = dateValue.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})(?:,?\s*(\d{1,2}):(\d{2}))?/);
+                if (fullMatch) {
+                    const months = { jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3, 
+                                     may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, 
+                                     sep: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11 };
+                    const month = months[fullMatch[2].toLowerCase()];
+                    if (month !== undefined) {
+                        const parsedDate = new Date(parseInt(fullMatch[3]), month, parseInt(fullMatch[1]));
+                        currentDate = formatDateDDMMYY(parsedDate);
+                        if (fullMatch[4] && fullMatch[5]) {
+                            const hours = parseInt(fullMatch[4], 10);
+                            const minutes = fullMatch[5];
+                            const ampm = hours >= 12 ? 'PM' : 'AM';
+                            const hours12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                            currentTime = `${hours12}:${minutes} ${ampm}`;
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        
+        // Skip To and Subject headers
+        if (toHeaderPattern.test(line) || subjectPattern.test(line) || sentHeaderPattern.test(line)) {
+            // After Subject, the body usually starts
+            if (subjectPattern.test(line)) {
+                inBody = true;
+            }
             continue;
         }
         
@@ -542,9 +655,10 @@ function parseEmailRaw(text, clientFirstName = 'Me', referenceDate = new Date())
         
         // If we're in the body, collect message content
         if (inBody && currentSender) {
-            // Skip email signature markers
-            if (line === '--' || line.toLowerCase() === 'regards,' || 
-                line.toLowerCase() === 'best regards,' || line.toLowerCase() === 'cheers,') {
+            // Skip email signature markers and disclaimers
+            if (line === '--' || 
+                line.toLowerCase().startsWith('this email and any attachments') ||
+                line.toLowerCase().startsWith('although precautions')) {
                 // End of main content, stop collecting
                 continue;
             }
