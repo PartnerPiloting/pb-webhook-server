@@ -5849,7 +5849,7 @@ router.get("/smart-resume-status", async (req, res) => {
 
 const pmproService = require('../services/pmproMembershipService');
 const clientService = require('../services/clientService');
-const { MASTER_TABLES, CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
+// CLIENT_FIELDS already imported at top of file
 
 /**
  * POST /api/sync-client-statuses
