@@ -17,6 +17,7 @@ const syncPBPostsToAirtable = require("../utils/pbPostsSync.js");
 const { 
   CLIENT_TABLES, 
   LEAD_FIELDS, 
+  CLIENT_FIELDS,
   CLIENT_RUN_FIELDS,
   JOB_TRACKING_FIELDS, 
   CLIENT_RUN_STATUS_VALUES,
@@ -7519,6 +7520,323 @@ router.patch("/api/calendar/update-lead", async (req, res) => {
   } catch (error) {
     logger.error('Lead update error:', error.message, error.stack);
     res.status(500).json({ error: `Lead update failed: ${error.message}` });
+  }
+});
+
+// ============================================================
+// CLIENT ONBOARDING ENDPOINT
+// ============================================================
+
+/**
+ * POST /api/onboard-client
+ * 
+ * Creates a new client record in the Master Clients base after validating
+ * that the provided Airtable base has the required tables and fields.
+ * 
+ * Required fields from coach:
+ * - clientName: Full name (e.g., "Keith Sinclair")
+ * - email: Client email address
+ * - wordpressUserId: PMPro user ID
+ * - airtableBaseId: The new duplicated base ID
+ * - serviceLevel: "1-Lead Scoring", "2-Post Scoring", etc.
+ * 
+ * Optional fields:
+ * - linkedinUrl: Client's LinkedIn profile URL
+ * - timezone: IANA timezone (defaults to Australia/Brisbane)
+ * - phone: Phone number
+ * - googleCalendarEmail: For calendar booking feature
+ */
+router.post("/api/onboard-client", async (req, res) => {
+  const Airtable = require('airtable');
+  const logger = createLogger({ runId: 'ONBOARD', clientId: 'SYSTEM', operation: 'onboard_client' });
+  
+  try {
+    const {
+      clientName,
+      email,
+      wordpressUserId,
+      airtableBaseId,
+      serviceLevel,
+      linkedinUrl,
+      timezone = 'Australia/Brisbane',
+      phone,
+      googleCalendarEmail
+    } = req.body;
+    
+    // Validation
+    const errors = [];
+    if (!clientName) errors.push('clientName is required');
+    if (!email) errors.push('email is required');
+    if (!wordpressUserId) errors.push('wordpressUserId is required');
+    if (!airtableBaseId) errors.push('airtableBaseId is required');
+    if (!serviceLevel) errors.push('serviceLevel is required');
+    
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, errors });
+    }
+    
+    // Generate Client ID from name (e.g., "Keith Sinclair" -> "Keith-Sinclair")
+    const clientId = clientName.trim().replace(/\s+/g, '-');
+    const clientFirstName = clientName.trim().split(' ')[0];
+    
+    logger.info(`Onboarding client: ${clientId}`);
+    
+    // Step 1: Check if client already exists
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    const existingClients = await masterBase('Clients').select({
+      filterByFormula: `OR({Client ID} = "${clientId}", {Client Email Address} = "${email}")`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (existingClients.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Client already exists',
+        existingClientId: existingClients[0].fields['Client ID']
+      });
+    }
+    
+    // Step 2: Validate the new Airtable base
+    const validationResults = {
+      baseAccessible: false,
+      leadsTableExists: false,
+      credentialsTableExists: false,
+      requiredFieldsPresent: [],
+      missingFields: []
+    };
+    
+    try {
+      const clientBase = Airtable.base(airtableBaseId);
+      
+      // Check Leads table
+      try {
+        const leadsRecords = await clientBase('Leads').select({ maxRecords: 1 }).firstPage();
+        validationResults.leadsTableExists = true;
+        validationResults.baseAccessible = true;
+        
+        // Check for required fields by looking at first record's available fields
+        // or by attempting to query with those fields
+        const requiredLeadFields = [
+          'First Name', 'Last Name', 'LinkedIn Profile URL', 'AI Score', 
+          'Status', 'Notes', 'Scoring Status'
+        ];
+        
+        if (leadsRecords.length > 0) {
+          const availableFields = Object.keys(leadsRecords[0].fields);
+          for (const field of requiredLeadFields) {
+            if (availableFields.includes(field)) {
+              validationResults.requiredFieldsPresent.push(field);
+            } else {
+              validationResults.missingFields.push(`Leads.${field}`);
+            }
+          }
+        } else {
+          // Empty table - assume fields exist if table exists
+          validationResults.requiredFieldsPresent = requiredLeadFields;
+        }
+      } catch (leadsError) {
+        validationResults.leadsTableExists = false;
+        validationResults.missingFields.push('Leads table not found');
+      }
+      
+      // Check Credentials table
+      try {
+        await clientBase('Credentials').select({ maxRecords: 1 }).firstPage();
+        validationResults.credentialsTableExists = true;
+      } catch (credError) {
+        validationResults.credentialsTableExists = false;
+        validationResults.missingFields.push('Credentials table not found');
+      }
+      
+    } catch (baseError) {
+      logger.error(`Base validation failed: ${baseError.message}`);
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot access Airtable base',
+        details: baseError.message,
+        validation: validationResults
+      });
+    }
+    
+    // Check if validation passed
+    if (!validationResults.leadsTableExists || !validationResults.credentialsTableExists) {
+      return res.status(400).json({
+        success: false,
+        error: 'Base validation failed',
+        validation: validationResults
+      });
+    }
+    
+    // Step 3: Set defaults based on service level
+    const serviceLevelDefaults = {
+      '1-Lead Scoring': {
+        profileScoringTokenLimit: 5000,
+        postScoringTokenLimit: 0,
+        postsDailyTarget: 0,
+        leadsBatchSizeForPostCollection: 0,
+        maxPostBatchesPerDayGuardrail: 0
+      },
+      '2-Post Scoring': {
+        profileScoringTokenLimit: 5000,
+        postScoringTokenLimit: 3000,
+        postsDailyTarget: 10,
+        leadsBatchSizeForPostCollection: 10,
+        maxPostBatchesPerDayGuardrail: 3
+      },
+      '3-Full Service': {
+        profileScoringTokenLimit: 10000,
+        postScoringTokenLimit: 5000,
+        postsDailyTarget: 20,
+        leadsBatchSizeForPostCollection: 15,
+        maxPostBatchesPerDayGuardrail: 5
+      }
+    };
+    
+    const defaults = serviceLevelDefaults[serviceLevel] || serviceLevelDefaults['1-Lead Scoring'];
+    
+    // Step 4: Create the client record
+    const newClientRecord = {
+      [CLIENT_FIELDS.CLIENT_ID]: clientId,
+      [CLIENT_FIELDS.CLIENT_NAME]: clientName.trim(),
+      [CLIENT_FIELDS.CLIENT_FIRST_NAME]: clientFirstName,
+      [CLIENT_FIELDS.CLIENT_EMAIL_ADDRESS]: email.trim(),
+      [CLIENT_FIELDS.WORDPRESS_USER_ID]: parseInt(wordpressUserId, 10),
+      [CLIENT_FIELDS.AIRTABLE_BASE_ID]: airtableBaseId.trim(),
+      [CLIENT_FIELDS.STATUS]: 'Active',
+      [CLIENT_FIELDS.STATUS_MANAGEMENT]: 'Automatic',
+      [CLIENT_FIELDS.SERVICE_LEVEL]: serviceLevel,
+      [CLIENT_FIELDS.TIMEZONE]: timezone,
+      [CLIENT_FIELDS.PROFILE_SCORING_TOKEN_LIMIT]: defaults.profileScoringTokenLimit,
+      [CLIENT_FIELDS.POST_SCORING_TOKEN_LIMIT]: defaults.postScoringTokenLimit,
+      [CLIENT_FIELDS.POSTS_DAILY_TARGET]: defaults.postsDailyTarget,
+      [CLIENT_FIELDS.LEADS_BATCH_SIZE_FOR_POST_COLLECTION]: defaults.leadsBatchSizeForPostCollection,
+      [CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL]: defaults.maxPostBatchesPerDayGuardrail
+    };
+    
+    // Add optional fields if provided
+    if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
+    if (phone) newClientRecord['Phone'] = phone.trim();
+    if (googleCalendarEmail) newClientRecord[CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL] = googleCalendarEmail.trim();
+    
+    const createdRecord = await masterBase('Clients').create(newClientRecord);
+    
+    logger.info(`Client ${clientId} created successfully with record ID: ${createdRecord.id}`);
+    
+    res.json({
+      success: true,
+      clientId,
+      recordId: createdRecord.id,
+      validation: validationResults,
+      createdFields: Object.keys(newClientRecord),
+      message: `Client "${clientName}" onboarded successfully!`
+    });
+    
+  } catch (error) {
+    logger.error('Client onboarding error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Client onboarding failed: ${error.message}` 
+    });
+  }
+});
+
+/**
+ * POST /api/validate-client-base
+ * 
+ * Validates a new client Airtable base without creating a client record.
+ * Useful for checking the base before submitting the full onboarding form.
+ */
+router.post("/api/validate-client-base", async (req, res) => {
+  const Airtable = require('airtable');
+  const logger = createLogger({ runId: 'VALIDATE', clientId: 'SYSTEM', operation: 'validate_base' });
+  
+  try {
+    const { airtableBaseId } = req.body;
+    
+    if (!airtableBaseId) {
+      return res.status(400).json({ success: false, error: 'airtableBaseId is required' });
+    }
+    
+    logger.info(`Validating base: ${airtableBaseId}`);
+    
+    const validation = {
+      baseAccessible: false,
+      tables: {},
+      requiredFieldsPresent: [],
+      missingFields: [],
+      warnings: []
+    };
+    
+    try {
+      const clientBase = Airtable.base(airtableBaseId);
+      
+      // Check Leads table
+      try {
+        const leadsRecords = await clientBase('Leads').select({ maxRecords: 1 }).firstPage();
+        validation.tables.Leads = { exists: true, recordCount: 'accessible' };
+        validation.baseAccessible = true;
+        
+        const requiredLeadFields = [
+          'First Name', 'Last Name', 'LinkedIn Profile URL', 'AI Score', 
+          'Status', 'Notes', 'Scoring Status', 'Date Created'
+        ];
+        
+        if (leadsRecords.length > 0) {
+          const availableFields = Object.keys(leadsRecords[0].fields);
+          for (const field of requiredLeadFields) {
+            if (availableFields.includes(field)) {
+              validation.requiredFieldsPresent.push(`Leads.${field}`);
+            } else {
+              validation.missingFields.push(`Leads.${field}`);
+            }
+          }
+        } else {
+          validation.warnings.push('Leads table is empty - field validation skipped');
+        }
+      } catch (e) {
+        validation.tables.Leads = { exists: false, error: e.message };
+      }
+      
+      // Check Credentials table
+      try {
+        const credRecords = await clientBase('Credentials').select({ maxRecords: 1 }).firstPage();
+        validation.tables.Credentials = { exists: true, recordCount: credRecords.length };
+      } catch (e) {
+        validation.tables.Credentials = { exists: false, error: e.message };
+      }
+      
+      // Check LinkedIn Posts table (optional but expected)
+      try {
+        await clientBase('LinkedIn Posts').select({ maxRecords: 1 }).firstPage();
+        validation.tables['LinkedIn Posts'] = { exists: true };
+      } catch (e) {
+        validation.tables['LinkedIn Posts'] = { exists: false };
+        validation.warnings.push('LinkedIn Posts table not found (optional for Lead Scoring only)');
+      }
+      
+    } catch (baseError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot access base',
+        details: baseError.message
+      });
+    }
+    
+    const isValid = validation.baseAccessible && 
+                    validation.tables.Leads?.exists && 
+                    validation.tables.Credentials?.exists;
+    
+    res.json({
+      success: isValid,
+      validation,
+      message: isValid 
+        ? 'Base validation passed! Ready for client onboarding.' 
+        : 'Base validation failed. Please check the errors above.'
+    });
+    
+  } catch (error) {
+    logger.error('Base validation error:', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
