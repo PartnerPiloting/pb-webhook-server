@@ -8028,8 +8028,19 @@ Examples of what users might ask:
 
 Respond ONLY with valid JSON, no markdown.`;
 
-    const result = await geminiModel.generateContent(prompt);
-    const responseText = result.response.text().trim();
+    const result = await geminiModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+    
+    const candidate = result.response.candidates?.[0];
+    if (!candidate) {
+      throw new Error("No response from AI");
+    }
+    
+    const responseText = candidate.content?.parts?.[0]?.text?.trim();
+    if (!responseText) {
+      throw new Error("Empty response from AI");
+    }
     
     // Parse the JSON response
     let parsed;
@@ -8052,10 +8063,22 @@ Respond ONLY with valid JSON, no markdown.`;
     });
     
   } catch (error) {
-    console.error('AI endpoint search error:', error.message);
+    console.error('AI endpoint search error:', error.message, error.stack);
+    
+    // Provide more specific error messages
+    let errorMessage = 'AI search failed. Try the regular search instead.';
+    if (error.message?.includes('quota') || error.message?.includes('429')) {
+      errorMessage = 'AI rate limit reached. Please try again in a moment.';
+    } else if (error.message?.includes('timeout') || error.message?.includes('ETIMEDOUT')) {
+      errorMessage = 'AI request timed out. Please try again.';
+    } else if (error.message?.includes('safety') || error.message?.includes('blocked')) {
+      errorMessage = 'Query was blocked. Try rephrasing your question.';
+    }
+    
     res.status(500).json({ 
       success: false, 
-      error: 'AI search failed. Try the regular search instead.' 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
