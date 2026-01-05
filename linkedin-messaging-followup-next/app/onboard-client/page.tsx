@@ -88,34 +88,16 @@ const TIMEZONES = [
   { value: 'Europe/London', label: 'London (GMT)' }
 ];
 
-// Default values by service level
-const SERVICE_LEVEL_DEFAULTS: Record<string, {
-  profileScoringTokenLimit: string;
-  postScoringTokenLimit: string;
-  postsDailyTarget: string;
-  leadsBatchSizeForPostCollection: string;
-  maxPostBatchesPerDayGuardrail: string;
-  postScrapeBatchSize: string;
-  processingStream: string;
-}> = {
-  '1-Lead Scoring': {
-    profileScoringTokenLimit: '5000',
-    postScoringTokenLimit: '0',
-    postsDailyTarget: '0',
-    leadsBatchSizeForPostCollection: '0',
-    maxPostBatchesPerDayGuardrail: '0',
-    postScrapeBatchSize: '0',
-    processingStream: ''
-  },
-  '2-Post Scoring': {
-    profileScoringTokenLimit: '5000',
-    postScoringTokenLimit: '3000',
-    postsDailyTarget: '10',
-    leadsBatchSizeForPostCollection: '10',
-    maxPostBatchesPerDayGuardrail: '3',
-    postScrapeBatchSize: '10',
-    processingStream: '1'
-  }
+// Always use Post Scoring defaults for all clients
+// (Even Level 1 clients get these values pre-set for when they upgrade)
+const DEFAULT_SETTINGS = {
+  profileScoringTokenLimit: '5000',
+  postScoringTokenLimit: '3000',
+  postsDailyTarget: '10',
+  leadsBatchSizeForPostCollection: '10',
+  maxPostBatchesPerDayGuardrail: '3',
+  postScrapeBatchSize: '10',
+  processingStream: '1'
 };
 
 const EMPTY_FORM: ClientData = {
@@ -156,14 +138,7 @@ export default function OnboardClientPage() {
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
-    // When service level changes in Add mode, update defaults
-    if (name === 'serviceLevel' && mode === 'add') {
-      const defaults = SERVICE_LEVEL_DEFAULTS[value] || SERVICE_LEVEL_DEFAULTS['2-Post Scoring'];
-      setFormData(prev => ({ ...prev, [name]: value, ...defaults }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData(prev => ({ ...prev, [name]: value }));
     
     if (name === 'airtableBaseId') {
       setValidationResult(null);
@@ -772,111 +747,103 @@ export default function OnboardClientPage() {
               
               {showAdvanced && (
                 <div className="mt-4 grid gap-4">
-                  <p className="text-sm text-gray-600 bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                    💡 These values are automatically set based on service level. Only change if you need custom limits.
+                  <p className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    💡 Post Scoring defaults are pre-set for all clients (ready for Level 2 upgrade). Only change if you need custom limits.
                   </p>
                   
-                  {/* Get current defaults for display */}
-                  {(() => {
-                    const defaults = SERVICE_LEVEL_DEFAULTS[formData.serviceLevel] || SERVICE_LEVEL_DEFAULTS['2-Post Scoring'];
-                    return (
-                      <>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Profile Scoring Token Limit <span className="text-gray-400 font-normal">(default: {defaults.profileScoringTokenLimit})</span>
-                            </label>
-                            <input
-                              type="number"
-                              name="profileScoringTokenLimit"
-                              value={formData.profileScoringTokenLimit}
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Post Scoring Token Limit <span className="text-gray-400 font-normal">(default: {defaults.postScoringTokenLimit})</span>
-                            </label>
-                            <input
-                              type="number"
-                              name="postScoringTokenLimit"
-                              value={formData.postScoringTokenLimit}
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Posts Daily Target <span className="text-gray-400 font-normal">(default: {defaults.postsDailyTarget})</span>
-                            </label>
-                            <input
-                              type="number"
-                              name="postsDailyTarget"
-                              value={formData.postsDailyTarget}
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Leads Batch Size for Post Collection <span className="text-gray-400 font-normal">(default: {defaults.leadsBatchSizeForPostCollection})</span>
-                            </label>
-                            <input
-                              type="number"
-                              name="leadsBatchSizeForPostCollection"
-                              value={formData.leadsBatchSizeForPostCollection}
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Max Post Batches/Day <span className="text-gray-400 font-normal">(default: {defaults.maxPostBatchesPerDayGuardrail})</span>
-                            </label>
-                            <input
-                              type="number"
-                              name="maxPostBatchesPerDayGuardrail"
-                              value={formData.maxPostBatchesPerDayGuardrail}
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Post Scrape Batch Size <span className="text-gray-400 font-normal">(default: {defaults.postScrapeBatchSize})</span>
-                            </label>
-                            <input
-                              type="number"
-                              name="postScrapeBatchSize"
-                              value={formData.postScrapeBatchSize}
-                              onChange={handleChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Processing Stream <span className="text-gray-400 font-normal">(default: {defaults.processingStream || 'none'})</span>
-                            </label>
-                            <input
-                              type="number"
-                              name="processingStream"
-                              value={formData.processingStream}
-                              onChange={handleChange}
-                              placeholder="1, 2, or 3"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Profile Scoring Token Limit <span className="text-gray-400 font-normal">(default: {DEFAULT_SETTINGS.profileScoringTokenLimit})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="profileScoringTokenLimit"
+                        value={formData.profileScoringTokenLimit}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Post Scoring Token Limit <span className="text-gray-400 font-normal">(default: {DEFAULT_SETTINGS.postScoringTokenLimit})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="postScoringTokenLimit"
+                        value={formData.postScoringTokenLimit}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Posts Daily Target <span className="text-gray-400 font-normal">(default: {DEFAULT_SETTINGS.postsDailyTarget})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="postsDailyTarget"
+                        value={formData.postsDailyTarget}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Leads Batch Size for Post Collection <span className="text-gray-400 font-normal">(default: {DEFAULT_SETTINGS.leadsBatchSizeForPostCollection})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="leadsBatchSizeForPostCollection"
+                        value={formData.leadsBatchSizeForPostCollection}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Max Post Batches/Day <span className="text-gray-400 font-normal">(default: {DEFAULT_SETTINGS.maxPostBatchesPerDayGuardrail})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="maxPostBatchesPerDayGuardrail"
+                        value={formData.maxPostBatchesPerDayGuardrail}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Post Scrape Batch Size <span className="text-gray-400 font-normal">(default: {DEFAULT_SETTINGS.postScrapeBatchSize})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="postScrapeBatchSize"
+                        value={formData.postScrapeBatchSize}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Processing Stream <span className="text-gray-400 font-normal">(default: {DEFAULT_SETTINGS.processingStream})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="processingStream"
+                        value={formData.processingStream}
+                        onChange={handleChange}
+                        placeholder="1, 2, or 3"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

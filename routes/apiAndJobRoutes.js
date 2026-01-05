@@ -7667,30 +7667,17 @@ router.post("/api/onboard-client", async (req, res) => {
       });
     }
     
-    // Step 3: Set defaults based on service level
-    const serviceLevelDefaults = {
-      '1-Lead Scoring': {
-        profileScoringTokenLimit: 5000,
-        postScoringTokenLimit: 0,
-        postsDailyTarget: 0,
-        leadsBatchSizeForPostCollection: 0,
-        maxPostBatchesPerDayGuardrail: 0,
-        postScrapeBatchSize: 0,
-        processingStream: null
-      },
-      '2-Post Scoring': {
-        profileScoringTokenLimit: 5000,
-        postScoringTokenLimit: 3000,
-        postsDailyTarget: 10,
-        leadsBatchSizeForPostCollection: 10,
-        maxPostBatchesPerDayGuardrail: 3,
-        postScrapeBatchSize: 10,
-        processingStream: 1
-      }
-      // Note: Only 2 service levels exist (Lead Scoring and Post Scoring)
+    // Step 3: Always use Post Scoring defaults for all clients
+    // (Even Level 1 clients get these values pre-set for when they upgrade)
+    const defaults = {
+      profileScoringTokenLimit: 5000,
+      postScoringTokenLimit: 3000,
+      postsDailyTarget: 10,
+      leadsBatchSizeForPostCollection: 10,
+      maxPostBatchesPerDayGuardrail: 3,
+      postScrapeBatchSize: 10,
+      processingStream: 1
     };
-    
-    const defaults = serviceLevelDefaults[serviceLevel] || serviceLevelDefaults['1-Lead Scoring'];
     
     // Step 4: Create the client record
     const newClientRecord = {
@@ -7710,12 +7697,8 @@ router.post("/api/onboard-client", async (req, res) => {
       [CLIENT_FIELDS.LEADS_BATCH_SIZE_FOR_POST_COLLECTION]: defaults.leadsBatchSizeForPostCollection,
       [CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL]: defaults.maxPostBatchesPerDayGuardrail,
       [CLIENT_FIELDS.POST_SCRAPE_BATCH_SIZE]: defaults.postScrapeBatchSize,
+      [CLIENT_FIELDS.PROCESSING_STREAM]: defaults.processingStream,
     };
-    
-    // Add Processing Stream only if it has a value (not null for Lead Scoring tier)
-    if (defaults.processingStream !== null) {
-      newClientRecord[CLIENT_FIELDS.PROCESSING_STREAM] = defaults.processingStream;
-    }
     
     // Add optional fields if provided
     if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
