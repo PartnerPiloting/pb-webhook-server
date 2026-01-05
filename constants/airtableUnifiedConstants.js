@@ -38,6 +38,7 @@ const CLIENT_FIELDS = {
   AIRTABLE_BASE_ID: 'Airtable Base ID',
   WORDPRESS_USER_ID: 'WordPress User ID',
   SERVICE_LEVEL: 'Service Level',
+  POST_ACCESS_ENABLED: 'Post Access Enabled', // Single select: blank/Yes/No - only "Yes" enables Apify post scraping
   COMMENT: 'Comment',
   CLIENT_FIRST_NAME: 'Client First Name',
   CLIENT_EMAIL_ADDRESS: 'Client Email Address',

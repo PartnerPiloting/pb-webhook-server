@@ -23,7 +23,8 @@
  *     --email "john@example.com" \
  *     --first-name "John" \
  *     --wp-user-id 123 \
- *     --service-level 1
+ *     --service-level 1 \
+ *     --post-access yes
  */
 
 require('dotenv').config();
@@ -124,7 +125,8 @@ async function createClientRecord(options) {
     clientFirstName,
     clientEmail,
     wpUserId,
-    serviceLevel = 1
+    serviceLevel = 1,
+    postAccessEnabled = false
   } = options;
 
   const masterBase = initializeClientsBase();
@@ -148,6 +150,9 @@ async function createClientRecord(options) {
     'Client First Name': clientFirstName || clientName.split(' ')[0],
     'Client Email Address': clientEmail,
     'WordPress User ID': wpUserId ? parseInt(wpUserId) : null,
+    
+    // Post access control (for Apify post scraping)
+    'Post Access Enabled': postAccessEnabled ? 'Yes' : null,
     
     // Default token limits
     'Profile Scoring Token Limit': 5000,
@@ -252,6 +257,7 @@ async function interactiveMode() {
   const clientFirstName = await question('Client First Name (or press Enter to use first word of name): ');
   const wpUserId = await question('WordPress User ID (or press Enter to skip): ');
   const serviceLevel = await question('Service Level (1=Basic, 2=Plus Post Scoring, 3=Plus Harvesting) [default: 1]: ');
+  const postAccessEnabled = await question('Enable Post Access for Apify? (yes/no) [default: no]: ');
 
   const options = {
     baseId: baseId.trim(),
@@ -260,7 +266,8 @@ async function interactiveMode() {
     clientEmail: clientEmail.trim(),
     clientFirstName: clientFirstName.trim() || clientName.trim().split(' ')[0],
     wpUserId: wpUserId.trim() || null,
-    serviceLevel: parseInt(serviceLevel) || 1
+    serviceLevel: parseInt(serviceLevel) || 1,
+    postAccessEnabled: postAccessEnabled.toLowerCase() === 'yes' || postAccessEnabled.toLowerCase() === 'y'
   };
 
   return options;
@@ -280,6 +287,7 @@ async function onboardClient(options) {
   console.log(`   Email: ${options.clientEmail}`);
   console.log(`   Base ID: ${options.baseId}`);
   console.log(`   Service Level: ${options.serviceLevel}`);
+  console.log(`   Post Access Enabled: ${options.postAccessEnabled ? 'Yes' : 'No'}`);
   if (options.wpUserId) {
     console.log(`   WordPress User ID: ${options.wpUserId}`);
   }
@@ -375,7 +383,8 @@ function parseArgs() {
       'email': 'clientEmail',
       'first-name': 'clientFirstName',
       'wp-user-id': 'wpUserId',
-      'service-level': 'serviceLevel'
+      'service-level': 'serviceLevel',
+      'post-access': 'postAccessEnabled'
     };
     
     if (keyMap[key]) {
@@ -414,7 +423,8 @@ USAGE:
       --email <email> \\
       [--first-name <first-name>] \\
       [--wp-user-id <id>] \\
-      [--service-level <1-3>]
+      [--service-level <1-3>] \
+      [--post-access <yes|no>]
 
 REQUIRED ARGUMENTS:
   --base-id         New client's Airtable base ID (starts with "app")
@@ -426,6 +436,7 @@ OPTIONAL ARGUMENTS:
   --first-name      Client's first name (default: first word of name)
   --wp-user-id      WordPress user ID for integration
   --service-level   Service tier: 1=Basic, 2=+Posts, 3=+Harvesting (default: 1)
+  --post-access     Enable Apify post scraping: yes or no (default: no)
 
 EXAMPLES:
   # Interactive mode
@@ -437,7 +448,8 @@ EXAMPLES:
     --client-id "Jane-Doe" \\
     --client-name "Jane Doe" \\
     --email "jane@example.com" \\
-    --service-level 2
+    --service-level 2 \\
+    --post-access yes
 
 PREREQUISITES:
   1. Duplicate "Template - Client Leads" base in Airtable UI

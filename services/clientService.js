@@ -100,6 +100,8 @@ async function getAllClients() {
                 const serviceLevelRaw = record.get(CLIENT_FIELDS.SERVICE_LEVEL) || 1;
                 const serviceLevel = parseServiceLevel(serviceLevelRaw); // Parse "2-Lead Scoring + Post Scoring" → 2
                 const comment = record.get('Comment') || '';
+                // Post Access control - only "Yes" enables Apify post scraping
+                const postAccessEnabled = record.get(CLIENT_FIELDS.POST_ACCESS_ENABLED) === 'Yes';
                 // Email notification fields
                 const clientFirstName = record.get('Client First Name') || '';
                 const clientEmailAddress = record.get('Client Email Address') || '';
@@ -133,6 +135,8 @@ async function getAllClients() {
                     wpUserId: wpUserId,
                     serviceLevel: serviceLevel,
                     comment: comment,
+                    // Post Access control
+                    postAccessEnabled: postAccessEnabled,
                     // Email notification fields
                     clientFirstName: clientFirstName,
                     clientEmailAddress: clientEmailAddress,
