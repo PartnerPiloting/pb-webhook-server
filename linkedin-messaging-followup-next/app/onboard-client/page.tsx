@@ -56,6 +56,8 @@ interface ClientData {
   maxPostBatchesPerDayGuardrail: string;
   postScrapeBatchSize: string;
   processingStream: string;
+  // Post Access Control
+  postAccessEnabled: boolean;
 }
 
 // Helper to get the service level number from the service level string
@@ -117,7 +119,9 @@ const EMPTY_FORM: ClientData = {
   leadsBatchSizeForPostCollection: '10',
   maxPostBatchesPerDayGuardrail: '3',
   postScrapeBatchSize: '10',
-  processingStream: '1'
+  processingStream: '1',
+  // Post Access Control - enabled by default for new clients
+  postAccessEnabled: true
 };
 
 export default function OnboardClientPage() {
@@ -137,8 +141,9 @@ export default function OnboardClientPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, value, type } = e.target;
+    const newValue = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
+    setFormData(prev => ({ ...prev, [name]: newValue }));
     
     if (name === 'airtableBaseId') {
       setValidationResult(null);
@@ -194,7 +199,9 @@ export default function OnboardClientPage() {
         leadsBatchSizeForPostCollection: String(fields['Leads Batch Size For Post Collection'] || '0'),
         maxPostBatchesPerDayGuardrail: String(fields['Max Post Batches Per Day Guardrail'] || '0'),
         postScrapeBatchSize: String(fields['Post Scrape Batch Size'] || '0'),
-        processingStream: String(fields['Processing Stream'] || '')
+        processingStream: String(fields['Processing Stream'] || ''),
+        // Post Access Control
+        postAccessEnabled: fields['Post Access Enabled'] === 'Yes'
       });
       setShowAdvanced(true); // Show advanced settings when editing
       setEditClientId(searchClientId.trim());
@@ -587,6 +594,24 @@ export default function OnboardClientPage() {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                {/* Post Access Control */}
+                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <input
+                    type="checkbox"
+                    id="postAccessEnabled"
+                    name="postAccessEnabled"
+                    checked={formData.postAccessEnabled}
+                    onChange={handleChange}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="postAccessEnabled" className="flex-1">
+                    <span className="font-medium text-gray-900">Enable Post Access (Apify)</span>
+                    <p className="text-sm text-gray-600">
+                      Allow this client to use Apify for LinkedIn post scraping. Disable to prevent Apify usage regardless of service level.
+                    </p>
+                  </label>
                 </div>
               </div>
             </div>

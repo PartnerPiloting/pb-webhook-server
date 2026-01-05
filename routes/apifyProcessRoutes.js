@@ -481,34 +481,35 @@ async function processClientHandler(req, res) {
       if (res) return res.status(404).json({ ok: false, error: 'Client not found' });
       throw new Error(`Client not found: ${clientId}`);
     }
-    logger.info(`[${endpoint}/process-client] Client found: ${client.clientName}, status: ${client.status}, serviceLevel: ${client.serviceLevel}`);
+    logger.info(`[${endpoint}/process-client] Client found: ${client.clientName}, status: ${client.status}, postAccessEnabled: ${client.postAccessEnabled}`);
     
-    // Skip inactive clients and service level check UNLESS we're in testing mode
+    // Skip inactive clients and post access check UNLESS we're in testing mode
     if (!TESTING_MODE) {
       if (client.status !== 'Active') {
         logger.info(`[apify/process-client] Client ${clientId} not Active, skipping`);
         if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Client not Active' });
         throw new Error(`Client ${clientId} not Active, skipping`);
       }
-      if (Number(client.serviceLevel) < 2) {
-        logger.info(`[apify/process-client] Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
+      // Check postAccessEnabled field - only "Yes" allows post harvesting
+      if (!client.postAccessEnabled) {
+        logger.info(`[apify/process-client] Client ${clientId} post access not enabled, skipping`);
         
         // Log to Progress Log if we have a clientRunId (means this is part of an orchestrated run)
         if (clientRunId) {
           try {
             await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] 🚀 Post Harvesting: Started`);
-            await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] ⏭️ Post Harvesting: Client not eligible (service level: ${client.serviceLevel}, requires level 2+)`);
+            await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] ⏭️ Post Harvesting: Client not eligible (Post Access Enabled: No)`);
             await appendToProgressLog(parentRunId, clientId, `[${getAESTTime()}] ✅ Post Harvesting: Skipped`);
           } catch (logError) {
             logger.error(`[apify/process-client] Failed to log eligibility skip to Progress Log: ${logError.message}`);
           }
         }
         
-        if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Service level < 2' });
-        throw new Error(`Client ${clientId} service level ${client.serviceLevel} < 2, skipping`);
+        if (res) return res.status(200).json({ ok: true, skipped: true, reason: 'Post access not enabled' });
+        throw new Error(`Client ${clientId} post access not enabled, skipping`);
       }
     } else {
-      logger.info(`[apify/process-client] 🧪 TESTING MODE - Bypassing active status and service level checks`);
+      logger.info(`[apify/process-client] 🧪 TESTING MODE - Bypassing active status and post access checks`);
     }
 
     // In testing mode, use small fixed limits; otherwise use client configuration
@@ -1160,7 +1161,8 @@ async function getAllClients() {
       clientId: record.get('Client ID'),
       clientName: record.get('Client Name'),
       serviceLevel: record.get('Service Level'),
-      status: record.get('Status')
+      status: record.get('Status'),
+      postAccessEnabled: record.get('Post Access Enabled') === 'Yes'
     })).filter(client => client.clientId);
   } catch (error) {
     logger.error('Error getting all clients:', error.message);
@@ -1207,11 +1209,11 @@ async function processAllClientsInBackground(clients, path, parentRunId) {
           continue;
         }
         
-        // Skip clients with service level < 2 for post harvesting (apify endpoint)
-        if (endpoint === 'apify' && Number(client.serviceLevel) < 2) {
-          logger.info(`[${endpoint}/batch] Skipping client ${client.clientId} - service level ${client.serviceLevel} < 2`);
+        // Skip clients without post access for post harvesting (apify endpoint)
+        if (endpoint === 'apify' && !client.postAccessEnabled) {
+          logger.info(`[${endpoint}/batch] Skipping client ${client.clientId} - post access not enabled`);
           results.skipped++;
-          results.clientResults[client.clientId] = { status: 'skipped', reason: 'service_level' };
+          results.clientResults[client.clientId] = { status: 'skipped', reason: 'post_access_disabled' };
           continue;
         }
         

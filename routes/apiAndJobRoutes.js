@@ -7545,6 +7545,7 @@ router.patch("/api/calendar/update-lead", async (req, res) => {
  * - timezone: IANA timezone (defaults to Australia/Brisbane)
  * - phone: Phone number
  * - googleCalendarEmail: For calendar booking feature
+ * - postAccessEnabled: Boolean to enable Apify post scraping access
  */
 router.post("/api/onboard-client", async (req, res) => {
   const Airtable = require('airtable');
@@ -7560,7 +7561,8 @@ router.post("/api/onboard-client", async (req, res) => {
       linkedinUrl,
       timezone = 'Australia/Brisbane',
       phone,
-      googleCalendarEmail
+      googleCalendarEmail,
+      postAccessEnabled
     } = req.body;
     
     // Validation
@@ -7704,6 +7706,9 @@ router.post("/api/onboard-client", async (req, res) => {
     if (linkedinUrl) newClientRecord['LinkedIn URL'] = linkedinUrl.trim();
     if (phone) newClientRecord['Phone'] = phone.trim();
     if (googleCalendarEmail) newClientRecord[CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL] = googleCalendarEmail.trim();
+    if (postAccessEnabled !== undefined) {
+      newClientRecord[CLIENT_FIELDS.POST_ACCESS_ENABLED] = postAccessEnabled ? 'Yes' : null;
+    }
     
     const createdRecord = await masterBase('Clients').create(newClientRecord);
     
@@ -7887,15 +7892,20 @@ router.put("/api/update-client/:clientId", async (req, res) => {
       leadsBatchSizeForPostCollection: CLIENT_FIELDS.LEADS_BATCH_SIZE_FOR_POST_COLLECTION,
       maxPostBatchesPerDayGuardrail: CLIENT_FIELDS.MAX_POST_BATCHES_PER_DAY_GUARDRAIL,
       postScrapeBatchSize: CLIENT_FIELDS.POST_SCRAPE_BATCH_SIZE,
-      processingStream: CLIENT_FIELDS.PROCESSING_STREAM
+      processingStream: CLIENT_FIELDS.PROCESSING_STREAM,
+      postAccessEnabled: CLIENT_FIELDS.POST_ACCESS_ENABLED
     };
     
     const updateFields = {};
     for (const [inputKey, airtableField] of Object.entries(fieldMapping)) {
       if (updateData[inputKey] !== undefined) {
         let value = updateData[inputKey];
+        // Handle boolean for postAccessEnabled
+        if (inputKey === 'postAccessEnabled') {
+          value = value ? 'Yes' : null;
+        }
         // Parse integers for numeric fields
-        if (['wordpressUserId', 'profileScoringTokenLimit', 'postScoringTokenLimit', 
+        else if (['wordpressUserId', 'profileScoringTokenLimit', 'postScoringTokenLimit', 
              'postsDailyTarget', 'leadsBatchSizeForPostCollection', 'maxPostBatchesPerDayGuardrail',
              'postScrapeBatchSize', 'processingStream'].includes(inputKey)) {
           value = parseInt(value, 10);

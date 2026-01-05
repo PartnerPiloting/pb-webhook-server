@@ -38,6 +38,7 @@ const { DateTime } = require('luxon');
 const syncPBPostsToAirtable = require('../utils/pbPostsSync');
 const { getClientBase } = require('../config/airtableClient');
 const { createApifyRun } = require('../services/apifyRunsService');
+const clientService = require('../services/clientService');
 
 function toProfileUrl(author) {
   try {
@@ -195,6 +196,20 @@ router.post('/api/apify/run', async (req, res) => {
     if (!clientId) clientId = req.query.client || req.query.clientId;
     if (!clientId) {
       return res.status(400).json({ ok: false, error: 'Missing x-client-id header (or ?client=CLIENT_ID)' });
+    }
+
+    // Check postAccessEnabled - only "Yes" allows Apify access
+    const client = await clientService.getClientById(clientId);
+    if (!client) {
+      return res.status(404).json({ ok: false, error: 'Client not found' });
+    }
+    if (!client.postAccessEnabled) {
+      logger.info(`[apify/run] Client ${clientId} post access not enabled, rejecting`);
+      return res.status(403).json({ 
+        ok: false, 
+        error: 'Post access not enabled for this account',
+        message: 'Contact support to enable post scoring features'
+      });
     }
 
     const apiToken = process.env.APIFY_API_TOKEN;
