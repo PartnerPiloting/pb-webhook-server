@@ -7714,12 +7714,24 @@ router.post("/api/onboard-client", async (req, res) => {
     
     logger.info(`Client ${clientId} created successfully with record ID: ${createdRecord.id}`);
     
+    // Step 5: Create client tasks from templates
+    let taskResult = { tasksCreated: 0 };
+    try {
+      const coachingService = require('../services/coachingService.js');
+      taskResult = await coachingService.createClientTasksFromTemplates(createdRecord.id, clientName);
+      logger.info(`Created ${taskResult.tasksCreated} onboarding tasks for ${clientId}`);
+    } catch (taskError) {
+      // Log but don't fail the onboarding if task creation fails
+      logger.error(`Failed to create tasks for ${clientId}: ${taskError.message}`);
+    }
+    
     res.json({
       success: true,
       clientId,
       recordId: createdRecord.id,
       validation: validationResults,
       createdFields: Object.keys(newClientRecord),
+      tasksCreated: taskResult.tasksCreated,
       message: `Client "${clientName}" onboarded successfully!`
     });
     
@@ -7992,7 +8004,7 @@ router.get("/api/client/:clientId", async (req, res) => {
  * GET /api/coached-clients/:coachClientId
  * 
  * Gets all clients coached by a specific coach.
- * Returns client info with Notion progress URLs for the coach dashboard.
+ * Returns client info with task progress for the coach dashboard.
  */
 router.get("/api/coached-clients/:coachClientId", async (req, res) => {
   const { coachClientId } = req.params;
@@ -8004,6 +8016,7 @@ router.get("/api/coached-clients/:coachClientId", async (req, res) => {
     }
     
     const clientService = require('../services/clientService.js');
+    const coachingService = require('../services/coachingService.js');
     
     // Verify the coach exists as a valid client
     const coach = await clientService.getClientById(coachClientId);
@@ -8017,14 +8030,33 @@ router.get("/api/coached-clients/:coachClientId", async (req, res) => {
     // Get all clients coached by this coach
     const coachedClients = await clientService.getClientsByCoach(coachClientId);
     
+    // Add task progress for each client
+    const clientsWithProgress = await Promise.all(
+      coachedClients.map(async (client) => {
+        try {
+          const progress = await coachingService.getClientTaskProgress(client.recordId);
+          return {
+            ...client,
+            taskProgress: progress
+          };
+        } catch (err) {
+          logger.warn(`Failed to get progress for ${client.clientId}: ${err.message}`);
+          return {
+            ...client,
+            taskProgress: { total: 0, completed: 0, percentage: 0 }
+          };
+        }
+      })
+    );
+    
     logger.info(`Found ${coachedClients.length} coached clients for ${coachClientId}`);
     
     res.json({
       success: true,
       coachClientId,
       coachName: coach.clientName,
-      clients: coachedClients,
-      count: coachedClients.length
+      clients: clientsWithProgress,
+      count: clientsWithProgress.length
     });
     
   } catch (error) {
@@ -8032,6 +8064,32 @@ router.get("/api/coached-clients/:coachClientId", async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: `Failed to get coached clients: ${error.message}` 
+    });
+  }
+});
+
+/**
+ * GET /api/system-settings
+ * 
+ * Gets system settings including Coaching Resources URL.
+ */
+router.get("/api/system-settings", async (req, res) => {
+  const logger = createLogger({ runId: 'GET', clientId: 'SYSTEM', operation: 'get_system_settings' });
+  
+  try {
+    const coachingService = require('../services/coachingService.js');
+    const settings = await coachingService.getSystemSettings();
+    
+    res.json({
+      success: true,
+      settings
+    });
+    
+  } catch (error) {
+    logger.error('Get system settings error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to get system settings: ${error.message}` 
     });
   }
 });

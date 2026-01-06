@@ -1479,4 +1479,23 @@ export const getCoachedClients = async () => {
   }
 };
 
+/**
+ * Get system settings (Coaching Resources URL, etc.)
+ * @returns {Promise<{success: boolean, settings: Object}>}
+ */
+export const getSystemSettings = async () => {
+  try {
+    const backendBase = getBackendBase();
+    const response = await axios.get(`${backendBase}/api/system-settings`, {
+      timeout: 10000,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Get system settings error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to get system settings');
+  }
+};
+
 export default api;
