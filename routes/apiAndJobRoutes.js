@@ -8093,6 +8093,102 @@ router.get("/api/system-settings", async (req, res) => {
 });
 
 /**
+ * POST /api/client/:clientId/create-tasks
+ * 
+ * Creates onboarding tasks for an existing client from templates.
+ * Use this for clients who were onboarded before the task system existed.
+ */
+router.post("/api/client/:clientId/create-tasks", async (req, res) => {
+  const { clientId } = req.params;
+  const logger = createLogger({ runId: 'TASKS', clientId, operation: 'create_client_tasks' });
+  
+  try {
+    if (!clientId) {
+      return res.status(400).json({ success: false, error: 'clientId is required' });
+    }
+    
+    const clientService = require('../services/clientService.js');
+    
+    // Get the client to verify it exists and get the record ID
+    const client = await clientService.getClientById(clientId);
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        error: `Client "${clientId}" not found`
+      });
+    }
+    
+    // Check if client already has tasks
+    const existingTasks = await clientService.getClientTasks(client.recordId);
+    if (existingTasks.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Client "${clientId}" already has ${existingTasks.length} tasks. Delete existing tasks first if you want to regenerate.`,
+        existingTaskCount: existingTasks.length
+      });
+    }
+    
+    // Create tasks from templates
+    const result = await clientService.createClientTasksFromTemplates(client.recordId, client.clientName);
+    
+    logger.info(`Created ${result.tasksCreated} tasks for existing client ${clientId}`);
+    
+    res.json({
+      success: true,
+      clientId,
+      clientName: client.clientName,
+      tasksCreated: result.tasksCreated,
+      message: `Created ${result.tasksCreated} onboarding tasks for ${client.clientName}`
+    });
+    
+  } catch (error) {
+    logger.error('Create client tasks error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to create tasks: ${error.message}` 
+    });
+  }
+});
+
+/**
+ * GET /api/clients
+ * 
+ * Lists all clients in the system.
+ * Returns basic client info for admin overview.
+ */
+router.get("/api/clients", async (req, res) => {
+  const logger = createLogger({ runId: 'GET', clientId: 'SYSTEM', operation: 'list_clients' });
+  
+  try {
+    const clientService = require('../services/clientService.js');
+    const clients = await clientService.getAllClients();
+    
+    // Map to simpler format
+    const clientList = clients.map(c => ({
+      clientId: c.clientId,
+      clientName: c.clientName,
+      coach: c.coach || null,
+      coachingStatus: c.coachingStatus || null,
+      isActive: c.isActive,
+      recordId: c.recordId
+    }));
+    
+    res.json({
+      success: true,
+      clients: clientList,
+      count: clientList.length
+    });
+    
+  } catch (error) {
+    logger.error('List clients error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to list clients: ${error.message}` 
+    });
+  }
+});
+
+/**
  * POST /api/ai-endpoint-search
  * 
  * AI-powered endpoint search using Gemini.

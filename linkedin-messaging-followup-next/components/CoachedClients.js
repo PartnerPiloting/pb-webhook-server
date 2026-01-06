@@ -2,36 +2,44 @@
 import React, { useState, useEffect } from 'react';
 import { getCoachedClients, getSystemSettings } from '../services/api';
 import { getCurrentClientId } from '../utils/clientUtils';
-import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, WrenchScrewdriverIcon, CogIcon } from '@heroicons/react/24/outline';
+import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, WrenchScrewdriverIcon, CogIcon, PlusCircleIcon, TableCellsIcon, ServerIcon, CodeBracketIcon, UserPlusIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
 
 // Owner configuration - hardcoded for now
 const OWNER_CLIENT_ID = 'Guy-Wilson';
-const OWNER_RESOURCES = [
+
+// Organized owner resources by category
+const OWNER_SECTIONS = [
   {
-    label: 'API Explorer',
-    url: 'https://pb-webhook-server-staging.onrender.com/api-explorer',
-    description: 'Test API endpoints'
+    title: '➕ Create & Onboard',
+    links: [
+      { label: 'Onboard New Client', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#post-/api/onboard-client', description: 'Full onboard flow' },
+      { label: 'Add Tasks to Existing Client', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#post-/api/client/{clientId}/create-tasks', description: 'For clients without tasks' },
+      { label: 'View All Clients', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#get-/api/clients', description: 'List all clients' }
+    ]
   },
   {
-    label: 'Master Clients Airtable',
-    url: 'https://airtable.com/appYLxKgtTYFPxQG1',
-    description: 'Client registry & settings'
+    title: '📊 Airtable',
+    links: [
+      { label: 'Master Clients Base', url: 'https://airtable.com/appYLxKgtTYFPxQG1', description: 'Client registry' },
+      { label: 'Clients Table', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblclients', description: 'All clients' },
+      { label: 'Task Templates', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tbltasktemplates', description: 'Edit onboarding tasks' },
+      { label: 'Client Tasks', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblclienttasks', description: 'Track progress' },
+      { label: 'System Settings', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblsystemsettings', description: 'Global config' }
+    ]
   },
   {
-    label: 'Render Dashboard',
-    url: 'https://dashboard.render.com/web/srv-cso4l1rv2p9s73dhnl0g',
-    description: 'Server logs & deploys'
-  },
-  {
-    label: 'GitHub Repo',
-    url: 'https://github.com/PartnerPiloting/pb-webhook-server',
-    description: 'Source code'
+    title: '🛠️ Dev Tools',
+    links: [
+      { label: 'API Explorer', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer', description: 'Test all endpoints' },
+      { label: 'Render Dashboard', url: 'https://dashboard.render.com/web/srv-cso4l1rv2p9s73dhnl0g', description: 'Logs & deploys' },
+      { label: 'GitHub Repo', url: 'https://github.com/PartnerPiloting/pb-webhook-server', description: 'Source code' }
+    ]
   }
 ];
-const OWNER_NOTES = [
-  'To create a new client: Use /api/onboard-client endpoint or create directly in Airtable',
-  'Task templates auto-copy to new clients on onboard',
-  'Coaching Resources URL is in System Settings table'
+
+const OWNER_QUICK_ACTIONS = [
+  { label: '🆕 Onboard Client', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#post-/api/onboard-client', primary: true },
+  { label: '📋 Task Templates', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tbltasktemplates', primary: false }
 ];
 
 /**
@@ -174,41 +182,55 @@ const CoachedClients = () => {
       {/* Owner Panel - only visible to system owner */}
       {isOwner && (
         <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <CogIcon className="h-6 w-6 text-amber-600" />
-            <h2 className="text-lg font-bold text-amber-800">Owner Dashboard</h2>
-          </div>
-          
-          {/* Quick Links */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            {OWNER_RESOURCES.map((resource, idx) => (
-              <a
-                key={idx}
-                href={resource.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col p-3 bg-white border border-amber-200 rounded-lg hover:bg-amber-50 hover:border-amber-300 transition-colors"
-              >
-                <span className="font-medium text-amber-800 text-sm">{resource.label}</span>
-                <span className="text-xs text-gray-500 mt-1">{resource.description}</span>
-              </a>
-            ))}
-          </div>
-          
-          {/* Notes */}
-          <div className="bg-white/60 rounded-lg p-3 border border-amber-100">
-            <h3 className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-1">
-              <WrenchScrewdriverIcon className="h-4 w-4" />
-              Quick Notes
-            </h3>
-            <ul className="text-sm text-gray-600 space-y-1">
-              {OWNER_NOTES.map((note, idx) => (
-                <li key={idx} className="flex items-start gap-2">
-                  <span className="text-amber-400 mt-1">•</span>
-                  <span>{note}</span>
-                </li>
+          {/* Header with Quick Actions */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <CogIcon className="h-6 w-6 text-amber-600" />
+              <h2 className="text-lg font-bold text-amber-800">Owner Dashboard</h2>
+            </div>
+            <div className="flex gap-2">
+              {OWNER_QUICK_ACTIONS.map((action, idx) => (
+                <a
+                  key={idx}
+                  href={action.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    action.primary 
+                      ? 'bg-amber-600 text-white hover:bg-amber-700' 
+                      : 'bg-white text-amber-700 border border-amber-300 hover:bg-amber-50'
+                  }`}
+                >
+                  {action.label}
+                </a>
               ))}
-            </ul>
+            </div>
+          </div>
+          
+          {/* Organized Sections */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {OWNER_SECTIONS.map((section, sectionIdx) => (
+              <div key={sectionIdx} className="bg-white/70 rounded-lg p-3 border border-amber-100">
+                <h3 className="text-sm font-semibold text-amber-800 mb-2">{section.title}</h3>
+                <div className="space-y-1">
+                  {section.links.map((link, linkIdx) => (
+                    <a
+                      key={linkIdx}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-2 rounded hover:bg-amber-50 transition-colors group"
+                    >
+                      <div>
+                        <span className="text-sm text-gray-700 group-hover:text-amber-800">{link.label}</span>
+                        <p className="text-xs text-gray-400">{link.description}</p>
+                      </div>
+                      <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 text-gray-300 group-hover:text-amber-500" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
