@@ -1190,14 +1190,18 @@ async function getTaskTemplates() {
 
         await base(COACHING_TABLES.TASK_TEMPLATES).select({
             filterByFormula: `{Is Active} = "Yes"`,
-            sort: [{ field: 'Order', direction: 'asc' }]
+            sort: [
+                { field: 'Phase Order', direction: 'asc' },
+                { field: 'Task Order', direction: 'asc' }
+            ]
         }).eachPage((records, fetchNextPage) => {
             records.forEach(record => {
                 templates.push({
                     id: record.id,
                     taskName: record.get('Task Name') || '',
                     phase: record.get('Phase') || '',
-                    order: record.get('Order') || 0,
+                    phaseOrder: record.get('Phase Order') || 0,
+                    taskOrder: record.get('Task Order') || 0,
                     instructionsUrl: record.get('Instructions URL') || null
                 });
             });
@@ -1257,7 +1261,8 @@ async function createClientTasksFromTemplates(clientRecordId, clientName) {
                 'Task': template.taskName,
                 'Client': [clientRecordId],
                 'Phase': template.phase,
-                'Order': template.order,
+                'Phase Order': template.phaseOrder,
+                'Task Order': template.taskOrder,
                 'Instructions URL': template.instructionsUrl,
                 'Status': 'Todo'
             }
@@ -1294,15 +1299,19 @@ async function getClientTasks(clientId) {
         // Filter by client name - ARRAYJOIN on linked records returns display names
         await base(COACHING_TABLES.CLIENT_TASKS).select({
             filterByFormula: `FIND("${clientId}", ARRAYJOIN({Client})) > 0`,
-            sort: [{ field: 'Order', direction: 'asc' }]
+            sort: [
+                { field: 'Phase Order', direction: 'asc' },
+                { field: 'Task Order', direction: 'asc' }
+            ]
         }).eachPage((records, fetchNextPage) => {
             records.forEach(record => {
                 tasks.push({
                     id: record.id,
                     task: record.get('Task') || '',
                     phase: record.get('Phase') || '',
+                    phaseOrder: record.get('Phase Order') || 0,
+                    taskOrder: record.get('Task Order') || 0,
                     status: record.get('Status') || 'Todo',
-                    order: record.get('Order') || 0,
                     instructionsUrl: record.get('Instructions URL') || null,
                     notes: record.get('Notes') || ''
                 });
@@ -1356,6 +1365,28 @@ async function updateTaskStatus(taskId, status) {
         
     } catch (error) {
         logger.error('Error updating task status:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Update a task's notes
+ * @param {string} taskId - Airtable record ID of the task
+ * @param {string} notes - The new notes
+ */
+async function updateTaskNotes(taskId, notes) {
+    try {
+        const base = initializeClientsBase();
+        
+        await base(COACHING_TABLES.CLIENT_TASKS).update(taskId, {
+            'Notes': notes || ''
+        });
+        
+        logger.info(`Updated task ${taskId} notes`);
+        return { success: true };
+        
+    } catch (error) {
+        logger.error('Error updating task notes:', error.message);
         throw error;
     }
 }
@@ -1430,6 +1461,7 @@ module.exports = {
     getClientTasks,
     getClientTaskProgress,
     updateTaskStatus,
+    updateTaskNotes,
     updateCoachNotes,
     clearSystemSettingsCache
 };
