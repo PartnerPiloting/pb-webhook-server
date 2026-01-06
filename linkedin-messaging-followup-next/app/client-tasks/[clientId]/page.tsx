@@ -18,13 +18,14 @@ import { CheckCircleIcon as CheckCircleSolidIcon } from '@heroicons/react/24/sol
 export default function ClientTasksPage() {
   const params = useParams();
   const router = useRouter();
-  const clientId = params.clientId;
+  // Ensure clientId is a string (useParams can return string | string[])
+  const clientId = Array.isArray(params.clientId) ? params.clientId[0] : params.clientId as string;
   
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [clientName, setClientName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [updatingTaskId, setUpdatingTaskId] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
 
   const backendBase = getBackendBase();
 
