@@ -8118,27 +8118,32 @@ router.post("/api/client/:clientId/create-tasks", async (req, res) => {
       });
     }
     
-    // Check if client already has tasks
-    const existingTasks = await clientService.getClientTasks(client.recordId);
-    if (existingTasks.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: `Client "${clientId}" already has ${existingTasks.length} tasks. Delete existing tasks first if you want to regenerate.`,
-        existingTaskCount: existingTasks.length
+    // Sync tasks from templates (only adds missing ones)
+    const result = await clientService.createClientTasksFromTemplates(client.recordId, client.clientName);
+    
+    if (result.alreadySynced) {
+      logger.info(`Client ${clientId} already has all tasks synced`);
+      return res.json({
+        success: true,
+        clientId,
+        clientName: client.clientName,
+        tasksCreated: 0,
+        existingCount: result.existingCount,
+        message: `${client.clientName} already has all ${result.existingCount} tasks`
       });
     }
     
-    // Create tasks from templates
-    const result = await clientService.createClientTasksFromTemplates(client.recordId, client.clientName);
-    
-    logger.info(`Created ${result.tasksCreated} tasks for existing client ${clientId}`);
+    logger.info(`Synced ${result.tasksCreated} new tasks for client ${clientId}`);
     
     res.json({
       success: true,
       clientId,
       clientName: client.clientName,
       tasksCreated: result.tasksCreated,
-      message: `Created ${result.tasksCreated} onboarding tasks for ${client.clientName}`
+      existingCount: result.existingCount || 0,
+      message: result.tasksCreated > 0 
+        ? `Added ${result.tasksCreated} new tasks for ${client.clientName}`
+        : `${client.clientName} already has all tasks`
     });
     
   } catch (error) {

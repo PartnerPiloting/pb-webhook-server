@@ -3,8 +3,8 @@ import React, { Suspense, useEffect, useMemo, useState, useCallback } from 'reac
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { getEnvLabel, initializeClient, getClientProfile } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId } from '../utils/clientUtils.js';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 
 // Lazy-load the help panel to keep initial bundle lean
@@ -244,6 +244,18 @@ const Layout = ({ children }) => {
                 <UsersIcon className="h-5 w-5" />
                 <span className="hidden sm:inline">My Coached Clients</span>
               </Link>
+              
+              {/* Owner Dashboard Link - only for Guy-Wilson */}
+              {getCurrentClientId() === 'Guy-Wilson' && (
+                <Link
+                  href={`/owner-dashboard${clientParam ? `?client=${clientParam}` : ''}`}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
+                  title="Owner Dashboard - admin tools"
+                >
+                  <WrenchScrewdriverIcon className="h-5 w-5" />
+                  <span className="hidden sm:inline">Owner</span>
+                </Link>
+              )}
               {/* Per-page Help buttons are rendered within individual components via HelpButton */}
             </div>
           </div>

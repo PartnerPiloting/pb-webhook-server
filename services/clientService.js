@@ -1223,27 +1223,36 @@ async function createClientTasksFromTemplates(clientRecordId, clientName) {
     try {
         const base = initializeClientsBase();
         
-        // Check if client already has tasks
-        const existingTasks = await base(COACHING_TABLES.CLIENT_TASKS).select({
-            filterByFormula: `RECORD_ID({Client}) = "${clientRecordId}"`,
-            maxRecords: 1
-        }).firstPage();
+        // Get existing tasks for this client
+        const existingTasks = [];
+        await base(COACHING_TABLES.CLIENT_TASKS).select({
+            filterByFormula: `FIND("${clientRecordId}", ARRAYJOIN({Client})) > 0`
+        }).eachPage((records, fetchNextPage) => {
+            existingTasks.push(...records);
+            fetchNextPage();
+        });
 
-        if (existingTasks.length > 0) {
-            logger.info(`Client ${clientName} already has tasks, skipping creation`);
-            return { success: true, tasksCreated: 0, skipped: true };
-        }
+        // Get existing task names
+        const existingTaskNames = new Set(existingTasks.map(t => t.get('Task')));
 
         // Get all active templates
         const templates = await getTaskTemplates();
         
         if (templates.length === 0) {
             logger.warn('No active task templates found');
-            return { success: true, tasksCreated: 0 };
+            return { success: true, tasksCreated: 0, existingCount: existingTasks.length };
+        }
+
+        // Filter to only templates not yet assigned to this client
+        const newTemplates = templates.filter(t => !existingTaskNames.has(t.taskName));
+
+        if (newTemplates.length === 0) {
+            logger.info(`Client ${clientName} already has all ${templates.length} tasks`);
+            return { success: true, tasksCreated: 0, existingCount: existingTasks.length, alreadySynced: true };
         }
 
         // Create tasks in batches of 10 (Airtable limit)
-        const tasksToCreate = templates.map(template => ({
+        const tasksToCreate = newTemplates.map(template => ({
             fields: {
                 'Task': template.taskName,
                 'Client': [clientRecordId],
@@ -1263,8 +1272,8 @@ async function createClientTasksFromTemplates(clientRecordId, clientName) {
             tasksCreated += batch.length;
         }
 
-        logger.info(`Created ${tasksCreated} tasks for client ${clientName}`);
-        return { success: true, tasksCreated };
+        logger.info(`Synced ${tasksCreated} new tasks for client ${clientName} (had ${existingTasks.length} existing)`);
+        return { success: true, tasksCreated, existingCount: existingTasks.length };
 
     } catch (error) {
         logger.error(`Error creating tasks for client ${clientName}:`, error.message);
