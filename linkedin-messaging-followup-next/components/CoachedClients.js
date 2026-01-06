@@ -1,20 +1,20 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { getCoachedClients, getSystemSettings, getBackendBase } from '../services/api';
 import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon, EyeIcon } from '@heroicons/react/24/outline';
-import ClientTasksModal from './ClientTasksModal';
 
 /**
  * CoachedClients - Dashboard for coaches to view their coached clients
  * Shows list of clients with task progress
  */
 const CoachedClients = () => {
+  const router = useRouter();
   const [clients, setClients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [coachingResourcesUrl, setCoachingResourcesUrl] = useState(null);
-  const [selectedClient, setSelectedClient] = useState(null); // For task modal
   const [addingTasksFor, setAddingTasksFor] = useState(null); // Track which client is getting tasks added
 
   // Get dynamic backend URL
@@ -256,10 +256,10 @@ const CoachedClients = () => {
 
               {/* Action Buttons */}
               <div className="flex-shrink-0 ml-4 flex items-center gap-2">
-                {/* View Tasks Button - opens modal */}
+                {/* View Tasks Button - navigates to task page */}
                 {client.taskProgress?.total > 0 && (
                   <button
-                    onClick={() => setSelectedClient(client)}
+                    onClick={() => router.push(`/client-tasks/${client.clientId}`)}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                   >
                     <EyeIcon className="h-4 w-4" />
@@ -306,17 +306,6 @@ const CoachedClients = () => {
           You can mark tasks as complete directly from the task view.
         </p>
       </div>
-
-      {/* Task Modal */}
-      <ClientTasksModal
-        isOpen={!!selectedClient}
-        onClose={() => {
-          setSelectedClient(null);
-          loadData(); // Refresh data after modal closes to update progress bars
-        }}
-        clientId={selectedClient?.clientId}
-        clientName={selectedClient?.clientName}
-      />
     </div>
   );
 };
