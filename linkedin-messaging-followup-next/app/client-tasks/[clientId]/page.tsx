@@ -11,7 +11,8 @@ import {
   ClipboardDocumentListIcon,
   PencilSquareIcon,
   ChevronDownIcon,
-  ChevronUpIcon
+  ChevronUpIcon,
+  ChatBubbleLeftIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolidIcon } from '@heroicons/react/24/solid';
 
@@ -20,8 +21,9 @@ interface Task {
   id: string;
   task: string;
   phase: string;
+  phaseOrder: number;
+  taskOrder: number;
   status: string;
-  order: number;
   instructionsUrl: string | null;
   notes: string;
 }
@@ -46,6 +48,11 @@ export default function ClientTasksPage() {
   const [originalNotes, setOriginalNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(true);
+  
+  // Task notes editing state
+  const [editingTaskNotes, setEditingTaskNotes] = useState<string | null>(null);
+  const [taskNotesValue, setTaskNotesValue] = useState('');
+  const [savingTaskNotes, setSavingTaskNotes] = useState(false);
 
   const backendBase = getBackendBase();
 
@@ -95,6 +102,46 @@ export default function ClientTasksPage() {
     } finally {
       setSavingNotes(false);
     }
+  };
+
+  const saveTaskNotes = async (taskId: string) => {
+    try {
+      setSavingTaskNotes(true);
+      
+      const response = await fetch(`${backendBase}/api/task/${taskId}/notes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: taskNotesValue })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Update local state
+        setTasks(tasks.map(task => 
+          task.id === taskId ? { ...task, notes: taskNotesValue } : task
+        ));
+        setEditingTaskNotes(null);
+        setTaskNotesValue('');
+      } else {
+        alert(`❌ Failed to save: ${data.error}`);
+      }
+    } catch (err: unknown) {
+      console.error('Error saving task notes:', err);
+      alert(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSavingTaskNotes(false);
+    }
+  };
+
+  const startEditingTaskNotes = (task: Task) => {
+    setEditingTaskNotes(task.id);
+    setTaskNotesValue(task.notes || '');
+  };
+
+  const cancelEditingTaskNotes = () => {
+    setEditingTaskNotes(null);
+    setTaskNotesValue('');
   };
 
   const loadTasks = async () => {
@@ -163,13 +210,24 @@ export default function ClientTasksPage() {
     }
   };
 
-  // Group tasks by phase
-  const tasksByPhase: Record<string, Task[]> = tasks.reduce((acc: Record<string, Task[]>, task: Task) => {
+  // Group tasks by phase, preserving phase order
+  const tasksByPhase: Record<string, Task[]> = {};
+  const phaseOrderMap: Record<string, number> = {};
+  
+  // Tasks are already sorted by Phase Order then Task Order from the API
+  tasks.forEach((task: Task) => {
     const phase = task.phase || 'Other';
-    if (!acc[phase]) acc[phase] = [];
-    acc[phase].push(task);
-    return acc;
-  }, {});
+    if (!tasksByPhase[phase]) {
+      tasksByPhase[phase] = [];
+      phaseOrderMap[phase] = task.phaseOrder || 999;
+    }
+    tasksByPhase[phase].push(task);
+  });
+  
+  // Get phases sorted by their order
+  const sortedPhases = Object.keys(tasksByPhase).sort((a, b) => 
+    (phaseOrderMap[a] || 999) - (phaseOrderMap[b] || 999)
+  );
 
   // Calculate progress
   const totalTasks = tasks.length;
@@ -328,9 +386,10 @@ export default function ClientTasksPage() {
           </button>
         </div>
       ) : (
-        /* Task Phases */
+        /* Task Phases - sorted by Phase Order */
         <div className="space-y-8">
-          {Object.entries(tasksByPhase).map(([phase, phaseTasks]: [string, Task[]]) => {
+          {sortedPhases.map((phase: string) => {
+            const phaseTasks = tasksByPhase[phase];
             const phaseCompleted = phaseTasks.filter((t: Task) => t.status === 'Done').length;
             const phasePercent = Math.round((phaseCompleted / phaseTasks.length) * 100);
             
@@ -367,7 +426,7 @@ export default function ClientTasksPage() {
                     >
                       {/* Task Number */}
                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-500">
-                        {task.order || index + 1}
+                        {task.taskOrder || index + 1}
                       </div>
                       
                       {/* Status Toggle */}
@@ -409,12 +468,61 @@ export default function ClientTasksPage() {
                           )}
                         </div>
                         
-                        {/* Notes */}
-                        {task.notes && (
-                          <p className="mt-1 text-sm text-gray-500 italic">
-                            {task.notes}
-                          </p>
-                        )}
+                        {/* Task Notes - Editable */}
+                        <div className="mt-2">
+                          {editingTaskNotes === task.id ? (
+                            <div className="flex items-start gap-2">
+                              <textarea
+                                value={taskNotesValue}
+                                onChange={(e) => setTaskNotesValue(e.target.value)}
+                                placeholder="Add a note about this task..."
+                                className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                rows={2}
+                                autoFocus
+                              />
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => saveTaskNotes(task.id)}
+                                  disabled={savingTaskNotes}
+                                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  {savingTaskNotes ? '...' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={cancelEditingTaskNotes}
+                                  disabled={savingTaskNotes}
+                                  className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start gap-2 group">
+                              {task.notes ? (
+                                <>
+                                  <p className="text-sm text-gray-500 italic flex-1">
+                                    📝 {task.notes}
+                                  </p>
+                                  <button
+                                    onClick={() => startEditingTaskNotes(task)}
+                                    className="text-xs text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    Edit
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => startEditingTaskNotes(task)}
+                                  className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1"
+                                >
+                                  <ChatBubbleLeftIcon className="h-3 w-3" />
+                                  Add note
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       
                       {/* Status Dropdown */}

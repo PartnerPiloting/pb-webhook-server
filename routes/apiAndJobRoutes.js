@@ -8235,6 +8235,39 @@ router.patch("/api/task/:taskId/status", async (req, res) => {
 });
 
 /**
+ * PATCH /api/task/:taskId/notes
+ * 
+ * Updates the notes of a task.
+ */
+router.patch("/api/task/:taskId/notes", async (req, res) => {
+  const { taskId } = req.params;
+  const { notes } = req.body;
+  const logger = createLogger({ runId: 'PATCH', clientId: 'TASK', operation: 'update_task_notes' });
+  
+  try {
+    const clientService = require('../services/clientService.js');
+    
+    // Update the task notes
+    await clientService.updateTaskNotes(taskId, notes);
+    
+    logger.info(`Updated task ${taskId} notes`);
+    
+    res.json({
+      success: true,
+      taskId,
+      message: 'Task notes updated'
+    });
+    
+  } catch (error) {
+    logger.error('Update task notes error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to update task notes: ${error.message}` 
+    });
+  }
+});
+
+/**
  * GET /api/client/:clientId/coach-notes
  * 
  * Gets coach notes for a specific client.
