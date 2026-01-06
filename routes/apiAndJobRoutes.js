@@ -8119,7 +8119,8 @@ router.post("/api/client/:clientId/create-tasks", async (req, res) => {
     }
     
     // Sync tasks from templates (only adds missing ones)
-    const result = await clientService.createClientTasksFromTemplates(client.recordId, client.clientName);
+    // Note: client.id is the Airtable record ID
+    const result = await clientService.createClientTasksFromTemplates(client.id, client.clientName);
     
     if (result.alreadySynced) {
       logger.info(`Client ${clientId} already has all tasks synced`);
