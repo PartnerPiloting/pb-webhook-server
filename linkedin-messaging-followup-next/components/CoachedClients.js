@@ -50,6 +50,7 @@ const CoachedClients = () => {
   const [coachName, setCoachName] = useState('');
   const [coachingResourcesUrl, setCoachingResourcesUrl] = useState(null);
   const [showOwnerDashboard, setShowOwnerDashboard] = useState(false);
+  const [addingTasksFor, setAddingTasksFor] = useState(null); // Track which client is getting tasks added
 
   // Check if current user is the owner (Guy-Wilson only)
   const currentClientId = getCurrentClientId();
@@ -63,6 +64,34 @@ const CoachedClients = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Add tasks to a client
+  const handleAddTasks = async (clientId, clientName) => {
+    if (addingTasksFor) return; // Prevent double-clicks
+    
+    setAddingTasksFor(clientId);
+    try {
+      const response = await fetch(`${backendBase}/api/client/${clientId}/create-tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(`✅ Created ${data.tasksCreated} tasks for ${clientName}`);
+        // Reload the data to show updated task counts
+        loadData();
+      } else {
+        alert(`❌ ${data.error || 'Failed to add tasks'}`);
+      }
+    } catch (err) {
+      console.error('Error adding tasks:', err);
+      alert(`❌ Error: ${err.message}`);
+    } finally {
+      setAddingTasksFor(null);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -337,7 +366,7 @@ const CoachedClients = () => {
               <div className="flex-shrink-0 ml-4">
                 {client.taskProgress?.total > 0 ? (
                   <a
-                    href={`https://airtable.com/${process.env.NEXT_PUBLIC_MASTER_CLIENTS_BASE_ID || ''}`}
+                    href={`https://airtable.com/appYLxKgtTYFPxQG1/tblpf05eBs4lxjEQv`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -346,10 +375,27 @@ const CoachedClients = () => {
                     <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                   </a>
                 ) : (
-                  <span className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-500 rounded-lg cursor-not-allowed">
-                    <ExclamationTriangleIcon className="h-4 w-4" />
-                    No tasks yet
-                  </span>
+                  <button
+                    onClick={() => handleAddTasks(client.clientId, client.clientName)}
+                    disabled={addingTasksFor === client.clientId}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                      addingTasksFor === client.clientId
+                        ? 'bg-gray-200 text-gray-500 cursor-wait'
+                        : 'bg-amber-500 text-white hover:bg-amber-600 cursor-pointer'
+                    }`}
+                  >
+                    {addingTasksFor === client.clientId ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <PlusCircleIcon className="h-4 w-4" />
+                        Add Tasks
+                      </>
+                    )}
+                  </button>
                 )}
               </div>
             </div>
