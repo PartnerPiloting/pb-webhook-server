@@ -1283,17 +1283,17 @@ async function createClientTasksFromTemplates(clientRecordId, clientName) {
 
 /**
  * Get client tasks for a specific client
- * @param {string} clientRecordId - Airtable record ID of the client
+ * @param {string} clientId - Client ID (name like "Keith-Sinclair")
  * @returns {Promise<Array>} Array of client task objects
  */
-async function getClientTasks(clientRecordId) {
+async function getClientTasks(clientId) {
     try {
         const base = initializeClientsBase();
         const tasks = [];
 
-        // Use FIND to check if clientRecordId is in the linked Client array
+        // Filter by client name - ARRAYJOIN on linked records returns display names
         await base(COACHING_TABLES.CLIENT_TASKS).select({
-            filterByFormula: `FIND("${clientRecordId}", ARRAYJOIN({Client})) > 0`,
+            filterByFormula: `FIND("${clientId}", ARRAYJOIN({Client})) > 0`,
             sort: [{ field: 'Order', direction: 'asc' }]
         }).eachPage((records, fetchNextPage) => {
             records.forEach(record => {
@@ -1320,12 +1320,12 @@ async function getClientTasks(clientRecordId) {
 
 /**
  * Get task progress summary for a client
- * @param {string} clientRecordId - Airtable record ID of the client
+ * @param {string} clientId - Client ID (name like "Keith-Sinclair")
  * @returns {Promise<{total: number, completed: number, percentage: number}>}
  */
-async function getClientTaskProgress(clientRecordId) {
+async function getClientTaskProgress(clientId) {
     try {
-        const tasks = await getClientTasks(clientRecordId);
+        const tasks = await getClientTasks(clientId);
         const total = tasks.length;
         const completed = tasks.filter(t => t.status === 'Done').length;
         const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
