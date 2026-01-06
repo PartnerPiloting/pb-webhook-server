@@ -8235,6 +8235,85 @@ router.patch("/api/task/:taskId/status", async (req, res) => {
 });
 
 /**
+ * GET /api/client/:clientId/coach-notes
+ * 
+ * Gets coach notes for a specific client.
+ */
+router.get("/api/client/:clientId/coach-notes", async (req, res) => {
+  const { clientId } = req.params;
+  const logger = createLogger({ runId: 'GET', clientId, operation: 'get_coach_notes' });
+  
+  try {
+    const clientService = require('../services/clientService.js');
+    const client = await clientService.getClientById(clientId);
+    
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        error: `Client "${clientId}" not found`
+      });
+    }
+    
+    res.json({
+      success: true,
+      clientId,
+      clientName: client.clientName,
+      coachNotes: client.coachNotes || ''
+    });
+    
+  } catch (error) {
+    logger.error('Get coach notes error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to get coach notes: ${error.message}` 
+    });
+  }
+});
+
+/**
+ * PATCH /api/client/:clientId/coach-notes
+ * 
+ * Updates coach notes for a specific client.
+ */
+router.patch("/api/client/:clientId/coach-notes", async (req, res) => {
+  const { clientId } = req.params;
+  const { notes } = req.body;
+  const logger = createLogger({ runId: 'PATCH', clientId, operation: 'update_coach_notes' });
+  
+  try {
+    const clientService = require('../services/clientService.js');
+    
+    // Get the client to find the record ID
+    const client = await clientService.getClientById(clientId);
+    
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        error: `Client "${clientId}" not found`
+      });
+    }
+    
+    // Update the coach notes
+    await clientService.updateCoachNotes(client.id, notes);
+    
+    logger.info(`Updated coach notes for ${clientId}`);
+    
+    res.json({
+      success: true,
+      clientId,
+      message: 'Coach notes updated'
+    });
+    
+  } catch (error) {
+    logger.error('Update coach notes error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to update coach notes: ${error.message}` 
+    });
+  }
+});
+
+/**
  * GET /api/clients
  * 
  * Lists all clients in the system.
