@@ -1,7 +1,38 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { getCoachedClients, getSystemSettings } from '../services/api';
-import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon } from '@heroicons/react/24/outline';
+import { getCurrentClientId } from '../utils/clientUtils';
+import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, WrenchScrewdriverIcon, CogIcon } from '@heroicons/react/24/outline';
+
+// Owner configuration - hardcoded for now
+const OWNER_CLIENT_ID = 'Guy-Wilson';
+const OWNER_RESOURCES = [
+  {
+    label: 'API Explorer',
+    url: 'https://pb-webhook-server-staging.onrender.com/api-explorer',
+    description: 'Test API endpoints'
+  },
+  {
+    label: 'Master Clients Airtable',
+    url: 'https://airtable.com/appYLxKgtTYFPxQG1',
+    description: 'Client registry & settings'
+  },
+  {
+    label: 'Render Dashboard',
+    url: 'https://dashboard.render.com/web/srv-cso4l1rv2p9s73dhnl0g',
+    description: 'Server logs & deploys'
+  },
+  {
+    label: 'GitHub Repo',
+    url: 'https://github.com/PartnerPiloting/pb-webhook-server',
+    description: 'Source code'
+  }
+];
+const OWNER_NOTES = [
+  'To create a new client: Use /api/onboard-client endpoint or create directly in Airtable',
+  'Task templates auto-copy to new clients on onboard',
+  'Coaching Resources URL is in System Settings table'
+];
 
 /**
  * CoachedClients - Dashboard for coaches to view their coached clients
@@ -133,9 +164,55 @@ const CoachedClients = () => {
     );
   }
 
+  // Check if current user is the owner
+  const currentClientId = getCurrentClientId();
+  const isOwner = currentClientId === OWNER_CLIENT_ID;
+
   // Main view - list of coached clients
   return (
     <div className="max-w-4xl mx-auto">
+      {/* Owner Panel - only visible to system owner */}
+      {isOwner && (
+        <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <CogIcon className="h-6 w-6 text-amber-600" />
+            <h2 className="text-lg font-bold text-amber-800">Owner Dashboard</h2>
+          </div>
+          
+          {/* Quick Links */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {OWNER_RESOURCES.map((resource, idx) => (
+              <a
+                key={idx}
+                href={resource.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col p-3 bg-white border border-amber-200 rounded-lg hover:bg-amber-50 hover:border-amber-300 transition-colors"
+              >
+                <span className="font-medium text-amber-800 text-sm">{resource.label}</span>
+                <span className="text-xs text-gray-500 mt-1">{resource.description}</span>
+              </a>
+            ))}
+          </div>
+          
+          {/* Notes */}
+          <div className="bg-white/60 rounded-lg p-3 border border-amber-100">
+            <h3 className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-1">
+              <WrenchScrewdriverIcon className="h-4 w-4" />
+              Quick Notes
+            </h3>
+            <ul className="text-sm text-gray-600 space-y-1">
+              {OWNER_NOTES.map((note, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <span className="text-amber-400 mt-1">•</span>
+                  <span>{note}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
