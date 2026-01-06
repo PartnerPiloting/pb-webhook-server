@@ -52,6 +52,11 @@ const CoachedClients = () => {
   const [error, setError] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [coachingResourcesUrl, setCoachingResourcesUrl] = useState(null);
+  const [showOwnerDashboard, setShowOwnerDashboard] = useState(false);
+
+  // Check if current user is the owner (Guy-Wilson only)
+  const currentClientId = getCurrentClientId();
+  const isOwner = currentClientId === OWNER_CLIENT_ID;
 
   useEffect(() => {
     loadData();
@@ -172,15 +177,29 @@ const CoachedClients = () => {
     );
   }
 
-  // Check if current user is the owner
-  const currentClientId = getCurrentClientId();
-  const isOwner = currentClientId === OWNER_CLIENT_ID;
-
   // Main view - list of coached clients
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Owner Panel - only visible to system owner */}
+      {/* Owner Dashboard Toggle Button - only visible to Guy-Wilson */}
       {isOwner && (
+        <div className="mb-4">
+          <button
+            onClick={() => setShowOwnerDashboard(!showOwnerDashboard)}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+              showOwnerDashboard 
+                ? 'bg-amber-600 text-white hover:bg-amber-700' 
+                : 'bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300'
+            }`}
+          >
+            <CogIcon className="h-5 w-5" />
+            Owner Dashboard
+            <span className="text-xs">{showOwnerDashboard ? '▲' : '▼'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Owner Panel - only visible when toggled open AND user is Guy-Wilson */}
+      {isOwner && showOwnerDashboard && (
         <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-5">
           {/* Header with Quick Actions */}
           <div className="flex items-center justify-between mb-4">
