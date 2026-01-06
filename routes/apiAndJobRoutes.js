@@ -6864,8 +6864,39 @@ router.post("/api/calendar/chat", async (req, res) => {
       return res.status(401).json({ error: calendarError });
     }
 
-    // Get today's date and next 150 days (~5 months) for potential calendar queries
-    const today = new Date();
+    // Get today's date IN THE USER'S TIMEZONE (not server time)
+    // This ensures "today" and "tomorrow" are correct for the user
+    const getTodayInTimezone = (tz) => {
+      const now = new Date();
+      // Format the date in the target timezone to get the correct date
+      const formatter = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: tz, 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit' 
+      });
+      return formatter.format(now); // Returns YYYY-MM-DD
+    };
+    
+    const todayDateStr = getTodayInTimezone(yourTimezone);
+    const today = new Date(todayDateStr + 'T12:00:00'); // Use noon to avoid timezone edge cases
+    
+    // Also get the current time in user's timezone for context
+    const getCurrentTimeInTimezone = (tz) => {
+      const now = new Date();
+      return now.toLocaleString('en-AU', {
+        timeZone: tz,
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    };
+    const currentTimeDisplay = getCurrentTimeInTimezone(yourTimezone);
+    
     const dates = [];
     for (let i = 0; i < 150; i++) {
       const d = new Date(today);
@@ -6922,61 +6953,67 @@ router.post("/api/calendar/chat", async (req, res) => {
     // Build system prompt with context
     const systemPrompt = `You are a helpful calendar booking assistant for ${context.yourName}.
 
-CONTEXT:
-- Your timezone: ${yourTimezone}
-- Lead's name: ${context.leadName} (use "${leadFirstName}" in messages)
-- Lead's location: ${context.leadLocation || 'Unknown'}
-- Lead's timezone: ${leadTimezone}
-${leadContactInfo ? leadContactInfo + '\n' : ''}- Timezone difference: ${sameTimezone ? 'SAME timezone - do NOT mention timezone in messages' : `DIFFERENT timezone - include "(${leadCity} time)" when stating times for the lead`}
-- Today's date: ${today.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-${context.conversationHint ? `- From conversation: "${context.conversationHint}"` : ''}
+WHO IS WHO (CRITICAL):
+- USER: ${context.yourName} is the person you are chatting with. They are in ${yourTimezone.split('/').pop()?.replace('_', ' ')} (${yourTimezone}).
+- LEAD: ${context.leadName} is the person being invited to the meeting. They are in ${leadCity} (${leadTimezone}).
+- You are helping the USER book a meeting with the LEAD.
+
+CURRENT TIME:
+- It is currently ${currentTimeDisplay} for ${context.yourName}.
+
+TIMEZONE RULES (ALWAYS FOLLOW):
+1. ALL times mentioned by the user are in the USER's timezone (${yourTimezone}) unless they explicitly say otherwise
+2. Calendar availability data is in the USER's timezone
+3. The booking/ACTION times are ALWAYS in the USER's timezone
+4. When generating a MESSAGE FOR THE LEAD: CONVERT times to the LEAD's timezone (${leadTimezone}) and ${sameTimezone ? 'no need to specify timezone since you are both in the same timezone' : `include "(${leadCity} time)" so ${leadFirstName} knows the timezone`}
+
+SMART SCHEDULING (when finding mutually good times):
+- Business hours are typically 9am-5pm in each person's timezone
+- When suggesting times, consider what the time will be for BOTH parties
+- If a time would be outside business hours for the lead (e.g., 8am ${leadCity} time), mention this or suggest a later time
+- Example: If user is free at 10am ${yourTimezone.split('/').pop()?.replace('_', ' ')} but that's only ${sameTimezone ? '10am' : '8am'} in ${leadCity}, that might be too early for ${leadFirstName}
+${context.conversationHint ? `\nFROM CONVERSATION: "${context.conversationHint}"` : ''}
+${leadContactInfo ? '\nLEAD CONTACT INFO:\n' + leadContactInfo : ''}
 
 YOUR CAPABILITIES:
-1. Show your scheduled appointments/meetings for specific dates
+1. Show scheduled appointments/meetings for specific dates
 2. Check calendar availability for specific dates
 3. Show free time slots
-4. Suggest the best meeting time when asked
+4. Suggest the best meeting time (considering both parties)
 5. Generate booking messages to send to the lead
 6. Set a booking time when the user confirms
 
-MESSAGE GENERATION RULES (when asked to generate a message for the lead):
-- Use ${leadFirstName}'s first name
+MESSAGE GENERATION RULES (when creating a message for ${leadFirstName}):
+- Use "${leadFirstName}" (their first name)
 - Keep it casual but professional
 - Offer 2-3 time options unless user specifies otherwise
-- If timezones are THE SAME: just say "11am Tuesday" - NO timezone mention
-- If timezones are DIFFERENT: include their timezone like "11am (${leadCity} time) Tuesday"
+- ${sameTimezone ? 'Just say "11am Tuesday" - no timezone needed since you\'re both in the same timezone' : `ALWAYS convert to ${leadFirstName}'s timezone and include "(${leadCity} time)"`}
 - Keep messages concise - 2-3 sentences max
-- User can override any of these rules by telling you directly
+- User can override any of these rules
 
 RESPONSE STYLE:
 - Be conversational but concise
-- When showing availability, show the exact slot times from CALENDAR AVAILABILITY (they are 30-minute slots)
+- Show exact slot times from CALENDAR AVAILABILITY (they are 30-minute slots)
 - Do NOT combine or expand slots - show them exactly as provided
 - For vague requests like "next week", summarize the key available times
 
 CRITICAL RULES:
-- ONLY report appointments/meetings that are provided in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
-- NEVER make up or invent fake appointments
-- Calendar data is ALWAYS provided with every message - use it to verify availability before suggesting times
-- When suggesting meeting times, pick slots from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
+- ONLY report appointments that are in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
+- NEVER invent fake appointments
+- When suggesting times, pick from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
 
-ACTIONS (IMPORTANT - always put at the VERY END of your response, on its own line):
-1. When the user picks/confirms a time OR you suggest a specific time, ALWAYS add this at the END:
-   ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}"}
-   
-   IMPORTANT: Always include this action whenever you confirm or suggest a specific meeting time, even if just acknowledging it.
+ACTIONS (put at the VERY END of your response):
+When setting a time, add this on its own line at the end:
+ACTION: {"type":"setBookingTime","dateTime":"2026-01-08T14:00:00","timezone":"${yourTimezone}"}
 
-2. When the user wants to BOOK IT and open their calendar (phrases like "book it", "lock it in", "add to calendar", "open my calendar", "schedule it", "confirm", "yes book that"), add BOTH actions:
-   ACTION: {"type":"setBookingTime","dateTime":"2025-01-07T14:00:00","timezone":"${yourTimezone}","openCalendar":true}
-   
-   The "openCalendar":true flag tells the system to also open the calendar after setting the time.
+The dateTime MUST be in the USER's timezone (${yourTimezone}).
 
-CRITICAL: Write your full message FIRST, then add the ACTION line at the very end. Never put ACTION in the middle of text.
+If user says "book it" / "lock it in" / "confirm", add openCalendar:true:
+ACTION: {"type":"setBookingTime","dateTime":"2026-01-08T14:00:00","timezone":"${yourTimezone}","openCalendar":true}
 
 CALENDAR DATA RANGE:
 - You have calendar data for the next 90 days (through early ${new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })})
-- If the user asks about a date beyond 90 days, politely explain: "I can check availability up to 90 days out. That date is a bit further - would you like to look at [alternative within range] instead, or we can revisit closer to the date?"`;
-
+- If asked about a date beyond 90 days, explain you can only check up to 90 days out.`;
     // Always fetch 90 days of calendar data - simple and reliable
     const needsCalendar = true; // Always fetch calendar for booking assistant
     
