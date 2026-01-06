@@ -1291,8 +1291,9 @@ async function getClientTasks(clientRecordId) {
         const base = initializeClientsBase();
         const tasks = [];
 
+        // Use FIND to check if clientRecordId is in the linked Client array
         await base(COACHING_TABLES.CLIENT_TASKS).select({
-            filterByFormula: `RECORD_ID({Client}) = "${clientRecordId}"`,
+            filterByFormula: `FIND("${clientRecordId}", ARRAYJOIN({Client})) > 0`,
             sort: [{ field: 'Order', direction: 'asc' }]
         }).eachPage((records, fetchNextPage) => {
             records.forEach(record => {
