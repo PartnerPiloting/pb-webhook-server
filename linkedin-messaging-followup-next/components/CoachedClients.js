@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { getCoachedClients, getSystemSettings, getBackendBase } from '../services/api';
-import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
+import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon, EyeIcon } from '@heroicons/react/24/outline';
+import ClientTasksModal from './ClientTasksModal';
 
 /**
  * CoachedClients - Dashboard for coaches to view their coached clients
@@ -13,6 +14,7 @@ const CoachedClients = () => {
   const [error, setError] = useState(null);
   const [coachName, setCoachName] = useState('');
   const [coachingResourcesUrl, setCoachingResourcesUrl] = useState(null);
+  const [selectedClient, setSelectedClient] = useState(null); // For task modal
   const [addingTasksFor, setAddingTasksFor] = useState(null); // Track which client is getting tasks added
 
   // Get dynamic backend URL
@@ -252,19 +254,18 @@ const CoachedClients = () => {
                 )}
               </div>
 
-              {/* View Tasks Button */}
-              <div className="flex-shrink-0 ml-4">
-                {client.taskProgress?.total > 0 ? (
-                  <a
-                    href={`https://airtable.com/appYLxKgtTYFPxQG1/tblpf05eBs4lxjEQv`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+              {/* Action Buttons */}
+              <div className="flex-shrink-0 ml-4 flex items-center gap-2">
+                {/* View Tasks Button - opens modal */}
+                {client.taskProgress?.total > 0 && (
+                  <button
+                    onClick={() => setSelectedClient(client)}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                   >
+                    <EyeIcon className="h-4 w-4" />
                     View Tasks
-                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                  </a>
-                ) : null}
+                  </button>
+                )}
                 
                 {/* Sync Tasks button - always available */}
                 <button
@@ -301,10 +302,21 @@ const CoachedClients = () => {
       <div className="mt-8 p-4 bg-green-50 border border-green-100 rounded-lg">
         <h4 className="text-sm font-medium text-green-800 mb-1">Quick Tip</h4>
         <p className="text-sm text-green-700">
-          Client tasks are tracked in Airtable. Click "View Tasks" to see and update each client's onboarding progress.
-          Update the Status field as you complete each step.
+          Click "View Tasks" to see and update each client's onboarding progress.
+          You can mark tasks as complete directly from the task view.
         </p>
       </div>
+
+      {/* Task Modal */}
+      <ClientTasksModal
+        isOpen={!!selectedClient}
+        onClose={() => {
+          setSelectedClient(null);
+          loadData(); // Refresh data after modal closes to update progress bars
+        }}
+        clientId={selectedClient?.clientId}
+        clientName={selectedClient?.clientName}
+      />
     </div>
   );
 };
