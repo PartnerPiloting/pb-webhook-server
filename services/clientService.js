@@ -123,6 +123,11 @@ async function getAllClients() {
                 const timezone = record.get(CLIENT_FIELDS.TIMEZONE) || null;
                 const googleCalendarEmail = record.get(CLIENT_FIELDS.GOOGLE_CALENDAR_EMAIL) || null;
                 
+                // Coaching configuration
+                const coach = record.get('Coach') || null;
+                const notionProgressUrl = record.get('Notion Progress URL') || null;
+                const coachingStatus = record.get('Coaching Status') || null;
+                
                 clients.push({
                     id: record.id,
                     clientId: clientId,
@@ -155,6 +160,10 @@ async function getAllClients() {
                     // Calendar/timezone configuration
                     timezone: timezone,
                     googleCalendarEmail: googleCalendarEmail,
+                    // Coaching configuration
+                    coach: coach,
+                    notionProgressUrl: notionProgressUrl,
+                    coachingStatus: coachingStatus,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
@@ -1081,6 +1090,38 @@ async function getClientByIdFresh(clientId) {
     }
 }
 
+/**
+ * Get all clients coached by a specific coach
+ * @param {string} coachClientId - The client ID of the coach (e.g., "Guy-Wilson")
+ * @returns {Array} - Array of clients being coached by this coach
+ */
+async function getClientsByCoach(coachClientId) {
+    try {
+        const allClients = await getAllClients();
+        
+        // Filter clients where Coach field matches the coachClientId
+        const coachedClients = allClients.filter(c => 
+            c.coach === coachClientId && 
+            c.status === 'Active'  // Only return active clients
+        );
+        
+        logger.info(`Found ${coachedClients.length} clients coached by ${coachClientId}`);
+        
+        // Return simplified data for coached clients (no sensitive fields)
+        return coachedClients.map(c => ({
+            clientId: c.clientId,
+            clientName: c.clientName,
+            notionProgressUrl: c.notionProgressUrl,
+            coachingStatus: c.coachingStatus,
+            status: c.status
+        }));
+        
+    } catch (error) {
+        logger.error(`Error fetching coached clients for ${coachClientId}:`, error);
+        throw error;
+    }
+}
+
 module.exports = {
     getAllClients,
     getAllActiveClients,
@@ -1089,6 +1130,7 @@ module.exports = {
     getClientById,
     getClientByIdFresh, // Add fresh fetch function for security checks
     getClientByWpUserId, // Add the new WP User ID lookup function
+    getClientsByCoach,  // Get clients coached by a specific coach
     validateClient,
     // CRR REDESIGN: updateExecutionLog removed (replaced by Progress Log in jobTracking.js)
     logExecution,     // Add the new logging function

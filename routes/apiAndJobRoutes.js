@@ -7989,6 +7989,54 @@ router.get("/api/client/:clientId", async (req, res) => {
 });
 
 /**
+ * GET /api/coached-clients/:coachClientId
+ * 
+ * Gets all clients coached by a specific coach.
+ * Returns client info with Notion progress URLs for the coach dashboard.
+ */
+router.get("/api/coached-clients/:coachClientId", async (req, res) => {
+  const { coachClientId } = req.params;
+  const logger = createLogger({ runId: 'GET', clientId: coachClientId, operation: 'get_coached_clients' });
+  
+  try {
+    if (!coachClientId) {
+      return res.status(400).json({ success: false, error: 'coachClientId is required' });
+    }
+    
+    const clientService = require('../services/clientService.js');
+    
+    // Verify the coach exists as a valid client
+    const coach = await clientService.getClientById(coachClientId);
+    if (!coach) {
+      return res.status(404).json({
+        success: false,
+        error: `Coach "${coachClientId}" not found`
+      });
+    }
+    
+    // Get all clients coached by this coach
+    const coachedClients = await clientService.getClientsByCoach(coachClientId);
+    
+    logger.info(`Found ${coachedClients.length} coached clients for ${coachClientId}`);
+    
+    res.json({
+      success: true,
+      coachClientId,
+      coachName: coach.clientName,
+      clients: coachedClients,
+      count: coachedClients.length
+    });
+    
+  } catch (error) {
+    logger.error('Get coached clients error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to get coached clients: ${error.message}` 
+    });
+  }
+});
+
+/**
  * POST /api/ai-endpoint-search
  * 
  * AI-powered endpoint search using Gemini.
