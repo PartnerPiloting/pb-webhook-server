@@ -1454,4 +1454,29 @@ export const verifyCalendarConnection = async (calendarEmail) => {
   }
 };
 
+/**
+ * Get clients coached by the current user
+ * @returns {Promise<{success: boolean, clients: Array, count: number}>}
+ */
+export const getCoachedClients = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    // Use the backend base URL (not /api/linkedin) for this endpoint
+    const backendBase = getBackendBase();
+    const response = await axios.get(`${backendBase}/api/coached-clients/${clientId}`, {
+      timeout: 30000,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Get coached clients error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.error || 'Failed to get coached clients');
+  }
+};
+
 export default api;
