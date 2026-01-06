@@ -1259,7 +1259,7 @@ async function createClientTasksFromTemplates(clientRecordId, clientName) {
                 'Phase': template.phase,
                 'Order': template.order,
                 'Instructions URL': template.instructionsUrl,
-                'Status': 'Not Started'
+                'Status': 'Todo'
             }
         }));
 
@@ -1300,7 +1300,7 @@ async function getClientTasks(clientRecordId) {
                     id: record.id,
                     task: record.get('Task') || '',
                     phase: record.get('Phase') || '',
-                    status: record.get('Status') || 'Not Started',
+                    status: record.get('Status') || 'Todo',
                     order: record.get('Order') || 0,
                     instructionsUrl: record.get('Instructions URL') || null,
                     notes: record.get('Notes') || ''
