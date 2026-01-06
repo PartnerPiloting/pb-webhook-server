@@ -1361,6 +1361,31 @@ async function updateTaskStatus(taskId, status) {
 }
 
 /**
+ * Update coach notes for a client
+ * @param {string} clientRecordId - Airtable record ID of the client
+ * @param {string} notes - The new coach notes
+ */
+async function updateCoachNotes(clientRecordId, notes) {
+    try {
+        const base = initializeClientsBase();
+        
+        await base('Clients').update(clientRecordId, {
+            'Coach Notes': notes || ''
+        });
+        
+        // Clear cache so the updated notes are reflected
+        clearCache();
+        
+        logger.info(`Updated coach notes for client ${clientRecordId}`);
+        return { success: true };
+        
+    } catch (error) {
+        logger.error('Error updating coach notes:', error.message);
+        throw error;
+    }
+}
+
+/**
  * Clear system settings cache (for testing)
  */
 function clearSystemSettingsCache() {
@@ -1405,5 +1430,6 @@ module.exports = {
     getClientTasks,
     getClientTaskProgress,
     updateTaskStatus,
+    updateCoachNotes,
     clearSystemSettingsCache
 };

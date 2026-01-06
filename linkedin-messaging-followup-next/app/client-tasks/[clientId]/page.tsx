@@ -8,7 +8,10 @@ import {
   ArrowTopRightOnSquareIcon,
   ExclamationTriangleIcon,
   ArrowLeftIcon,
-  ClipboardDocumentListIcon
+  ClipboardDocumentListIcon,
+  PencilSquareIcon,
+  ChevronDownIcon,
+  ChevronUpIcon
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolidIcon } from '@heroicons/react/24/solid';
 
@@ -37,14 +40,62 @@ export default function ClientTasksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  
+  // Coach notes state
+  const [coachNotes, setCoachNotes] = useState('');
+  const [originalNotes, setOriginalNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesExpanded, setNotesExpanded] = useState(true);
 
   const backendBase = getBackendBase();
 
   useEffect(() => {
     if (clientId) {
       loadTasks();
+      loadCoachNotes();
     }
   }, [clientId]);
+
+  const loadCoachNotes = async () => {
+    try {
+      const response = await fetch(`${backendBase}/api/client/${clientId}/coach-notes`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setCoachNotes(data.coachNotes || '');
+        setOriginalNotes(data.coachNotes || '');
+      }
+    } catch (err) {
+      console.error('Error loading coach notes:', err);
+    }
+  };
+
+  const saveCoachNotes = async () => {
+    if (coachNotes === originalNotes) return; // No changes
+    
+    try {
+      setSavingNotes(true);
+      
+      const response = await fetch(`${backendBase}/api/client/${clientId}/coach-notes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: coachNotes })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setOriginalNotes(coachNotes);
+      } else {
+        alert(`❌ Failed to save notes: ${data.error}`);
+      }
+    } catch (err: unknown) {
+      console.error('Error saving coach notes:', err);
+      alert(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
 
   const loadTasks = async () => {
     try {
@@ -210,6 +261,55 @@ export default function ClientTasksPage() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Coach Notes Section */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-8 overflow-hidden">
+        <button
+          onClick={() => setNotesExpanded(!notesExpanded)}
+          className="w-full px-6 py-4 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <PencilSquareIcon className="h-5 w-5 text-gray-500" />
+            <span className="font-medium text-gray-700">Coach Notes</span>
+            {coachNotes && !notesExpanded && (
+              <span className="text-sm text-gray-400 truncate max-w-xs">
+                — {coachNotes.substring(0, 50)}{coachNotes.length > 50 ? '...' : ''}
+              </span>
+            )}
+          </div>
+          {notesExpanded ? (
+            <ChevronUpIcon className="h-5 w-5 text-gray-400" />
+          ) : (
+            <ChevronDownIcon className="h-5 w-5 text-gray-400" />
+          )}
+        </button>
+        
+        {notesExpanded && (
+          <div className="p-6">
+            <textarea
+              value={coachNotes}
+              onChange={(e) => setCoachNotes(e.target.value)}
+              onBlur={saveCoachNotes}
+              placeholder="Add notes about this client's progress, next steps, or anything to remember for your next call..."
+              className="w-full h-32 px-4 py-3 border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-700 placeholder-gray-400"
+            />
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-xs text-gray-400">
+                {coachNotes !== originalNotes ? 'Unsaved changes' : 'Auto-saves when you click away'}
+              </p>
+              {coachNotes !== originalNotes && (
+                <button
+                  onClick={saveCoachNotes}
+                  disabled={savingNotes}
+                  className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium"
+                >
+                  {savingNotes ? 'Saving...' : 'Save Notes'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Empty State */}
