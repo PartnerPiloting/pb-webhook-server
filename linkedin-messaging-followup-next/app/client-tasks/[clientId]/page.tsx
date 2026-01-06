@@ -50,15 +50,15 @@ export default function ClientTasksPage() {
       } else {
         setError(data.error || 'Failed to load tasks');
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error loading tasks:', err);
-      setError(err.message || 'Failed to load tasks');
+      setError(err instanceof Error ? err.message : 'Failed to load tasks');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const updateTaskStatus = async (taskId, newStatus) => {
+  const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
       setUpdatingTaskId(taskId);
       
@@ -77,15 +77,15 @@ export default function ClientTasksPage() {
       } else {
         alert(`❌ Failed to update: ${data.error}`);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error updating task:', err);
-      alert(`❌ Error: ${err.message}`);
+      alert(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setUpdatingTaskId(null);
     }
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'Done': return 'bg-green-100 text-green-800 border-green-200';
       case 'In progress': return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -93,7 +93,7 @@ export default function ClientTasksPage() {
     }
   };
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'Done': return <CheckCircleSolidIcon className="h-6 w-6 text-green-500" />;
       case 'In progress': return <ClockIcon className="h-6 w-6 text-blue-500" />;
