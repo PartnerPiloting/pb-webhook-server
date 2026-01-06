@@ -1,45 +1,42 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { getCoachedClients, getSystemSettings } from '../services/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getCoachedClients, getSystemSettings, getBackendBase } from '../services/api';
 import { getCurrentClientId } from '../utils/clientUtils';
 import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, WrenchScrewdriverIcon, CogIcon, PlusCircleIcon, TableCellsIcon, ServerIcon, CodeBracketIcon, UserPlusIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
 
 // Owner configuration - hardcoded for now
 const OWNER_CLIENT_ID = 'Guy-Wilson';
 
-// Organized owner resources by category
-const OWNER_SECTIONS = [
+// Function to get owner resources with dynamic backend URL
+const getOwnerSections = (backendBase) => [
   {
     title: '➕ Create & Onboard',
     links: [
-      { label: 'Onboard New Client', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#post-/api/onboard-client', description: 'Full onboard flow' },
-      { label: 'Add Tasks to Existing Client', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#post-/api/client/{clientId}/create-tasks', description: 'For clients without tasks' },
-      { label: 'View All Clients', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#get-/api/clients', description: 'List all clients' }
+      { label: 'Onboard New Client', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblkHNxMf47DFQY1r', description: 'Add to Clients table' },
+      { label: 'Task Templates', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblm59cOhCPiX9fK3', description: 'Edit onboarding tasks' },
+      { label: 'Client Tasks', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblpf05eBs4lxjEQv', description: 'View/add client tasks' }
     ]
   },
   {
-    title: '📊 Airtable',
+    title: '📊 Settings & Config',
     links: [
-      { label: 'Master Clients Base', url: 'https://airtable.com/appYLxKgtTYFPxQG1', description: 'Client registry' },
-      { label: 'Clients Table', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblclients', description: 'All clients' },
-      { label: 'Task Templates', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tbltasktemplates', description: 'Edit onboarding tasks' },
-      { label: 'Client Tasks', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblclienttasks', description: 'Track progress' },
-      { label: 'System Settings', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblsystemsettings', description: 'Global config' }
+      { label: 'System Settings', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblLZgxZVp6AnbkCl', description: 'Global config' },
+      { label: 'Master Clients Base', url: 'https://airtable.com/appYLxKgtTYFPxQG1', description: 'Full base view' }
     ]
   },
   {
     title: '🛠️ Dev Tools',
     links: [
-      { label: 'API Explorer', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer', description: 'Test all endpoints' },
+      { label: 'API Explorer', url: `${backendBase}/api-explorer`, description: 'Test all endpoints' },
       { label: 'Render Dashboard', url: 'https://dashboard.render.com/web/srv-cso4l1rv2p9s73dhnl0g', description: 'Logs & deploys' },
       { label: 'GitHub Repo', url: 'https://github.com/PartnerPiloting/pb-webhook-server', description: 'Source code' }
     ]
   }
 ];
 
-const OWNER_QUICK_ACTIONS = [
-  { label: '🆕 Onboard Client', url: 'https://pb-webhook-server-staging.onrender.com/api-explorer#post-/api/onboard-client', primary: true },
-  { label: '📋 Task Templates', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tbltasktemplates', primary: false }
+const getOwnerQuickActions = (backendBase) => [
+  { label: '🆕 New Client', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblkHNxMf47DFQY1r', primary: true },
+  { label: '📋 Templates', url: 'https://airtable.com/appYLxKgtTYFPxQG1/tblm59cOhCPiX9fK3', primary: false }
 ];
 
 /**
@@ -57,6 +54,11 @@ const CoachedClients = () => {
   // Check if current user is the owner (Guy-Wilson only)
   const currentClientId = getCurrentClientId();
   const isOwner = currentClientId === OWNER_CLIENT_ID;
+
+  // Get dynamic URLs based on current environment
+  const backendBase = getBackendBase();
+  const ownerSections = useMemo(() => getOwnerSections(backendBase), [backendBase]);
+  const ownerQuickActions = useMemo(() => getOwnerQuickActions(backendBase), [backendBase]);
 
   useEffect(() => {
     loadData();
@@ -180,23 +182,6 @@ const CoachedClients = () => {
   // Main view - list of coached clients
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Owner Dashboard Toggle Button - only visible to Guy-Wilson */}
-      {isOwner && (
-        <div className="mb-4">
-          <button
-            onClick={() => setShowOwnerDashboard(!showOwnerDashboard)}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              showOwnerDashboard 
-                ? 'bg-amber-600 text-white hover:bg-amber-700' 
-                : 'bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300'
-            }`}
-          >
-            <CogIcon className="h-5 w-5" />
-            Owner Dashboard
-            <span className="text-xs">{showOwnerDashboard ? '▲' : '▼'}</span>
-          </button>
-        </div>
-      )}
 
       {/* Owner Panel - only visible when toggled open AND user is Guy-Wilson */}
       {isOwner && showOwnerDashboard && (
@@ -208,7 +193,7 @@ const CoachedClients = () => {
               <h2 className="text-lg font-bold text-amber-800">Owner Dashboard</h2>
             </div>
             <div className="flex gap-2">
-              {OWNER_QUICK_ACTIONS.map((action, idx) => (
+              {ownerQuickActions.map((action, idx) => (
                 <a
                   key={idx}
                   href={action.url}
@@ -228,7 +213,7 @@ const CoachedClients = () => {
           
           {/* Organized Sections */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {OWNER_SECTIONS.map((section, sectionIdx) => (
+            {ownerSections.map((section, sectionIdx) => (
               <div key={sectionIdx} className="bg-white/70 rounded-lg p-3 border border-amber-100">
                 <h3 className="text-sm font-semibold text-amber-800 mb-2">{section.title}</h3>
                 <div className="space-y-1">
@@ -260,6 +245,21 @@ const CoachedClients = () => {
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
             <UsersIcon className="h-7 w-7 text-green-600" />
             My Coached Clients
+            {/* Owner Dashboard Toggle - only visible to Guy-Wilson */}
+            {isOwner && (
+              <button
+                onClick={() => setShowOwnerDashboard(!showOwnerDashboard)}
+                className={`ml-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                  showOwnerDashboard 
+                    ? 'bg-amber-600 text-white hover:bg-amber-700' 
+                    : 'bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300'
+                }`}
+              >
+                <CogIcon className="h-4 w-4" />
+                Owner
+                <span className="text-xs">{showOwnerDashboard ? '▲' : '▼'}</span>
+              </button>
+            )}
           </h1>
           <p className="text-gray-600 mt-1">
             {clients.length} client{clients.length !== 1 ? 's' : ''} • {coachName}
