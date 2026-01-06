@@ -1339,6 +1339,28 @@ async function getClientTaskProgress(clientId) {
 }
 
 /**
+ * Update a task's status
+ * @param {string} taskId - Airtable record ID of the task
+ * @param {string} status - New status: "Todo", "In progress", or "Done"
+ */
+async function updateTaskStatus(taskId, status) {
+    try {
+        const base = initializeClientsBase();
+        
+        await base(COACHING_TABLES.CLIENT_TASKS).update(taskId, {
+            'Status': status
+        });
+        
+        logger.info(`Updated task ${taskId} status to ${status}`);
+        return { success: true };
+        
+    } catch (error) {
+        logger.error('Error updating task status:', error.message);
+        throw error;
+    }
+}
+
+/**
  * Clear system settings cache (for testing)
  */
 function clearSystemSettingsCache() {
@@ -1382,5 +1404,6 @@ module.exports = {
     createClientTasksFromTemplates,
     getClientTasks,
     getClientTaskProgress,
+    updateTaskStatus,
     clearSystemSettingsCache
 };

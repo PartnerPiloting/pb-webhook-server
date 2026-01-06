@@ -8158,6 +8158,83 @@ router.post("/api/client/:clientId/create-tasks", async (req, res) => {
 });
 
 /**
+ * GET /api/client/:clientId/tasks
+ * 
+ * Gets all tasks for a specific client.
+ * Used by the ClientTasksModal to display tasks.
+ */
+router.get("/api/client/:clientId/tasks", async (req, res) => {
+  const { clientId } = req.params;
+  const logger = createLogger({ runId: 'GET', clientId, operation: 'get_client_tasks' });
+  
+  try {
+    const clientService = require('../services/clientService.js');
+    
+    // Get tasks for this client
+    const tasks = await clientService.getClientTasks(clientId);
+    
+    logger.info(`Retrieved ${tasks.length} tasks for client ${clientId}`);
+    
+    res.json({
+      success: true,
+      clientId,
+      tasks,
+      count: tasks.length
+    });
+    
+  } catch (error) {
+    logger.error('Get client tasks error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to get tasks: ${error.message}` 
+    });
+  }
+});
+
+/**
+ * PATCH /api/task/:taskId/status
+ * 
+ * Updates the status of a task.
+ * Status values: "Todo", "In progress", "Done"
+ */
+router.patch("/api/task/:taskId/status", async (req, res) => {
+  const { taskId } = req.params;
+  const { status } = req.body;
+  const logger = createLogger({ runId: 'PATCH', clientId: 'TASK', operation: 'update_task_status' });
+  
+  try {
+    const validStatuses = ['Todo', 'In progress', 'Done'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+    
+    const clientService = require('../services/clientService.js');
+    
+    // Update the task status
+    await clientService.updateTaskStatus(taskId, status);
+    
+    logger.info(`Updated task ${taskId} status to ${status}`);
+    
+    res.json({
+      success: true,
+      taskId,
+      status,
+      message: `Task status updated to ${status}`
+    });
+    
+  } catch (error) {
+    logger.error('Update task status error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to update task: ${error.message}` 
+    });
+  }
+});
+
+/**
  * GET /api/clients
  * 
  * Lists all clients in the system.
