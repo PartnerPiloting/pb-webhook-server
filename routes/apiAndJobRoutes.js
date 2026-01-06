@@ -8032,7 +8032,8 @@ router.get("/api/coached-clients/:coachClientId", async (req, res) => {
     const clientsWithProgress = await Promise.all(
       coachedClients.map(async (client) => {
         try {
-          const progress = await clientService.getClientTaskProgress(client.recordId);
+          // Note: client.id is the Airtable record ID from getAllClients mapping
+          const progress = await clientService.getClientTaskProgress(client.id);
           return {
             ...client,
             taskProgress: progress
