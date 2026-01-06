@@ -1108,11 +1108,14 @@ async function getClientsByCoach(coachClientId) {
         logger.info(`Found ${coachedClients.length} clients coached by ${coachClientId}`);
         
         // Return simplified data for coached clients (no sensitive fields)
+        // Include record ID for task progress lookup
         return coachedClients.map(c => ({
+            recordId: c.id,  // Airtable record ID for task lookup
             clientId: c.clientId,
             clientName: c.clientName,
             notionProgressUrl: c.notionProgressUrl,
             coachingStatus: c.coachingStatus,
+            coachNotes: c.rawRecord?.get('Coach Notes') || null,
             status: c.status
         }));
         
