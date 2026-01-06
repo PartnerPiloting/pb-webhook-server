@@ -7717,8 +7717,7 @@ router.post("/api/onboard-client", async (req, res) => {
     // Step 5: Create client tasks from templates
     let taskResult = { tasksCreated: 0 };
     try {
-      const coachingService = require('../services/coachingService.js');
-      taskResult = await coachingService.createClientTasksFromTemplates(createdRecord.id, clientName);
+      taskResult = await clientService.createClientTasksFromTemplates(createdRecord.id, clientName);
       logger.info(`Created ${taskResult.tasksCreated} onboarding tasks for ${clientId}`);
     } catch (taskError) {
       // Log but don't fail the onboarding if task creation fails
@@ -8016,7 +8015,6 @@ router.get("/api/coached-clients/:coachClientId", async (req, res) => {
     }
     
     const clientService = require('../services/clientService.js');
-    const coachingService = require('../services/coachingService.js');
     
     // Verify the coach exists as a valid client
     const coach = await clientService.getClientById(coachClientId);
@@ -8034,7 +8032,7 @@ router.get("/api/coached-clients/:coachClientId", async (req, res) => {
     const clientsWithProgress = await Promise.all(
       coachedClients.map(async (client) => {
         try {
-          const progress = await coachingService.getClientTaskProgress(client.recordId);
+          const progress = await clientService.getClientTaskProgress(client.recordId);
           return {
             ...client,
             taskProgress: progress
@@ -8077,8 +8075,8 @@ router.get("/api/system-settings", async (req, res) => {
   const logger = createLogger({ runId: 'GET', clientId: 'SYSTEM', operation: 'get_system_settings' });
   
   try {
-    const coachingService = require('../services/coachingService.js');
-    const settings = await coachingService.getSystemSettings();
+    const clientService = require('../services/clientService.js');
+    const settings = await clientService.getSystemSettings();
     
     res.json({
       success: true,
