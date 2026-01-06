@@ -12,6 +12,17 @@ import {
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as CheckCircleSolidIcon } from '@heroicons/react/24/solid';
 
+// Task interface
+interface Task {
+  id: string;
+  task: string;
+  phase: string;
+  status: string;
+  order: number;
+  instructionsUrl: string | null;
+  notes: string;
+}
+
 /**
  * ClientTasksPage - Full page view for client onboarding tasks
  */
@@ -21,7 +32,7 @@ export default function ClientTasksPage() {
   // Ensure clientId is a string (useParams can return string | string[])
   const clientId = Array.isArray(params.clientId) ? params.clientId[0] : params.clientId as string;
   
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [clientName, setClientName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +113,7 @@ export default function ClientTasksPage() {
   };
 
   // Group tasks by phase
-  const tasksByPhase = tasks.reduce((acc, task) => {
+  const tasksByPhase: Record<string, Task[]> = tasks.reduce((acc: Record<string, Task[]>, task: Task) => {
     const phase = task.phase || 'Other';
     if (!acc[phase]) acc[phase] = [];
     acc[phase].push(task);
@@ -111,8 +122,8 @@ export default function ClientTasksPage() {
 
   // Calculate progress
   const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(t => t.status === 'Done').length;
-  const inProgressTasks = tasks.filter(t => t.status === 'In progress').length;
+  const completedTasks = tasks.filter((t: Task) => t.status === 'Done').length;
+  const inProgressTasks = tasks.filter((t: Task) => t.status === 'In progress').length;
   const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   // Loading state
@@ -219,8 +230,8 @@ export default function ClientTasksPage() {
       ) : (
         /* Task Phases */
         <div className="space-y-8">
-          {Object.entries(tasksByPhase).map(([phase, phaseTasks]) => {
-            const phaseCompleted = phaseTasks.filter(t => t.status === 'Done').length;
+          {Object.entries(tasksByPhase).map(([phase, phaseTasks]: [string, Task[]]) => {
+            const phaseCompleted = phaseTasks.filter((t: Task) => t.status === 'Done').length;
             const phasePercent = Math.round((phaseCompleted / phaseTasks.length) * 100);
             
             return (
@@ -247,7 +258,7 @@ export default function ClientTasksPage() {
                 
                 {/* Task List */}
                 <div className="divide-y divide-gray-100">
-                  {phaseTasks.map((task, index) => (
+                  {phaseTasks.map((task: Task, index: number) => (
                     <div 
                       key={task.id}
                       className={`px-6 py-4 flex items-start gap-4 transition-colors ${
