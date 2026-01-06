@@ -215,6 +215,7 @@ router.post("/lh-webhook/upsertLeadOnly", async (req, res) => {
                     lastName: lh.lastName || lh.last_name || "",     // Add camelCase for upsertLead function
                     [LEAD_FIELDS.HEADLINE]: lh.headline || "", 
                     [LEAD_FIELDS.LOCATION]: lh.locationName || lh.location_name || lh.location || "",
+                    locationName: lh.locationName || lh.location_name || lh.location || "",  // Add camelCase for upsertLead function
                     [LEAD_FIELDS.PHONE]: (lh.phoneNumbers || [])[0]?.value || lh.phone_1 || lh.phone_2 || "",
                     [LEAD_FIELDS.EMAIL]: lh.email || lh.workEmail || "",
                     [LEAD_FIELDS.LINKEDIN_PROFILE_URL]: rawUrl ? rawUrl.replace(/\/$/, "") : null, 
