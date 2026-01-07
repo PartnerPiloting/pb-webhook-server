@@ -123,6 +123,22 @@ const LeadSearchUpdate = () => {
       setAllLeads(filteredResults);
       
       console.log(`🔍 Search completed: "${query}" page ${page} (ID: ${requestId}) - ${filteredResults.length} results on this page, total: ${total || 'unknown'}`);
+      
+      // Auto-select if exactly 1 result AND there's an active search query
+      if (filteredResults.length === 1 && query && query.trim() !== '') {
+        const singleLead = filteredResults[0];
+        const leadId = singleLead.id || singleLead.recordId || singleLead['Profile Key'];
+        console.log(`🎯 Auto-selecting single result: ${leadId}`);
+        try {
+          const fullLead = await getLeadById(leadId);
+          setSelectedLead(fullLead);
+          setIsModalOpen(true);
+        } catch (error) {
+          console.error('Auto-select error:', error);
+          setSelectedLead(singleLead);
+          setIsModalOpen(true);
+        }
+      }
     } catch (error) {
       console.error('Search error:', error);
       if (requestId === currentSearchRef.current) {
