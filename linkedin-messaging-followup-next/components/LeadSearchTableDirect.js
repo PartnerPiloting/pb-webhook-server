@@ -21,9 +21,29 @@ export default function LeadSearchTableDirect({
   const [sortKey, setSortKey] = useState('AI Score');
   const [sortDir, setSortDir] = useState('desc');
 
+  // Helper: Extract location from lead, with fallback to Raw Profile Data
+  const getLeadLocation = (lead) => {
+    // First try direct Location field
+    let location = lead['Location'] || lead.location || '';
+    if (location) return location;
+    
+    // Fallback: try to extract from Raw Profile Data JSON
+    const rawData = lead['Raw Profile Data'] || lead.rawProfileData;
+    if (rawData) {
+      try {
+        const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+        location = parsed.location_name || parsed.location || '';
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
+    }
+    return location;
+  };
+
   const columns = [
     { key: 'fullName', label: 'Name', sortable: true },
     { key: 'Company', label: 'Company', sortable: true },
+    { key: 'location', label: 'Location', sortable: true },
     { key: 'AI Score', label: 'Score', sortable: true, isNumeric: true },
     { key: 'Priority', label: 'Priority', sortable: true },
     { key: 'Status', label: 'Status', sortable: true },
@@ -38,6 +58,9 @@ export default function LeadSearchTableDirect({
       const firstName = lead['First Name'] || '';
       const lastName = lead['Last Name'] || '';
       return `${firstName} ${lastName}`.trim() || 'Unnamed';
+    }
+    if (key === 'location') {
+      return getLeadLocation(lead);
     }
     const value = lead[key];
     if (value === null || value === undefined) return '';
