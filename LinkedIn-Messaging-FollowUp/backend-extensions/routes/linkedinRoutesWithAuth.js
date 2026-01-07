@@ -418,6 +418,14 @@ router.get('/leads/search', async (req, res) => {
       // Unified contact normalization (same logic as /leads/:id)
       const email = f['Email'] || f['Email Address'] || f['email'] || '';
       const phone = f['Phone'] || f['Phone Number'] || f['phone'] || '';
+      // Location with fallback to Raw Profile Data (same as /leads/:id)
+      let location = f['Location'] || '';
+      if (!location && f['Raw Profile Data']) {
+        try {
+          const rawData = JSON.parse(f['Raw Profile Data']);
+          location = rawData.location_name || rawData.location || '';
+        } catch (e) { /* ignore */ }
+      }
       return {
         id: record.id,
         recordId: record.id,
@@ -435,6 +443,7 @@ router.get('/leads/search', async (req, res) => {
         // Normalized contact fields
         email,
         phone,
+        location,
         company: f['Company'] || '',
         jobTitle: f['Job Title'] || '',
         // Include all original fields for compatibility
