@@ -114,19 +114,6 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         .toString()
         .trim()
         .replace(/\s+/g, ' ');
-      // Helper: Extract location from lead, with fallback to Raw Profile Data
-      const getLeadLocation = (leadData) => {
-        let location = leadData.location || leadData['Location'] || '';
-        if (location) return location;
-        const rawData = leadData['Raw Profile Data'] || leadData.rawProfileData;
-        if (rawData) {
-          try {
-            const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
-            location = parsed.location_name || parsed.location || '';
-          } catch (e) { /* ignore */ }
-        }
-        return location;
-      };
 
       setFormData({
         firstName: lead.firstName || '',
@@ -135,7 +122,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         viewInSalesNavigator: lead.viewInSalesNavigator || '',
         email: lead.email || '',
   phone: lead.phone || '',
-        location: getLeadLocation(lead),
+        location: lead.location || '',
         notes: lead.notes || '',
         followUpDate: convertToISODate(lead.followUpDate),
         source: normalizedSource,
