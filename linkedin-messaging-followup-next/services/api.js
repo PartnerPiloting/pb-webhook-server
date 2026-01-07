@@ -323,8 +323,8 @@ export const getLeadById = async (leadId) => {
   // Provide camelCase variant expected by components like LeadDetailForm
   email: lead.email,
       'Phone': lead.phone,
-      'Location': lead.location,
-      'Raw Profile Data': lead.rawProfileData,
+      'Location': lead.location || lead['Location'],
+      'Raw Profile Data': lead.rawProfileData || lead['Raw Profile Data'],
       'AI Score': lead.aiScore,
       'Posts Relevance Score': lead.postsRelevanceScore,
       'Posts Relevance Percentage': lead.postsRelevancePercentage,
@@ -349,8 +349,8 @@ export const getLeadById = async (leadId) => {
       // Also include camelCase for compatibility
       
       phone: lead.phone,
-      location: lead.location,
-      rawProfileData: lead.rawProfileData,
+      location: lead.location || lead['Location'],
+      rawProfileData: lead.rawProfileData || lead['Raw Profile Data'],
   followUpDate: lead.followUpDate,
   source: lead.source,
   status: lead.status,

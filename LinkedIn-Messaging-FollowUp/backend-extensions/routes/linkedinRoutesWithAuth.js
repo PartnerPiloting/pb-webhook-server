@@ -1099,6 +1099,17 @@ router.get('/leads/:id', async (req, res) => {
     const email = f['Email'] || f['Email Address'] || f['email'] || '';
     const phone = f['Phone'] || f['Phone Number'] || f['phone'] || '';
 
+    // Location with fallback to Raw Profile Data (same pattern as calendar/lookup-lead)
+    let location = f['Location'] || '';
+    if (!location && f['Raw Profile Data']) {
+      try {
+        const rawData = JSON.parse(f['Raw Profile Data']);
+        location = rawData.location_name || rawData.location || '';
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
+    }
+
   // Normalize and fallback source variants
   const rawSource = f['Source'] || f['Lead Source'] || f['source'] || f['leadSource'] || '';
   const normalizedSource = typeof rawSource === 'string' ? rawSource.trim().replace(/\s+/g, ' ') : rawSource;
@@ -1113,6 +1124,7 @@ router.get('/leads/:id', async (req, res) => {
       viewInSalesNavigator: f['View In Sales Navigator'],
       email,
       phone,
+      location,
       aiScore: f['AI Score'],
       postsRelevanceScore: f['Posts Relevance Score'],
       postsRelevancePercentage: f['Posts Relevance Percentage'],
