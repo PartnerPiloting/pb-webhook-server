@@ -114,6 +114,20 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         .toString()
         .trim()
         .replace(/\s+/g, ' ');
+      // Helper: Extract location from lead, with fallback to Raw Profile Data
+      const getLeadLocation = (leadData) => {
+        let location = leadData.location || leadData['Location'] || '';
+        if (location) return location;
+        const rawData = leadData['Raw Profile Data'] || leadData.rawProfileData;
+        if (rawData) {
+          try {
+            const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+            location = parsed.location_name || parsed.location || '';
+          } catch (e) { /* ignore */ }
+        }
+        return location;
+      };
+
       setFormData({
         firstName: lead.firstName || '',
         lastName: lead.lastName || '',
@@ -121,6 +135,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
         viewInSalesNavigator: lead.viewInSalesNavigator || '',
         email: lead.email || '',
   phone: lead.phone || '',
+        location: getLeadLocation(lead),
         notes: lead.notes || '',
         followUpDate: convertToISODate(lead.followUpDate),
         source: normalizedSource,
@@ -194,7 +209,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
   const fieldConfig = {
     editable: [
       'firstName', 'lastName', 'linkedinProfileUrl', 'viewInSalesNavigator', 
-  'email', 'phone', 'notes', 'source', 
+  'email', 'phone', 'location', 'notes', 'source', 
   'status', 'priority', 'linkedinConnectionStatus', 'searchTerms'
     ],
     readonly: ['profileKey', 'aiScore', 'postsRelevancePercentage', 'lastMessageDate'],
@@ -245,6 +260,19 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                   .toString()
                   .trim()
                   .replace(/\s+/g, ' ');
+                // Helper to get location with raw fallback
+                const getLocation = () => {
+                  let loc = lead.location || lead['Location'] || '';
+                  if (loc) return loc;
+                  const rawData = lead['Raw Profile Data'] || lead.rawProfileData;
+                  if (rawData) {
+                    try {
+                      const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+                      loc = parsed.location_name || parsed.location || '';
+                    } catch (e) { /* ignore */ }
+                  }
+                  return loc;
+                };
                 setFormData({
                   firstName: lead.firstName || '',
                   lastName: lead.lastName || '',
@@ -252,6 +280,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                   viewInSalesNavigator: lead.viewInSalesNavigator || '',
                   email: lead.email || '',
                   phone: lead.phone || '',
+                  location: getLocation(),
                   notes: lead.notes || '',
                   followUpDate: convertToISODate(lead.followUpDate),
                   source: normalizedSource,
@@ -559,6 +588,17 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
               placeholder="Enter phone number"
               autoComplete="off"
               inputMode="text"
+            />
+          </div>
+
+          <div className="flex">
+            <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0 py-2">Location</label>
+            <input
+              type="text"
+              value={formData.location || ''}
+              onChange={(e) => handleChange('location', e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              placeholder="City, Country (e.g., Sydney, Australia)"
             />
           </div>
 
