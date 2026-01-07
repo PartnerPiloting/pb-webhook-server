@@ -103,13 +103,6 @@ async function upsertLead(
 
     const profileForJsonField = slimLead(originalLeadData);
 
-    // DEBUG LOCATION: Log all location sources to diagnose blank Location field
-    logger.info(`[LOCATION-DEBUG] locationName from destructure: "${locationName}"`);
-    logger.info(`[LOCATION-DEBUG] originalLeadData.location_name: "${originalLeadData?.location_name}"`);
-    logger.info(`[LOCATION-DEBUG] originalLeadData.location: "${originalLeadData?.location}"`);
-    const resolvedLocation = locationName || originalLeadData.location_name || originalLeadData.location || "";
-    logger.info(`[LOCATION-DEBUG] RESOLVED location value: "${resolvedLocation}"`);
-
     const fields = {
         [LEAD_FIELDS.LINKEDIN_PROFILE_URL]: finalUrl,
         [LEAD_FIELDS.FIRST_NAME]: firstName,
@@ -121,7 +114,7 @@ async function upsertLead(
         [LEAD_FIELDS.JOB_HISTORY]: jobHistory,
         [LEAD_FIELDS.LINKEDIN_CONNECTION_STATUS]: currentConnectionStatus,
         [LEAD_FIELDS.STATUS]: LEAD_STATUS_VALUES.IN_PROCESS, 
-        [LEAD_FIELDS.LOCATION]: resolvedLocation,
+        [LEAD_FIELDS.LOCATION]: locationName || originalLeadData.location_name || originalLeadData.location || "",
         [LEAD_FIELDS.DATE_CONNECTED]: safeDate(connectionSince) || safeDate(originalLeadData.connectedAt) || safeDate(originalLeadData.connectionDate) || (currentConnectionStatus === CONNECTION_STATUS_VALUES.CONNECTED && !lead.id ? new Date().toISOString() : null), // Set Date Connected if newly Connected and no previous date
         [LEAD_FIELDS.EMAIL]: emailAddress || originalLeadData.email || originalLeadData.workEmail || "",
         [LEAD_FIELDS.PHONE]: phoneNumber || originalLeadData.phone || (originalLeadData.phoneNumbers || [])[0]?.value || "",
