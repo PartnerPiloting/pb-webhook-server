@@ -176,13 +176,15 @@ export default function QuickUpdateModal({
       try {
         const result = await lookupLead(searchQuery);
         const leads = result.leads || [];
-        setSearchResults(leads);
         setLookupMethod(result.lookupMethod);
         
-        // Auto-select if exactly 1 result
+        // Auto-select if exactly 1 result (skip showing dropdown)
         if (leads.length === 1) {
           console.log('🎯 Auto-selecting single result:', leads[0].firstName, leads[0].lastName);
+          setSearchResults([]); // Don't show dropdown
           selectLead(leads[0]);
+        } else {
+          setSearchResults(leads); // Show dropdown for 0 or 2+ results
         }
       } catch (err) {
         setError(err.message);
