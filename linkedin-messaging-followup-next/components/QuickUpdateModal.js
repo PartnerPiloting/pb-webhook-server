@@ -175,8 +175,15 @@ export default function QuickUpdateModal({
       
       try {
         const result = await lookupLead(searchQuery);
-        setSearchResults(result.leads || []);
+        const leads = result.leads || [];
+        setSearchResults(leads);
         setLookupMethod(result.lookupMethod);
+        
+        // Auto-select if exactly 1 result
+        if (leads.length === 1) {
+          console.log('🎯 Auto-selecting single result:', leads[0].firstName, leads[0].lastName);
+          selectLead(leads[0]);
+        }
       } catch (err) {
         setError(err.message);
         setSearchResults([]);
