@@ -1567,7 +1567,8 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         parsedResult = await parseConversation(content, {
           clientFirstName,
           newestFirst: true,
-          referenceDate
+          referenceDate,
+          forceFormat: section  // Force parsing to match user's selected source (email, linkedin, salesnav)
         });
         
         // Use formatted output if parsing was successful
