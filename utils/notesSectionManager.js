@@ -235,7 +235,9 @@ function getSectionsSummary(currentNotes) {
 
 /**
  * Parse formatted message lines back into structured data for sorting
- * Format: DD-MM-YY HH:MM AM/PM - Sender - Message
+ * Supports two formats:
+ * - Full message: DD-MM-YY HH:MM AM/PM - Sender - Message
+ * - Manual note: DD-MM-YY: text
  * @param {string} formattedContent - Formatted message lines
  * @returns {Array<{dateTime: Date, line: string}>} Parsed messages with sortable date
  */
@@ -247,13 +249,17 @@ function parseFormattedMessages(formattedContent) {
     const lines = formattedContent.trim().split('\n').filter(l => l.trim());
     const messages = [];
     
-    // Pattern: DD-MM-YY HH:MM AM/PM - Sender - Message
-    const messagePattern = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*.+\s*-\s*.+$/i;
+    // Pattern 1: DD-MM-YY HH:MM AM/PM - Sender - Message (full message format)
+    const fullMessagePattern = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*.+\s*-\s*.+$/i;
+    
+    // Pattern 2: DD-MM-YY: text (manual note format)
+    const manualNotePattern = /^(\d{2})-(\d{2})-(\d{2}):\s*.+$/i;
     
     for (const line of lines) {
-        const match = line.match(messagePattern);
-        if (match) {
-            const [, day, month, year, hour, minute, ampm] = match;
+        // Try full message format first
+        const fullMatch = line.match(fullMessagePattern);
+        if (fullMatch) {
+            const [, day, month, year, hour, minute, ampm] = fullMatch;
             
             // Convert to Date for sorting
             let hours = parseInt(hour, 10);
@@ -272,11 +278,32 @@ function parseFormattedMessages(formattedContent) {
             );
             
             messages.push({ dateTime, line: line.trim() });
-        } else {
-            // Non-message lines (unlikely but handle gracefully)
-            // Give them a very old date so they sort to the end
-            messages.push({ dateTime: new Date(0), line: line.trim() });
+            continue;
         }
+        
+        // Try manual note format
+        const manualMatch = line.match(manualNotePattern);
+        if (manualMatch) {
+            const [, day, month, year] = manualMatch;
+            
+            // Assume 20xx for 2-digit years
+            const fullYear = 2000 + parseInt(year, 10);
+            
+            // For manual notes without time, use end of day (23:59) so they sort after
+            // messages with specific times on the same day, but still within that day
+            const dateTime = new Date(
+                fullYear,
+                parseInt(month, 10) - 1,
+                parseInt(day, 10),
+                23, 59, 59  // End of day
+            );
+            
+            messages.push({ dateTime, line: line.trim() });
+            continue;
+        }
+        
+        // Non-matching lines - give them a very old date so they sort to the end
+        messages.push({ dateTime: new Date(0), line: line.trim() });
     }
     
     return messages;
