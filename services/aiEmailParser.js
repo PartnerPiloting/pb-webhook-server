@@ -59,6 +59,16 @@ CRITICAL RULES:
 5. Remove email headers, "On [date], [person] wrote:" lines, and forwarded message markers
 6. COLLAPSE all newlines into spaces - the message should be ONE LINE with no line breaks
 
+TIME HANDLING (CRITICAL):
+- Times like "12:37" or "16:10" are in 24-HOUR FORMAT. Convert them properly:
+  - 12:37 = 12:37 PM
+  - 16:10 = 4:10 PM (16 - 12 = 4)
+  - 09:30 = 9:30 AM
+  - 00:30 = 12:30 AM
+- IGNORE relative phrases like "6 hours ago" or "3 hours ago" - these are irrelevant
+- Use the EXPLICIT time shown (e.g., "12:37") as the actual message time
+- Combine with the reference date provided to build the full timestamp
+
 SIGNATURE REMOVAL (VERY IMPORTANT):
 The message should END at the LAST sentence of actual content. Remove EVERYTHING after that:
 - Remove closing phrases WITH the name: "Cheers", "Best regards", "Thanks", "Kind regards", "Best", "Regards", "Warmly" etc.
@@ -79,13 +89,17 @@ Output message: "Hi Michelle, Great speaking with you. Look forward to meeting M
 OUTPUT FORMAT:
 Return a JSON array of message objects. Each message should have:
 - "sender": The name of the person who sent the message (string)
-- "timestamp": ISO 8601 date-time string (e.g., "2025-01-15T14:30:00Z") - use reference date if not found in email
+- "timestamp": ISO 8601 date-time string (e.g., "2025-01-15T14:30:00Z") - use reference date for the date portion, and the EXPLICIT time from the email (converted from 24-hour to proper ISO format)
 - "message": The message as a SINGLE LINE with no newlines, signature COMPLETELY REMOVED (string)
 
 Order messages chronologically (oldest first).
 
 If you cannot determine a sender name, look for it in the signature (before you remove it).
 The sender is usually the name after "Cheers", "Thanks", "Best regards" etc.
+
+Example with 24-hour time:
+Input has "Keith Sinclair (16:10, 3 hours ago):" 
+The time is 16:10 which is 4:10 PM, so timestamp should be "2026-01-08T16:10:00" (using reference date).
 
 Example output:
 [
