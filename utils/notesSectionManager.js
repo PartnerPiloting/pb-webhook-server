@@ -135,15 +135,16 @@ function rebuildNotesFromSections(sections) {
 /**
  * Update a specific section in the notes
  * @param {string} currentNotes - Current notes content
- * @param {string} sectionKey - Section to update: 'linkedin', 'manual', 'salesnav'
+ * @param {string} sectionKey - Section to update: 'linkedin', 'manual', 'salesnav', 'email'
  * @param {string} newContent - New content for the section
  * @param {Object} options - Update options
- * @param {boolean} options.append - If true, prepend to existing content (for manual notes)
+ * @param {boolean} options.append - If true, merge with existing content (for email)
  * @param {boolean} options.replace - If true, replace entire section content
+ * @param {boolean} options.sortMessages - If true, merge and sort messages by date/time (default true for append)
  * @returns {{ notes: string, previousContent: string, lineCount: { old: number, new: number } }}
  */
 function updateSection(currentNotes, sectionKey, newContent, options = {}) {
-    const { append = false, replace = true } = options;
+    const { append = false, replace = true, sortMessages = true } = options;
     
     // Parse current notes
     const sections = parseNotesIntoSections(currentNotes || '');
@@ -154,8 +155,11 @@ function updateSection(currentNotes, sectionKey, newContent, options = {}) {
     
     // Update the section
     if (append) {
-        // For manual notes: prepend new content (newest first)
-        if (sections[sectionKey]) {
+        // For email: merge and sort all messages by date/time (newest first)
+        if (sections[sectionKey] && sortMessages) {
+            sections[sectionKey] = mergeAndSortMessages(sections[sectionKey], newContent.trim(), true);
+        } else if (sections[sectionKey]) {
+            // Fallback: simple prepend (newest at top)
             sections[sectionKey] = `${newContent.trim()}\n${sections[sectionKey].trim()}`;
         } else {
             sections[sectionKey] = newContent.trim();
@@ -230,7 +234,93 @@ function getSectionsSummary(currentNotes) {
 }
 
 /**
- * Format today's date for manual notes
+ * Parse formatted message lines back into structured data for sorting
+ * Format: DD-MM-YY HH:MM AM/PM - Sender - Message
+ * @param {string} formattedContent - Formatted message lines
+ * @returns {Array<{dateTime: Date, line: string}>} Parsed messages with sortable date
+ */
+function parseFormattedMessages(formattedContent) {
+    if (!formattedContent || typeof formattedContent !== 'string') {
+        return [];
+    }
+    
+    const lines = formattedContent.trim().split('\n').filter(l => l.trim());
+    const messages = [];
+    
+    // Pattern: DD-MM-YY HH:MM AM/PM - Sender - Message
+    const messagePattern = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*.+\s*-\s*.+$/i;
+    
+    for (const line of lines) {
+        const match = line.match(messagePattern);
+        if (match) {
+            const [, day, month, year, hour, minute, ampm] = match;
+            
+            // Convert to Date for sorting
+            let hours = parseInt(hour, 10);
+            if (ampm.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+            if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+            
+            // Assume 20xx for 2-digit years
+            const fullYear = 2000 + parseInt(year, 10);
+            
+            const dateTime = new Date(
+                fullYear,
+                parseInt(month, 10) - 1,
+                parseInt(day, 10),
+                hours,
+                parseInt(minute, 10)
+            );
+            
+            messages.push({ dateTime, line: line.trim() });
+        } else {
+            // Non-message lines (unlikely but handle gracefully)
+            // Give them a very old date so they sort to the end
+            messages.push({ dateTime: new Date(0), line: line.trim() });
+        }
+    }
+    
+    return messages;
+}
+
+/**
+ * Merge and sort formatted messages, removing duplicates
+ * @param {string} existingContent - Existing section content
+ * @param {string} newContent - New content to merge
+ * @param {boolean} newestFirst - Sort newest first (default true)
+ * @returns {string} Merged and sorted content
+ */
+function mergeAndSortMessages(existingContent, newContent, newestFirst = true) {
+    const existingMessages = parseFormattedMessages(existingContent);
+    const newMessages = parseFormattedMessages(newContent);
+    
+    // Combine all messages
+    const allMessages = [...existingMessages, ...newMessages];
+    
+    // Remove duplicates based on exact line content
+    const seen = new Set();
+    const uniqueMessages = allMessages.filter(msg => {
+        if (seen.has(msg.line)) {
+            return false;
+        }
+        seen.add(msg.line);
+        return true;
+    });
+    
+    // Sort by dateTime
+    uniqueMessages.sort((a, b) => {
+        if (newestFirst) {
+            return b.dateTime.getTime() - a.dateTime.getTime();
+        } else {
+            return a.dateTime.getTime() - b.dateTime.getTime();
+        }
+    });
+    
+    // Rebuild formatted content
+    return uniqueMessages.map(msg => msg.line).join('\n');
+}
+
+/**
+ * Format date for manual notes (DD-MM-YY)
  * @param {Date} date - Date to format (defaults to now)
  * @returns {string} Formatted date DD-MM-YY
  */
@@ -270,5 +360,7 @@ module.exports = {
     getSection,
     getSectionsSummary,
     formatManualNoteDate,
-    addManualNote
+    addManualNote,
+    parseFormattedMessages,
+    mergeAndSortMessages
 };
