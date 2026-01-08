@@ -746,12 +746,11 @@ function CalendarBookingContent() {
       ? ` to ${formData.leadEmail}` 
       : '';
     
-    const message = `Hi ${leadFirstName},
+    const message = `Great ${leadFirstName},
 
-Great! I have just sent a calendar invite for ${meetingTimeDisplay}${emailPart} - did it come through?
+I've sent you a calendar invite with a Zoom link for ${meetingTimeDisplay}${emailPart}. Does that work for you?
 
-Looking forward to meeting!
-
+Talk Soon
 ${yourFirstName}`;
     
     setConfirmationMessage(message);

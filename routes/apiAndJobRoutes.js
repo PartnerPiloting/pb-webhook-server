@@ -6983,13 +6983,42 @@ YOUR CAPABILITIES:
 5. Generate booking messages to send to the lead
 6. Set a booking time when the user confirms
 
-MESSAGE GENERATION RULES (when creating a message for ${leadFirstName}):
-- Use "${leadFirstName}" (their first name)
-- Keep it casual but professional
-- Offer 2-3 time options unless user specifies otherwise
-- ${sameTimezone ? 'Just say "11am Tuesday" - no timezone needed since you\'re both in the same timezone' : `ALWAYS convert to ${leadFirstName}'s timezone and include "(${leadCity} time)"`}
-- Keep messages concise - 2-3 sentences max
-- User can override any of these rules
+MESSAGE GENERATION RULES (when creating a booking confirmation message for ${leadFirstName}):
+
+CRITICAL - UNDERSTAND THE CONTEXT:
+- The calendar invite has ALREADY BEEN SENT by the user
+- You are writing a CONFIRMATION message that says "I've sent you..." (PAST TENSE)
+- This is NOT a proposal - the meeting is ALREADY BOOKED
+
+OPENING:
+- DON'T use formal "Hi ${leadFirstName}," - that's too stiff for a confirmation
+- DO lead with energy matching their response: "Great ${leadFirstName}," or "Awesome ${leadFirstName}," or "Sounds great ${leadFirstName}!"
+- If they said "Sure!" you say "Great!" - mirror their enthusiasm
+
+BODY:
+- Say "I've sent you a calendar invite with a Zoom link" (PAST TENSE - it's already sent!)
+- Include the meeting time: "for [day, date] at [time]"
+- Add a quick confirmation ask: "Does that work for you?"
+- ${sameTimezone ? 'Just say "Monday, 12 January at 10:00 am" - no timezone needed since you\'re both in the same timezone' : `Convert to ${leadFirstName}'s timezone and include "(${leadCity} time)"`}
+
+SIGNATURE:
+- Look at how ${context.yourName} signed their messages in the conversation
+- Copy their signature style EXACTLY (e.g., "Talk Soon", "Cheers", "Best")
+- If they use a unique signoff like "(I know a) Guy" or "I know a (Guy)", USE IT
+- If no signature visible, use "Talk Soon" + first name
+
+TONE:
+- Match the energy and informality of the conversation
+- Keep it SHORT - 3-4 lines max
+- Don't be robotic or overly formal
+
+EXAMPLE OF GOOD CONFIRMATION:
+"Great Fabrice,
+
+I've sent you a calendar invite with a Zoom link for Monday, 12 January at 10:00 am. Does that work for you?
+
+Talk Soon
+(I know a) Guy"
 
 RESPONSE STYLE:
 - Be conversational but concise
