@@ -10,7 +10,8 @@ import { renderHelpHtml } from '../../components/HelpHtmlRenderer';
 
 export const dynamic = 'force-dynamic';
 
-interface HelpTopic { id: string; title: string; order: number; body?: string; contextType?: string | null; section?: string | null; }
+// topicType: 'heading' = section divider (non-expandable), 'divider' = visual line separator, 'content' = normal expandable topic
+interface HelpTopic { id: string; title: string; order: number; body?: string; contextType?: string | null; section?: string | null; topicType?: 'heading' | 'divider' | 'content'; }
 interface TopicBlockText { type: 'text'; markdown: string }
 interface TopicBlockMedia { type: 'media'; token: string; media: { media_id: number|string; type: string; url: string|null; caption?: string|null; description?: string|null; instructions?: string|null; attachment?: any } }
 interface TopicBlockMissing { type: 'media-missing'; token: string; media_id: string }
@@ -476,9 +477,8 @@ const StartHereContent: React.FC = () => {
       <div className="space-y-6">
         {/* Flat list with category headers - no accordions needed */}
         {data.categories.sort((a,b)=>a.order-b.order).map(cat => {
-          // Flatten all topics from all subcategories
+          // Flatten all topics from all subcategories, sort ONLY by topic_order (ignore sub-category order)
           const allTopics = cat.subCategories
-            .sort((a,b)=>a.order-b.order)
             .flatMap(sub => sub.topics.map(t => ({ ...t, subCategoryName: sub.name, subCategoryId: sub.id })))
             .sort((a,b)=>a.order-b.order);
           
@@ -497,6 +497,28 @@ const StartHereContent: React.FC = () => {
               {/* Topics list - always visible */}
               <div className="divide-y divide-gray-100">
                 {allTopics.map(t => {
+                  // Normalize topicType: default to 'content' if missing (guardrail 1)
+                  const topicType = t.topicType || 'content';
+                  
+                  // === DIVIDER: Just a visual line separator ===
+                  if (topicType === 'divider') {
+                    return (
+                      <div key={t.id} id={`topic-${t.id}`} className="py-2 px-5">
+                        <hr className="border-t-2 border-gray-200" />
+                      </div>
+                    );
+                  }
+                  
+                  // === HEADING: Non-expandable section divider (guardrail 2: never expand even if body exists) ===
+                  if (topicType === 'heading') {
+                    return (
+                      <div key={t.id} id={`topic-${t.id}`} className="px-5 py-3 bg-blue-50/50 border-l-4 border-blue-400">
+                        <div className="font-semibold text-gray-900 text-[15px]">{t.title}</div>
+                      </div>
+                    );
+                  }
+                  
+                  // === CONTENT: Normal expandable topic (current behavior) ===
                   const tOpen = !!openTopics[t.id];
                   
                   return (

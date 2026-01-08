@@ -2282,6 +2282,9 @@ app.get('/api/help/start-here', async (req, res) => {
                 bodyVal = autoFormatHelpBody(bodyVal);
             }
             const section = (f.Section || '').toString().trim() || null; // Track which section this topic belongs to
+            // Topic Type: 'Heading', 'Divider', or 'Content' (blank = Content)
+            const rawTopicType = (f['Topic Type'] || '').toString().trim().toLowerCase();
+            const topicType = rawTopicType === 'heading' ? 'heading' : rawTopicType === 'divider' ? 'divider' : 'content';
             sub.topics.push({
                 id: r.id,
                 title,
@@ -2290,7 +2293,8 @@ app.get('/api/help/start-here', async (req, res) => {
                 bodyHtml: bodyHtml,
                 bodyFormat,
                 contextType: f.context_type || null,
-                section // Include section for frontend tab switching
+                section, // Include section for frontend tab switching
+                topicType // 'heading' | 'divider' | 'content'
             });
         });
 
@@ -2324,7 +2328,8 @@ app.get('/api/help/start-here', async (req, res) => {
                             order: t.order,
                             ...(includeBody ? { body: t.body, bodyHtml: t.bodyHtml, bodyFormat: t.bodyFormat } : {}),
                             contextType: t.contextType,
-                            section: t.section
+                            section: t.section,
+                            topicType: t.topicType // 'heading' | 'divider' | 'content'
                         }))
                     }))
             }));
@@ -2767,6 +2772,9 @@ app.get('/api/help/context', async (req, res) => {
             } else if (enableAutoFormat && bodyVal) {
                 bodyVal = autoFormatHelpBody(bodyVal);
             }
+            // Topic Type: 'Heading', 'Divider', or 'Content' (blank = Content)
+            const rawTopicType = (f['Topic Type'] || '').toString().trim().toLowerCase();
+            const topicType = rawTopicType === 'heading' ? 'heading' : rawTopicType === 'divider' ? 'divider' : 'content';
             sub.topics.push({
                 id: r.id,
                 title,
@@ -2774,7 +2782,8 @@ app.get('/api/help/context', async (req, res) => {
                 body: bodyFormat === 'markdown' ? bodyVal : undefined,
                 bodyHtml: bodyHtml,
                 bodyFormat,
-                contextType: f.context_type || null
+                contextType: f.context_type || null,
+                topicType // 'heading' | 'divider' | 'content'
             });
         });
 
@@ -2806,7 +2815,7 @@ app.get('/api/help/context', async (req, res) => {
                             order: t.order,
                             ...(includeBody ? { body: t.body, bodyHtml: t.bodyHtml, bodyFormat: t.bodyFormat } : {}),
                             contextType: t.contextType,
-                            section: t.section
+                            topicType: t.topicType // 'heading' | 'divider' | 'content'
                         }))
                     }))
             }));
