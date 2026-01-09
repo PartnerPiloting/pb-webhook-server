@@ -74,9 +74,10 @@ function buildClientUrl(clientCode: string, serviceLevel: string): string {
 }
 
 // Only two actual service levels in the system
+// Values MUST match exactly what's in Airtable's Service Level dropdown
 const SERVICE_LEVELS = [
   { value: '1-Lead Scoring', label: 'Lead Scoring', description: 'Profile scoring only' },
-  { value: '2-Post Scoring', label: 'Post Scoring', description: 'Lead + post analysis' }
+  { value: '2-Lead Scoring + Post Scoring', label: 'Lead + Post Scoring', description: 'Lead + post analysis' }
 ];
 
 const TIMEZONES = [
@@ -107,7 +108,7 @@ const EMPTY_FORM: ClientData = {
   email: '',
   wordpressUserId: '',
   airtableBaseId: '',
-  serviceLevel: '2-Post Scoring',
+  serviceLevel: '2-Lead Scoring + Post Scoring',
   linkedinUrl: '',
   timezone: 'Australia/Brisbane',
   phone: '',
@@ -186,7 +187,7 @@ export default function OnboardClientPage() {
         email: fields['Client Email Address'] || '',
         wordpressUserId: String(fields['WordPress User ID'] || ''),
         airtableBaseId: fields['Airtable Base ID'] || '',
-        serviceLevel: fields['Service Level'] || '2-Post Scoring',
+        serviceLevel: fields['Service Level'] || '2-Lead Scoring + Post Scoring',
         linkedinUrl: fields['LinkedIn URL'] || '',
         timezone: fields['Timezone'] || 'Australia/Brisbane',
         phone: fields['Phone'] || '',
