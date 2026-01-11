@@ -8555,4 +8555,443 @@ Respond ONLY with valid JSON, no markdown.`;
   }
 });
 
+// ---------------------------------------------------------------
+// Client Intake Request Endpoints
+// ---------------------------------------------------------------
+
+const INTAKE_TABLE = 'Client Intake Requests';
+const INTAKE_FIELDS = {
+  NAME: 'Name',
+  CLIENT_FIRST_NAME: 'Client First Name',
+  CLIENT_LAST_NAME: 'Client Last Name',
+  CLIENT_EMAIL: 'Client Email',
+  LINKEDIN_PROFILE_URL: 'LinkedIn Profile URL',
+  PHONE: 'Phone',
+  TIMEZONE: 'Timezone',
+  COACH_ID: 'Coach ID',
+  COACH_NOTES: 'Coach Notes',
+  STATUS: 'Status',
+  SUBMITTED_AT: 'Submitted At',
+  PROCESSED_AT: 'Processed At',
+  LINKED_CLIENT: 'Linked Client'
+};
+
+/**
+ * POST /api/intake
+ * Create a new client intake request (coach submits form)
+ */
+router.post("/api/intake", async (req, res) => {
+  const logger = createLogger({ runId: 'INTAKE', clientId: 'SYSTEM', operation: 'create_intake' });
+  
+  try {
+    const {
+      clientFirstName,
+      clientLastName,
+      clientEmail,
+      linkedinProfileUrl,
+      phone,
+      timezone,
+      coachId,
+      coachNotes
+    } = req.body;
+    
+    // Validation
+    const errors = [];
+    if (!clientFirstName) errors.push('Client First Name is required');
+    if (!clientLastName) errors.push('Client Last Name is required');
+    if (!clientEmail) errors.push('Client Email is required');
+    if (!linkedinProfileUrl) errors.push('LinkedIn Profile URL is required');
+    if (!coachId) errors.push('Coach ID is required');
+    
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, errors });
+    }
+    
+    // Validate coach exists in Clients table
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    const coachRecords = await masterBase('Clients').select({
+      filterByFormula: `{Client ID} = "${coachId}"`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (coachRecords.length === 0) {
+      return res.status(400).json({
+        success: false,
+        errors: [`Coach ID "${coachId}" not found. Please check and try again.`]
+      });
+    }
+    
+    // Check for duplicate (same email, pending status)
+    const existingRequests = await masterBase(INTAKE_TABLE).select({
+      filterByFormula: `AND({Client Email} = "${clientEmail}", {Status} = "Pending")`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (existingRequests.length > 0) {
+      return res.status(409).json({
+        success: false,
+        errors: ['A pending request for this email already exists.'],
+        existingRequestId: existingRequests[0].id
+      });
+    }
+    
+    // Create the intake request
+    const newRecord = await masterBase(INTAKE_TABLE).create({
+      [INTAKE_FIELDS.CLIENT_FIRST_NAME]: clientFirstName.trim(),
+      [INTAKE_FIELDS.CLIENT_LAST_NAME]: clientLastName.trim(),
+      [INTAKE_FIELDS.CLIENT_EMAIL]: clientEmail.trim(),
+      [INTAKE_FIELDS.LINKEDIN_PROFILE_URL]: linkedinProfileUrl.trim(),
+      [INTAKE_FIELDS.PHONE]: phone ? phone.trim() : null,
+      [INTAKE_FIELDS.TIMEZONE]: timezone || 'Australia/Brisbane',
+      [INTAKE_FIELDS.COACH_ID]: coachId.trim(),
+      [INTAKE_FIELDS.COACH_NOTES]: coachNotes || null,
+      [INTAKE_FIELDS.STATUS]: 'Pending'
+    });
+    
+    logger.info(`Intake request created: ${clientFirstName} ${clientLastName} by coach ${coachId}`);
+    
+    res.json({
+      success: true,
+      recordId: newRecord.id,
+      clientCode: `${clientFirstName.trim()}-${clientLastName.trim()}`.replace(/\s+/g, '-'),
+      message: 'Client intake request submitted successfully!'
+    });
+    
+  } catch (error) {
+    logger.error('Intake creation error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to submit intake request: ${error.message}`
+    });
+  }
+});
+
+/**
+ * GET /api/intake
+ * Get intake requests (optionally filtered by coach or status)
+ */
+router.get("/api/intake", async (req, res) => {
+  const logger = createLogger({ runId: 'INTAKE', clientId: 'SYSTEM', operation: 'list_intake' });
+  
+  try {
+    const { coachId, status } = req.query;
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    // Build filter formula
+    let filterFormula = '';
+    const conditions = [];
+    
+    if (coachId) {
+      conditions.push(`{Coach ID} = "${coachId}"`);
+    }
+    if (status) {
+      conditions.push(`{Status} = "${status}"`);
+    }
+    
+    if (conditions.length > 0) {
+      filterFormula = conditions.length === 1 
+        ? conditions[0] 
+        : `AND(${conditions.join(', ')})`;
+    }
+    
+    const records = await masterBase(INTAKE_TABLE).select({
+      filterByFormula: filterFormula,
+      sort: [{ field: 'Submitted At', direction: 'desc' }]
+    }).all();
+    
+    const requests = records.map(record => ({
+      id: record.id,
+      name: record.get(INTAKE_FIELDS.NAME),
+      clientFirstName: record.get(INTAKE_FIELDS.CLIENT_FIRST_NAME),
+      clientLastName: record.get(INTAKE_FIELDS.CLIENT_LAST_NAME),
+      clientEmail: record.get(INTAKE_FIELDS.CLIENT_EMAIL),
+      linkedinProfileUrl: record.get(INTAKE_FIELDS.LINKEDIN_PROFILE_URL),
+      phone: record.get(INTAKE_FIELDS.PHONE),
+      timezone: record.get(INTAKE_FIELDS.TIMEZONE),
+      coachId: record.get(INTAKE_FIELDS.COACH_ID),
+      coachNotes: record.get(INTAKE_FIELDS.COACH_NOTES),
+      status: record.get(INTAKE_FIELDS.STATUS),
+      submittedAt: record.get(INTAKE_FIELDS.SUBMITTED_AT),
+      processedAt: record.get(INTAKE_FIELDS.PROCESSED_AT),
+      linkedClient: record.get(INTAKE_FIELDS.LINKED_CLIENT)
+    }));
+    
+    res.json({ success: true, requests });
+    
+  } catch (error) {
+    logger.error('Intake list error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to fetch intake requests: ${error.message}`
+    });
+  }
+});
+
+/**
+ * GET /api/intake/pending
+ * Get all pending intake requests (for onboard page dropdown)
+ */
+router.get("/api/intake/pending", async (req, res) => {
+  const logger = createLogger({ runId: 'INTAKE', clientId: 'SYSTEM', operation: 'pending_intake' });
+  
+  try {
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    const records = await masterBase(INTAKE_TABLE).select({
+      filterByFormula: `{Status} = "Pending"`,
+      sort: [{ field: 'Submitted At', direction: 'desc' }]
+    }).all();
+    
+    const requests = records.map(record => ({
+      id: record.id,
+      name: record.get(INTAKE_FIELDS.NAME),
+      clientFirstName: record.get(INTAKE_FIELDS.CLIENT_FIRST_NAME),
+      clientLastName: record.get(INTAKE_FIELDS.CLIENT_LAST_NAME),
+      clientEmail: record.get(INTAKE_FIELDS.CLIENT_EMAIL),
+      linkedinProfileUrl: record.get(INTAKE_FIELDS.LINKEDIN_PROFILE_URL),
+      phone: record.get(INTAKE_FIELDS.PHONE),
+      timezone: record.get(INTAKE_FIELDS.TIMEZONE),
+      coachId: record.get(INTAKE_FIELDS.COACH_ID),
+      coachNotes: record.get(INTAKE_FIELDS.COACH_NOTES),
+      submittedAt: record.get(INTAKE_FIELDS.SUBMITTED_AT)
+    }));
+    
+    res.json({ success: true, requests });
+    
+  } catch (error) {
+    logger.error('Pending intake list error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to fetch pending intake requests: ${error.message}`
+    });
+  }
+});
+
+/**
+ * GET /api/intake/:id
+ * Get a single intake request
+ */
+router.get("/api/intake/:id", async (req, res) => {
+  const logger = createLogger({ runId: 'INTAKE', clientId: 'SYSTEM', operation: 'get_intake' });
+  
+  try {
+    const { id } = req.params;
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    const record = await masterBase(INTAKE_TABLE).find(id);
+    
+    res.json({
+      success: true,
+      request: {
+        id: record.id,
+        name: record.get(INTAKE_FIELDS.NAME),
+        clientFirstName: record.get(INTAKE_FIELDS.CLIENT_FIRST_NAME),
+        clientLastName: record.get(INTAKE_FIELDS.CLIENT_LAST_NAME),
+        clientEmail: record.get(INTAKE_FIELDS.CLIENT_EMAIL),
+        linkedinProfileUrl: record.get(INTAKE_FIELDS.LINKEDIN_PROFILE_URL),
+        phone: record.get(INTAKE_FIELDS.PHONE),
+        timezone: record.get(INTAKE_FIELDS.TIMEZONE),
+        coachId: record.get(INTAKE_FIELDS.COACH_ID),
+        coachNotes: record.get(INTAKE_FIELDS.COACH_NOTES),
+        status: record.get(INTAKE_FIELDS.STATUS),
+        submittedAt: record.get(INTAKE_FIELDS.SUBMITTED_AT),
+        processedAt: record.get(INTAKE_FIELDS.PROCESSED_AT),
+        linkedClient: record.get(INTAKE_FIELDS.LINKED_CLIENT)
+      }
+    });
+    
+  } catch (error) {
+    logger.error('Get intake error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to fetch intake request: ${error.message}`
+    });
+  }
+});
+
+/**
+ * PATCH /api/intake/:id
+ * Update an intake request (coach editing)
+ */
+router.patch("/api/intake/:id", async (req, res) => {
+  const logger = createLogger({ runId: 'INTAKE', clientId: 'SYSTEM', operation: 'update_intake' });
+  
+  try {
+    const { id } = req.params;
+    const {
+      clientFirstName,
+      clientLastName,
+      clientEmail,
+      linkedinProfileUrl,
+      phone,
+      timezone,
+      coachNotes
+    } = req.body;
+    
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    // Check current status - only allow editing Pending requests
+    const existingRecord = await masterBase(INTAKE_TABLE).find(id);
+    const currentStatus = existingRecord.get(INTAKE_FIELDS.STATUS);
+    
+    if (currentStatus !== 'Pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot edit a ${currentStatus.toLowerCase()} request.`
+      });
+    }
+    
+    // Build update object (only include provided fields)
+    const updates = {};
+    if (clientFirstName) updates[INTAKE_FIELDS.CLIENT_FIRST_NAME] = clientFirstName.trim();
+    if (clientLastName) updates[INTAKE_FIELDS.CLIENT_LAST_NAME] = clientLastName.trim();
+    if (clientEmail) updates[INTAKE_FIELDS.CLIENT_EMAIL] = clientEmail.trim();
+    if (linkedinProfileUrl) updates[INTAKE_FIELDS.LINKEDIN_PROFILE_URL] = linkedinProfileUrl.trim();
+    if (phone !== undefined) updates[INTAKE_FIELDS.PHONE] = phone ? phone.trim() : null;
+    if (timezone) updates[INTAKE_FIELDS.TIMEZONE] = timezone;
+    if (coachNotes !== undefined) updates[INTAKE_FIELDS.COACH_NOTES] = coachNotes || null;
+    
+    const updatedRecord = await masterBase(INTAKE_TABLE).update(id, updates);
+    
+    logger.info(`Intake request updated: ${id}`);
+    
+    res.json({
+      success: true,
+      recordId: updatedRecord.id,
+      message: 'Intake request updated successfully!'
+    });
+    
+  } catch (error) {
+    logger.error('Update intake error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to update intake request: ${error.message}`
+    });
+  }
+});
+
+/**
+ * DELETE /api/intake/:id
+ * Delete an intake request (coach deleting)
+ */
+router.delete("/api/intake/:id", async (req, res) => {
+  const logger = createLogger({ runId: 'INTAKE', clientId: 'SYSTEM', operation: 'delete_intake' });
+  
+  try {
+    const { id } = req.params;
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    // Check current status - only allow deleting Pending requests
+    const existingRecord = await masterBase(INTAKE_TABLE).find(id);
+    const currentStatus = existingRecord.get(INTAKE_FIELDS.STATUS);
+    
+    if (currentStatus !== 'Pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot delete a ${currentStatus.toLowerCase()} request.`
+      });
+    }
+    
+    await masterBase(INTAKE_TABLE).destroy(id);
+    
+    logger.info(`Intake request deleted: ${id}`);
+    
+    res.json({
+      success: true,
+      message: 'Intake request deleted successfully!'
+    });
+    
+  } catch (error) {
+    logger.error('Delete intake error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to delete intake request: ${error.message}`
+    });
+  }
+});
+
+/**
+ * PATCH /api/intake/:id/process
+ * Mark an intake request as processed and link to client (called after onboarding)
+ */
+router.patch("/api/intake/:id/process", async (req, res) => {
+  const logger = createLogger({ runId: 'INTAKE', clientId: 'SYSTEM', operation: 'process_intake' });
+  
+  try {
+    const { id } = req.params;
+    const { clientRecordId } = req.body;
+    
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    const updates = {
+      [INTAKE_FIELDS.STATUS]: 'Processed',
+      [INTAKE_FIELDS.PROCESSED_AT]: new Date().toISOString().split('T')[0]
+    };
+    
+    // Link to client record if provided
+    if (clientRecordId) {
+      updates[INTAKE_FIELDS.LINKED_CLIENT] = [clientRecordId];
+    }
+    
+    const updatedRecord = await masterBase(INTAKE_TABLE).update(id, updates);
+    
+    logger.info(`Intake request processed: ${id}, linked to client: ${clientRecordId || 'none'}`);
+    
+    res.json({
+      success: true,
+      recordId: updatedRecord.id,
+      message: 'Intake request marked as processed!'
+    });
+    
+  } catch (error) {
+    logger.error('Process intake error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: `Failed to process intake request: ${error.message}`
+    });
+  }
+});
+
+/**
+ * GET /api/validate-coach/:coachId
+ * Validate that a coach ID exists in the Clients table
+ */
+router.get("/api/validate-coach/:coachId", async (req, res) => {
+  try {
+    const { coachId } = req.params;
+    const Airtable = require('airtable');
+    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
+    
+    const coachRecords = await masterBase('Clients').select({
+      filterByFormula: `{Client ID} = "${coachId}"`,
+      maxRecords: 1
+    }).firstPage();
+    
+    if (coachRecords.length === 0) {
+      return res.json({ valid: false, message: 'Coach not found' });
+    }
+    
+    const coach = coachRecords[0];
+    res.json({
+      valid: true,
+      coachName: coach.get('Client Name'),
+      coachId: coach.get('Client ID')
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      valid: false,
+      error: `Validation failed: ${error.message}`
+    });
+  }
+});
+
 module.exports = router;

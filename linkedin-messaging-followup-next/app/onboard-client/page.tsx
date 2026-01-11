@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, ChangeEvent, FormEvent } from 'react';
-import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search, Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import { Loader2, CheckCircle, XCircle, AlertCircle, UserPlus, Database, ArrowLeft, Pencil, Search, Settings, ChevronDown, ChevronRight, Inbox } from 'lucide-react';
 import Link from 'next/link';
 
 // Detect backend URL from current hostname (same pattern as api.js)
@@ -35,6 +35,20 @@ interface OnboardingResult {
   recordId?: string;
   error?: string;
   updatedFields?: string[];
+}
+
+interface IntakeRequest {
+  id: string;
+  name: string;
+  clientFirstName: string;
+  clientLastName: string;
+  clientEmail: string;
+  linkedinProfileUrl: string;
+  phone?: string;
+  timezone: string;
+  coachId: string;
+  coachNotes?: string;
+  submittedAt: string;
 }
 
 interface ClientData {
@@ -140,6 +154,54 @@ export default function OnboardClientPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Intake request state
+  const [intakeRequests, setIntakeRequests] = useState<IntakeRequest[]>([]);
+  const [selectedIntakeId, setSelectedIntakeId] = useState<string>('');
+  const [loadingIntakes, setLoadingIntakes] = useState(false);
+  
+  // Fetch pending intake requests on mount
+  useEffect(() => {
+    const fetchIntakeRequests = async () => {
+      setLoadingIntakes(true);
+      try {
+        const apiUrl = getBackendUrl();
+        const response = await fetch(`${apiUrl}/api/intake/pending`);
+        const data = await response.json();
+        if (data.success) {
+          setIntakeRequests(data.requests);
+        }
+      } catch (err) {
+        console.error('Failed to fetch intake requests:', err);
+      } finally {
+        setLoadingIntakes(false);
+      }
+    };
+    fetchIntakeRequests();
+  }, []);
+  
+  // Load intake request into form
+  const loadFromIntake = (intakeId: string) => {
+    const intake = intakeRequests.find(r => r.id === intakeId);
+    if (!intake) return;
+    
+    setSelectedIntakeId(intakeId);
+    setMode('add');
+    setFormData({
+      ...EMPTY_FORM,
+      clientName: `${intake.clientFirstName} ${intake.clientLastName}`,
+      email: intake.clientEmail,
+      linkedinUrl: intake.linkedinProfileUrl,
+      phone: intake.phone || '',
+      timezone: intake.timezone || 'Australia/Brisbane',
+      // Leave these for admin to fill
+      wordpressUserId: '',
+      airtableBaseId: ''
+    });
+    setError(null);
+    setResult(null);
+    setValidationResult(null);
+  };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -286,6 +348,22 @@ export default function OnboardClientPage() {
         
         if (data.success) {
           setResult(data);
+          
+          // If this was from an intake request, mark it as processed
+          if (selectedIntakeId && data.recordId) {
+            try {
+              await fetch(`${apiUrl}/api/intake/${selectedIntakeId}/process`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientRecordId: data.recordId })
+              });
+              // Remove from list
+              setIntakeRequests(prev => prev.filter(r => r.id !== selectedIntakeId));
+              setSelectedIntakeId('');
+            } catch (intakeErr) {
+              console.error('Failed to mark intake as processed:', intakeErr);
+            }
+          }
         } else {
           setError(data.error || 'Onboarding failed');
         }
@@ -323,6 +401,7 @@ export default function OnboardClientPage() {
     setValidationResult(null);
     setResult(null);
     setError(null);
+    setSelectedIntakeId('');
   };
 
   const switchMode = (newMode: 'add' | 'edit') => {
@@ -474,6 +553,51 @@ export default function OnboardClientPage() {
         )}
 
         {/* Form */}
+        {/* Load from Intake Request - shown in add mode */}
+        {mode === 'add' && !result?.success && (
+          <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Inbox className="w-5 h-5 text-purple-600" />
+              Load from Intake Request
+            </h2>
+            <p className="text-sm text-gray-600 mb-3">
+              Pre-fill form with a pending coach intake request
+            </p>
+            {loadingIntakes ? (
+              <p className="text-gray-500 text-sm">Loading intake requests...</p>
+            ) : intakeRequests.length === 0 ? (
+              <p className="text-gray-500 text-sm">No pending intake requests</p>
+            ) : (
+              <div className="flex gap-2">
+                <select
+                  value={selectedIntakeId}
+                  onChange={(e) => loadFromIntake(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                >
+                  <option value="">Select an intake request...</option>
+                  {intakeRequests.map(req => (
+                    <option key={req.id} value={req.id}>
+                      {req.name} (Coach: {req.coachId}) - {new Date(req.submittedAt).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {selectedIntakeId && (
+              <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <p className="text-sm text-purple-800">
+                  ✓ Form pre-filled from intake request. Add WordPress User ID and Airtable Base ID below.
+                </p>
+                {intakeRequests.find(r => r.id === selectedIntakeId)?.coachNotes && (
+                  <p className="text-sm text-gray-600 mt-2">
+                    <strong>Coach Notes:</strong> {intakeRequests.find(r => r.id === selectedIntakeId)?.coachNotes}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {!result?.success && (mode === 'add' || editClientId) && (
           <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             {/* Step 1: Client Details */}
