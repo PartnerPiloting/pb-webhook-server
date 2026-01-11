@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface IntakeRequest {
@@ -54,7 +54,7 @@ const EMPTY_FORM: FormData = {
   coachNotes: ''
 };
 
-export default function ClientIntakePage() {
+function ClientIntakeContent() {
   const searchParams = useSearchParams();
   const viewCoachId = searchParams.get('view');
   
@@ -563,5 +563,14 @@ export default function ClientIntakePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams
+export default function ClientIntakePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 py-8 flex items-center justify-center">Loading...</div>}>
+      <ClientIntakeContent />
+    </Suspense>
   );
 }
