@@ -468,6 +468,18 @@ export default function QuickUpdateModal({
       <div className={containerClasses}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+          {/* Back to Dashboard link - only show in standalone mode */}
+          {standalone && (
+            <a
+              href={`/?client=${clientId}`}
+              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Dashboard
+            </a>
+          )}
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Quick Update</h2>
