@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import ClientIdPrompt from '../../components/ClientIdPrompt';
 import { verifyCalendarConnection, updateClientTimezone, updateClientCalendarEmail } from '../../services/api';
 import { setCurrentClientId } from '../../utils/clientUtils';
@@ -838,6 +839,17 @@ ${yourFirstName}`;
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto">
+        {/* Back to Dashboard link */}
+        <Link 
+          href={clientInfo?.clientId ? `/?testClient=${clientInfo.clientId}` : '/'}
+          className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4 text-sm"
+        >
+          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Dashboard
+        </Link>
+        
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <h1 className="text-2xl font-bold text-gray-800 mb-2">
             Calendar Booking
