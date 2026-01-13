@@ -331,6 +331,7 @@ export default function QuickUpdateModal({
     if (selectedLead) {
       const currentLeadName = `${selectedLead.firstName} ${selectedLead.lastName}`;
       if (newQuery !== currentLeadName) {
+        // Clear everything for new lead search - same as clicking "New"
         setSelectedLead(null);
         setNotesSummary(null);
         setFollowUpDate('');
@@ -338,6 +339,9 @@ export default function QuickUpdateModal({
         setPhone('');
         setNoteContent('');
         setParsePreview(null);
+        setActiveSection(null);  // Reset source selection
+        setSaveSuccess(null);    // Clear any "saved" message
+        setError(null);          // Clear any errors
       }
     }
   };
