@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone } from '../services/api';
+import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead } from '../services/api';
 
 /**
  * Clean up LinkedIn message noise from notes
@@ -119,6 +119,19 @@ export default function QuickUpdateModal({
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [error, setError] = useState(null);
   
+  // Add Lead inline form state
+  const [showAddLeadForm, setShowAddLeadForm] = useState(false);
+  const [noResultsQuery, setNoResultsQuery] = useState(null); // Track the query that returned no results
+  const [addLeadForm, setAddLeadForm] = useState({
+    firstName: '',
+    lastName: '',
+    linkedinProfileUrl: '',
+    email: '',
+    source: 'Follow-Up Personally',
+    status: 'On The Radar'
+  });
+  const [isCreatingLead, setIsCreatingLead] = useState(false);
+  
   // View toggle for notes
   const [showNotesPreview, setShowNotesPreview] = useState(false);
   
@@ -182,13 +195,35 @@ export default function QuickUpdateModal({
         if (leads.length === 1) {
           console.log('🎯 Auto-selecting single result:', leads[0].firstName, leads[0].lastName);
           setSearchResults([]); // Don't show dropdown
+          setNoResultsQuery(null); // Clear no-results state
           selectLead(leads[0]);
+        } else if (leads.length === 0) {
+          // No results - show Add Lead option
+          setSearchResults([]);
+          setNoResultsQuery(searchQuery);
+          // Try to parse the search query into first/last name
+          const nameParts = searchQuery.trim().split(/\s+/);
+          if (nameParts.length >= 2) {
+            setAddLeadForm(prev => ({
+              ...prev,
+              firstName: nameParts[0],
+              lastName: nameParts.slice(1).join(' ')
+            }));
+          } else if (nameParts.length === 1) {
+            setAddLeadForm(prev => ({
+              ...prev,
+              firstName: nameParts[0],
+              lastName: ''
+            }));
+          }
         } else {
-          setSearchResults(leads); // Show dropdown for 0 or 2+ results
+          setSearchResults(leads); // Show dropdown for 2+ results
+          setNoResultsQuery(null);
         }
       } catch (err) {
         setError(err.message);
         setSearchResults([]);
+        setNoResultsQuery(null);
       } finally {
         setIsSearching(false);
       }
@@ -268,12 +303,29 @@ export default function QuickUpdateModal({
     setShowNotesPreview(false);
     setIsEditingNotes(false);
     setEditedNotes('');
+    // Reset Add Lead form
+    setShowAddLeadForm(false);
+    setNoResultsQuery(null);
+    setAddLeadForm({
+      firstName: '',
+      lastName: '',
+      linkedinProfileUrl: '',
+      email: '',
+      source: 'Follow-Up Personally',
+      status: 'On The Radar'
+    });
   };
   
   // Handle search input change - clear selected lead when user types a new search
   const handleSearchChange = (e) => {
     const newQuery = e.target.value;
     setSearchQuery(newQuery);
+    
+    // Clear no-results state when user starts typing something new
+    if (noResultsQuery && newQuery !== noResultsQuery) {
+      setNoResultsQuery(null);
+      setShowAddLeadForm(false);
+    }
     
     // If a lead is selected and user starts typing something different, clear selection
     if (selectedLead) {
@@ -353,6 +405,59 @@ export default function QuickUpdateModal({
       setTimezoneError(err.message || 'Failed to save timezone');
     } finally {
       setIsSavingTimezone(false);
+    }
+  };
+
+  // Handle creating a new lead from the inline form
+  const handleCreateLead = async () => {
+    if (!addLeadForm.firstName.trim() || !addLeadForm.lastName.trim()) {
+      setError('First name and last name are required');
+      return;
+    }
+
+    setIsCreatingLead(true);
+    setError(null);
+
+    try {
+      const newLead = await createLead({
+        firstName: addLeadForm.firstName.trim(),
+        lastName: addLeadForm.lastName.trim(),
+        linkedinProfileUrl: addLeadForm.linkedinProfileUrl.trim() || null,
+        email: addLeadForm.email.trim() || null,
+        source: addLeadForm.source,
+        status: addLeadForm.status
+      });
+
+      console.log('✅ Created new lead:', newLead);
+
+      // Reset the add form
+      setShowAddLeadForm(false);
+      setNoResultsQuery(null);
+      setAddLeadForm({
+        firstName: '',
+        lastName: '',
+        linkedinProfileUrl: '',
+        email: '',
+        source: 'Follow-Up Personally',
+        status: 'On The Radar'
+      });
+
+      // Auto-select the newly created lead
+      selectLead({
+        id: newLead.id,
+        firstName: newLead.firstName || addLeadForm.firstName.trim(),
+        lastName: newLead.lastName || addLeadForm.lastName.trim(),
+        email: newLead.email || addLeadForm.email.trim(),
+        linkedinProfileUrl: newLead.linkedinProfileUrl || addLeadForm.linkedinProfileUrl.trim(),
+        source: newLead.source || addLeadForm.source,
+        status: newLead.status || addLeadForm.status
+      });
+
+    } catch (err) {
+      console.error('Failed to create lead:', err);
+      setError(err.message || 'Failed to create lead');
+    } finally {
+      setIsCreatingLead(false);
     }
   };
 
@@ -685,6 +790,108 @@ export default function QuickUpdateModal({
                     )}
                   </button>
                 ))}
+              </div>
+            )}
+            
+            {/* No Results - Show Add Lead Option */}
+            {noResultsQuery && !selectedLead && !isSearching && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
+                <div className="px-4 py-3 border-b bg-amber-50">
+                  <div className="flex items-center gap-2 text-amber-800">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="text-sm font-medium">No leads found for "{noResultsQuery}"</span>
+                  </div>
+                </div>
+                
+                {!showAddLeadForm ? (
+                  <button
+                    onClick={() => setShowAddLeadForm(true)}
+                    className="w-full px-4 py-3 text-left hover:bg-green-50 transition-colors flex items-center gap-2 text-green-700"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    <span className="font-medium">Add "{noResultsQuery}" as a new lead</span>
+                  </button>
+                ) : (
+                  <div className="p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">First Name *</label>
+                        <input
+                          type="text"
+                          value={addLeadForm.firstName}
+                          onChange={(e) => setAddLeadForm(prev => ({ ...prev, firstName: e.target.value }))}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="First name"
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Last Name *</label>
+                        <input
+                          type="text"
+                          value={addLeadForm.lastName}
+                          onChange={(e) => setAddLeadForm(prev => ({ ...prev, lastName: e.target.value }))}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Last name"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">LinkedIn Profile URL</label>
+                      <input
+                        type="text"
+                        value={addLeadForm.linkedinProfileUrl}
+                        onChange={(e) => setAddLeadForm(prev => ({ ...prev, linkedinProfileUrl: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="https://www.linkedin.com/in/username"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={addLeadForm.email}
+                        onChange={(e) => setAddLeadForm(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => setShowAddLeadForm(false)}
+                        className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCreateLead}
+                        disabled={isCreatingLead || !addLeadForm.firstName.trim() || !addLeadForm.lastName.trim()}
+                        className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white text-sm font-medium rounded transition-colors flex items-center justify-center gap-2"
+                      >
+                        {isCreatingLead ? (
+                          <>
+                            <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                            Create Lead
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
