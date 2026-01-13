@@ -7030,6 +7030,7 @@ CRITICAL RULES:
 - ONLY report appointments that are in the CALENDAR AVAILABILITY or YOUR SCHEDULED APPOINTMENTS sections below
 - NEVER invent fake appointments
 - When suggesting times, pick from CALENDAR AVAILABILITY that DON'T conflict with YOUR SCHEDULED APPOINTMENTS
+- Slots marked with ⓘ are AVAILABLE but overlap with a "free" calendar entry (e.g., family reminders). Treat these as available times, but you can optionally mention the overlap if relevant.
 
 ACTIONS (put at the VERY END of your response):
 When setting a time, add this on its own line at the end:
@@ -7129,9 +7130,38 @@ CALENDAR DATA RANGE:
     }
     
     if (availabilitySlots.length > 0) {
-      calendarContext += `\n\nFREE SLOTS (30min):\n${availabilitySlots.map(s => 
-        `${s.day}: ${s.freeSlots.length > 0 ? s.freeSlots.slice(0, 6).map(f => f.displayRange || f.display).join(', ') : 'Busy'}`
-      ).join('\n')}`;
+      // Format free slots with soft conflict indicators
+      // Soft conflicts are events marked as "free/available" in the calendar - not true blocks but worth noting
+      calendarContext += `\n\nFREE SLOTS (30min):\n${availabilitySlots.map(s => {
+        if (s.freeSlots.length === 0) return `${s.day}: Busy`;
+        const slotDisplays = s.freeSlots.slice(0, 6).map(f => {
+          const timeDisplay = f.displayRange || f.display;
+          // Add ⓘ indicator if there's a soft conflict (overlapping "free" event)
+          return f.softConflict ? `${timeDisplay}ⓘ` : timeDisplay;
+        });
+        return `${s.day}: ${slotDisplays.join(', ')}`;
+      }).join('\n')}`;
+      
+      // If any slots have soft conflicts, add a legend
+      const hasSoftConflicts = availabilitySlots.some(s => s.freeSlots.some(f => f.softConflict));
+      if (hasSoftConflicts) {
+        // Build a list of soft conflicts for reference
+        const softConflictDetails = [];
+        for (const day of availabilitySlots) {
+          for (const slot of day.freeSlots) {
+            if (slot.softConflict && !softConflictDetails.some(sc => sc.event === slot.softConflict)) {
+              softConflictDetails.push({ 
+                time: `${day.day} ${slot.display}`, 
+                event: slot.softConflict 
+              });
+            }
+          }
+        }
+        calendarContext += `\n\nⓘ = Available but overlaps with a "free" calendar entry (not a conflict, just FYI):`;
+        for (const sc of softConflictDetails.slice(0, 5)) { // Limit to 5 to keep context short
+          calendarContext += `\n  • "${sc.event}"`;
+        }
+      }
     }
     
     logger.info(`Calendar context built: ${calendarContext.length} chars, ~${Math.ceil(calendarContext.length / 4)} tokens`);
