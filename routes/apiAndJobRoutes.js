@@ -7159,7 +7159,7 @@ CALENDAR DATA RANGE:
       systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 4096, // Increased from 2048 to handle longer time slot lists
       },
     });
 
