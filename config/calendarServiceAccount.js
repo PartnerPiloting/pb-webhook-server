@@ -211,6 +211,9 @@ async function getEventsForDate(calendarEmail, date, timezone = 'Australia/Brisb
             start: event.start?.dateTime || event.start?.date,
             end: event.end?.dateTime || event.end?.date,
             location: event.location || '',
+            // transparency: 'transparent' = Free/Available, 'opaque' (default) = Busy
+            transparency: event.transparency || 'opaque',
+            isFree: event.transparency === 'transparent',
         }));
         
         console.log(`[CalendarServiceAccount] Returning ${events.length} events`);
@@ -317,6 +320,9 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
             start: event.start?.dateTime || event.start?.date,
             end: event.end?.dateTime || event.end?.date,
             location: event.location || '',
+            // transparency: 'transparent' = Free/Available, 'opaque' (default) = Busy
+            transparency: event.transparency || 'opaque',
+            isFree: event.transparency === 'transparent',
         }));
         
         console.log(`[CalendarServiceAccount] Batch result: ${allBusyPeriods.length} busy periods, ${allEvents.length} events`);
@@ -347,9 +353,14 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
             });
             
             // Calculate free 30-minute slots
+            // Note: freebusy API only returns truly busy (opaque) events as busy periods
+            // Events marked as "free" (transparent) don't block the slot but we track them as soft conflicts
             const freeSlots = [];
             const slotDuration = 30 * 60 * 1000;
             let current = new Date(dayStart);
+            
+            // Get events marked as "free" (transparent) for soft conflict detection
+            const freeEvents = dayEvents.filter(e => e.isFree);
             
             while (current.getTime() + slotDuration <= dayEnd.getTime()) {
                 const slotEnd = new Date(current.getTime() + slotDuration);
@@ -361,11 +372,25 @@ async function getBatchAvailability(calendarEmail, dates, startHour = 9, endHour
                 });
                 
                 if (!isBusy) {
-                    freeSlots.push({
+                    // Check for soft conflicts (events marked as "free" that overlap)
+                    const overlappingFreeEvents = freeEvents.filter(event => {
+                        const eventStart = new Date(event.start);
+                        const eventEnd = new Date(event.end);
+                        return current < eventEnd && slotEnd > eventStart;
+                    });
+                    
+                    const slot = {
                         time: current.toISOString(),
                         display: current.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', timeZone: timezone }),
                         displayRange: `${current.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit', timeZone: timezone })}`,
-                    });
+                    };
+                    
+                    // Add soft conflict info if there are overlapping "free" events
+                    if (overlappingFreeEvents.length > 0) {
+                        slot.softConflict = overlappingFreeEvents.map(e => e.summary).join(', ');
+                    }
+                    
+                    freeSlots.push(slot);
                 }
                 
                 current = slotEnd;
