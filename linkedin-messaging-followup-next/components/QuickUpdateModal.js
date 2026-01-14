@@ -122,6 +122,7 @@ export default function QuickUpdateModal({
   // Add Lead inline form state
   const [showAddLeadForm, setShowAddLeadForm] = useState(false);
   const [noResultsQuery, setNoResultsQuery] = useState(null); // Track the query that returned no results
+  const [userClearedLead, setUserClearedLead] = useState(false); // Track when user types over to prevent auto-select
   const [addLeadForm, setAddLeadForm] = useState({
     firstName: '',
     lastName: '',
@@ -192,11 +193,17 @@ export default function QuickUpdateModal({
         setLookupMethod(result.lookupMethod);
         
         // Auto-select if exactly 1 result (skip showing dropdown)
-        if (leads.length === 1) {
+        // BUT: if user just cleared a lead by typing over, show dropdown instead to let them confirm
+        if (leads.length === 1 && !userClearedLead) {
           console.log('🎯 Auto-selecting single result:', leads[0].firstName, leads[0].lastName);
           setSearchResults([]); // Don't show dropdown
           setNoResultsQuery(null); // Clear no-results state
           selectLead(leads[0]);
+        } else if (leads.length === 1 && userClearedLead) {
+          // Show the single result in dropdown so user can click to confirm
+          console.log('🔍 Showing result for confirmation (user typed over):', leads[0].firstName, leads[0].lastName);
+          setSearchResults(leads);
+          setNoResultsQuery(null);
         } else if (leads.length === 0) {
           // No results - show Add Lead option
           setSearchResults([]);
@@ -306,6 +313,7 @@ export default function QuickUpdateModal({
     // Reset Add Lead form
     setShowAddLeadForm(false);
     setNoResultsQuery(null);
+    setUserClearedLead(false);
     setAddLeadForm({
       firstName: '',
       lastName: '',
@@ -342,6 +350,7 @@ export default function QuickUpdateModal({
         setActiveSection(null);  // Reset source selection
         setSaveSuccess(null);    // Clear any "saved" message
         setError(null);          // Clear any errors
+        setUserClearedLead(true); // Prevent auto-select until user explicitly picks
       }
     }
   };
@@ -355,6 +364,7 @@ export default function QuickUpdateModal({
     setSelectedLead(lead);
     setSearchResults([]);
     setSearchQuery(`${lead.firstName} ${lead.lastName}`);
+    setUserClearedLead(false); // User explicitly selected, reset the flag
     
     // Reset source selection - user must choose for each new lead
     setActiveSection(null);
