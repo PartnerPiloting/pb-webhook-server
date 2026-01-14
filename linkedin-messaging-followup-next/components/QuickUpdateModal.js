@@ -752,13 +752,28 @@ export default function QuickUpdateModal({
                 value={searchQuery}
                 onChange={handleSearchChange}
                 placeholder="Paste LinkedIn URL, email, or type name..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-4 py-2 pr-20 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
-              {isSearching && (
-                <div className="absolute right-3 top-2.5">
+              <div className="absolute right-3 top-2.5 flex items-center gap-2">
+                {isSearching && (
                   <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full" />
-                </div>
-              )}
+                )}
+                {/* Clear button - visible when there's content or a selected lead */}
+                {(searchQuery || selectedLead) && !isSearching && (
+                  <button
+                    onClick={() => {
+                      resetForm();
+                      setTimeout(() => searchInputRef.current?.focus(), 100);
+                    }}
+                    className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                    title="Clear and start fresh (Ctrl+N)"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
             
             {/* Search Results Dropdown */}
@@ -867,6 +882,33 @@ export default function QuickUpdateModal({
                       />
                     </div>
                     
+                    {/* Source selection for new lead - required */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Source *</label>
+                      <div className="flex flex-wrap gap-1">
+                        {SECTIONS.map((section) => (
+                          <button
+                            key={section.key}
+                            type="button"
+                            onClick={() => setActiveSection(section.key)}
+                            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                              activeSection === section.key
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {section.label}
+                          </button>
+                        ))}
+                      </div>
+                      {!activeSection && (
+                        <p className="mt-1 text-xs text-orange-600 flex items-center gap-1">
+                          <span className="inline-block">👆</span>
+                          <span>Please select a source before saving</span>
+                        </p>
+                      )}
+                    </div>
+                    
                     <div className="flex gap-2 pt-2">
                       <button
                         onClick={() => setShowAddLeadForm(false)}
@@ -876,7 +918,8 @@ export default function QuickUpdateModal({
                       </button>
                       <button
                         onClick={handleCreateLead}
-                        disabled={isCreatingLead || !addLeadForm.firstName.trim() || !addLeadForm.lastName.trim()}
+                        disabled={isCreatingLead || !addLeadForm.firstName.trim() || !addLeadForm.lastName.trim() || !activeSection}
+                        title={!activeSection ? 'Please select a source first' : ''}
                         className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white text-sm font-medium rounded transition-colors flex items-center justify-center gap-2"
                       >
                         {isCreatingLead ? (
