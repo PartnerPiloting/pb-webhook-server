@@ -360,7 +360,9 @@ export default function QuickUpdateModal({
         setActiveSection(null);  // Reset source selection
         setSaveSuccess(null);    // Clear any "saved" message
         setError(null);          // Clear any errors
-        setUserClearedLead(true); // Prevent auto-select until user explicitly picks
+        // Note: We do NOT set userClearedLead=true here anymore.
+        // Auto-select should work for each new search, not just the first one.
+        // The userClearedLead flag is only set when user manually types over during an active search.
       }
     }
   };
