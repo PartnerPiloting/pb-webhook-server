@@ -45,8 +45,8 @@ export default function ClientTasksPage() {
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   
   // Coach notes state
-  const [coachNotes, setCoachNotes] = useState('');
-  const [originalNotes, setOriginalNotes] = useState('');
+  const [coachNotes, setCoachNotes] = useState(''); // Full history of notes
+  const [newNote, setNewNote] = useState(''); // New note being composed
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(true);
   
@@ -87,15 +87,14 @@ export default function ClientTasksPage() {
       
       if (data.success) {
         setCoachNotes(data.coachNotes || '');
-        setOriginalNotes(data.coachNotes || '');
       }
     } catch (err) {
       console.error('Error loading coach notes:', err);
     }
   };
 
-  const saveCoachNotes = async () => {
-    if (coachNotes === originalNotes) return; // No changes
+  const addCoachNote = async () => {
+    if (!newNote.trim()) return; // No empty notes
     
     try {
       setSavingNotes(true);
@@ -103,18 +102,20 @@ export default function ClientTasksPage() {
       const response = await fetch(`${backendBase}/api/client/${clientId}/coach-notes`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: coachNotes })
+        body: JSON.stringify({ notes: newNote, append: true })
       });
       
       const data = await response.json();
       
       if (data.success) {
-        setOriginalNotes(coachNotes);
+        // Update the notes history with the response (includes new timestamped note)
+        setCoachNotes(data.coachNotes || '');
+        setNewNote(''); // Clear the input
       } else {
-        alert(`❌ Failed to save notes: ${data.error}`);
+        alert(`❌ Failed to add note: ${data.error}`);
       }
     } catch (err: unknown) {
-      console.error('Error saving coach notes:', err);
+      console.error('Error adding coach note:', err);
       alert(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setSavingNotes(false);
@@ -349,7 +350,7 @@ export default function ClientTasksPage() {
             <span className="font-medium text-gray-700">Coach Notes</span>
             {coachNotes && !notesExpanded && (
               <span className="text-sm text-gray-400 truncate max-w-xs">
-                — {coachNotes.substring(0, 50)}{coachNotes.length > 50 ? '...' : ''}
+                — {coachNotes.split('\n').pop()?.substring(0, 50)}...
               </span>
             )}
           </div>
@@ -361,27 +362,64 @@ export default function ClientTasksPage() {
         </button>
         
         {notesExpanded && (
-          <div className="p-6">
-            <textarea
-              value={coachNotes}
-              onChange={(e) => setCoachNotes(e.target.value)}
-              onBlur={saveCoachNotes}
-              placeholder="Add notes about this client's progress, next steps, or anything to remember for your next call..."
-              className="w-full h-32 px-4 py-3 border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-700 placeholder-gray-400"
-            />
-            <div className="mt-3 flex items-center justify-between">
-              <p className="text-xs text-gray-400">
-                {coachNotes !== originalNotes ? 'Unsaved changes' : 'Auto-saves when you click away'}
-              </p>
-              {coachNotes !== originalNotes && (
+          <div className="p-6 space-y-4">
+            {/* Notes History - Read Only */}
+            {coachNotes && (
+              <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                <p className="text-xs font-medium text-gray-500 mb-3">📝 Note History (oldest → newest)</p>
+                <div className="space-y-3">
+                  {coachNotes.split('\n\n').map((note, index) => {
+                    // Parse timestamp and content: [15 Jan 2026, 10:30 am] Note text
+                    const match = note.match(/^\[(.+?)\]\s*(.*)$/s);
+                    if (match) {
+                      return (
+                        <div key={index} className="border-l-2 border-green-300 pl-3 py-1">
+                          <p className="text-xs text-gray-400 mb-1">{match[1]}</p>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{match[2]}</p>
+                        </div>
+                      );
+                    }
+                    // Legacy note without timestamp
+                    return (
+                      <div key={index} className="border-l-2 border-gray-300 pl-3 py-1">
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{note}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {/* Add New Note */}
+            <div>
+              <label className="block text-sm font-medium text-gray-600 mb-2">
+                ➕ Add New Note
+              </label>
+              <textarea
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="Type your note here... Timestamp will be added automatically when you save."
+                className="w-full h-24 px-4 py-3 border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-700 placeholder-gray-400"
+                onKeyDown={(e) => {
+                  // Ctrl+Enter or Cmd+Enter to save
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    addCoachNote();
+                  }
+                }}
+              />
+              <div className="mt-3 flex items-center justify-between">
+                <p className="text-xs text-gray-400">
+                  Tip: Press Ctrl+Enter to save quickly
+                </p>
                 <button
-                  onClick={saveCoachNotes}
-                  disabled={savingNotes}
-                  className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium"
+                  onClick={addCoachNote}
+                  disabled={savingNotes || !newNote.trim()}
+                  className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >
-                  {savingNotes ? 'Saving...' : 'Save Notes'}
+                  {savingNotes ? 'Saving...' : 'Add Note'}
                 </button>
-              )}
+              </div>
             </div>
           </div>
         )}
