@@ -8402,17 +8402,19 @@ router.get("/api/client/:clientId/coach-notes", async (req, res) => {
 /**
  * PATCH /api/client/:clientId/coach-notes
  * 
- * Updates coach notes for a specific client.
+ * Appends a new coach note with automatic timestamp.
+ * Notes are stored with format: [YYYY-MM-DD HH:mm] Note text
+ * Most recent notes are appended at the end.
  */
 router.patch("/api/client/:clientId/coach-notes", async (req, res) => {
   const { clientId } = req.params;
-  const { notes } = req.body;
+  const { notes, append = true } = req.body; // append defaults to true for new behavior
   const logger = createLogger({ runId: 'PATCH', clientId, operation: 'update_coach_notes' });
   
   try {
     const clientService = require('../services/clientService.js');
     
-    // Get the client to find the record ID
+    // Get the client to find the record ID and existing notes
     const client = await clientService.getClientById(clientId);
     
     if (!client) {
@@ -8422,15 +8424,44 @@ router.patch("/api/client/:clientId/coach-notes", async (req, res) => {
       });
     }
     
-    // Update the coach notes
-    await clientService.updateCoachNotes(client.id, notes);
+    let updatedNotes;
     
-    logger.info(`Updated coach notes for ${clientId}`);
+    if (append && notes && notes.trim()) {
+      // Generate timestamp in user-friendly format
+      const now = new Date();
+      const timestamp = now.toLocaleString('en-AU', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Australia/Sydney'
+      });
+      
+      // Format: [15 Jan 2026, 10:30 am] Note text
+      const timestampedNote = `[${timestamp}] ${notes.trim()}`;
+      
+      // Append to existing notes (or start fresh if empty)
+      const existingNotes = client.coachNotes || '';
+      updatedNotes = existingNotes
+        ? `${existingNotes}\n\n${timestampedNote}`
+        : timestampedNote;
+    } else {
+      // Legacy behavior: overwrite (for backwards compatibility)
+      updatedNotes = notes;
+    }
+    
+    // Update the coach notes
+    await clientService.updateCoachNotes(client.id, updatedNotes);
+    
+    logger.info(`Appended coach note for ${clientId}`);
     
     res.json({
       success: true,
       clientId,
-      message: 'Coach notes updated'
+      message: 'Coach note added',
+      coachNotes: updatedNotes // Return updated notes so frontend can refresh
     });
     
   } catch (error) {
