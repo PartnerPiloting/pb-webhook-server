@@ -127,6 +127,7 @@ async function getAllClients() {
                 const coach = record.get('Coach') || null;
                 const notionProgressUrl = record.get('Notion Progress URL') || null;
                 const coachingStatus = record.get('Coaching Status') || null;
+                const coachNotes = record.get('Coach Notes') || '';
                 
                 clients.push({
                     id: record.id,
@@ -164,6 +165,7 @@ async function getAllClients() {
                     coach: coach,
                     notionProgressUrl: notionProgressUrl,
                     coachingStatus: coachingStatus,
+                    coachNotes: coachNotes,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
