@@ -1,6 +1,6 @@
 "use client";
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getCoachedClients, getSystemSettings, getBackendBase } from '../services/api';
 import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon, EyeIcon } from '@heroicons/react/24/outline';
 
@@ -10,6 +10,7 @@ import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpen
  */
 const CoachedClients = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [clients, setClients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,6 +20,22 @@ const CoachedClients = () => {
 
   // Get dynamic backend URL
   const backendBase = getBackendBase();
+
+  // Build URL with preserved client auth params
+  const buildUrlWithAuth = useCallback((path) => {
+    // Try to get client code from: URL params first, then localStorage
+    const clientParam = searchParams.get('client') || searchParams.get('testClient');
+    let clientCode = clientParam;
+    
+    if (!clientCode && typeof window !== 'undefined') {
+      clientCode = localStorage.getItem('clientCode');
+    }
+    
+    if (clientCode) {
+      return `${path}?client=${encodeURIComponent(clientCode)}`;
+    }
+    return path;
+  }, [searchParams]);
 
   useEffect(() => {
     loadData();
@@ -259,7 +276,7 @@ const CoachedClients = () => {
                 {/* View Tasks Button - navigates to task page */}
                 {client.taskProgress?.total > 0 && (
                   <button
-                    onClick={() => router.push(`/client-tasks/${client.clientId}`)}
+                    onClick={() => router.push(buildUrlWithAuth(`/client-tasks/${client.clientId}`))}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                   >
                     <EyeIcon className="h-4 w-4" />
