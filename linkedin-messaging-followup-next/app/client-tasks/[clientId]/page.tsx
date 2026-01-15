@@ -49,6 +49,7 @@ export default function ClientTasksPage() {
   const [newNote, setNewNote] = useState(''); // New note being composed
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(true);
+  const [showOlderNotes, setShowOlderNotes] = useState(false); // Toggle for older notes history
   
   // Task notes editing state
   const [editingTaskNotes, setEditingTaskNotes] = useState<string | null>(null);
@@ -363,32 +364,61 @@ export default function ClientTasksPage() {
         
         {notesExpanded && (
           <div className="p-6 space-y-4">
-            {/* Notes History - Read Only */}
-            {coachNotes && (
-              <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
-                <p className="text-xs font-medium text-gray-500 mb-3">📝 Note History (oldest → newest)</p>
-                <div className="space-y-3">
-                  {coachNotes.split('\n\n').map((note, index) => {
-                    // Parse timestamp and content: [15 Jan 2026, 10:30 am] Note text
-                    const match = note.match(/^\[(.+?)\]\s*([\s\S]*)$/);
-                    if (match) {
-                      return (
-                        <div key={index} className="border-l-2 border-green-300 pl-3 py-1">
-                          <p className="text-xs text-gray-400 mb-1">{match[1]}</p>
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{match[2]}</p>
+            {/* Notes History - Show most recent, toggle for older */}
+            {coachNotes && (() => {
+              const allNotes = coachNotes.split('\n\n').filter(n => n.trim());
+              const mostRecent = allNotes[allNotes.length - 1];
+              const olderNotes = allNotes.slice(0, -1);
+              
+              const renderNote = (note: string, index: number, isMostRecent = false) => {
+                const match = note.match(/^\[(.+?)\]\s*([\s\S]*)$/);
+                if (match) {
+                  return (
+                    <div key={index} className={`border-l-2 ${isMostRecent ? 'border-green-400' : 'border-gray-300'} pl-3 py-1`}>
+                      <p className="text-xs text-gray-400 mb-1">{match[1]}</p>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{match[2]}</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={index} className="border-l-2 border-gray-300 pl-3 py-1">
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{note}</p>
+                  </div>
+                );
+              };
+              
+              return (
+                <div className="space-y-2">
+                  {/* Most Recent Note */}
+                  {mostRecent && (
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <p className="text-xs font-medium text-green-600 mb-2">📝 Most Recent Note</p>
+                      {renderNote(mostRecent, allNotes.length - 1, true)}
+                    </div>
+                  )}
+                  
+                  {/* Older Notes Toggle */}
+                  {olderNotes.length > 0 && (
+                    <div>
+                      <button
+                        onClick={() => setShowOlderNotes(!showOlderNotes)}
+                        className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                      >
+                        {showOlderNotes ? '▼' : '▶'} {olderNotes.length} older note{olderNotes.length !== 1 ? 's' : ''}
+                      </button>
+                      
+                      {showOlderNotes && (
+                        <div className="mt-2 bg-gray-50 rounded-lg p-3 max-h-40 overflow-y-auto">
+                          <div className="space-y-2">
+                            {olderNotes.map((note, index) => renderNote(note, index))}
+                          </div>
                         </div>
-                      );
-                    }
-                    // Legacy note without timestamp
-                    return (
-                      <div key={index} className="border-l-2 border-gray-300 pl-3 py-1">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{note}</p>
-                      </div>
-                    );
-                  })}
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
             
             {/* Add New Note */}
             <div>
