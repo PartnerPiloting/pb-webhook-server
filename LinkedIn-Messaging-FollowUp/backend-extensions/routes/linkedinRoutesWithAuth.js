@@ -252,7 +252,7 @@ router.get('/leads/search', async (req, res) => {
   
   try {
     const airtableBase = await getAirtableBase(req);
-    const { query, priority, q, searchTerms, limit, offset } = req.query;
+    const { query, priority, q, searchTerms, limit, offset, sortField, sortDirection } = req.query;
     
     // Support both 'query' and 'q' parameter names for backward compatibility
     const searchTerm = query || q;
@@ -340,10 +340,42 @@ router.get('/leads/search', async (req, res) => {
 
     logger.info('LinkedIn Routes: Using filter:', filterFormula);
 
+    // Map frontend sort keys to Airtable field names
+    const sortFieldMap = {
+      'fullName': 'First Name',
+      'AI Score': 'AI Score',
+      'Company': 'Company',
+      'location': 'Location',
+      'Priority': 'Priority',
+      'Status': 'Status',
+      'First Name': 'First Name',
+      'Last Name': 'Last Name',
+      'Location': 'Location'
+    };
+    
+    // Determine sort configuration
+    const effectiveSortField = sortFieldMap[sortField] || 'First Name';
+    const effectiveSortDir = sortDirection === 'asc' ? 'asc' : 'desc';
+    
+    // Build sort array - for fullName, sort by First Name then Last Name
+    let sortConfig;
+    if (sortField === 'fullName' || !sortField) {
+      // Default or name sort: First Name + Last Name
+      sortConfig = [
+        { field: 'First Name', direction: effectiveSortDir },
+        { field: 'Last Name', direction: effectiveSortDir }
+      ];
+    } else {
+      // Single field sort
+      sortConfig = [{ field: effectiveSortField, direction: effectiveSortDir }];
+    }
+    
+    logger.info('LinkedIn Routes: Sort config:', JSON.stringify(sortConfig));
+
     // Stream Airtable pages and return only the requested slice (offset, limit)
     // This avoids the previous ~500 record cap while keeping memory reasonable.
     const selectOptions = {
-      sort: [{ field: 'First Name' }, { field: 'Last Name' }],
+      sort: sortConfig,
       pageSize: Math.min(100, pageLimit || 100)
     };
 

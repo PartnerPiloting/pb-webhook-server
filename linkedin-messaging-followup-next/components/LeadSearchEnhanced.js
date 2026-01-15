@@ -16,7 +16,10 @@ const LeadSearchEnhanced = ({
   selectedLead = null, 
   isLoading = false,
   onSearch,
-  onQuickFieldUpdate
+  onQuickFieldUpdate,
+  sortField = 'AI Score',
+  sortDirection = 'desc',
+  onSortChange
 }) => {
   // Search states
   const [nameSearch, setNameSearch] = useState('');
@@ -728,6 +731,9 @@ const LeadSearchEnhanced = ({
           isLoading={isLoading}
           onQuickFieldUpdate={onQuickFieldUpdate}
           hideFooter={true}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSortChange={onSortChange}
         />
       </div>
       {/* Export Modal */}

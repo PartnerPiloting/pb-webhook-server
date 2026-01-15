@@ -189,7 +189,7 @@ api.interceptors.response.use(
 );
 
 // Lead search and management functions
-export const searchLeads = async (query, priority = 'all', searchTerms = '', limit = 25, offset = 0) => {
+export const searchLeads = async (query, priority = 'all', searchTerms = '', limit = 25, offset = 0, sortField = null, sortDirection = null) => {
   try {
     const clientId = getCurrentClientId();
     if (!clientId) {
@@ -202,6 +202,14 @@ export const searchLeads = async (query, priority = 'all', searchTerms = '', lim
       limit: limit,
       offset: offset
     };
+    
+    // Add sort parameters if provided
+    if (sortField) {
+      params.sortField = sortField;
+    }
+    if (sortDirection) {
+      params.sortDirection = sortDirection;
+    }
     
     // Only add priority parameter if it's not 'all'
     if (priority && priority !== 'all') {
