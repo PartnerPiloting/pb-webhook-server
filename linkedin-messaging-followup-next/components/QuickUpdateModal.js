@@ -241,7 +241,7 @@ export default function QuickUpdateModal({
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery]);
+  }, [searchQuery, userClearedLead]);
 
   // Parse preview on content change (debounced)
   useEffect(() => {
