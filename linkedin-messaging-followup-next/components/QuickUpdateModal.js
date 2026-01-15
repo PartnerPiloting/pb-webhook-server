@@ -122,7 +122,13 @@ export default function QuickUpdateModal({
   // Add Lead inline form state
   const [showAddLeadForm, setShowAddLeadForm] = useState(false);
   const [noResultsQuery, setNoResultsQuery] = useState(null); // Track the query that returned no results
-  const [userClearedLead, setUserClearedLead] = useState(false); // Track when user types over to prevent auto-select
+  const [userClearedLead, _setUserClearedLead] = useState(false); // Track when user types over to prevent auto-select
+  
+  // Wrapper to keep ref in sync with state
+  const setUserClearedLead = (value) => {
+    userClearedLeadRef.current = value;
+    _setUserClearedLead(value);
+  };
   const [addLeadForm, setAddLeadForm] = useState({
     firstName: '',
     lastName: '',
@@ -144,6 +150,7 @@ export default function QuickUpdateModal({
   const searchInputRef = useRef(null);
   const noteInputRef = useRef(null);
   const searchTimeoutRef = useRef(null);
+  const userClearedLeadRef = useRef(false); // Ref to access current value in async callbacks
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -192,14 +199,17 @@ export default function QuickUpdateModal({
         const leads = result.leads || [];
         setLookupMethod(result.lookupMethod);
         
+        // Use ref to get current value (avoids stale closure)
+        const wasCleared = userClearedLeadRef.current;
+        
         // Auto-select if exactly 1 result (skip showing dropdown)
         // BUT: if user just cleared a lead by typing over, show dropdown instead to let them confirm
-        if (leads.length === 1 && !userClearedLead) {
+        if (leads.length === 1 && !wasCleared) {
           console.log('🎯 Auto-selecting single result:', leads[0].firstName, leads[0].lastName);
           setSearchResults([]); // Don't show dropdown
           setNoResultsQuery(null); // Clear no-results state
           selectLead(leads[0]);
-        } else if (leads.length === 1 && userClearedLead) {
+        } else if (leads.length === 1 && wasCleared) {
           // Show the single result in dropdown so user can click to confirm
           console.log('🔍 Showing result for confirmation (user typed over):', leads[0].firstName, leads[0].lastName);
           setSearchResults(leads);
@@ -241,7 +251,7 @@ export default function QuickUpdateModal({
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, userClearedLead]);
+  }, [searchQuery]); // Only re-run on searchQuery change, use ref for userClearedLead
 
   // Parse preview on content change (debounced)
   useEffect(() => {
