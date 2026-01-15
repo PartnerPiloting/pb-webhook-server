@@ -38,12 +38,16 @@ const LeadSearchUpdate = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Sort state - lifted up from LeadSearchTableDirect for server-side sorting
+  const [sortField, setSortField] = useState('AI Score');
+  const [sortDirection, setSortDirection] = useState('desc');
 
   // Use ref to track current search request and prevent race conditions
   const currentSearchRef = useRef(0);
 
   // Single search function that handles both search and pagination
-  const performSearch = useCallback(async (query, currentPriority, currentSearchTerms, requestId, page = 1) => {
+  const performSearch = useCallback(async (query, currentPriority, currentSearchTerms, requestId, page = 1, currentSortField = 'AI Score', currentSortDirection = 'desc') => {
     // Check if this is still the current search request
     if (requestId !== currentSearchRef.current) {
       console.log(`🔍 Search cancelled: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" (ID: ${requestId})`);
@@ -84,14 +88,14 @@ const LeadSearchUpdate = () => {
     }
     
     setIsLoading(true);
-    console.log(`🔍 Starting search: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" page: ${page} (ID: ${requestId})`);
+    console.log(`🔍 Starting search: "${query}" priority: "${currentPriority}" terms: "${currentSearchTerms}" page: ${page} sort: ${currentSortField} ${currentSortDirection} (ID: ${requestId})`);
     
     try {
       // Calculate offset from page number
       const offset = (page - 1) * leadsPerPage;
       
-      // Use backend search with pagination - returns { leads: [...], total: number|null }
-      const response = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset);
+      // Use backend search with pagination and sorting - returns { leads: [...], total: number|null }
+      const response = await searchLeads(query, currentPriority, currentSearchTerms, leadsPerPage, offset, currentSortField, currentSortDirection);
       const results = response.leads || [];
       const total = response.total;
       
@@ -153,8 +157,8 @@ const LeadSearchUpdate = () => {
 
   // Debounced version of search for user typing
   const debouncedSearch = useCallback(
-    debounce((query, currentPriority, currentSearchTerms, requestId, page = 1) => {
-      performSearch(query, currentPriority, currentSearchTerms, requestId, page);
+    debounce((query, currentPriority, currentSearchTerms, requestId, page = 1, currentSortField = 'AI Score', currentSortDirection = 'desc') => {
+      performSearch(query, currentPriority, currentSearchTerms, requestId, page, currentSortField, currentSortDirection);
     }, 500),
     [performSearch]
   );
@@ -164,8 +168,8 @@ const LeadSearchUpdate = () => {
   useEffect(() => {
     // Trigger initial search with empty query to show first page of leads
     currentSearchRef.current += 1;
-    performSearch('', priority, searchTerms, currentSearchRef.current, 1);
-  }, [performSearch, priority, searchTerms]);
+    performSearch('', priority, searchTerms, currentSearchRef.current, 1, sortField, sortDirection);
+  }, [performSearch, priority, searchTerms, sortField, sortDirection]);
 
   // Effect to trigger search when query, priority, or searchTerms changes
   useEffect(() => {
@@ -178,10 +182,10 @@ const LeadSearchUpdate = () => {
     // Use debounced search for user typing (or immediate for empty search)
     if (!search.trim()) {
       // For empty search, get default leads immediately (no debounce needed)
-      performSearch('', priority, searchTerms, requestId, 1);
+      performSearch('', priority, searchTerms, requestId, 1, sortField, sortDirection);
     } else {
       // Use debounced search for user typing
-      debouncedSearch(search, priority, searchTerms, requestId, 1);
+      debouncedSearch(search, priority, searchTerms, requestId, 1, sortField, sortDirection);
     }
   }, [search, priority, searchTerms, debouncedSearch, performSearch]);
 
@@ -219,10 +223,10 @@ const LeadSearchUpdate = () => {
     currentSearchRef.current += 1;
     const requestId = currentSearchRef.current;
     
-    console.log(`📄 Loading page ${newPage} with search: "${search}" priority: "${priority}" terms: "${searchTerms}"`);
+    console.log(`📄 Loading page ${newPage} with search: "${search}" priority: "${priority}" terms: "${searchTerms}" sort: ${sortField} ${sortDirection}`);
     
-    // Use the current search parameters with the new page
-    performSearch(search, priority, searchTerms, requestId, newPage);
+    // Use the current search parameters with the new page and sort
+    performSearch(search, priority, searchTerms, requestId, newPage, sortField, sortDirection);
   };
 
   // Handle lead updates
@@ -307,6 +311,14 @@ const LeadSearchUpdate = () => {
     }
   };
 
+  // Handle sort change from table - triggers new API call with server-side sorting
+  const handleSortChange = (newSortField, newSortDirection) => {
+    console.log(`🔀 Sort changed: ${newSortField} ${newSortDirection}`);
+    setSortField(newSortField);
+    setSortDirection(newSortDirection);
+    // Note: The useEffect will automatically trigger a new search with updated sort
+  };
+
   return (
     <div className="w-full space-y-6">
       {/* Message display */}
@@ -328,6 +340,9 @@ const LeadSearchUpdate = () => {
         selectedLead={selectedLead}
         isLoading={isLoading}
         onSearch={handleEnhancedSearch}
+        sortField={sortField}
+        sortDirection={sortDirection}
+        onSortChange={handleSortChange}
       />
 
       <PaginationSummary

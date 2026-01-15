@@ -16,10 +16,18 @@ export default function LeadSearchTableDirect({
   selectedLead = null,
   isLoading = false,
   onQuickFieldUpdate,
-  hideFooter = false // when true, suppress internal footer so parent can render a unified pagination bar
+  hideFooter = false, // when true, suppress internal footer so parent can render a unified pagination bar
+  sortField: propSortField = null, // Server-side sort field from parent
+  sortDirection: propSortDirection = null, // Server-side sort direction from parent  
+  onSortChange = null // Callback when sort changes (for server-side sorting)
 }) {
-  const [sortKey, setSortKey] = useState('AI Score');
-  const [sortDir, setSortDir] = useState('desc');
+  // Use local state only if no parent-controlled sort (backwards compatible)
+  const [localSortKey, setLocalSortKey] = useState('AI Score');
+  const [localSortDir, setLocalSortDir] = useState('desc');
+  
+  // Use parent props if provided, otherwise fall back to local state
+  const sortKey = propSortField ?? localSortKey;
+  const sortDir = propSortDirection ?? localSortDir;
 
   const columns = [
     { key: 'fullName', label: 'Name', sortable: true },
@@ -68,11 +76,25 @@ export default function LeadSearchTableDirect({
   const handleHeaderClick = (columnKey) => {
     const column = columns.find((col) => col.key === columnKey);
     if (!column?.sortable) return;
+    
+    let newSortKey = columnKey;
+    let newSortDir;
+    
     if (sortKey === columnKey) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      // Toggle direction
+      newSortDir = sortDir === 'asc' ? 'desc' : 'asc';
     } else {
-      setSortKey(columnKey);
-      setSortDir(column.isNumeric ? 'desc' : 'asc');
+      // New column - default direction based on type
+      newSortDir = column.isNumeric ? 'desc' : 'asc';
+    }
+    
+    // If parent controls sorting (server-side), notify parent
+    if (onSortChange) {
+      onSortChange(newSortKey, newSortDir);
+    } else {
+      // Otherwise use local state (client-side sorting)
+      setLocalSortKey(newSortKey);
+      setLocalSortDir(newSortDir);
     }
   };
 

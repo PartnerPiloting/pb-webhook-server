@@ -370,7 +370,7 @@ export default function ClientTasksPage() {
                 <div className="space-y-3">
                   {coachNotes.split('\n\n').map((note, index) => {
                     // Parse timestamp and content: [15 Jan 2026, 10:30 am] Note text
-                    const match = note.match(/^\[(.+?)\]\s*(.*)$/s);
+                    const match = note.match(/^\[(.+?)\]\s*([\s\S]*)$/);
                     if (match) {
                       return (
                         <div key={index} className="border-l-2 border-green-300 pl-3 py-1">
