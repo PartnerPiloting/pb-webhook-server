@@ -96,17 +96,17 @@ const LeadSearchEnhanced = ({
       p.set('type', 'csv'); // New type that returns all fields
       p.set('format', 'csv');
       
-      // Add clientId for authentication (same as api.js searchLeads)
-      const clientId = getCurrentClientId();
+      // Add clientId for authentication - try getCurrentClientId first, then URL params
+      let clientId = getCurrentClientId();
+      if (!clientId) {
+        try {
+          const qs = new URLSearchParams(window.location.search || '');
+          clientId = qs.get('client') || qs.get('clientId') || qs.get('testClient');
+        } catch {}
+      }
       if (clientId) {
         p.set('clientId', clientId);
       }
-      // Preserve testClient/test mode param
-      try {
-        const qs = new URLSearchParams(window.location.search || '');
-        const tc = qs.get('testClient');
-        if (tc) p.set('testClient', tc);
-      } catch {}
       
       const url = `${apiBase}/leads/export?${p.toString()}`;
       const res = await fetch(url, { credentials: 'include' });
@@ -264,17 +264,17 @@ const LeadSearchEnhanced = ({
         p.set('type', exportType);
         p.set('format', 'txt');
   p.set('limit', String(COPY_MAX));
-        // Add clientId for authentication (same as api.js searchLeads)
-        const clientId = getCurrentClientId();
+        // Add clientId for authentication - try getCurrentClientId first, then URL params
+        let clientId = getCurrentClientId();
+        if (!clientId) {
+          try {
+            const qs = new URLSearchParams(window.location.search || '');
+            clientId = qs.get('client') || qs.get('clientId') || qs.get('testClient');
+          } catch {}
+        }
         if (clientId) {
           p.set('clientId', clientId);
         }
-        // Preserve testClient/test mode param if present in page URL so copy & download behave the same
-        try {
-          const qs = new URLSearchParams(window.location.search || '');
-          const tc = qs.get('testClient');
-          if (tc) p.set('testClient', tc);
-        } catch {}
         const url = `${apiBase}/leads/export?${p.toString()}`;
         const res = await fetch(url, { credentials: 'include' });
         let backendStatus = res.status;
@@ -317,7 +317,7 @@ const LeadSearchEnhanced = ({
   console.error('Server copy failed', e);
         let detail = e && e.message ? e.message : 'Unknown error';
         if (/HTTP 401/.test(detail)) {
-          setExportError('Copy failed: Not logged in (401). Open the main ASH site, log in, then retry. If already logged in, refresh this page.');
+          setExportError('Copy failed: Not authenticated (401). Try refreshing the page or check your client link.');
         } else {
           const hint = /HTTP 4\d\d/.test(detail) ? 'Check filters or permissions.' : (/HTTP 5\d\d/.test(detail) ? 'Server busy or Airtable error.' : '');
           setExportError(`Copy failed: ${detail}. ${hint} Use Download (.txt) if this persists.`);
@@ -342,16 +342,17 @@ const LeadSearchEnhanced = ({
     if (priority !== 'all') params.set('priority', priority);
     if (searchTerms) params.set('searchTerms', searchTerms);
     params.set('limit', String(PAGE_LIMIT));
-    // Add clientId for authentication (same as api.js searchLeads)
-    const cid = getCurrentClientId();
+    // Add clientId for authentication - try getCurrentClientId first, then URL params
+    let cid = getCurrentClientId();
+    if (!cid) {
+      try {
+        const qs = new URLSearchParams(window.location.search || '');
+        cid = qs.get('client') || qs.get('clientId') || qs.get('testClient');
+      } catch {}
+    }
     if (cid) {
       params.set('clientId', cid);
     }
-    try {
-      const qs = new URLSearchParams(window.location.search || '');
-      const tc = qs.get('testClient');
-      if (tc) params.set('testClient', tc);
-    } catch {}
 
   const unique = [];
     const seen = new Set();
@@ -517,16 +518,17 @@ const LeadSearchEnhanced = ({
       if (searchTerms) p.set('searchTerms', searchTerms);
       p.set('type', exportType || 'linkedin');
       p.set('format', fmt);
-      // Add clientId for authentication (same as api.js searchLeads)
-      const cid = getCurrentClientId();
+      // Add clientId for authentication - try getCurrentClientId first, then URL params
+      let cid = getCurrentClientId();
+      if (!cid) {
+        try {
+          const qs = new URLSearchParams(window.location.search || '');
+          cid = qs.get('client') || qs.get('clientId') || qs.get('testClient');
+        } catch {}
+      }
       if (cid) {
         p.set('clientId', cid);
       }
-      try {
-        const qs = new URLSearchParams(window.location.search || '');
-        const tc = qs.get('testClient');
-        if (tc) p.set('testClient', tc);
-      } catch {}
       const url = `${apiBase}/leads/export?${p.toString()}`;
   const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) {
