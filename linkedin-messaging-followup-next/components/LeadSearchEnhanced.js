@@ -5,6 +5,7 @@ import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
 import { getLeadByLinkedInUrl } from '../services/api';
+import { getCurrentClientId } from '../utils/clientUtils';
 
 // (Former flag gate removed)
 const LeadSearchEnhanced = ({ 
@@ -95,6 +96,11 @@ const LeadSearchEnhanced = ({
       p.set('type', 'csv'); // New type that returns all fields
       p.set('format', 'csv');
       
+      // Add clientId for authentication (same as api.js searchLeads)
+      const clientId = getCurrentClientId();
+      if (clientId) {
+        p.set('clientId', clientId);
+      }
       // Preserve testClient/test mode param
       try {
         const qs = new URLSearchParams(window.location.search || '');
@@ -258,6 +264,11 @@ const LeadSearchEnhanced = ({
         p.set('type', exportType);
         p.set('format', 'txt');
   p.set('limit', String(COPY_MAX));
+        // Add clientId for authentication (same as api.js searchLeads)
+        const clientId = getCurrentClientId();
+        if (clientId) {
+          p.set('clientId', clientId);
+        }
         // Preserve testClient/test mode param if present in page URL so copy & download behave the same
         try {
           const qs = new URLSearchParams(window.location.search || '');
@@ -331,6 +342,11 @@ const LeadSearchEnhanced = ({
     if (priority !== 'all') params.set('priority', priority);
     if (searchTerms) params.set('searchTerms', searchTerms);
     params.set('limit', String(PAGE_LIMIT));
+    // Add clientId for authentication (same as api.js searchLeads)
+    const cid = getCurrentClientId();
+    if (cid) {
+      params.set('clientId', cid);
+    }
     try {
       const qs = new URLSearchParams(window.location.search || '');
       const tc = qs.get('testClient');
@@ -501,6 +517,11 @@ const LeadSearchEnhanced = ({
       if (searchTerms) p.set('searchTerms', searchTerms);
       p.set('type', exportType || 'linkedin');
       p.set('format', fmt);
+      // Add clientId for authentication (same as api.js searchLeads)
+      const cid = getCurrentClientId();
+      if (cid) {
+        p.set('clientId', cid);
+      }
       try {
         const qs = new URLSearchParams(window.location.search || '');
         const tc = qs.get('testClient');
