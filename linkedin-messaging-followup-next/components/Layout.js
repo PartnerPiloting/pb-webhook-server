@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId } from '../utils/clientUtils.js';
-import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 
 // Lazy-load the help panel to keep initial bundle lean
@@ -49,6 +49,7 @@ const NavigationWithParams = ({ pathname }) => {
     { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1 },
     { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
     { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and system settings', minLevel: 1 },
+    { name: 'Billing', href: '/billing', icon: CreditCardIcon, description: 'View invoices and subscription', minLevel: 1 },
     { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
   ];
   const items = nav.filter(n => n.minLevel <= serviceLevel);

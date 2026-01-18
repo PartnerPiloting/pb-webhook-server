@@ -1734,6 +1734,15 @@ try {
     moduleLogger.error("index.js: Error mounting template cleanup routes", e.message, e.stack); 
 }
 
+// Billing routes (Stripe invoices and PDF generation)
+try { 
+    const billingRoutes = require('./routes/billingRoutes.js'); 
+    app.use(billingRoutes); 
+    moduleLogger.info("index.js: Billing routes mounted (invoices, PDFs, subscriptions)"); 
+} catch(e) { 
+    moduleLogger.error("index.js: Error mounting billing routes", e.message, e.stack); 
+}
+
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
