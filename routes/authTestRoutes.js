@@ -36,6 +36,7 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
       client: {
         clientId: req.client.clientId || 'unknown',
         clientName: req.client.clientName || 'unknown',
+        clientEmailAddress: req.client.clientEmailAddress || null,
         status: req.client.status || 'unknown',
         airtableBaseId: req.client.airtableBaseId || null,
         serviceLevel: req.client.serviceLevel || 1,

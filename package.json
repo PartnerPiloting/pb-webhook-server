@@ -52,10 +52,12 @@
     "node-fetch": "^2.7.0",
     "nodemailer": "^7.0.6",
     "openai": "^4.69.0",
+    "pdfkit": "^0.17.2",
     "remark": "^15.0.1",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-smartypants": "^3.0.2",
+    "stripe": "^20.2.0",
     "unified": "^11.0.5",
     "uuid": "^9.0.1"
   },
