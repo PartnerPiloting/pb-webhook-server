@@ -15,11 +15,79 @@
 
 const express = require('express');
 const router = express.Router();
+const nodemailer = require('nodemailer');
 
 const { stripe, isStripeAvailable } = require('../config/stripeClient');
 const { generateInvoicePdf, getBusinessConfig } = require('../services/invoicePdfService');
 const { createLogger } = require('../utils/contextLogger');
 const { getClientById } = require('../services/clientService');
+
+/**
+ * Send email notification to admin when someone onboards (makes first payment)
+ */
+async function sendOnboardingNotification(data, logger) {
+    try {
+        const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || 'guyralphwilson@gmail.com';
+        
+        // Check if email is configured
+        if (!process.env.SMTP_HOST && !process.env.SENDGRID_API_KEY) {
+            logger.warn('Email not configured - logging notification instead');
+            logger.info(`📧 ONBOARDING NOTIFICATION: ${data.customerName || data.customerEmail} paid $${data.amount} for ${data.description || data.planName}`);
+            return;
+        }
+
+        // Create transporter (supports SMTP or SendGrid)
+        let transporter;
+        if (process.env.SENDGRID_API_KEY) {
+            transporter = nodemailer.createTransport({
+                host: 'smtp.sendgrid.net',
+                port: 587,
+                auth: {
+                    user: 'apikey',
+                    pass: process.env.SENDGRID_API_KEY
+                }
+            });
+        } else {
+            transporter = nodemailer.createTransport({
+                host: process.env.SMTP_HOST,
+                port: process.env.SMTP_PORT || 587,
+                secure: process.env.SMTP_SECURE === 'true',
+                auth: {
+                    user: process.env.SMTP_USER,
+                    pass: process.env.SMTP_PASS
+                }
+            });
+        }
+
+        const subject = `🎉 New Client Onboarded: ${data.customerName || data.customerEmail}`;
+        const text = `
+New client has made their first payment!
+
+Customer: ${data.customerName || 'N/A'}
+Email: ${data.customerEmail}
+Amount: $${data.amount?.toFixed(2) || 'N/A'}
+Product: ${data.description || data.planName || 'N/A'}
+Type: ${data.type === 'subscription' ? 'Subscription' : 'One-time Payment'}
+
+Please set up their account in Airtable.
+
+Stripe Customer ID: ${data.customerId}
+        `.trim();
+
+        await transporter.sendMail({
+            from: process.env.SMTP_FROM || 'noreply@australiansidehustles.com.au',
+            to: adminEmail,
+            subject,
+            text
+        });
+
+        logger.info(`📧 Onboarding notification sent to ${adminEmail}`);
+
+    } catch (error) {
+        logger.error('Failed to send onboarding notification:', error.message);
+        // Don't throw - we don't want webhook to fail just because email failed
+    }
+}
 
 // Middleware to check Stripe availability
 const requireStripe = (req, res, next) => {
@@ -141,15 +209,27 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
         });
 
         // Filter out charges that are already part of an invoice
-        const invoiceChargeIds = new Set(
-            invoices.data
-                .filter(inv => inv.charge)
-                .map(inv => inv.charge)
-        );
+        // Check both charge ID and payment_intent to catch all linked charges
+        const invoiceChargeIds = new Set();
+        const invoicePaymentIntents = new Set();
+        
+        invoices.data.forEach(inv => {
+            if (inv.charge) invoiceChargeIds.add(inv.charge);
+            if (inv.payment_intent) invoicePaymentIntents.add(inv.payment_intent);
+        });
 
-        const oneTimeCharges = charges.data.filter(
-            charge => charge.paid && charge.status === 'succeeded' && !invoiceChargeIds.has(charge.id)
-        );
+        const oneTimeCharges = charges.data.filter(charge => {
+            // Must be paid and successful
+            if (!charge.paid || charge.status !== 'succeeded') return false;
+            
+            // Exclude if charge is linked to an invoice
+            if (invoiceChargeIds.has(charge.id)) return false;
+            
+            // Exclude if payment_intent is linked to an invoice
+            if (charge.payment_intent && invoicePaymentIntents.has(charge.payment_intent)) return false;
+            
+            return true;
+        });
 
         // Transform invoice data for frontend
         const invoiceList = invoices.data.map(inv => ({
@@ -511,9 +591,38 @@ router.post('/api/billing/webhook', express.raw({ type: 'application/json' }), a
                 const customerEmail = subscription.customer_email || 'Unknown';
                 logger.info(`🎉 NEW SUBSCRIPTION: ${customerEmail}`);
                 
-                // TODO: Send email notification to admin
-                // await sendAdminNotification('new_subscription', { customerEmail, subscription });
+                // Send email notification to admin
+                await sendOnboardingNotification({
+                    type: 'subscription',
+                    customerEmail,
+                    amount: subscription.items?.data?.[0]?.price?.unit_amount / 100,
+                    planName: subscription.items?.data?.[0]?.price?.nickname || 'Subscription',
+                    customerId: subscription.customer
+                }, logger);
                 
+                break;
+            }
+
+            case 'invoice.payment_succeeded': {
+                const invoice = event.data.object;
+                
+                // Only notify for first-time payments (onboarding)
+                // Check if this is the customer's first invoice
+                const isFirstPayment = invoice.billing_reason === 'subscription_create' || 
+                                       invoice.billing_reason === 'manual';
+                
+                if (isFirstPayment) {
+                    logger.info(`🎉 NEW CUSTOMER PAYMENT: ${invoice.customer_email || invoice.id}`);
+                    
+                    await sendOnboardingNotification({
+                        type: 'payment',
+                        customerEmail: invoice.customer_email,
+                        customerName: invoice.customer_name,
+                        amount: invoice.amount_paid / 100,
+                        description: invoice.lines?.data?.[0]?.description || 'Payment',
+                        customerId: invoice.customer
+                    }, logger);
+                }
                 break;
             }
 
