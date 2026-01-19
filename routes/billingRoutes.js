@@ -189,13 +189,17 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
         });
 
         // Filter out charges that are already part of an invoice
-        // Check both charge ID and payment_intent to catch all linked charges
+        // Check charge ID, payment_intent, AND amount+date to catch all duplicates
         const invoiceChargeIds = new Set();
         const invoicePaymentIntents = new Set();
+        const invoiceAmountDateKeys = new Set(); // "amount_timestamp" for same-day same-amount dedup
         
         invoices.data.forEach(inv => {
             if (inv.charge) invoiceChargeIds.add(inv.charge);
             if (inv.payment_intent) invoicePaymentIntents.add(inv.payment_intent);
+            // Create a key for amount + date (same day) to catch duplicates from checkout sessions
+            const dateKey = new Date(inv.created * 1000).toISOString().split('T')[0];
+            invoiceAmountDateKeys.add(`${inv.amount_paid}_${dateKey}`);
         });
 
         const oneTimeCharges = charges.data.filter(charge => {
@@ -207,6 +211,13 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
             
             // Exclude if payment_intent is linked to an invoice
             if (charge.payment_intent && invoicePaymentIntents.has(charge.payment_intent)) return false;
+            
+            // Exclude if same amount on same date as an invoice (likely same transaction)
+            const dateKey = new Date(charge.created * 1000).toISOString().split('T')[0];
+            if (invoiceAmountDateKeys.has(`${charge.amount}_${dateKey}`)) {
+                logger.info(`Filtering duplicate charge ${charge.id} - same amount/date as invoice`);
+                return false;
+            }
             
             return true;
         });
