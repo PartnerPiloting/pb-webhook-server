@@ -6,6 +6,7 @@ const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'r
 const logCriticalError = async () => {};
 const { authenticateUserWithTestMode } = require('../middleware/authMiddleware');
 const { testWordPressConnection } = require('../utils/wordpressAuth');
+const { getClientById } = require('../services/clientService');
 
 /**
  * Test endpoint to verify authentication is working
@@ -30,6 +31,21 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
     logger.info('Auth Test: Building response for client:', req.client.clientName);
     logger.info('Auth Test: Client object:', JSON.stringify(req.client, null, 2));
     
+    // Look up coach email if coach is assigned
+    let coachEmail = null;
+    let coachName = null;
+    if (req.client.coach) {
+      try {
+        const coachClient = await getClientById(req.client.coach);
+        if (coachClient) {
+          coachEmail = coachClient.clientEmailAddress || null;
+          coachName = coachClient.clientName || null;
+        }
+      } catch (coachErr) {
+        logger.warn('Could not look up coach email:', coachErr.message);
+      }
+    }
+    
     const response = {
       status: 'success',
       message: 'Authentication successful!',
@@ -41,7 +57,10 @@ router.get('/test', authenticateUserWithTestMode, async (req, res) => {
         airtableBaseId: req.client.airtableBaseId || null,
         serviceLevel: req.client.serviceLevel || 1,
         timezone: req.client.timezone || null,
-        googleCalendarEmail: req.client.googleCalendarEmail || null
+        googleCalendarEmail: req.client.googleCalendarEmail || null,
+        coachId: req.client.coach || null,
+        coachName: coachName,
+        coachEmail: coachEmail
       },
       authentication: {
         wpUserId: req.wpUserId || 'test mode',
