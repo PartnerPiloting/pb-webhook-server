@@ -12,7 +12,26 @@
  */
 
 const PDFDocument = require('pdfkit');
+const path = require('path');
+const fs = require('fs');
 const { createLogger } = require('../utils/contextLogger');
+
+// Logo path - check for various possible filenames
+const LOGO_PATHS = [
+    path.join(__dirname, '..', 'assets', 'ash-logo.png'),
+    path.join(__dirname, '..', 'assets', 'ASH-HighRes-white-bg.jpg'),
+    path.join(__dirname, '..', 'assets', 'logo.png'),
+    path.join(__dirname, '..', 'assets', 'logo.jpg')
+];
+
+function getLogoPath() {
+    for (const logoPath of LOGO_PATHS) {
+        if (fs.existsSync(logoPath)) {
+            return logoPath;
+        }
+    }
+    return null;
+}
 
 // Business details - configured via environment or hardcoded
 const BUSINESS_CONFIG = {
@@ -22,6 +41,7 @@ const BUSINESS_CONFIG = {
     address: process.env.INVOICE_ADDRESS || '', // Optional
     email: process.env.INVOICE_EMAIL || 'support@australiansidehustles.com.au',
     gstRegistered: process.env.INVOICE_GST_REGISTERED !== 'false', // Default true
+    logoPath: getLogoPath()
 };
 
 /**
@@ -74,20 +94,29 @@ async function generateInvoicePdf(invoiceData) {
             // Get invoice number (use Stripe's or generate one)
             const invoiceNumber = invoiceData.number || `ASH-${invoiceDate.getFullYear()}-${invoiceData.id.slice(-6).toUpperCase()}`;
 
-            // === HEADER ===
-            doc.fontSize(24)
-               .font('Helvetica-Bold')
-               .fillColor('#1a365d')
-               .text(BUSINESS_CONFIG.name, 50, 50);
+            // === HEADER WITH LOGO ===
+            let headerBottomY = 95;
             
-            if (BUSINESS_CONFIG.tagline) {
-                doc.fontSize(10)
-                   .font('Helvetica')
-                   .fillColor('#718096')
-                   .text(BUSINESS_CONFIG.tagline, 50, 78);
+            if (BUSINESS_CONFIG.logoPath && fs.existsSync(BUSINESS_CONFIG.logoPath)) {
+                // Add logo on the left (scaled to reasonable size)
+                doc.image(BUSINESS_CONFIG.logoPath, 50, 40, { width: 180 });
+                headerBottomY = 110; // Adjust for logo height
+            } else {
+                // Fallback to text header if no logo
+                doc.fontSize(24)
+                   .font('Helvetica-Bold')
+                   .fillColor('#1a365d')
+                   .text(BUSINESS_CONFIG.name, 50, 50);
+                
+                if (BUSINESS_CONFIG.tagline) {
+                    doc.fontSize(10)
+                       .font('Helvetica')
+                       .fillColor('#718096')
+                       .text(BUSINESS_CONFIG.tagline, 50, 78);
+                }
             }
 
-            // ABN and address on right
+            // ABN on right
             doc.fontSize(10)
                .font('Helvetica')
                .fillColor('#4a5568')
