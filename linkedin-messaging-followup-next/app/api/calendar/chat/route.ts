@@ -29,6 +29,7 @@ export async function POST(request: Request) {
         'x-client-id': clientId,
       },
       body: JSON.stringify(body),
+      cache: 'no-store',
     });
 
     const data = await response.json();

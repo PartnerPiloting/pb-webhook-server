@@ -28,6 +28,7 @@ export async function PATCH(request: Request) {
           'x-client-id': clientId,
         },
         body: JSON.stringify(body),
+        cache: 'no-store',
       }
     );
 
