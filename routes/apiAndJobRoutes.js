@@ -7478,19 +7478,9 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
     const records = await clientBase('Leads')
       .select({
         filterByFormula: formula,
-        maxRecords: 10, // Allow multiple matches for name search
-        fields: [
-          'First Name',
-          'Last Name',
-          'LinkedIn Profile URL',
-          'Location',
-          'Email',
-          'Phone',
-          'Headline',
-          'Company Name',
-          'AI Score',
-          'Raw Profile Data'
-        ]
+        maxRecords: 10 // Allow multiple matches for name search
+        // Note: Removed explicit fields array to fetch ALL fields
+        // This ensures we get the same data as /leads/:id endpoint
       })
       .firstPage();
 
