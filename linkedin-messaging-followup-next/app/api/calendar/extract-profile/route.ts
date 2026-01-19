@@ -29,6 +29,7 @@ export async function POST(request: Request) {
         'x-client-id': clientId || 'unknown',
       },
       body: JSON.stringify({ rawText }),
+      cache: 'no-store',
     });
 
     if (!backendResponse.ok) {
