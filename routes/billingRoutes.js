@@ -134,9 +134,27 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
             expand: ['data.subscription']
         });
 
+        // Also fetch one-time charges (payments not attached to invoices)
+        const charges = await stripe.charges.list({
+            customer: customer.id,
+            limit: parseInt(limit)
+        });
+
+        // Filter out charges that are already part of an invoice
+        const invoiceChargeIds = new Set(
+            invoices.data
+                .filter(inv => inv.charge)
+                .map(inv => inv.charge)
+        );
+
+        const oneTimeCharges = charges.data.filter(
+            charge => charge.paid && charge.status === 'succeeded' && !invoiceChargeIds.has(charge.id)
+        );
+
         // Transform invoice data for frontend
         const invoiceList = invoices.data.map(inv => ({
             id: inv.id,
+            type: 'invoice',
             number: inv.number,
             date: inv.created,
             dateFormatted: new Date(inv.created * 1000).toLocaleDateString('en-AU', {
@@ -151,7 +169,28 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
             pdfUrl: `/api/billing/invoice/${inv.id}/pdf`
         }));
 
-        logger.info(`Found ${invoiceList.length} invoices`);
+        // Transform one-time charges
+        const chargeList = oneTimeCharges.map(charge => ({
+            id: charge.id,
+            type: 'charge',
+            number: charge.id.replace('ch_', 'CHG-'),
+            date: charge.created,
+            dateFormatted: new Date(charge.created * 1000).toLocaleDateString('en-AU', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric'
+            }),
+            amount: charge.amount / 100,
+            amountFormatted: `$${(charge.amount / 100).toFixed(2)}`,
+            status: 'paid',
+            description: charge.description || 'One-time payment',
+            pdfUrl: `/api/billing/invoice/${charge.id}/pdf`
+        }));
+
+        // Combine and sort by date descending
+        const allBillingItems = [...invoiceList, ...chargeList].sort((a, b) => b.date - a.date);
+
+        logger.info(`Found ${invoiceList.length} invoices and ${chargeList.length} one-time charges`);
 
         res.json({
             success: true,
@@ -160,8 +199,8 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
                 name: customer.name,
                 email: customer.email
             },
-            invoices: invoiceList,
-            total: invoiceList.length
+            invoices: allBillingItems,
+            total: allBillingItems.length
         });
 
     } catch (error) {
@@ -240,6 +279,7 @@ router.get('/api/billing/invoice/:id', requireStripe, async (req, res) => {
 /**
  * GET /api/billing/invoice/:id/pdf
  * Generate and download invoice as PDF
+ * Supports both formal invoices (in_) and one-time charges (ch_)
  */
 router.get('/api/billing/invoice/:id/pdf', requireStripe, async (req, res) => {
     const logger = createLogger({ 
@@ -251,28 +291,62 @@ router.get('/api/billing/invoice/:id/pdf', requireStripe, async (req, res) => {
     try {
         const { id } = req.params;
 
-        logger.info(`Generating PDF for invoice: ${id}`);
+        logger.info(`Generating PDF for: ${id}`);
 
-        // Fetch invoice from Stripe
-        const invoice = await stripe.invoices.retrieve(id, {
-            expand: ['customer', 'lines.data']
-        });
+        let pdfData;
+        let filename;
+
+        if (id.startsWith('in_')) {
+            // It's a formal Stripe invoice
+            const invoice = await stripe.invoices.retrieve(id, {
+                expand: ['customer', 'lines.data']
+            });
+
+            pdfData = {
+                id: invoice.id,
+                number: invoice.number,
+                created: invoice.created,
+                amount_paid: invoice.amount_paid,
+                status: invoice.status,
+                customer_name: invoice.customer_name || invoice.customer?.name,
+                customer_email: invoice.customer_email || invoice.customer?.email,
+                lines: invoice.lines
+            };
+            filename = `Invoice-${invoice.number || 'ASH-' + invoice.id.slice(-8)}.pdf`;
+
+        } else if (id.startsWith('ch_')) {
+            // It's a one-time charge
+            const charge = await stripe.charges.retrieve(id);
+            const customer = await stripe.customers.retrieve(charge.customer);
+
+            // For one-time charges, create invoice-like structure
+            pdfData = {
+                id: charge.id,
+                number: charge.id.replace('ch_', 'CHG-'),
+                created: charge.created,
+                amount_paid: charge.amount,
+                status: charge.paid ? 'paid' : charge.status,
+                customer_name: customer.name || charge.billing_details?.name,
+                customer_email: customer.email || charge.billing_details?.email,
+                lines: {
+                    data: [{
+                        description: charge.description || 'One-time payment',
+                        amount: charge.amount
+                    }]
+                }
+            };
+            filename = `Invoice-${pdfData.number}.pdf`;
+
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid ID format',
+                message: 'ID must start with in_ (invoice) or ch_ (charge)'
+            });
+        }
 
         // Generate PDF
-        const pdfBuffer = await generateInvoicePdf({
-            id: invoice.id,
-            number: invoice.number,
-            created: invoice.created,
-            amount_paid: invoice.amount_paid,
-            status: invoice.status,
-            customer_name: invoice.customer_name || invoice.customer?.name,
-            customer_email: invoice.customer_email || invoice.customer?.email,
-            lines: invoice.lines
-        });
-
-        // Generate filename
-        const invoiceNumber = invoice.number || `ASH-${invoice.id.slice(-8)}`;
-        const filename = `Invoice-${invoiceNumber}.pdf`;
+        const pdfBuffer = await generateInvoicePdf(pdfData);
 
         // Send PDF
         res.setHeader('Content-Type', 'application/pdf');
