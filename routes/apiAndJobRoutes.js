@@ -7508,16 +7508,31 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
     const leads = records.map(record => {
       const fields = record.fields;
       
-      // Try to get location from field, or fall back to Raw Profile Data
-      let location = fields['Location'] || '';
+      // Get location - prefer the explicit Location field, fall back to Raw Profile Data
+      // Note: Check for empty string explicitly since '' || fallback would use fallback
+      let location = (fields['Location'] !== undefined && fields['Location'] !== null && fields['Location'] !== '')
+        ? fields['Location']
+        : '';
+      
+      // Only fall back to Raw Profile Data if Location field is truly empty
       if (!location && fields['Raw Profile Data']) {
         try {
           const rawData = JSON.parse(fields['Raw Profile Data']);
           location = rawData.location_name || rawData.location || '';
+          logger.info(`Using fallback location from Raw Profile Data: ${location}`);
         } catch (e) {
           // Ignore JSON parse errors
         }
+      } else if (location) {
+        logger.info(`Using Location field value: ${location}`);
       }
+
+      // Get phone - check for existence
+      let phone = (fields['Phone'] !== undefined && fields['Phone'] !== null && fields['Phone'] !== '')
+        ? fields['Phone']
+        : '';
+      
+      logger.info(`Lead ${record.id}: Location="${location}", Phone="${phone}", Email="${fields['Email'] || ''}"`);
 
       return {
         recordId: record.id,
@@ -7527,7 +7542,7 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
         linkedInUrl: fields['LinkedIn Profile URL'] || '',
         location: location,
         email: fields['Email'] || '',
-        phone: fields['Phone'] || '',
+        phone: phone,
         headline: fields['Headline'] || '',
         company: fields['Company Name'] || '',
         aiScore: fields['AI Score'] || null,
