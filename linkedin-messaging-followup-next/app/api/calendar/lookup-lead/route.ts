@@ -31,11 +31,21 @@ export async function GET(request: Request) {
         headers: {
           'x-client-id': clientId,
         },
+        cache: 'no-store', // Disable Next.js fetch caching
       }
     );
 
     const data = await backendResponse.json();
-    return NextResponse.json(data, { status: backendResponse.status });
+    
+    // Return with cache-control headers to prevent any caching
+    return NextResponse.json(data, { 
+      status: backendResponse.status,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
 
   } catch (error) {
     console.error('Lookup lead proxy error:', error);
