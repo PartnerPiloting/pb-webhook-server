@@ -10,6 +10,7 @@
  * - GET /api/billing/invoice/:id - Get single invoice details
  * - GET /api/billing/invoice/:id/pdf - Download invoice as PDF
  * - GET /api/billing/subscription - Get current subscription status
+ * - POST /api/billing/portal - Create Stripe Customer Portal session
  * - POST /api/billing/webhook - Stripe webhook handler (new subscriptions)
  */
 
@@ -279,6 +280,82 @@ router.get('/api/billing/invoices', requireStripe, async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to fetch invoices',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/billing/portal
+ * Create a Stripe Customer Portal session
+ * 
+ * Allows customers to manage their payment methods via Stripe's hosted portal.
+ * Configure portal features in Stripe Dashboard → Settings → Billing → Customer Portal
+ * 
+ * Returns a URL to redirect the customer to.
+ */
+router.post('/api/billing/portal', requireStripe, async (req, res) => {
+    const logger = createLogger({ 
+        runId: 'BILLING', 
+        clientId: req.headers['x-client-id'] || 'UNKNOWN', 
+        operation: 'create_portal' 
+    });
+
+    try {
+        // Get email from client service
+        const email = await getClientEmail(req);
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                error: 'Email required',
+                message: 'Could not determine client email. Ensure x-client-id header is set.'
+            });
+        }
+
+        logger.info(`Creating portal session for: ${email}`);
+
+        // Find the customer by email
+        const customers = await stripe.customers.list({
+            email: email.toLowerCase().trim(),
+            limit: 1
+        });
+
+        if (customers.data.length === 0) {
+            logger.info(`No Stripe customer found for: ${email}`);
+            return res.status(404).json({
+                success: false,
+                error: 'Customer not found',
+                message: 'No billing account found for this email.'
+            });
+        }
+
+        const customer = customers.data[0];
+        logger.info(`Found customer: ${customer.id}`);
+
+        // Determine return URL (where customer goes after portal)
+        const returnUrl = req.body.returnUrl || 
+                         process.env.FRONTEND_URL || 
+                         'https://ashportal.com.au/settings';
+
+        // Create the portal session
+        const session = await stripe.billingPortal.sessions.create({
+            customer: customer.id,
+            return_url: returnUrl
+        });
+
+        logger.info(`Portal session created: ${session.id}`);
+
+        res.json({
+            success: true,
+            url: session.url
+        });
+
+    } catch (error) {
+        logger.error('Error creating portal session:', error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to create portal session',
             message: error.message
         });
     }

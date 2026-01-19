@@ -24,6 +24,7 @@ export default function Billing() {
   const [customer, setCustomer] = useState(null);
   const [billingStatus, setBillingStatus] = useState(null);
   const [coachInfo, setCoachInfo] = useState({ name: null, email: null });
+  const [portalLoading, setPortalLoading] = useState(false);
 
   // Get headers with x-client-id for authenticated API calls
   const getHeaders = useCallback(() => {
@@ -154,6 +155,34 @@ export default function Billing() {
     return `${backendBase}/api/billing/invoice/${invoiceId}/pdf`;
   };
 
+  // Open Stripe Customer Portal for payment method management
+  const openPaymentPortal = async () => {
+    setPortalLoading(true);
+    try {
+      const backendBase = getBackendBase();
+      const response = await fetch(`${backendBase}/api/billing/portal`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          returnUrl: window.location.href
+        })
+      });
+      const data = await response.json();
+      if (data.success && data.url) {
+        // Redirect to Stripe's hosted portal
+        window.location.href = data.url;
+      } else {
+        console.error('Failed to create portal session:', data.message);
+        alert('Unable to open payment portal. Please try again.');
+      }
+    } catch (e) {
+      console.error('Error opening payment portal:', e);
+      alert('Unable to open payment portal. Please try again.');
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
   // Status badge component
   const StatusBadge = ({ status }) => {
     const statusConfig = {
@@ -245,6 +274,19 @@ export default function Billing() {
               <p className="text-lg font-medium text-gray-900">{subscription.nextBillingDate}</p>
             </div>
           </div>
+          
+          {/* Update Payment Method Button */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <button
+              onClick={openPaymentPortal}
+              disabled={portalLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CreditCardIcon className="h-4 w-4" />
+              {portalLoading ? 'Opening...' : 'Update Payment Method'}
+            </button>
+          </div>
+          
           {subscription.cancelAtPeriodEnd && (
             <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-md p-3">
               <p className="text-sm text-yellow-800">
@@ -261,6 +303,26 @@ export default function Billing() {
           <CreditCardIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
           <h3 className="text-lg font-medium text-gray-900 mb-1">No Billing History</h3>
           <p className="text-gray-500">You don't have any invoices yet.</p>
+        </div>
+      )}
+
+      {/* Payment method button for users without active subscription but with invoices */}
+      {!subscription && invoices.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Payment Method</h2>
+              <p className="text-sm text-gray-500">Manage your saved payment details</p>
+            </div>
+            <button
+              onClick={openPaymentPortal}
+              disabled={portalLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CreditCardIcon className="h-4 w-4" />
+              {portalLoading ? 'Opening...' : 'Update Payment Method'}
+            </button>
+          </div>
         </div>
       )}
 
