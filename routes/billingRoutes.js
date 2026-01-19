@@ -15,52 +15,30 @@
 
 const express = require('express');
 const router = express.Router();
-const nodemailer = require('nodemailer');
 
 const { stripe, isStripeAvailable } = require('../config/stripeClient');
 const { generateInvoicePdf, getBusinessConfig } = require('../services/invoicePdfService');
 const { createLogger } = require('../utils/contextLogger');
 const { getClientById } = require('../services/clientService');
+const { sendMailgunEmail } = require('../services/emailNotificationService');
 
 /**
  * Send email notification to admin when someone onboards (makes first payment)
+ * Uses existing Mailgun configuration
  */
 async function sendOnboardingNotification(data, logger) {
     try {
-        const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || 'guyralphwilson@gmail.com';
+        const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL || process.env.ALERT_EMAIL || 'guyralphwilson@gmail.com';
         
-        // Check if email is configured
-        if (!process.env.SMTP_HOST && !process.env.SENDGRID_API_KEY) {
-            logger.warn('Email not configured - logging notification instead');
+        // Check if Mailgun is configured
+        if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+            logger.warn('Mailgun not configured - logging notification instead');
             logger.info(`📧 ONBOARDING NOTIFICATION: ${data.customerName || data.customerEmail} paid $${data.amount} for ${data.description || data.planName}`);
             return;
         }
 
-        // Create transporter (supports SMTP or SendGrid)
-        let transporter;
-        if (process.env.SENDGRID_API_KEY) {
-            transporter = nodemailer.createTransport({
-                host: 'smtp.sendgrid.net',
-                port: 587,
-                auth: {
-                    user: 'apikey',
-                    pass: process.env.SENDGRID_API_KEY
-                }
-            });
-        } else {
-            transporter = nodemailer.createTransport({
-                host: process.env.SMTP_HOST,
-                port: process.env.SMTP_PORT || 587,
-                secure: process.env.SMTP_SECURE === 'true',
-                auth: {
-                    user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASS
-                }
-            });
-        }
-
         const subject = `🎉 New Client Onboarded: ${data.customerName || data.customerEmail}`;
-        const text = `
+        const textBody = `
 New client has made their first payment!
 
 Customer: ${data.customerName || 'N/A'}
@@ -74,11 +52,13 @@ Please set up their account in Airtable.
 Stripe Customer ID: ${data.customerId}
         `.trim();
 
-        await transporter.sendMail({
-            from: process.env.SMTP_FROM || 'noreply@australiansidehustles.com.au',
+        const fromEmail = process.env.FROM_EMAIL || `noreply@${process.env.MAILGUN_DOMAIN}`;
+        
+        await sendMailgunEmail({
+            from: fromEmail,
             to: adminEmail,
             subject,
-            text
+            text: textBody
         });
 
         logger.info(`📧 Onboarding notification sent to ${adminEmail}`);
