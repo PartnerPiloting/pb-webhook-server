@@ -1,8 +1,10 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { getBackendBase } from '../services/api';
 import { getClientProfile, getCurrentClientId } from '../utils/clientUtils';
-import { CreditCardIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { CreditCardIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ClockIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 /**
  * Billing Component
@@ -14,6 +16,7 @@ import { CreditCardIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCirc
  * Uses x-client-id header for API calls - backend looks up email from Master Clients table.
  */
 export default function Billing() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [subscription, setSubscription] = useState(null);
@@ -194,10 +197,19 @@ export default function Billing() {
   return (
     <div className="max-w-4xl mx-auto p-6">
       {/* Header */}
-      <h1 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-        <CreditCardIcon className="h-7 w-7 text-blue-600" />
-        Billing & Invoices
-      </h1>
+      <div className="flex items-center space-x-3 mb-6">
+        <Link
+          href={`/settings?${searchParams.toString()}`}
+          className="inline-flex items-center justify-center p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          title="Back to Settings"
+        >
+          <ArrowLeftIcon className="h-5 w-5" />
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <CreditCardIcon className="h-7 w-7 text-blue-600" />
+          Billing & Invoices
+        </h1>
+      </div>
 
       {/* Current Subscription Card */}
       {subscription && (

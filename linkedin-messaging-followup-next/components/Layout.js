@@ -48,8 +48,7 @@ const NavigationWithParams = ({ pathname }) => {
     { name: 'New Leads', href: '/new-leads', icon: UserPlusIcon, description: 'Review and process new leads', minLevel: 1 },
     { name: 'Top Scoring Leads', href: '/top-scoring-leads', icon: TrophyIcon, description: 'Pick the best candidates for the next LH batch', minLevel: 1 },
     { name: 'Top Scoring Posts', href: '/top-scoring-posts', icon: TrophyIcon, description: 'Leads with high-relevance posts ready for action', minLevel: 2 },
-    { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and system settings', minLevel: 1 },
-    { name: 'Billing', href: '/billing', icon: CreditCardIcon, description: 'View invoices and subscription', minLevel: 1 },
+    { name: 'Settings', href: '/settings', icon: CogIcon, description: 'Configure scoring attributes and settings', minLevel: 1 },
     { name: 'Start Here', href: '/start-here', icon: BookOpenIcon, description: 'Onboarding categories and topics', minLevel: 1 }
   ];
   const items = nav.filter(n => n.minLevel <= serviceLevel);

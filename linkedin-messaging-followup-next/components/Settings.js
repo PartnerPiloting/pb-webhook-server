@@ -2,7 +2,8 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
-import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon } from '@heroicons/react/24/outline';
+import Link from 'next/link';
 import AIEditModal from './AIEditModal';
 import HelpButton from './HelpButton';
 
@@ -574,6 +575,29 @@ const SettingsWithParams = () => {
                   Configure Post Scoring →
                 </div>
               </div>
+
+              {/* Billing & Invoices */}
+              <Link 
+                href={`/billing?${searchParams.toString()}`}
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors block"
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex-shrink-0">
+                    <CreditCardIcon className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Billing & Invoices
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  View your invoices and download tax-compliant PDF invoices for your records.
+                </p>
+                <div className="flex items-center text-sm text-purple-600 font-medium">
+                  View Billing →
+                </div>
+              </Link>
             </div>
           </div>
         </div>
