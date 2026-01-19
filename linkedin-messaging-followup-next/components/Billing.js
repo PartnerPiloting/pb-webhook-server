@@ -23,6 +23,7 @@ export default function Billing() {
   const [invoices, setInvoices] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [billingStatus, setBillingStatus] = useState(null);
+  const [coachInfo, setCoachInfo] = useState({ name: null, email: null });
 
   // Get headers with x-client-id for authenticated API calls
   const getHeaders = useCallback(() => {
@@ -114,6 +115,19 @@ export default function Billing() {
           setError('Unable to identify your account. Please ensure you are logged in correctly.');
           setLoading(false);
           return;
+        }
+
+        // Get coach info from client profile
+        try {
+          const profile = getClientProfile();
+          if (profile?.client?.coachEmail) {
+            setCoachInfo({
+              name: profile.client.coachName || 'your coach',
+              email: profile.client.coachEmail
+            });
+          }
+        } catch (e) {
+          console.error('Error getting coach info:', e);
         }
 
         // Fetch subscription and invoices in parallel
@@ -316,6 +330,21 @@ export default function Billing() {
           <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
             Showing {invoices.length} invoice{invoices.length !== 1 ? 's' : ''}
           </div>
+        </div>
+      )}
+
+      {/* Subscription contact info */}
+      {coachInfo.email && (
+        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
+          <p className="text-sm text-blue-800">
+            To make changes to your subscription, contact {coachInfo.name || 'your coach'} at{' '}
+            <a 
+              href={`mailto:${coachInfo.email}`} 
+              className="font-medium text-blue-600 hover:text-blue-800 underline"
+            >
+              {coachInfo.email}
+            </a>
+          </p>
         </div>
       )}
 
