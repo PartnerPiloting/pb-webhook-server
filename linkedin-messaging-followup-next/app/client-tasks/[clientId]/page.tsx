@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { getBackendBase } from '../../../services/api';
+import { buildAuthUrl } from '../../../utils/clientUtils';
 import { 
   CheckCircleIcon, 
   ClockIcon,
@@ -57,22 +58,6 @@ export default function ClientTasksPage() {
   const [savingTaskNotes, setSavingTaskNotes] = useState(false);
 
   const backendBase = getBackendBase();
-
-  // Build URL with preserved client auth params
-  const buildUrlWithAuth = useCallback((path: string) => {
-    // Try to get client code from: URL params first, then localStorage
-    const clientParam = searchParams.get('client') || searchParams.get('testClient');
-    let clientCode = clientParam;
-    
-    if (!clientCode && typeof window !== 'undefined') {
-      clientCode = localStorage.getItem('clientCode');
-    }
-    
-    if (clientCode) {
-      return `${path}?client=${encodeURIComponent(clientCode)}`;
-    }
-    return path;
-  }, [searchParams]);
 
   useEffect(() => {
     if (clientId) {
@@ -282,7 +267,7 @@ export default function ClientTasksPage() {
               Try Again
             </button>
             <button
-              onClick={() => router.push(buildUrlWithAuth('/coached-clients'))}
+              onClick={() => router.push(buildAuthUrl('/coached-clients'))}
               className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
             >
               Go Back
@@ -297,7 +282,7 @@ export default function ClientTasksPage() {
     <div className="max-w-4xl mx-auto px-4 py-6">
       {/* Back Button */}
       <button
-        onClick={() => router.push(buildUrlWithAuth('/coached-clients'))}
+        onClick={() => router.push(buildAuthUrl('/coached-clients'))}
         className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 group"
       >
         <ArrowLeftIcon className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
@@ -464,7 +449,7 @@ export default function ClientTasksPage() {
             Tasks haven't been added for this client yet.
           </p>
           <button
-            onClick={() => router.push(buildUrlWithAuth('/coached-clients'))}
+            onClick={() => router.push(buildAuthUrl('/coached-clients'))}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
           >
             Go Back & Add Tasks

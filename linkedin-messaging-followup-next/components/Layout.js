@@ -3,7 +3,7 @@ import React, { Suspense, useEffect, useMemo, useState, useCallback } from 'reac
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId } from '../utils/clientUtils.js';
+import { getEnvLabel, initializeClient, getClientProfile, getCurrentClientId, buildAuthUrl } from '../utils/clientUtils.js';
 import { MagnifyingGlassIcon, CalendarDaysIcon, UserPlusIcon, TrophyIcon, CogIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilSquareIcon, CalendarIcon, UsersIcon, WrenchScrewdriverIcon, CreditCardIcon } from '@heroicons/react/24/outline';
 import ClientCodeEntry from './ClientCodeEntry';
 
@@ -213,7 +213,7 @@ const Layout = ({ children }) => {
             <div className="flex items-center space-x-3">
               {/* Quick Update Link */}
               <Link
-                href={`/quick-update${clientParam ? `?client=${clientParam}` : ''}`}
+                href={buildAuthUrl('/quick-update')}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                 title="Quick Update - rapid notes entry"
               >
@@ -223,7 +223,7 @@ const Layout = ({ children }) => {
               
               {/* Calendar Booking Link */}
               <Link
-                href={`/calendar-booking${clientParam ? `?client=${clientParam}` : ''}`}
+                href={buildAuthUrl('/calendar-booking')}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
                 title="Book a meeting with a lead"
               >
@@ -233,7 +233,7 @@ const Layout = ({ children }) => {
               
               {/* Coached Clients Link */}
               <Link
-                href={`/coached-clients${clientParam ? `?client=${clientParam}` : ''}`}
+                href={buildAuthUrl('/coached-clients')}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
                 title="View clients you are coaching"
               >
@@ -244,7 +244,7 @@ const Layout = ({ children }) => {
               {/* Owner Dashboard Link - only for Guy-Wilson */}
               {getCurrentClientId() === 'Guy-Wilson' && (
                 <Link
-                  href={`/owner-dashboard${clientParam ? `?client=${clientParam}` : ''}`}
+                  href={buildAuthUrl('/owner-dashboard')}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
                   title="Owner Dashboard - admin tools"
                 >
