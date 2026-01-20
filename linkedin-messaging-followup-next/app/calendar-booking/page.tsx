@@ -897,7 +897,7 @@ ${yourFirstName}`;
       <div className="max-w-4xl mx-auto">
         {/* Back to Dashboard link */}
         <Link 
-          href={clientInfo?.clientId ? `/?testClient=${clientInfo.clientId}` : '/'}
+          href={buildAuthUrl('/')}
           className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4 text-sm"
         >
           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">

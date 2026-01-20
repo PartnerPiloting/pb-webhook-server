@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead } from '../services/api';
+import { buildAuthUrl } from '../utils/clientUtils';
 
 /**
  * Clean up LinkedIn message noise from notes
@@ -602,7 +603,7 @@ export default function QuickUpdateModal({
           {/* Back to Dashboard link - only show in standalone mode */}
           {standalone && (
             <a
-              href={`/?client=${clientId}`}
+              href={buildAuthUrl('/')}
               className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors"
             >
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
