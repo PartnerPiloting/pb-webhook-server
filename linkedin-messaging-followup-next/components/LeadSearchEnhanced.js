@@ -5,7 +5,7 @@ import SearchTermsField from './SearchTermsField';
 import LeadSearchTableDirect from './LeadSearchTableDirect';
 import { formatLinkedInUrl, generateProfileKey } from '../utils/helpers';
 import { getLeadByLinkedInUrl } from '../services/api';
-import { getCurrentClientId } from '../utils/clientUtils';
+import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils';
 
 // (Former flag gate removed)
 const LeadSearchEnhanced = ({ 
@@ -109,7 +109,16 @@ const LeadSearchEnhanced = ({
       }
       
       const url = `${apiBase}/leads/export?${p.toString()}`;
-      const res = await fetch(url, { credentials: 'include' });
+      
+      // Build headers with portal token for authentication
+      const headers = { 'Content-Type': 'application/json' };
+      if (clientId) headers['x-client-id'] = clientId;
+      const portalToken = getCurrentPortalToken();
+      const devKey = getCurrentDevKey();
+      if (portalToken) headers['x-portal-token'] = portalToken;
+      if (devKey) headers['x-dev-key'] = devKey;
+      
+      const res = await fetch(url, { credentials: 'include', headers });
       
       if (!res.ok) {
         throw new Error(`Failed to export: ${res.status}`);
@@ -276,7 +285,16 @@ const LeadSearchEnhanced = ({
           p.set('clientId', clientId);
         }
         const url = `${apiBase}/leads/export?${p.toString()}`;
-        const res = await fetch(url, { credentials: 'include' });
+        
+        // Build headers with portal token for authentication
+        const headers = { 'Content-Type': 'application/json' };
+        if (clientId) headers['x-client-id'] = clientId;
+        const portalToken = getCurrentPortalToken();
+        const devKey = getCurrentDevKey();
+        if (portalToken) headers['x-portal-token'] = portalToken;
+        if (devKey) headers['x-dev-key'] = devKey;
+        
+        const res = await fetch(url, { credentials: 'include', headers });
         let backendStatus = res.status;
         let backendErr = '';
         if (!res.ok) {
@@ -371,13 +389,23 @@ const LeadSearchEnhanced = ({
       const fetchWithRetry = async (url) => {
         let attempt = 0;
         let backoff = INITIAL_BACKOFF_MS;
+        
+        // Build headers with portal token for authentication
+        const clientId = getCurrentClientId();
+        const headers = { 'Content-Type': 'application/json' };
+        if (clientId) headers['x-client-id'] = clientId;
+        const portalToken = getCurrentPortalToken();
+        const devKey = getCurrentDevKey();
+        if (portalToken) headers['x-portal-token'] = portalToken;
+        if (devKey) headers['x-dev-key'] = devKey;
+        
         // retry on 429/5xx with exponential backoff and throttle gap
         // honor Cancel between retries
         while (!cancelExportRef.current.cancelled) {
           await waitForThrottle();
           lastRequestAt = Date.now();
           try {
-            const res = await fetch(url);
+            const res = await fetch(url, { headers });
             if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
               if (attempt >= MAX_RETRIES) throw new Error(`HTTP ${res.status}`);
               attempt += 1;
@@ -530,7 +558,16 @@ const LeadSearchEnhanced = ({
         p.set('clientId', cid);
       }
       const url = `${apiBase}/leads/export?${p.toString()}`;
-  const res = await fetch(url, { credentials: 'include' });
+      
+      // Build headers with portal token for authentication
+      const headers = { 'Content-Type': 'application/json' };
+      if (cid) headers['x-client-id'] = cid;
+      const portalToken = getCurrentPortalToken();
+      const devKey = getCurrentDevKey();
+      if (portalToken) headers['x-portal-token'] = portalToken;
+      if (devKey) headers['x-dev-key'] = devKey;
+      
+  const res = await fetch(url, { credentials: 'include', headers });
       if (!res.ok) {
         // Try to read error details
         let msg = `Download failed (HTTP ${res.status})`;

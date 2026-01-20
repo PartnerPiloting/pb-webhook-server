@@ -851,10 +851,7 @@ export const getPostAttributes = async () => {
     
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': clientId
-      }
+      headers: getAuthenticatedHeaders()
     });
     
     console.log('📡 Response status:', response.status, response.statusText);
@@ -887,10 +884,7 @@ export const getAttributeForEditing = async (attributeId) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/edit`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': clientId
-      }
+      headers: getAuthenticatedHeaders()
     });
     
     if (!response.ok) {
@@ -936,10 +930,7 @@ export const getAISuggestions = async (attributeId, userRequest, currentAttribut
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/ai-edit`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': clientId
-      },
+      headers: getAuthenticatedHeaders(),
       body: JSON.stringify({
         userRequest
       })
@@ -991,10 +982,7 @@ export const saveAttributeChanges = async (attributeId, improvedRubric) => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     const response = await fetch(`${baseUrl}/api/attributes/${attributeId}/save`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': clientId
-      },
+      headers: getAuthenticatedHeaders(),
       body: JSON.stringify({
         improvedRubric
       })
@@ -1105,10 +1093,7 @@ export const getTokenUsage = async () => {
     
     const response = await fetch(`${baseUrl}/api/token-usage?client=${encodeURIComponent(clientId)}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': clientId,
-      }
+      headers: getAuthenticatedHeaders()
     });
     
     if (!response.ok) {
@@ -1139,10 +1124,7 @@ export const getPostTokenUsage = async () => {
     
     const response = await fetch(`${baseUrl}/api/post-token-usage?client=${encodeURIComponent(clientId)}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': clientId,
-      }
+      headers: getAuthenticatedHeaders()
     });
     
     if (!response.ok) {
@@ -1495,7 +1477,7 @@ export const getCoachedClients = async () => {
     const backendBase = getBackendBase();
     const response = await axios.get(`${backendBase}/api/coached-clients/${clientId}`, {
       timeout: 30000,
-      headers: { 'Content-Type': 'application/json' }
+      headers: getAuthenticatedHeaders()
     });
     
     return response.data;
@@ -1514,7 +1496,7 @@ export const getSystemSettings = async () => {
     const backendBase = getBackendBase();
     const response = await axios.get(`${backendBase}/api/system-settings`, {
       timeout: 10000,
-      headers: { 'Content-Type': 'application/json' }
+      headers: getAuthenticatedHeaders()
     });
     
     return response.data;
@@ -1525,3 +1507,6 @@ export const getSystemSettings = async () => {
 };
 
 export default api;
+
+// Export helper functions for use in components
+export { getAuthenticatedHeaders };

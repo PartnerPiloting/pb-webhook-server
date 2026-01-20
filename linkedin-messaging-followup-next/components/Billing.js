@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getBackendBase } from '../services/api';
-import { getClientProfile, getCurrentClientId } from '../utils/clientUtils';
+import { getClientProfile, getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils';
 import { CreditCardIcon, DocumentArrowDownIcon, CheckCircleIcon, ExclamationCircleIcon, ClockIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 /**
@@ -26,13 +26,18 @@ export default function Billing() {
   const [coachInfo, setCoachInfo] = useState({ name: null, email: null });
   const [portalLoading, setPortalLoading] = useState(false);
 
-  // Get headers with x-client-id for authenticated API calls
+  // Get headers with x-client-id and portal token for authenticated API calls
   const getHeaders = useCallback(() => {
     const clientId = getCurrentClientId();
-    return {
+    const portalToken = getCurrentPortalToken();
+    const devKey = getCurrentDevKey();
+    const headers = {
       'Content-Type': 'application/json',
       'x-client-id': clientId || ''
     };
+    if (portalToken) headers['x-portal-token'] = portalToken;
+    if (devKey) headers['x-dev-key'] = devKey;
+    return headers;
   }, []);
 
   // Get client email for display and fallback

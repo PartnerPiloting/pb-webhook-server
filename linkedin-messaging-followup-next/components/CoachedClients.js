@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getCoachedClients, getSystemSettings, getBackendBase } from '../services/api';
+import { getCoachedClients, getSystemSettings, getBackendBase, getAuthenticatedHeaders } from '../services/api';
 import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon, EyeIcon } from '@heroicons/react/24/outline';
 
 /**
@@ -49,7 +49,7 @@ const CoachedClients = () => {
     try {
       const response = await fetch(`${backendBase}/api/client/${clientId}/create-tasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: getAuthenticatedHeaders()
       });
       
       const data = await response.json();

@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from 'react';
 import HelpButton from './HelpButton';
-import { getCurrentClientId } from "../utils/clientUtils";
+import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from "../utils/clientUtils";
 
 // Derive backend origin from NEXT_PUBLIC_API_BASE_URL which may include a path like /api/linkedin
 const RAW_API = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com/api/linkedin';
@@ -32,13 +32,22 @@ function buildUrl(path, cid) {
   return url;
 }
 
+function buildHeaders(cid) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(cid ? { 'x-client-id': cid } : {})
+  };
+  const portalToken = getCurrentPortalToken();
+  const devKey = getCurrentDevKey();
+  if (portalToken) headers['x-portal-token'] = portalToken;
+  if (devKey) headers['x-dev-key'] = devKey;
+  return headers;
+}
+
 async function apiGet(path, clientId) {
   const cid = clientId ?? buildClientId();
   const res = await fetch(buildUrl(path, cid), {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(cid ? { 'x-client-id': cid } : {})
-    },
+    headers: buildHeaders(cid),
     cache: 'no-store'
   });
   if (!res.ok) throw new Error(await res.text());
@@ -49,10 +58,7 @@ async function apiPut(path, body, clientId) {
   const cid = clientId ?? buildClientId();
   const res = await fetch(buildUrl(path, cid), {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(cid ? { 'x-client-id': cid } : {})
-    },
+    headers: buildHeaders(cid),
     body: JSON.stringify(body)
   });
   if (!res.ok) throw new Error(await res.text());
@@ -63,10 +69,7 @@ async function apiPost(path, body, clientId) {
   const cid = clientId ?? buildClientId();
   const res = await fetch(buildUrl(path, cid), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(cid ? { 'x-client-id': cid } : {})
-    },
+    headers: buildHeaders(cid),
     body: body ? JSON.stringify(body) : undefined
   });
   if (!res.ok) throw new Error(await res.text());
