@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon } from '@heroicons/react/24/outline';
-import { getCurrentClientId } from '../utils/clientUtils';
+import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils';
 
 const AIEditModal = ({ isOpen, onClose, attribute, onSave }) => {
   const [fieldValues, setFieldValues] = useState({});
@@ -420,6 +420,8 @@ Examples:
         headers: {
           'Content-Type': 'application/json',
           'x-client-id': getCurrentClientId(),
+          ...(getCurrentPortalToken() && { 'x-portal-token': getCurrentPortalToken() }),
+          ...(getCurrentDevKey() && { 'x-dev-key': getCurrentDevKey() }),
         },
         body: JSON.stringify({
           fieldKey: activeFieldHelper,
