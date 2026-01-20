@@ -17,16 +17,24 @@ function HomeContent() {
   
   useEffect(() => {
     const validateAccess = async () => {
-      // Check for client (new standard), clientId, or testClient (legacy) parameter
+      // Check for token (secure), client, clientId, or testClient (legacy) parameter
+      const token = searchParams.get('token');
       const clientId = searchParams.get('client') || searchParams.get('clientId') || searchParams.get('testClient');
       
-      // If no client ID, redirect to membership required page
-      if (!clientId) {
+      // If no token or client ID, redirect to membership required page
+      if (!token && !clientId) {
         router.push('/membership-required');
         return;
       }
       
-      // Validate the clientId with the backend API
+      // If token is present, let the Layout/clientUtils handle authentication
+      // Just allow access - the auth will be validated by the backend
+      if (token) {
+        setIsValidating(false);
+        return;
+      }
+      
+      // Validate the clientId with the backend API (legacy flow - will be blocked by backend)
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pb-webhook-server-staging.onrender.com';
         const response = await fetch(`${backendUrl}/api/verify-client-access/${clientId}`);
