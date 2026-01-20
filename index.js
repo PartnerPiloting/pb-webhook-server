@@ -144,7 +144,8 @@ const allowedOrigins = [
     'https://pb-webhook-server-staging.vercel.app',
     /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
     'https://australiansidehustles.com.au',
-    'https://www.australiansidehustles.com.au'
+    'https://www.australiansidehustles.com.au',
+    null  // Allow local file:// pages (for admin tools)
 ];
 
 app.use(cors({
