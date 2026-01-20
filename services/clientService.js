@@ -129,6 +129,9 @@ async function getAllClients() {
                 const coachingStatus = record.get('Coaching Status') || null;
                 const coachNotes = record.get('Coach Notes') || '';
                 
+                // Portal access token for secure client access
+                const portalToken = record.get('Portal Token') || null;
+                
                 clients.push({
                     id: record.id,
                     clientId: clientId,
@@ -166,6 +169,8 @@ async function getAllClients() {
                     notionProgressUrl: notionProgressUrl,
                     coachingStatus: coachingStatus,
                     coachNotes: coachNotes,
+                    // Portal access token
+                    portalToken: portalToken,
                     // Store raw record for fire-and-forget field access
                     rawRecord: record
                 });
@@ -258,6 +263,35 @@ async function getClientByWpUserId(wpUserId) {
 
     } catch (error) {
         logger.error(`Error fetching client by WP User ID ${wpUserId}:`, error);
+        await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
+        throw error;
+    }
+}
+
+/**
+ * Get a specific client by Portal Token (for secure URL-based access)
+ * @param {string} portalToken - The portal token to search for
+ * @returns {Promise<Object|null>} Client record or null if not found
+ */
+async function getClientByPortalToken(portalToken) {
+    try {
+        if (!portalToken || typeof portalToken !== 'string') {
+            return null;
+        }
+        
+        const allClients = await getAllClients();
+        const client = allClients.find(c => c.portalToken === portalToken);
+        
+        if (client) {
+            logger.info(`Found client by Portal Token: ${client.clientName} (${client.clientId})`);
+        } else {
+            logger.info(`Client not found for Portal Token: ${portalToken.substring(0, 4)}...`);
+        }
+
+        return client || null;
+
+    } catch (error) {
+        logger.error(`Error fetching client by Portal Token:`, error);
         await logCriticalError(error, { context: 'Service error (before throw)', service: 'clientService.js' }).catch(() => {});
         throw error;
     }
@@ -1434,6 +1468,7 @@ module.exports = {
     getClientById,
     getClientByIdFresh, // Add fresh fetch function for security checks
     getClientByWpUserId, // Add the new WP User ID lookup function
+    getClientByPortalToken, // Get client by portal token for secure URL access
     getClientsByCoach,  // Get clients coached by a specific coach
     validateClient,
     // CRR REDESIGN: updateExecutionLog removed (replaced by Progress Log in jobTracking.js)
