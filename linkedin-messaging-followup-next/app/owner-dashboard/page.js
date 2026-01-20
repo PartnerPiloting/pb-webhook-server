@@ -1,7 +1,7 @@
 "use client";
-import React, { useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { getCurrentClientId } from '../../utils/clientUtils';
+import React, { useMemo, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { getCurrentClientId, initializeClient } from '../../utils/clientUtils';
 import { getBackendBase } from '../../services/api';
 import { CogIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -42,13 +42,68 @@ const getOwnerQuickActions = (backendBase) => [
 
 export default function OwnerDashboardPage() {
   const router = useRouter();
-  const currentClientId = getCurrentClientId();
+  const searchParams = useSearchParams();
+  const [isReady, setIsReady] = useState(false);
+  const [authError, setAuthError] = useState(null);
+  const [currentClientId, setCurrentClientIdState] = useState(null);
+
+  // Validate token authentication on mount
+  useEffect(() => {
+    const validateAccess = async () => {
+      const token = searchParams.get('token');
+      const devKey = searchParams.get('devKey');
+      
+      // Require token or devKey for owner dashboard
+      if (!token && !devKey) {
+        router.push('/membership-required');
+        return;
+      }
+      
+      try {
+        await initializeClient();
+        const resolvedClientId = getCurrentClientId();
+        setCurrentClientIdState(resolvedClientId);
+        setIsReady(true);
+      } catch (error) {
+        console.error('Owner Dashboard: Auth failed:', error);
+        setAuthError(error.message || 'Authentication failed');
+      }
+    };
+    
+    validateAccess();
+  }, [searchParams, router]);
+
   const isOwner = currentClientId === OWNER_CLIENT_ID;
 
   // Get dynamic URLs based on current environment
   const backendBase = getBackendBase();
   const ownerSections = useMemo(() => getOwnerSections(backendBase), [backendBase]);
   const ownerQuickActions = useMemo(() => getOwnerQuickActions(backendBase), [backendBase]);
+
+  // Loading state
+  if (!isReady && !authError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">Verifying access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Auth error state
+  if (authError) {
+    return (
+      <div className="max-w-2xl mx-auto mt-16">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
+          <ExclamationTriangleIcon className="h-16 w-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-red-800 mb-2">Access Denied</h2>
+          <p className="text-red-600">{authError}</p>
+        </div>
+      </div>
+    );
+  }
 
   // Not owner - show access denied
   if (!isOwner) {

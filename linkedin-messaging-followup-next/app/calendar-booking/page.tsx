@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ClientIdPrompt from '../../components/ClientIdPrompt';
 import { verifyCalendarConnection, updateClientTimezone, updateClientCalendarEmail } from '../../services/api';
-import { setCurrentClientId } from '../../utils/clientUtils';
+import { setCurrentClientId, initializeClient, getCurrentClientId, getCurrentPortalToken } from '../../utils/clientUtils';
 
 interface FormData {
   yourName: string;
@@ -148,46 +148,102 @@ function CalendarBookingContent() {
   ];
   
   useEffect(() => {
-    const clientId = searchParams.get('client');
-    if (!clientId) {
-      setShowClientPrompt(true);
-      return;
-    }
-
-    // Set the client ID for api.js functions to use
-    setCurrentClientId(clientId);
-
-    fetch(`/api/calendar/client-info?clientId=${clientId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          // Invalid client - clear URL and show prompt with error
-          setPromptError(data.error);
-          setShowClientPrompt(true);
-          // Clear the URL params
-          window.history.replaceState({}, '', window.location.pathname);
-        } else {
-          setClientInfo(data);
-          // Set timezone from client config, fallback to Brisbane
-          if (data.timezoneConfigured && data.timezone) {
-            setYourTimezone(data.timezone);
+    const validateAndLoadClient = async () => {
+      // Check for token (secure) or devKey (admin)
+      const token = searchParams.get('token');
+      const devKey = searchParams.get('devKey');
+      const legacyClientId = searchParams.get('client');
+      
+      // If no token, devKey, or legacy client param, redirect to membership required
+      if (!token && !devKey && !legacyClientId) {
+        router.push('/membership-required');
+        return;
+      }
+      
+      // If token or devKey provided, use secure auth
+      if (token || devKey) {
+        try {
+          await initializeClient();
+          const resolvedClientId = getCurrentClientId();
+          if (!resolvedClientId) {
+            setPromptError('Unable to authenticate. Please use a valid portal link.');
+            setShowClientPrompt(true);
+            return;
           }
-          // Auto-fill "Your Details" from client profile
-          setFormData(prev => ({
-            ...prev,
-            yourName: data.clientName || prev.yourName,
-            yourLinkedIn: data.linkedInUrl || prev.yourLinkedIn,
-            yourPhone: data.phone || prev.yourPhone,
-            yourZoom: data.meetingLink || prev.yourZoom,
-          }));
+          
+          // Set client ID and load client info
+          setCurrentClientId(resolvedClientId);
+          
+          fetch(`/api/calendar/client-info?clientId=${resolvedClientId}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.error) {
+                setPromptError(data.error);
+                setShowClientPrompt(true);
+              } else {
+                setClientInfo(data);
+                if (data.timezoneConfigured && data.timezone) {
+                  setYourTimezone(data.timezone);
+                }
+                setFormData(prev => ({
+                  ...prev,
+                  yourName: data.clientName || prev.yourName,
+                  yourLinkedIn: data.linkedInUrl || prev.yourLinkedIn,
+                  yourPhone: data.phone || prev.yourPhone,
+                  yourZoom: data.meetingLink || prev.yourZoom,
+                }));
+              }
+            })
+            .catch(() => {
+              setPromptError('Failed to load client information');
+              setShowClientPrompt(true);
+            });
+        } catch (error: unknown) {
+          console.error('Calendar Booking: Auth failed:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
+          setPromptError(errorMessage.includes('portal link') ? 
+            'Your portal link is invalid or has been updated. Please contact your coach.' : 
+            errorMessage);
+          setShowClientPrompt(true);
         }
-      })
-      .catch(() => {
-        setPromptError('Failed to load client information');
-        setShowClientPrompt(true);
-        window.history.replaceState({}, '', window.location.pathname);
-      });
-  }, [searchParams]);
+        return;
+      }
+      
+      // Legacy flow with client param (will be blocked by backend if no token)
+      if (legacyClientId) {
+        setCurrentClientId(legacyClientId);
+
+        fetch(`/api/calendar/client-info?clientId=${legacyClientId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.error) {
+              setPromptError(data.error);
+              setShowClientPrompt(true);
+              window.history.replaceState({}, '', window.location.pathname);
+            } else {
+              setClientInfo(data);
+              if (data.timezoneConfigured && data.timezone) {
+                setYourTimezone(data.timezone);
+              }
+              setFormData(prev => ({
+                ...prev,
+                yourName: data.clientName || prev.yourName,
+                yourLinkedIn: data.linkedInUrl || prev.yourLinkedIn,
+                yourPhone: data.phone || prev.yourPhone,
+                yourZoom: data.meetingLink || prev.yourZoom,
+              }));
+            }
+          })
+          .catch(() => {
+            setPromptError('Failed to load client information');
+            setShowClientPrompt(true);
+            window.history.replaceState({}, '', window.location.pathname);
+          });
+      }
+    };
+    
+    validateAndLoadClient();
+  }, [searchParams, router]);
 
   // Scroll chat to bottom when messages change
   useEffect(() => {
