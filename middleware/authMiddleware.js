@@ -241,8 +241,8 @@ async function authenticateUserWithTestMode(req, res, next) {
     try {
         const devKey = process.env.PORTAL_DEV_KEY || process.env.PB_WEBHOOK_SECRET;
         
-        // 1. Check for Portal Token (secure client access)
-        const portalToken = req.query.token;
+        // 1. Check for Portal Token (secure client access) - query param or header
+        const portalToken = req.query.token || req.headers['x-portal-token'];
         if (portalToken) {
             logger.info(`AuthMiddleware: Portal token authentication attempt`);
             const client = await clientService.getClientByPortalToken(portalToken);

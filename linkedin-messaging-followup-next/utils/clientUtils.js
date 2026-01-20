@@ -14,6 +14,8 @@ try {
 
 let currentClientId = null;
 let clientProfile = null;
+let currentPortalToken = null; // Cache the token for API calls
+let currentDevKey = null; // Cache the devKey for admin access
 
 /**
  * Determine a human-friendly environment label for UI badges/titles
@@ -93,11 +95,13 @@ export async function getCurrentClientProfile() {
     if (portalToken) {
       console.log(`ClientUtils: Using portal token for authentication`);
       apiUrl += `?token=${encodeURIComponent(portalToken)}`;
+      currentPortalToken = portalToken; // Cache token for API calls
     }
     // If client ID with dev key specified, use dev mode
     else if (clientId && devKey) {
       console.log(`ClientUtils: Using client ID with dev key: ${clientId}`);
       apiUrl += `?clientId=${encodeURIComponent(clientId)}&devKey=${encodeURIComponent(devKey)}`;
+      currentDevKey = devKey; // Cache devKey for API calls
     }
     // If client ID specified without dev key (legacy - will fail gracefully)
     else if (clientId) {
@@ -221,7 +225,25 @@ export async function initializeClient() {
 export function clearClientData() {
   currentClientId = null;
   clientProfile = null;
+  currentPortalToken = null;
+  currentDevKey = null;
   console.log('ClientUtils: Client data cleared');
+}
+
+/**
+ * Get the current portal token (for API calls)
+ * @returns {string|null} Current portal token or null if not using token auth
+ */
+export function getCurrentPortalToken() {
+  return currentPortalToken;
+}
+
+/**
+ * Get the current dev key (for admin API calls)
+ * @returns {string|null} Current dev key or null if not using dev mode
+ */
+export function getCurrentDevKey() {
+  return currentDevKey;
 }
 
 /**
@@ -240,5 +262,7 @@ export default {
   getClientProfile,
   initializeClient,
   clearClientData,
-  setCurrentClientId
+  setCurrentClientId,
+  getCurrentPortalToken,
+  getCurrentDevKey
 };
