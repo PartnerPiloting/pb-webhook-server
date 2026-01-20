@@ -7740,6 +7740,7 @@ router.patch("/api/calendar/update-lead", async (req, res) => {
  */
 router.post("/api/onboard-client", async (req, res) => {
   const Airtable = require('airtable');
+  const crypto = require('crypto');
   const logger = createLogger({ runId: 'ONBOARD', clientId: 'SYSTEM', operation: 'onboard_client' });
   
   try {

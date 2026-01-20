@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getCoachedClients, getSystemSettings, getBackendBase, getAuthenticatedHeaders } from '../services/api';
-import { buildAuthUrl } from '../utils/clientUtils';
-import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon, EyeIcon } from '@heroicons/react/24/outline';
+import { buildAuthUrl, getCurrentDevKey } from '../utils/clientUtils';
+import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon, EyeIcon, KeyIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 /**
  * CoachedClients - Dashboard for coaches to view their coached clients
@@ -18,6 +18,11 @@ const CoachedClients = () => {
   const [coachName, setCoachName] = useState('');
   const [coachingResourcesUrl, setCoachingResourcesUrl] = useState(null);
   const [addingTasksFor, setAddingTasksFor] = useState(null); // Track which client is getting tasks added
+  
+  // Token regeneration state
+  const [regeneratingTokenFor, setRegeneratingTokenFor] = useState(null);
+  const [generatedTokens, setGeneratedTokens] = useState({}); // { clientId: { token, url, copied } }
+  const [tokenError, setTokenError] = useState(null);
 
   // Get dynamic backend URL
   const backendBase = getBackendBase();
@@ -25,6 +30,65 @@ const CoachedClients = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Regenerate token for a specific client
+  const handleRegenerateToken = async (clientId, clientName) => {
+    setRegeneratingTokenFor(clientId);
+    setTokenError(null);
+    
+    try {
+      const devKey = getCurrentDevKey() || searchParams.get('devKey') || '';
+      
+      const response = await fetch(`${backendBase}/admin/generate-portal-tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-debug-key': devKey
+        },
+        body: JSON.stringify({
+          debugKey: devKey,
+          clientId: clientId,
+          force: true
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.results?.[0]?.token) {
+        const token = data.results[0].token;
+        const url = `https://pb-webhook-server-staging.vercel.app/?token=${token}`;
+        setGeneratedTokens(prev => ({
+          ...prev,
+          [clientId]: { token, url, copied: false }
+        }));
+      } else {
+        setTokenError(`Failed to generate token for ${clientName}`);
+      }
+    } catch (err) {
+      setTokenError(`Error regenerating token: ${err.message}`);
+    } finally {
+      setRegeneratingTokenFor(null);
+    }
+  };
+  
+  // Copy URL to clipboard
+  const handleCopyUrl = (clientId) => {
+    const tokenData = generatedTokens[clientId];
+    if (tokenData?.url) {
+      navigator.clipboard.writeText(tokenData.url);
+      setGeneratedTokens(prev => ({
+        ...prev,
+        [clientId]: { ...prev[clientId], copied: true }
+      }));
+      // Reset copied state after 3 seconds
+      setTimeout(() => {
+        setGeneratedTokens(prev => ({
+          ...prev,
+          [clientId]: { ...prev[clientId], copied: false }
+        }));
+      }, 3000);
+    }
+  };
 
   // Add tasks to a client
   const handleAddTasks = async (clientId, clientName) => {
@@ -203,6 +267,19 @@ const CoachedClients = () => {
         )}
       </div>
 
+      {/* Token Error Alert */}
+      {tokenError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+          <p className="text-sm text-red-700">{tokenError}</p>
+          <button 
+            onClick={() => setTokenError(null)}
+            className="text-red-500 hover:text-red-700 text-lg font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Client Cards */}
       <div className="space-y-4">
         {clients.map((client) => (
@@ -254,10 +331,36 @@ const CoachedClients = () => {
                     "{client.coachNotes}"
                   </p>
                 )}
+                
+                {/* Generated Token URL - shown after regeneration */}
+                {generatedTokens[client.clientId] && (
+                  <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-xs font-medium text-green-700 mb-1">🔐 New Portal URL:</p>
+                    <div className="flex gap-2 items-center">
+                      <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-green-200 text-gray-700 truncate">
+                        {generatedTokens[client.clientId].url}
+                      </code>
+                      <button
+                        onClick={() => handleCopyUrl(client.clientId)}
+                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                          generatedTokens[client.clientId].copied
+                            ? 'bg-green-600 text-white'
+                            : 'bg-green-100 text-green-700 hover:bg-green-200'
+                        }`}
+                      >
+                        {generatedTokens[client.clientId].copied ? (
+                          <span className="flex items-center gap-1"><CheckIcon className="h-3 w-3" /> Copied!</span>
+                        ) : (
+                          <span className="flex items-center gap-1"><ClipboardDocumentIcon className="h-3 w-3" /> Copy</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
-              <div className="flex-shrink-0 ml-4 flex items-center gap-2">
+              <div className="flex-shrink-0 ml-4 flex flex-col items-end gap-2">
                 {/* View Tasks Button - navigates to task page */}
                 {client.taskProgress?.total > 0 && (
                   <button
@@ -291,6 +394,30 @@ const CoachedClients = () => {
                     <>
                       <PlusCircleIcon className="h-4 w-4" />
                       {client.taskProgress?.total > 0 ? 'Sync' : 'Add Tasks'}
+                    </>
+                  )}
+                </button>
+                
+                {/* Regenerate Token button */}
+                <button
+                  onClick={() => handleRegenerateToken(client.clientId, client.clientName)}
+                  disabled={regeneratingTokenFor === client.clientId}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    regeneratingTokenFor === client.clientId
+                      ? 'bg-gray-200 text-gray-500 cursor-wait'
+                      : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-300'
+                  }`}
+                  title="Generate a new secure portal link for this client"
+                >
+                  {regeneratingTokenFor === client.clientId ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-purple-400 border-t-transparent rounded-full"></div>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <KeyIcon className="h-4 w-4" />
+                      New Token
                     </>
                   )}
                 </button>

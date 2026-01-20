@@ -155,6 +155,11 @@ export default function OnboardClientPage() {
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   
+  // Portal token state
+  const [portalToken, setPortalToken] = useState<string | null>(null);
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  
   // Intake request state
   const [intakeRequests, setIntakeRequests] = useState<IntakeRequest[]>([]);
   const [selectedIntakeId, setSelectedIntakeId] = useState<string>('');
@@ -313,6 +318,45 @@ export default function OnboardClientPage() {
     }
   };
 
+  // Generate portal token for a client
+  const generatePortalToken = async (clientId: string): Promise<string | null> => {
+    setIsGeneratingToken(true);
+    setTokenError(null);
+    
+    try {
+      const apiUrl = getBackendUrl();
+      const response = await fetch(`${apiUrl}/admin/generate-portal-tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-debug-key': process.env.NEXT_PUBLIC_DEBUG_KEY || ''
+        },
+        body: JSON.stringify({
+          debugKey: process.env.NEXT_PUBLIC_DEBUG_KEY || '',
+          clientId: clientId,
+          force: true
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.results?.[0]?.token) {
+        const token = data.results[0].token;
+        setPortalToken(token);
+        return token;
+      } else {
+        setTokenError('Failed to generate token');
+        return null;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setTokenError(`Token generation failed: ${message}`);
+      return null;
+    } finally {
+      setIsGeneratingToken(false);
+    }
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
@@ -329,6 +373,8 @@ export default function OnboardClientPage() {
     setIsSubmitting(true);
     setError(null);
     setResult(null);
+    setPortalToken(null);
+    setTokenError(null);
     
     try {
       const apiUrl = getBackendUrl();
@@ -348,6 +394,11 @@ export default function OnboardClientPage() {
         
         if (data.success) {
           setResult(data);
+          
+          // Auto-generate portal token for new client
+          if (data.clientId) {
+            generatePortalToken(data.clientId);
+          }
           
           // If this was from an intake request, mark it as processed
           if (selectedIntakeId && data.recordId) {
@@ -402,6 +453,8 @@ export default function OnboardClientPage() {
     setResult(null);
     setError(null);
     setSelectedIntakeId('');
+    setPortalToken(null);
+    setTokenError(null);
   };
 
   const switchMode = (newMode: 'add' | 'edit') => {
@@ -473,24 +526,60 @@ export default function OnboardClientPage() {
                   </p>
                 )}
                 
-                {/* Client Dashboard URL */}
+                {/* Client Dashboard URL - Token-based (secure) */}
                 {(result.clientId || editClientId) && (
                   <div className="mt-4 p-3 bg-white border border-green-200 rounded-lg">
-                    <p className="text-sm font-medium text-gray-700 mb-2">📧 Client Dashboard URL (copy & send):</p>
-                    <div className="flex gap-2 items-center">
-                      <code className="flex-1 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all">
-                        {buildClientUrl(result.clientId || editClientId, formData.serviceLevel)}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(buildClientUrl(result.clientId || editClientId, formData.serviceLevel));
-                        }}
-                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
-                      >
-                        Copy URL
-                      </button>
-                    </div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">🔐 Secure Client Portal URL (copy & send):</p>
+                    
+                    {isGeneratingToken ? (
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-sm">Generating secure token...</span>
+                      </div>
+                    ) : portalToken ? (
+                      <div className="flex gap-2 items-center">
+                        <code className="flex-1 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all">
+                          {`https://pb-webhook-server-staging.vercel.app/?token=${portalToken}`}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`https://pb-webhook-server-staging.vercel.app/?token=${portalToken}`);
+                          }}
+                          className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
+                        >
+                          Copy URL
+                        </button>
+                      </div>
+                    ) : tokenError ? (
+                      <div className="text-sm text-red-600">
+                        {tokenError}
+                        <button
+                          type="button"
+                          onClick={() => generatePortalToken(result.clientId || editClientId)}
+                          className="ml-2 text-blue-600 hover:underline"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-center">
+                        <span className="text-sm text-gray-500">Token not generated</span>
+                        <button
+                          type="button"
+                          onClick={() => generatePortalToken(result.clientId || editClientId)}
+                          className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                        >
+                          Generate Token
+                        </button>
+                      </div>
+                    )}
+                    
+                    {portalToken && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        ✅ This secure link replaces the old ?client= URLs
+                      </p>
+                    )}
                   </div>
                 )}
                 
