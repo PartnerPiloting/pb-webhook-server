@@ -184,6 +184,21 @@ api.interceptors.request.use(
       }
     }
     
+    // Add portal token and dev key headers for authentication
+    const clientId = getCurrentClientId();
+    const token = getCurrentPortalToken();
+    const devKey = getCurrentDevKey();
+    
+    if (clientId) {
+      config.headers['x-client-id'] = clientId;
+    }
+    if (token) {
+      config.headers['x-portal-token'] = token;
+    }
+    if (devKey) {
+      config.headers['x-dev-key'] = devKey;
+    }
+    
     return config;
   },
   (error) => {
