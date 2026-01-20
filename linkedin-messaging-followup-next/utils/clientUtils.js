@@ -256,6 +256,30 @@ export function setCurrentClientId(clientId) {
   console.log('ClientUtils: Client ID manually set to:', clientId);
 }
 
+/**
+ * Build a URL with preserved authentication parameters
+ * Prioritizes token (secure) over legacy client params
+ * @param {string} path - The path to navigate to (e.g., '/quick-update')
+ * @returns {string} URL with auth params appended
+ */
+export function buildAuthUrl(path) {
+  const params = new URLSearchParams();
+  
+  // Prefer token (secure) over legacy client param
+  if (currentPortalToken) {
+    params.set('token', currentPortalToken);
+  } else if (currentDevKey && currentClientId) {
+    params.set('clientId', currentClientId);
+    params.set('devKey', currentDevKey);
+  } else if (currentClientId) {
+    // Legacy fallback - will be blocked by backend
+    params.set('client', currentClientId);
+  }
+  
+  const queryString = params.toString();
+  return queryString ? `${path}?${queryString}` : path;
+}
+
 export default {
   getCurrentClientProfile,
   getCurrentClientId,
@@ -264,5 +288,6 @@ export default {
   clearClientData,
   setCurrentClientId,
   getCurrentPortalToken,
-  getCurrentDevKey
+  getCurrentDevKey,
+  buildAuthUrl
 };

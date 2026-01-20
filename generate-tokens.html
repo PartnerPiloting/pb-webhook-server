@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Portal Tokens</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        input[type="password"], input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .results {
+            margin-top: 30px;
+            display: none;
+        }
+        .results.show {
+            display: block;
+        }
+        .success {
+            background: #e8f5e9;
+            border: 1px solid #4CAF50;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .error {
+            background: #ffebee;
+            border: 1px solid #f44336;
+            border-radius: 4px;
+            padding: 15px;
+            color: #c62828;
+        }
+        .client-row {
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        .client-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .client-url {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+            word-break: break-all;
+            background: #fff;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .copy-btn {
+            background: #2196F3;
+            padding: 5px 15px;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+        .copy-btn:hover {
+            background: #1976D2;
+        }
+        .copied {
+            background: #4CAF50 !important;
+        }
+        .loading {
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔐 Generate Portal Tokens</h1>
+        <p class="subtitle">Generate secure access tokens for all clients in the Clients table</p>
+        
+        <div class="form-group">
+            <label for="debugKey">Admin Key (DEBUG_API_KEY):</label>
+            <input type="password" id="debugKey" placeholder="Enter your admin key...">
+        </div>
+        
+        <div class="form-group">
+            <label for="baseUrl">Portal Base URL:</label>
+            <input type="text" id="baseUrl" value="https://pb-webhook-server-six.vercel.app/billing">
+        </div>
+        
+        <button id="generateBtn" onclick="generateTokens()">Generate All Tokens</button>
+        <span class="loading" id="loading" style="display:none;"><div class="spinner"></div> Generating...</span>
+        
+        <div class="results" id="results">
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://pb-webhook-server-staging.onrender.com';
+        
+        async function generateTokens() {
+            const debugKey = document.getElementById('debugKey').value;
+            const baseUrl = document.getElementById('baseUrl').value;
+            const btn = document.getElementById('generateBtn');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const resultContent = document.getElementById('resultContent');
+            
+            if (!debugKey) {
+                alert('Please enter your admin key');
+                return;
+            }
+            
+            btn.disabled = true;
+            loading.style.display = 'inline-block';
+            results.classList.remove('show');
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/generate-portal-tokens`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        debugKey: debugKey,
+                        baseUrl: baseUrl
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to generate tokens');
+                }
+                
+                // Show results
+                let html = `<div class="success">✅ Successfully generated tokens for ${data.results.length} clients!</div>`;
+                
+                data.results.forEach((client, index) => {
+                    html += `
+                        <div class="client-row">
+                            <div class="client-name">${client.name}</div>
+                            <div class="client-url" id="url-${index}">${client.portalUrl}</div>
+                            <button class="copy-btn" onclick="copyUrl(${index})">📋 Copy URL</button>
+                        </div>
+                    `;
+                });
+                
+                resultContent.innerHTML = html;
+                results.classList.add('show');
+                
+            } catch (error) {
+                resultContent.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+                results.classList.add('show');
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+            }
+        }
+        
+        function copyUrl(index) {
+            const urlElement = document.getElementById(`url-${index}`);
+            const url = urlElement.textContent;
+            
+            navigator.clipboard.writeText(url).then(() => {
+                const btn = urlElement.nextElementSibling;
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy URL';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('debugKey').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                generateTokens();
+            }
+        });
+    </script>
+</body>
+</html>
