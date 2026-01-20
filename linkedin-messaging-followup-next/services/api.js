@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getCurrentClientId } from '../utils/clientUtils.js';
+import { getCurrentClientId, getCurrentPortalToken, getCurrentDevKey } from '../utils/clientUtils.js';
 
 // API configuration
 // In Next.js, env vars must be prefixed with NEXT_PUBLIC_ to be exposed to the browser.
@@ -108,15 +108,27 @@ export function getBackendBase() {
 // Helper function to get authenticated headers for API calls
 const getAuthenticatedHeaders = () => {
   const clientId = getCurrentClientId();
+  const token = getCurrentPortalToken();
+  const devKey = getCurrentDevKey();
   
   if (!clientId) {
     throw new Error('Client ID not available - user not authenticated');
   }
 
-  return {
+  const headers = {
     'Content-Type': 'application/json',
     'x-client-id': clientId
   };
+
+  // Include token or devKey for authentication
+  if (token) {
+    headers['x-portal-token'] = token;
+  }
+  if (devKey) {
+    headers['x-dev-key'] = devKey;
+  }
+
+  return headers;
 };
 
 // Get authentication headers
