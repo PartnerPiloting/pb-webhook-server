@@ -164,7 +164,7 @@ const Layout = ({ children }) => {
       } else if (msg.includes('not currently active') || msg.includes('access has been suspended') || msg.includes('not Active')) {
         errorMessage = 'Your membership has expired. Please check with your coach.';
       } else {
-        errorMessage = 'Please enter your client code or contact your coach for access.';
+        errorMessage = null; // No specific error - just show the default instructions
       }
       
       return <ClientCodeEntry error={errorMessage} />;
