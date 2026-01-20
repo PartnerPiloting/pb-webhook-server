@@ -1949,6 +1949,73 @@ router.get("/debug-clients", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Regenerate My Token endpoint (Client Self-Service)
+// Allows clients to regenerate their own portal token
+// ---------------------------------------------------------------
+router.post("/api/regenerate-my-token", async (req, res) => {
+  const crypto = require('crypto');
+  const Airtable = require('airtable');
+  const logger = createLogger({ operation: 'regenerate_my_token' });
+  logger.info("Client token regeneration endpoint hit");
+  
+  // Authenticate via portal token
+  const portalToken = req.headers['x-portal-token'];
+  if (!portalToken) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Valid portal token required'
+    });
+  }
+  
+  try {
+    const clientService = require("../services/clientService");
+    
+    // Find client by their current token
+    const allClients = await clientService.getAllClients();
+    const client = allClients.find(c => c.portalToken === portalToken);
+    
+    if (!client) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid token',
+        message: 'Token not recognized'
+      });
+    }
+    
+    // Generate a new secure 24-character token
+    const newToken = crypto.randomBytes(18).toString('base64url');
+    const portalUrl = `https://pb-webhook-server-staging.vercel.app/?token=${newToken}`;
+    
+    // Update Airtable
+    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+    await base('Clients').update(client.id, {
+      'Portal Token': newToken
+    });
+    
+    // Clear client cache so new token is picked up
+    clientService.clearCache();
+    
+    logger.info(`Client ${client.clientName} regenerated their own token`);
+    
+    res.json({
+      success: true,
+      message: 'New access link generated successfully',
+      token: newToken,
+      portalUrl: portalUrl,
+      warning: 'Your old link will stop working immediately. Save this new link now.'
+    });
+    
+  } catch (error) {
+    logger.error("Client token regeneration error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // Generate Portal Tokens endpoint (Admin Only)
 // Generates secure tokens for client portal access
 // ---------------------------------------------------------------

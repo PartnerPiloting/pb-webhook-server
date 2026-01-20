@@ -2,7 +2,8 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getAttributes, saveAttribute, toggleAttributeActive, getTokenUsage, getPostTokenUsage, getPostAttributes, getPostAttributeForEditing, getPostAISuggestions, savePostAttributeChanges, togglePostAttributeActive } from '../services/api';
-import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon } from '@heroicons/react/24/outline';
+import { CogIcon, UserGroupIcon, DocumentTextIcon, ArrowLeftIcon, CreditCardIcon, ShieldCheckIcon, KeyIcon, ExclamationTriangleIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { getBackendBase, getAuthenticatedHeaders } from '../services/api';
 import Link from 'next/link';
 import AIEditModal from './AIEditModal';
 import HelpButton from './HelpButton';
@@ -14,7 +15,7 @@ const SettingsWithParams = () => {
   const serviceLevel = parseInt(searchParams.get('level') || '2');
   
   // State for which settings section to show
-  const [currentView, setCurrentView] = useState('menu'); // 'menu', 'profile', 'posts'
+  const [currentView, setCurrentView] = useState('menu'); // 'menu', 'profile', 'posts', 'security'
   
   const [attributes, setAttributes] = useState([]);
   const [postAttributes, setPostAttributes] = useState([]);
@@ -26,6 +27,12 @@ const SettingsWithParams = () => {
   // Phase 2: Add AI modal state
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [selectedAttribute, setSelectedAttribute] = useState(null);
+  
+  // Security section state
+  const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
+  const [newTokenUrl, setNewTokenUrl] = useState(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [tokenError, setTokenError] = useState(null);
 
   // Set initial view based on service level
   useEffect(() => {
@@ -77,6 +84,51 @@ const SettingsWithParams = () => {
   const handleViewPostAttributes = () => {
     setCurrentView('posts');
     loadTokenUsage('posts'); // Load post token usage
+  };
+
+  const handleViewSecurity = () => {
+    setCurrentView('security');
+    // Reset any previous token generation state
+    setNewTokenUrl(null);
+    setTokenCopied(false);
+    setTokenError(null);
+  };
+
+  // Regenerate the client's own portal token
+  const handleRegenerateMyToken = async () => {
+    setIsRegeneratingToken(true);
+    setTokenError(null);
+    setNewTokenUrl(null);
+    
+    try {
+      const backendBase = getBackendBase();
+      const headers = getAuthenticatedHeaders();
+      
+      const response = await fetch(`${backendBase}/api/regenerate-my-token`, {
+        method: 'POST',
+        headers: headers
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setNewTokenUrl(data.portalUrl);
+      } else {
+        setTokenError(data.message || data.error || 'Failed to generate new token');
+      }
+    } catch (err) {
+      setTokenError(`Error: ${err.message}`);
+    } finally {
+      setIsRegeneratingToken(false);
+    }
+  };
+
+  const handleCopyNewToken = () => {
+    if (newTokenUrl) {
+      navigator.clipboard.writeText(newTokenUrl);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 3000);
+    }
   };
 
   // Listen for nav-triggered "back to menu" when Settings tab is clicked while on a subview
@@ -598,7 +650,151 @@ const SettingsWithParams = () => {
                   View Billing →
                 </div>
               </Link>
+
+              {/* Security */}
+              <div 
+                className="bg-white rounded-lg border border-gray-200 p-6 hover:border-blue-300 cursor-pointer transition-colors"
+                onClick={handleViewSecurity}
+              >
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="flex-shrink-0">
+                    <ShieldCheckIcon className="h-8 w-8 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Security
+                    </h3>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Manage your access link. Generate a new secure portal link if your current one was compromised.
+                </p>
+                <div className="flex items-center text-sm text-amber-600 font-medium">
+                  Manage Security →
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Security view
+  if (currentView === 'security') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleBackToMenu}
+              className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <ArrowLeftIcon className="h-4 w-4 mr-1" />
+              Back to Settings
+            </button>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Security</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Manage your portal access
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-xl mx-auto">
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <KeyIcon className="h-6 w-6 text-amber-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Generate New Access Link</h3>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-4">
+              If you believe your current portal link may have been shared or compromised, you can generate a new one. 
+              This will immediately invalidate your old link.
+            </p>
+
+            {/* Warning */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-medium">Important</p>
+                  <p>Once you generate a new link, your current link will stop working immediately. Make sure to save the new link!</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Error display */}
+            {tokenError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-red-700">{tokenError}</p>
+              </div>
+            )}
+
+            {/* New token display */}
+            {newTokenUrl && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-medium text-green-700 mb-2">✅ New Access Link Generated</p>
+                <div className="flex gap-2 items-center">
+                  <code className="flex-1 text-xs bg-white px-3 py-2 rounded border border-green-200 text-gray-700 break-all">
+                    {newTokenUrl}
+                  </code>
+                  <button
+                    onClick={handleCopyNewToken}
+                    className={`px-3 py-2 rounded text-sm font-medium transition-colors whitespace-nowrap ${
+                      tokenCopied
+                        ? 'bg-green-600 text-white'
+                        : 'bg-green-100 text-green-700 hover:bg-green-200'
+                    }`}
+                  >
+                    {tokenCopied ? (
+                      <span className="flex items-center gap-1"><CheckIcon className="h-4 w-4" /> Copied!</span>
+                    ) : (
+                      <span className="flex items-center gap-1"><ClipboardDocumentIcon className="h-4 w-4" /> Copy</span>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-green-600 mt-2">
+                  Save this link now. You will need to use it to access the portal.
+                </p>
+              </div>
+            )}
+
+            {/* Generate button */}
+            {!newTokenUrl && (
+              <button
+                onClick={handleRegenerateMyToken}
+                disabled={isRegeneratingToken}
+                className={`w-full px-4 py-3 rounded-lg font-medium transition-colors ${
+                  isRegeneratingToken
+                    ? 'bg-gray-200 text-gray-500 cursor-wait'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                }`}
+              >
+                {isRegeneratingToken ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    Generating...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <KeyIcon className="h-5 w-5" />
+                    Generate New Access Link
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Done button - shown after generating */}
+            {newTokenUrl && (
+              <button
+                onClick={handleBackToMenu}
+                className="w-full px-4 py-3 rounded-lg font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+              >
+                Done
+              </button>
+            )}
           </div>
         </div>
       </div>
