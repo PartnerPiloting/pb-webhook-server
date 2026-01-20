@@ -144,34 +144,30 @@ const Layout = ({ children }) => {
     );
   }
 
-  // Error state (allow Start Here publicly, require client code for other pages)
+  // Error state (allow Start Here publicly, require token for other pages)
   if (error) {
-    let testClient = '';
-    try { 
-      const u = new URL(window.location.href); 
-      testClient = u.searchParams.get('testClient') || localStorage.getItem('clientCode') || ''; 
-    } catch {}
-    
     // Allow Start Here to be viewed publicly without auth
     const isStartHere = pathname && pathname.startsWith('/start-here');
     
-    if (!testClient) {
-      // No client code provided
-      if (isStartHere) {
-        // Allow Start Here to render publicly
-        console.info('Layout: Rendering Start Here in public mode (no auth required)');
-      } else {
-        // Show client code entry form for all other pages
-        let errorMessage = null;
-        const msg = String(error?.message || '');
-        if (msg.includes('access has been suspended') || msg.includes('not Active')) {
-          errorMessage = 'Your membership has expired. Please check with your coach.';
-        }
-        return <ClientCodeEntry error={errorMessage} />;
-      }
+    if (isStartHere) {
+      // Allow Start Here to render publicly
+      console.info('Layout: Rendering Start Here in public mode (no auth required)');
     } else {
-      // Dev mode: log and continue rendering the app UI
-      console.warn('Layout: auth failed but continuing in dev mode (testClient present):', error);
+      // Show appropriate error message for all other pages
+      let errorMessage = null;
+      const msg = String(error?.message || '');
+      
+      if (msg.includes('portal link has been updated') || msg.includes('contact your coach for your new secure link')) {
+        errorMessage = 'Your portal link has been updated for security. Please contact your coach for your new secure link.';
+      } else if (msg.includes('Invalid') && msg.includes('link')) {
+        errorMessage = 'Invalid access link. Please contact your coach for a valid link.';
+      } else if (msg.includes('not currently active') || msg.includes('access has been suspended') || msg.includes('not Active')) {
+        errorMessage = 'Your membership has expired. Please check with your coach.';
+      } else {
+        errorMessage = 'Please enter your client code or contact your coach for access.';
+      }
+      
+      return <ClientCodeEntry error={errorMessage} />;
     }
   }
 

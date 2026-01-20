@@ -173,46 +173,12 @@ export async function getCurrentClientProfile() {
   } catch (error) {
     console.error('ClientUtils: Error fetching client profile:', error);
     
-    // Check for client parameter in URL
-    const urlParams = new URLSearchParams(window.location.search);
-  const clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient');
+    // No fallback profiles - always respect backend authentication
+    // The error message from the backend will be shown to the user
+    console.error('ClientUtils: Authentication failed');
     
-    // Only allow fallback if client parameter is explicitly provided
-  if (clientId) {
-    console.warn(`ClientUtils: Using fallback profile for clientId: ${clientId}`);
-      currentClientId = clientId;
-      clientProfile = {
-        client: {
-          clientId: clientId,
-      clientName: `${clientId} (${getEnvLabel()} Mode)`,
-          status: 'Active',
-          serviceLevel: 2
-        },
-        authentication: {
-          testMode: true
-        },
-        features: {
-          leadSearch: true,
-          leadManagement: true,
-          postScoring: true,
-          topScoringPosts: true
-        }
-      };
-      
-      return clientProfile;
-    } else {
-      // No client parameter - authentication failed, provide specific error messages
-      console.error('ClientUtils: Authentication failed and no clientId parameter provided');
-      
-      // Try to parse error response for better error messages
-      if (error.message.includes('401')) {
-        throw new Error('Please log in to Australian Side Hustles before accessing this portal.');
-      } else if (error.message.includes('403')) {
-        throw new Error('Your account does not have access to this portal. Please contact your coach.');
-      } else {
-        throw new Error('Authentication required. Please log in to access this portal.');
-      }
-    }
+    // Re-throw the error with the backend's message
+    throw error;
   }
 }
 
