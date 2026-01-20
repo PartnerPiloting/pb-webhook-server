@@ -1949,6 +1949,96 @@ router.get("/debug-clients", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
+// Generate Portal Tokens endpoint (Admin Only)
+// Generates secure tokens for client portal access
+// ---------------------------------------------------------------
+router.post("/admin/generate-portal-tokens", async (req, res) => {
+  const crypto = require('crypto');
+  const Airtable = require('airtable');
+  const logger = createLogger({ operation: 'generate_portal_tokens' });
+  logger.info("Generate portal tokens endpoint hit");
+  
+  // This is an admin endpoint - require debug key
+  const debugKey = req.headers['x-debug-key'] || req.query.debugKey || req.body?.debugKey;
+  if (!debugKey || debugKey !== (process.env.DEBUG_API_KEY || process.env.PB_WEBHOOK_SECRET)) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin authentication required. Provide debugKey parameter.'
+    });
+  }
+  
+  const { force = false, clientId = null } = req.body || {};
+  
+  try {
+    const clientService = require("../services/clientService");
+    const allClients = await clientService.getAllClients();
+    
+    // Filter to active clients, optionally just one specific client
+    let targetClients = allClients.filter(c => c.status === 'Active');
+    if (clientId) {
+      targetClients = targetClients.filter(c => c.clientId === clientId);
+    }
+    
+    // Filter to clients needing tokens (unless force regenerate)
+    if (!force) {
+      targetClients = targetClients.filter(c => !c.portalToken);
+    }
+    
+    if (targetClients.length === 0) {
+      return res.json({
+        success: true,
+        message: 'All active clients already have portal tokens',
+        hint: 'Use force=true to regenerate all tokens',
+        results: []
+      });
+    }
+    
+    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+    const results = [];
+    
+    for (const client of targetClients) {
+      // Generate a secure 24-character token
+      const newToken = crypto.randomBytes(18).toString('base64url');
+      const portalUrl = `https://ashportal.com.au/quick-update?token=${newToken}`;
+      
+      // Update Airtable
+      await base('Clients').update(client.id, {
+        'Portal Token': newToken
+      });
+      
+      results.push({
+        clientId: client.clientId,
+        clientName: client.clientName,
+        email: client.clientEmailAddress || null,
+        token: newToken,
+        portalUrl: portalUrl
+      });
+      
+      logger.info(`Generated token for ${client.clientName}: ${newToken.substring(0, 4)}...`);
+      
+      // Rate limiting
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    
+    // Clear client cache so new tokens are picked up
+    clientService.clearCache();
+    
+    res.json({
+      success: true,
+      message: `Generated tokens for ${results.length} client(s)`,
+      results: results
+    });
+    
+  } catch (error) {
+    logger.error("Generate portal tokens error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------
 // Debug Production Issues endpoint (Admin Only)
 // ---------------------------------------------------------------
 router.get("/debug-production-issues", async (req, res) => {
