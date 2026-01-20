@@ -33,6 +33,7 @@ const SettingsWithParams = () => {
   const [newTokenUrl, setNewTokenUrl] = useState(null);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [tokenError, setTokenError] = useState(null);
+  const [emailSentTo, setEmailSentTo] = useState(null); // Track if backup email was sent
 
   // Set initial view based on service level
   useEffect(() => {
@@ -92,6 +93,7 @@ const SettingsWithParams = () => {
     setNewTokenUrl(null);
     setTokenCopied(false);
     setTokenError(null);
+    setEmailSentTo(null);
   };
 
   // Regenerate the client's own portal token
@@ -99,6 +101,7 @@ const SettingsWithParams = () => {
     setIsRegeneratingToken(true);
     setTokenError(null);
     setNewTokenUrl(null);
+    setEmailSentTo(null);
     
     try {
       const backendBase = getBackendBase();
@@ -113,6 +116,9 @@ const SettingsWithParams = () => {
       
       if (data.success) {
         setNewTokenUrl(data.portalUrl);
+        if (data.emailSent && data.emailAddress) {
+          setEmailSentTo(data.emailAddress);
+        }
       } else {
         setTokenError(data.message || data.error || 'Failed to generate new token');
       }
@@ -755,9 +761,15 @@ const SettingsWithParams = () => {
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-green-600 mt-2">
-                  Save this link now. You will need to use it to access the portal.
-                </p>
+                {emailSentTo ? (
+                  <p className="text-xs text-green-600 mt-2">
+                    📧 A backup copy was also sent to <strong>{emailSentTo}</strong>
+                  </p>
+                ) : (
+                  <p className="text-xs text-green-600 mt-2">
+                    Save this link now. You will need to use it to access the portal.
+                  </p>
+                )}
               </div>
             )}
 

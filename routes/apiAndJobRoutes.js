@@ -1970,6 +1970,7 @@ router.post("/api/regenerate-my-token", async (req, res) => {
   
   try {
     const clientService = require("../services/clientService");
+    const { sendAlertEmail } = require("../services/emailNotificationService");
     
     // Find client by their current token
     const allClients = await clientService.getAllClients();
@@ -1998,11 +1999,48 @@ router.post("/api/regenerate-my-token", async (req, res) => {
     
     logger.info(`Client ${client.clientName} regenerated their own token`);
     
+    // Email the new link to the client as a backup
+    let emailSent = false;
+    if (client.clientEmailAddress) {
+      try {
+        const emailResult = await sendAlertEmail(
+          'Your New ASH Portal Access Link',
+          `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #1e3a5f;">New Portal Access Link</h2>
+              <p>Hi ${client.clientName || 'there'},</p>
+              <p>You recently requested a new access link for your ASH Lead Scoring Portal. Here it is:</p>
+              <div style="background: #f0f9ff; border: 1px solid #0284c7; border-radius: 8px; padding: 16px; margin: 20px 0;">
+                <p style="margin: 0; font-size: 14px; word-break: break-all;">
+                  <a href="${portalUrl}" style="color: #0284c7;">${portalUrl}</a>
+                </p>
+              </div>
+              <p><strong>Important:</strong> Your old access link no longer works. Save this email or bookmark the new link.</p>
+              <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+                If you didn't request this change, please contact support immediately.
+              </p>
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+              <p style="color: #9ca3af; font-size: 11px;">ASH Lead Scoring Portal</p>
+            </div>
+          `,
+          client.clientEmailAddress
+        );
+        emailSent = emailResult.success;
+        if (emailSent) {
+          logger.info(`Backup email sent to ${client.clientEmailAddress}`);
+        }
+      } catch (emailErr) {
+        logger.warn(`Failed to send backup email: ${emailErr.message}`);
+      }
+    }
+    
     res.json({
       success: true,
       message: 'New access link generated successfully',
       token: newToken,
       portalUrl: portalUrl,
+      emailSent: emailSent,
+      emailAddress: emailSent ? client.clientEmailAddress : null,
       warning: 'Your old link will stop working immediately. Save this new link now.'
     });
     
