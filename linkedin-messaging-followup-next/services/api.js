@@ -1094,19 +1094,17 @@ export const togglePostAttributeActive = async (attributeId, isActive) => {
 // Get current token usage
 export const getTokenUsage = async () => {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const baseUrl = getBackendBase();
     
-    // Get client parameter from URL for authentication
-    const urlParams = new URLSearchParams(window.location.search);
-    const testClient = urlParams.get('testClient');
-    const client = urlParams.get('client');
-    const clientId = testClient || client;
+    // Get client ID from clientUtils (works with token-based auth)
+    const clientId = getCurrentClientId();
     
     if (!clientId) {
-      throw new Error('Client ID not found in URL parameters');
+      console.warn('getTokenUsage: Client ID not available yet');
+      throw new Error('Client ID not available');
     }
     
-    const response = await fetch(`${baseUrl}/api/token-usage?client=${encodeURIComponent(clientId)}`, {
+    const response = await fetch(`${baseUrl}/api/token-usage`, {
       method: 'GET',
       headers: getAuthenticatedHeaders()
     });
@@ -1125,19 +1123,17 @@ export const getTokenUsage = async () => {
 // Get current post token usage
 export const getPostTokenUsage = async () => {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
+    const baseUrl = getBackendBase();
     
-    // Get client parameter from URL for authentication
-    const urlParams = new URLSearchParams(window.location.search);
-    const testClient = urlParams.get('testClient');
-    const client = urlParams.get('client');
-    const clientId = testClient || client;
+    // Get client ID from clientUtils (works with token-based auth)
+    const clientId = getCurrentClientId();
     
     if (!clientId) {
-      throw new Error('Client ID not found in URL parameters');
+      console.warn('getPostTokenUsage: Client ID not available yet');
+      throw new Error('Client ID not available');
     }
     
-    const response = await fetch(`${baseUrl}/api/post-token-usage?client=${encodeURIComponent(clientId)}`, {
+    const response = await fetch(`${baseUrl}/api/post-token-usage`, {
       method: 'GET',
       headers: getAuthenticatedHeaders()
     });
