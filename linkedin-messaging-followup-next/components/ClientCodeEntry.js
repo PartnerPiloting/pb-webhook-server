@@ -1,55 +1,6 @@
 "use client";
-import { useState } from 'react';
 
-export default function ClientCodeEntry({ onSubmit, error: initialError = null }) {
-  const [clientCode, setClientCode] = useState('');
-  const [isChecking, setIsChecking] = useState(false);
-  const [error, setError] = useState(initialError);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const code = clientCode.trim();
-    if (!code) {
-      setError('Please enter your client code');
-      return;
-    }
-
-    setIsChecking(true);
-    setError(null);
-
-    try {
-      // Validate the client code by calling the backend
-      const { getBackendBase } = await import('../services/api');
-      const backendUrl = getBackendBase();
-      const response = await fetch(`${backendUrl}/api/auth/test?testClient=${encodeURIComponent(code)}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.status === 'success' && data.client?.status === 'Active') {
-          // Valid and active - store in localStorage and redirect with client param
-          // Also set testClient for backwards compatibility with existing code
-          localStorage.setItem('clientCode', code);
-          const url = new URL(window.location.href);
-          url.searchParams.set('client', code);      // New standard param
-          url.searchParams.set('testClient', code);  // Legacy compatibility
-          window.location.href = url.toString();
-          return;
-        } else if (data.client?.status !== 'Active') {
-          setError('Your membership has expired. Please check with your coach.');
-        } else {
-          setError('Client code not found');
-        }
-      } else {
-        setError('Client code not found');
-      }
-    } catch (err) {
-      console.error('Client code validation error:', err);
-      setError('Unable to validate client code. Please try again.');
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
+export default function ClientCodeEntry({ error = null }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
@@ -61,48 +12,32 @@ export default function ClientCodeEntry({ onSubmit, error: initialError = null }
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Required</h2>
           <p className="text-gray-600">
-            Please enter your client code to access this area
+            Please use the secure link your coach sent you to access this portal.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="clientCode" className="block text-sm font-medium text-gray-700 mb-1">
-              Client Code
-            </label>
-            <input
-              id="clientCode"
-              type="text"
-              value={clientCode}
-              onChange={(e) => setClientCode(e.target.value)}
-              placeholder="e.g., Guy-Wilson"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              disabled={isChecking}
-              autoFocus
-            />
+        {error && (
+          <div className="bg-amber-50 border border-amber-200 rounded-md p-4 mb-6">
+            <p className="text-sm text-amber-800">{error}</p>
           </div>
+        )}
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isChecking}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isChecking ? 'Checking...' : 'Continue'}
-          </button>
-        </form>
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+          <h3 className="font-medium text-blue-900 mb-2">How to access:</h3>
+          <ul className="text-sm text-blue-800 space-y-2">
+            <li>• Check your email for a link from your coach</li>
+            <li>• Bookmark that link for easy access in the future</li>
+            <li>• If you can't find it, contact your coach for a new link</li>
+          </ul>
+        </div>
 
         <div className="mt-6 pt-6 border-t border-gray-200">
           <p className="text-xs text-gray-500 text-center">
-            Don't have a client code? Contact your Australian Side Hustles coach to get started.
+            Need help? Contact your Australian Side Hustles coach.
           </p>
         </div>
       </div>
     </div>
   );
 }
+
