@@ -69,26 +69,40 @@ function parseJSONWithFix(jsonText) {
  */
 export async function getCurrentClientProfile() {
   try {
-    // Check for client parameter in URL (prefer clientId, fallback to testClient for backward compatibility)
+    // Check for client parameter in URL (prefer token for secure access)
     const urlParams = new URLSearchParams(window.location.search);
     console.log('ClientUtils: Current URL:', window.location.href);
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-  const clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient') || localStorage.getItem('clientCode');
+    // Priority: token (secure) > clientId (legacy) > localStorage
+    const portalToken = urlParams.get('token');
+    const clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient') || localStorage.getItem('clientCode');
+    const devKey = urlParams.get('devKey');
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
     
+    console.log('ClientUtils: Extracted portalToken:', portalToken ? `${portalToken.substring(0, 4)}...` : null);
     console.log('ClientUtils: Extracted clientId:', clientId);
     console.log('ClientUtils: (from localStorage):', localStorage.getItem('clientCode'));
     console.log('ClientUtils: Extracted wpUserId:', wpUserId);
     
     let apiUrl = '/api/auth/test';
     
-    // If client ID specified, use test mode
-    if (clientId) {
-      console.log(`ClientUtils: Using client ID from URL: ${clientId}`);
-  apiUrl += `?clientId=${encodeURIComponent(clientId)}`;
+    // If portal token specified, use secure token auth
+    if (portalToken) {
+      console.log(`ClientUtils: Using portal token for authentication`);
+      apiUrl += `?token=${encodeURIComponent(portalToken)}`;
+    }
+    // If client ID with dev key specified, use dev mode
+    else if (clientId && devKey) {
+      console.log(`ClientUtils: Using client ID with dev key: ${clientId}`);
+      apiUrl += `?clientId=${encodeURIComponent(clientId)}&devKey=${encodeURIComponent(devKey)}`;
+    }
+    // If client ID specified without dev key (legacy - will fail gracefully)
+    else if (clientId) {
+      console.log(`ClientUtils: Using client ID from URL (legacy mode): ${clientId}`);
+      apiUrl += `?clientId=${encodeURIComponent(clientId)}`;
     } 
     // If WordPress User ID provided, use that for authentication
     else if (wpUserId) {
@@ -105,13 +119,30 @@ export async function getCurrentClientProfile() {
       method: 'GET',
       headers: {
   'Content-Type': 'application/json',
-  'x-client-id': clientId,
+  'x-client-id': clientId || '',
       }
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`ClientUtils: API Error ${response.status}:`, errorText);
+      
+      // Try to parse error response for specific messages
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.code === 'LINK_UPDATED') {
+          throw new Error(errorData.message || 'Your portal link has been updated. Please contact your coach for your new secure link.');
+        }
+        if (errorData.code === 'INVALID_TOKEN') {
+          throw new Error(errorData.message || 'Invalid access link. Please contact your coach for a valid link.');
+        }
+        if (errorData.code === 'CLIENT_INACTIVE') {
+          throw new Error(errorData.message || 'Your account is not currently active. Please contact your coach.');
+        }
+      } catch (parseErr) {
+        // If JSON parsing fails, continue with generic error
+      }
+      
       throw new Error(`Failed to get user profile: ${response.status} ${response.statusText}`);
     }
 

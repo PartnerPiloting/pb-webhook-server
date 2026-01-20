@@ -227,44 +227,98 @@ function requireServiceLevel(requiredLevel) {
 }
 
 /**
- * Optional middleware that allows bypassing auth for testing
- * Looks for a test client ID in query params
+ * Secure middleware for portal access
+ * 
+ * Authentication methods (in order of priority):
+ * 1. Portal Token (?token=xxx) - Secure client-specific token
+ * 2. Dev Key (?client=xxx&devKey=yyy) - Admin/developer access
+ * 3. x-client-id header (internal API calls only, requires devKey in production)
+ * 4. WordPress authentication (fallback)
+ * 
+ * Old-style ?client=xxx without devKey shows friendly message to contact coach.
  */
 async function authenticateUserWithTestMode(req, res, next) {
     try {
-        // Check for test mode - accept testClient, clientId (query) and x-client-id (header)
-        const testClientId = req.query.testClient || req.query.clientId || req.headers['x-client-id'];
-        if (testClientId) {
-            logger.info(`AuthMiddleware: Test mode activated for client: ${testClientId}`);
-            const client = await clientService.getClientById(testClientId);
+        const devKey = process.env.PORTAL_DEV_KEY || process.env.PB_WEBHOOK_SECRET;
+        
+        // 1. Check for Portal Token (secure client access)
+        const portalToken = req.query.token;
+        if (portalToken) {
+            logger.info(`AuthMiddleware: Portal token authentication attempt`);
+            const client = await clientService.getClientByPortalToken(portalToken);
             
             if (!client) {
-                return res.status(404).json({
+                return res.status(401).json({
                     status: 'error',
-                    code: 'TEST_CLIENT_NOT_FOUND',
-                    message: `Test client ${testClientId} not found`
+                    code: 'INVALID_TOKEN',
+                    message: 'Invalid or expired access link. Please contact your coach for a new link.'
                 });
             }
             
             if (client.status !== 'Active') {
                 return res.status(403).json({
                     status: 'error',
-                    code: 'TEST_CLIENT_INACTIVE',
-                    message: `Test client ${testClientId} is not active`
+                    code: 'CLIENT_INACTIVE',
+                    message: 'Your account is not currently active. Please contact your coach.'
+                });
+            }
+            
+            req.client = client;
+            req.testMode = false;
+            req.authMethod = 'portalToken';
+            logger.info(`AuthMiddleware: Portal token auth successful for ${client.clientName}`);
+            return next();
+        }
+        
+        // 2. Check for Dev Key (admin/developer access)
+        const providedDevKey = req.query.devKey || req.headers['x-dev-key'];
+        const clientId = req.query.testClient || req.query.client || req.query.clientId || req.headers['x-client-id'];
+        
+        if (clientId && providedDevKey) {
+            // Validate dev key
+            if (providedDevKey !== devKey) {
+                logger.warn(`AuthMiddleware: Invalid dev key attempted for client: ${clientId}`);
+                return res.status(401).json({
+                    status: 'error',
+                    code: 'INVALID_DEV_KEY',
+                    message: 'Invalid developer key.'
+                });
+            }
+            
+            logger.info(`AuthMiddleware: Dev key access for client: ${clientId}`);
+            const client = await clientService.getClientById(clientId);
+            
+            if (!client) {
+                return res.status(404).json({
+                    status: 'error',
+                    code: 'CLIENT_NOT_FOUND',
+                    message: `Client ${clientId} not found`
                 });
             }
             
             req.client = client;
             req.testMode = true;
-            logger.info(`AuthMiddleware: Test mode successful for ${client.clientName}`);
+            req.authMethod = 'devKey';
+            logger.info(`AuthMiddleware: Dev key auth successful for ${client.clientName}`);
             return next();
         }
         
-        // Fall back to normal authentication
+        // 3. Check for old-style client ID without token/devKey (show friendly message)
+        if (clientId && !providedDevKey && !portalToken) {
+            logger.warn(`AuthMiddleware: Old-style client access attempted: ${clientId}`);
+            return res.status(401).json({
+                status: 'error',
+                code: 'LINK_UPDATED',
+                message: 'Your portal link has been updated for security. Please contact your coach for your new secure link, or check your email as it may have already been sent to you.',
+                friendlyMessage: true
+            });
+        }
+        
+        // 4. Fall back to WordPress authentication
         return authenticateUser(req, res, next);
         
     } catch (error) {
-        logger.error('AuthMiddleware: Error during test authentication:', error);
+        logger.error('AuthMiddleware: Error during authentication:', error);
         return res.status(500).json({
             status: 'error',
             code: 'AUTH_ERROR',
