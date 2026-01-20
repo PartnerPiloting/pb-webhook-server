@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ClientIdPrompt from '../../components/ClientIdPrompt';
 import { verifyCalendarConnection, updateClientTimezone, updateClientCalendarEmail } from '../../services/api';
-import { setCurrentClientId, initializeClient, getCurrentClientId, getCurrentPortalToken } from '../../utils/clientUtils';
+import { setCurrentClientId, initializeClient, getCurrentClientId, getCurrentPortalToken, buildAuthUrl } from '../../utils/clientUtils';
 
 interface FormData {
   yourName: string;
