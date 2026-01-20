@@ -163,7 +163,7 @@ app.use(cors({
     credentials: true,
     // Include PATCH for incremental updates (e.g., search terms)
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-WP-Nonce', 'Cookie', 'x-client-id', 'x-portal-token', 'x-dev-key'],
     optionsSuccessStatus: 204
 }));
 moduleLogger.info("CORS enabled for allowed origins including *.vercel.app and staging frontend");
