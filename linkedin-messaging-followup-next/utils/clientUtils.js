@@ -77,8 +77,15 @@ export async function getCurrentClientProfile() {
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-    // Priority: token (secure) > clientId (legacy) > localStorage
-    const portalToken = urlParams.get('token');
+    // Priority: token from URL > token from sessionStorage > clientId (legacy) > localStorage
+    // sessionStorage persists tokens across page refreshes (but not new tabs/windows - that's intentional for security)
+    let portalToken = urlParams.get('token');
+    if (!portalToken && typeof sessionStorage !== 'undefined') {
+      portalToken = sessionStorage.getItem('portalToken');
+      if (portalToken) {
+        console.log('ClientUtils: Retrieved token from sessionStorage');
+      }
+    }
     const clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient') || localStorage.getItem('clientCode');
     const devKey = urlParams.get('devKey');
     // Handle case-insensitive wpUserId parameter variations
@@ -96,6 +103,10 @@ export async function getCurrentClientProfile() {
       console.log(`ClientUtils: Using portal token for authentication`);
       apiUrl += `?token=${encodeURIComponent(portalToken)}`;
       currentPortalToken = portalToken; // Cache token for API calls
+      // Also persist to sessionStorage for page refresh resilience
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('portalToken', portalToken);
+      }
     }
     // If client ID with dev key specified, use dev mode
     else if (clientId && devKey) {
@@ -240,6 +251,10 @@ export function clearClientData() {
   clientProfile = null;
   currentPortalToken = null;
   currentDevKey = null;
+  // Also clear sessionStorage token
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem('portalToken');
+  }
   console.log('ClientUtils: Client data cleared');
 }
 
