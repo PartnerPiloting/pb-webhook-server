@@ -50,7 +50,8 @@ export default function OwnerDashboardPage() {
   // Validate token authentication on mount
   useEffect(() => {
     const validateAccess = async () => {
-      const token = searchParams.get('token');
+      // Also check sessionStorage for token (persisted after URL cleaning for demo security)
+      const token = searchParams.get('token') || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('portalToken') : null);
       const devKey = searchParams.get('devKey');
       
       // Require token or devKey for owner dashboard

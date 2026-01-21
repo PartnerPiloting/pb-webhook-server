@@ -18,7 +18,8 @@ function HomeContent() {
   useEffect(() => {
     const validateAccess = async () => {
       // Check for token (secure), client, clientId, or testClient (legacy) parameter
-      const token = searchParams.get('token');
+      // Also check sessionStorage for token (persisted after URL cleaning for demo security)
+      const token = searchParams.get('token') || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('portalToken') : null);
       const clientId = searchParams.get('client') || searchParams.get('clientId') || searchParams.get('testClient');
       
       // If no token or client ID, redirect to membership required page
