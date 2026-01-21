@@ -801,12 +801,12 @@ function CalendarBookingContent() {
     }
     
     const emailPart = includeEmailInConfirm && formData.leadEmail 
-      ? ` to ${formData.leadEmail}` 
+      ? ` (to ${formData.leadEmail})` 
       : '';
     
     const message = `Great ${leadFirstName},
 
-I've sent you a calendar invite with a Zoom link for ${meetingTimeDisplay}${emailPart}. Does that work for you?
+I've sent you a calendar invite${emailPart} with a Zoom link for ${meetingTimeDisplay}. Did it come through?
 
 Talk Soon
 ${yourFirstName}`;

@@ -7191,9 +7191,10 @@ OPENING:
 - If they said "Sure!" you say "Great!" - mirror their enthusiasm
 
 BODY:
-- Say "I've sent you a calendar invite with a Zoom link" (PAST TENSE - it's already sent!)
-- Include the meeting time: "for [day, date] at [time]"
-- Add a quick confirmation ask: "Does that work for you?"
+- Say "I've sent you a calendar invite" (PAST TENSE - it's already sent!)
+- If you have the lead's email, add "(to their-email@example.com)" right after "calendar invite"
+- Then "with a Zoom link for [day, date] at [time]"
+- Add a quick confirmation ask: "Did it come through?"
 - ${sameTimezone ? 'Just say "Monday, 12 January at 10:00 am" - no timezone needed since you\'re both in the same timezone' : `Convert to ${leadFirstName}'s timezone and include "(${leadCity} time)"`}
 
 SIGNATURE:
@@ -7210,10 +7211,10 @@ TONE:
 EXAMPLE OF GOOD CONFIRMATION:
 "Great Fabrice,
 
-I've sent you a calendar invite with a Zoom link for Monday, 12 January at 10:00 am. Does that work for you?
+I've sent you a calendar invite (to fabrice@example.com) with a Zoom link for Monday, 12 January at 10:00 am. Did it come through?
 
 Talk Soon
-(I know a) Guy"
+Guy"
 
 RESPONSE STYLE:
 - Be conversational but concise
