@@ -7329,7 +7329,8 @@ CALENDAR DATA RANGE:
       // Soft conflicts are events marked as "free/available" in the calendar - not true blocks but worth noting
       calendarContext += `\n\nFREE SLOTS (30min):\n${availabilitySlots.map(s => {
         if (s.freeSlots.length === 0) return `${s.day}: Busy`;
-        const slotDisplays = s.freeSlots.slice(0, 6).map(f => {
+        // Show up to 16 slots per day (covers 9am-5pm fully) - was 6 which truncated afternoon availability
+        const slotDisplays = s.freeSlots.slice(0, 16).map(f => {
           const timeDisplay = f.displayRange || f.display;
           // Add ⓘ indicator if there's a soft conflict (overlapping "free" event)
           return f.softConflict ? `${timeDisplay}ⓘ` : timeDisplay;
