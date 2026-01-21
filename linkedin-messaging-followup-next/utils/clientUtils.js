@@ -172,6 +172,19 @@ export async function getCurrentClientProfile() {
       serviceLevel: data.client?.serviceLevel
     });
     
+    // SECURITY: Clean token from URL after successful authentication
+    // This prevents token exposure in screenshots during demos/screen shares
+    // The token is already cached in memory for API calls
+    if (typeof window !== 'undefined' && currentPortalToken) {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('token')) {
+        url.searchParams.delete('token');
+        // Use replaceState to update URL without adding to history
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+        console.log('ClientUtils: Token removed from URL for security');
+      }
+    }
+    
     return data;
     
   } catch (error) {
