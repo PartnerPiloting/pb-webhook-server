@@ -63,7 +63,12 @@ const CoachedClients = () => {
       
       if (data.success && data.token) {
         const token = data.token;
-        const url = data.portalUrl || `https://ashportal.com.au/quick-update?token=${token}`;
+        // Use portalUrl from backend (environment-aware), or construct based on current host
+        const isStaging = typeof window !== 'undefined' && window.location.hostname.includes('staging');
+        const fallbackBase = isStaging 
+          ? 'https://pb-webhook-server-staging.vercel.app'
+          : 'https://pb-webhook-server.vercel.app';
+        const url = data.portalUrl || `${fallbackBase}/?token=${token}`;
         setGeneratedTokens(prev => ({
           ...prev,
           [clientId]: { token, url, copied: false }
