@@ -41,69 +41,103 @@ function parseGmailThread(body, senderName, referenceDate) {
         return messages;
     }
     
-    // Pattern for Gmail quote headers: "On Day, DD Mon YYYY at HH:MM, Name <email> wrote:"
-    const quoteHeaderPattern = /On\s+(?:\w+,?\s+)?(\d{1,2}\s+\w+\s+\d{4})\s+at\s+(\d{1,2}:\d{2}),?\s+([^<]+?)\s*<[^>]+>\s*wrote:/gi;
+    logger.info(`parseGmailThread input (first 500 chars): ${body.substring(0, 500).replace(/\n/g, '\\n')}`);
     
-    // Split by quote headers
-    const parts = body.split(quoteHeaderPattern);
+    // Pattern for Gmail quote headers (with optional > prefixes):
+    // ">* On Day, DD Mon YYYY at HH:MM, Name <email> wrote:"
+    const quoteHeaderPattern = /^>*\s*On\s+(?:\w+,?\s+)?(\d{1,2}\s+\w+\s+\d{4})\s+at\s+(\d{1,2}:\d{2}),?\s+([^<]+?)\s*<[^>]+>\s*wrote:\s*$/i;
     
-    logger.info(`parseGmailThread: Split into ${parts.length} parts`);
+    const lines = body.split('\n');
     
-    // First part is the new message (before any "On ... wrote:")
-    if (parts[0]) {
-        let newMessage = parts[0].trim();
+    // State machine approach
+    let currentMessage = [];
+    let currentSender = senderName;  // First message is from the email sender
+    let currentDate = formatTimestamp(referenceDate);
+    let pendingHeader = null;  // Store parsed header info for next message
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmedLine = line.trim();
         
-        // Remove signature
-        newMessage = removeSignature(newMessage);
+        // Check if this line is a quote header
+        const headerMatch = trimmedLine.match(quoteHeaderPattern);
         
-        if (newMessage) {
-            const timestamp = formatTimestamp(referenceDate);
-            messages.push({
-                date: timestamp.date,
-                time: timestamp.time,
-                sender: senderName,
-                message: newMessage.replace(/\n+/g, ' ').trim()
-            });
-            logger.info(`New message from ${senderName}: "${newMessage.substring(0, 50)}..."`);
+        if (headerMatch) {
+            // Save current message before starting new one
+            if (currentMessage.length > 0) {
+                let msgText = currentMessage.join(' ').trim();
+                msgText = removeSignature(msgText);
+                
+                if (msgText) {
+                    messages.push({
+                        date: currentDate.date,
+                        time: currentDate.time,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                    logger.info(`Parsed message from ${currentSender}: "${msgText.substring(0, 50)}..."`);
+                }
+            }
+            
+            // Set up for next message (from the quoted person)
+            currentSender = headerMatch[3].trim();
+            currentDate = parseQuotedDate(headerMatch[1], headerMatch[2]);
+            currentMessage = [];
+            continue;
+        }
+        
+        // Skip empty lines at start of message
+        if (currentMessage.length === 0 && !trimmedLine) {
+            continue;
+        }
+        
+        // Remove quote prefixes (>, >>, etc.) and add to current message
+        const cleanLine = line.replace(/^>+\s?/, '').trim();
+        
+        // Skip signature markers and what follows
+        if (cleanLine === '--' || cleanLine === '-- ') {
+            // Save current message and stop processing this thread level
+            if (currentMessage.length > 0) {
+                let msgText = currentMessage.join(' ').trim();
+                msgText = removeSignature(msgText);
+                
+                if (msgText) {
+                    messages.push({
+                        date: currentDate.date,
+                        time: currentDate.time,
+                        sender: currentSender,
+                        message: msgText
+                    });
+                    logger.info(`Parsed message from ${currentSender}: "${msgText.substring(0, 50)}..."`);
+                }
+                currentMessage = [];
+            }
+            // Skip until next quote header
+            continue;
+        }
+        
+        if (cleanLine) {
+            currentMessage.push(cleanLine);
         }
     }
     
-    // Remaining parts come in groups of 4: [content, date, time, sender, content, date, time, sender, ...]
-    // Actually the regex captures 3 groups: date, time, sender
-    // So parts are: [newMsg, date1, time1, sender1, quotedContent1, date2, time2, sender2, quotedContent2, ...]
-    for (let i = 1; i < parts.length; i += 4) {
-        const dateStr = parts[i];
-        const timeStr = parts[i + 1];
-        const quotedSender = parts[i + 2];
-        const quotedContent = parts[i + 3];
+    // Don't forget the last message
+    if (currentMessage.length > 0) {
+        let msgText = currentMessage.join(' ').trim();
+        msgText = removeSignature(msgText);
         
-        if (!quotedContent) continue;
-        
-        // Remove quote prefixes (> or >>)
-        let cleanContent = quotedContent
-            .split('\n')
-            .map(line => line.replace(/^>+\s?/, '').trim())
-            .filter(line => line && !line.match(/^On\s+.+wrote:$/i)) // Remove nested quote headers
-            .join(' ')
-            .trim();
-        
-        // Remove signature from quoted content
-        cleanContent = removeSignature(cleanContent);
-        
-        if (!cleanContent) continue;
-        
-        // Parse the date
-        const parsedDate = parseQuotedDate(dateStr, timeStr);
-        
-        messages.push({
-            date: parsedDate.date,
-            time: parsedDate.time,
-            sender: quotedSender.trim(),
-            message: cleanContent
-        });
-        
-        logger.info(`Quoted message from ${quotedSender}: "${cleanContent.substring(0, 50)}..."`);
+        if (msgText) {
+            messages.push({
+                date: currentDate.date,
+                time: currentDate.time,
+                sender: currentSender,
+                message: msgText
+            });
+            logger.info(`Parsed message from ${currentSender}: "${msgText.substring(0, 50)}..."`);
+        }
     }
+    
+    logger.info(`parseGmailThread: Extracted ${messages.length} messages`);
     
     return messages;
 }
