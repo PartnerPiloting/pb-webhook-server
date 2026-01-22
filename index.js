@@ -132,6 +132,7 @@ if (!postAnalysisConfig.attributesTableName || !postAnalysisConfig.promptCompone
 const app = express();
 
 app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" })); // For Mailgun webhooks (form-urlencoded)
 
 // Add CORS configuration to allow frontend requests
 // Note: The CORS package does not treat wildcard strings in the origin array as patterns.
