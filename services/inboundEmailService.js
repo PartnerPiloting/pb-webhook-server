@@ -3,10 +3,10 @@
 // Handles client authentication via email, lead lookup, and note updates
 // 
 // REFACTORED: Uses existing clientService and airtableClient patterns
+// Simplified email formatting: DD-MM-YY HH:MM AM/PM - SenderName - message
 
 require('dotenv').config();
 const { createLogger } = require('../utils/contextLogger');
-const { parseConversation } = require('../utils/messageParser');
 const { updateSection } = require('../utils/notesSectionManager');
 const clientService = require('./clientService');
 const { createBaseInstance } = require('../config/airtableClient');
@@ -102,19 +102,20 @@ async function findLeadByEmail(client, leadEmail) {
 
 /**
  * Update lead with email content
- * Uses same pattern as quick-update: parseConversation + updateSection
+ * Simple format: DD-MM-YY HH:MM AM/PM - SenderName - message
+ * Subject only shown once at the top of each new email entry
  * @param {Object} client - Client object
  * @param {Object} lead - Lead object (with id, notes)
- * @param {Object} emailData - Parsed email data
+ * @param {Object} emailData - Parsed email data including senderName
  * @returns {Promise<Object>} Updated lead
  */
 async function updateLeadWithEmail(client, lead, emailData) {
-    const { subject, bodyPlain, bodyHtml } = emailData;
+    const { subject, bodyPlain, bodyHtml, senderName } = emailData;
 
     // Use existing airtableClient pattern
     const clientBase = createBaseInstance(client.airtableBaseId);
 
-    // Use client's timezone for reference date (same pattern as quick-update)
+    // Use client's timezone for formatting the timestamp
     let referenceDate = new Date();
     const clientTimezone = client.timezone;
     if (clientTimezone) {
@@ -126,25 +127,44 @@ async function updateLeadWithEmail(client, lead, emailData) {
         }
     }
 
-    // Parse the email content using existing parser (same as quick-update)
-    const emailContent = bodyPlain || bodyHtml || '';
-    const clientFirstName = client.clientFirstName || client.clientName?.split(' ')[0] || 'Me';
+    // Format timestamp as DD-MM-YY HH:MM AM/PM
+    const day = String(referenceDate.getDate()).padStart(2, '0');
+    const month = String(referenceDate.getMonth() + 1).padStart(2, '0');
+    const year = String(referenceDate.getFullYear()).slice(-2);
     
-    const parsedResult = await parseConversation(emailContent, {
-        clientFirstName,
-        referenceDate,
-        newestFirst: true,
-        forceFormat: 'email'  // Force parsing to email format (same as quick-update)
-    });
+    let hours = referenceDate.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // 0 should be 12
+    const minutes = String(referenceDate.getMinutes()).padStart(2, '0');
+    
+    const timestamp = `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
 
-    // Prepare content with subject line
+    // Clean up the email body - use stripped text (just the new message, no quoted replies)
+    let messageContent = (bodyPlain || bodyHtml || '').trim();
+    
+    // Remove signature blocks (-- followed by content)
+    const signatureIndex = messageContent.indexOf('\n-- \n');
+    if (signatureIndex > 0) {
+        messageContent = messageContent.substring(0, signatureIndex).trim();
+    }
+    
+    // Remove common signature patterns at end
+    messageContent = messageContent
+        .replace(/\n(?:Kind Regards|Best Regards|Regards|Cheers|Thanks|Best),?\s*\n[\s\S]*$/i, '')
+        .trim();
+
+    // Format as single line: DD-MM-YY HH:MM AM/PM - SenderName - message
+    const formattedLine = `${timestamp} - ${senderName} - ${messageContent.replace(/\n+/g, ' ')}`;
+
+    // Build the content to append
     let processedContent = '';
     if (subject) {
-        processedContent = `Subject: ${subject}\n\n`;
+        processedContent = `Subject: ${subject}\n`;
     }
-    processedContent += parsedResult.formatted || emailContent;
+    processedContent += formattedLine;
 
-    // Update the Email section in notes - APPEND mode (same as quick-update for email section)
+    // Update the Email section in notes - APPEND mode
     const noteUpdateResult = updateSection(lead.notes || '', 'email', processedContent, { 
         append: true, 
         replace: false 
@@ -169,14 +189,13 @@ async function updateLeadWithEmail(client, lead, emailData) {
         throw new Error('Failed to update lead record');
     }
 
-    logger.info(`Updated lead ${lead.id} with email content, follow-up: ${followUpDateStr}`);
+    logger.info(`Updated lead ${lead.id} with email from ${senderName}, follow-up: ${followUpDateStr}`);
 
     return {
         id: lead.id,
         updatedFields: Object.keys(updates),
         followUpDate: followUpDateStr,
-        messageCount: parsedResult.messageCount || 1,
-        usedAI: parsedResult.usedAI
+        senderName
     };
 }
 
@@ -270,6 +289,29 @@ ASH Portal Team`
         req.write(data);
         req.end();
     });
+}
+
+/**
+ * Extract sender name from email From header
+ * @param {string} fromHeader - e.g. "Guy Wilson <guyralphwilson@gmail.com>"
+ * @returns {string} The sender's name, or email if no name found
+ */
+function extractSenderName(fromHeader) {
+    if (!fromHeader) return 'Unknown';
+    
+    // Pattern: "Name <email@example.com>"
+    const nameMatch = fromHeader.match(/^([^<]+)</);
+    if (nameMatch) {
+        return nameMatch[1].trim();
+    }
+    
+    // If just an email, extract the part before @
+    const emailMatch = fromHeader.match(/([^@]+)@/);
+    if (emailMatch) {
+        return emailMatch[1].trim();
+    }
+    
+    return fromHeader.trim();
 }
 
 /**
@@ -371,11 +413,15 @@ async function processInboundEmail(mailgunData) {
 
     // Step 3: Update lead with email content
     try {
+        // Extract sender name from From header for proper attribution
+        const senderName = extractSenderName(from || sender);
+        
         const result = await updateLeadWithEmail(client, lead, {
             subject,
             bodyPlain: strippedText || bodyPlain,
             bodyHtml,
-            timestamp
+            timestamp,
+            senderName  // Pass the extracted sender name
         });
 
         return {
