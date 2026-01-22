@@ -56,7 +56,8 @@ const CLIENT_FIELDS = {
   AUTO_ADJUST_FLOORS: 'Auto Adjust Floors',
   ACTIVE: 'Active',
   TIMEZONE: 'Timezone',
-  GOOGLE_CALENDAR_EMAIL: 'Google Calendar Email'
+  GOOGLE_CALENDAR_EMAIL: 'Google Calendar Email',
+  ALTERNATIVE_EMAIL_ADDRESSES: 'Alternative Email Addresses' // Semicolon-separated list for inbound email matching
 };
 
 // Field names for Leads table
