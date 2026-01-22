@@ -331,13 +331,21 @@ ASH Portal Team`
 function extractRecipientEmail(mailgunData) {
     // Mailgun provides the "To" header which contains the lead's email
     // The BCC (our tracking address) comes in as "recipient"
+    // Note: Mailgun sends To in different places depending on content-type
     
-    const toHeader = mailgunData.To || mailgunData.to || '';
+    // Try multiple locations where Mailgun might put the To header
+    const toHeader = mailgunData.To || 
+                     mailgunData.to || 
+                     (mailgunData.message && mailgunData.message.headers && mailgunData.message.headers.to) ||
+                     '';
+    
+    logger.info(`Extracting recipient from To header: "${toHeader}"`);
     
     // Parse email from "Name <email@example.com>" format
     const emailMatch = toHeader.match(/<([^>]+)>/) || toHeader.match(/([^\s<,]+@[^\s>,]+)/);
     
     if (emailMatch) {
+        logger.info(`Extracted email: ${emailMatch[1]}`);
         return emailMatch[1].toLowerCase().trim();
     }
 
@@ -346,6 +354,7 @@ function extractRecipientEmail(mailgunData) {
         return toHeader.toLowerCase().trim();
     }
 
+    logger.warn(`Could not extract email from To header: "${toHeader}"`);
     return null;
 }
 
@@ -355,6 +364,9 @@ function extractRecipientEmail(mailgunData) {
  * @returns {Promise<Object>} Processing result
  */
 async function processInboundEmail(mailgunData) {
+    // Log all top-level keys to understand the payload structure
+    logger.info(`Mailgun payload keys: ${Object.keys(mailgunData).join(', ')}`);
+    
     const {
         sender,
         from,
@@ -373,6 +385,7 @@ async function processInboundEmail(mailgunData) {
     logger.info(`Processing inbound email from ${senderEmail} to ${leadEmail || 'unknown'}`);
     logger.info(`BCC recipient: ${recipient}`);
     logger.info(`Subject: ${subject}`);
+    logger.info(`Raw To field: ${To || mailgunData.to || '(not found at top level)'}`);
 
     // Step 1: Find client by sender email
     const client = await findClientByEmail(senderEmail);
