@@ -8299,6 +8299,79 @@ router.get("/api/client/:clientId", async (req, res) => {
 });
 
 /**
+ * POST /api/coached-clients/:coachClientId/regenerate-token/:clientId
+ * 
+ * Generates a new portal token for a coached client.
+ * Only works if the requesting coach actually coaches this client.
+ * No admin key required - uses coach relationship for authorization.
+ */
+router.post("/api/coached-clients/:coachClientId/regenerate-token/:clientId", async (req, res) => {
+  const crypto = require('crypto');
+  const Airtable = require('airtable');
+  const { coachClientId, clientId } = req.params;
+  const logger = createLogger({ runId: 'POST', clientId: coachClientId, operation: 'coach_regenerate_token' });
+  
+  try {
+    if (!coachClientId || !clientId) {
+      return res.status(400).json({ success: false, error: 'coachClientId and clientId are required' });
+    }
+    
+    const clientService = require('../services/clientService.js');
+    
+    // Verify the coach exists
+    const coach = await clientService.getClientById(coachClientId);
+    if (!coach) {
+      return res.status(404).json({
+        success: false,
+        error: `Coach "${coachClientId}" not found`
+      });
+    }
+    
+    // Get all clients coached by this coach
+    const coachedClients = await clientService.getClientsByCoach(coachClientId);
+    
+    // Verify the target client is coached by this coach
+    const targetClient = coachedClients.find(c => c.clientId === clientId);
+    if (!targetClient) {
+      return res.status(403).json({
+        success: false,
+        error: `You don't have permission to generate tokens for "${clientId}"`
+      });
+    }
+    
+    // Generate a secure 24-character token
+    const newToken = crypto.randomBytes(18).toString('base64url');
+    const portalUrl = `https://ashportal.com.au/quick-update?token=${newToken}`;
+    
+    // Update Airtable
+    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
+    await base('Clients').update(targetClient.id, {
+      'Portal Token': newToken
+    });
+    
+    // Clear client cache so new token is picked up
+    clientService.clearClientCache(clientId);
+    
+    logger.info(`Coach ${coachClientId} regenerated token for ${clientId}`);
+    
+    res.json({
+      success: true,
+      clientId: clientId,
+      clientName: targetClient.clientName,
+      token: newToken,
+      portalUrl: portalUrl
+    });
+    
+  } catch (error) {
+    logger.error('Coach regenerate token error:', error.message, error.stack);
+    res.status(500).json({ 
+      success: false,
+      error: `Failed to regenerate token: ${error.message}` 
+    });
+  }
+});
+
+/**
  * GET /api/coached-clients/:coachClientId
  * 
  * Gets all clients coached by a specific coach.

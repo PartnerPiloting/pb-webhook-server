@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getCoachedClients, getSystemSettings, getBackendBase, getAuthenticatedHeaders } from '../services/api';
-import { buildAuthUrl, getCurrentDevKey } from '../utils/clientUtils';
+import { buildAuthUrl, getCurrentClientId } from '../utils/clientUtils';
 import { UsersIcon, ArrowTopRightOnSquareIcon, ExclamationTriangleIcon, BookOpenIcon, ClipboardDocumentListIcon, PlusCircleIcon, EyeIcon, KeyIcon, ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 /**
@@ -37,35 +37,47 @@ const CoachedClients = () => {
     setTokenError(null);
     
     try {
-      const devKey = getCurrentDevKey() || searchParams.get('devKey') || '';
+      // Get the coach's client ID (the logged-in user)
+      const coachClientId = getCurrentClientId();
+      if (!coachClientId) {
+        setTokenError('Not authenticated. Please log in again.');
+        setRegeneratingTokenFor(null);
+        return;
+      }
       
-      const response = await fetch(`${backendBase}/admin/generate-portal-tokens`, {
+      // Use the coach-level endpoint (no admin key needed)
+      const response = await fetch(`${backendBase}/api/coached-clients/${coachClientId}/regenerate-token/${clientId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-debug-key': devKey
-        },
-        body: JSON.stringify({
-          debugKey: devKey,
-          clientId: clientId,
-          force: true
-        })
+          ...getAuthenticatedHeaders()
+        }
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server returned ${response.status}`);
+      }
       
       const data = await response.json();
       
-      if (data.success && data.results?.[0]?.token) {
-        const token = data.results[0].token;
-        const url = `https://pb-webhook-server-staging.vercel.app/?token=${token}`;
+      if (data.success && data.token) {
+        const token = data.token;
+        const url = data.portalUrl || `https://ashportal.com.au/quick-update?token=${token}`;
         setGeneratedTokens(prev => ({
           ...prev,
           [clientId]: { token, url, copied: false }
         }));
       } else {
-        setTokenError(`Failed to generate token for ${clientName}`);
+        setTokenError(data.error || `Failed to generate token for ${clientName}`);
       }
     } catch (err) {
-      setTokenError(`Error regenerating token: ${err.message}`);
+      // Provide more helpful error messages
+      if (err.message === 'Failed to fetch') {
+        setTokenError(`Cannot reach backend server. It may be starting up - please try again in 30 seconds.`);
+      } else {
+        setTokenError(`Error: ${err.message}`);
+      }
     } finally {
       setRegeneratingTokenFor(null);
     }
