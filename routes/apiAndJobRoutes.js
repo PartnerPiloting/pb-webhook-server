@@ -8349,9 +8349,6 @@ router.post("/api/coached-clients/:coachClientId/regenerate-token/:clientId", as
       'Portal Token': newToken
     });
     
-    // Clear client cache so new token is picked up
-    clientService.clearClientCache(clientId);
-    
     logger.info(`Coach ${coachClientId} regenerated token for ${clientId}`);
     
     res.json({
