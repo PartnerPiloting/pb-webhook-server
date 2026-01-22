@@ -18,16 +18,12 @@ const logger = createLogger({
     operation: 'inbound-email-service' 
 });
 
+// Import email-reply-parser for robust email thread parsing
+const EmailReplyParser = require('email-reply-parser');
+
 /**
- * Parse a Gmail email body with quoted replies
- * Format:
- *   New message at top
- *   
- *   On Thu, 22 Jan 2026 at 22:47, Tania Wilson <email@example.com> wrote:
- *   > Quoted reply from previous message
- *   >
- *   > On Thu, 22 Jan 2026 at 22:46, Guy Wilson <email@example.com> wrote:
- *   >> Earlier message
+ * Parse email thread using email-reply-parser library
+ * Falls back to our custom parser if the library fails
  * 
  * @param {string} body - The full email body
  * @param {string} senderName - Name of the person who sent this email (from headers)
@@ -41,33 +37,130 @@ function parseGmailThread(body, senderName, referenceDate) {
         return messages;
     }
     
-    logger.info(`parseGmailThread input (first 500 chars): ${body.substring(0, 500).replace(/\n/g, '\\n')}`);
+    logger.info(`parseGmailThread: Processing ${body.length} chars`);
+    
+    try {
+        // Use email-reply-parser library for robust parsing
+        const email = new EmailReplyParser().read(body);
+        const fragments = email.getFragments();
+        
+        logger.info(`email-reply-parser found ${fragments.length} fragments`);
+        
+        // Pattern to extract sender and date from quote headers
+        // "On Thu, 22 Jan 2026 at 22:47, Tania Wilson <email> wrote:"
+        const quoteHeaderPattern = /On\s+(?:\w+,?\s+)?(\d{1,2}\s+\w+\s+\d{4})\s+at\s+(\d{1,2}:\d{2}),?\s+([^<]+?)\s*<[^>]+>\s*wrote:/i;
+        
+        let lastQuotedSender = null;
+        let lastQuotedDate = null;
+        
+        for (const fragment of fragments) {
+            const content = fragment.getContent().trim();
+            if (!content) continue;
+            
+            // Check if this fragment contains a quote header
+            const headerMatch = content.match(quoteHeaderPattern);
+            
+            if (fragment.isQuoted()) {
+                // This is quoted content - find who said it
+                if (headerMatch) {
+                    lastQuotedSender = headerMatch[3].trim();
+                    lastQuotedDate = parseQuotedDate(headerMatch[1], headerMatch[2]);
+                }
+                
+                // Extract the actual message (remove the "On ... wrote:" header)
+                let messageText = content;
+                if (headerMatch) {
+                    messageText = content.substring(content.indexOf('wrote:') + 6).trim();
+                }
+                
+                // Clean up quote prefixes and signatures
+                messageText = messageText
+                    .split('\n')
+                    .map(line => line.replace(/^>+\s?/, '').trim())
+                    .filter(line => line && !line.match(/^On\s+.+wrote:\s*$/i))
+                    .join(' ')
+                    .trim();
+                
+                messageText = removeSignature(messageText);
+                
+                if (messageText && lastQuotedSender) {
+                    messages.push({
+                        date: lastQuotedDate?.date || formatTimestamp(referenceDate).date,
+                        time: lastQuotedDate?.time || '12:00 PM',
+                        sender: lastQuotedSender,
+                        message: messageText
+                    });
+                    logger.info(`Quoted message from ${lastQuotedSender}: "${messageText.substring(0, 50)}..."`);
+                }
+            } else if (!fragment.isSignature() && !fragment.isHidden()) {
+                // This is new/visible content from the sender
+                let messageText = content;
+                
+                // If there's a quote header in the visible part, split at it
+                if (headerMatch) {
+                    messageText = content.substring(0, content.search(quoteHeaderPattern)).trim();
+                    lastQuotedSender = headerMatch[3].trim();
+                    lastQuotedDate = parseQuotedDate(headerMatch[1], headerMatch[2]);
+                }
+                
+                messageText = removeSignature(messageText);
+                
+                if (messageText) {
+                    const timestamp = formatTimestamp(referenceDate);
+                    messages.push({
+                        date: timestamp.date,
+                        time: timestamp.time,
+                        sender: senderName,
+                        message: messageText.replace(/\n+/g, ' ').trim()
+                    });
+                    logger.info(`New message from ${senderName}: "${messageText.substring(0, 50)}..."`);
+                }
+            }
+        }
+        
+        if (messages.length > 0) {
+            logger.info(`email-reply-parser: Extracted ${messages.length} messages successfully`);
+            return messages;
+        }
+        
+        // Fall through to fallback if no messages extracted
+        logger.warn('email-reply-parser returned no messages, using fallback');
+        
+    } catch (err) {
+        logger.warn(`email-reply-parser failed: ${err.message}, using fallback parser`);
+    }
+    
+    // Fallback: Use our custom state machine parser
+    return parseGmailThreadFallback(body, senderName, referenceDate);
+}
+
+/**
+ * Fallback parser using state machine approach
+ * Used when email-reply-parser fails or returns no results
+ */
+function parseGmailThreadFallback(body, senderName, referenceDate) {
+    const messages = [];
+    
+    logger.info('Using fallback parser');
     
     // Pattern for Gmail quote headers (with optional > prefixes):
-    // ">* On Day, DD Mon YYYY at HH:MM, Name <email> wrote:"
     const quoteHeaderPattern = /^>*\s*On\s+(?:\w+,?\s+)?(\d{1,2}\s+\w+\s+\d{4})\s+at\s+(\d{1,2}:\d{2}),?\s+([^<]+?)\s*<[^>]+>\s*wrote:\s*$/i;
     
     const lines = body.split('\n');
     
-    // State machine approach
     let currentMessage = [];
-    let currentSender = senderName;  // First message is from the email sender
+    let currentSender = senderName;
     let currentDate = formatTimestamp(referenceDate);
-    let pendingHeader = null;  // Store parsed header info for next message
     
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmedLine = line.trim();
         
-        // Check if this line is a quote header
         const headerMatch = trimmedLine.match(quoteHeaderPattern);
         
         if (headerMatch) {
-            // Save current message before starting new one
             if (currentMessage.length > 0) {
-                let msgText = currentMessage.join(' ').trim();
-                msgText = removeSignature(msgText);
-                
+                let msgText = removeSignature(currentMessage.join(' ').trim());
                 if (msgText) {
                     messages.push({
                         date: currentDate.date,
@@ -75,32 +168,22 @@ function parseGmailThread(body, senderName, referenceDate) {
                         sender: currentSender,
                         message: msgText
                     });
-                    logger.info(`Parsed message from ${currentSender}: "${msgText.substring(0, 50)}..."`);
                 }
             }
             
-            // Set up for next message (from the quoted person)
             currentSender = headerMatch[3].trim();
             currentDate = parseQuotedDate(headerMatch[1], headerMatch[2]);
             currentMessage = [];
             continue;
         }
         
-        // Skip empty lines at start of message
-        if (currentMessage.length === 0 && !trimmedLine) {
-            continue;
-        }
+        if (currentMessage.length === 0 && !trimmedLine) continue;
         
-        // Remove quote prefixes (>, >>, etc.) and add to current message
         const cleanLine = line.replace(/^>+\s?/, '').trim();
         
-        // Skip signature markers and what follows
         if (cleanLine === '--' || cleanLine === '-- ') {
-            // Save current message and stop processing this thread level
             if (currentMessage.length > 0) {
-                let msgText = currentMessage.join(' ').trim();
-                msgText = removeSignature(msgText);
-                
+                let msgText = removeSignature(currentMessage.join(' ').trim());
                 if (msgText) {
                     messages.push({
                         date: currentDate.date,
@@ -108,24 +191,17 @@ function parseGmailThread(body, senderName, referenceDate) {
                         sender: currentSender,
                         message: msgText
                     });
-                    logger.info(`Parsed message from ${currentSender}: "${msgText.substring(0, 50)}..."`);
                 }
                 currentMessage = [];
             }
-            // Skip until next quote header
             continue;
         }
         
-        if (cleanLine) {
-            currentMessage.push(cleanLine);
-        }
+        if (cleanLine) currentMessage.push(cleanLine);
     }
     
-    // Don't forget the last message
     if (currentMessage.length > 0) {
-        let msgText = currentMessage.join(' ').trim();
-        msgText = removeSignature(msgText);
-        
+        let msgText = removeSignature(currentMessage.join(' ').trim());
         if (msgText) {
             messages.push({
                 date: currentDate.date,
@@ -133,12 +209,10 @@ function parseGmailThread(body, senderName, referenceDate) {
                 sender: currentSender,
                 message: msgText
             });
-            logger.info(`Parsed message from ${currentSender}: "${msgText.substring(0, 50)}..."`);
         }
     }
     
-    logger.info(`parseGmailThread: Extracted ${messages.length} messages`);
-    
+    logger.info(`Fallback parser: Extracted ${messages.length} messages`);
     return messages;
 }
 
