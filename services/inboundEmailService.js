@@ -7,7 +7,6 @@
 
 require('dotenv').config();
 const { createLogger } = require('../utils/contextLogger');
-const { parseConversation } = require('../utils/messageParser');
 const { updateSection } = require('../utils/notesSectionManager');
 const clientService = require('./clientService');
 const { createBaseInstance } = require('../config/airtableClient');
@@ -18,6 +17,155 @@ const logger = createLogger({
     clientId: 'SYSTEM', 
     operation: 'inbound-email-service' 
 });
+
+/**
+ * Parse a Gmail email body with quoted replies
+ * Format:
+ *   New message at top
+ *   
+ *   On Thu, 22 Jan 2026 at 22:47, Tania Wilson <email@example.com> wrote:
+ *   > Quoted reply from previous message
+ *   >
+ *   > On Thu, 22 Jan 2026 at 22:46, Guy Wilson <email@example.com> wrote:
+ *   >> Earlier message
+ * 
+ * @param {string} body - The full email body
+ * @param {string} senderName - Name of the person who sent this email (from headers)
+ * @param {Date} referenceDate - Current date for the new message
+ * @returns {Array<{date: string, time: string, sender: string, message: string}>}
+ */
+function parseGmailThread(body, senderName, referenceDate) {
+    const messages = [];
+    
+    if (!body || !body.trim()) {
+        return messages;
+    }
+    
+    // Pattern for Gmail quote headers: "On Day, DD Mon YYYY at HH:MM, Name <email> wrote:"
+    const quoteHeaderPattern = /On\s+(?:\w+,?\s+)?(\d{1,2}\s+\w+\s+\d{4})\s+at\s+(\d{1,2}:\d{2}),?\s+([^<]+?)\s*<[^>]+>\s*wrote:/gi;
+    
+    // Split by quote headers
+    const parts = body.split(quoteHeaderPattern);
+    
+    logger.info(`parseGmailThread: Split into ${parts.length} parts`);
+    
+    // First part is the new message (before any "On ... wrote:")
+    if (parts[0]) {
+        let newMessage = parts[0].trim();
+        
+        // Remove signature
+        newMessage = removeSignature(newMessage);
+        
+        if (newMessage) {
+            const timestamp = formatTimestamp(referenceDate);
+            messages.push({
+                date: timestamp.date,
+                time: timestamp.time,
+                sender: senderName,
+                message: newMessage.replace(/\n+/g, ' ').trim()
+            });
+            logger.info(`New message from ${senderName}: "${newMessage.substring(0, 50)}..."`);
+        }
+    }
+    
+    // Remaining parts come in groups of 4: [content, date, time, sender, content, date, time, sender, ...]
+    // Actually the regex captures 3 groups: date, time, sender
+    // So parts are: [newMsg, date1, time1, sender1, quotedContent1, date2, time2, sender2, quotedContent2, ...]
+    for (let i = 1; i < parts.length; i += 4) {
+        const dateStr = parts[i];
+        const timeStr = parts[i + 1];
+        const quotedSender = parts[i + 2];
+        const quotedContent = parts[i + 3];
+        
+        if (!quotedContent) continue;
+        
+        // Remove quote prefixes (> or >>)
+        let cleanContent = quotedContent
+            .split('\n')
+            .map(line => line.replace(/^>+\s?/, '').trim())
+            .filter(line => line && !line.match(/^On\s+.+wrote:$/i)) // Remove nested quote headers
+            .join(' ')
+            .trim();
+        
+        // Remove signature from quoted content
+        cleanContent = removeSignature(cleanContent);
+        
+        if (!cleanContent) continue;
+        
+        // Parse the date
+        const parsedDate = parseQuotedDate(dateStr, timeStr);
+        
+        messages.push({
+            date: parsedDate.date,
+            time: parsedDate.time,
+            sender: quotedSender.trim(),
+            message: cleanContent
+        });
+        
+        logger.info(`Quoted message from ${quotedSender}: "${cleanContent.substring(0, 50)}..."`);
+    }
+    
+    return messages;
+}
+
+/**
+ * Remove email signature from message
+ */
+function removeSignature(text) {
+    if (!text) return '';
+    
+    // Remove signature block (-- followed by newline)
+    let result = text.replace(/\n--\s*\n[\s\S]*$/, '').trim();
+    
+    // Remove common sign-offs at end
+    result = result.replace(/\n(?:Kind Regards|Best Regards|Regards|Cheers|Thanks|Best|Warmly|Sincerely),?\s*[\s\S]*$/i, '').trim();
+    
+    return result;
+}
+
+/**
+ * Parse date from Gmail quote header
+ * @param {string} dateStr - e.g., "22 Jan 2026"
+ * @param {string} timeStr - e.g., "22:47"
+ * @returns {{date: string, time: string}}
+ */
+function parseQuotedDate(dateStr, timeStr) {
+    try {
+        // Parse "22 Jan 2026"
+        const dateMatch = dateStr.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
+        if (dateMatch) {
+            const day = dateMatch[1].padStart(2, '0');
+            const monthName = dateMatch[2];
+            const year = dateMatch[3].slice(-2);
+            
+            const months = {
+                'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+            };
+            const month = months[monthName.toLowerCase().substring(0, 3)] || '01';
+            
+            // Parse time "22:47" to "10:47 PM"
+            let time = '12:00 PM';
+            if (timeStr) {
+                const timeParts = timeStr.match(/(\d{1,2}):(\d{2})/);
+                if (timeParts) {
+                    let hours = parseInt(timeParts[1], 10);
+                    const minutes = timeParts[2];
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    hours = hours % 12 || 12;
+                    time = `${hours}:${minutes} ${ampm}`;
+                }
+            }
+            
+            return { date: `${day}-${month}-${year}`, time };
+        }
+    } catch (e) {
+        logger.warn(`Failed to parse date "${dateStr}" "${timeStr}": ${e.message}`);
+    }
+    
+    return { date: formatTimestamp(new Date()).date, time: '12:00 PM' };
+}
 
 /**
  * Find client by sender email address
@@ -129,37 +277,34 @@ async function updateLeadWithEmail(client, lead, emailData) {
     }
 
     // Use the FULL email body (body-plain) which includes quoted replies from the lead
-    // This is critical - we need the whole thread, not just the new message
     const emailContent = bodyPlain || bodyHtml || '';
     
-    // Get client's first name for parsing (identifies "me" messages)
-    const clientFirstName = client.clientFirstName || client.clientName?.split(' ')[0] || 'Me';
-    
-    logger.info(`Parsing email thread with clientFirstName: ${clientFirstName}`);
+    logger.info(`Parsing email thread for ${senderName}`);
     logger.info(`Email content length: ${emailContent.length} chars`);
+    logger.info(`Email preview: ${emailContent.substring(0, 200).replace(/\n/g, '\\n')}`);
     
-    // Parse the full email thread using the existing parser
-    // This will extract all messages including the lead's quoted replies
-    const parsedResult = await parseConversation(emailContent, {
-        clientFirstName,
-        referenceDate,
-        newestFirst: true,
-        forceFormat: 'email'  // Force email parsing mode
-    });
+    // Parse the Gmail thread format (handles quoted replies with "On ... wrote:" markers)
+    const messages = parseGmailThread(emailContent, senderName, referenceDate);
+    
+    logger.info(`Parsed ${messages.length} messages from email thread`);
 
-    // Build content: subject once at top, then all parsed messages
+    // Build content: subject once at top, then all parsed messages (newest first)
     let processedContent = '';
     if (subject) {
         processedContent = `Subject: ${subject}\n`;
     }
     
-    // Use parsed result or fall back to raw content
-    if (parsedResult.formatted && parsedResult.formatted.trim()) {
-        processedContent += parsedResult.formatted;
+    // Format messages
+    if (messages.length > 0) {
+        const formattedLines = messages.map(msg => 
+            `${msg.date} ${msg.time} - ${msg.sender} - ${msg.message}`
+        );
+        processedContent += formattedLines.join('\n');
     } else {
         // Fallback: format the new message with sender name from headers
         const timestamp = formatTimestamp(referenceDate);
-        processedContent += `${timestamp} - ${senderName} - ${emailContent.replace(/\n+/g, ' ').substring(0, 500)}`;
+        const cleanContent = removeSignature(emailContent).replace(/\n+/g, ' ').substring(0, 500);
+        processedContent += `${timestamp.date} ${timestamp.time} - ${senderName} - ${cleanContent}`;
     }
 
     // Update the Email section in notes - REPLACE mode
@@ -188,19 +333,19 @@ async function updateLeadWithEmail(client, lead, emailData) {
         throw new Error('Failed to update lead record');
     }
 
-    logger.info(`Updated lead ${lead.id} with ${parsedResult.messageCount || 1} messages, follow-up: ${followUpDateStr}`);
+    logger.info(`Updated lead ${lead.id} with ${messages.length} messages, follow-up: ${followUpDateStr}`);
 
     return {
         id: lead.id,
         updatedFields: Object.keys(updates),
         followUpDate: followUpDateStr,
-        messageCount: parsedResult.messageCount || 1,
-        usedAI: parsedResult.usedAI
+        messageCount: messages.length
     };
 }
 
 /**
- * Format a date as DD-MM-YY HH:MM AM/PM
+ * Format a date as DD-MM-YY and HH:MM AM/PM
+ * @returns {{date: string, time: string}}
  */
 function formatTimestamp(date) {
     const day = String(date.getDate()).padStart(2, '0');
@@ -213,7 +358,10 @@ function formatTimestamp(date) {
     hours = hours ? hours : 12;
     const minutes = String(date.getMinutes()).padStart(2, '0');
     
-    return `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
+    return {
+        date: `${day}-${month}-${year}`,
+        time: `${hours}:${minutes} ${ampm}`
+    };
 }
 
 /**
