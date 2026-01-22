@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead } from '../services/api';
 import { buildAuthUrl } from '../utils/clientUtils';
+import CollapsibleNotes from './CollapsibleNotes';
 
 /**
  * Clean up LinkedIn message noise from notes
@@ -1408,9 +1409,12 @@ export default function QuickUpdateModal({
                     placeholder="Edit notes here..."
                   />
                 ) : (
-                  <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
-                    {cleanLinkedInNoise(selectedLead.notes)}
-                  </pre>
+                  <CollapsibleNotes 
+                    notes={cleanLinkedInNoise(selectedLead.notes)} 
+                    maxHeight={500}
+                    defaultExpanded={false}
+                    showLineNumbers={true}
+                  />
                 )}
               </div>
               
