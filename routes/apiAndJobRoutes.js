@@ -8343,9 +8343,9 @@ router.post("/api/coached-clients/:coachClientId/regenerate-token/:clientId", as
     const newToken = crypto.randomBytes(18).toString('base64url');
     const portalUrl = `https://ashportal.com.au/quick-update?token=${newToken}`;
     
-    // Update Airtable
+    // Update Airtable (use recordId from getClientsByCoach)
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_CLIENTS_BASE_ID);
-    await base('Clients').update(targetClient.id, {
+    await base('Clients').update(targetClient.recordId, {
       'Portal Token': newToken
     });
     
