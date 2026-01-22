@@ -443,11 +443,15 @@ async function processInboundEmail(mailgunData) {
     const lead = await findLeadByEmail(client, leadEmail);
     
     if (!lead) {
-        await sendErrorNotification(senderEmail, 'lead_not_found', { leadEmail });
+        // Silently ignore - recipient is not a lead in the system
+        // This is expected behavior when client auto-BCCs all emails
+        // No error notification needed - just skip it
+        logger.info(`Recipient ${leadEmail} is not a lead for client ${client.clientId} - ignoring (not an error)`);
         return {
             success: false,
             error: 'lead_not_found',
-            message: `No lead found with email ${leadEmail} for client ${client.clientId}`
+            message: `Recipient not a lead - ignored`,
+            ignored: true  // Flag to indicate this was intentionally skipped
         };
     }
 
