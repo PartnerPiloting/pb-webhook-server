@@ -1744,6 +1744,15 @@ try {
     moduleLogger.error("index.js: Error mounting billing routes", e.message, e.stack); 
 }
 
+// Inbound Email webhook routes (BCC-to-CRM functionality)
+try {
+    const inboundEmailRoutes = require('./routes/inboundEmailRoutes.js');
+    app.use(inboundEmailRoutes);
+    moduleLogger.info("index.js: Inbound email webhook routes mounted at /api/webhooks/inbound-email");
+} catch(e) {
+    moduleLogger.error("index.js: Error mounting inbound email routes", e.message, e.stack);
+}
+
 // Top Scoring Leads scaffold (feature gated inside the router module)
 try {
     const mountTopScoringLeads = require('./routes/topScoringLeadsRoutes.js');
