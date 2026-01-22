@@ -3,10 +3,11 @@
 // Handles client authentication via email, lead lookup, and note updates
 // 
 // REFACTORED: Uses existing clientService and airtableClient patterns
-// Simplified email formatting: DD-MM-YY HH:MM AM/PM - SenderName - message
+// Uses full email body (body-plain) to capture entire thread including lead's replies
 
 require('dotenv').config();
 const { createLogger } = require('../utils/contextLogger');
+const { parseConversation } = require('../utils/messageParser');
 const { updateSection } = require('../utils/notesSectionManager');
 const clientService = require('./clientService');
 const { createBaseInstance } = require('../config/airtableClient');
@@ -102,11 +103,11 @@ async function findLeadByEmail(client, leadEmail) {
 
 /**
  * Update lead with email content
- * Simple format: DD-MM-YY HH:MM AM/PM - SenderName - message
- * Subject only shown once at the top of each new email entry
+ * Parses the FULL email thread (including quoted replies from the lead)
+ * Format: DD-MM-YY HH:MM AM/PM - SenderName - message
  * @param {Object} client - Client object
  * @param {Object} lead - Lead object (with id, notes)
- * @param {Object} emailData - Parsed email data including senderName
+ * @param {Object} emailData - Email data including full body
  * @returns {Promise<Object>} Updated lead
  */
 async function updateLeadWithEmail(client, lead, emailData) {
@@ -115,7 +116,7 @@ async function updateLeadWithEmail(client, lead, emailData) {
     // Use existing airtableClient pattern
     const clientBase = createBaseInstance(client.airtableBaseId);
 
-    // Use client's timezone for formatting the timestamp
+    // Use client's timezone for reference date
     let referenceDate = new Date();
     const clientTimezone = client.timezone;
     if (clientTimezone) {
@@ -127,57 +128,96 @@ async function updateLeadWithEmail(client, lead, emailData) {
         }
     }
 
-    // Format timestamp as DD-MM-YY HH:MM AM/PM
-    const day = String(referenceDate.getDate()).padStart(2, '0');
-    const month = String(referenceDate.getMonth() + 1).padStart(2, '0');
-    const year = String(referenceDate.getFullYear()).slice(-2);
+    // Use the FULL email body (body-plain) which includes quoted replies from the lead
+    // This is critical - we need the whole thread, not just the new message
+    const emailContent = bodyPlain || bodyHtml || '';
     
-    let hours = referenceDate.getHours();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12; // 0 should be 12
-    const minutes = String(referenceDate.getMinutes()).padStart(2, '0');
+    // Get client's first name for parsing (identifies "me" messages)
+    const clientFirstName = client.clientFirstName || client.clientName?.split(' ')[0] || 'Me';
     
-    const timestamp = `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
+    logger.info(`Parsing email thread with clientFirstName: ${clientFirstName}`);
+    logger.info(`Email content length: ${emailContent.length} chars`);
+    
+    // Parse the full email thread using the existing parser
+    // This will extract all messages including the lead's quoted replies
+    const parsedResult = await parseConversation(emailContent, {
+        clientFirstName,
+        referenceDate,
+        newestFirst: true,
+        forceFormat: 'email'  // Force email parsing mode
+    });
 
-    // Clean up the email body - use stripped text (just the new message, no quoted replies)
-    let messageContent = (bodyPlain || bodyHtml || '').trim();
-    
-    // Remove signature blocks (-- followed by content)
-    const signatureIndex = messageContent.indexOf('\n-- \n');
-    if (signatureIndex > 0) {
-        messageContent = messageContent.substring(0, signatureIndex).trim();
-    }
-    
-    // Remove common signature patterns at end
-    messageContent = messageContent
-        .replace(/\n(?:Kind Regards|Best Regards|Regards|Cheers|Thanks|Best),?\s*\n[\s\S]*$/i, '')
-        .trim();
-
-    // Format as single line: DD-MM-YY HH:MM AM/PM - SenderName - message
-    const formattedLine = `${timestamp} - ${senderName} - ${messageContent.replace(/\n+/g, ' ')}`;
-
-    // Build the content to append
+    // Build content: subject once at top, then all parsed messages
     let processedContent = '';
     if (subject) {
         processedContent = `Subject: ${subject}\n`;
     }
-    processedContent += formattedLine;
+    
+    // Use parsed result or fall back to raw content
+    if (parsedResult.formatted && parsedResult.formatted.trim()) {
+        processedContent += parsedResult.formatted;
+    } else {
+        // Fallback: format the new message with sender name from headers
+        const timestamp = formatTimestamp(referenceDate);
+        processedContent += `${timestamp} - ${senderName} - ${emailContent.replace(/\n+/g, ' ').substring(0, 500)}`;
+    }
 
-    // Update the Email section in notes - APPEND mode
+    // Update the Email section in notes - REPLACE mode
+    // We replace because the new email contains the full thread history
     const noteUpdateResult = updateSection(lead.notes || '', 'email', processedContent, { 
-        append: true, 
-        replace: false 
+        append: false, 
+        replace: true 
     });
 
     // Calculate follow-up date (+14 days)
     const followUpDate = new Date(referenceDate);
     followUpDate.setDate(followUpDate.getDate() + 14);
-    const followUpDateStr = followUpDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const followUpDateStr = followUpDate.toISOString().split('T')[0];
 
     // Update the lead
     const updates = {
         'Notes': noteUpdateResult.notes,
+        'Follow-Up Date': followUpDateStr
+    };
+
+    const updatedRecords = await clientBase('Leads').update([
+        { id: lead.id, fields: updates }
+    ]);
+
+    if (!updatedRecords || updatedRecords.length === 0) {
+        throw new Error('Failed to update lead record');
+    }
+
+    logger.info(`Updated lead ${lead.id} with ${parsedResult.messageCount || 1} messages, follow-up: ${followUpDateStr}`);
+
+    return {
+        id: lead.id,
+        updatedFields: Object.keys(updates),
+        followUpDate: followUpDateStr,
+        messageCount: parsedResult.messageCount || 1,
+        usedAI: parsedResult.usedAI
+    };
+}
+
+/**
+ * Format a date as DD-MM-YY HH:MM AM/PM
+ */
+function formatTimestamp(date) {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = String(date.getFullYear()).slice(-2);
+    
+    let hours = date.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    return `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
+}
+
+/**
+ * Send error notification email to sender
         'Follow-Up Date': followUpDateStr
     };
 
@@ -416,12 +456,14 @@ async function processInboundEmail(mailgunData) {
         // Extract sender name from From header for proper attribution
         const senderName = extractSenderName(from || sender);
         
+        // Use bodyPlain (full email with quoted thread) NOT strippedText
+        // This captures the entire conversation including lead's replies
         const result = await updateLeadWithEmail(client, lead, {
             subject,
-            bodyPlain: strippedText || bodyPlain,
+            bodyPlain,  // Full email body with quoted replies from lead
             bodyHtml,
             timestamp,
-            senderName  // Pass the extracted sender name
+            senderName
         });
 
         return {
