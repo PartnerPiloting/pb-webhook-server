@@ -1,13 +1,15 @@
 // services/inboundEmailService.js
 // Inbound email processing service for BCC-to-CRM functionality
 // Handles client authentication via email, lead lookup, and note updates
+// 
+// REFACTORED: Uses existing clientService and airtableClient patterns
 
 require('dotenv').config();
-const Airtable = require('airtable');
 const { createLogger } = require('../utils/contextLogger');
 const { parseConversation } = require('../utils/messageParser');
 const { updateSection } = require('../utils/notesSectionManager');
-const { CLIENT_FIELDS } = require('../constants/airtableUnifiedConstants');
+const clientService = require('./clientService');
+const { createBaseInstance } = require('../config/airtableClient');
 
 // Create module-level logger
 const logger = createLogger({ 
@@ -16,93 +18,35 @@ const logger = createLogger({
     operation: 'inbound-email-service' 
 });
 
-// Cache for clients (same pattern as clientService)
-let clientsCache = null;
-let clientsCacheTimestamp = null;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
-
-/**
- * Check if cache is still valid
- */
-function isCacheValid() {
-    if (!clientsCache || !clientsCacheTimestamp) return false;
-    return (Date.now() - clientsCacheTimestamp) < CACHE_DURATION_MS;
-}
-
-/**
- * Get all clients from Master Clients base
- * @returns {Promise<Array>} Array of client records with email info
- */
-async function getAllClientsWithEmails() {
-    if (isCacheValid()) {
-        return clientsCache;
-    }
-
-    if (!process.env.MASTER_CLIENTS_BASE_ID || !process.env.AIRTABLE_API_KEY) {
-        throw new Error("Missing MASTER_CLIENTS_BASE_ID or AIRTABLE_API_KEY");
-    }
-
-    Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
-    const masterBase = Airtable.base(process.env.MASTER_CLIENTS_BASE_ID);
-
-    const clients = [];
-    await masterBase('Clients').select({
-        filterByFormula: `{Status} = "Active"`
-    }).eachPage((records, fetchNextPage) => {
-        records.forEach(record => {
-            const clientId = record.get(CLIENT_FIELDS.CLIENT_ID);
-            const primaryEmail = record.get(CLIENT_FIELDS.CLIENT_EMAIL_ADDRESS) || '';
-            const alternativeEmails = record.get('Alternative Email Addresses') || '';
-            const airtableBaseId = record.get(CLIENT_FIELDS.AIRTABLE_BASE_ID);
-            const clientName = record.get(CLIENT_FIELDS.CLIENT_NAME) || '';
-            const clientFirstName = record.get(CLIENT_FIELDS.CLIENT_FIRST_NAME) || clientName.split(' ')[0] || 'Client';
-            const timezone = record.get(CLIENT_FIELDS.TIMEZONE) || 'Australia/Sydney';
-
-            // Parse alternative emails (semicolon-separated)
-            const altEmailList = alternativeEmails
-                .split(';')
-                .map(e => e.trim().toLowerCase())
-                .filter(e => e.length > 0);
-
-            // Combine primary + alternatives into one list
-            const allEmails = [primaryEmail.toLowerCase().trim(), ...altEmailList].filter(e => e);
-
-            clients.push({
-                id: record.id,
-                clientId,
-                clientName,
-                clientFirstName,
-                airtableBaseId,
-                primaryEmail: primaryEmail.toLowerCase().trim(),
-                alternativeEmails: altEmailList,
-                allEmails,
-                timezone
-            });
-        });
-        fetchNextPage();
-    });
-
-    // Update cache
-    clientsCache = clients;
-    clientsCacheTimestamp = Date.now();
-
-    logger.info(`Loaded ${clients.length} clients with email info`);
-    return clients;
-}
-
 /**
  * Find client by sender email address
+ * Uses existing clientService.getAllClients() to avoid code duplication
  * @param {string} senderEmail - The FROM email address
  * @returns {Promise<Object|null>} Client object or null if not found
  */
 async function findClientByEmail(senderEmail) {
     const normalizedEmail = senderEmail.toLowerCase().trim();
-    const clients = await getAllClientsWithEmails();
-
-    for (const client of clients) {
-        if (client.allEmails.includes(normalizedEmail)) {
-            logger.info(`Found client ${client.clientId} for email ${normalizedEmail}`);
+    
+    // Use existing clientService - it already fetches all client data including emails
+    const allClients = await clientService.getAllClients();
+    
+    for (const client of allClients) {
+        // Check primary email
+        const primaryEmail = (client.clientEmailAddress || '').toLowerCase().trim();
+        if (primaryEmail === normalizedEmail) {
+            logger.info(`Found client ${client.clientId} via primary email ${normalizedEmail}`);
             return client;
+        }
+        
+        // Check alternative emails if the field exists
+        // Note: clientService may need to expose this field - for now check rawRecord
+        if (client.rawRecord) {
+            const altEmails = client.rawRecord.get('Alternative Email Addresses') || '';
+            const altEmailList = altEmails.split(';').map(e => e.trim().toLowerCase()).filter(e => e);
+            if (altEmailList.includes(normalizedEmail)) {
+                logger.info(`Found client ${client.clientId} via alternative email ${normalizedEmail}`);
+                return client;
+            }
         }
     }
 
@@ -112,6 +56,7 @@ async function findClientByEmail(senderEmail) {
 
 /**
  * Find lead by email in client's Airtable base
+ * Uses createBaseInstance from airtableClient to get client's base
  * @param {Object} client - Client object with airtableBaseId
  * @param {string} leadEmail - Email to search for
  * @returns {Promise<Object|null>} Lead record or null
@@ -123,8 +68,8 @@ async function findLeadByEmail(client, leadEmail) {
 
     const normalizedEmail = leadEmail.toLowerCase().trim();
     
-    Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
-    const clientBase = Airtable.base(client.airtableBaseId);
+    // Use existing airtableClient pattern
+    const clientBase = createBaseInstance(client.airtableBaseId);
 
     try {
         // Search for lead by email
@@ -157,6 +102,7 @@ async function findLeadByEmail(client, leadEmail) {
 
 /**
  * Update lead with email content
+ * Uses same pattern as quick-update: parseConversation + updateSection
  * @param {Object} client - Client object
  * @param {Object} lead - Lead object (with id, notes)
  * @param {Object} emailData - Parsed email data
@@ -165,27 +111,30 @@ async function findLeadByEmail(client, leadEmail) {
 async function updateLeadWithEmail(client, lead, emailData) {
     const { subject, bodyPlain, bodyHtml } = emailData;
 
-    Airtable.configure({ apiKey: process.env.AIRTABLE_API_KEY });
-    const clientBase = Airtable.base(client.airtableBaseId);
+    // Use existing airtableClient pattern
+    const clientBase = createBaseInstance(client.airtableBaseId);
 
-    // Use client's timezone for reference date
+    // Use client's timezone for reference date (same pattern as quick-update)
     let referenceDate = new Date();
-    if (client.timezone) {
+    const clientTimezone = client.timezone;
+    if (clientTimezone) {
         try {
-            const clientDateStr = new Date().toLocaleString('en-US', { timeZone: client.timezone });
+            const clientDateStr = new Date().toLocaleString('en-US', { timeZone: clientTimezone });
             referenceDate = new Date(clientDateStr);
         } catch (e) {
-            logger.warn(`Invalid timezone ${client.timezone}, using server time`);
+            logger.warn(`Invalid timezone ${clientTimezone}, using server time`);
         }
     }
 
-    // Parse the email content using existing parser
+    // Parse the email content using existing parser (same as quick-update)
     const emailContent = bodyPlain || bodyHtml || '';
+    const clientFirstName = client.clientFirstName || client.clientName?.split(' ')[0] || 'Me';
+    
     const parsedResult = await parseConversation(emailContent, {
-        clientFirstName: client.clientFirstName,
+        clientFirstName,
         referenceDate,
         newestFirst: true,
-        forceFormat: 'email'
+        forceFormat: 'email'  // Force parsing to email format (same as quick-update)
     });
 
     // Prepare content with subject line
@@ -195,7 +144,7 @@ async function updateLeadWithEmail(client, lead, emailData) {
     }
     processedContent += parsedResult.formatted || emailContent;
 
-    // Update the Email section in notes (append mode to preserve history)
+    // Update the Email section in notes - APPEND mode (same as quick-update for email section)
     const noteUpdateResult = updateSection(lead.notes || '', 'email', processedContent, { 
         append: true, 
         replace: false 
@@ -473,15 +422,6 @@ function validateMailgunSignature(timestamp, token, signature) {
     return encodedToken === signature;
 }
 
-/**
- * Clear the clients cache (useful for testing)
- */
-function clearCache() {
-    clientsCache = null;
-    clientsCacheTimestamp = null;
-    logger.info('Inbound email service cache cleared');
-}
-
 module.exports = {
     processInboundEmail,
     findClientByEmail,
@@ -489,6 +429,5 @@ module.exports = {
     updateLeadWithEmail,
     sendErrorNotification,
     validateMailgunSignature,
-    extractRecipientEmail,
-    clearCache
+    extractRecipientEmail
 };
