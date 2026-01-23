@@ -695,6 +695,119 @@ function extractCcRecipients(mailgunData) {
 }
 
 /**
+ * Detect if email is a forwarded message
+ * @param {string} body - Email body
+ * @returns {boolean}
+ */
+function isForwardedEmail(body) {
+    if (!body) return false;
+    
+    // Common forward patterns
+    const forwardPatterns = [
+        /---------- Forwarded message ---------/i,
+        /-------- Original Message --------/i,
+        /Begin forwarded message:/i,
+        /-----Original Message-----/i,
+        /Forwarded message from/i
+    ];
+    
+    return forwardPatterns.some(pattern => pattern.test(body));
+}
+
+/**
+ * Extract original recipients from a forwarded email
+ * Parses the forwarded headers to find who the email was originally sent to
+ * @param {string} body - Email body containing forwarded content
+ * @returns {{to: Array<{email: string, name: string}>, cc: Array<{email: string, name: string}>, from: string|null, subject: string|null}}
+ */
+function extractForwardedRecipients(body) {
+    const result = { to: [], cc: [], from: null, subject: null };
+    
+    if (!body) return result;
+    
+    // Find the forwarded header block
+    // Gmail: "---------- Forwarded message ---------"
+    // Then: "From: Name <email>"
+    //       "Date: ..."
+    //       "Subject: ..."
+    //       "To: Name <email>, Name2 <email2>"
+    //       "Cc: ..."
+    
+    // Extract To: line from forwarded headers
+    // Pattern handles multi-line To headers
+    const toPatterns = [
+        /\nTo:\s*([^\n]+(?:\n\s+[^\n]+)*)/i,  // Standard "To:" header
+        /\nTo:\s*(.+?)(?=\n(?:Cc|Subject|Date|From):|\n\n)/is  // Until next header
+    ];
+    
+    for (const pattern of toPatterns) {
+        const toMatch = body.match(pattern);
+        if (toMatch) {
+            const toLine = toMatch[1].replace(/\n\s+/g, ' ').trim();
+            logger.info(`Forwarded email - found To line: "${toLine}"`);
+            
+            // Parse all email addresses from the To line
+            const emailMatches = toLine.matchAll(/<([^>]+)>/g);
+            for (const match of emailMatches) {
+                const email = match[1].toLowerCase().trim();
+                // Try to extract name before the <email>
+                const beforeEmail = toLine.substring(0, toLine.indexOf(match[0])).split(',').pop()?.trim() || '';
+                result.to.push({
+                    email,
+                    name: beforeEmail || email.split('@')[0]
+                });
+            }
+            
+            // Also try plain emails without angle brackets
+            if (result.to.length === 0) {
+                const plainEmails = toLine.match(/[^\s<,]+@[^\s>,]+/g);
+                if (plainEmails) {
+                    for (const email of plainEmails) {
+                        result.to.push({
+                            email: email.toLowerCase().trim(),
+                            name: email.split('@')[0]
+                        });
+                    }
+                }
+            }
+            break;
+        }
+    }
+    
+    // Extract Cc: line similarly
+    const ccMatch = body.match(/\nCc:\s*([^\n]+(?:\n\s+[^\n]+)*)/i);
+    if (ccMatch) {
+        const ccLine = ccMatch[1].replace(/\n\s+/g, ' ').trim();
+        logger.info(`Forwarded email - found Cc line: "${ccLine}"`);
+        
+        const emailMatches = ccLine.matchAll(/<([^>]+)>/g);
+        for (const match of emailMatches) {
+            result.cc.push({
+                email: match[1].toLowerCase().trim(),
+                name: ''
+            });
+        }
+    }
+    
+    // Extract original From for attribution
+    const fromMatch = body.match(/\nFrom:\s*([^\n<]+)<([^>]+)>/i) || 
+                      body.match(/\nFrom:\s*([^\n]+)/i);
+    if (fromMatch) {
+        result.from = fromMatch[2] || fromMatch[1]?.trim();
+        logger.info(`Forwarded email - original sender: ${result.from}`);
+    }
+    
+    // Extract subject
+    const subjectMatch = body.match(/\nSubject:\s*([^\n]+)/i);
+    if (subjectMatch) {
+        result.subject = subjectMatch[1].trim();
+    }
+    
+    logger.info(`Forwarded email parsing: found ${result.to.length} To recipients, ${result.cc.length} Cc recipients`);
+    return result;
+}
+
+/**
  * Main processing function for inbound emails
  * @param {Object} mailgunData - Parsed Mailgun webhook payload
  * @returns {Promise<Object>} Processing result
@@ -716,12 +829,34 @@ async function processInboundEmail(mailgunData) {
     } = mailgunData;
 
     const senderEmail = sender || from || '';
-    const leadEmail = extractRecipientEmail(mailgunData);
+    let leadEmail = extractRecipientEmail(mailgunData);
 
     logger.info(`Processing inbound email from ${senderEmail} to ${leadEmail || 'unknown'}`);
     logger.info(`BCC recipient: ${recipient}`);
     logger.info(`Subject: ${subject}`);
     logger.info(`Raw To field: ${To || mailgunData.to || '(not found at top level)'}`);
+
+    // Check if this is a forwarded email (To is our tracking address)
+    // This happens when user forgot to BCC and forwards the sent email to track it
+    const isForward = isForwardedEmail(bodyPlain);
+    const toIsTrackingAddress = leadEmail && recipient && 
+        (leadEmail.toLowerCase() === recipient.toLowerCase() || 
+         leadEmail.includes('track@') || 
+         leadEmail.includes('mail.australiansidehustles'));
+    
+    let forwardedRecipients = null;
+    if (isForward && toIsTrackingAddress) {
+        logger.info('Detected forwarded email sent to tracking address - extracting original recipients');
+        forwardedRecipients = extractForwardedRecipients(bodyPlain);
+        
+        if (forwardedRecipients.to.length > 0) {
+            logger.info(`Forwarded email: original To recipients: ${forwardedRecipients.to.map(r => r.email).join(', ')}`);
+            // Use the first original recipient as the primary lead
+            leadEmail = forwardedRecipients.to[0].email;
+        } else {
+            logger.warn('Forwarded email detected but could not extract original recipients');
+        }
+    }
 
     // Step 1: Find client by sender email
     const client = await findClientByEmail(senderEmail);
@@ -738,22 +873,36 @@ async function processInboundEmail(mailgunData) {
     // Step 2: Collect all potential leads (To + CC)
     const potentialLeads = [];
     
-    // Add primary recipient (To)
-    if (leadEmail) {
-        potentialLeads.push({ email: leadEmail, source: 'to' });
-    }
-    
-    // Add CC recipients
-    const ccRecipients = extractCcRecipients(mailgunData);
-    for (const cc of ccRecipients) {
-        // Skip if it's our tracking address or already in the list
-        if (cc.email === recipient?.toLowerCase() || cc.email === leadEmail) {
-            continue;
+    // If this was a forwarded email, use the extracted recipients
+    if (forwardedRecipients && forwardedRecipients.to.length > 0) {
+        for (const fwdTo of forwardedRecipients.to) {
+            potentialLeads.push({ email: fwdTo.email, name: fwdTo.name, source: 'forwarded-to' });
         }
-        potentialLeads.push({ email: cc.email, name: cc.name, source: 'cc' });
+        for (const fwdCc of forwardedRecipients.cc) {
+            if (!potentialLeads.some(p => p.email === fwdCc.email)) {
+                potentialLeads.push({ email: fwdCc.email, name: fwdCc.name, source: 'forwarded-cc' });
+            }
+        }
+        logger.info(`Using ${potentialLeads.length} recipients from forwarded email`);
+    } else {
+        // Normal BCC flow - add primary recipient (To)
+        if (leadEmail) {
+            potentialLeads.push({ email: leadEmail, source: 'to' });
+        }
+        
+        // Add CC recipients
+        const ccRecipients = extractCcRecipients(mailgunData);
+        for (const cc of ccRecipients) {
+            // Skip if it's our tracking address or already in the list
+            if (cc.email === recipient?.toLowerCase() || cc.email === leadEmail) {
+                continue;
+            }
+            potentialLeads.push({ email: cc.email, name: cc.name, source: 'cc' });
+        }
     }
     
     logger.info(`Processing ${potentialLeads.length} potential leads (To + CC)`);
+    
     
     if (potentialLeads.length === 0) {
         logger.info('No potential leads found in To or CC - ignoring');
@@ -861,5 +1010,7 @@ module.exports = {
     sendErrorNotification,
     validateMailgunSignature,
     extractRecipientEmail,
-    extractCcRecipients
+    extractCcRecipients,
+    isForwardedEmail,
+    extractForwardedRecipients
 };
