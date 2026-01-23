@@ -646,6 +646,55 @@ function extractRecipientEmail(mailgunData) {
 }
 
 /**
+ * Extract all CC email addresses from Mailgun data
+ * @param {Object} mailgunData - Raw Mailgun webhook data
+ * @returns {Array<{email: string, name: string}>} Array of CC recipients
+ */
+function extractCcRecipients(mailgunData) {
+    const ccHeader = mailgunData.Cc || 
+                     mailgunData.cc || 
+                     (mailgunData.message && mailgunData.message.headers && mailgunData.message.headers.cc) ||
+                     '';
+    
+    if (!ccHeader) {
+        return [];
+    }
+    
+    logger.info(`Extracting CC recipients from: "${ccHeader}"`);
+    
+    const recipients = [];
+    
+    // CC can be comma-separated: "Name1 <email1>, Name2 <email2>"
+    // Split by comma, but be careful of commas inside names
+    const parts = ccHeader.split(/,(?=(?:[^<]*<[^>]*>)*[^<]*$)/);
+    
+    for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        
+        // Extract email and name
+        const emailMatch = trimmed.match(/<([^>]+)>/);
+        const nameMatch = trimmed.match(/^([^<]+)</);
+        
+        if (emailMatch) {
+            recipients.push({
+                email: emailMatch[1].toLowerCase().trim(),
+                name: nameMatch ? nameMatch[1].trim() : emailMatch[1].split('@')[0]
+            });
+        } else if (trimmed.includes('@')) {
+            // Plain email without name
+            recipients.push({
+                email: trimmed.toLowerCase().trim(),
+                name: trimmed.split('@')[0]
+            });
+        }
+    }
+    
+    logger.info(`Extracted ${recipients.length} CC recipients: ${recipients.map(r => r.email).join(', ')}`);
+    return recipients;
+}
+
+/**
  * Main processing function for inbound emails
  * @param {Object} mailgunData - Parsed Mailgun webhook payload
  * @returns {Promise<Object>} Processing result
@@ -686,66 +735,100 @@ async function processInboundEmail(mailgunData) {
         };
     }
 
-    // Step 2: Find lead by recipient email
-    if (!leadEmail) {
-        await sendErrorNotification(senderEmail, 'lead_not_found', { leadEmail: 'could not extract' });
-        return {
-            success: false,
-            error: 'lead_email_missing',
-            message: 'Could not extract recipient email from message'
-        };
-    }
-
-    const lead = await findLeadByEmail(client, leadEmail);
+    // Step 2: Collect all potential leads (To + CC)
+    const potentialLeads = [];
     
-    if (!lead) {
-        // Silently ignore - recipient is not a lead in the system
-        // This is expected behavior when client auto-BCCs all emails
-        // No error notification needed - just skip it
-        logger.info(`Recipient ${leadEmail} is not a lead for client ${client.clientId} - ignoring (not an error)`);
+    // Add primary recipient (To)
+    if (leadEmail) {
+        potentialLeads.push({ email: leadEmail, source: 'to' });
+    }
+    
+    // Add CC recipients
+    const ccRecipients = extractCcRecipients(mailgunData);
+    for (const cc of ccRecipients) {
+        // Skip if it's our tracking address or already in the list
+        if (cc.email === recipient?.toLowerCase() || cc.email === leadEmail) {
+            continue;
+        }
+        potentialLeads.push({ email: cc.email, name: cc.name, source: 'cc' });
+    }
+    
+    logger.info(`Processing ${potentialLeads.length} potential leads (To + CC)`);
+    
+    if (potentialLeads.length === 0) {
+        logger.info('No potential leads found in To or CC - ignoring');
         return {
             success: false,
-            error: 'lead_not_found',
-            message: `Recipient not a lead - ignored`,
-            ignored: true  // Flag to indicate this was intentionally skipped
+            error: 'no_recipients',
+            message: 'No recipients found to process',
+            ignored: true
         };
     }
 
-    // Step 3: Update lead with email content
-    try {
-        // Extract sender name from From header for proper attribution
-        const senderName = extractSenderName(from || sender);
+    // Step 3: Process each potential lead
+    const senderName = extractSenderName(from || sender);
+    const results = {
+        success: true,
+        clientId: client.clientId,
+        clientName: client.clientName,
+        leadsUpdated: [],
+        leadsNotFound: [],
+        errors: []
+    };
+    
+    for (const potential of potentialLeads) {
+        const lead = await findLeadByEmail(client, potential.email);
         
-        // Use bodyPlain (full email with quoted thread) NOT strippedText
-        // This captures the entire conversation including lead's replies
-        const result = await updateLeadWithEmail(client, lead, {
-            subject,
-            bodyPlain,  // Full email body with quoted replies from lead
-            bodyHtml,
-            timestamp,
-            senderName
-        });
-
-        return {
-            success: true,
-            clientId: client.clientId,
-            clientName: client.clientName,
-            leadId: lead.id,
-            leadName: `${lead.firstName} ${lead.lastName}`.trim(),
-            leadEmail,
-            followUpDate: result.followUpDate,
-            messageCount: result.messageCount,
-            usedAI: result.usedAI
-        };
-
-    } catch (updateError) {
-        logger.error(`Failed to update lead: ${updateError.message}`);
-        return {
-            success: false,
-            error: 'update_failed',
-            message: updateError.message
-        };
+        if (!lead) {
+            // Silently skip - not a lead in the system
+            logger.info(`${potential.source.toUpperCase()} recipient ${potential.email} is not a lead - skipping`);
+            results.leadsNotFound.push({ email: potential.email, source: potential.source });
+            continue;
+        }
+        
+        // Update this lead with email content
+        try {
+            const result = await updateLeadWithEmail(client, lead, {
+                subject,
+                bodyPlain,
+                bodyHtml,
+                timestamp,
+                senderName
+            });
+            
+            results.leadsUpdated.push({
+                leadId: lead.id,
+                leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+                leadEmail: potential.email,
+                source: potential.source,
+                followUpDate: result.followUpDate,
+                messageCount: result.messageCount
+            });
+            
+            logger.info(`Updated ${potential.source.toUpperCase()} lead ${lead.id} (${potential.email})`);
+            
+        } catch (updateError) {
+            logger.error(`Failed to update lead ${potential.email}: ${updateError.message}`);
+            results.errors.push({
+                email: potential.email,
+                source: potential.source,
+                error: updateError.message
+            });
+        }
     }
+    
+    // Determine overall success
+    results.success = results.leadsUpdated.length > 0;
+    results.totalProcessed = potentialLeads.length;
+    results.totalUpdated = results.leadsUpdated.length;
+    
+    if (results.leadsUpdated.length === 0 && results.leadsNotFound.length === potentialLeads.length) {
+        // None of the recipients were leads - this is fine, just ignore
+        logger.info('No recipients were leads in the system - ignoring email');
+        results.ignored = true;
+    }
+    
+    return results;
 }
 
 /**
@@ -777,5 +860,6 @@ module.exports = {
     updateLeadWithEmail,
     sendErrorNotification,
     validateMailgunSignature,
-    extractRecipientEmail
+    extractRecipientEmail,
+    extractCcRecipients
 };
