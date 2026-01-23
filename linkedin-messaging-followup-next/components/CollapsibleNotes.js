@@ -9,8 +9,11 @@ const SECTION_MARKERS = {
   manual: '=== MANUAL NOTES ===',
   email: '=== EMAIL CORRESPONDENCE ===',
   linkedin: '=== LINKEDIN MESSAGES ===',
-  salesnav: '=== SALES NAV MESSAGES ==='
+  salesnav: '=== SALES NAVIGATOR ==='
 };
+
+// Legacy separator used in notesSectionManager
+const LEGACY_SEPARATOR = '───────────────────────────────';
 
 /**
  * Parse notes string into sections
@@ -25,11 +28,36 @@ function parseNotesIntoSections(notes) {
   const sections = [];
   let currentSection = null;
   let currentLines = [];
-  let unsectionedLines = [];
+  let legacyLines = [];
+  let inLegacy = false;
 
   const lines = notes.split('\n');
 
   for (const line of lines) {
+    // Check for legacy separator
+    if (line.trim() === LEGACY_SEPARATOR || line.includes('─────────')) {
+      // Save current section before switching to legacy
+      if (currentSection && currentLines.length > 0) {
+        sections.push({
+          key: currentSection,
+          title: getSectionTitle(currentSection),
+          content: currentLines.join('\n').trim(),
+          lineCount: currentLines.filter(l => l.trim()).length,
+          lastDate: extractLastDate(currentLines)
+        });
+        currentSection = null;
+        currentLines = [];
+      }
+      inLegacy = true;
+      continue;
+    }
+
+    // If we're in legacy section, collect all remaining lines
+    if (inLegacy) {
+      legacyLines.push(line);
+      continue;
+    }
+
     // Check if this line is a section header
     let foundSection = null;
     for (const [key, marker] of Object.entries(SECTION_MARKERS)) {
@@ -41,7 +69,7 @@ function parseNotesIntoSections(notes) {
 
     if (foundSection) {
       // Save previous section if exists
-      if (currentSection) {
+      if (currentSection && currentLines.length > 0) {
         sections.push({
           key: currentSection,
           title: getSectionTitle(currentSection),
@@ -49,9 +77,9 @@ function parseNotesIntoSections(notes) {
           lineCount: currentLines.filter(l => l.trim()).length,
           lastDate: extractLastDate(currentLines)
         });
-      } else if (currentLines.length > 0) {
-        // Content before any section header
-        unsectionedLines = [...unsectionedLines, ...currentLines];
+      } else if (currentLines.length > 0 && !currentSection) {
+        // Content before any section header goes to legacy
+        legacyLines = [...currentLines, ...legacyLines];
       }
       
       currentSection = foundSection;
@@ -62,7 +90,7 @@ function parseNotesIntoSections(notes) {
   }
 
   // Don't forget the last section
-  if (currentSection) {
+  if (currentSection && currentLines.length > 0) {
     sections.push({
       key: currentSection,
       title: getSectionTitle(currentSection),
@@ -70,13 +98,26 @@ function parseNotesIntoSections(notes) {
       lineCount: currentLines.filter(l => l.trim()).length,
       lastDate: extractLastDate(currentLines)
     });
-  } else {
-    unsectionedLines = [...unsectionedLines, ...currentLines];
+  } else if (currentLines.length > 0) {
+    // Any remaining content without a section header
+    legacyLines = [...legacyLines, ...currentLines];
+  }
+
+  // Add legacy section if we have legacy content
+  const legacyContent = legacyLines.join('\n').trim();
+  if (legacyContent) {
+    sections.push({
+      key: 'legacy',
+      title: 'Legacy Notes',
+      content: legacyContent,
+      lineCount: legacyLines.filter(l => l.trim()).length,
+      lastDate: extractLastDate(legacyLines)
+    });
   }
 
   return {
     sections,
-    unsectioned: unsectionedLines.join('\n').trim()
+    unsectioned: '' // All unsectioned content now goes to legacy
   };
 }
 
@@ -85,10 +126,11 @@ function parseNotesIntoSections(notes) {
  */
 function getSectionTitle(key) {
   const titles = {
-    manual: 'Manual Notes',
-    email: 'Email Correspondence',
-    linkedin: 'LinkedIn Messages',
-    salesnav: 'Sales Nav Messages'
+    manual: 'Manual',
+    email: 'Email',
+    linkedin: 'LinkedIn',
+    salesnav: 'Sales Nav',
+    legacy: 'Legacy'
   };
   return titles[key] || key;
 }
@@ -131,6 +173,11 @@ const SectionIcons = {
   salesnav: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  ),
+  legacy: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   )
 };
@@ -238,8 +285,13 @@ export default function CollapsibleNotes({
             >
               {/* Section Header */}
               <button
-                onClick={() => toggleSection(section.key)}
-                className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleSection(section.key);
+                }}
+                className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500">{Icon}</span>

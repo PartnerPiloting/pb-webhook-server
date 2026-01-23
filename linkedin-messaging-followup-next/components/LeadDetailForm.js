@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import SearchTermsField from './SearchTermsField';
+import CollapsibleNotes from './CollapsibleNotes';
 import { deleteLead } from '../services/api';
 
 // Import icons using require to avoid Next.js issues
@@ -372,7 +373,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                 <>
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-xs text-gray-500">
-                      Click to edit. URLs will be clickable.
+                      Click section headers to expand. Click Edit to modify.
                     </p>
                     <button
                       type="button"
@@ -382,14 +383,21 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                       Edit Notes
                     </button>
                   </div>
-                  <div 
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 min-h-[180px] text-sm whitespace-pre-wrap cursor-pointer hover:bg-gray-100"
-                    onClick={() => setIsEditingNotes(true)}
-                  >
+                  <div className="w-full border border-gray-300 rounded-md bg-gray-50 min-h-[180px] max-h-[400px] overflow-hidden">
                     {formData.notes ? (
-                      <div>{renderTextWithLinks(formData.notes)}</div>
+                      <CollapsibleNotes 
+                        notes={formData.notes} 
+                        maxHeight={380}
+                        defaultExpanded={false}
+                        showLineNumbers={true}
+                      />
                     ) : (
-                      <span className="text-gray-400 italic">Click to add notes...</span>
+                      <div 
+                        className="p-3 text-gray-400 italic cursor-pointer hover:bg-gray-100"
+                        onClick={() => setIsEditingNotes(true)}
+                      >
+                        Click to add notes...
+                      </div>
                     )}
                   </div>
                 </>
