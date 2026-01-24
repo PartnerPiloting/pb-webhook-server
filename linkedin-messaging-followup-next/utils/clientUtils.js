@@ -177,6 +177,11 @@ export async function getCurrentClientProfile() {
       features: data.features
     };
     
+    // Expose clientId for Chrome extension (Network Accelerator LinkedIn Quick Update)
+    if (typeof window !== 'undefined' && currentClientId) {
+      window.__NA_CLIENT_ID__ = currentClientId;
+    }
+    
     console.log('ClientUtils: Retrieved client profile:', {
       clientId: currentClientId,
       clientName: data.client?.clientName,
