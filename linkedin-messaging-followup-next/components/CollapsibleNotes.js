@@ -272,7 +272,7 @@ export default function CollapsibleNotes({
       {/* Collapsible Sections */}
       <div 
         className="space-y-2 overflow-y-auto"
-        style={{ maxHeight: isFullyExpanded ? 'none' : `${maxHeight}px` }}
+        style={{ maxHeight: isFullyExpanded ? '400px' : `${maxHeight}px` }}
       >
         {sections.map((section) => {
           const isExpanded = expandedSections[section.key];

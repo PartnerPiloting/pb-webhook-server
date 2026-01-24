@@ -1,0 +1,140 @@
+/* Network Accelerator LinkedIn Extension Styles */
+
+/* Quick Update Button */
+.na-quick-update-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999999;
+  
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  padding: 12px 20px;
+  
+  background: linear-gradient(135deg, #0077b5 0%, #005885 100%);
+  color: white;
+  
+  border: none;
+  border-radius: 24px;
+  
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  
+  cursor: pointer;
+  
+  box-shadow: 0 4px 16px rgba(0, 119, 181, 0.4);
+  
+  transition: all 0.2s ease;
+}
+
+.na-quick-update-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 119, 181, 0.5);
+}
+
+.na-quick-update-btn:active {
+  transform: translateY(0);
+}
+
+/* Button States */
+.na-quick-update-btn.na-loading {
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  cursor: wait;
+}
+
+.na-quick-update-btn.na-success {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.4);
+}
+
+.na-quick-update-btn.na-error {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+}
+
+.na-quick-update-btn.na-warning {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4);
+}
+
+/* Spinner Animation */
+.na-spinner {
+  animation: na-spin 1s linear infinite;
+}
+
+@keyframes na-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Button Text */
+.na-btn-text {
+  white-space: nowrap;
+}
+
+/* Toast Notification */
+.na-toast {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  z-index: 999999;
+  
+  max-width: 320px;
+  padding: 12px 20px;
+  
+  background: #1f2937;
+  color: white;
+  
+  border-radius: 8px;
+  
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  
+  opacity: 0;
+  transform: translateY(10px);
+  
+  transition: all 0.3s ease;
+}
+
+.na-toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.na-toast-success {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+}
+
+.na-toast-error {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.na-toast-warning {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.na-toast-info {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .na-quick-update-btn {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  
+  .na-btn-text {
+    display: none;
+  }
+  
+  .na-quick-update-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+}
