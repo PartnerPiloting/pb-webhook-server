@@ -8,63 +8,12 @@
   const isStaging = window.location.hostname.includes('staging');
   const environment = isStaging ? 'staging' : 'production';
   
-  // Inject a script to access page-level variables and relay them via custom events
-  function injectPageScript() {
-    const script = document.createElement('script');
-    script.textContent = `
-      (function() {
-        function sendCredentials() {
-          const clientId = window.__NA_CLIENT_ID__;
-          if (clientId) {
-            window.dispatchEvent(new CustomEvent('na-extension-credentials', {
-              detail: { clientId }
-            }));
-          }
-        }
-        // Send immediately if available
-        sendCredentials();
-        // Also retry periodically in case clientId is set later
-        const interval = setInterval(() => {
-          if (window.__NA_CLIENT_ID__) {
-            sendCredentials();
-            clearInterval(interval);
-          }
-        }, 500);
-        // Stop trying after 30 seconds
-        setTimeout(() => clearInterval(interval), 30000);
-      })();
-    `;
-    document.documentElement.appendChild(script);
-    script.remove();
-  }
-  
-  // Listen for credentials from the injected script
-  let pageClientId = null;
-  window.addEventListener('na-extension-credentials', (e) => {
-    pageClientId = e.detail?.clientId;
-    console.log('[NA Extension] Received clientId from page:', pageClientId);
-    broadcastCredentials();
-  });
-  
   // Function to extract and broadcast credentials
   function broadcastCredentials() {
     try {
-      // Portal stores token in sessionStorage
+      // Portal stores both token and clientId in sessionStorage
       const portalToken = sessionStorage.getItem('portalToken');
-      
-      // Try to get clientId from various sources
-      let clientId = pageClientId;
-      
-      // Check URL params as fallback
-      if (!clientId) {
-        const urlParams = new URLSearchParams(window.location.search);
-        clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient');
-      }
-      
-      // Check localStorage as fallback
-      if (!clientId) {
-        clientId = localStorage.getItem('clientCode');
-      }
+      const clientId = sessionStorage.getItem('clientId');
       
       const urlParams = new URLSearchParams(window.location.search);
       const devKey = urlParams.get('devKey') || localStorage.getItem('devKey');
@@ -93,7 +42,7 @@
           }
         });
       } else {
-        console.log('[NA Extension] Waiting for credentials...', { hasToken: !!portalToken, clientId });
+        console.log('[NA Extension] Waiting for credentials...', { hasToken: !!portalToken, hasClientId: !!clientId });
       }
     } catch (e) {
       console.error('[NA Extension] Error reading credentials:', e);
@@ -146,15 +95,27 @@
     }, 3000);
   }
   
-  // Inject page script to access window variables
-  injectPageScript();
+  // Poll for credentials (they may not be available immediately after page load)
+  let attempts = 0;
+  const maxAttempts = 60; // 30 seconds
+  const pollInterval = setInterval(() => {
+    attempts++;
+    const hasCredentials = sessionStorage.getItem('portalToken') && sessionStorage.getItem('clientId');
+    if (hasCredentials) {
+      broadcastCredentials();
+      clearInterval(pollInterval);
+    } else if (attempts >= maxAttempts) {
+      console.log('[NA Extension] Gave up waiting for credentials after 30 seconds');
+      clearInterval(pollInterval);
+    }
+  }, 500);
   
-  // Broadcast immediately on load (will retry when clientId becomes available)
+  // Broadcast immediately in case credentials are already there
   broadcastCredentials();
   
   // Also broadcast when sessionStorage changes
   window.addEventListener('storage', (e) => {
-    if (e.key === 'portalToken') {
+    if (e.key === 'portalToken' || e.key === 'clientId') {
       broadcastCredentials();
     }
   });
