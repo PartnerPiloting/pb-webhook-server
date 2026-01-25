@@ -31,22 +31,40 @@
     altProfileLink: '.msg-conversation-card__profile-link'
   };
   
+  // Track current URL for SPA navigation detection
+  let currentUrl = window.location.href;
+  
   // Initialize the extension
   function init() {
-    // Check auth status first
-    chrome.runtime.sendMessage({ type: 'CHECK_AUTH' }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.log('[NA Extension] Extension context not available');
-        return;
-      }
-      
-      if (response?.authenticated) {
-        observeForConversations();
-      } else {
-        // Still inject button, but it will show auth prompt when clicked
-        observeForConversations();
-      }
-    });
+    // Check if extension context is valid
+    if (!chrome.runtime?.id) {
+      return; // Extension was reloaded
+    }
+    
+    // Check if we were redirected here to auto-save
+    checkPendingSave();
+    
+    // Always set up the observer first - don't wait for auth check
+    observeForConversations();
+    
+    // Watch for SPA navigation (URL changes without page reload)
+    setupSPANavigationDetection();
+    
+    // Then check auth status (just for button state, not blocking)
+    try {
+      chrome.runtime.sendMessage({ type: 'CHECK_AUTH' }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.log('[NA Extension] Auth check failed, will retry on click');
+          return;
+        }
+        
+        if (response?.authenticated) {
+          console.log('[NA Extension] Already authenticated');
+        }
+      });
+    } catch (e) {
+      console.log('[NA Extension] Extension context error, will retry on click');
+    }
     
     // Listen for auth ready events
     chrome.runtime.onMessage.addListener((message) => {
@@ -57,40 +75,81 @@
     });
   }
   
-  // Watch for conversation thread to appear
+  // Watch for messaging page
   function observeForConversations() {
-    const observer = new MutationObserver((mutations) => {
-      // Check if we're on a conversation page
-      if (isConversationVisible() && !button) {
-        injectButton();
-      } else if (!isConversationVisible() && button) {
-        removeButton();
-      }
-    });
-    
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-    
-    // Also check immediately
-    if (isConversationVisible()) {
+    // Check immediately if we're on a messaging page
+    if (isMessagingPage() && !button) {
       injectButton();
     }
+    
+    // The SPA navigation detection will handle subsequent checks
   }
   
-  // Check if a conversation thread is visible
+  // Detect SPA navigation (LinkedIn uses client-side routing)
+  function setupSPANavigationDetection() {
+    // Method 1: Listen for popstate (back/forward navigation)
+    window.addEventListener('popstate', handleNavigation);
+    
+    // Method 2: Intercept pushState and replaceState
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    
+    history.pushState = function(...args) {
+      originalPushState.apply(this, args);
+      handleNavigation();
+    };
+    
+    history.replaceState = function(...args) {
+      originalReplaceState.apply(this, args);
+      handleNavigation();
+    };
+    
+    // Method 3: Poll for URL changes (catches all SPA navigation)
+    setInterval(() => {
+      const newUrl = window.location.href;
+      if (newUrl !== currentUrl) {
+        currentUrl = newUrl;
+        handleNavigation();
+      }
+      
+      // Check if we should show button based on URL
+      const shouldShow = isMessagingPage();
+      if (shouldShow && !button) {
+        injectButton();
+      } else if (!shouldShow && button) {
+        removeButton();
+      }
+    }, 500);
+  }
+  
+  // Handle navigation to potentially show/hide button
+  function handleNavigation() {
+    currentUrl = window.location.href;
+    // Don't remove button immediately - let the polling handle it
+    // This prevents flicker during navigation
+  }
+  
+  // Simple URL-based check - very reliable
+  function isMessagingPage() {
+    const path = window.location.pathname;
+    return path.startsWith('/messaging');
+  }
+  
+  // Legacy function - now just uses URL
   function isConversationVisible() {
-    return !!(
-      document.querySelector(SELECTORS.messageThread) ||
-      document.querySelector(SELECTORS.conversationContainer) ||
-      document.querySelector('.msg-s-message-list')
-    );
+    return isMessagingPage();
   }
   
   // Inject the quick update button
   function injectButton() {
     if (button) return;
+    
+    // Double-check button doesn't already exist in DOM
+    const existingBtn = document.getElementById('na-quick-update-btn');
+    if (existingBtn) {
+      button = existingBtn;
+      return;
+    }
     
     button = document.createElement('button');
     button.id = 'na-quick-update-btn';
@@ -124,77 +183,66 @@
     }
   }
   
-  // Handle button click
+  // Handle button click - simple: read clipboard, open portal Quick Update
   async function handleButtonClick(e) {
     e.preventDefault();
     e.stopPropagation();
     
     if (isProcessing) return;
-    
-    // Check auth first
-    const authResponse = await sendMessage({ type: 'CHECK_AUTH' });
-    
-    if (!authResponse?.authenticated) {
-      showToast('Please open your Network Accelerator portal first', 'warning');
-      updateButtonState('not-auth');
-      return;
-    }
-    
     isProcessing = true;
     updateButtonState('loading');
     
     try {
-      // 1. Get profile URL from conversation
-      const profileUrl = extractProfileUrl();
-      if (!profileUrl) {
-        throw new Error('Could not find LinkedIn profile URL');
+      // Read clipboard
+      let clipboardText = '';
+      try {
+        clipboardText = await navigator.clipboard.readText();
+      } catch (err) {
+        // Clipboard access denied - check for selection instead
+        const selection = window.getSelection()?.toString()?.trim();
+        if (selection && selection.length > 20) {
+          clipboardText = selection;
+        }
       }
       
-      // 2. Scrape conversation
-      const conversation = scrapeConversation();
-      if (!conversation || conversation.length === 0) {
-        throw new Error('Could not find any messages in this conversation');
+      if (!clipboardText || clipboardText.length < 20) {
+        throw new Error('Please copy the conversation first (Ctrl+A then Ctrl+C in the message area)');
       }
       
-      const rawContent = formatConversationForApi(conversation);
+      // Parse the other person's name from clipboard
+      // Format: "Name sent the following message at HH:MM AM/PM"
+      const nameMatch = clipboardText.match(/^(.+?)\s+sent the following message at/m);
+      const contactName = nameMatch ? nameMatch[1].trim() : '';
       
-      // 3. Lookup lead
-      const lookupResult = await sendMessage({
-        type: 'LOOKUP_LEAD',
-        linkedinUrl: profileUrl
+      // Store data for portal to pick up
+      const portalData = {
+        contactName: contactName,
+        conversationText: clipboardText,
+        timestamp: Date.now()
+      };
+      
+      // Send to background script to store
+      await sendMessage({ 
+        type: 'STORE_CLIPBOARD_DATA', 
+        data: portalData 
       });
       
-      if (!lookupResult.success) {
-        throw new Error(lookupResult.error || 'Failed to find lead');
+      // Get stored auth credentials from extension
+      const authData = await sendMessage({ type: 'GET_AUTH' });
+      
+      // Build portal URL with auth credentials so new tab is authenticated
+      let portalUrl = 'https://pb-webhook-server-staging.vercel.app/quick-update?from=extension';
+      
+      if (authData?.portalToken) {
+        portalUrl += `&token=${encodeURIComponent(authData.portalToken)}`;
+      } else if (authData?.clientId && authData?.devKey) {
+        portalUrl += `&client=${encodeURIComponent(authData.clientId)}&devKey=${encodeURIComponent(authData.devKey)}`;
       }
       
-      const leads = lookupResult.data?.leads || [];
-      if (leads.length === 0) {
-        throw new Error('No matching lead found in your portal');
-      }
+      window.open(portalUrl, '_blank');
       
-      const leadId = leads[0].id;
-      const leadName = `${leads[0].firstName || ''} ${leads[0].lastName || ''}`.trim();
-      
-      // 4. Quick update
-      const updateResult = await sendMessage({
-        type: 'QUICK_UPDATE',
-        leadId,
-        content: rawContent,
-        section: 'linkedin'
-      });
-      
-      if (!updateResult.success) {
-        throw new Error(updateResult.error || 'Failed to update lead');
-      }
-      
-      updateButtonState('success');
-      showToast(`Saved ${conversation.length} messages for ${leadName}`, 'success');
-      
-      // Reset button after delay
-      setTimeout(() => {
-        if (!isProcessing) updateButtonState('ready');
-      }, 3000);
+      showToast('Opening Quick Update...', 'success');
+      updateButtonState('ready');
       
     } catch (error) {
       console.error('[NA Extension] Error:', error);
@@ -209,83 +257,364 @@
     }
   }
   
-  // Extract LinkedIn profile URL from conversation
-  function extractProfileUrl() {
-    // Try different selectors
+  // Find profile link in conversation header
+  function findProfileLink() {
     const selectors = [
-      SELECTORS.profileLink,
-      SELECTORS.threadHeader,
-      SELECTORS.altProfileLink,
-      '.msg-thread .artdeco-entity-lockup__title a',
-      '.msg-overlay-bubble-header__link'
+      '.msg-thread__link-to-profile',
+      '.msg-entity-lockup__entity-title a[href*="/in/"]',
+      'a.msg-thread__link-to-profile',
+      '.msg-overlay-bubble-header__link',
+      '.msg-s-message-list-container a[href*="/in/"]',
+      '.msg-conversations-container a[href*="/in/"]',
+      'a[href*="linkedin.com/in/"]'
     ];
     
     for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (element?.href) {
-        const url = element.href;
-        // Normalize LinkedIn URL
-        if (url.includes('linkedin.com/in/')) {
-          return url.split('?')[0]; // Remove query params
-        }
+      const el = document.querySelector(selector);
+      if (el?.href && el.href.includes('/in/')) {
+        return el.href.split('?')[0];
       }
     }
-    
-    // Try to extract from page URL if we're on a profile page with messaging
-    if (window.location.pathname.startsWith('/in/')) {
-      return window.location.origin + window.location.pathname.split('?')[0];
-    }
-    
     return null;
   }
   
-  // Scrape messages from the conversation
-  function scrapeConversation() {
+  // Actually save the conversation
+  async function saveConversation(profileUrl) {
+    try {
+      // Check if we have pre-scraped messages (from redirect flow)
+      let conversation;
+      const storedMessages = sessionStorage.getItem('na_scraped_messages');
+      
+      if (storedMessages) {
+        conversation = JSON.parse(storedMessages);
+        sessionStorage.removeItem('na_scraped_messages');
+      } else {
+        // Scrape from current page (profile page with overlay or direct)
+        conversation = await scrapeConversation();
+      }
+      
+      if (!conversation || conversation.length === 0) {
+        throw new Error('No messages found. Please select the conversation text (Ctrl+A in the message area) or copy it first, then click Save.');
+      }
+      
+      const rawContent = formatConversationForApi(conversation);
+      
+      // Lookup lead
+      const lookupResult = await sendMessage({
+        type: 'LOOKUP_LEAD',
+        linkedinUrl: profileUrl
+      });
+      
+      if (!lookupResult.success) {
+        throw new Error(lookupResult.error || 'Failed to find lead');
+      }
+      
+      const leads = lookupResult.data?.leads || [];
+      if (leads.length === 0) {
+        throw new Error('No matching lead found in your portal for: ' + profileUrl);
+      }
+      
+      const leadId = leads[0].id;
+      const leadName = `${leads[0].firstName || ''} ${leads[0].lastName || ''}`.trim();
+      
+      // Quick update
+      const updateResult = await sendMessage({
+        type: 'QUICK_UPDATE',
+        leadId,
+        content: rawContent,
+        section: 'linkedin'
+      });
+      
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || 'Update failed');
+      }
+      
+      updateButtonState('success');
+      showToast(`Saved ${conversation.length} messages for ${leadName}`, 'success');
+      
+      // Check if we need to return to messaging thread
+      const returnUrl = sessionStorage.getItem('na_return_url');
+      if (returnUrl) {
+        sessionStorage.removeItem('na_return_url');
+        sessionStorage.removeItem('na_pending_save');
+        setTimeout(() => {
+          showToast('Returning to messages...', 'info');
+          window.location.href = returnUrl;
+        }, 1500);
+      } else {
+        setTimeout(() => {
+          if (!isProcessing) updateButtonState('ready');
+        }, 3000);
+      }
+      
+    } catch (error) {
+      console.error('[NA Extension] Save error:', error);
+      updateButtonState('error');
+      showToast(error.message, 'error');
+      sessionStorage.removeItem('na_pending_save');
+      
+      setTimeout(() => {
+        updateButtonState('ready');
+      }, 3000);
+    } finally {
+      isProcessing = false;
+    }
+  }
+  
+  // Check on page load if we need to auto-save (redirected from messaging)
+  function checkPendingSave() {
+    if (sessionStorage.getItem('na_pending_save') === 'true' && window.location.pathname.startsWith('/in/')) {
+      // Wait for URL to fully resolve (LinkedIn may still be redirecting)
+      let attempts = 0;
+      const maxAttempts = 20; // 10 seconds max
+      
+      const checkUrl = setInterval(() => {
+        attempts++;
+        const slug = window.location.pathname.replace('/in/', '').replace('/', '');
+        
+        // Check if we have the real URL (not internal ID)
+        if (!slug.startsWith('ACoA')) {
+          clearInterval(checkUrl);
+          const profileUrl = window.location.origin + window.location.pathname.split('?')[0];
+          saveConversation(profileUrl);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(checkUrl);
+          console.error('[NA Extension] URL did not resolve to real slug');
+          showToast('Could not get profile URL. Please try from the profile page.', 'error');
+          sessionStorage.removeItem('na_pending_save');
+          sessionStorage.removeItem('na_scraped_messages');
+          sessionStorage.removeItem('na_return_url');
+        }
+      }, 500);
+    }
+  }
+  
+  // Auto-scroll to load all messages in the conversation
+  async function loadAllMessages() {
+    // No-op for now - we'll use clipboard-based approach
+    console.log('[NA Extension] Ready to capture messages');
+  }
+  
+  // Scrape messages - try multiple strategies
+  async function scrapeConversation() {
     const messages = [];
     
-    // Find all message containers
-    const messageElements = document.querySelectorAll(
-      `${SELECTORS.messageItem}, .msg-s-message-group, .msg-s-event-listitem`
-    );
+    // Strategy 1: Check if user has selected text
+    const selection = window.getSelection();
+    const selectedText = selection?.toString()?.trim();
     
-    messageElements.forEach((elem) => {
-      try {
-        // Get sender name
-        const senderEl = elem.querySelector(
-          `${SELECTORS.messageSender}, .msg-s-message-group__name, .t-14.t-black.t-bold`
-        );
-        const sender = senderEl?.textContent?.trim() || 'Unknown';
-        
-        // Get message content
-        const contentEl = elem.querySelector(
-          `${SELECTORS.messageContent}, .msg-s-event-listitem__body p, .msg-s-event__content`
-        );
-        const content = contentEl?.textContent?.trim() || '';
-        
-        // Get timestamp
-        const timeEl = elem.querySelector(
-          `${SELECTORS.messageTimestamp}, time`
-        );
-        const timestamp = timeEl?.textContent?.trim() || timeEl?.getAttribute('datetime') || '';
-        
-        if (content) {
-          messages.push({ sender, content, timestamp });
-        }
-      } catch (e) {
-        console.warn('[NA Extension] Error parsing message:', e);
+    if (selectedText && selectedText.length > 20) {
+      console.log('[NA Extension] Using selected text');
+      return parseLinkedInText(selectedText);
+    }
+    
+    // Strategy 2: Try to read from clipboard (requires permission)
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (clipboardText && clipboardText.length > 20 && 
+          (clipboardText.includes('sent the following message') || clipboardText.includes('AM') || clipboardText.includes('PM'))) {
+        console.log('[NA Extension] Using clipboard text');
+        return parseLinkedInText(clipboardText);
       }
-    });
+    } catch (e) {
+      console.log('[NA Extension] Clipboard access denied or empty');
+    }
+    
+    // Strategy 3: Try to find and use LinkedIn's copy feature
+    // LinkedIn has a "Copy" option in the conversation menu
+    // But for now, show a helpful message
+    
+    // Strategy 4: Try DOM scraping as fallback
+    const domMessages = await scrapeDOMMessages();
+    if (domMessages.length > 0) {
+      console.log('[NA Extension] Scraped', domMessages.length, 'messages from DOM');
+      return domMessages;
+    }
+    
+    // No messages found - return empty
+    return [];
+  }
+  
+  // Parse LinkedIn's copied text format
+  function parseLinkedInText(text) {
+    const messages = [];
+    const lines = text.split('\n');
+    
+    let currentSender = null;
+    let currentContent = [];
+    const seenContent = new Set();
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Match: "Name sent the following message at HH:MM AM/PM"
+      const sentMatch = line.match(/^(.+?)\s+sent the following message at/);
+      if (sentMatch) {
+        // Save previous message if exists
+        if (currentSender && currentContent.length > 0) {
+          const content = currentContent.join('\n').trim();
+          const key = content.substring(0, 50);
+          if (!seenContent.has(key)) {
+            seenContent.add(key);
+            messages.push({ sender: currentSender, content, timestamp: '' });
+          }
+        }
+        currentSender = sentMatch[1].trim();
+        currentContent = [];
+        continue;
+      }
+      
+      // Match: "Name   HH:MM AM/PM" (the second line before message content)
+      const nameTimeMatch = line.match(/^(.+?)\s{2,}\d{1,2}:\d{2}\s*(AM|PM)/i);
+      if (nameTimeMatch) {
+        // This is just a header line, skip it
+        continue;
+      }
+      
+      // Skip day headers like "Tuesday", "Friday", etc.
+      const dayHeaders = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Today', 'Yesterday'];
+      if (dayHeaders.includes(line)) {
+        continue;
+      }
+      
+      // Skip date headers like "Jan 20"
+      if (/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}$/i.test(line)) {
+        continue;
+      }
+      
+      // Skip empty lines between messages but not within them
+      if (line === '') {
+        if (currentContent.length > 0 && currentContent[currentContent.length - 1] !== '') {
+          currentContent.push(''); // Preserve blank lines within messages
+        }
+        continue;
+      }
+      
+      // This is message content
+      if (currentSender) {
+        currentContent.push(line);
+      }
+    }
+    
+    // Don't forget the last message
+    if (currentSender && currentContent.length > 0) {
+      const content = currentContent.join('\n').trim();
+      const key = content.substring(0, 50);
+      if (!seenContent.has(key)) {
+        seenContent.add(key);
+        messages.push({ sender: currentSender, content, timestamp: '' });
+      }
+    }
     
     return messages;
   }
   
-  // Format conversation for the API
+  // Fallback DOM scraping (may not work with obfuscated classes)
+  async function scrapeDOMMessages() {
+    const messages = [];
+    const seenContent = new Set();
+    
+    // Try known selectors (these are legacy and may not work)
+    const messageElements = document.querySelectorAll(
+      '.msg-s-message-list__event, .msg-s-message-group, .msg-s-event-listitem, [role="listitem"]'
+    );
+    
+    // Also try to find elements with time elements (messages usually have timestamps)
+    const timeElements = document.querySelectorAll('time');
+    
+    for (const timeEl of timeElements) {
+      // Walk up to find the message container
+      let msgContainer = timeEl.closest('li') || timeEl.closest('article') || timeEl.parentElement?.parentElement?.parentElement;
+      if (msgContainer) {
+        const text = msgContainer.innerText?.trim();
+        if (text && text.length > 5 && text.length < 2000) {
+          const key = text.substring(0, 50);
+          if (!seenContent.has(key)) {
+            seenContent.add(key);
+            // Can't reliably determine sender from DOM
+            messages.push({ sender: 'Unknown', content: text, timestamp: '' });
+          }
+        }
+      }
+    }
+    
+    return messages;
+  }
+  
+  // Format conversation to match LinkedIn's native copy/paste format
+  // This allows the server-side parser to handle it consistently
   function formatConversationForApi(messages) {
-    // Format as raw LinkedIn-style conversation
-    return messages.map(msg => {
-      const timeStr = msg.timestamp ? `[${msg.timestamp}]` : '';
-      return `${msg.sender} ${timeStr}\n${msg.content}`;
-    }).join('\n\n');
+    const output = [];
+    let lastDay = null;
+    
+    for (const msg of messages) {
+      // Add day header if it changed (e.g., "Tuesday", "Friday")
+      const dayHeader = getDayHeader(msg.timestamp);
+      if (dayHeader && dayHeader !== lastDay) {
+        output.push(dayHeader);
+        lastDay = dayHeader;
+      }
+      
+      // Get time portion
+      const timeStr = getTimeFromTimestamp(msg.timestamp);
+      
+      // Match LinkedIn's format:
+      // "Sender Name sent the following message at HH:MM AM/PM"
+      // "Sender Name   HH:MM AM/PM"
+      // Message content
+      output.push(`${msg.sender} sent the following message at ${timeStr}`);
+      output.push(`${msg.sender}   ${timeStr}`);
+      output.push(msg.content);
+      output.push(''); // Blank line between messages
+    }
+    
+    return output.join('\n');
+  }
+  
+  // Get day header from timestamp (e.g., "Tuesday", "Friday", "Jan 20")
+  function getDayHeader(timestamp) {
+    if (!timestamp) return null;
+    
+    const lowerTs = timestamp.toLowerCase().trim();
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    // Check if timestamp contains a day name
+    for (const day of dayNames) {
+      if (lowerTs.includes(day.toLowerCase())) {
+        return day;
+      }
+    }
+    
+    // Check for "Today" or "Yesterday"
+    if (lowerTs.includes('today')) return 'Today';
+    if (lowerTs.includes('yesterday')) return 'Yesterday';
+    
+    // Check for date format like "Jan 20"
+    const monthMatch = timestamp.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}/i);
+    if (monthMatch) return monthMatch[0];
+    
+    return null;
+  }
+  
+  // Get time from timestamp (e.g., "11:39 AM")
+  function getTimeFromTimestamp(timestamp) {
+    if (!timestamp) return '12:00 PM';
+    
+    // Extract time pattern HH:MM AM/PM
+    const timeMatch = timestamp.match(/(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
+    if (timeMatch) {
+      let time = timeMatch[1].trim();
+      // Ensure AM/PM is uppercase
+      time = time.replace(/am/i, 'AM').replace(/pm/i, 'PM');
+      // Add AM/PM if missing (assume based on hour)
+      if (!time.includes('AM') && !time.includes('PM')) {
+        const hour = parseInt(time.split(':')[0], 10);
+        time += hour >= 8 && hour < 12 ? ' AM' : ' PM';
+      }
+      return time;
+    }
+    
+    return '12:00 PM';
   }
   
   // Update button visual state
