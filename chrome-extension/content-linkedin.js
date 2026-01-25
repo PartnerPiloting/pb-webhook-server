@@ -209,54 +209,17 @@
         throw new Error('Please copy the conversation first (Ctrl+A then Ctrl+C in the message area)');
       }
       
-      // Get auth data to know the client's name (to exclude from contact extraction)
-      const authData = await sendMessage({ type: 'GET_AUTH' });
+      // ROBUST: Get contact name from LinkedIn's conversation header (most reliable)
+      // The header ALWAYS shows the OTHER person's name, never yours
+      let contactName = getContactNameFromHeader();
       
-      // Parse the OTHER person's name from clipboard (not the client's name)
-      // LinkedIn format: "Name sent the following message at HH:MM AM/PM"
-      // We need to find ALL unique senders and pick the one that's NOT the client
-      const senderPattern = /^(.+?)\s+sent the following message at/gm;
-      const allSenders = new Set();
-      let match;
-      while ((match = senderPattern.exec(clipboardText)) !== null) {
-        const name = match[1].trim();
-        if (name && name.length > 1 && name.length < 50) {
-          allSenders.add(name);
-        }
+      // Fallback: Parse from clipboard if header not found
+      if (!contactName) {
+        const authData = await sendMessage({ type: 'GET_AUTH' });
+        contactName = extractContactNameFromClipboard(clipboardText, authData?.clientId);
       }
       
-      // Also try alternate format: "Name   HH:MM AM/PM" (with spaces before time)
-      const altPattern = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+\d{1,2}:\d{2}\s*[AP]M$/gm;
-      while ((match = altPattern.exec(clipboardText)) !== null) {
-        const name = match[1].trim();
-        if (name && name.length > 1 && name.length < 50) {
-          allSenders.add(name);
-        }
-      }
-      
-      // Determine the contact name (the OTHER person, not the client)
-      let contactName = '';
-      // Derive client name from clientId (format: "Guy-Wilson" -> "Guy Wilson")
-      const clientName = authData?.clientId ? authData.clientId.replace(/-/g, ' ') : '';
-      
-      if (allSenders.size > 0) {
-        // Filter out the client's name (compare by first name if full name not available)
-        const clientFirstName = clientName.split(' ')[0].toLowerCase();
-        const otherPeople = Array.from(allSenders).filter(name => {
-          const senderFirstName = name.split(' ')[0].toLowerCase();
-          return clientFirstName && senderFirstName !== clientFirstName && name.toLowerCase() !== clientName.toLowerCase();
-        });
-        
-        // Use the first OTHER person as the contact
-        if (otherPeople.length > 0) {
-          contactName = otherPeople[0];
-        } else if (allSenders.size === 1) {
-          // Only one sender found - might be viewing own sent messages, use it anyway
-          contactName = Array.from(allSenders)[0];
-        }
-      }
-      
-      console.log('[NA Extension] Extracted senders:', Array.from(allSenders), 'Client:', clientName, 'Contact:', contactName);
+      console.log('[NA Extension] Contact name:', contactName || '(not found)');
       
       // Store data for portal to pick up
       const portalData = {
@@ -318,6 +281,89 @@
       }
     }
     return null;
+  }
+  
+  // Get contact name from LinkedIn's conversation header (MOST RELIABLE)
+  // The header always shows the OTHER person's name, never yours
+  function getContactNameFromHeader() {
+    // Try various selectors for the conversation header
+    const selectors = [
+      '.msg-entity-lockup__entity-title',           // Main messaging page header
+      '.msg-overlay-bubble-header__title',          // Overlay/popup conversation
+      '.msg-thread__link-to-profile span',          // Thread link text
+      '.msg-conversation-card__row--header span',   // Conversation list card
+      '.msg-s-message-list-container h2',           // Message list header
+      '.artdeco-entity-lockup__title'               // Generic entity lockup
+    ];
+    
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      if (el) {
+        // Get text, clean whitespace, remove any "View profile" type suffixes
+        const text = el.textContent?.trim()
+          .replace(/\s+/g, ' ')
+          .replace(/View .+'s profile/i, '')
+          .replace(/\(.*\)$/, '')  // Remove pronouns like (She/Her)
+          .trim();
+        
+        // Validate it looks like a name (1-4 words, reasonable length)
+        if (text && text.length >= 2 && text.length <= 60 && !text.includes('@')) {
+          const words = text.split(' ').filter(w => w.length > 0);
+          if (words.length >= 1 && words.length <= 4) {
+            return text;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  
+  // Fallback: Extract contact name from clipboard by finding senders and excluding client
+  function extractContactNameFromClipboard(clipboardText, clientId) {
+    if (!clipboardText) return '';
+    
+    // Derive client name from clientId (format: "Guy-Wilson" -> "Guy Wilson")
+    const clientName = clientId ? clientId.replace(/-/g, ' ') : '';
+    const clientFirstName = clientName.split(' ')[0].toLowerCase();
+    
+    // Find all senders using LinkedIn's format patterns
+    const allSenders = new Set();
+    
+    // Pattern 1: "Name sent the following message at HH:MM AM/PM"
+    const sentPattern = /^(.+?)\s+sent the following message at/gm;
+    let match;
+    while ((match = sentPattern.exec(clipboardText)) !== null) {
+      const name = match[1].trim();
+      if (name && name.length > 1 && name.length < 50 && !name.startsWith('View ')) {
+        allSenders.add(name);
+      }
+    }
+    
+    // Pattern 2: "Name   HH:MM AM/PM" (name followed by spaces and time)
+    // Use a more permissive pattern that allows any characters in names
+    const timePattern = /^(.+?)\s{2,}(\d{1,2}:\d{2}\s*[AP]M)$/gm;
+    while ((match = timePattern.exec(clipboardText)) !== null) {
+      const name = match[1].trim();
+      if (name && name.length > 1 && name.length < 50 && !name.startsWith('View ')) {
+        // Skip if it looks like a date/day (e.g., "Monday", "Jan 5")
+        if (!/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Today|Yesterday)$/i.test(name) &&
+            !/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}/i.test(name)) {
+          allSenders.add(name);
+        }
+      }
+    }
+    
+    if (allSenders.size === 0) return '';
+    
+    // Filter out client's name
+    const otherPeople = Array.from(allSenders).filter(name => {
+      if (!clientFirstName) return true;  // No client info, keep all
+      const senderFirstName = name.split(' ')[0].toLowerCase();
+      return senderFirstName !== clientFirstName && name.toLowerCase() !== clientName.toLowerCase();
+    });
+    
+    // Return first other person, or first sender if can't identify client
+    return otherPeople.length > 0 ? otherPeople[0] : Array.from(allSenders)[0];
   }
   
   // Actually save the conversation
