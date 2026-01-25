@@ -146,6 +146,7 @@ const allowedOrigins = [
     /^https:\/\/[a-z0-9-]+\.vercel\.app$/i,
     'https://australiansidehustles.com.au',
     'https://www.australiansidehustles.com.au',
+    /^chrome-extension:\/\/[a-z]+$/i,  // Allow Chrome extensions
     null  // Allow local file:// pages (for admin tools)
 ];
 
