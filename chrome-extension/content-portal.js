@@ -110,7 +110,9 @@
     }
     
     attempts++;
-    const hasCredentials = sessionStorage.getItem('portalToken') && sessionStorage.getItem('clientId');
+    // Check both localStorage (persistent) and sessionStorage (legacy)
+    const hasCredentials = (localStorage.getItem('portalToken') || sessionStorage.getItem('portalToken')) 
+                        && (localStorage.getItem('clientCode') || sessionStorage.getItem('clientId'));
     if (hasCredentials) {
       broadcastCredentials();
       clearInterval(pollInterval);
@@ -122,9 +124,9 @@
   // Broadcast immediately in case credentials are already there
   broadcastCredentials();
   
-  // Also broadcast when sessionStorage changes
+  // Also broadcast when storage changes (works for localStorage, not sessionStorage)
   window.addEventListener('storage', (e) => {
-    if (e.key === 'portalToken' || e.key === 'clientId') {
+    if (e.key === 'portalToken' || e.key === 'clientId' || e.key === 'clientCode') {
       broadcastCredentials();
     }
   });

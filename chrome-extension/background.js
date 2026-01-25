@@ -84,6 +84,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+  
+  // Store clipboard data for portal to pick up
+  if (message.type === 'STORE_CLIPBOARD_DATA') {
+    chrome.storage.local.set({
+      clipboardData: message.data
+    }, () => {
+      console.log('[NA Extension] Clipboard data stored for portal');
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+  
+  // Portal requests clipboard data
+  if (message.type === 'GET_CLIPBOARD_DATA') {
+    chrome.storage.local.get(['clipboardData'], (data) => {
+      sendResponse(data.clipboardData || null);
+      // Clear after reading (one-time use)
+      chrome.storage.local.remove(['clipboardData']);
+    });
+    return true;
+  }
+  
+  // Resolve LinkedIn internal ID to real profile URL
+  if (message.type === 'RESOLVE_LINKEDIN_URL') {
+    resolveLinkedInUrl(message.internalUrl)
+      .then(realUrl => sendResponse({ success: true, realUrl }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
 
 // Helper: Get API base URL
@@ -146,7 +175,9 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin') {
   const apiBase = await getApiBase();
   const headers = await getAuthHeaders();
   
-  const response = await fetch(`${apiBase}/leads/${leadId}/quick-update`, {
+  const url = `${apiBase}/leads/${leadId}/quick-update`;
+  
+  const response = await fetch(url, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({
@@ -157,8 +188,15 @@ async function handleQuickUpdate(leadId, content, section = 'linkedin') {
   });
   
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Update failed: ${response.status}`);
+    const errorText = await response.text();
+    let errorMsg = `Update failed: ${response.status}`;
+    try {
+      const errorData = JSON.parse(errorText);
+      errorMsg = errorData.error || errorData.message || errorMsg;
+    } catch (e) {
+      if (errorText) errorMsg = errorText.substring(0, 200);
+    }
+    throw new Error(errorMsg);
   }
   
   return response.json();
@@ -186,5 +224,34 @@ function updateBadge(isAuthenticated) {
   } else {
     chrome.action.setBadgeText({ text: '!' });
     chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+  }
+}
+
+// Resolve LinkedIn internal ID URL to real profile URL by following redirects
+async function resolveLinkedInUrl(internalUrl) {
+  console.log('[NA Extension] Resolving LinkedIn URL:', internalUrl);
+  
+  try {
+    // Make a HEAD request and follow redirects
+    const response = await fetch(internalUrl, {
+      method: 'HEAD',
+      redirect: 'follow',
+      credentials: 'include'
+    });
+    
+    // The final URL after redirects
+    const finalUrl = response.url;
+    console.log('[NA Extension] Resolved to:', finalUrl);
+    
+    // Extract just the profile path without query params
+    const url = new URL(finalUrl);
+    if (url.pathname.startsWith('/in/')) {
+      return url.origin + url.pathname;
+    }
+    
+    return finalUrl;
+  } catch (error) {
+    console.error('[NA Extension] Failed to resolve URL:', error);
+    throw error;
   }
 }
