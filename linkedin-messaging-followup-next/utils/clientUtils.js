@@ -103,7 +103,11 @@ export async function getCurrentClientProfile() {
       console.log(`ClientUtils: Using portal token for authentication`);
       apiUrl += `?token=${encodeURIComponent(portalToken)}`;
       currentPortalToken = portalToken; // Cache token for API calls
-      // Also persist to sessionStorage for page refresh resilience
+      // Persist to localStorage for cross-tab and browser restart persistence
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('portalToken', portalToken);
+      }
+      // Also keep in sessionStorage for backward compatibility
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem('portalToken', portalToken);
       }
@@ -113,6 +117,11 @@ export async function getCurrentClientProfile() {
       console.log(`ClientUtils: Using client ID with dev key: ${clientId}`);
       apiUrl += `?clientId=${encodeURIComponent(clientId)}&devKey=${encodeURIComponent(devKey)}`;
       currentDevKey = devKey; // Cache devKey for API calls
+      // Persist devKey and clientId to localStorage for session persistence
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('clientCode', clientId);
+        localStorage.setItem('devKey', devKey);
+      }
     }
     // If client ID specified without dev key (legacy - will fail gracefully)
     else if (clientId) {
