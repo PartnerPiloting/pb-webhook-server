@@ -18,13 +18,19 @@ function HomeContent() {
   useEffect(() => {
     const validateAccess = async () => {
       // Check for token (secure), client, clientId, or testClient (legacy) parameter
-      // Also check sessionStorage for token (persisted after URL cleaning for demo security)
-      const token = searchParams.get('token') || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('portalToken') : null);
-      const clientId = searchParams.get('client') || searchParams.get('clientId') || searchParams.get('testClient');
+      // Priority: URL params > localStorage (persists across tabs/sessions) > sessionStorage (legacy)
+      const token = searchParams.get('token') 
+        || (typeof localStorage !== 'undefined' ? localStorage.getItem('portalToken') : null)
+        || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('portalToken') : null);
+      const clientId = searchParams.get('client') || searchParams.get('clientId') || searchParams.get('testClient')
+        || (typeof localStorage !== 'undefined' ? localStorage.getItem('clientCode') : null);
+      const devKey = searchParams.get('devKey')
+        || (typeof localStorage !== 'undefined' ? localStorage.getItem('devKey') : null);
       
-      // If no token or client ID, redirect to membership required page
+      // If no token or client ID, show error (don't redirect - stay on page with message)
       if (!token && !clientId) {
-        router.push('/membership-required');
+        setValidationError('No active session. Please use your portal access link to log in.');
+        setIsValidating(false);
         return;
       }
       
@@ -90,19 +96,22 @@ function HomeContent() {
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-8">
           <div className="text-center">
-            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
-              <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100">
+              <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            <h3 className="mt-4 text-lg font-medium text-gray-900">Access Denied</h3>
-            <p className="mt-2 text-sm text-gray-600">{validationError}</p>
-            <div className="mt-6">
+            <h3 className="mt-4 text-xl font-semibold text-gray-900">Session Expired</h3>
+            <p className="mt-2 text-gray-600">{validationError}</p>
+            <p className="mt-4 text-sm text-gray-500">
+              Check your email for your portal access link, or contact your coach.
+            </p>
+            <div className="mt-6 space-y-3">
               <a
-                href="/membership-required"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                href="https://australiansidehustles.com.au/contact/"
+                className="block w-full px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
               >
-                Learn More
+                Contact Support
               </a>
             </div>
           </div>
