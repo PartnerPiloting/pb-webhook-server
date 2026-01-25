@@ -209,10 +209,54 @@
         throw new Error('Please copy the conversation first (Ctrl+A then Ctrl+C in the message area)');
       }
       
-      // Parse the other person's name from clipboard
-      // Format: "Name sent the following message at HH:MM AM/PM"
-      const nameMatch = clipboardText.match(/^(.+?)\s+sent the following message at/m);
-      const contactName = nameMatch ? nameMatch[1].trim() : '';
+      // Get auth data to know the client's name (to exclude from contact extraction)
+      const authData = await sendMessage({ type: 'GET_AUTH' });
+      
+      // Parse the OTHER person's name from clipboard (not the client's name)
+      // LinkedIn format: "Name sent the following message at HH:MM AM/PM"
+      // We need to find ALL unique senders and pick the one that's NOT the client
+      const senderPattern = /^(.+?)\s+sent the following message at/gm;
+      const allSenders = new Set();
+      let match;
+      while ((match = senderPattern.exec(clipboardText)) !== null) {
+        const name = match[1].trim();
+        if (name && name.length > 1 && name.length < 50) {
+          allSenders.add(name);
+        }
+      }
+      
+      // Also try alternate format: "Name   HH:MM AM/PM" (with spaces before time)
+      const altPattern = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+\d{1,2}:\d{2}\s*[AP]M$/gm;
+      while ((match = altPattern.exec(clipboardText)) !== null) {
+        const name = match[1].trim();
+        if (name && name.length > 1 && name.length < 50) {
+          allSenders.add(name);
+        }
+      }
+      
+      // Determine the contact name (the OTHER person, not the client)
+      let contactName = '';
+      // Derive client name from clientId (format: "Guy-Wilson" -> "Guy Wilson")
+      const clientName = authData?.clientId ? authData.clientId.replace(/-/g, ' ') : '';
+      
+      if (allSenders.size > 0) {
+        // Filter out the client's name (compare by first name if full name not available)
+        const clientFirstName = clientName.split(' ')[0].toLowerCase();
+        const otherPeople = Array.from(allSenders).filter(name => {
+          const senderFirstName = name.split(' ')[0].toLowerCase();
+          return clientFirstName && senderFirstName !== clientFirstName && name.toLowerCase() !== clientName.toLowerCase();
+        });
+        
+        // Use the first OTHER person as the contact
+        if (otherPeople.length > 0) {
+          contactName = otherPeople[0];
+        } else if (allSenders.size === 1) {
+          // Only one sender found - might be viewing own sent messages, use it anyway
+          contactName = Array.from(allSenders)[0];
+        }
+      }
+      
+      console.log('[NA Extension] Extracted senders:', Array.from(allSenders), 'Client:', clientName, 'Contact:', contactName);
       
       // Store data for portal to pick up
       const portalData = {
@@ -227,10 +271,8 @@
         data: portalData 
       });
       
-      // Get stored auth credentials from extension
-      const authData = await sendMessage({ type: 'GET_AUTH' });
-      
       // Build portal URL with auth credentials so new tab is authenticated
+      // (authData already retrieved above for name extraction)
       let portalUrl = 'https://pb-webhook-server-staging.vercel.app/quick-update?from=extension';
       
       if (authData?.portalToken) {

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Extension API Test Harness</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+    h1 { color: #333; }
+    .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+    label { display: block; margin: 10px 0 5px; font-weight: bold; }
+    input, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    textarea { height: 150px; font-family: monospace; }
+    button { margin: 10px 5px 10px 0; padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #0055aa; }
+    button.secondary { background: #666; }
+    .result { margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 300px; overflow: auto; }
+    .success { background: #d4edda; border: 1px solid #c3e6cb; }
+    .error { background: #f8d7da; border: 1px solid #f5c6cb; }
+    .info { background: #cce5ff; border: 1px solid #b8daff; }
+  </style>
+</head>
+<body>
+  <h1>🔧 Extension API Test Harness</h1>
+  
+  <div class="section">
+    <h2>1. Configuration</h2>
+    <label>API Base URL:</label>
+    <input type="text" id="apiBase" value="https://pb-webhook-server-staging.onrender.com/api/linkedin">
+    
+    <label>Client ID:</label>
+    <input type="text" id="clientId" value="Guy-Wilson">
+    
+    <label>Portal Token (from your portal URL or sessionStorage):</label>
+    <input type="text" id="portalToken" placeholder="Paste your portal token here">
+    
+    <p style="color: #666; font-size: 12px;">
+      To get your portal token: Open the portal, press F12, go to Application tab → Session Storage → find 'portalToken'
+    </p>
+  </div>
+  
+  <div class="section">
+    <h2>2. Test Lookup</h2>
+    <label>LinkedIn URL:</label>
+    <input type="text" id="lookupUrl" value="https://www.linkedin.com/in/toby-bell-617646185">
+    <button onclick="testLookup()">Test Lookup</button>
+    <div id="lookupResult" class="result" style="display:none;"></div>
+  </div>
+  
+  <div class="section">
+    <h2>3. Test Quick Update</h2>
+    <label>Lead ID (from lookup result above):</label>
+    <input type="text" id="leadId" placeholder="Will auto-fill from lookup">
+    
+    <label>Section:</label>
+    <input type="text" id="section" value="linkedin">
+    
+    <label>Content (simulated conversation):</label>
+    <textarea id="content">Toby Bell [Jan 24, 2025]
+Hi Guy, thanks for connecting!
+
+Guy Wilson [Jan 24, 2025]
+Hi Toby, great to connect. Looking forward to chatting soon.</textarea>
+    
+    <button onclick="testUpdate()">Test Quick Update</button>
+    <div id="updateResult" class="result" style="display:none;"></div>
+  </div>
+  
+  <div class="section">
+    <h2>4. Full Flow Test</h2>
+    <button onclick="testFullFlow()">Run Full Flow (Lookup → Update)</button>
+    <div id="fullResult" class="result" style="display:none;"></div>
+  </div>
+
+  <script>
+    function getConfig() {
+      return {
+        apiBase: document.getElementById('apiBase').value,
+        clientId: document.getElementById('clientId').value,
+        portalToken: document.getElementById('portalToken').value
+      };
+    }
+    
+    function showResult(elementId, data, isError = false) {
+      const el = document.getElementById(elementId);
+      el.style.display = 'block';
+      el.className = 'result ' + (isError ? 'error' : 'success');
+      el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    }
+    
+    async function testLookup() {
+      const config = getConfig();
+      const url = document.getElementById('lookupUrl').value;
+      
+      showResult('lookupResult', 'Loading...', false);
+      document.getElementById('lookupResult').className = 'result info';
+      
+      try {
+        const response = await fetch(
+          `${config.apiBase}/leads/lookup?query=${encodeURIComponent(url)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-id': config.clientId,
+              'x-portal-token': config.portalToken
+            }
+          }
+        );
+        
+        const data = await response.json();
+        
+        if (response.ok && data.leads && data.leads.length > 0) {
+          document.getElementById('leadId').value = data.leads[0].id;
+          showResult('lookupResult', {
+            status: response.status,
+            leadFound: true,
+            leadId: data.leads[0].id,
+            leadName: `${data.leads[0].firstName} ${data.leads[0].lastName}`,
+            fullResponse: data
+          });
+        } else {
+          showResult('lookupResult', {
+            status: response.status,
+            error: data.error || 'No leads found',
+            fullResponse: data
+          }, !response.ok);
+        }
+      } catch (err) {
+        showResult('lookupResult', { error: err.message, stack: err.stack }, true);
+      }
+    }
+    
+    async function testUpdate() {
+      const config = getConfig();
+      const leadId = document.getElementById('leadId').value;
+      const section = document.getElementById('section').value;
+      const content = document.getElementById('content').value;
+      
+      if (!leadId) {
+        showResult('updateResult', 'Error: Lead ID is required. Run lookup first.', true);
+        return;
+      }
+      
+      showResult('updateResult', 'Loading...', false);
+      document.getElementById('updateResult').className = 'result info';
+      
+      try {
+        const response = await fetch(
+          `${config.apiBase}/leads/${leadId}/quick-update`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-id': config.clientId,
+              'x-portal-token': config.portalToken
+            },
+            body: JSON.stringify({
+              section,
+              content,
+              parseRaw: true
+            })
+          }
+        );
+        
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { rawResponse: text };
+        }
+        
+        showResult('updateResult', {
+          status: response.status,
+          statusText: response.statusText,
+          success: response.ok,
+          response: data
+        }, !response.ok);
+        
+      } catch (err) {
+        showResult('updateResult', { error: err.message, stack: err.stack }, true);
+      }
+    }
+    
+    async function testFullFlow() {
+      showResult('fullResult', 'Step 1: Looking up lead...', false);
+      document.getElementById('fullResult').className = 'result info';
+      
+      const config = getConfig();
+      const url = document.getElementById('lookupUrl').value;
+      
+      try {
+        // Step 1: Lookup
+        const lookupResponse = await fetch(
+          `${config.apiBase}/leads/lookup?query=${encodeURIComponent(url)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-id': config.clientId,
+              'x-portal-token': config.portalToken
+            }
+          }
+        );
+        
+        const lookupData = await lookupResponse.json();
+        
+        if (!lookupResponse.ok || !lookupData.leads || lookupData.leads.length === 0) {
+          showResult('fullResult', {
+            step: 'LOOKUP FAILED',
+            status: lookupResponse.status,
+            response: lookupData
+          }, true);
+          return;
+        }
+        
+        const leadId = lookupData.leads[0].id;
+        const leadName = `${lookupData.leads[0].firstName} ${lookupData.leads[0].lastName}`;
+        
+        showResult('fullResult', `Step 1: ✓ Found lead: ${leadName} (${leadId})\nStep 2: Updating...`, false);
+        document.getElementById('fullResult').className = 'result info';
+        
+        // Step 2: Update
+        const content = document.getElementById('content').value;
+        const section = document.getElementById('section').value;
+        
+        const updateResponse = await fetch(
+          `${config.apiBase}/leads/${leadId}/quick-update`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-id': config.clientId,
+              'x-portal-token': config.portalToken
+            },
+            body: JSON.stringify({
+              section,
+              content,
+              parseRaw: true
+            })
+          }
+        );
+        
+        const updateText = await updateResponse.text();
+        let updateData;
+        try {
+          updateData = JSON.parse(updateText);
+        } catch (e) {
+          updateData = { rawResponse: updateText };
+        }
+        
+        if (updateResponse.ok) {
+          showResult('fullResult', {
+            result: 'SUCCESS! ✓',
+            step1_lookup: { leadId, leadName },
+            step2_update: {
+              status: updateResponse.status,
+              response: updateData
+            }
+          });
+        } else {
+          showResult('fullResult', {
+            result: 'UPDATE FAILED ✗',
+            step1_lookup: { leadId, leadName, status: 'OK' },
+            step2_update: {
+              status: updateResponse.status,
+              statusText: updateResponse.statusText,
+              response: updateData
+            }
+          }, true);
+        }
+        
+      } catch (err) {
+        showResult('fullResult', { error: err.message, stack: err.stack }, true);
+      }
+    }
+  </script>
+</body>
+</html>

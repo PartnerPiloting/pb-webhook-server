@@ -19,9 +19,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.linkedin.com/messaging/*", "https://www.linkedin.com/in/*"],
+      "matches": ["https://www.linkedin.com/*"],
       "js": ["content-linkedin.js"],
-      "css": ["styles.css"]
+      "css": ["styles.css"],
+      "run_at": "document_end"
     },
     {
       "matches": ["https://pb-webhook-server.vercel.app/*", "https://pb-webhook-server-staging.vercel.app/*"],
