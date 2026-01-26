@@ -376,9 +376,19 @@ const TopScoringPostsWithParams = () => {
 
             {/* Notes - Editable */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Notes
+                </label>
+                <a
+                  href={`/quick-update?lead=${selectedLead?.id || ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 inline-flex items-center gap-1"
+                >
+                  + Add Note
+                </a>
+              </div>
               <textarea
                 value={selectedLead[FIELD_NAMES.NOTES] || ''}
                 onChange={(e) => {
