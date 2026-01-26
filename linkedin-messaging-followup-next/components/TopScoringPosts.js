@@ -390,7 +390,7 @@ const TopScoringPostsWithParams = () => {
                     + Add Note
                   </a>
                   <a
-                    href={buildAuthUrl(`/calendar-booking?lead=${selectedLead?.id || ''}`)}
+                    href={buildAuthUrl(`/calendar-booking?linkedinUrl=${encodeURIComponent(selectedLead?.[FIELD_NAMES.LINKEDIN_PROFILE_URL] || '')}`)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 inline-flex items-center gap-1"
