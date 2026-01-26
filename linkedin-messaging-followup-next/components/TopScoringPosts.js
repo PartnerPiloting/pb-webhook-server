@@ -380,14 +380,24 @@ const TopScoringPostsWithParams = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   Notes
                 </label>
-                <a
-                  href={`/quick-update?lead=${selectedLead?.id || ''}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 inline-flex items-center gap-1"
-                >
-                  + Add Note
-                </a>
+                <div className="flex gap-2">
+                  <a
+                    href={`/quick-update?lead=${selectedLead?.id || ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 inline-flex items-center gap-1"
+                  >
+                    + Add Note
+                  </a>
+                  <a
+                    href={`/calendar-booking?lead=${selectedLead?.id || ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 inline-flex items-center gap-1"
+                  >
+                    Book Meeting
+                  </a>
+                </div>
               </div>
               <textarea
                 value={selectedLead[FIELD_NAMES.NOTES] || ''}

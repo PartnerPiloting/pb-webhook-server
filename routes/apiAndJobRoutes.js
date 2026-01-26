@@ -7608,6 +7608,53 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
       return res.status(400).json({ error: 'Client ID required' });
     }
 
+    // Get client's Airtable base
+    const { getClientBase } = require('../config/airtableClient.js');
+    const clientBase = await getClientBase(clientId);
+    
+    if (!clientBase) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Direct recordId lookup (for pre-selecting from lead detail page)
+    const recordId = req.query.recordId;
+    if (recordId && typeof recordId === 'string') {
+      logger.info(`Looking up lead by recordId: ${recordId}`);
+      try {
+        const record = await clientBase('Leads').find(recordId.trim());
+        if (record) {
+          const locationRaw = record.get('Location') || '';
+          let location = locationRaw;
+          if (!location) {
+            const rawData = record.get('Raw Profile Data');
+            if (rawData) {
+              try {
+                const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+                location = parsed?.location || parsed?.geoLocation || '';
+              } catch {}
+            }
+          }
+          return res.json({
+            found: true,
+            recordId: record.id,
+            firstName: record.get('First Name') || '',
+            lastName: record.get('Last Name') || '',
+            fullName: `${record.get('First Name') || ''} ${record.get('Last Name') || ''}`.trim(),
+            linkedInUrl: record.get('LinkedIn Profile URL') || '',
+            location: location,
+            email: record.get('Email') || '',
+            phone: record.get('Phone') || '',
+            headline: record.get('Headline') || '',
+            company: record.get('Company') || '',
+            aiScore: record.get('AI Score') || null,
+          });
+        }
+      } catch (findErr) {
+        logger.warn(`Record not found by ID: ${recordId}`, findErr.message);
+      }
+      return res.status(404).json({ found: false, message: 'Lead not found' });
+    }
+
     // Support both 'url' (legacy) and 'query' (new) parameters
     let query = req.query.query || req.query.url;
     
@@ -7617,14 +7664,6 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
 
     query = query.trim();
     logger.info(`Looking up lead by query: ${query}`);
-
-    // Get client's Airtable base
-    const { getClientBase } = require('../config/airtableClient.js');
-    const clientBase = await getClientBase(clientId);
-    
-    if (!clientBase) {
-      return res.status(404).json({ error: 'Client not found' });
-    }
 
     // Detect query type
     const isLinkedInUrl = /linkedin\.com\/in\//i.test(query);

@@ -259,6 +259,32 @@ function CalendarBookingContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookTime, includeEmailInConfirm, showConfirmation, leadDisplayTime]);
 
+  // Load lead by ID from URL parameter
+  useEffect(() => {
+    const leadId = searchParams.get('lead');
+    if (!leadId || !clientInfo?.clientId || leadRecordId) return;
+    
+    // Fetch lead by record ID
+    const loadLeadById = async () => {
+      setLookingUpLead(true);
+      try {
+        const response = await fetch(`/api/calendar/lookup-lead?recordId=${encodeURIComponent(leadId)}`, {
+          headers: { 'x-client-id': clientInfo.clientId },
+        });
+        const data = await response.json();
+        if (response.ok && data.found) {
+          selectLead(data);
+        }
+      } catch (err) {
+        console.error('Failed to load lead by ID:', err);
+      } finally {
+        setLookingUpLead(false);
+      }
+    };
+    
+    loadLeadById();
+  }, [searchParams, clientInfo, leadRecordId]);
+
   // Verify calendar access on page load when calendar email is configured
   useEffect(() => {
     if (clientInfo?.calendarConnected && clientInfo?.calendarEmail && !calendarVerified && !verifyingOnLoad && !calendarAccessError) {
