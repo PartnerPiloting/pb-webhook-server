@@ -384,6 +384,14 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                       >
                         + Add Note
                       </a>
+                      <a
+                        href={`/calendar-booking?lead=${lead?.id || ''}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 inline-flex items-center gap-1"
+                      >
+                        Book Meeting
+                      </a>
                       <button
                         type="button"
                         onClick={() => setIsEditingNotes(true)}
