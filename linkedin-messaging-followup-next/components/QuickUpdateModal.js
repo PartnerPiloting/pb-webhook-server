@@ -304,6 +304,38 @@ export default function QuickUpdateModal({
     return () => clearTimeout(timeout);
   }, [noteContent, activeSection]);
 
+  // Auto-detect format and select section when content is pasted but no section selected
+  useEffect(() => {
+    if (!noteContent.trim() || activeSection) return; // Only run if no section selected
+    
+    const timeout = setTimeout(async () => {
+      try {
+        // Try parsing as linkedin to detect format
+        const preview = await previewParse(noteContent, 'linkedin');
+        if (preview?.detectedFormat) {
+          // Map detected format to section
+          const formatToSection = {
+            'linkedin_raw': 'linkedin',
+            'linkedin_aiblaze': 'linkedin',
+            'salesnav_raw': 'salesnav',
+            'salesnav_aiblaze': 'salesnav',
+            'email': 'email'
+          };
+          const section = formatToSection[preview.detectedFormat];
+          if (section) {
+            console.log('🎯 Auto-selecting section based on detected format:', preview.detectedFormat, '→', section);
+            setActiveSection(section);
+            setParsePreview(preview);
+          }
+        }
+      } catch (err) {
+        console.error('Auto-detect format failed:', err);
+      }
+    }, 300);
+    
+    return () => clearTimeout(timeout);
+  }, [noteContent, activeSection]);
+
   // Keyboard shortcuts
   useEffect(() => {
     if (!isOpen) return;
