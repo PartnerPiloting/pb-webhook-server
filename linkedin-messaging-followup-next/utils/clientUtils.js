@@ -77,9 +77,14 @@ export async function getCurrentClientProfile() {
     console.log('ClientUtils: URL search params:', window.location.search);
     console.log('ClientUtils: All URL params:', Object.fromEntries(urlParams));
     
-    // Priority: token from URL > token from sessionStorage > clientId (legacy) > localStorage
-    // sessionStorage persists tokens across page refreshes (but not new tabs/windows - that's intentional for security)
+    // Priority: token from URL > token from localStorage (cross-tab) > token from sessionStorage (legacy)
     let portalToken = urlParams.get('token');
+    if (!portalToken && typeof localStorage !== 'undefined') {
+      portalToken = localStorage.getItem('portalToken');
+      if (portalToken) {
+        console.log('ClientUtils: Retrieved token from localStorage');
+      }
+    }
     if (!portalToken && typeof sessionStorage !== 'undefined') {
       portalToken = sessionStorage.getItem('portalToken');
       if (portalToken) {
@@ -87,7 +92,7 @@ export async function getCurrentClientProfile() {
       }
     }
     const clientId = urlParams.get('client') || urlParams.get('clientId') || urlParams.get('testClient') || localStorage.getItem('clientCode');
-    const devKey = urlParams.get('devKey');
+    const devKey = urlParams.get('devKey') || (typeof localStorage !== 'undefined' ? localStorage.getItem('devKey') : null);
     // Handle case-insensitive wpUserId parameter variations
     const wpUserId = urlParams.get('wpUserId') || urlParams.get('wpuserid') || urlParams.get('wpuserId');
     
