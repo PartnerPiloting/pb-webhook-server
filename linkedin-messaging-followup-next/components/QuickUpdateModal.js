@@ -86,7 +86,8 @@ const TIMEZONE_OPTIONS = [
 export default function QuickUpdateModal({ 
   isOpen, 
   onClose, 
-  initialLeadId = null, 
+  initialLeadId = null,
+  initialLinkedInUrl = null,  // LinkedIn URL for auto-lookup (preferred over ID)
   clientId = null,
   clientTimezone = null,
   onTimezoneUpdate = null,
@@ -161,15 +162,19 @@ export default function QuickUpdateModal({
       // Focus search input when modal opens
       setTimeout(() => searchInputRef.current?.focus(), 100);
       
-      // If initial lead ID provided, load that lead
-      if (initialLeadId) {
+      // If initial LinkedIn URL provided, look up that lead (preferred)
+      if (initialLinkedInUrl) {
+        loadLeadByLinkedInUrl(initialLinkedInUrl);
+      }
+      // Fallback: If initial lead ID provided, try to load that lead
+      else if (initialLeadId) {
         loadLeadById(initialLeadId);
       }
     } else {
       // Reset state when closing
       resetForm();
     }
-  }, [isOpen, initialLeadId]);
+  }, [isOpen, initialLeadId, initialLinkedInUrl]);
 
   // Track unsaved changes
   useEffect(() => {
@@ -434,6 +439,38 @@ export default function QuickUpdateModal({
   const loadLeadById = async (leadId) => {
     // This would need a getLeadById call - for now use search results
     console.log('Loading lead by ID:', leadId);
+  };
+
+  // Load lead by LinkedIn URL (used for Add Note button from lead details)
+  const loadLeadByLinkedInUrl = async (linkedInUrl) => {
+    if (!linkedInUrl) return;
+    
+    console.log('Loading lead by LinkedIn URL:', linkedInUrl);
+    setIsSearching(true);
+    setError(null);
+    
+    try {
+      const result = await lookupLead(linkedInUrl);
+      const leads = result.leads || [];
+      
+      if (leads.length >= 1) {
+        // Select the first match (LinkedIn URL should be unique)
+        const lead = leads[0];
+        console.log('🎯 Auto-selected lead by LinkedIn URL:', lead.firstName, lead.lastName);
+        selectLead(lead);
+        setSearchQuery(`${lead.firstName} ${lead.lastName}`);
+      } else {
+        // No match found - show in search field for manual search
+        setSearchQuery(linkedInUrl);
+        setError('No lead found with this LinkedIn URL. Try searching by name.');
+      }
+    } catch (err) {
+      console.error('Failed to lookup lead by LinkedIn URL:', err);
+      setSearchQuery(linkedInUrl);
+      setError(err.message || 'Failed to lookup lead');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const selectLead = async (lead) => {

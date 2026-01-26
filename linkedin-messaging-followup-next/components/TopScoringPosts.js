@@ -382,7 +382,7 @@ const TopScoringPostsWithParams = () => {
                 </label>
                 <div className="flex gap-2">
                   <a
-                    href={buildAuthUrl(`/quick-update?lead=${selectedLead?.id || ''}`)}
+                    href={buildAuthUrl(`/quick-update?linkedinUrl=${encodeURIComponent(selectedLead?.[FIELD_NAMES.LINKEDIN_PROFILE_URL] || '')}`)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 inline-flex items-center gap-1"
