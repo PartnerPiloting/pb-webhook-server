@@ -1737,6 +1737,15 @@ try {
     moduleLogger.error("index.js: Error mounting template cleanup routes", e.message, e.stack); 
 }
 
+// Extension Config routes (Chrome extension remote configuration)
+try { 
+    const extensionConfigRoutes = require('./routes/extensionConfigRoutes.js'); 
+    app.use('/api/extension-config', extensionConfigRoutes); 
+    moduleLogger.info("index.js: Extension config routes mounted at /api/extension-config"); 
+} catch(e) { 
+    moduleLogger.error("index.js: Error mounting extension config routes", e.message, e.stack); 
+}
+
 // Billing routes (Stripe invoices and PDF generation)
 try { 
     const billingRoutes = require('./routes/billingRoutes.js'); 

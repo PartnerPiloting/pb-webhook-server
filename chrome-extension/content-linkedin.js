@@ -50,26 +50,24 @@
     // Watch for SPA navigation (URL changes without page reload)
     setupSPANavigationDetection();
     
+    // Force immediate button injection check
+    if (isMessagingPage() && !button) {
+      injectButton();
+    }
+    
     // Then check auth status (just for button state, not blocking)
     try {
       chrome.runtime.sendMessage({ type: 'CHECK_AUTH' }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.log('[NA Extension] Auth check failed, will retry on click');
-          return;
-        }
-        
-        if (response?.authenticated) {
-          console.log('[NA Extension] Already authenticated');
-        }
+        if (chrome.runtime.lastError) return;
+        // Auth status received
       });
     } catch (e) {
-      console.log('[NA Extension] Extension context error, will retry on click');
+      // Extension context error, will retry on click
     }
     
     // Listen for auth ready events
     chrome.runtime.onMessage.addListener((message) => {
       if (message.type === 'AUTH_READY') {
-        console.log('[NA Extension] Auth is now ready');
         updateButtonState('ready');
       }
     });
@@ -82,7 +80,21 @@
       injectButton();
     }
     
-    // The SPA navigation detection will handle subsequent checks
+    // Watch for messaging popup to appear (faster than polling)
+    const observer = new MutationObserver((mutations) => {
+      // Check if messaging is now visible
+      if (isMessagingPage() && !button) {
+        injectButton();
+      } else if (!isMessagingPage() && button) {
+        removeButton();
+      }
+    });
+    
+    // Observe the body for added nodes (messaging popup gets added)
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
   }
   
   // Detect SPA navigation (LinkedIn uses client-side routing)
@@ -105,7 +117,9 @@
     };
     
     // Method 3: Poll for URL changes (catches all SPA navigation)
+    let pollCount = 0;
     setInterval(() => {
+      pollCount++;
       const newUrl = window.location.href;
       if (newUrl !== currentUrl) {
         currentUrl = newUrl;
@@ -114,6 +128,7 @@
       
       // Check if we should show button based on URL
       const shouldShow = isMessagingPage();
+      
       if (shouldShow && !button) {
         injectButton();
       } else if (!shouldShow && button) {
@@ -129,13 +144,46 @@
     // This prevents flicker during navigation
   }
   
-  // Simple URL-based check - very reliable
-  function isMessagingPage() {
-    const path = window.location.pathname;
-    return path.startsWith('/messaging');
+  // Helper to search in shadow DOM
+  function searchInShadowDOM(root, selector) {
+    const results = [];
+    try {
+      // Search in current root
+      results.push(...root.querySelectorAll(selector));
+      
+      // Search in all shadow roots
+      const allElements = root.querySelectorAll('*');
+      for (const el of allElements) {
+        if (el.shadowRoot) {
+          results.push(...searchInShadowDOM(el.shadowRoot, selector));
+        }
+      }
+    } catch (e) {
+      // Ignore CORS/security errors
+    }
+    return results;
   }
   
-  // Legacy function - now just uses URL
+  // Simplified: Show button on profile pages and messaging pages
+  // User can click it when they have a conversation open
+  function isMessagingPage() {
+    const path = window.location.pathname;
+    // Show on messaging pages
+    if (path.startsWith('/messaging')) {
+      return true;
+    }
+    // Show on profile pages (where messaging popup appears)
+    if (path.startsWith('/in/')) {
+      return true;
+    }
+    // Show on feed (messaging can appear there too)
+    if (path === '/feed' || path === '/') {
+      return true;
+    }
+    return false;
+  }
+  
+  // Legacy function - now just uses the unified check
   function isConversationVisible() {
     return isMessagingPage();
   }
@@ -209,17 +257,170 @@
         throw new Error('Please copy the conversation first (Ctrl+A then Ctrl+C in the message area)');
       }
       
-      // ROBUST: Get contact name from LinkedIn's conversation header (most reliable)
-      // The header ALWAYS shows the OTHER person's name, never yours
-      let contactName = getContactNameFromHeader();
+      // Get auth data first (needed for name extraction)
+      const authData = await sendMessage({ type: 'GET_AUTH' });
       
-      // Fallback: Parse from clipboard if header not found
-      if (!contactName) {
-        const authData = await sendMessage({ type: 'GET_AUTH' });
-        contactName = extractContactNameFromClipboard(clipboardText, authData?.clientId);
+      // Get contact name from visible conversation header (what user is currently viewing)
+      let visibleContactName = getContactNameFromHeader();
+      
+      // Parse contact name from clipboard (what user actually copied)
+      const clipboardContactName = extractContactNameFromClipboard(clipboardText, authData?.clientId);
+      
+      // Check if we're on a profile page with messaging popup open
+      const path = window.location.pathname;
+      const isProfilePage = path.startsWith('/in/');
+      
+      // Multiple ways to detect if messaging popup is open
+      const popupIndicators = [
+        // Any element with "Write a message" placeholder text
+        document.querySelector('[placeholder*="Write a message" i], [aria-label*="Write a message" i]'),
+        // Messaging input/textarea anywhere on page (when on profile page, this is the popup)
+        document.querySelector('[contenteditable="true"][role="textbox"], .msg-form__contenteditable'),
+        // Close button with X or close in any form
+        document.querySelector('button[aria-label*="close" i], button svg[data-test-icon="close"]'),
+        // Any visible messaging form
+        document.querySelector('.msg-form, [class*="msg-form"], [class*="message-form"]'),
+        // Floating messaging container (look for common patterns)
+        document.querySelector('[class*="msg-overlay"], [class*="messaging-container"], [class*="msg-convo"]'),
+        // GIF/emoji buttons that only appear in message compose
+        document.querySelector('button[aria-label*="GIF" i], button[aria-label*="emoji" i], button[aria-label*="Attach" i]')
+      ];
+      const hasOpenPopup = isProfilePage && popupIndicators.some(el => el !== null);
+      
+      
+      if (hasOpenPopup && clipboardContactName) {
+        // On profile page with popup open - user must copy the current conversation
+        // Try to get name from popup header using multiple methods
+        visibleContactName = getContactNameFromHeader();
+        
+        // Method 2: Look for links to profiles in any header-like area
+        if (!visibleContactName) {
+          const profileLinks = document.querySelectorAll('a[href*="/in/"]');
+          for (const link of profileLinks) {
+            // Check if this link is in a messaging context (near message input or in floating container)
+            const parent = link.closest('[class*="msg"], [class*="messaging"], [class*="convo"]');
+            if (parent) {
+              const text = link.textContent?.trim()
+                .replace(/\s+/g, ' ')
+                .replace(/View.*profile.*$/i, '')
+                .trim();
+              if (text && text.length >= 2 && text.length <= 60 && !text.includes('@') && !text.includes('/')) {
+                visibleContactName = text;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Method 3: Find any name-like text near the close button or in header area
+        if (!visibleContactName) {
+          // Look for text content near messaging elements that looks like a name
+          const msgContainers = document.querySelectorAll('[class*="msg"], [class*="messaging"]');
+          for (const container of msgContainers) {
+            // Look for header-like elements
+            const headers = container.querySelectorAll('h1, h2, h3, h4, [class*="title"], [class*="name"], [class*="header"] span, [class*="header"] a');
+            for (const header of headers) {
+              const text = header.textContent?.trim()
+                .replace(/\s+/g, ' ')
+                .replace(/Mobile.*$/i, '')
+                .replace(/\d+[mh]\s*ago.*$/i, '')
+                .replace(/View.*$/i, '')
+                .trim();
+              
+              if (text && text.length >= 3 && text.length <= 50) {
+                const words = text.split(' ').filter(w => w.length > 0);
+                // Name should be 1-4 words, start with capital, no special chars
+                if (words.length >= 1 && words.length <= 4 && /^[A-Z]/.test(text) && !text.includes('@') && !text.includes('/')) {
+                  visibleContactName = text;
+                  break;
+                }
+              }
+            }
+            if (visibleContactName) break;
+          }
+        }
+        
+        // Method 4: Use the profile page name as fallback (from URL slug or page header)
+        if (!visibleContactName) {
+          // Try to get from the main profile page header (h1 with the person's name)
+          const profileH1 = document.querySelector('h1.text-heading-xlarge, h1[class*="text-heading"], main h1, .pv-top-card h1');
+          if (profileH1) {
+            visibleContactName = profileH1.textContent?.trim();
+          }
+        }
+        
+        // Method 5: Extract from URL slug as last resort
+        if (!visibleContactName) {
+          // URL is like /in/keenan-adolf-22092241/ - extract "keenan adolf"
+          const slugMatch = path.match(/\/in\/([^\/]+)/);
+          if (slugMatch) {
+            const slug = slugMatch[1]
+              .replace(/-\d+$/, '')  // Remove trailing numbers like -22092241
+              .replace(/-/g, ' ')     // Replace dashes with spaces
+              .replace(/\b\w/g, c => c.toUpperCase()); // Capitalize each word
+            if (slug && slug.length >= 3) {
+              visibleContactName = slug;
+            }
+          }
+        }
+        
+        // If we still don't have a name, show generic error
+        if (!visibleContactName) {
+          throw new Error(
+            `A messaging conversation is open, but you haven't copied it yet. ` +
+            `Please copy the current conversation first (Ctrl+A then Ctrl+C in the message area).`
+          );
+        }
+        
+        // Compare names - if they don't match, show error
+        const visibleNormalized = visibleContactName.toLowerCase().trim();
+        const clipboardNormalized = clipboardContactName.toLowerCase().trim();
+        
+        // Smart comparison: check if names match or are similar
+        const namesMatch = (name1, name2) => {
+          if (name1 === name2) return true;
+          // Check if one contains the other
+          if (name1.includes(name2) || name2.includes(name1)) return true;
+          // Check if first names match
+          const first1 = name1.split(' ')[0];
+          const first2 = name2.split(' ')[0];
+          if (first1 === first2 && first1.length >= 3) return true;
+          return false;
+        };
+        
+        const match = namesMatch(visibleNormalized, clipboardNormalized);
+        
+        if (!match) {
+          throw new Error(
+            `You're viewing ${visibleContactName}'s conversation, but your clipboard contains ${clipboardContactName}'s messages. ` +
+            `Please copy the current conversation first (Ctrl+A then Ctrl+C in the message area).`
+          );
+        }
       }
       
-      console.log('[NA Extension] Contact name:', contactName || '(not found)');
+      // For messaging pages, check if visible conversation matches clipboard
+      if (path.startsWith('/messaging')) {
+        visibleContactName = getContactNameFromHeader();
+        if (visibleContactName && clipboardContactName) {
+          const visibleNormalized = visibleContactName.toLowerCase().trim();
+          const clipboardNormalized = clipboardContactName.toLowerCase().trim();
+          
+          if (visibleNormalized !== clipboardNormalized) {
+            throw new Error(
+              `You're viewing ${visibleContactName}'s conversation, but your clipboard contains ${clipboardContactName}'s messages. ` +
+              `Please copy the current conversation first (Ctrl+A then Ctrl+C in the message area).`
+            );
+          }
+        }
+      }
+      
+      // Use clipboard name as primary (most reliable - matches what was copied)
+      // Fallback to visible header if clipboard parsing failed
+      let contactName = clipboardContactName || visibleContactName;
+      
+      if (!contactName) {
+        throw new Error('Could not determine contact name. Please ensure you have copied the conversation.');
+      }
       
       // Store data for portal to pick up
       const portalData = {
@@ -235,7 +436,6 @@
       });
       
       // Build portal URL with auth credentials so new tab is authenticated
-      // (authData already retrieved above for name extraction)
       let portalUrl = 'https://pb-webhook-server-staging.vercel.app/quick-update?from=extension';
       
       if (authData?.portalToken) {
@@ -286,27 +486,24 @@
   // Get contact name from LinkedIn's conversation header (MOST RELIABLE)
   // The header always shows the OTHER person's name, never yours
   function getContactNameFromHeader() {
-    // Try various selectors for the conversation header
-    const selectors = [
-      '.msg-entity-lockup__entity-title',           // Main messaging page header
-      '.msg-overlay-bubble-header__title',          // Overlay/popup conversation
-      '.msg-thread__link-to-profile span',          // Thread link text
-      '.msg-conversation-card__row--header span',   // Conversation list card
-      '.msg-s-message-list-container h2',           // Message list header
-      '.artdeco-entity-lockup__title'               // Generic entity lockup
-    ];
-    
-    for (const selector of selectors) {
-      const el = document.querySelector(selector);
-      if (el) {
-        // Get text, clean whitespace, remove any "View profile" type suffixes
-        const text = el.textContent?.trim()
+    // Strategy 1: Look for popup/overlay header (for profile pages with messaging popup)
+    // Search for header elements in overlays/asides that contain a name
+    const overlays = document.querySelectorAll('aside, [role="dialog"]');
+    for (const overlay of overlays) {
+      // Look for header with close button (indicates messaging popup)
+      const header = overlay.querySelector('header, [role="banner"], h1, h2, h3');
+      const hasCloseBtn = overlay.querySelector('button[aria-label*="close" i]');
+      
+      if (header && hasCloseBtn) {
+        // Get text from header
+        const text = header.textContent?.trim()
           .replace(/\s+/g, ' ')
           .replace(/View .+'s profile/i, '')
           .replace(/\(.*\)$/, '')  // Remove pronouns like (She/Her)
+          .replace(/\d{1,2}:\d{2}\s*[AP]M.*$/, '') // Remove timestamps
           .trim();
         
-        // Validate it looks like a name (1-4 words, reasonable length)
+        // Validate it looks like a name
         if (text && text.length >= 2 && text.length <= 60 && !text.includes('@')) {
           const words = text.split(' ').filter(w => w.length > 0);
           if (words.length >= 1 && words.length <= 4) {
@@ -315,6 +512,35 @@
         }
       }
     }
+    
+    // Strategy 2: Try old msg- selectors (legacy LinkedIn)
+    const msgSelectors = [
+      '.msg-overlay-bubble-header__title',
+      '.msg-overlay-bubble-header a',
+      '.msg-entity-lockup__entity-title',
+      '.msg-thread__link-to-profile span',
+      '.msg-s-message-list-container h2',
+      '.artdeco-entity-lockup__title'
+    ];
+    
+    for (const selector of msgSelectors) {
+      const el = document.querySelector(selector);
+      if (el) {
+        const text = el.textContent?.trim()
+          .replace(/\s+/g, ' ')
+          .replace(/View .+'s profile/i, '')
+          .replace(/\(.*\)$/, '')
+          .trim();
+        
+        if (text && text.length >= 2 && text.length <= 60 && !text.includes('@')) {
+          const words = text.split(' ').filter(w => w.length > 0);
+          if (words.length >= 1 && words.length <= 4) {
+            return text;
+          }
+        }
+      }
+    }
+    
     return null;
   }
   
