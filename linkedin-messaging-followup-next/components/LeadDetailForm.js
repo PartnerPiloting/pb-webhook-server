@@ -375,13 +375,23 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                     <p className="text-xs text-gray-500">
                       Click section headers to expand. Click Edit to modify.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingNotes(true)}
-                      className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                    >
-                      Edit Notes
-                    </button>
+                    <div className="flex gap-2">
+                      <a
+                        href={`/quick-update?lead=${lead?.id || ''}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 inline-flex items-center gap-1"
+                      >
+                        + Add Note
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingNotes(true)}
+                        className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                      >
+                        Edit Notes
+                      </button>
+                    </div>
                   </div>
                   <div className="w-full border border-gray-300 rounded-md bg-gray-50 min-h-[180px] max-h-[400px] overflow-hidden">
                     {formData.notes ? (

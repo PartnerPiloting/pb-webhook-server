@@ -83,6 +83,9 @@ function QuickUpdateContent() {
   // Build return URL with token preserved
   const portalToken = getCurrentPortalToken();
   const returnUrl = portalToken ? `/?token=${portalToken}` : '/';
+  
+  // Check for pre-selected lead from URL
+  const initialLeadId = searchParams.get('lead');
 
   // Render the Quick Update as a standalone page (not modal)
   return (
@@ -93,6 +96,7 @@ function QuickUpdateContent() {
       }}
       clientId={clientId as unknown as null}
       standalone={true}
+      initialLeadId={initialLeadId}
     />
   );
 }
