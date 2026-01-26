@@ -96,7 +96,7 @@ function QuickUpdateContent() {
       }}
       clientId={clientId as unknown as null}
       standalone={true}
-      initialLeadId={initialLeadId}
+      initialLeadId={initialLeadId as unknown as undefined}
     />
   );
 }
