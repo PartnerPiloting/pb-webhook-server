@@ -153,6 +153,7 @@ export default function QuickUpdateModal({
   const noteInputRef = useRef(null);
   const searchTimeoutRef = useRef(null);
   const userClearedLeadRef = useRef(false); // Ref to access current value in async callbacks
+  const hasAutoSearchedRef = useRef(false); // Track if we've done initial extension auto-search
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -258,6 +259,31 @@ export default function QuickUpdateModal({
     }
   }, [searchQuery]);
 
+  // Auto-search when extension pre-fills contact name (from "Save to Portal" button)
+  useEffect(() => {
+    if (!isOpen || !searchQuery || selectedLead || hasAutoSearchedRef.current) return;
+    
+    // Check if coming from extension (URL param or name looks complete)
+    const fromExtension = typeof window !== 'undefined' && 
+      (window.location.search.includes('from=extension') || 
+       window.location.search.includes('source=linkedin'));
+    
+    // Also auto-search if it looks like a complete name (2+ words, no partial typing)
+    const looksLikeCompleteName = searchQuery.trim().split(/\s+/).length >= 2;
+    
+    if (fromExtension || looksLikeCompleteName) {
+      // Delay to ensure extension has finished setting the value
+      const timeout = setTimeout(() => {
+        if (!selectedLead && searchQuery.trim().length >= 3) {
+          console.log('🔍 Auto-searching for extension-provided name:', searchQuery);
+          hasAutoSearchedRef.current = true;
+          performSearch();
+        }
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [isOpen, searchQuery, selectedLead]);
+
   // Parse preview on content change (debounced)
   useEffect(() => {
     if (!noteContent.trim() || !activeSection || activeSection === 'manual') {
@@ -329,6 +355,7 @@ export default function QuickUpdateModal({
     setShowAddLeadForm(false);
     setNoResultsQuery(null);
     setUserClearedLead(false);
+    hasAutoSearchedRef.current = false; // Reset extension auto-search flag
     setAddLeadForm({
       firstName: '',
       lastName: '',
