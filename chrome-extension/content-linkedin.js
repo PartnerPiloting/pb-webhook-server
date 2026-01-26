@@ -7,7 +7,85 @@
   let button = null;
   let isProcessing = false;
   
-  // DOM selectors for LinkedIn messaging (externalize later for hot-updates)
+  // Remote config from Airtable (fetched on init)
+  const CONFIG_API_URL = 'https://pb-webhook-server-staging.onrender.com/api/extension-config';
+  const CONFIG_CACHE_KEY = 'na_extension_config';
+  const CONFIG_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+  
+  // Default config (fallback if API unavailable)
+  const DEFAULT_CONFIG = {
+    popup_selectors: [
+      '[placeholder*="Write a message" i]',
+      '[contenteditable="true"][role="textbox"]',
+      'button[aria-label*="close" i]',
+      '.msg-form, [class*="msg-form"]',
+      '[class*="msg-overlay"]',
+      'button[aria-label*="GIF" i]'
+    ],
+    name_selectors: [
+      'h1.text-heading-xlarge',
+      'main h1',
+      '.pv-top-card h1',
+      '.msg-overlay-bubble-header__title',
+      '.msg-entity-lockup__entity-title'
+    ],
+    page_patterns: {
+      '/messaging': true,
+      '/in/': true,
+      '/feed': true,
+      '/': true
+    }
+  };
+  
+  // Active config (populated from remote or defaults)
+  let activeConfig = { ...DEFAULT_CONFIG };
+  
+  // Fetch remote config
+  async function fetchRemoteConfig() {
+    try {
+      // Check cache first
+      const cached = localStorage.getItem(CONFIG_CACHE_KEY);
+      if (cached) {
+        const { config, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < CONFIG_CACHE_TTL) {
+          applyConfig(config);
+          return;
+        }
+      }
+      
+      // Fetch from API
+      const response = await fetch(CONFIG_API_URL);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.config) {
+          // Cache the config
+          localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify({
+            config: data.config,
+            timestamp: Date.now()
+          }));
+          applyConfig(data.config);
+        }
+      }
+    } catch (e) {
+      // API unavailable, use defaults (already set)
+      console.log('[NA Extension] Using default config (API unavailable)');
+    }
+  }
+  
+  // Apply fetched config
+  function applyConfig(config) {
+    if (config.popup_selectors?.value) {
+      activeConfig.popup_selectors = config.popup_selectors.value;
+    }
+    if (config.name_selectors?.value) {
+      activeConfig.name_selectors = config.name_selectors.value;
+    }
+    if (config.page_patterns?.value) {
+      activeConfig.page_patterns = config.page_patterns.value;
+    }
+  }
+  
+  // DOM selectors for LinkedIn messaging (legacy - keeping for backward compatibility)
   const SELECTORS = {
     // Conversation container
     conversationContainer: '.msg-conversations-container__convo-card-container',
@@ -40,6 +118,9 @@
     if (!chrome.runtime?.id) {
       return; // Extension was reloaded
     }
+    
+    // Fetch remote config (non-blocking)
+    fetchRemoteConfig();
     
     // Check if we were redirected here to auto-save
     checkPendingSave();
@@ -168,17 +249,13 @@
   // User can click it when they have a conversation open
   function isMessagingPage() {
     const path = window.location.pathname;
-    // Show on messaging pages
-    if (path.startsWith('/messaging')) {
-      return true;
-    }
-    // Show on profile pages (where messaging popup appears)
-    if (path.startsWith('/in/')) {
-      return true;
-    }
-    // Show on feed (messaging can appear there too)
-    if (path === '/feed' || path === '/') {
-      return true;
+    
+    // Check against remote config patterns
+    for (const pattern of Object.keys(activeConfig.page_patterns)) {
+      if (activeConfig.page_patterns[pattern]) {
+        if (pattern === '/' && path === '/') return true;
+        if (pattern !== '/' && path.startsWith(pattern)) return true;
+      }
     }
     return false;
   }
@@ -270,21 +347,14 @@
       const path = window.location.pathname;
       const isProfilePage = path.startsWith('/in/');
       
-      // Multiple ways to detect if messaging popup is open
-      const popupIndicators = [
-        // Any element with "Write a message" placeholder text
-        document.querySelector('[placeholder*="Write a message" i], [aria-label*="Write a message" i]'),
-        // Messaging input/textarea anywhere on page (when on profile page, this is the popup)
-        document.querySelector('[contenteditable="true"][role="textbox"], .msg-form__contenteditable'),
-        // Close button with X or close in any form
-        document.querySelector('button[aria-label*="close" i], button svg[data-test-icon="close"]'),
-        // Any visible messaging form
-        document.querySelector('.msg-form, [class*="msg-form"], [class*="message-form"]'),
-        // Floating messaging container (look for common patterns)
-        document.querySelector('[class*="msg-overlay"], [class*="messaging-container"], [class*="msg-convo"]'),
-        // GIF/emoji buttons that only appear in message compose
-        document.querySelector('button[aria-label*="GIF" i], button[aria-label*="emoji" i], button[aria-label*="Attach" i]')
-      ];
+      // Multiple ways to detect if messaging popup is open (using remote config)
+      const popupIndicators = activeConfig.popup_selectors.map(selector => {
+        try {
+          return document.querySelector(selector);
+        } catch (e) {
+          return null; // Invalid selector
+        }
+      });
       const hasOpenPopup = isProfilePage && popupIndicators.some(el => el !== null);
       
       

@@ -146,7 +146,7 @@
         return;
       }
       
-      console.log('[NA Extension] Received clipboard data:', data.contactName);
+      console.log('[NA Extension] Received clipboard data for:', data.contactName);
       
       // Wait for the Quick Update form to be ready
       waitForQuickUpdateForm(data);
@@ -161,43 +161,104 @@
     const checkInterval = setInterval(() => {
       attempts++;
       
-      // Look for the search input - it has the specific placeholder
-      const searchInput = document.querySelector('input[placeholder*="LinkedIn URL"]') ||
-                         document.querySelector('input[placeholder*="Paste LinkedIn"]') ||
+      // Look for the search input - more flexible selector
+      const searchInput = document.querySelector('input[placeholder*="name"]') ||
+                         document.querySelector('input[placeholder*="LinkedIn"]') ||
+                         document.querySelector('input[placeholder*="URL"]') ||
                          document.querySelector('input[placeholder*="email"]');
       
-      // Look for the textarea for notes
-      const textArea = document.querySelector('textarea');
+      // Look for the textarea for notes (Content field)
+      const textArea = document.querySelector('textarea[placeholder*="conversation"]') ||
+                       document.querySelector('textarea[placeholder*="Paste"]') ||
+                       document.querySelector('textarea');
       
-      // Look for the LinkedIn section button
-      const linkedinButton = Array.from(document.querySelectorAll('button')).find(btn => 
-        btn.textContent?.includes('LinkedIn') && !btn.textContent?.includes('Sales')
-      );
+      // Look for the LinkedIn section button - check multiple element types
+      // These buttons might be <button>, <div>, <span>, etc. styled as pills
+      const allClickables = document.querySelectorAll('button, [role="button"], div, span');
+      const linkedinButton = Array.from(allClickables).find(el => {
+        const text = el.textContent?.trim();
+        // Must be exactly "LinkedIn" or very short containing LinkedIn (not "Sales Nav" which contains "LinkedIn" substring issues)
+        return text === 'LinkedIn';
+      });
       
-      if (searchInput || textArea) {
+      if (searchInput) {
         clearInterval(checkInterval);
         
-        // Click LinkedIn button to set the section
-        if (linkedinButton) {
-          linkedinButton.click();
-        }
-        
-        // Pre-fill the search with contact name
-        if (searchInput && data.contactName) {
-          // Need to use React's way of setting value
+        // Step 1: Pre-fill the search with contact name FIRST
+        // This triggers a React re-render/search, so we do it before clicking LinkedIn
+        if (data.contactName) {
           const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
           nativeInputValueSetter.call(searchInput, data.contactName);
           searchInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
         
-        // Pre-fill the textarea with conversation
-        if (textArea && data.conversationText) {
-          const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-          nativeTextAreaValueSetter.call(textArea, data.conversationText);
-          textArea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
+        // Step 2: Wait for React to settle after contact name input, THEN click LinkedIn button
+        setTimeout(() => {
+          // Helper function to find and click LinkedIn button
+          const clickLinkedInButton = () => {
+            const allClickables = document.querySelectorAll('button, [role="button"], div, span, label');
+            const linkedinBtn = Array.from(allClickables).find(el => {
+              const text = el.textContent?.trim();
+              return text === 'LinkedIn';
+            });
+            
+            if (linkedinBtn) {
+              console.log('[NA Extension] Found LinkedIn button, clicking...');
+              linkedinBtn.focus();
+              linkedinBtn.click();
+              linkedinBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+              linkedinBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+              linkedinBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+              
+              // Also try clicking parent if button is nested
+              if (linkedinBtn.parentElement) {
+                linkedinBtn.parentElement.click();
+              }
+              return true;
+            }
+            return false;
+          };
+          
+          // Try clicking immediately
+          clickLinkedInButton();
+          
+          // Try again after a short delay (in case React re-rendered)
+          setTimeout(() => clickLinkedInButton(), 200);
+          setTimeout(() => clickLinkedInButton(), 400);
+          
+          // Step 3: Wait for LinkedIn click to take effect, then fill textarea
+          setTimeout(() => {
+            const activeTextArea = document.querySelector('textarea');
+            
+            if (activeTextArea?.placeholder?.includes('First select a source')) {
+              // Try clicking again if still disabled
+              console.log('[NA Extension] Textarea still disabled, retrying click...');
+              clickLinkedInButton();
+            }
+            
+            // Final attempt to fill textarea after another short delay
+            setTimeout(() => {
+              // One more click attempt
+              clickLinkedInButton();
+              
+              setTimeout(() => {
+                const finalTextArea = document.querySelector('textarea');
+                if (finalTextArea && data.conversationText) {
+                  console.log('[NA Extension] Filling textarea with conversation...');
+                  const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                  nativeTextAreaValueSetter.call(finalTextArea, data.conversationText);
+                  finalTextArea.dispatchEvent(new Event('input', { bubbles: true }));
+                  finalTextArea.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                
+                showDataLoadedNotification(data.contactName);
+              }, 200);
+            }, 300);
+            
+          }, 600); // Wait for LinkedIn button click to take effect
+          
+        }, 800); // Wait for contact name input to settle
         
-        showDataLoadedNotification(data.contactName);
       } else if (attempts >= maxAttempts) {
         clearInterval(checkInterval);
         console.log('[NA Extension] Could not find Quick Update form fields');
