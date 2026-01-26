@@ -262,16 +262,19 @@ function CalendarBookingContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookTime, includeEmailInConfirm, showConfirmation, leadDisplayTime]);
 
-  // Load lead by ID from URL parameter
+  // Load lead by LinkedIn URL from URL parameter
   useEffect(() => {
-    const leadId = searchParams.get('lead');
-    if (!leadId || !clientInfo?.clientId || leadRecordId) return;
+    const linkedinUrl = searchParams.get('linkedinUrl');
+    const legacyLeadId = searchParams.get('lead'); // Legacy support for record ID
+    const lookupQuery = linkedinUrl || legacyLeadId;
     
-    // Fetch lead by record ID
-    const loadLeadById = async () => {
+    if (!lookupQuery || !clientInfo?.clientId || leadRecordId) return;
+    
+    // Fetch lead by LinkedIn URL or legacy ID
+    const loadLeadByUrl = async () => {
       setLookingUpLead(true);
       try {
-        const response = await fetch(`/api/calendar/lookup-lead?recordId=${encodeURIComponent(leadId)}`, {
+        const response = await fetch(`/api/calendar/lookup-lead?query=${encodeURIComponent(lookupQuery)}`, {
           headers: { 'x-client-id': clientInfo.clientId },
         });
         const data = await response.json();
@@ -279,13 +282,13 @@ function CalendarBookingContent() {
           selectLead(data);
         }
       } catch (err) {
-        console.error('Failed to load lead by ID:', err);
+        console.error('Failed to load lead by URL:', err);
       } finally {
         setLookingUpLead(false);
       }
     };
     
-    loadLeadById();
+    loadLeadByUrl();
   }, [searchParams, clientInfo, leadRecordId]);
 
   // Verify calendar access on page load when calendar email is configured
