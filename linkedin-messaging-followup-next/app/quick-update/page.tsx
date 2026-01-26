@@ -18,9 +18,12 @@ function QuickUpdateContent() {
   useEffect(() => {
     const validateAccess = async () => {
       // Check for token (secure) or devKey (admin)
-      // Also check sessionStorage for token (persisted after URL cleaning for demo security)
-      const token = searchParams.get('token') || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('portalToken') : null);
-      const devKey = searchParams.get('devKey');
+      // Check localStorage first (persists across tabs), then sessionStorage (legacy fallback)
+      const token = searchParams.get('token') 
+        || (typeof localStorage !== 'undefined' ? localStorage.getItem('portalToken') : null)
+        || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('portalToken') : null);
+      const devKey = searchParams.get('devKey')
+        || (typeof localStorage !== 'undefined' ? localStorage.getItem('devKey') : null);
       
       // If no token or devKey, redirect to membership required page
       if (!token && !devKey) {
