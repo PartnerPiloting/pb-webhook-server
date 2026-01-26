@@ -87,7 +87,8 @@ function QuickUpdateContent() {
   const portalToken = getCurrentPortalToken();
   const returnUrl = portalToken ? `/?token=${portalToken}` : '/';
   
-  // Check for pre-selected lead from URL
+  // Check for pre-selected lead from URL (by LinkedIn URL or legacy record ID)
+  const initialLinkedInUrl = searchParams.get('linkedinUrl');
   const initialLeadId = searchParams.get('lead');
 
   // Render the Quick Update as a standalone page (not modal)
@@ -100,6 +101,7 @@ function QuickUpdateContent() {
       clientId={clientId as unknown as null}
       standalone={true}
       initialLeadId={initialLeadId as unknown as undefined}
+      initialLinkedInUrl={initialLinkedInUrl as unknown as undefined}
     />
   );
 }
