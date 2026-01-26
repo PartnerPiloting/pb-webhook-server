@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import SearchTermsField from './SearchTermsField';
 import CollapsibleNotes from './CollapsibleNotes';
 import { deleteLead } from '../services/api';
+import { buildAuthUrl } from '../utils/clientUtils';
 
 // Import icons using require to avoid Next.js issues
 let CalendarIcon, StarIcon, ArrowTopRightOnSquareIcon, TrashIcon;
@@ -377,7 +378,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                     </p>
                     <div className="flex gap-2">
                       <a
-                        href={`/quick-update?lead=${lead?.id || ''}`}
+                        href={buildAuthUrl(`/quick-update?lead=${lead?.id || ''}`)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 inline-flex items-center gap-1"
@@ -385,7 +386,7 @@ const LeadDetailForm = ({ lead, onUpdate, isUpdating, onDelete }) => {
                         + Add Note
                       </a>
                       <a
-                        href={`/calendar-booking?lead=${lead?.id || ''}`}
+                        href={buildAuthUrl(`/calendar-booking?lead=${lead?.id || ''}`)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 inline-flex items-center gap-1"

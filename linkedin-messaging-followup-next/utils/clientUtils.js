@@ -305,21 +305,46 @@ export function setCurrentClientId(clientId) {
 /**
  * Build a URL with preserved authentication parameters
  * Prioritizes token (secure) over legacy client params
+ * Checks both module cache and localStorage/sessionStorage for auth values
  * @param {string} path - The path to navigate to (e.g., '/quick-update')
  * @returns {string} URL with auth params appended
  */
 export function buildAuthUrl(path) {
   const params = new URLSearchParams();
   
+  // Get auth values from cache or storage fallbacks
+  let token = currentPortalToken;
+  let devKey = currentDevKey;
+  let clientId = currentClientId;
+  
+  // Check localStorage/sessionStorage fallbacks if module cache is empty
+  if (typeof window !== 'undefined') {
+    if (!token && typeof localStorage !== 'undefined') {
+      token = localStorage.getItem('portalToken');
+    }
+    if (!token && typeof sessionStorage !== 'undefined') {
+      token = sessionStorage.getItem('portalToken');
+    }
+    if (!devKey && typeof localStorage !== 'undefined') {
+      devKey = localStorage.getItem('devKey');
+    }
+    if (!clientId && typeof localStorage !== 'undefined') {
+      clientId = localStorage.getItem('clientCode');
+    }
+    if (!clientId && typeof sessionStorage !== 'undefined') {
+      clientId = sessionStorage.getItem('clientId');
+    }
+  }
+  
   // Prefer token (secure) over legacy client param
-  if (currentPortalToken) {
-    params.set('token', currentPortalToken);
-  } else if (currentDevKey && currentClientId) {
-    params.set('clientId', currentClientId);
-    params.set('devKey', currentDevKey);
-  } else if (currentClientId) {
+  if (token) {
+    params.set('token', token);
+  } else if (devKey && clientId) {
+    params.set('clientId', clientId);
+    params.set('devKey', devKey);
+  } else if (clientId) {
     // Legacy fallback - will be blocked by backend
-    params.set('client', currentClientId);
+    params.set('client', clientId);
   }
   
   const queryString = params.toString();
