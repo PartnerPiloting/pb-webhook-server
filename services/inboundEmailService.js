@@ -787,11 +787,12 @@ function detectMeetingNotetaker(fromEmail, subject, bodyPlain) {
  * @param {string} bodyPlain - Plain text body
  * @param {string} bodyHtml - HTML body (optional, for link extraction)
  * @param {string} provider - Detected provider name
- * @returns {{contactName: string|null, meetingLink: string|null, duration: string|null, date: string|null}}
+ * @returns {{contactName: string|null, alternateNames: Array, meetingLink: string|null, duration: string|null, date: string|null, company: string|null}}
  */
 function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const result = {
         contactName: null,
+        alternateNames: [],  // Additional names to try (e.g., full name vs nickname)
         meetingLink: null,
         duration: null,
         date: null,
@@ -801,63 +802,124 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const body = bodyPlain || '';
     const html = bodyHtml || '';
     
-    // Extract contact name from subject or body
-    // Pattern: "Meeting with [Name]" or "Meeting with [domain]"
-    const namePatterns = [
-        /meeting with\s+(?:([^<\n,]+?)(?:\s*<[^>]+>)?|([a-z0-9.-]+\.[a-z]{2,}))\s*$/im,
-        /meeting with\s+([^<\n]+)/i,
-        /call with\s+([^<\n]+)/i
+    // Extract contact name from subject
+    // Pattern: "Meeting with [Name]" or "Recap of your meeting with [Name]"
+    const subjectNamePatterns = [
+        /meeting with\s+([^<\n,]+?)(?:\s*<[^>]+>)?\s*$/i,
+        /call with\s+([^<\n,]+?)(?:\s*<[^>]+>)?\s*$/i
     ];
     
-    for (const pattern of namePatterns) {
-        const match = subject.match(pattern) || body.match(pattern);
+    let subjectName = null;
+    for (const pattern of subjectNamePatterns) {
+        const match = subject.match(pattern);
         if (match) {
-            // Prefer name (group 1), fall back to domain (group 2)
-            let name = (match[1] || match[2] || '').trim();
-            
+            let name = (match[1] || '').trim();
             // Clean up the name
             name = name.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, ''); // Remove duration suffix
             name = name.replace(/\s*\([^)]+\)\s*$/, ''); // Remove parenthetical
             name = name.replace(/[<>]/g, '').trim();
             
-            // If it looks like a domain, try to extract company name
-            if (name.includes('.') && !name.includes(' ')) {
-                result.company = name;
-                // Try to find actual name in body
-                const bodyNameMatch = body.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)/);
-                if (bodyNameMatch) {
-                    result.contactName = bodyNameMatch[1];
-                }
-            } else if (name.length > 1 && name.length < 60) {
+            if (name.length > 1 && name.length < 60) {
+                subjectName = name;
                 result.contactName = name;
             }
             break;
         }
     }
     
-    // If we found a company but no name, look harder in the body
-    if (result.company && !result.contactName) {
-        // Fathom format often has name as a header
-        const fathomNameMatch = body.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*$/m);
-        if (fathomNameMatch) {
-            result.contactName = fathomNameMatch[1];
+    // Look for full name in email body (Fathom shows "Agnieszka Caruso meeting" as heading)
+    // This catches cases where subject has nickname but body has full name
+    const bodyNamePatterns = [
+        // Fathom: "Agnieszka Caruso meeting" as a heading line
+        /^([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)+)\s+meeting\s*$/im,
+        // Generic: "FirstName LastName" on its own line (capitalized words)
+        /^([A-Z][a-zà-ÿ]+\s+[A-Z][a-zà-ÿ]+)\s*$/m
+    ];
+    
+    for (const pattern of bodyNamePatterns) {
+        const match = body.match(pattern);
+        if (match) {
+            const bodyName = match[1].trim();
+            // If body name is different from subject name, add as alternate
+            if (bodyName && bodyName !== subjectName) {
+                // Check if it's a longer/fuller version of the same person
+                // e.g., "Agnes Caruso" vs "Agnieszka Caruso"
+                const bodyParts = bodyName.split(/\s+/);
+                const subjectParts = (subjectName || '').split(/\s+/);
+                
+                // Same last name but different first name = likely nickname vs full name
+                if (subjectParts.length >= 2 && bodyParts.length >= 2 &&
+                    bodyParts[bodyParts.length - 1].toLowerCase() === subjectParts[subjectParts.length - 1].toLowerCase()) {
+                    // Body name is likely the full name, use it as primary
+                    result.contactName = bodyName;
+                    if (subjectName) {
+                        result.alternateNames.push(subjectName);
+                    }
+                    logger.info(`Found full name "${bodyName}" in body (subject had "${subjectName}")`);
+                } else if (!result.contactName) {
+                    result.contactName = bodyName;
+                } else {
+                    result.alternateNames.push(bodyName);
+                }
+            }
+            break;
         }
     }
     
-    // Extract meeting link
-    // Priority: "View Meeting" link, then any meeting-related URL
+    // If subject name looks like a domain, extract company
+    if (subjectName && subjectName.includes('.') && !subjectName.includes(' ')) {
+        result.company = subjectName;
+        result.contactName = null; // Clear it, it's not a real name
+    }
+    
+    // Extract meeting link - be specific to avoid grabbing header/logo links
+    // Priority: actual meeting/call links, avoid UTM-tagged homepage links
     const linkPatterns = [
-        /View Meeting[:\s]*\n?\s*(https?:\/\/[^\s<>"]+)/i,
-        /View Recording[:\s]*\n?\s*(https?:\/\/[^\s<>"]+)/i,
-        /(https?:\/\/(?:fathom\.video|app\.otter\.ai|app\.fireflies\.ai|tldv\.io|grain\.com|grain\.co)[^\s<>"]+)/i,
-        /href=["'](https?:\/\/[^"']+(?:call|meeting|record|view)[^"']*)/i
+        // Fathom specific: View Meeting link (in HTML, it's an anchor)
+        /href=["'](https?:\/\/fathom\.video\/call\/[^"']+)/i,
+        /href=["'](https?:\/\/fathom\.video\/[^"']*share[^"']*)/i,
+        // Plain text: "View Meeting" followed by URL
+        /View Meeting[:\s]*\n?\s*(https?:\/\/fathom\.video\/(?:call|share)[^\s<>"]+)/i,
+        // Otter specific
+        /href=["'](https?:\/\/(?:app\.)?otter\.ai\/[^"']*(?:note|meeting|transcript)[^"']*)/i,
+        /(https?:\/\/(?:app\.)?otter\.ai\/[^\s<>"]*(?:note|meeting|transcript)[^\s<>"]*)/i,
+        // Fireflies specific  
+        /href=["'](https?:\/\/(?:app\.)?fireflies\.ai\/[^"']*(?:view|meeting)[^"']*)/i,
+        /(https?:\/\/(?:app\.)?fireflies\.ai\/[^\s<>"]*(?:view|meeting)[^\s<>"]*)/i,
+        // tl;dv specific
+        /href=["'](https?:\/\/tldv\.io\/[^"']*(?:app|meeting)[^"']*)/i,
+        // Grain specific
+        /href=["'](https?:\/\/grain\.(?:com|co)\/[^"']*(?:share|recording)[^"']*)/i,
+        // Generic: any URL with /call/, /meeting/, /share/, /recording/ in path (not query params)
+        /href=["'](https?:\/\/[^"']+\/(?:call|meeting|share|recording)\/[^"']+)/i
     ];
     
     for (const pattern of linkPatterns) {
-        const match = body.match(pattern) || html.match(pattern);
+        const match = html.match(pattern) || body.match(pattern);
         if (match) {
-            result.meetingLink = match[1];
-            break;
+            const link = match[1];
+            // Skip if it's just a homepage with UTM params
+            if (!link.match(/^https?:\/\/[^\/]+\/?\?/)) {
+                result.meetingLink = link;
+                logger.info(`Found meeting link: ${link}`);
+                break;
+            }
+        }
+    }
+    
+    // Fallback: if we still don't have a link, try to find any fathom/otter/etc URL
+    // that doesn't look like a homepage/marketing link
+    if (!result.meetingLink) {
+        const fallbackPattern = /(https?:\/\/(?:fathom\.video|app\.otter\.ai|app\.fireflies\.ai|tldv\.io|grain\.com|grain\.co)\/[^\s<>"]+)/gi;
+        const allLinks = [...(body.matchAll(fallbackPattern) || []), ...(html.matchAll(fallbackPattern) || [])];
+        for (const match of allLinks) {
+            const link = match[1];
+            // Skip homepage/UTM links
+            if (!link.includes('utm_campaign') && !link.match(/^https?:\/\/[^\/]+\/?$/)) {
+                result.meetingLink = link;
+                logger.info(`Found meeting link (fallback): ${link}`);
+                break;
+            }
         }
     }
     
@@ -876,7 +938,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         }
     }
     
-    // Extract date from email (usually in headers, but try body too)
+    // Extract date from email body
     const datePatterns = [
         /(\w+\s+\d{1,2},?\s+\d{4})/i,  // January 27, 2026
         /(\d{1,2}\/\d{1,2}\/\d{2,4})/,  // 27/1/2026
@@ -891,7 +953,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         }
     }
     
-    logger.info(`Parsed meeting note-taker email: name="${result.contactName}", link="${result.meetingLink}", duration="${result.duration}"`);
+    logger.info(`Parsed meeting note-taker email: name="${result.contactName}", alternates=${JSON.stringify(result.alternateNames)}, link="${result.meetingLink}", duration="${result.duration}"`);
     return result;
 }
 
@@ -1091,7 +1153,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
     // Parse the email to extract meeting details
     const meetingData = parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider);
     
-    if (!meetingData.contactName && !meetingData.company) {
+    if (!meetingData.contactName && !meetingData.company && meetingData.alternateNames.length === 0) {
         return {
             success: false,
             error: 'no_contact_name',
@@ -1099,17 +1161,42 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         };
     }
     
-    // Try to find the lead by name
-    const searchResult = await findLeadByName(client, meetingData.contactName, meetingData.company);
+    // Build list of names to try: primary name first, then alternates
+    const namesToTry = [];
+    if (meetingData.contactName) {
+        namesToTry.push(meetingData.contactName);
+    }
+    if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
+        namesToTry.push(...meetingData.alternateNames);
+    }
+    
+    logger.info(`Will try ${namesToTry.length} name(s): ${namesToTry.join(', ')}`);
+    
+    // Try each name until we find a match
+    let searchResult = null;
+    let matchedName = null;
+    
+    for (const nameToTry of namesToTry) {
+        logger.info(`Trying to find lead by name: "${nameToTry}"`);
+        searchResult = await findLeadByName(client, nameToTry, meetingData.company);
+        
+        if (searchResult.matchType !== 'none') {
+            matchedName = nameToTry;
+            logger.info(`Found match with name "${nameToTry}" (matchType: ${searchResult.matchType})`);
+            break;
+        }
+        logger.info(`No match for "${nameToTry}", trying next...`);
+    }
     
     // Handle different match scenarios
-    if (searchResult.matchType === 'none') {
-        // No leads found with this name
+    if (!searchResult || searchResult.matchType === 'none') {
+        // No leads found with any name
+        const triedNames = namesToTry.join('" or "');
         await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
         return {
             success: false,
             error: 'lead_not_found',
-            message: `No lead found with name "${meetingData.contactName}" for ${provider} meeting`
+            message: `No lead found with name "${triedNames}" for ${provider} meeting`
         };
     }
     
@@ -1119,7 +1206,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         return {
             success: false,
             error: 'multiple_leads',
-            message: `Found ${searchResult.allMatches.length} leads named "${meetingData.contactName}" - please specify which one`,
+            message: `Found ${searchResult.allMatches.length} leads named "${matchedName}" - please specify which one`,
             matches: searchResult.allMatches.map(l => ({
                 id: l.id,
                 name: `${l.firstName} ${l.lastName}`.trim(),
@@ -1142,7 +1229,8 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         leadId: lead.id,
         leadName: `${lead.firstName} ${lead.lastName}`.trim(),
         meetingLink: meetingData.meetingLink,
-        matchType: searchResult.matchType
+        matchType: searchResult.matchType,
+        matchedByName: matchedName
     };
 }
 
