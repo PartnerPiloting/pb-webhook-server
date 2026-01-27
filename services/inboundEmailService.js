@@ -694,6 +694,476 @@ function extractCcRecipients(mailgunData) {
     return recipients;
 }
 
+// ============================================
+// MEETING NOTE-TAKER PROCESSING
+// Handles forwarded emails from Fathom, Otter, Fireflies, etc.
+// ============================================
+
+/**
+ * Known meeting note-taker services and their sender patterns
+ */
+const MEETING_NOTETAKER_PATTERNS = {
+    fathom: {
+        senderDomains: ['fathom.video'],
+        subjectPatterns: [/meeting with/i],
+        provider: 'Fathom'
+    },
+    otter: {
+        senderDomains: ['otter.ai'],
+        subjectPatterns: [/meeting notes/i, /transcript/i],
+        provider: 'Otter.ai'
+    },
+    fireflies: {
+        senderDomains: ['fireflies.ai'],
+        subjectPatterns: [/meeting/i, /notes/i],
+        provider: 'Fireflies'
+    },
+    tldv: {
+        senderDomains: ['tldv.io'],
+        subjectPatterns: [/meeting/i],
+        provider: 'tl;dv'
+    },
+    grain: {
+        senderDomains: ['grain.com', 'grain.co'],
+        subjectPatterns: [/meeting/i, /recording/i],
+        provider: 'Grain'
+    }
+};
+
+/**
+ * Detect if email is from a meeting note-taker service
+ * @param {string} fromEmail - Sender email or original sender in forwarded email
+ * @param {string} subject - Email subject
+ * @param {string} bodyPlain - Plain text body
+ * @returns {{isMeetingNotetaker: boolean, provider: string|null}}
+ */
+function detectMeetingNotetaker(fromEmail, subject, bodyPlain) {
+    const lowerFrom = (fromEmail || '').toLowerCase();
+    const lowerSubject = (subject || '').toLowerCase();
+    const lowerBody = (bodyPlain || '').toLowerCase();
+    
+    // Check against known providers
+    for (const [key, config] of Object.entries(MEETING_NOTETAKER_PATTERNS)) {
+        // Check sender domain
+        const domainMatch = config.senderDomains.some(domain => 
+            lowerFrom.includes(domain) || lowerBody.includes(`@${domain}`)
+        );
+        
+        // Check subject patterns
+        const subjectMatch = config.subjectPatterns.some(pattern => 
+            pattern.test(subject)
+        );
+        
+        if (domainMatch || (subjectMatch && lowerBody.includes(config.provider.toLowerCase()))) {
+            logger.info(`Detected meeting note-taker: ${config.provider}`);
+            return { isMeetingNotetaker: true, provider: config.provider };
+        }
+    }
+    
+    // Generic detection for unknown providers
+    // Look for common meeting-related patterns
+    const genericPatterns = [
+        /meeting with\s+([^<\n]+)/i,
+        /call with\s+([^<\n]+)/i,
+        /meeting recording/i,
+        /meeting summary/i,
+        /meeting transcript/i
+    ];
+    
+    const hasGenericPattern = genericPatterns.some(p => p.test(subject) || p.test(bodyPlain));
+    const hasMeetingLink = /https?:\/\/[^\s]+\/(call|meeting|record|view)/i.test(bodyPlain);
+    
+    if (hasGenericPattern && hasMeetingLink) {
+        logger.info('Detected generic meeting note-taker email');
+        return { isMeetingNotetaker: true, provider: 'Meeting Notes' };
+    }
+    
+    return { isMeetingNotetaker: false, provider: null };
+}
+
+/**
+ * Parse meeting note-taker email to extract contact name, meeting link, and details
+ * @param {string} subject - Email subject
+ * @param {string} bodyPlain - Plain text body
+ * @param {string} bodyHtml - HTML body (optional, for link extraction)
+ * @param {string} provider - Detected provider name
+ * @returns {{contactName: string|null, meetingLink: string|null, duration: string|null, date: string|null}}
+ */
+function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
+    const result = {
+        contactName: null,
+        meetingLink: null,
+        duration: null,
+        date: null,
+        company: null
+    };
+    
+    const body = bodyPlain || '';
+    const html = bodyHtml || '';
+    
+    // Extract contact name from subject or body
+    // Pattern: "Meeting with [Name]" or "Meeting with [domain]"
+    const namePatterns = [
+        /meeting with\s+(?:([^<\n,]+?)(?:\s*<[^>]+>)?|([a-z0-9.-]+\.[a-z]{2,}))\s*$/im,
+        /meeting with\s+([^<\n]+)/i,
+        /call with\s+([^<\n]+)/i
+    ];
+    
+    for (const pattern of namePatterns) {
+        const match = subject.match(pattern) || body.match(pattern);
+        if (match) {
+            // Prefer name (group 1), fall back to domain (group 2)
+            let name = (match[1] || match[2] || '').trim();
+            
+            // Clean up the name
+            name = name.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, ''); // Remove duration suffix
+            name = name.replace(/\s*\([^)]+\)\s*$/, ''); // Remove parenthetical
+            name = name.replace(/[<>]/g, '').trim();
+            
+            // If it looks like a domain, try to extract company name
+            if (name.includes('.') && !name.includes(' ')) {
+                result.company = name;
+                // Try to find actual name in body
+                const bodyNameMatch = body.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)/);
+                if (bodyNameMatch) {
+                    result.contactName = bodyNameMatch[1];
+                }
+            } else if (name.length > 1 && name.length < 60) {
+                result.contactName = name;
+            }
+            break;
+        }
+    }
+    
+    // If we found a company but no name, look harder in the body
+    if (result.company && !result.contactName) {
+        // Fathom format often has name as a header
+        const fathomNameMatch = body.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*$/m);
+        if (fathomNameMatch) {
+            result.contactName = fathomNameMatch[1];
+        }
+    }
+    
+    // Extract meeting link
+    // Priority: "View Meeting" link, then any meeting-related URL
+    const linkPatterns = [
+        /View Meeting[:\s]*\n?\s*(https?:\/\/[^\s<>"]+)/i,
+        /View Recording[:\s]*\n?\s*(https?:\/\/[^\s<>"]+)/i,
+        /(https?:\/\/(?:fathom\.video|app\.otter\.ai|app\.fireflies\.ai|tldv\.io|grain\.com|grain\.co)[^\s<>"]+)/i,
+        /href=["'](https?:\/\/[^"']+(?:call|meeting|record|view)[^"']*)/i
+    ];
+    
+    for (const pattern of linkPatterns) {
+        const match = body.match(pattern) || html.match(pattern);
+        if (match) {
+            result.meetingLink = match[1];
+            break;
+        }
+    }
+    
+    // Extract duration
+    const durationPatterns = [
+        /(\d+)\s*mins?/i,
+        /(\d+)\s*minutes?/i,
+        /duration[:\s]+(\d+)/i
+    ];
+    
+    for (const pattern of durationPatterns) {
+        const match = subject.match(pattern) || body.match(pattern);
+        if (match) {
+            result.duration = `${match[1]} mins`;
+            break;
+        }
+    }
+    
+    // Extract date from email (usually in headers, but try body too)
+    const datePatterns = [
+        /(\w+\s+\d{1,2},?\s+\d{4})/i,  // January 27, 2026
+        /(\d{1,2}\/\d{1,2}\/\d{2,4})/,  // 27/1/2026
+        /(\d{1,2}-\d{1,2}-\d{2,4})/     // 27-1-2026
+    ];
+    
+    for (const pattern of datePatterns) {
+        const match = body.match(pattern);
+        if (match) {
+            result.date = match[1];
+            break;
+        }
+    }
+    
+    logger.info(`Parsed meeting note-taker email: name="${result.contactName}", link="${result.meetingLink}", duration="${result.duration}"`);
+    return result;
+}
+
+/**
+ * Find lead by name in client's Airtable base
+ * @param {Object} client - Client object with airtableBaseId
+ * @param {string} contactName - Name to search for
+ * @param {string} company - Optional company/domain to help match
+ * @returns {Promise<Object|null>} Lead record or null
+ */
+async function findLeadByName(client, contactName, company = null) {
+    if (!client.airtableBaseId) {
+        throw new Error(`Client ${client.clientId} has no Airtable base configured`);
+    }
+    
+    if (!contactName || contactName.trim().length < 2) {
+        logger.warn('Contact name too short for lead lookup');
+        return null;
+    }
+    
+    const clientBase = createBaseInstance(client.airtableBaseId);
+    const nameParts = contactName.trim().split(/\s+/);
+    
+    try {
+        // Build search formula
+        // Try exact match first, then partial matches
+        let filterFormula;
+        
+        if (nameParts.length >= 2) {
+            const firstName = nameParts[0];
+            const lastName = nameParts.slice(1).join(' ');
+            // Match first name AND last name (case insensitive)
+            filterFormula = `AND(
+                LOWER({First Name}) = "${firstName.toLowerCase()}",
+                LOWER({Last Name}) = "${lastName.toLowerCase()}"
+            )`;
+        } else {
+            // Single name - search in both fields
+            const name = nameParts[0].toLowerCase();
+            filterFormula = `OR(
+                LOWER({First Name}) = "${name}",
+                LOWER({Last Name}) = "${name}"
+            )`;
+        }
+        
+        logger.info(`Searching for lead by name: "${contactName}" with formula: ${filterFormula}`);
+        
+        const records = await clientBase('Leads').select({
+            filterByFormula: filterFormula,
+            maxRecords: 5
+        }).firstPage();
+        
+        if (records && records.length > 0) {
+            // If multiple matches and we have company info, try to match by company/LinkedIn
+            let bestMatch = records[0];
+            
+            if (records.length > 1 && company) {
+                for (const record of records) {
+                    const linkedIn = (record.fields['LinkedIn Profile URL'] || '').toLowerCase();
+                    if (linkedIn.includes(company.toLowerCase().replace(/\.[^.]+$/, ''))) {
+                        bestMatch = record;
+                        break;
+                    }
+                }
+            }
+            
+            logger.info(`Found lead ${bestMatch.id} with name "${contactName}" for client ${client.clientId}`);
+            return {
+                id: bestMatch.id,
+                firstName: bestMatch.fields['First Name'] || '',
+                lastName: bestMatch.fields['Last Name'] || '',
+                email: bestMatch.fields['Email'] || '',
+                notes: bestMatch.fields['Notes'] || '',
+                followUpDate: bestMatch.fields['Follow-Up Date'] || null
+            };
+        }
+        
+        logger.warn(`No lead found with name "${contactName}" for client ${client.clientId}`);
+        return null;
+        
+    } catch (error) {
+        logger.error(`Error searching for lead by name: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Update lead with meeting notes (concise format with link)
+ * @param {Object} client - Client object
+ * @param {Object} lead - Lead object (with id, notes)
+ * @param {Object} meetingData - Parsed meeting data
+ * @param {string} provider - Note-taker provider name
+ * @returns {Promise<Object>} Update result
+ */
+async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
+    const clientBase = createBaseInstance(client.airtableBaseId);
+    
+    // Format timestamp in client's timezone
+    let timestamp;
+    const clientTimezone = client.timezone || 'Australia/Brisbane';
+    try {
+        timestamp = new Date().toLocaleString('en-AU', { 
+            timeZone: clientTimezone,
+            day: '2-digit',
+            month: '2-digit', 
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    } catch (e) {
+        timestamp = new Date().toLocaleString('en-AU');
+    }
+    
+    // Build concise meeting note entry
+    let noteEntry = `[${timestamp}] 📹 ${provider}`;
+    
+    if (meetingData.contactName) {
+        noteEntry += ` with ${meetingData.contactName}`;
+    }
+    
+    if (meetingData.duration) {
+        noteEntry += ` (${meetingData.duration})`;
+    }
+    
+    if (meetingData.meetingLink) {
+        noteEntry += `\nView: ${meetingData.meetingLink}`;
+    }
+    
+    // Update the MEETING section in notes (append mode)
+    const updatedNotes = updateSection(lead.notes || '', 'meeting', noteEntry, { 
+        append: true, 
+        newlinesBefore: 1 
+    });
+    
+    try {
+        await clientBase('Leads').update(lead.id, {
+            'Notes': updatedNotes
+        });
+        
+        logger.info(`Updated lead ${lead.id} with meeting notes from ${provider}`);
+        
+        return {
+            success: true,
+            leadId: lead.id,
+            leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+            provider: provider,
+            meetingLink: meetingData.meetingLink
+        };
+        
+    } catch (error) {
+        logger.error(`Failed to update lead with meeting notes: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * Process a meeting note-taker email
+ * @param {Object} client - Client object
+ * @param {Object} emailData - Email data (subject, bodyPlain, bodyHtml, etc.)
+ * @param {string} provider - Detected provider name
+ * @returns {Promise<Object>} Processing result
+ */
+async function processMeetingNotetakerEmail(client, emailData, provider) {
+    const { subject, bodyPlain, bodyHtml } = emailData;
+    
+    logger.info(`Processing ${provider} meeting note-taker email for client ${client.clientId}`);
+    
+    // Parse the email to extract meeting details
+    const meetingData = parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider);
+    
+    if (!meetingData.contactName && !meetingData.company) {
+        return {
+            success: false,
+            error: 'no_contact_name',
+            message: 'Could not extract contact name from meeting note-taker email'
+        };
+    }
+    
+    // Try to find the lead by name
+    const lead = await findLeadByName(client, meetingData.contactName, meetingData.company);
+    
+    if (!lead) {
+        // Send notification that lead wasn't found
+        await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
+        return {
+            success: false,
+            error: 'lead_not_found',
+            message: `No lead found with name "${meetingData.contactName}" for ${provider} meeting`
+        };
+    }
+    
+    // Update the lead with meeting notes
+    const result = await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
+    
+    return {
+        success: true,
+        type: 'meeting_notes',
+        provider: provider,
+        leadId: lead.id,
+        leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+        meetingLink: meetingData.meetingLink
+    };
+}
+
+/**
+ * Send notification when meeting lead is not found
+ * @param {string} toEmail - Recipient email
+ * @param {Object} meetingData - Parsed meeting data
+ * @param {string} provider - Provider name
+ */
+async function sendMeetingLeadNotFoundNotification(toEmail, meetingData, provider) {
+    const https = require('https');
+    const querystring = require('querystring');
+    
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        logger.warn('Mailgun not configured - skipping notification');
+        return;
+    }
+    
+    const emailData = {
+        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        to: toEmail,
+        subject: `📹 Meeting Note Not Saved - Lead Not Found`,
+        text: `Hi,
+
+We received your ${provider} meeting notes but couldn't find a matching lead in your portal.
+
+Contact: ${meetingData.contactName || 'Unknown'}
+${meetingData.company ? `Company: ${meetingData.company}` : ''}
+${meetingData.meetingLink ? `Meeting Link: ${meetingData.meetingLink}` : ''}
+
+To save these notes, please:
+1. Make sure the lead exists in your dashboard
+2. Check that the name matches exactly
+
+You can manually add the meeting link to the lead's notes.
+
+Best,
+ASH Portal`
+    };
+    
+    const postData = querystring.stringify(emailData);
+    
+    return new Promise((resolve) => {
+        const req = https.request({
+            hostname: 'api.mailgun.net',
+            port: 443,
+            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+            method: 'POST',
+            auth: `api:${process.env.MAILGUN_API_KEY}`,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        }, (res) => {
+            let responseData = '';
+            res.on('data', chunk => responseData += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    logger.info(`Meeting lead not found notification sent to ${toEmail}`);
+                }
+                resolve({ sent: res.statusCode < 300 });
+            });
+        });
+        
+        req.on('error', () => resolve({ sent: false }));
+        req.write(postData);
+        req.end();
+    });
+}
+
 /**
  * Detect if email is a forwarded message
  * @param {string} body - Email body
@@ -870,6 +1340,28 @@ async function processInboundEmail(mailgunData) {
         };
     }
 
+    // Step 1.5: Check if this is a forwarded meeting note-taker email (Fathom, Otter, etc.)
+    // Meeting note-takers are detected by sender domain or content patterns
+    if (isForward && toIsTrackingAddress) {
+        // Check the forwarded content for meeting note-taker patterns
+        const meetingDetection = detectMeetingNotetaker(
+            forwardedRecipients?.from || '', 
+            forwardedRecipients?.subject || subject, 
+            bodyPlain
+        );
+        
+        if (meetingDetection.isMeetingNotetaker) {
+            logger.info(`🎥 Processing ${meetingDetection.provider} meeting note-taker email`);
+            
+            // Process as meeting note-taker (lookup by name, not email)
+            return await processMeetingNotetakerEmail(client, {
+                subject: forwardedRecipients?.subject || subject,
+                bodyPlain,
+                bodyHtml
+            }, meetingDetection.provider);
+        }
+    }
+
     // Step 2: Collect all potential leads (To + CC)
     const potentialLeads = [];
     
@@ -1006,11 +1498,17 @@ module.exports = {
     processInboundEmail,
     findClientByEmail,
     findLeadByEmail,
+    findLeadByName,
     updateLeadWithEmail,
+    updateLeadWithMeetingNotes,
     sendErrorNotification,
     validateMailgunSignature,
     extractRecipientEmail,
     extractCcRecipients,
     isForwardedEmail,
-    extractForwardedRecipients
+    extractForwardedRecipients,
+    // Meeting note-taker functions
+    detectMeetingNotetaker,
+    parseMeetingNotetakerEmail,
+    processMeetingNotetakerEmail
 };
