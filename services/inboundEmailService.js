@@ -792,6 +792,7 @@ function detectMeetingNotetaker(fromEmail, subject, bodyPlain) {
 function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const result = {
         contactName: null,
+        contactEmail: null,  // Email address if "Meeting with email@domain.com"
         alternateNames: [],  // Additional names to try (e.g., full name vs nickname)
         meetingLink: null,
         duration: null,
@@ -802,8 +803,11 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const body = bodyPlain || '';
     const html = bodyHtml || '';
     
-    // Extract contact name from subject
-    // Pattern: "Meeting with [Name]" or "Recap of your meeting with [Name]"
+    // Email regex for detection
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    // Extract contact info from subject
+    // Pattern: "Meeting with [Name or Email]" or "Recap of your meeting with [Name or Email]"
     const subjectNamePatterns = [
         /meeting with\s+([^<\n,]+?)(?:\s*<[^>]+>)?\s*$/i,
         /call with\s+([^<\n,]+?)(?:\s*<[^>]+>)?\s*$/i
@@ -813,15 +817,26 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     for (const pattern of subjectNamePatterns) {
         const match = subject.match(pattern);
         if (match) {
-            let name = (match[1] || '').trim();
-            // Clean up the name
-            name = name.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, ''); // Remove duration suffix
-            name = name.replace(/\s*\([^)]+\)\s*$/, ''); // Remove parenthetical
-            name = name.replace(/[<>]/g, '').trim();
+            let extracted = (match[1] || '').trim();
+            // Clean up
+            extracted = extracted.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, ''); // Remove duration suffix
+            extracted = extracted.replace(/\s*\([^)]+\)\s*$/, ''); // Remove parenthetical
+            extracted = extracted.replace(/[<>]/g, '').trim();
             
-            if (name.length > 1 && name.length < 60) {
-                subjectName = name;
-                result.contactName = name;
+            if (extracted.length > 1 && extracted.length < 60) {
+                // Check if it's an email address
+                if (emailRegex.test(extracted)) {
+                    result.contactEmail = extracted.toLowerCase();
+                    // Extract company domain from email for additional matching
+                    const domain = extracted.split('@')[1];
+                    if (domain && !domain.match(/^(gmail|yahoo|hotmail|outlook|live|icloud|me)\./i)) {
+                        result.company = domain;
+                    }
+                    logger.info(`Found contact email in subject: ${result.contactEmail}`);
+                } else {
+                    subjectName = extracted;
+                    result.contactName = extracted;
+                }
             }
             break;
         }
@@ -1153,71 +1168,96 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
     // Parse the email to extract meeting details
     const meetingData = parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider);
     
-    if (!meetingData.contactName && !meetingData.company && meetingData.alternateNames.length === 0) {
+    if (!meetingData.contactName && !meetingData.contactEmail && !meetingData.company && meetingData.alternateNames.length === 0) {
         return {
             success: false,
-            error: 'no_contact_name',
-            message: 'Could not extract contact name from meeting note-taker email'
+            error: 'no_contact_info',
+            message: 'Could not extract contact name or email from meeting note-taker email'
         };
     }
     
-    // Build list of names to try: primary name first, then alternates
-    const namesToTry = [];
-    if (meetingData.contactName) {
-        namesToTry.push(meetingData.contactName);
-    }
-    if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
-        namesToTry.push(...meetingData.alternateNames);
-    }
+    let lead = null;
+    let matchedBy = null;
     
-    logger.info(`Will try ${namesToTry.length} name(s): ${namesToTry.join(', ')}`);
-    
-    // Try each name until we find a match
-    let searchResult = null;
-    let matchedName = null;
-    
-    for (const nameToTry of namesToTry) {
-        logger.info(`Trying to find lead by name: "${nameToTry}"`);
-        searchResult = await findLeadByName(client, nameToTry, meetingData.company);
+    // PRIORITY 1: Try email lookup first (most reliable)
+    if (meetingData.contactEmail) {
+        logger.info(`Trying to find lead by email: "${meetingData.contactEmail}"`);
+        lead = await findLeadByEmail(client, meetingData.contactEmail);
         
-        if (searchResult.matchType !== 'none') {
-            matchedName = nameToTry;
-            logger.info(`Found match with name "${nameToTry}" (matchType: ${searchResult.matchType})`);
-            break;
+        if (lead) {
+            matchedBy = `email (${meetingData.contactEmail})`;
+            logger.info(`Found lead ${lead.id} by email: ${meetingData.contactEmail}`);
+        } else {
+            logger.info(`No lead found with email ${meetingData.contactEmail}, falling back to name search`);
         }
-        logger.info(`No match for "${nameToTry}", trying next...`);
     }
     
-    // Handle different match scenarios
-    if (!searchResult || searchResult.matchType === 'none') {
-        // No leads found with any name
-        const triedNames = namesToTry.join('" or "');
+    // PRIORITY 2: Try name lookup if email didn't match
+    if (!lead) {
+        // Build list of names to try: primary name first, then alternates
+        const namesToTry = [];
+        if (meetingData.contactName) {
+            namesToTry.push(meetingData.contactName);
+        }
+        if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
+            namesToTry.push(...meetingData.alternateNames);
+        }
+        
+        if (namesToTry.length > 0) {
+            logger.info(`Will try ${namesToTry.length} name(s): ${namesToTry.join(', ')}`);
+            
+            // Try each name until we find a match
+            let searchResult = null;
+            let matchedName = null;
+            
+            for (const nameToTry of namesToTry) {
+                logger.info(`Trying to find lead by name: "${nameToTry}"`);
+                searchResult = await findLeadByName(client, nameToTry, meetingData.company);
+                
+                if (searchResult.matchType !== 'none') {
+                    matchedName = nameToTry;
+                    logger.info(`Found match with name "${nameToTry}" (matchType: ${searchResult.matchType})`);
+                    break;
+                }
+                logger.info(`No match for "${nameToTry}", trying next...`);
+            }
+            
+            // Handle name search results
+            if (searchResult && searchResult.matchType === 'ambiguous') {
+                // Multiple leads with same name, couldn't narrow down
+                await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
+                return {
+                    success: false,
+                    error: 'multiple_leads',
+                    message: `Found ${searchResult.allMatches.length} leads named "${matchedName}" - please specify which one`,
+                    matches: searchResult.allMatches.map(l => ({
+                        id: l.id,
+                        name: `${l.firstName} ${l.lastName}`.trim(),
+                        company: l.company,
+                        email: l.email
+                    }))
+                };
+            }
+            
+            if (searchResult && searchResult.matchType !== 'none') {
+                lead = searchResult.lead;
+                matchedBy = `name (${matchedName})`;
+            }
+        }
+    }
+    
+    // No match found by email or name
+    if (!lead) {
+        const searchedFor = meetingData.contactEmail 
+            ? `email "${meetingData.contactEmail}"` 
+            : `name "${meetingData.contactName || meetingData.alternateNames.join('" or "')}"`;
         await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
         return {
             success: false,
             error: 'lead_not_found',
-            message: `No lead found with name "${triedNames}" for ${provider} meeting`
+            message: `No lead found with ${searchedFor} for ${provider} meeting`
         };
     }
-    
-    if (searchResult.matchType === 'ambiguous') {
-        // Multiple leads with same name, couldn't narrow down
-        await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
-        return {
-            success: false,
-            error: 'multiple_leads',
-            message: `Found ${searchResult.allMatches.length} leads named "${matchedName}" - please specify which one`,
-            matches: searchResult.allMatches.map(l => ({
-                id: l.id,
-                name: `${l.firstName} ${l.lastName}`.trim(),
-                company: l.company,
-                email: l.email
-            }))
-        };
-    }
-    
-    // We have a lead (either unique or narrowed down)
-    const lead = searchResult.lead;
     
     // Update the lead with meeting notes
     await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
@@ -1229,8 +1269,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         leadId: lead.id,
         leadName: `${lead.firstName} ${lead.lastName}`.trim(),
         meetingLink: meetingData.meetingLink,
-        matchType: searchResult.matchType,
-        matchedByName: matchedName
+        matchedBy: matchedBy
     };
 }
 
