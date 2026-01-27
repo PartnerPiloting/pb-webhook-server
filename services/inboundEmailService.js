@@ -897,19 +897,23 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
 
 /**
  * Find lead by name in client's Airtable base
+ * Returns match info including whether there were multiple matches
  * @param {Object} client - Client object with airtableBaseId
  * @param {string} contactName - Name to search for
  * @param {string} company - Optional company/domain to help match
- * @returns {Promise<Object|null>} Lead record or null
+ * @returns {Promise<{lead: Object|null, allMatches: Array, matchType: string}>}
+ *   matchType: 'unique' | 'narrowed' | 'ambiguous' | 'none'
  */
 async function findLeadByName(client, contactName, company = null) {
+    const result = { lead: null, allMatches: [], matchType: 'none' };
+    
     if (!client.airtableBaseId) {
         throw new Error(`Client ${client.clientId} has no Airtable base configured`);
     }
     
     if (!contactName || contactName.trim().length < 2) {
         logger.warn('Contact name too short for lead lookup');
-        return null;
+        return result;
     }
     
     const clientBase = createBaseInstance(client.airtableBaseId);
@@ -917,7 +921,6 @@ async function findLeadByName(client, contactName, company = null) {
     
     try {
         // Build search formula
-        // Try exact match first, then partial matches
         let filterFormula;
         
         if (nameParts.length >= 2) {
@@ -941,36 +944,61 @@ async function findLeadByName(client, contactName, company = null) {
         
         const records = await clientBase('Leads').select({
             filterByFormula: filterFormula,
-            maxRecords: 5
+            maxRecords: 10
         }).firstPage();
         
-        if (records && records.length > 0) {
-            // If multiple matches and we have company info, try to match by company/LinkedIn
-            let bestMatch = records[0];
-            
-            if (records.length > 1 && company) {
-                for (const record of records) {
-                    const linkedIn = (record.fields['LinkedIn Profile URL'] || '').toLowerCase();
-                    if (linkedIn.includes(company.toLowerCase().replace(/\.[^.]+$/, ''))) {
-                        bestMatch = record;
-                        break;
-                    }
-                }
-            }
-            
-            logger.info(`Found lead ${bestMatch.id} with name "${contactName}" for client ${client.clientId}`);
-            return {
-                id: bestMatch.id,
-                firstName: bestMatch.fields['First Name'] || '',
-                lastName: bestMatch.fields['Last Name'] || '',
-                email: bestMatch.fields['Email'] || '',
-                notes: bestMatch.fields['Notes'] || '',
-                followUpDate: bestMatch.fields['Follow-Up Date'] || null
-            };
+        if (!records || records.length === 0) {
+            logger.warn(`No lead found with name "${contactName}" for client ${client.clientId}`);
+            return result;
         }
         
-        logger.warn(`No lead found with name "${contactName}" for client ${client.clientId}`);
-        return null;
+        // Map all records to lead objects
+        result.allMatches = records.map(record => ({
+            id: record.id,
+            firstName: record.fields['First Name'] || '',
+            lastName: record.fields['Last Name'] || '',
+            email: record.fields['Email'] || '',
+            company: record.fields['Company'] || '',
+            linkedinUrl: record.fields['LinkedIn Profile URL'] || '',
+            notes: record.fields['Notes'] || '',
+            followUpDate: record.fields['Follow-Up Date'] || null
+        }));
+        
+        // Case 1: Exactly one match - perfect!
+        if (records.length === 1) {
+            result.lead = result.allMatches[0];
+            result.matchType = 'unique';
+            logger.info(`Found unique lead ${result.lead.id} with name "${contactName}"`);
+            return result;
+        }
+        
+        // Case 2: Multiple matches - try to narrow down
+        logger.info(`Found ${records.length} leads with name "${contactName}" - attempting to narrow down`);
+        
+        // Try to narrow by company/domain from the meeting email
+        if (company) {
+            const companyLower = company.toLowerCase().replace(/\.[^.]+$/, ''); // Remove TLD
+            
+            for (const lead of result.allMatches) {
+                const linkedIn = (lead.linkedinUrl || '').toLowerCase();
+                const leadCompany = (lead.company || '').toLowerCase();
+                const leadEmail = (lead.email || '').toLowerCase();
+                
+                if (linkedIn.includes(companyLower) || 
+                    leadCompany.includes(companyLower) ||
+                    leadEmail.includes(companyLower)) {
+                    result.lead = lead;
+                    result.matchType = 'narrowed';
+                    logger.info(`Narrowed to lead ${lead.id} by company match "${company}"`);
+                    return result;
+                }
+            }
+        }
+        
+        // Case 3: Could not narrow down - ambiguous
+        result.matchType = 'ambiguous';
+        logger.warn(`Could not narrow down ${records.length} leads with name "${contactName}"`);
+        return result;
         
     } catch (error) {
         logger.error(`Error searching for lead by name: ${error.message}`);
@@ -1072,10 +1100,11 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
     }
     
     // Try to find the lead by name
-    const lead = await findLeadByName(client, meetingData.contactName, meetingData.company);
+    const searchResult = await findLeadByName(client, meetingData.contactName, meetingData.company);
     
-    if (!lead) {
-        // Send notification that lead wasn't found
+    // Handle different match scenarios
+    if (searchResult.matchType === 'none') {
+        // No leads found with this name
         await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
         return {
             success: false,
@@ -1084,8 +1113,27 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         };
     }
     
+    if (searchResult.matchType === 'ambiguous') {
+        // Multiple leads with same name, couldn't narrow down
+        await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
+        return {
+            success: false,
+            error: 'multiple_leads',
+            message: `Found ${searchResult.allMatches.length} leads named "${meetingData.contactName}" - please specify which one`,
+            matches: searchResult.allMatches.map(l => ({
+                id: l.id,
+                name: `${l.firstName} ${l.lastName}`.trim(),
+                company: l.company,
+                email: l.email
+            }))
+        };
+    }
+    
+    // We have a lead (either unique or narrowed down)
+    const lead = searchResult.lead;
+    
     // Update the lead with meeting notes
-    const result = await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
+    await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
     
     return {
         success: true,
@@ -1093,7 +1141,8 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         provider: provider,
         leadId: lead.id,
         leadName: `${lead.firstName} ${lead.lastName}`.trim(),
-        meetingLink: meetingData.meetingLink
+        meetingLink: meetingData.meetingLink,
+        matchType: searchResult.matchType
     };
 }
 
@@ -1153,6 +1202,82 @@ ASH Portal`
             res.on('end', () => {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     logger.info(`Meeting lead not found notification sent to ${toEmail}`);
+                }
+                resolve({ sent: res.statusCode < 300 });
+            });
+        });
+        
+        req.on('error', () => resolve({ sent: false }));
+        req.write(postData);
+        req.end();
+    });
+}
+
+/**
+ * Send notification when multiple leads match the meeting contact name
+ * @param {string} toEmail - Recipient email
+ * @param {Object} meetingData - Parsed meeting data
+ * @param {string} provider - Provider name
+ * @param {Array} matchingLeads - Array of matching lead objects
+ */
+async function sendMeetingMultipleLeadsNotification(toEmail, meetingData, provider, matchingLeads) {
+    const https = require('https');
+    const querystring = require('querystring');
+    
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        logger.warn('Mailgun not configured - skipping notification');
+        return;
+    }
+    
+    // Build a list of the matching leads for the email
+    const leadList = matchingLeads.map((lead, idx) => {
+        const name = `${lead.firstName} ${lead.lastName}`.trim();
+        const details = [];
+        if (lead.company) details.push(lead.company);
+        if (lead.email) details.push(lead.email);
+        return `${idx + 1}. ${name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`;
+    }).join('\n');
+    
+    const emailData = {
+        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        to: toEmail,
+        subject: `📹 Meeting Note Not Saved - Multiple Leads Named "${meetingData.contactName}"`,
+        text: `Hi,
+
+We received your ${provider} meeting notes for "${meetingData.contactName}" but found ${matchingLeads.length} leads with that name:
+
+${leadList}
+
+We couldn't determine which one you met with.
+${meetingData.meetingLink ? `\nMeeting Link: ${meetingData.meetingLink}` : ''}
+
+Please manually add the meeting notes to the correct lead in your dashboard.
+
+Tip: If the leads have different company names or email domains, we can usually match automatically. The meeting email subject included "${meetingData.company || 'no company info'}".
+
+Best,
+ASH Portal`
+    };
+    
+    const postData = querystring.stringify(emailData);
+    
+    return new Promise((resolve) => {
+        const req = https.request({
+            hostname: 'api.mailgun.net',
+            port: 443,
+            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+            method: 'POST',
+            auth: `api:${process.env.MAILGUN_API_KEY}`,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        }, (res) => {
+            let responseData = '';
+            res.on('data', chunk => responseData += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    logger.info(`Multiple leads notification sent to ${toEmail} for ${matchingLeads.length} matches`);
                 }
                 resolve({ sent: res.statusCode < 300 });
             });
