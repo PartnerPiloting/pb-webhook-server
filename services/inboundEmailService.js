@@ -1035,8 +1035,15 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         const bullets = takeawaysContent
             .split('\n')
             .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
-            .filter(line => line.length > 5);
-        result.keyTakeaways = bullets; // No limit - capture all takeaways
+            // Filter out timestamp URLs and empty/short lines
+            .filter(line => {
+                if (line.length < 10) return false;
+                // Skip Fathom timestamp URLs like <https://fathom.video/...?timestamp=31.0>
+                if (line.match(/^<?https?:\/\/.*[?&]timestamp=/i)) return false;
+                if (line.match(/^<https?:\/\/fathom\.video/i)) return false;
+                return true;
+            });
+        result.keyTakeaways = bullets;
         logger.info(`Extracted ${result.keyTakeaways.length} key takeaways`);
     }
     
@@ -1062,8 +1069,19 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     // Extract Topics - capture the FULL content with all details
     const topicsContent = extractSection(body, /\nTopics\s*\n/i, sectionBoundaries);
     if (topicsContent) {
-        // Store the full topics content as a formatted string, not just headers
-        result.topicsFullText = topicsContent.trim();
+        // Clean up topics content - remove timestamp URLs
+        const cleanedTopics = topicsContent
+            .split('\n')
+            .filter(line => {
+                const trimmed = line.trim();
+                // Skip Fathom timestamp URLs
+                if (trimmed.match(/^<?https?:\/\/.*[?&]timestamp=/i)) return false;
+                if (trimmed.match(/^<https?:\/\/fathom\.video/i)) return false;
+                return true;
+            })
+            .join('\n')
+            .trim();
+        result.topicsFullText = cleanedTopics;
         logger.info(`Extracted full topics content (${result.topicsFullText.length} chars)`);
     }
     
@@ -1073,7 +1091,13 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         const steps = nextStepsContent
             .split('\n')
             .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
-            .filter(line => line.length > 3);
+            // Filter out timestamp URLs and empty/short lines
+            .filter(line => {
+                if (line.length < 5) return false;
+                if (line.match(/^<?https?:\/\/.*[?&]timestamp=/i)) return false;
+                if (line.match(/^<https?:\/\/fathom\.video/i)) return false;
+                return true;
+            });
         result.nextSteps = steps;
         logger.info(`Extracted ${result.nextSteps.length} next steps`);
     }
@@ -1224,6 +1248,24 @@ async function findLeadByName(client, contactName, company = null) {
  */
 async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
     const clientBase = createBaseInstance(client.airtableBaseId);
+    
+    // Check for duplicate - if meeting link already exists in notes, skip
+    if (meetingData.meetingLink && lead.notes) {
+        // Extract the base URL without query params for comparison
+        const baseLinkMatch = meetingData.meetingLink.match(/^(https?:\/\/[^?#]+)/);
+        const baseLink = baseLinkMatch ? baseLinkMatch[1] : meetingData.meetingLink;
+        
+        if (lead.notes.includes(baseLink)) {
+            logger.info(`Meeting link ${baseLink} already exists in notes - skipping duplicate`);
+            return {
+                success: true,
+                duplicate: true,
+                leadId: lead.id,
+                leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+                message: 'Meeting notes already saved (duplicate skipped)'
+            };
+        }
+    }
     
     // Format timestamp in client's timezone
     let timestamp;
@@ -1456,7 +1498,21 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         
         // Update the lead with meeting notes
         logger.info(`Updating lead ${lead.id} (${lead.firstName} ${lead.lastName}) with meeting notes`);
-        await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
+        const updateResult = await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
+        
+        // Check if this was a duplicate
+        if (updateResult.duplicate) {
+            logger.info(`Duplicate meeting note detected for ${lead.firstName} ${lead.lastName} - not sending notification`);
+            return {
+                success: true,
+                type: 'meeting_notes_duplicate',
+                provider: provider,
+                leadId: lead.id,
+                leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+                meetingLink: meetingData.meetingLink,
+                message: 'Duplicate - meeting notes already saved'
+            };
+        }
         
         // Send success notification
         await sendMeetingSuccessNotification(client.clientEmailAddress, lead, meetingData, provider);
