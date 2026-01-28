@@ -1059,9 +1059,11 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             // Remove timestamp URLs (including angle bracket wrapped ones)
             .replace(/<?https?:\/\/[^\s>\n]*[?&]timestamp=[^\s>\n]*/gi, '')
             .replace(/<https?:\/\/fathom\.video[^>\n]*>/gi, '')
-            // Remove "General Template Customize • Change Template" and similar
+            // Remove "General Template Customize • Change Template" and similar junk
             .replace(/General Template.*$/gim, '')
             .replace(/Customize.*Change Template/gi, '')
+            .replace(/^[•\-]\s*Change Template\s*$/gim, '')  // Standalone "Change Template" bullet
+            .replace(/^[•\-]\s*Customize\s*$/gim, '')  // Standalone "Customize" bullet
             // Remove email quote markers (> at start of line or standalone >)
             .replace(/^\s*>\s*$/gm, '')  // Standalone > on a line
             .replace(/^\s*>\s*/gm, '')   // > at start of lines
@@ -1071,8 +1073,12 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             .replace(/^[ \t]{4,}/gm, '  ')  // Reduce deep indentation to 2 spaces max
             // Clean up weird bullet formatting
             .replace(/^\s*-\s*$/gm, '')  // Remove standalone dashes
-            // Join broken lines (line ending with lowercase continues on next)
-            .replace(/([a-z,])\n\s+([a-z])/g, '$1 $2')
+            // Fix missing space after period before capital letter (e.g., "revenue.App" -> "revenue. App")
+            .replace(/\.([A-Z])/g, '. $1')
+            // Fix numbered lists that got joined (e.g., "HTML.1." -> "HTML.\n1.")
+            .replace(/\.(\d+)\.\s/g, '.\n$1. ')
+            // Join broken lines (line ending with lowercase/comma continues on next line starting with lowercase)
+            .replace(/([a-z,])\n\s{0,3}([a-z])/g, '$1 $2')
             // Collapse multiple newlines
             .replace(/\n{3,}/g, '\n\n')
             .trim();
@@ -1082,37 +1088,56 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const actionItemsMatch = body.match(/ACTION ITEMS[^\n]*\n([\s\S]*?)(?=MEETING SUMMARY|$)/i);
     if (actionItemsMatch) {
         let actionText = actionItemsMatch[1].trim();
-        // Format action items cleanly: "Task — Assignee" on each line
+        
+        // Pre-process: remove timestamp URLs and clean up
+        actionText = actionText
+            .replace(/<?https?:\/\/[^\s>\n]*[?&]timestamp=[^\s>\n]*/gi, '')
+            .replace(/<https?:\/\/fathom\.video[^>\n]*>/gi, '')
+            .replace(/\[image:[^\]]*\]/gi, '')
+            .replace(/View Meeting.*$/gim, '')
+            .replace(/Ask Fathom.*$/gim, '');
+        
+        // Join continuation lines (lines that start with lowercase or are short fragments)
+        // This fixes "build AI sales page via\nAI-generated HTML" -> single line
+        actionText = actionText.replace(/([a-z])\n\s*([A-Z][a-z]+-?[a-z]*(?:\s|$))/g, '$1 $2');
+        
         const lines = actionText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         const cleanedItems = [];
         let currentTask = '';
         
         for (const line of lines) {
-            // Skip: image markers, timestamp URLs, View Meeting, Ask Fathom
-            if (line.match(/^\[image:/i)) continue;
-            if (line.match(/^View Meeting/i)) continue;
-            if (line.match(/^Ask Fathom/i)) continue;
-            if (line.match(/^<?https?:\/\//i)) continue;  // Skip ALL URLs
-            if (line.match(/timestamp=/i)) continue;  // Skip timestamp references
+            // Skip empty or junk lines
+            if (line.length < 3) continue;
+            if (line.match(/^[•\-]\s*$/)) continue;
             
             // Check if this looks like an assignee name
-            // Pattern: "FirstName LastName" or "FirstName van LastName" - 2-4 words, < 30 chars
-            const isAssignee = /^[A-Z][a-z]+(?:\s+(?:van\s+|de\s+)?[A-Z]?[a-z]+){0,2}$/i.test(line) && 
-                               line.length < 30 && 
+            // Pattern: "FirstName LastName" or "FirstName van LastName" - typically 2-3 words, < 25 chars
+            // Must be title case (not all caps, not all lowercase)
+            const isAssignee = /^[A-Z][a-z]+(?:\s+(?:van\s+|de\s+|Van\s+|De\s+)?[A-Z][a-z]+)+$/i.test(line) && 
+                               line.length < 25 && 
+                               line.split(/\s+/).length >= 2 &&
                                line.split(/\s+/).length <= 4;
             
             if (isAssignee && currentTask) {
                 // Combine task with assignee
                 cleanedItems.push(`• ${currentTask} — ${line}`);
                 currentTask = '';
-            } else if (line.length > 3 && !line.match(/^[•\-]\s*$/)) {
-                // This is a new task
-                if (currentTask) {
-                    // Previous task had no assignee, save it
-                    cleanedItems.push(`• ${currentTask}`);
+            } else {
+                // This is task text
+                const cleanLine = line.replace(/^[•\-]\s*/, '').trim();
+                
+                if (currentTask && cleanLine.length > 0) {
+                    // Check if this continues the previous task (starts lowercase or is a fragment)
+                    if (/^[a-z]/.test(cleanLine) || cleanLine.length < 20) {
+                        currentTask += ' ' + cleanLine;
+                    } else {
+                        // New task - save previous one without assignee
+                        cleanedItems.push(`• ${currentTask}`);
+                        currentTask = cleanLine;
+                    }
+                } else if (cleanLine.length > 0) {
+                    currentTask = cleanLine;
                 }
-                // Clean the line of any leading bullets
-                currentTask = line.replace(/^[•\-]\s*/, '').trim();
             }
         }
         if (currentTask) {
