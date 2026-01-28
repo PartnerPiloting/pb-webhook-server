@@ -807,10 +807,13 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     
     // Extract contact info from subject
-    // Pattern: "Meeting with [Name or Email]" or "Recap of your meeting with [Name or Email]"
+    // Patterns handle: "Meeting with X", "Recap of your meeting with X", "Call with X"
+    // The key is to extract what comes AFTER "meeting with" or "call with"
     const subjectNamePatterns = [
-        /meeting with\s+([^<\n,]+?)(?:\s*<[^>]+>)?\s*$/i,
-        /call with\s+([^<\n,]+?)(?:\s*<[^>]+>)?\s*$/i
+        // "meeting with X" or "your meeting with X" - capture everything after
+        /(?:your\s+)?meeting with\s+(.+?)\s*$/i,
+        // "call with X"
+        /call with\s+(.+?)\s*$/i
     ];
     
     let subjectName = null;
@@ -818,10 +821,16 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         const match = subject.match(pattern);
         if (match) {
             let extracted = (match[1] || '').trim();
+            logger.info(`Subject pattern matched, raw extraction: "${extracted}"`);
+            
             // Clean up
             extracted = extracted.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, ''); // Remove duration suffix
             extracted = extracted.replace(/\s*\([^)]+\)\s*$/, ''); // Remove parenthetical
             extracted = extracted.replace(/[<>]/g, '').trim();
+            // Remove any trailing punctuation
+            extracted = extracted.replace(/[.,;:!?]+$/, '').trim();
+            
+            logger.info(`After cleanup: "${extracted}"`);
             
             if (extracted.length > 1 && extracted.length < 60) {
                 // Check if it's an email address
@@ -836,10 +845,16 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
                 } else {
                     subjectName = extracted;
                     result.contactName = extracted;
+                    logger.info(`Found contact name in subject: "${result.contactName}"`);
                 }
             }
             break;
         }
+    }
+    
+    // If no match from patterns, log the subject for debugging
+    if (!subjectName && !result.contactEmail) {
+        logger.info(`No name/email extracted from subject: "${subject}"`);
     }
     
     // Look for full name in email body (Fathom shows "Agnieszka Caruso meeting" as heading)
@@ -1288,6 +1303,20 @@ async function sendMeetingLeadNotFoundNotification(toEmail, meetingData, provide
         return;
     }
     
+    // Build list of what we searched for
+    const searchedNames = [];
+    if (meetingData.contactEmail) {
+        searchedNames.push(`Email: ${meetingData.contactEmail}`);
+    }
+    if (meetingData.contactName) {
+        searchedNames.push(`Name: ${meetingData.contactName}`);
+    }
+    if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
+        for (const altName of meetingData.alternateNames) {
+            searchedNames.push(`Also tried: ${altName}`);
+        }
+    }
+    
     const emailData = {
         from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
         to: toEmail,
@@ -1296,13 +1325,14 @@ async function sendMeetingLeadNotFoundNotification(toEmail, meetingData, provide
 
 We received your ${provider} meeting notes but couldn't find a matching lead in your portal.
 
-Contact: ${meetingData.contactName || 'Unknown'}
-${meetingData.company ? `Company: ${meetingData.company}` : ''}
-${meetingData.meetingLink ? `Meeting Link: ${meetingData.meetingLink}` : ''}
+Searched for:
+${searchedNames.length > 0 ? searchedNames.join('\n') : 'Could not extract contact info'}
+${meetingData.company ? `\nCompany domain: ${meetingData.company}` : ''}
+${meetingData.meetingLink ? `\nMeeting Link: ${meetingData.meetingLink}` : ''}
 
 To save these notes, please:
 1. Make sure the lead exists in your dashboard
-2. Check that the name matches exactly
+2. Check that the First Name and Last Name match exactly
 
 You can manually add the meeting link to the lead's notes.
 
