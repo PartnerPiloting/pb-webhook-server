@@ -9,7 +9,8 @@ const SECTION_MARKERS = {
   manual: '=== MANUAL NOTES ===',
   email: '=== EMAIL CORRESPONDENCE ===',
   linkedin: '=== LINKEDIN MESSAGES ===',
-  salesnav: '=== SALES NAVIGATOR ==='
+  salesnav: '=== SALES NAVIGATOR ===',
+  meeting: '=== MEETING NOTES ==='
 };
 
 // Legacy separator used in notesSectionManager
@@ -130,6 +131,7 @@ function getSectionTitle(key) {
     email: 'Email',
     linkedin: 'LinkedIn',
     salesnav: 'Sales Nav',
+    meeting: 'Meeting',
     legacy: 'Legacy'
   };
   return titles[key] || key;
@@ -173,6 +175,11 @@ const SectionIcons = {
   salesnav: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    </svg>
+  ),
+  meeting: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
     </svg>
   ),
   legacy: (
