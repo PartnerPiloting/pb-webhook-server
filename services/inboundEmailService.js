@@ -1179,11 +1179,25 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
     const { subject, bodyPlain, bodyHtml } = emailData;
     
     logger.info(`Processing ${provider} meeting note-taker email for client ${client.clientId}`);
+    logger.info(`Subject: "${subject}"`);
+    logger.info(`Body length: ${(bodyPlain || '').length} chars`);
     
-    // Parse the email to extract meeting details
-    const meetingData = parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider);
+    // Wrap everything in try-catch to ensure we always respond
+    let meetingData = null;
+    try {
+        // Parse the email to extract meeting details
+        meetingData = parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider);
+    } catch (parseError) {
+        logger.error(`Error parsing meeting email: ${parseError.message}`);
+        return {
+            success: false,
+            error: 'parse_error',
+            message: `Failed to parse meeting email: ${parseError.message}`
+        };
+    }
     
     if (!meetingData.contactName && !meetingData.contactEmail && !meetingData.company && meetingData.alternateNames.length === 0) {
+        logger.warn('No contact info extracted from meeting email');
         return {
             success: false,
             error: 'no_contact_info',
@@ -1191,101 +1205,125 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         };
     }
     
-    let lead = null;
-    let matchedBy = null;
-    
-    // PRIORITY 1: Try email lookup first (most reliable)
-    if (meetingData.contactEmail) {
-        logger.info(`Trying to find lead by email: "${meetingData.contactEmail}"`);
-        lead = await findLeadByEmail(client, meetingData.contactEmail);
+    try {
+        let lead = null;
+        let matchedBy = null;
         
-        if (lead) {
-            matchedBy = `email (${meetingData.contactEmail})`;
-            logger.info(`Found lead ${lead.id} by email: ${meetingData.contactEmail}`);
-        } else {
-            logger.info(`No lead found with email ${meetingData.contactEmail}, falling back to name search`);
-        }
-    }
-    
-    // PRIORITY 2: Try name lookup if email didn't match
-    if (!lead) {
-        // Build list of names to try: primary name first, then alternates
-        const namesToTry = [];
-        if (meetingData.contactName) {
-            namesToTry.push(meetingData.contactName);
-        }
-        if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
-            namesToTry.push(...meetingData.alternateNames);
+        // PRIORITY 1: Try email lookup first (most reliable)
+        if (meetingData.contactEmail) {
+            logger.info(`Trying to find lead by email: "${meetingData.contactEmail}"`);
+            lead = await findLeadByEmail(client, meetingData.contactEmail);
+            
+            if (lead) {
+                matchedBy = `email (${meetingData.contactEmail})`;
+                logger.info(`Found lead ${lead.id} by email: ${meetingData.contactEmail}`);
+            } else {
+                logger.info(`No lead found with email ${meetingData.contactEmail}, falling back to name search`);
+            }
         }
         
-        if (namesToTry.length > 0) {
-            logger.info(`Will try ${namesToTry.length} name(s): ${namesToTry.join(', ')}`);
+        // PRIORITY 2: Try name lookup if email didn't match
+        if (!lead) {
+            // Build list of names to try: primary name first, then alternates
+            const namesToTry = [];
+            if (meetingData.contactName) {
+                namesToTry.push(meetingData.contactName);
+            }
+            if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
+                namesToTry.push(...meetingData.alternateNames);
+            }
             
-            // Try each name until we find a match
-            let searchResult = null;
-            let matchedName = null;
-            
-            for (const nameToTry of namesToTry) {
-                logger.info(`Trying to find lead by name: "${nameToTry}"`);
-                searchResult = await findLeadByName(client, nameToTry, meetingData.company);
+            if (namesToTry.length > 0) {
+                logger.info(`Will try ${namesToTry.length} name(s): ${namesToTry.join(', ')}`);
                 
-                if (searchResult.matchType !== 'none') {
-                    matchedName = nameToTry;
-                    logger.info(`Found match with name "${nameToTry}" (matchType: ${searchResult.matchType})`);
-                    break;
+                // Try each name until we find a match
+                let searchResult = null;
+                let matchedName = null;
+                
+                for (const nameToTry of namesToTry) {
+                    logger.info(`Trying to find lead by name: "${nameToTry}"`);
+                    searchResult = await findLeadByName(client, nameToTry, meetingData.company);
+                    
+                    if (searchResult.matchType !== 'none') {
+                        matchedName = nameToTry;
+                        logger.info(`Found match with name "${nameToTry}" (matchType: ${searchResult.matchType})`);
+                        break;
+                    }
+                    logger.info(`No match for "${nameToTry}", trying next...`);
                 }
-                logger.info(`No match for "${nameToTry}", trying next...`);
-            }
-            
-            // Handle name search results
-            if (searchResult && searchResult.matchType === 'ambiguous') {
-                // Multiple leads with same name, couldn't narrow down
-                await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
-                return {
-                    success: false,
-                    error: 'multiple_leads',
-                    message: `Found ${searchResult.allMatches.length} leads named "${matchedName}" - please specify which one`,
-                    matches: searchResult.allMatches.map(l => ({
-                        id: l.id,
-                        name: `${l.firstName} ${l.lastName}`.trim(),
-                        company: l.company,
-                        email: l.email
-                    }))
-                };
-            }
-            
-            if (searchResult && searchResult.matchType !== 'none') {
-                lead = searchResult.lead;
-                matchedBy = `name (${matchedName})`;
+                
+                // Handle name search results
+                if (searchResult && searchResult.matchType === 'ambiguous') {
+                    // Multiple leads with same name, couldn't narrow down
+                    await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
+                    return {
+                        success: false,
+                        error: 'multiple_leads',
+                        message: `Found ${searchResult.allMatches.length} leads named "${matchedName}" - please specify which one`,
+                        matches: searchResult.allMatches.map(l => ({
+                            id: l.id,
+                            name: `${l.firstName} ${l.lastName}`.trim(),
+                            company: l.company,
+                            email: l.email
+                        }))
+                    };
+                }
+                
+                if (searchResult && searchResult.matchType !== 'none') {
+                    lead = searchResult.lead;
+                    matchedBy = `name (${matchedName})`;
+                }
             }
         }
-    }
-    
-    // No match found by email or name
-    if (!lead) {
-        const searchedFor = meetingData.contactEmail 
-            ? `email "${meetingData.contactEmail}"` 
-            : `name "${meetingData.contactName || meetingData.alternateNames.join('" or "')}"`;
-        await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
+        
+        // No match found by email or name
+        if (!lead) {
+            const searchedFor = meetingData.contactEmail 
+                ? `email "${meetingData.contactEmail}"` 
+                : `name "${meetingData.contactName || meetingData.alternateNames.join('" or "')}"`;
+            logger.warn(`No lead found - searched for: ${searchedFor}`);
+            await sendMeetingLeadNotFoundNotification(client.clientEmailAddress, meetingData, provider);
+            return {
+                success: false,
+                error: 'lead_not_found',
+                message: `No lead found with ${searchedFor} for ${provider} meeting`
+            };
+        }
+        
+        // Update the lead with meeting notes
+        logger.info(`Updating lead ${lead.id} (${lead.firstName} ${lead.lastName}) with meeting notes`);
+        await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
+        
+        // Send success notification
+        await sendMeetingSuccessNotification(client.clientEmailAddress, lead, meetingData, provider);
+        
+        return {
+            success: true,
+            type: 'meeting_notes',
+            provider: provider,
+            leadId: lead.id,
+            leadName: `${lead.firstName} ${lead.lastName}`.trim(),
+            meetingLink: meetingData.meetingLink,
+            matchedBy: matchedBy
+        };
+        
+    } catch (error) {
+        logger.error(`Error processing meeting note-taker email: ${error.message}`);
+        logger.error(error.stack);
+        
+        // Try to send error notification
+        try {
+            await sendMeetingErrorNotification(client.clientEmailAddress, meetingData, provider, error.message);
+        } catch (notifyError) {
+            logger.error(`Failed to send error notification: ${notifyError.message}`);
+        }
+        
         return {
             success: false,
-            error: 'lead_not_found',
-            message: `No lead found with ${searchedFor} for ${provider} meeting`
+            error: 'processing_error',
+            message: error.message
         };
     }
-    
-    // Update the lead with meeting notes
-    await updateLeadWithMeetingNotes(client, lead, meetingData, provider);
-    
-    return {
-        success: true,
-        type: 'meeting_notes',
-        provider: provider,
-        leadId: lead.id,
-        leadName: `${lead.firstName} ${lead.lastName}`.trim(),
-        meetingLink: meetingData.meetingLink,
-        matchedBy: matchedBy
-    };
 }
 
 /**
@@ -1435,6 +1473,136 @@ ASH Portal`
             res.on('end', () => {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     logger.info(`Multiple leads notification sent to ${toEmail} for ${matchingLeads.length} matches`);
+                }
+                resolve({ sent: res.statusCode < 300 });
+            });
+        });
+        
+        req.on('error', () => resolve({ sent: false }));
+        req.write(postData);
+        req.end();
+    });
+}
+
+/**
+ * Send notification when meeting notes are saved successfully
+ * @param {string} toEmail - Recipient email
+ * @param {Object} lead - Lead object
+ * @param {Object} meetingData - Parsed meeting data
+ * @param {string} provider - Provider name
+ */
+async function sendMeetingSuccessNotification(toEmail, lead, meetingData, provider) {
+    const https = require('https');
+    const querystring = require('querystring');
+    
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        logger.warn('Mailgun not configured - skipping notification');
+        return;
+    }
+    
+    const leadName = `${lead.firstName} ${lead.lastName}`.trim();
+    
+    const emailData = {
+        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        to: toEmail,
+        subject: `✅ Meeting Note Saved - ${leadName}`,
+        text: `Hi,
+
+Your ${provider} meeting notes have been saved to ${leadName}'s record.
+
+${meetingData.duration ? `Duration: ${meetingData.duration}` : ''}
+${meetingData.meetingLink ? `Meeting Link: ${meetingData.meetingLink}` : ''}
+
+View in your dashboard to see the notes.
+
+Best,
+ASH Portal`
+    };
+    
+    const postData = querystring.stringify(emailData);
+    
+    return new Promise((resolve) => {
+        const req = https.request({
+            hostname: 'api.mailgun.net',
+            port: 443,
+            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+            method: 'POST',
+            auth: `api:${process.env.MAILGUN_API_KEY}`,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        }, (res) => {
+            let responseData = '';
+            res.on('data', chunk => responseData += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    logger.info(`Meeting success notification sent to ${toEmail} for ${leadName}`);
+                }
+                resolve({ sent: res.statusCode < 300 });
+            });
+        });
+        
+        req.on('error', () => resolve({ sent: false }));
+        req.write(postData);
+        req.end();
+    });
+}
+
+/**
+ * Send notification when there's an error processing meeting notes
+ * @param {string} toEmail - Recipient email
+ * @param {Object} meetingData - Parsed meeting data
+ * @param {string} provider - Provider name
+ * @param {string} errorMessage - Error description
+ */
+async function sendMeetingErrorNotification(toEmail, meetingData, provider, errorMessage) {
+    const https = require('https');
+    const querystring = require('querystring');
+    
+    if (!process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN) {
+        logger.warn('Mailgun not configured - skipping notification');
+        return;
+    }
+    
+    const emailData = {
+        from: `ASH Portal <noreply@${process.env.MAILGUN_DOMAIN}>`,
+        to: toEmail,
+        subject: `❌ Meeting Note Error - ${provider}`,
+        text: `Hi,
+
+There was an error processing your ${provider} meeting notes.
+
+Error: ${errorMessage}
+
+Contact: ${meetingData?.contactName || meetingData?.contactEmail || 'Unknown'}
+${meetingData?.meetingLink ? `Meeting Link: ${meetingData.meetingLink}` : ''}
+
+Please try forwarding the email again, or manually add the meeting link to the lead's notes.
+
+Best,
+ASH Portal`
+    };
+    
+    const postData = querystring.stringify(emailData);
+    
+    return new Promise((resolve) => {
+        const req = https.request({
+            hostname: 'api.mailgun.net',
+            port: 443,
+            path: `/v3/${process.env.MAILGUN_DOMAIN}/messages`,
+            method: 'POST',
+            auth: `api:${process.env.MAILGUN_API_KEY}`,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        }, (res) => {
+            let responseData = '';
+            res.on('data', chunk => responseData += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    logger.info(`Meeting error notification sent to ${toEmail}`);
                 }
                 resolve({ sent: res.statusCode < 300 });
             });
