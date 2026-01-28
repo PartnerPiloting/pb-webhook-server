@@ -862,9 +862,10 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     // This catches cases where subject has nickname but body has full name
     const bodyNamePatterns = [
         // Fathom: "Agnieszka Caruso meeting" as a heading line
-        /^([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)+)\s+meeting\s*$/im,
-        // Generic: "FirstName LastName" on its own line (capitalized words)
-        /^([A-Z][a-zà-ÿ]+\s+[A-Z][a-zà-ÿ]+)\s*$/m
+        // Must NOT start with Meeting/Call/Recap (those are headings, not names)
+        /^(?!(?:Meeting|Call|Recap|Your)\b)([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)+)\s+meeting\s*$/im,
+        // Generic: "FirstName LastName" on its own line - but NOT "Meeting With" etc.
+        /^(?!(?:Meeting|Call|Recap|Your|View|Watch|Listen)\b)([A-Z][a-zà-ÿ]+\s+[A-Z][a-zà-ÿ]+)\s*$/m
     ];
     
     for (const pattern of bodyNamePatterns) {
@@ -984,11 +985,26 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         }
     }
     
-    // Final cleanup - ensure no newlines in names
+    // AGGRESSIVE final cleanup - remove common prefixes and ensure clean names
+    const cleanupName = (name) => {
+        if (!name) return name;
+        let cleaned = name
+            .replace(/[\r\n]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            // Remove "Meeting with", "Call with", "Recap of your meeting with", etc.
+            .replace(/^(?:recap\s+of\s+)?(?:your\s+)?(?:meeting|call)\s+with\s+/i, '')
+            .trim();
+        return cleaned;
+    };
+    
     if (result.contactName) {
-        result.contactName = result.contactName.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+        result.contactName = cleanupName(result.contactName);
+        logger.info(`Final contactName after cleanup: "${result.contactName}"`);
     }
-    result.alternateNames = result.alternateNames.map(n => n.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim());
+    result.alternateNames = result.alternateNames
+        .map(n => cleanupName(n))
+        .filter(n => n && n.length > 1);
     
     logger.info(`Parsed meeting note-taker email: name="${result.contactName}", alternates=${JSON.stringify(result.alternateNames)}, link="${result.meetingLink}", duration="${result.duration}"`);
     return result;
