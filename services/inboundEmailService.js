@@ -1056,14 +1056,25 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const cleanMeetingText = (text) => {
         if (!text) return text;
         return text
-            // Remove timestamp URLs
-            .replace(/<?https?:\/\/[^\s>]*[?&]timestamp=[^\s>]*/gi, '')
-            .replace(/<https?:\/\/fathom\.video[^>]*>/gi, '')
+            // Remove timestamp URLs (including angle bracket wrapped ones)
+            .replace(/<?https?:\/\/[^\s>\n]*[?&]timestamp=[^\s>\n]*/gi, '')
+            .replace(/<https?:\/\/fathom\.video[^>\n]*>/gi, '')
+            // Remove "General Template Customize • Change Template" and similar
+            .replace(/General Template.*$/gim, '')
+            .replace(/Customize.*Change Template/gi, '')
+            // Remove email quote markers (> at start of line or standalone >)
+            .replace(/^\s*>\s*$/gm, '')  // Standalone > on a line
+            .replace(/^\s*>\s*/gm, '')   // > at start of lines
             // Clean up markdown-style bold (*text* -> text)
             .replace(/\*([^*]+)\*/g, '$1')
-            // Clean up weird bullet formatting from HTML conversion
+            // Remove excessive leading whitespace while preserving structure
+            .replace(/^[ \t]{4,}/gm, '  ')  // Reduce deep indentation to 2 spaces max
+            // Clean up weird bullet formatting
             .replace(/^\s*-\s*$/gm, '')  // Remove standalone dashes
-            .replace(/\n{3,}/g, '\n\n')  // Collapse multiple newlines
+            // Join broken lines (line ending with lowercase continues on next)
+            .replace(/([a-z,])\n\s+([a-z])/g, '$1 $2')
+            // Collapse multiple newlines
+            .replace(/\n{3,}/g, '\n\n')
             .trim();
     };
     
@@ -1071,26 +1082,37 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     const actionItemsMatch = body.match(/ACTION ITEMS[^\n]*\n([\s\S]*?)(?=MEETING SUMMARY|$)/i);
     if (actionItemsMatch) {
         let actionText = actionItemsMatch[1].trim();
-        // Format action items cleanly: "Task - Assignee" on each line
+        // Format action items cleanly: "Task — Assignee" on each line
         const lines = actionText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         const cleanedItems = [];
         let currentTask = '';
         
         for (const line of lines) {
-            // Skip image markers, empty lines
-            if (line.match(/^\[image:/i) || line.match(/^View Meeting/i) || line.match(/^Ask Fathom/i)) continue;
+            // Skip: image markers, timestamp URLs, View Meeting, Ask Fathom
+            if (line.match(/^\[image:/i)) continue;
+            if (line.match(/^View Meeting/i)) continue;
+            if (line.match(/^Ask Fathom/i)) continue;
+            if (line.match(/^<?https?:\/\//i)) continue;  // Skip ALL URLs
+            if (line.match(/timestamp=/i)) continue;  // Skip timestamp references
             
-            // Check if this looks like a name (assignee) - typically just "FirstName LastName" or "First name"
-            const isAssignee = /^[A-Z][a-z]+(?:\s+(?:van\s+)?[A-Z]?[a-z]+)?$/i.test(line) && line.length < 30;
+            // Check if this looks like an assignee name
+            // Pattern: "FirstName LastName" or "FirstName van LastName" - 2-4 words, < 30 chars
+            const isAssignee = /^[A-Z][a-z]+(?:\s+(?:van\s+|de\s+)?[A-Z]?[a-z]+){0,2}$/i.test(line) && 
+                               line.length < 30 && 
+                               line.split(/\s+/).length <= 4;
             
             if (isAssignee && currentTask) {
+                // Combine task with assignee
                 cleanedItems.push(`• ${currentTask} — ${line}`);
                 currentTask = '';
-            } else if (line.length > 5) {
+            } else if (line.length > 3 && !line.match(/^[•\-]\s*$/)) {
+                // This is a new task
                 if (currentTask) {
+                    // Previous task had no assignee, save it
                     cleanedItems.push(`• ${currentTask}`);
                 }
-                currentTask = line;
+                // Clean the line of any leading bullets
+                currentTask = line.replace(/^[•\-]\s*/, '').trim();
             }
         }
         if (currentTask) {
@@ -1106,24 +1128,33 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     if (summaryMatch) {
         let summaryText = summaryMatch[1];
         
-        // Remove the "General Template Customize • Change Template" line
-        summaryText = summaryText.replace(/General Template.*?Change Template[^\n]*/gi, '');
-        
-        // Clean up the text
+        // Clean up the text first
         summaryText = cleanMeetingText(summaryText);
         
-        // Format section headers nicely
+        // Format main section headers
         summaryText = summaryText
             .replace(/^Meeting Purpose\s*$/gim, '\n━━━ MEETING PURPOSE ━━━')
             .replace(/^Key Takeaways\s*$/gim, '\n━━━ KEY TAKEAWAYS ━━━')
-            .replace(/^Topics\s*$/gim, '\n━━━ TOPICS ━━━')
-            .replace(/^Next Steps\s*$/gim, '\n━━━ NEXT STEPS ━━━')
-            // Sub-section headers (like "Rick's Project:", "WordPress Page Creation", etc.)
-            .replace(/^([A-Z][^:\n]{5,50}):?\s*$/gm, '\n▸ $1')
-            // Clean up bullet points
-            .replace(/^\s*[-•]\s*/gm, '• ')
-            .replace(/^\s*(\d+)\.\s*/gm, '$1. ')
-            // Collapse excessive newlines
+            .replace(/^Topics[^\n]*$/gim, '\n━━━ TOPICS ━━━')
+            .replace(/^Next Steps\s*$/gim, '\n━━━ NEXT STEPS ━━━');
+        
+        // Format sub-section headers (like "WordPress Page Creation", "Go-to-Market & Networking")
+        // These are lines that are capitalized words, end of line, not bullet points
+        summaryText = summaryText.replace(/^([A-Z][A-Za-z'&\-\s]{5,50})\s*$/gm, (match, p1) => {
+            // Don't convert if it's already a section header or looks like a sentence
+            if (p1.match(/^━━━/) || p1.match(/\.\s*$/) || p1.split(/\s+/).length > 8) {
+                return match;
+            }
+            return `\n▸ ${p1.trim()}`;
+        });
+        
+        // Clean up bullet points - normalize to •
+        summaryText = summaryText
+            .replace(/^\s*[-]\s+/gm, '• ')
+            .replace(/^\s{2,}•/gm, '  •')  // Keep some indentation for nested bullets
+            // Numbered lists
+            .replace(/^\s*(\d+)\.\s+/gm, '$1. ')
+            // Final cleanup
             .replace(/\n{3,}/g, '\n\n')
             .trim();
         
