@@ -816,68 +816,46 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         /call with\s+(.+?)\s*$/i
     ];
     
-    logger.info(`Parsing meeting email, subject: "${subject}"`);
+    // Clean and normalize subject - remove newlines and extra whitespace
+    const cleanSubject = (subject || '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    logger.info(`Parsing meeting email, clean subject: "${cleanSubject}"`);
     
     let subjectName = null;
-    for (const pattern of subjectNamePatterns) {
-        const match = subject.match(pattern);
-        if (match) {
-            let extracted = (match[1] || '').trim();
-            logger.info(`Subject pattern matched, raw extraction: "${extracted}"`);
-            
-            // Clean up
-            extracted = extracted.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, ''); // Remove duration suffix
-            extracted = extracted.replace(/\s*\([^)]+\)\s*$/, ''); // Remove parenthetical
-            extracted = extracted.replace(/[<>]/g, '').trim();
-            // Remove any trailing punctuation
-            extracted = extracted.replace(/[.,;:!?]+$/, '').trim();
-            // Remove any accidental "Meeting with" or "Call with" prefix that might remain
-            extracted = extracted.replace(/^(?:meeting|call)\s+with\s+/i, '').trim();
-            
-            logger.info(`After cleanup: "${extracted}"`);
-            
-            if (extracted.length > 1 && extracted.length < 60) {
-                // Check if it's an email address
-                if (emailRegex.test(extracted)) {
-                    result.contactEmail = extracted.toLowerCase();
-                    // Extract company domain from email for additional matching
-                    const domain = extracted.split('@')[1];
-                    if (domain && !domain.match(/^(gmail|yahoo|hotmail|outlook|live|icloud|me)\./i)) {
-                        result.company = domain;
-                    }
-                    logger.info(`Found contact email in subject: ${result.contactEmail}`);
-                } else {
-                    subjectName = extracted;
-                    result.contactName = extracted;
-                    logger.info(`Found contact name in subject: "${result.contactName}"`);
-                }
-            }
-            break;
-        }
-    }
     
-    // If no match from patterns, try to extract name directly by removing common prefixes
-    if (!subjectName && !result.contactEmail) {
-        logger.info(`No regex match for subject: "${subject}". Trying direct extraction...`);
+    // Simple approach: find "with" and take everything after it
+    // Works for: "Meeting with Agnes Caruso", "Recap of your meeting with Agnes Caruso", etc.
+    const withIndex = cleanSubject.toLowerCase().lastIndexOf(' with ');
+    if (withIndex !== -1) {
+        let extracted = cleanSubject.substring(withIndex + 6).trim(); // +6 for " with "
+        logger.info(`Found "with" at index ${withIndex}, extracted: "${extracted}"`);
         
-        // Try direct extraction: remove "Fwd:", "Re:", "Recap of", etc. and extract after "with"
-        let directExtract = subject
-            .replace(/^(?:Fwd|FW|Re):\s*/i, '')
-            .replace(/^Recap of\s+/i, '')
-            .trim();
+        // Clean up the extracted name
+        extracted = extracted.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, ''); // Remove duration suffix
+        extracted = extracted.replace(/\s*\([^)]+\)\s*$/, ''); // Remove parenthetical
+        extracted = extracted.replace(/[<>]/g, '').trim();
+        extracted = extracted.replace(/[.,;:!?]+$/, '').trim();
+        // Remove any line breaks that might have snuck in
+        extracted = extracted.replace(/[\r\n]+/g, ' ').trim();
         
-        const withMatch = directExtract.match(/(?:meeting|call)\s+with\s+(.+?)$/i);
-        if (withMatch) {
-            let name = withMatch[1].trim();
-            name = name.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, '').trim();
-            name = name.replace(/[.,;:!?]+$/, '').trim();
-            
-            if (name.length > 1 && name.length < 60) {
-                subjectName = name;
-                result.contactName = name;
-                logger.info(`Direct extraction found name: "${name}"`);
+        logger.info(`After cleanup: "${extracted}"`);
+        
+        if (extracted.length > 1 && extracted.length < 60 && !extracted.toLowerCase().includes('meeting')) {
+            // Check if it's an email address
+            if (emailRegex.test(extracted)) {
+                result.contactEmail = extracted.toLowerCase();
+                const domain = extracted.split('@')[1];
+                if (domain && !domain.match(/^(gmail|yahoo|hotmail|outlook|live|icloud|me)\./i)) {
+                    result.company = domain;
+                }
+                logger.info(`Found contact email in subject: ${result.contactEmail}`);
+            } else {
+                subjectName = extracted;
+                result.contactName = extracted;
+                logger.info(`Found contact name in subject: "${result.contactName}"`);
             }
         }
+    } else {
+        logger.info(`No "with" found in subject: "${cleanSubject}"`);
     }
     
     // Look for full name in email body (Fathom shows "Agnieszka Caruso meeting" as heading)
@@ -1005,6 +983,12 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             break;
         }
     }
+    
+    // Final cleanup - ensure no newlines in names
+    if (result.contactName) {
+        result.contactName = result.contactName.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    result.alternateNames = result.alternateNames.map(n => n.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim());
     
     logger.info(`Parsed meeting note-taker email: name="${result.contactName}", alternates=${JSON.stringify(result.alternateNames)}, link="${result.meetingLink}", duration="${result.duration}"`);
     return result;
