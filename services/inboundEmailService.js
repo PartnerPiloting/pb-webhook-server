@@ -1616,22 +1616,45 @@ ASH Portal`
 
 /**
  * Detect if email is a forwarded message
+ * Checks both body content and subject line
  * @param {string} body - Email body
+ * @param {string} subject - Email subject (optional)
  * @returns {boolean}
  */
-function isForwardedEmail(body) {
+function isForwardedEmail(body, subject = '') {
+    // Check subject for forward indicators (Fwd:, FW:, Fwd, etc.)
+    if (subject) {
+        const subjectForwardPatterns = [
+            /^Fwd:/i,
+            /^FW:/i,
+            /^Fwd\s/i,
+            /^\[Fwd\]/i
+        ];
+        if (subjectForwardPatterns.some(pattern => pattern.test(subject.trim()))) {
+            logger.info('Detected forward from subject line');
+            return true;
+        }
+    }
+    
     if (!body) return false;
     
-    // Common forward patterns
-    const forwardPatterns = [
+    // Common forward patterns in body
+    const bodyForwardPatterns = [
         /---------- Forwarded message ---------/i,
         /-------- Original Message --------/i,
         /Begin forwarded message:/i,
         /-----Original Message-----/i,
-        /Forwarded message from/i
+        /Forwarded message from/i,
+        // Also check for forwarded email headers in the body
+        /\nFrom:.*\nDate:.*\nSubject:.*\nTo:/is
     ];
     
-    return forwardPatterns.some(pattern => pattern.test(body));
+    if (bodyForwardPatterns.some(pattern => pattern.test(body))) {
+        logger.info('Detected forward from body content');
+        return true;
+    }
+    
+    return false;
 }
 
 /**
@@ -1766,7 +1789,7 @@ async function processInboundEmail(mailgunData) {
 
     // Check if this is a forwarded email (To is our tracking address)
     // This happens when user forgot to BCC and forwards the sent email to track it
-    const isForward = isForwardedEmail(bodyPlain);
+    const isForward = isForwardedEmail(bodyPlain, subject);
     const toIsTrackingAddress = leadEmail && recipient && 
         (leadEmail.toLowerCase() === recipient.toLowerCase() || 
          leadEmail.includes('track@') || 
