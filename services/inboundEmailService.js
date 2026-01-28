@@ -816,6 +816,8 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         /call with\s+(.+?)\s*$/i
     ];
     
+    logger.info(`Parsing meeting email, subject: "${subject}"`);
+    
     let subjectName = null;
     for (const pattern of subjectNamePatterns) {
         const match = subject.match(pattern);
@@ -829,6 +831,8 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             extracted = extracted.replace(/[<>]/g, '').trim();
             // Remove any trailing punctuation
             extracted = extracted.replace(/[.,;:!?]+$/, '').trim();
+            // Remove any accidental "Meeting with" or "Call with" prefix that might remain
+            extracted = extracted.replace(/^(?:meeting|call)\s+with\s+/i, '').trim();
             
             logger.info(`After cleanup: "${extracted}"`);
             
@@ -852,9 +856,28 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         }
     }
     
-    // If no match from patterns, log the subject for debugging
+    // If no match from patterns, try to extract name directly by removing common prefixes
     if (!subjectName && !result.contactEmail) {
-        logger.info(`No name/email extracted from subject: "${subject}"`);
+        logger.info(`No regex match for subject: "${subject}". Trying direct extraction...`);
+        
+        // Try direct extraction: remove "Fwd:", "Re:", "Recap of", etc. and extract after "with"
+        let directExtract = subject
+            .replace(/^(?:Fwd|FW|Re):\s*/i, '')
+            .replace(/^Recap of\s+/i, '')
+            .trim();
+        
+        const withMatch = directExtract.match(/(?:meeting|call)\s+with\s+(.+?)$/i);
+        if (withMatch) {
+            let name = withMatch[1].trim();
+            name = name.replace(/\s*[-–—]\s*\d+\s*mins?.*$/i, '').trim();
+            name = name.replace(/[.,;:!?]+$/, '').trim();
+            
+            if (name.length > 1 && name.length < 60) {
+                subjectName = name;
+                result.contactName = name;
+                logger.info(`Direct extraction found name: "${name}"`);
+            }
+        }
     }
     
     // Look for full name in email body (Fathom shows "Agnieszka Caruso meeting" as heading)
@@ -1744,6 +1767,9 @@ function extractForwardedRecipients(body) {
     const subjectMatch = body.match(/\nSubject:\s*([^\n]+)/i);
     if (subjectMatch) {
         result.subject = subjectMatch[1].trim();
+        logger.info(`Forwarded email - extracted subject: "${result.subject}"`);
+    } else {
+        logger.info('Forwarded email - no Subject: header found in body');
     }
     
     logger.info(`Forwarded email parsing: found ${result.to.length} To recipients, ${result.cc.length} Cc recipients`);
