@@ -1128,8 +1128,24 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
 }
 
 /**
+ * Normalize a name for comparison by removing hyphens, apostrophes, and extra spaces
+ * This allows "Van Driel" to match "Van-Driel", "O'Brien" to match "OBrien", etc.
+ * @param {string} name - The name to normalize
+ * @returns {string} Normalized name (lowercase, no punctuation)
+ */
+function normalizeName(name) {
+    if (!name) return '';
+    return name
+        .toLowerCase()
+        .replace(/[-''`]/g, ' ')  // Replace hyphens/apostrophes with spaces
+        .replace(/\s+/g, ' ')     // Collapse multiple spaces
+        .trim();
+}
+
+/**
  * Find lead by name in client's Airtable base
  * Returns match info including whether there were multiple matches
+ * Uses normalized comparison to handle variations like "Van-Driel" vs "Van Driel"
  * @param {Object} client - Client object with airtableBaseId
  * @param {string} contactName - Name to search for
  * @param {string} company - Optional company/domain to help match
@@ -1151,24 +1167,33 @@ async function findLeadByName(client, contactName, company = null) {
     const clientBase = createBaseInstance(client.airtableBaseId);
     const nameParts = contactName.trim().split(/\s+/);
     
+    // Normalize the search name for comparison
+    const normalizedSearchFirst = normalizeName(nameParts[0]);
+    const normalizedSearchLast = nameParts.length >= 2 
+        ? normalizeName(nameParts.slice(1).join(' ')) 
+        : '';
+    
+    logger.info(`Normalized search: first="${normalizedSearchFirst}", last="${normalizedSearchLast}"`);
+    
     try {
-        // Build search formula
+        // Build search formula - use SUBSTITUTE to remove hyphens for comparison
+        // This allows "Van Driel" to match "Van-Driel"
         let filterFormula;
         
         if (nameParts.length >= 2) {
             const firstName = nameParts[0];
             const lastName = nameParts.slice(1).join(' ');
-            // Match first name AND last name (case insensitive)
+            // Normalize both sides: remove hyphens from Airtable value and search value
+            // SUBSTITUTE({Last Name}, "-", " ") replaces hyphens with spaces in the stored value
             filterFormula = `AND(
-                LOWER({First Name}) = "${firstName.toLowerCase()}",
-                LOWER({Last Name}) = "${lastName.toLowerCase()}"
+                LOWER(SUBSTITUTE({First Name}, "-", " ")) = "${normalizedSearchFirst}",
+                LOWER(SUBSTITUTE(SUBSTITUTE({Last Name}, "-", " "), "'", "")) = "${normalizedSearchLast.replace(/'/g, '')}"
             )`;
         } else {
             // Single name - search in both fields
-            const name = nameParts[0].toLowerCase();
             filterFormula = `OR(
-                LOWER({First Name}) = "${name}",
-                LOWER({Last Name}) = "${name}"
+                LOWER(SUBSTITUTE({First Name}, "-", " ")) = "${normalizedSearchFirst}",
+                LOWER(SUBSTITUTE({Last Name}, "-", " ")) = "${normalizedSearchFirst}"
             )`;
         }
         
