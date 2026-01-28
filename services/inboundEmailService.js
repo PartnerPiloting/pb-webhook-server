@@ -1165,10 +1165,13 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
     }
     
     // Update the MEETING section in notes (append mode)
-    const updatedNotes = updateSection(lead.notes || '', 'meeting', noteEntry, { 
+    const updateResult = updateSection(lead.notes || '', 'meeting', noteEntry, { 
         append: true, 
         newlinesBefore: 1 
     });
+    
+    // updateSection returns { notes, previousContent, lineCount } - we need just the notes string
+    const updatedNotes = updateResult.notes;
     
     try {
         await clientBase('Leads').update(lead.id, {
