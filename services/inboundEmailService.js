@@ -802,7 +802,8 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         meetingPurpose: null,
         keyTakeaways: [],
         actionItems: [],
-        topics: []
+        topicsFullText: null,  // Full topics section with all details
+        nextSteps: []
     };
     
     const body = bodyPlain || '';
@@ -1028,14 +1029,14 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         logger.info(`Extracted meeting purpose: "${result.meetingPurpose}"`);
     }
     
-    // Extract Key Takeaways (bullet points)
+    // Extract Key Takeaways (bullet points) - capture ALL of them
     const takeawaysContent = extractSection(body, /Key Takeaways\s*\n/i, sectionBoundaries);
     if (takeawaysContent) {
         const bullets = takeawaysContent
             .split('\n')
             .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
             .filter(line => line.length > 5);
-        result.keyTakeaways = bullets.slice(0, 6); // Limit to 6 takeaways
+        result.keyTakeaways = bullets; // No limit - capture all takeaways
         logger.info(`Extracted ${result.keyTakeaways.length} key takeaways`);
     }
     
@@ -1058,16 +1059,23 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         logger.info(`Extracted ${result.actionItems.length} action items`);
     }
     
-    // Extract Topics (just the main topic headers, not sub-bullets)
+    // Extract Topics - capture the FULL content with all details
     const topicsContent = extractSection(body, /\nTopics\s*\n/i, sectionBoundaries);
     if (topicsContent) {
-        const topics = topicsContent
+        // Store the full topics content as a formatted string, not just headers
+        result.topicsFullText = topicsContent.trim();
+        logger.info(`Extracted full topics content (${result.topicsFullText.length} chars)`);
+    }
+    
+    // Extract Next Steps if present
+    const nextStepsContent = extractSection(body, /\nNext Steps\s*\n/i, sectionBoundaries);
+    if (nextStepsContent) {
+        const steps = nextStepsContent
             .split('\n')
             .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
-            .filter(line => line.length > 3 && !line.startsWith('Objective:') && !line.startsWith('Expertise:'))
-            .slice(0, 5); // Limit to 5 topics
-        result.topics = topics;
-        logger.info(`Extracted ${result.topics.length} topics`);
+            .filter(line => line.length > 3);
+        result.nextSteps = steps;
+        logger.info(`Extracted ${result.nextSteps.length} next steps`);
     }
     
     // AGGRESSIVE final cleanup - remove common prefixes and ensure clean names
@@ -1273,11 +1281,16 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
         }
     }
     
-    // Topics (optional - only include if we have them and there's room)
-    if (meetingData.topics && meetingData.topics.length > 0 && meetingData.topics.length <= 5) {
-        noteEntry += `\n\n📋 TOPICS`;
-        for (const topic of meetingData.topics) {
-            noteEntry += `\n• ${topic}`;
+    // Full Topics section with all details
+    if (meetingData.topicsFullText) {
+        noteEntry += `\n\n📋 TOPICS\n${meetingData.topicsFullText}`;
+    }
+    
+    // Next Steps
+    if (meetingData.nextSteps && meetingData.nextSteps.length > 0) {
+        noteEntry += `\n\n➡️ NEXT STEPS`;
+        for (const step of meetingData.nextSteps) {
+            noteEntry += `\n• ${step}`;
         }
     }
     
