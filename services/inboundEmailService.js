@@ -1755,6 +1755,14 @@ async function processInboundEmail(mailgunData) {
     logger.info(`BCC recipient: ${recipient}`);
     logger.info(`Subject: ${subject}`);
     logger.info(`Raw To field: ${To || mailgunData.to || '(not found at top level)'}`);
+    logger.info(`Body-plain length: ${(bodyPlain || '').length} chars`);
+    
+    // Debug: Log first 200 chars of body to check for forward markers
+    if (bodyPlain) {
+        logger.info(`Body preview: ${bodyPlain.substring(0, 200).replace(/\n/g, '\\n')}`);
+    } else {
+        logger.warn('Body-plain is undefined or empty!');
+    }
 
     // Check if this is a forwarded email (To is our tracking address)
     // This happens when user forgot to BCC and forwards the sent email to track it
@@ -1763,6 +1771,10 @@ async function processInboundEmail(mailgunData) {
         (leadEmail.toLowerCase() === recipient.toLowerCase() || 
          leadEmail.includes('track@') || 
          leadEmail.includes('mail.australiansidehustles'));
+    
+    // Debug: Log the detection values
+    logger.info(`Forward detection: isForward=${isForward}, toIsTrackingAddress=${toIsTrackingAddress}`);
+    logger.info(`  leadEmail="${leadEmail}", recipient="${recipient}"`);
     
     let forwardedRecipients = null;
     if (isForward && toIsTrackingAddress) {
