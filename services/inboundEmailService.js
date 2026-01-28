@@ -798,13 +798,9 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         duration: null,
         date: null,
         company: null,
-        // Rich content from meeting notes - stored as full text to preserve formatting
-        meetingPurpose: null,
-        keyTakeaways: null,      // Full text with formatting
-        actionItems: null,       // Full text with formatting
-        topicsFullText: null,    // Full topics section with all details
-        nextSteps: null,         // Full text with formatting
-        meetingSummary: null     // Full meeting summary section
+        // Rich content from meeting notes
+        actionItems: null,       // Action items with assignees
+        meetingSummary: null     // Full meeting summary (contains Purpose, Takeaways, Topics, Next Steps)
     };
     
     const body = bodyPlain || '';
@@ -857,8 +853,21 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
                 logger.info(`Found contact email in subject: ${result.contactEmail}`);
             } else {
                 subjectName = extracted;
-                result.contactName = extracted;
-                logger.info(`Found contact name in subject: "${result.contactName}"`);
+                
+                // Check if this looks like a company name rather than a person
+                const looksLikeCompany = (
+                    /^[A-Z]{2,}/.test(extracted) ||  // Starts with multiple caps like "TEAMSolutions"
+                    /\b(group|inc|ltd|llc|corp|company|co|solutions|tech|consulting)\b/i.test(extracted) ||  // Contains company suffix
+                    !/\s/.test(extracted)  // Single word (likely company name)
+                );
+                
+                if (looksLikeCompany) {
+                    result.company = extracted;
+                    logger.info(`Subject "${extracted}" looks like company name, not setting as contact`);
+                } else {
+                    result.contactName = extracted;
+                    logger.info(`Found contact name in subject: "${result.contactName}"`);
+                }
             }
         }
     } else {
@@ -933,21 +942,13 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         }
     }
     
-    // If subject had a company name (no spaces or looks like org), try harder to find person name
+    // If we still don't have a contact name, search more aggressively in the body
     // This handles "Meeting with TEAMSolutions Group" where subject gives company, body gives person
-    const subjectLooksLikeCompany = subjectName && (
-        /^[A-Z]{2,}/.test(subjectName) ||  // Starts with multiple caps like "TEAMSolutions"
-        /\b(group|inc|ltd|llc|corp|company|co)\b/i.test(subjectName) ||  // Contains company suffix
-        !/\s/.test(subjectName)  // Single word (likely company name)
-    );
-    
-    if (subjectLooksLikeCompany && !result.contactName) {
-        logger.info(`Subject "${subjectName}" looks like company name, searching body for person names`);
-        result.company = subjectName;
+    if (!result.contactName) {
+        logger.info(`No contact name yet, searching body more aggressively`);
         
-        // Look more aggressively for person names in body
-        // Pattern: "FirstName LastName and OtherName meeting" on a line
-        const aggressivePattern = /^([A-Z][a-z]+(?:\s+[A-Za-z-]+)+)\s+(?:and\s+[A-Z][a-z]+\s+)?meeting/im;
+        // Look for "FirstName LastName and OtherName meeting" pattern
+        const aggressivePattern = /^([A-Z][a-z]+(?:\s+(?:Van\s+)?[A-Za-z-]+)+)\s+(?:and\s+[A-Z][a-z]+\s+)?meeting/im;
         const aggressiveMatch = body.match(aggressivePattern);
         if (aggressiveMatch) {
             const foundName = aggressiveMatch[1].trim();
@@ -955,7 +956,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
             const firstPerson = foundName.split(/\s+and\s+/i)[0].trim();
             if (firstPerson.split(/\s+/).length >= 2) {
                 result.contactName = firstPerson;
-                logger.info(`Found person name in body (subject was company): "${firstPerson}"`);
+                logger.info(`Found person name in body: "${firstPerson}"`);
             }
         }
     }
@@ -1051,96 +1052,82 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     // EXTRACT RICH CONTENT FROM MEETING NOTES
     // ============================================
     
-    // Helper to extract section content between headers
-    // Handles emojis after section names (e.g., "Action Items ✨")
-    const extractSection = (text, startPattern, endPatterns) => {
-        const startMatch = text.match(startPattern);
-        if (!startMatch) return null;
-        
-        const startIdx = startMatch.index + startMatch[0].length;
-        let endIdx = text.length;
-        
-        for (const endPattern of endPatterns) {
-            const endMatch = text.slice(startIdx).match(endPattern);
-            if (endMatch) {
-                endIdx = Math.min(endIdx, startIdx + endMatch.index);
-            }
-        }
-        
-        return text.slice(startIdx, endIdx).trim();
-    };
-    
-    // Helper to clean timestamp URLs from content while preserving formatting
-    const cleanTimestampUrls = (text) => {
+    // Helper to clean up text formatting from email
+    const cleanMeetingText = (text) => {
         if (!text) return text;
         return text
-            .split('\n')
-            .filter(line => {
-                const trimmed = line.trim();
-                // Skip standalone Fathom timestamp URLs
-                if (trimmed.match(/^<?https?:\/\/.*[?&]timestamp=/i)) return false;
-                if (trimmed.match(/^<https?:\/\/fathom\.video/i)) return false;
-                return true;
-            })
-            .join('\n')
+            // Remove timestamp URLs
+            .replace(/<?https?:\/\/[^\s>]*[?&]timestamp=[^\s>]*/gi, '')
+            .replace(/<https?:\/\/fathom\.video[^>]*>/gi, '')
+            // Clean up markdown-style bold (*text* -> text)
+            .replace(/\*([^*]+)\*/g, '$1')
+            // Clean up weird bullet formatting from HTML conversion
+            .replace(/^\s*-\s*$/gm, '')  // Remove standalone dashes
+            .replace(/\n{3,}/g, '\n\n')  // Collapse multiple newlines
             .trim();
     };
     
-    // Section headers - note the [^\n]* to handle emojis and other chars after section name
-    // e.g., "Action Items ✨" or "Meeting Summary ✨"
-    const sectionBoundaries = [
-        /\n(?:Meeting Purpose|Key Takeaways|Action Items|Topics|Meeting Summary|Your Questions|Screen Sharing|Next Steps|Business Philosophy)[^\n]*\n/i,
-        /\n[A-Z][a-z]+(?:'s)?\s+(?:Goals|Notes|Questions|Project)[^\n]*\n/i,
-        /\n={3,}/,
-        /\nView Meeting/i,
-        /\nAsk Fathom/i
-    ];
-    
-    // Extract Meeting Purpose
-    const purposeContent = extractSection(body, /Meeting Purpose[^\n]*\n/i, sectionBoundaries);
-    if (purposeContent) {
-        result.meetingPurpose = purposeContent.split('\n')[0].trim();
-        logger.info(`Extracted meeting purpose: "${result.meetingPurpose}"`);
+    // Extract Action Items section (ends at Meeting Summary)
+    const actionItemsMatch = body.match(/ACTION ITEMS[^\n]*\n([\s\S]*?)(?=MEETING SUMMARY|$)/i);
+    if (actionItemsMatch) {
+        let actionText = actionItemsMatch[1].trim();
+        // Format action items cleanly: "Task - Assignee" on each line
+        const lines = actionText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const cleanedItems = [];
+        let currentTask = '';
+        
+        for (const line of lines) {
+            // Skip image markers, empty lines
+            if (line.match(/^\[image:/i) || line.match(/^View Meeting/i) || line.match(/^Ask Fathom/i)) continue;
+            
+            // Check if this looks like a name (assignee) - typically just "FirstName LastName" or "First name"
+            const isAssignee = /^[A-Z][a-z]+(?:\s+(?:van\s+)?[A-Z]?[a-z]+)?$/i.test(line) && line.length < 30;
+            
+            if (isAssignee && currentTask) {
+                cleanedItems.push(`• ${currentTask} — ${line}`);
+                currentTask = '';
+            } else if (line.length > 5) {
+                if (currentTask) {
+                    cleanedItems.push(`• ${currentTask}`);
+                }
+                currentTask = line;
+            }
+        }
+        if (currentTask) {
+            cleanedItems.push(`• ${currentTask}`);
+        }
+        
+        result.actionItems = cleanedItems.join('\n');
+        logger.info(`Extracted ${cleanedItems.length} action items`);
     }
     
-    // Extract Key Takeaways - preserve full text with formatting
-    const takeawaysContent = extractSection(body, /Key Takeaways[^\n]*\n/i, sectionBoundaries);
-    if (takeawaysContent) {
-        // Store as full text to preserve formatting
-        result.keyTakeaways = cleanTimestampUrls(takeawaysContent);
-        logger.info(`Extracted key takeaways (${result.keyTakeaways.length} chars)`);
-    }
-    
-    // Extract Action Items - preserve full text with formatting
-    const actionContent = extractSection(body, /Action Items[^\n]*\n/i, sectionBoundaries);
-    if (actionContent) {
-        // Store as full text to preserve formatting (includes assignees on separate lines)
-        result.actionItems = cleanTimestampUrls(actionContent);
-        logger.info(`Extracted action items (${result.actionItems.length} chars)`);
-    }
-    
-    // Extract Topics - capture the FULL content with all sub-sections and details
-    const topicsContent = extractSection(body, /\nTopics[^\n]*\n/i, sectionBoundaries);
-    if (topicsContent) {
-        result.topicsFullText = cleanTimestampUrls(topicsContent);
-        logger.info(`Extracted full topics content (${result.topicsFullText.length} chars)`);
-    }
-    
-    // Extract Next Steps if present - preserve full text
-    const nextStepsContent = extractSection(body, /\nNext Steps[^\n]*\n/i, sectionBoundaries);
-    if (nextStepsContent) {
-        result.nextSteps = cleanTimestampUrls(nextStepsContent);
-        logger.info(`Extracted next steps (${result.nextSteps.length} chars)`);
-    }
-    
-    // Extract Meeting Summary section (contains the detailed breakdown)
-    const summaryContent = extractSection(body, /Meeting Summary[^\n]*\n/i, [
-        /\nView Meeting/i,
-        /\nAsk Fathom/i,
-        /\n={3,}/
-    ]);
-    if (summaryContent) {
-        result.meetingSummary = cleanTimestampUrls(summaryContent);
+    // Extract Meeting Summary section (contains Purpose, Key Takeaways, Topics, Next Steps)
+    const summaryMatch = body.match(/MEETING SUMMARY[^\n]*\n([\s\S]*?)(?=\[image:|View Meeting|Ask Fathom|$)/i);
+    if (summaryMatch) {
+        let summaryText = summaryMatch[1];
+        
+        // Remove the "General Template Customize • Change Template" line
+        summaryText = summaryText.replace(/General Template.*?Change Template[^\n]*/gi, '');
+        
+        // Clean up the text
+        summaryText = cleanMeetingText(summaryText);
+        
+        // Format section headers nicely
+        summaryText = summaryText
+            .replace(/^Meeting Purpose\s*$/gim, '\n━━━ MEETING PURPOSE ━━━')
+            .replace(/^Key Takeaways\s*$/gim, '\n━━━ KEY TAKEAWAYS ━━━')
+            .replace(/^Topics\s*$/gim, '\n━━━ TOPICS ━━━')
+            .replace(/^Next Steps\s*$/gim, '\n━━━ NEXT STEPS ━━━')
+            // Sub-section headers (like "Rick's Project:", "WordPress Page Creation", etc.)
+            .replace(/^([A-Z][^:\n]{5,50}):?\s*$/gm, '\n▸ $1')
+            // Clean up bullet points
+            .replace(/^\s*[-•]\s*/gm, '• ')
+            .replace(/^\s*(\d+)\.\s*/gm, '$1. ')
+            // Collapse excessive newlines
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+        
+        result.meetingSummary = summaryText;
         logger.info(`Extracted meeting summary (${result.meetingSummary.length} chars)`);
     }
     
@@ -1381,7 +1368,7 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
         timestamp = new Date().toLocaleString('en-AU');
     }
     
-    // Build rich meeting note entry - preserve full formatting from Fathom
+    // Build clean meeting note entry
     const separator = '═══════════════════════════════════════════════════════';
     
     // Header line with name, date, duration
@@ -1395,34 +1382,14 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
     
     let noteEntry = `${separator}\n${headerParts.join(' | ')}\n${separator}`;
     
-    // Meeting Purpose
-    if (meetingData.meetingPurpose) {
-        noteEntry += `\n\n🎯 PURPOSE\n${meetingData.meetingPurpose}`;
-    }
-    
-    // Key Takeaways - full text with formatting preserved
-    if (meetingData.keyTakeaways) {
-        noteEntry += `\n\n💡 KEY TAKEAWAYS\n${meetingData.keyTakeaways}`;
-    }
-    
-    // Action Items - full text with formatting preserved
+    // Action Items (with assignees)
     if (meetingData.actionItems) {
         noteEntry += `\n\n✅ ACTION ITEMS\n${meetingData.actionItems}`;
     }
     
-    // Full Topics section with all sub-sections and details
-    if (meetingData.topicsFullText) {
-        noteEntry += `\n\n📋 TOPICS\n${meetingData.topicsFullText}`;
-    }
-    
-    // Meeting Summary (contains the full detailed breakdown)
+    // Meeting Summary (contains Purpose, Key Takeaways, Topics, Next Steps - all in one clean block)
     if (meetingData.meetingSummary) {
-        noteEntry += `\n\n📝 MEETING SUMMARY\n${meetingData.meetingSummary}`;
-    }
-    
-    // Next Steps - full text with formatting preserved
-    if (meetingData.nextSteps) {
-        noteEntry += `\n\n➡️ NEXT STEPS\n${meetingData.nextSteps}`;
+        noteEntry += `\n\n📝 MEETING NOTES\n${meetingData.meetingSummary}`;
     }
     
     // Meeting Link
