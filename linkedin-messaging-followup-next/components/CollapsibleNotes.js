@@ -3,6 +3,39 @@
 import React, { useState, useMemo } from 'react';
 
 /**
+ * Convert URLs in text to clickable links
+ * @param {string} text - Text that may contain URLs
+ * @returns {React.ReactNode[]} Array of text and link elements
+ */
+function linkifyText(text) {
+  if (!text) return text;
+  
+  // URL regex - matches http/https URLs
+  const urlRegex = /(https?:\/\/[^\s<>"]+)/g;
+  const parts = text.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      // Reset regex lastIndex since we're reusing it
+      urlRegex.lastIndex = 0;
+      return (
+        <a 
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
+/**
  * Section headers we look for in notes
  */
 const SECTION_MARKERS = {
@@ -328,7 +361,7 @@ export default function CollapsibleNotes({
               {isExpanded && (
                 <div className="p-4 border-t border-gray-100">
                   <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono leading-relaxed">
-                    {section.content || <span className="text-gray-400 italic">No content</span>}
+                    {section.content ? linkifyText(section.content) : <span className="text-gray-400 italic">No content</span>}
                   </pre>
                 </div>
               )}
