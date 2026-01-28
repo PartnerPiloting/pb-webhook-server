@@ -797,7 +797,12 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         meetingLink: null,
         duration: null,
         date: null,
-        company: null
+        company: null,
+        // Rich content from meeting notes
+        meetingPurpose: null,
+        keyTakeaways: [],
+        actionItems: [],
+        topics: []
     };
     
     const body = bodyPlain || '';
@@ -985,6 +990,86 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         }
     }
     
+    // ============================================
+    // EXTRACT RICH CONTENT FROM MEETING NOTES
+    // ============================================
+    
+    // Helper to extract section content between headers
+    const extractSection = (text, startPattern, endPatterns) => {
+        const startMatch = text.match(startPattern);
+        if (!startMatch) return null;
+        
+        const startIdx = startMatch.index + startMatch[0].length;
+        let endIdx = text.length;
+        
+        for (const endPattern of endPatterns) {
+            const endMatch = text.slice(startIdx).match(endPattern);
+            if (endMatch) {
+                endIdx = Math.min(endIdx, startIdx + endMatch.index);
+            }
+        }
+        
+        return text.slice(startIdx, endIdx).trim();
+    };
+    
+    // Common section headers to use as boundaries
+    const sectionBoundaries = [
+        /\n(?:Meeting Purpose|Key Takeaways|Action Items|Topics|Meeting Summary|Your Questions|Screen Sharing)/i,
+        /\n[A-Z][a-z]+(?:'s)?\s+(?:Goals|Notes|Questions)/i,
+        /\n={3,}/,
+        /\nView Meeting/i,
+        /\nAsk Fathom/i
+    ];
+    
+    // Extract Meeting Purpose
+    const purposeContent = extractSection(body, /Meeting Purpose\s*\n/i, sectionBoundaries);
+    if (purposeContent) {
+        result.meetingPurpose = purposeContent.split('\n')[0].trim();
+        logger.info(`Extracted meeting purpose: "${result.meetingPurpose}"`);
+    }
+    
+    // Extract Key Takeaways (bullet points)
+    const takeawaysContent = extractSection(body, /Key Takeaways\s*\n/i, sectionBoundaries);
+    if (takeawaysContent) {
+        const bullets = takeawaysContent
+            .split('\n')
+            .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
+            .filter(line => line.length > 5);
+        result.keyTakeaways = bullets.slice(0, 6); // Limit to 6 takeaways
+        logger.info(`Extracted ${result.keyTakeaways.length} key takeaways`);
+    }
+    
+    // Extract Action Items (format: "Task description — Assignee" or just "Task description")
+    const actionContent = extractSection(body, /Action Items\s*\n/i, sectionBoundaries);
+    if (actionContent) {
+        const items = actionContent
+            .split('\n')
+            .map(line => line.replace(/^[\s☐☑✓✗•\-\*\[\]]+/, '').trim())
+            .filter(line => line.length > 5)
+            .map(line => {
+                // Try to extract assignee if present (after — or -)
+                const assigneeMatch = line.match(/^(.+?)\s*[—–-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*$/);
+                if (assigneeMatch) {
+                    return { task: assigneeMatch[1].trim(), assignee: assigneeMatch[2].trim() };
+                }
+                return { task: line, assignee: null };
+            });
+        result.actionItems = items.slice(0, 10); // Limit to 10 action items
+        logger.info(`Extracted ${result.actionItems.length} action items`);
+    }
+    
+    // Extract Topics (just the main topic headers, not sub-bullets)
+    const topicsContent = extractSection(body, /\nTopics\s*\n/i, sectionBoundaries);
+    if (topicsContent) {
+        const topics = topicsContent
+            .split('\n')
+            .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
+            .filter(line => line.length > 3 && !line.startsWith('Objective:') && !line.startsWith('Expertise:'))
+            .slice(0, 5); // Limit to 5 topics
+        result.topics = topics;
+        logger.info(`Extracted ${result.topics.length} topics`);
+    }
+    
     // AGGRESSIVE final cleanup - remove common prefixes and ensure clean names
     const cleanupName = (name) => {
         if (!name) return name;
@@ -1149,20 +1234,60 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
         timestamp = new Date().toLocaleString('en-AU');
     }
     
-    // Build concise meeting note entry
-    let noteEntry = `[${timestamp}] 📹 ${provider}`;
+    // Build rich meeting note entry
+    const separator = '═══════════════════════════════════════════════════════';
     
-    if (meetingData.contactName) {
-        noteEntry += ` with ${meetingData.contactName}`;
+    // Header line with name, date, duration
+    let headerParts = [`📹 ${meetingData.contactName || 'Meeting'}`];
+    if (meetingData.date) {
+        headerParts.push(meetingData.date);
     }
-    
     if (meetingData.duration) {
-        noteEntry += ` (${meetingData.duration})`;
+        headerParts.push(meetingData.duration);
     }
     
-    if (meetingData.meetingLink) {
-        noteEntry += `\nView: ${meetingData.meetingLink}`;
+    let noteEntry = `${separator}\n${headerParts.join(' | ')}\n${separator}`;
+    
+    // Meeting Purpose
+    if (meetingData.meetingPurpose) {
+        noteEntry += `\n\n🎯 PURPOSE\n${meetingData.meetingPurpose}`;
     }
+    
+    // Key Takeaways
+    if (meetingData.keyTakeaways && meetingData.keyTakeaways.length > 0) {
+        noteEntry += `\n\n💡 KEY TAKEAWAYS`;
+        for (const takeaway of meetingData.keyTakeaways) {
+            noteEntry += `\n• ${takeaway}`;
+        }
+    }
+    
+    // Action Items
+    if (meetingData.actionItems && meetingData.actionItems.length > 0) {
+        noteEntry += `\n\n✅ ACTION ITEMS`;
+        for (const item of meetingData.actionItems) {
+            if (item.assignee) {
+                noteEntry += `\n• ${item.task} — ${item.assignee}`;
+            } else {
+                noteEntry += `\n• ${item.task}`;
+            }
+        }
+    }
+    
+    // Topics (optional - only include if we have them and there's room)
+    if (meetingData.topics && meetingData.topics.length > 0 && meetingData.topics.length <= 5) {
+        noteEntry += `\n\n📋 TOPICS`;
+        for (const topic of meetingData.topics) {
+            noteEntry += `\n• ${topic}`;
+        }
+    }
+    
+    // Meeting Link
+    if (meetingData.meetingLink) {
+        noteEntry += `\n\n🔗 View full meeting: ${meetingData.meetingLink}`;
+    }
+    
+    // Add a subtle footer with timestamp
+    noteEntry += `\n\n[Recorded ${timestamp}]`;
     
     // Update the MEETING section in notes (append mode)
     const updateResult = updateSection(lead.notes || '', 'meeting', noteEntry, { 
