@@ -864,12 +864,12 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         logger.info(`No "with" found in subject: "${cleanSubject}"`);
     }
     
-    // Look for full name in email body (Fathom shows "Agnieszka Caruso meeting" as heading)
-    // This catches cases where subject has nickname but body has full name
+    // Look for full name in email body (Fathom shows "Rick Van Driel and Guy meeting" as heading)
+    // This catches cases where subject has company name but body has actual person names
     const bodyNamePatterns = [
-        // Fathom: "Agnieszka Caruso meeting" as a heading line
+        // Fathom: "Rick Van Driel and Guy meeting" or "Agnieszka Caruso meeting" as a heading line
         // Must NOT start with Meeting/Call/Recap (those are headings, not names)
-        /^(?!(?:Meeting|Call|Recap|Your)\b)([A-Z][a-zà-ÿ]+(?:\s+[A-Z][a-zà-ÿ]+)+)\s+meeting\s*$/im,
+        /^(?!(?:Meeting|Call|Recap|Your)\b)([A-Z][a-zà-ÿ]+(?:\s+[A-Za-zà-ÿ-]+)*(?:\s+and\s+[A-Z][a-zà-ÿ]+)?)\s+meeting\s*$/im,
         // Generic: "FirstName LastName" on its own line - but NOT "Meeting With" etc.
         /^(?!(?:Meeting|Call|Recap|Your|View|Watch|Listen)\b)([A-Z][a-zà-ÿ]+\s+[A-Z][a-zà-ÿ]+)\s*$/m
     ];
@@ -877,7 +877,35 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     for (const pattern of bodyNamePatterns) {
         const match = body.match(pattern);
         if (match) {
-            const bodyName = match[1].trim();
+            let bodyName = match[1].trim();
+            logger.info(`Found potential name in body: "${bodyName}"`);
+            
+            // Check if this contains multiple people: "Rick Van Driel and Guy"
+            // Split on " and " to extract individual names
+            if (bodyName.toLowerCase().includes(' and ')) {
+                const people = bodyName.split(/\s+and\s+/i);
+                logger.info(`Detected multiple people in meeting: ${people.join(', ')}`);
+                
+                // First person is usually the primary contact (the external person)
+                // Second person is often the client (e.g., "Guy")
+                for (let i = 0; i < people.length; i++) {
+                    const personName = people[i].trim();
+                    // Skip single names that are likely the client's first name
+                    if (personName.split(/\s+/).length >= 2) {
+                        // This looks like a full name (FirstName LastName)
+                        if (!result.contactName) {
+                            result.contactName = personName;
+                            logger.info(`Primary contact from body: "${personName}"`);
+                        } else if (personName !== result.contactName) {
+                            result.alternateNames.push(personName);
+                            logger.info(`Alternate contact from body: "${personName}"`);
+                        }
+                    }
+                }
+                continue; // Don't process as single name
+            }
+            
+            // Single person name
             // If body name is different from subject name, add as alternate
             if (bodyName && bodyName !== subjectName) {
                 // Check if it's a longer/fuller version of the same person
@@ -901,6 +929,33 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
                 }
             }
             break;
+        }
+    }
+    
+    // If subject had a company name (no spaces or looks like org), try harder to find person name
+    // This handles "Meeting with TEAMSolutions Group" where subject gives company, body gives person
+    const subjectLooksLikeCompany = subjectName && (
+        /^[A-Z]{2,}/.test(subjectName) ||  // Starts with multiple caps like "TEAMSolutions"
+        /\b(group|inc|ltd|llc|corp|company|co)\b/i.test(subjectName) ||  // Contains company suffix
+        !/\s/.test(subjectName)  // Single word (likely company name)
+    );
+    
+    if (subjectLooksLikeCompany && !result.contactName) {
+        logger.info(`Subject "${subjectName}" looks like company name, searching body for person names`);
+        result.company = subjectName;
+        
+        // Look more aggressively for person names in body
+        // Pattern: "FirstName LastName and OtherName meeting" on a line
+        const aggressivePattern = /^([A-Z][a-z]+(?:\s+[A-Za-z-]+)+)\s+(?:and\s+[A-Z][a-z]+\s+)?meeting/im;
+        const aggressiveMatch = body.match(aggressivePattern);
+        if (aggressiveMatch) {
+            const foundName = aggressiveMatch[1].trim();
+            // Extract just the first person if there's "and"
+            const firstPerson = foundName.split(/\s+and\s+/i)[0].trim();
+            if (firstPerson.split(/\s+/).length >= 2) {
+                result.contactName = firstPerson;
+                logger.info(`Found person name in body (subject was company): "${firstPerson}"`);
+            }
         }
     }
     
@@ -1199,10 +1254,40 @@ async function findLeadByName(client, contactName, company = null) {
         
         logger.info(`Searching for lead by name: "${contactName}" with formula: ${filterFormula}`);
         
-        const records = await clientBase('Leads').select({
+        let records = await clientBase('Leads').select({
             filterByFormula: filterFormula,
             maxRecords: 10
         }).firstPage();
+        
+        // FALLBACK: If no match and last name has multiple parts (e.g., "Van Driel"),
+        // try searching for just the last word (e.g., "Driel") which would match "Van-Driel"
+        if ((!records || records.length === 0) && nameParts.length >= 2) {
+            const lastNameParts = nameParts.slice(1); // Everything after first name
+            
+            if (lastNameParts.length >= 2) {
+                // Multi-word last name like "Van Driel" - try just the last word "Driel"
+                const lastWord = lastNameParts[lastNameParts.length - 1].toLowerCase();
+                logger.info(`No exact match. Trying fallback: first="${normalizedSearchFirst}", last name CONTAINS "${lastWord}"`);
+                
+                // Use FIND to search for last word anywhere in last name
+                // FIND returns position (1+) if found, 0 if not found
+                const fallbackFormula = `AND(
+                    LOWER({First Name}) = "${normalizedSearchFirst}",
+                    FIND("${lastWord}", LOWER({Last Name})) > 0
+                )`;
+                
+                logger.info(`Fallback formula: ${fallbackFormula}`);
+                
+                records = await clientBase('Leads').select({
+                    filterByFormula: fallbackFormula,
+                    maxRecords: 10
+                }).firstPage();
+                
+                if (records && records.length > 0) {
+                    logger.info(`Fallback search found ${records.length} lead(s) with last name containing "${lastWord}"`);
+                }
+            }
+        }
         
         if (!records || records.length === 0) {
             logger.warn(`No lead found with name "${contactName}" for client ${client.clientId}`);
