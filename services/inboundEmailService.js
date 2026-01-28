@@ -798,12 +798,13 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         duration: null,
         date: null,
         company: null,
-        // Rich content from meeting notes
+        // Rich content from meeting notes - stored as full text to preserve formatting
         meetingPurpose: null,
-        keyTakeaways: [],
-        actionItems: [],
-        topicsFullText: null,  // Full topics section with all details
-        nextSteps: []
+        keyTakeaways: null,      // Full text with formatting
+        actionItems: null,       // Full text with formatting
+        topicsFullText: null,    // Full topics section with all details
+        nextSteps: null,         // Full text with formatting
+        meetingSummary: null     // Full meeting summary section
     };
     
     const body = bodyPlain || '';
@@ -1051,6 +1052,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     // ============================================
     
     // Helper to extract section content between headers
+    // Handles emojis after section names (e.g., "Action Items ✨")
     const extractSection = (text, startPattern, endPatterns) => {
         const startMatch = text.match(startPattern);
         if (!startMatch) return null;
@@ -1068,93 +1070,78 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         return text.slice(startIdx, endIdx).trim();
     };
     
-    // Common section headers to use as boundaries
-    const sectionBoundaries = [
-        /\n(?:Meeting Purpose|Key Takeaways|Action Items|Topics|Meeting Summary|Your Questions|Screen Sharing)/i,
-        /\n[A-Z][a-z]+(?:'s)?\s+(?:Goals|Notes|Questions)/i,
-        /\n={3,}/,
-        /\nView Meeting/i,
-        /\nAsk Fathom/i
-    ];
-    
-    // Extract Meeting Purpose
-    const purposeContent = extractSection(body, /Meeting Purpose\s*\n/i, sectionBoundaries);
-    if (purposeContent) {
-        result.meetingPurpose = purposeContent.split('\n')[0].trim();
-        logger.info(`Extracted meeting purpose: "${result.meetingPurpose}"`);
-    }
-    
-    // Extract Key Takeaways (bullet points) - capture ALL of them
-    const takeawaysContent = extractSection(body, /Key Takeaways\s*\n/i, sectionBoundaries);
-    if (takeawaysContent) {
-        const bullets = takeawaysContent
-            .split('\n')
-            .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
-            // Filter out timestamp URLs and empty/short lines
-            .filter(line => {
-                if (line.length < 10) return false;
-                // Skip Fathom timestamp URLs like <https://fathom.video/...?timestamp=31.0>
-                if (line.match(/^<?https?:\/\/.*[?&]timestamp=/i)) return false;
-                if (line.match(/^<https?:\/\/fathom\.video/i)) return false;
-                return true;
-            });
-        result.keyTakeaways = bullets;
-        logger.info(`Extracted ${result.keyTakeaways.length} key takeaways`);
-    }
-    
-    // Extract Action Items (format: "Task description — Assignee" or just "Task description")
-    const actionContent = extractSection(body, /Action Items\s*\n/i, sectionBoundaries);
-    if (actionContent) {
-        const items = actionContent
-            .split('\n')
-            .map(line => line.replace(/^[\s☐☑✓✗•\-\*\[\]]+/, '').trim())
-            .filter(line => line.length > 5)
-            .map(line => {
-                // Try to extract assignee if present (after — or -)
-                const assigneeMatch = line.match(/^(.+?)\s*[—–-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*$/);
-                if (assigneeMatch) {
-                    return { task: assigneeMatch[1].trim(), assignee: assigneeMatch[2].trim() };
-                }
-                return { task: line, assignee: null };
-            });
-        result.actionItems = items.slice(0, 10); // Limit to 10 action items
-        logger.info(`Extracted ${result.actionItems.length} action items`);
-    }
-    
-    // Extract Topics - capture the FULL content with all details
-    const topicsContent = extractSection(body, /\nTopics\s*\n/i, sectionBoundaries);
-    if (topicsContent) {
-        // Clean up topics content - remove timestamp URLs
-        const cleanedTopics = topicsContent
+    // Helper to clean timestamp URLs from content while preserving formatting
+    const cleanTimestampUrls = (text) => {
+        if (!text) return text;
+        return text
             .split('\n')
             .filter(line => {
                 const trimmed = line.trim();
-                // Skip Fathom timestamp URLs
+                // Skip standalone Fathom timestamp URLs
                 if (trimmed.match(/^<?https?:\/\/.*[?&]timestamp=/i)) return false;
                 if (trimmed.match(/^<https?:\/\/fathom\.video/i)) return false;
                 return true;
             })
             .join('\n')
             .trim();
-        result.topicsFullText = cleanedTopics;
+    };
+    
+    // Section headers - note the [^\n]* to handle emojis and other chars after section name
+    // e.g., "Action Items ✨" or "Meeting Summary ✨"
+    const sectionBoundaries = [
+        /\n(?:Meeting Purpose|Key Takeaways|Action Items|Topics|Meeting Summary|Your Questions|Screen Sharing|Next Steps|Business Philosophy)[^\n]*\n/i,
+        /\n[A-Z][a-z]+(?:'s)?\s+(?:Goals|Notes|Questions|Project)[^\n]*\n/i,
+        /\n={3,}/,
+        /\nView Meeting/i,
+        /\nAsk Fathom/i
+    ];
+    
+    // Extract Meeting Purpose
+    const purposeContent = extractSection(body, /Meeting Purpose[^\n]*\n/i, sectionBoundaries);
+    if (purposeContent) {
+        result.meetingPurpose = purposeContent.split('\n')[0].trim();
+        logger.info(`Extracted meeting purpose: "${result.meetingPurpose}"`);
+    }
+    
+    // Extract Key Takeaways - preserve full text with formatting
+    const takeawaysContent = extractSection(body, /Key Takeaways[^\n]*\n/i, sectionBoundaries);
+    if (takeawaysContent) {
+        // Store as full text to preserve formatting
+        result.keyTakeaways = cleanTimestampUrls(takeawaysContent);
+        logger.info(`Extracted key takeaways (${result.keyTakeaways.length} chars)`);
+    }
+    
+    // Extract Action Items - preserve full text with formatting
+    const actionContent = extractSection(body, /Action Items[^\n]*\n/i, sectionBoundaries);
+    if (actionContent) {
+        // Store as full text to preserve formatting (includes assignees on separate lines)
+        result.actionItems = cleanTimestampUrls(actionContent);
+        logger.info(`Extracted action items (${result.actionItems.length} chars)`);
+    }
+    
+    // Extract Topics - capture the FULL content with all sub-sections and details
+    const topicsContent = extractSection(body, /\nTopics[^\n]*\n/i, sectionBoundaries);
+    if (topicsContent) {
+        result.topicsFullText = cleanTimestampUrls(topicsContent);
         logger.info(`Extracted full topics content (${result.topicsFullText.length} chars)`);
     }
     
-    // Extract Next Steps if present
-    const nextStepsContent = extractSection(body, /\nNext Steps\s*\n/i, sectionBoundaries);
+    // Extract Next Steps if present - preserve full text
+    const nextStepsContent = extractSection(body, /\nNext Steps[^\n]*\n/i, sectionBoundaries);
     if (nextStepsContent) {
-        const steps = nextStepsContent
-            .split('\n')
-            .map(line => line.replace(/^[\s•\-\*]+/, '').trim())
-            // Filter out timestamp URLs and empty/short lines
-            .filter(line => {
-                if (line.length < 5) return false;
-                if (line.match(/^<?https?:\/\/.*[?&]timestamp=/i)) return false;
-                if (line.match(/^<https?:\/\/fathom\.video/i)) return false;
-                return true;
-            });
-        result.nextSteps = steps;
-        logger.info(`Extracted ${result.nextSteps.length} next steps`);
+        result.nextSteps = cleanTimestampUrls(nextStepsContent);
+        logger.info(`Extracted next steps (${result.nextSteps.length} chars)`);
+    }
+    
+    // Extract Meeting Summary section (contains the detailed breakdown)
+    const summaryContent = extractSection(body, /Meeting Summary[^\n]*\n/i, [
+        /\nView Meeting/i,
+        /\nAsk Fathom/i,
+        /\n={3,}/
+    ]);
+    if (summaryContent) {
+        result.meetingSummary = cleanTimestampUrls(summaryContent);
+        logger.info(`Extracted meeting summary (${result.meetingSummary.length} chars)`);
     }
     
     // AGGRESSIVE final cleanup - remove common prefixes and ensure clean names
@@ -1394,7 +1381,7 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
         timestamp = new Date().toLocaleString('en-AU');
     }
     
-    // Build rich meeting note entry
+    // Build rich meeting note entry - preserve full formatting from Fathom
     const separator = '═══════════════════════════════════════════════════════';
     
     // Header line with name, date, duration
@@ -1413,37 +1400,29 @@ async function updateLeadWithMeetingNotes(client, lead, meetingData, provider) {
         noteEntry += `\n\n🎯 PURPOSE\n${meetingData.meetingPurpose}`;
     }
     
-    // Key Takeaways
-    if (meetingData.keyTakeaways && meetingData.keyTakeaways.length > 0) {
-        noteEntry += `\n\n💡 KEY TAKEAWAYS`;
-        for (const takeaway of meetingData.keyTakeaways) {
-            noteEntry += `\n• ${takeaway}`;
-        }
+    // Key Takeaways - full text with formatting preserved
+    if (meetingData.keyTakeaways) {
+        noteEntry += `\n\n💡 KEY TAKEAWAYS\n${meetingData.keyTakeaways}`;
     }
     
-    // Action Items
-    if (meetingData.actionItems && meetingData.actionItems.length > 0) {
-        noteEntry += `\n\n✅ ACTION ITEMS`;
-        for (const item of meetingData.actionItems) {
-            if (item.assignee) {
-                noteEntry += `\n• ${item.task} — ${item.assignee}`;
-            } else {
-                noteEntry += `\n• ${item.task}`;
-            }
-        }
+    // Action Items - full text with formatting preserved
+    if (meetingData.actionItems) {
+        noteEntry += `\n\n✅ ACTION ITEMS\n${meetingData.actionItems}`;
     }
     
-    // Full Topics section with all details
+    // Full Topics section with all sub-sections and details
     if (meetingData.topicsFullText) {
         noteEntry += `\n\n📋 TOPICS\n${meetingData.topicsFullText}`;
     }
     
-    // Next Steps
-    if (meetingData.nextSteps && meetingData.nextSteps.length > 0) {
-        noteEntry += `\n\n➡️ NEXT STEPS`;
-        for (const step of meetingData.nextSteps) {
-            noteEntry += `\n• ${step}`;
-        }
+    // Meeting Summary (contains the full detailed breakdown)
+    if (meetingData.meetingSummary) {
+        noteEntry += `\n\n📝 MEETING SUMMARY\n${meetingData.meetingSummary}`;
+    }
+    
+    // Next Steps - full text with formatting preserved
+    if (meetingData.nextSteps) {
+        noteEntry += `\n\n➡️ NEXT STEPS\n${meetingData.nextSteps}`;
     }
     
     // Meeting Link
