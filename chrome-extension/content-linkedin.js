@@ -308,6 +308,30 @@
     }
   }
   
+  // Smart name comparison - handles variations like "duncanmurcott" vs "Duncan Murcott"
+  function namesMatch(name1, name2) {
+    if (!name1 || !name2) return false;
+    
+    // Exact match
+    if (name1 === name2) return true;
+    
+    // Remove all spaces and compare (handles "duncanmurcott" vs "duncan murcott")
+    const noSpaces1 = name1.replace(/\s+/g, '');
+    const noSpaces2 = name2.replace(/\s+/g, '');
+    if (noSpaces1 === noSpaces2) return true;
+    
+    // Check if one contains the other
+    if (name1.includes(name2) || name2.includes(name1)) return true;
+    if (noSpaces1.includes(noSpaces2) || noSpaces2.includes(noSpaces1)) return true;
+    
+    // Check if first names match (for cases like "Duncan M" vs "Duncan Murcott")
+    const first1 = name1.split(' ')[0];
+    const first2 = name2.split(' ')[0];
+    if (first1 === first2 && first1.length >= 3) return true;
+    
+    return false;
+  }
+
   // Handle button click - simple: read clipboard, open portal Quick Update
   async function handleButtonClick(e) {
     e.preventDefault();
@@ -446,18 +470,6 @@
         const visibleNormalized = visibleContactName.toLowerCase().trim();
         const clipboardNormalized = clipboardContactName.toLowerCase().trim();
         
-        // Smart comparison: check if names match or are similar
-        const namesMatch = (name1, name2) => {
-          if (name1 === name2) return true;
-          // Check if one contains the other
-          if (name1.includes(name2) || name2.includes(name1)) return true;
-          // Check if first names match
-          const first1 = name1.split(' ')[0];
-          const first2 = name2.split(' ')[0];
-          if (first1 === first2 && first1.length >= 3) return true;
-          return false;
-        };
-        
         const match = namesMatch(visibleNormalized, clipboardNormalized);
         
         if (!match) {
@@ -475,7 +487,10 @@
           const visibleNormalized = visibleContactName.toLowerCase().trim();
           const clipboardNormalized = clipboardContactName.toLowerCase().trim();
           
-          if (visibleNormalized !== clipboardNormalized) {
+          // Use smart matching - handles cases like "Duncanmurcott" vs "Duncan Murcott"
+          const match = namesMatch(visibleNormalized, clipboardNormalized);
+          
+          if (!match) {
             throw new Error(
               `You're viewing ${visibleContactName}'s conversation, but your clipboard contains ${clipboardContactName}'s messages. ` +
               `Please copy the current conversation first (Ctrl+A then Ctrl+C in the message area).`
