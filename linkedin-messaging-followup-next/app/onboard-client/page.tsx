@@ -84,7 +84,8 @@ function getServiceLevelNumber(serviceLevel: string): string {
 // Build the client dashboard URL
 function buildClientUrl(clientCode: string, serviceLevel: string): string {
   const level = getServiceLevelNumber(serviceLevel);
-  return `https://pb-webhook-server-staging.vercel.app/?testClient=${encodeURIComponent(clientCode)}&level=${level}`;
+  // Use production URL - this is for onboarding real clients
+  return `https://pb-webhook-server.vercel.app/?testClient=${encodeURIComponent(clientCode)}&level=${level}`;
 }
 
 // Only two actual service levels in the system
@@ -539,12 +540,12 @@ export default function OnboardClientPage() {
                     ) : portalToken ? (
                       <div className="flex gap-2 items-center">
                         <code className="flex-1 text-sm bg-gray-50 px-3 py-2 rounded border border-gray-200 text-gray-800 break-all">
-                          {`https://pb-webhook-server-staging.vercel.app/?token=${portalToken}`}
+                          {`https://pb-webhook-server.vercel.app/?token=${portalToken}`}
                         </code>
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(`https://pb-webhook-server-staging.vercel.app/?token=${portalToken}`);
+                            navigator.clipboard.writeText(`https://pb-webhook-server.vercel.app/?token=${portalToken}`);
                           }}
                           className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
                         >

@@ -8,7 +8,8 @@
   let isProcessing = false;
   
   // Remote config from Airtable (fetched on init)
-  const CONFIG_API_URL = 'https://pb-webhook-server-staging.onrender.com/api/extension-config';
+  // Use production URL - extension is distributed to all users
+  const CONFIG_API_URL = 'https://pb-webhook-server.onrender.com/api/extension-config';
   const CONFIG_CACHE_KEY = 'na_extension_config';
   const CONFIG_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
   
@@ -521,7 +522,8 @@
       });
       
       // Build portal URL with auth credentials so new tab is authenticated
-      let portalUrl = 'https://pb-webhook-server-staging.vercel.app/quick-update?from=extension';
+      // Use production URL - extension is distributed to all users
+      let portalUrl = 'https://pb-webhook-server.vercel.app/quick-update?from=extension';
       
       if (authData?.portalToken) {
         portalUrl += `&token=${encodeURIComponent(authData.portalToken)}`;

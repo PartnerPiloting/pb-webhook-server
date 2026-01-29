@@ -43,7 +43,7 @@ function HomeContent() {
       
       // Validate the clientId with the backend API (legacy flow - will be blocked by backend)
       try {
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pb-webhook-server-staging.onrender.com';
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pb-webhook-server.onrender.com';
         const response = await fetch(`${backendUrl}/api/verify-client-access/${clientId}`);
         
         if (!response.ok) {
