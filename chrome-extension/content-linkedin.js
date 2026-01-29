@@ -7,11 +7,34 @@
   let button = null;
   let isProcessing = false;
   
+  // Environment URLs - extension works on both staging and production
+  const BACKEND_URLS = {
+    production: 'https://pb-webhook-server.onrender.com',
+    staging: 'https://pb-webhook-server-staging.onrender.com'
+  };
+  const PORTAL_URLS = {
+    production: 'https://pb-webhook-server.vercel.app',
+    staging: 'https://pb-webhook-server-staging.vercel.app'
+  };
+  
+  // Get environment from stored auth data
+  async function getEnvironment() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['environment'], (data) => {
+        resolve(data.environment || 'production');
+      });
+    });
+  }
+  
   // Remote config from Airtable (fetched on init)
-  // Use production URL - extension is distributed to all users
-  const CONFIG_API_URL = 'https://pb-webhook-server.onrender.com/api/extension-config';
+  // Default to production, but getConfigApiUrl() can use stored environment
+  let currentEnvironment = 'production';
   const CONFIG_CACHE_KEY = 'na_extension_config';
   const CONFIG_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+  
+  function getConfigApiUrl() {
+    return `${BACKEND_URLS[currentEnvironment]}/api/extension-config`;
+  }
   
   // Default config (fallback if API unavailable)
   const DEFAULT_CONFIG = {
@@ -54,8 +77,8 @@
         }
       }
       
-      // Fetch from API
-      const response = await fetch(CONFIG_API_URL);
+      // Fetch from API (using environment-aware URL)
+      const response = await fetch(getConfigApiUrl());
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.config) {
@@ -120,8 +143,13 @@
       return; // Extension was reloaded
     }
     
-    // Fetch remote config (non-blocking)
-    fetchRemoteConfig();
+    // Load environment from storage, then fetch remote config
+    chrome.storage.local.get(['environment'], (data) => {
+      currentEnvironment = data.environment || 'production';
+      console.log(`[NA Extension] Environment: ${currentEnvironment}`);
+      // Fetch remote config (non-blocking)
+      fetchRemoteConfig();
+    });
     
     // Check if we were redirected here to auto-save
     checkPendingSave();
@@ -522,8 +550,10 @@
       });
       
       // Build portal URL with auth credentials so new tab is authenticated
-      // Use production URL - extension is distributed to all users
-      let portalUrl = 'https://pb-webhook-server.vercel.app/quick-update?from=extension';
+      // Use environment from stored auth (staging or production)
+      const env = authData?.environment || 'production';
+      const portalBase = PORTAL_URLS[env] || PORTAL_URLS.production;
+      let portalUrl = `${portalBase}/quick-update?from=extension`;
       
       if (authData?.portalToken) {
         portalUrl += `&token=${encodeURIComponent(authData.portalToken)}`;
