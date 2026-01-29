@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     // Get backend URL from environment (strip /api/linkedin suffix if present)
     const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-    const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server-staging.onrender.com';
+    const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
     
     console.log(`Calling backend: ${backendUrl}/api/calendar/extract-profile`);
     

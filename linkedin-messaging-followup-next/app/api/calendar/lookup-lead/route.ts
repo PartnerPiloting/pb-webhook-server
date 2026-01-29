@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
     // Get backend URL - strip /api/linkedin suffix if present
     const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-    const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server-staging.onrender.com';
+    const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
 
     const backendResponse = await fetch(
       `${backendUrl}/api/calendar/lookup-lead?query=${encodeURIComponent(query)}`,

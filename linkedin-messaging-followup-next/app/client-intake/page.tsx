@@ -71,7 +71,7 @@ function ClientIntakeContent() {
   // Lookup coach ID for view mode
   const [lookupCoachId, setLookupCoachId] = useState(viewCoachId || '');
   
-  const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server-staging.onrender.com';
+  const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://pb-webhook-server.onrender.com';
   
   // Load requests when in view mode
   useEffect(() => {
