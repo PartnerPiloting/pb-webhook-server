@@ -24,6 +24,13 @@ export function renderHelpHtml(html, keyPrefix) {
       return `<a${pre}${classes} text-blue-600 underline hover:text-blue-700${post}>`;
     });
 
+  // Ensure all external links (http/https) open in new tab
+  safe = safe.replace(/<a\s+([^>]*href=["']https?:\/\/[^>]*)>/gi, (match, attrs) => {
+    // Skip if already has target attribute
+    if (/target\s*=/i.test(match)) return match;
+    return `<a ${attrs} target="_blank" rel="noopener noreferrer">`;
+  });
+
   // Mark images for React zoom wrapping
   safe = safe.replace(/<img([^>]*)>/gi, (match, attrs) => {
     const uniqueId = 'zoom-' + Math.random().toString(36).substr(2, 9);
