@@ -794,6 +794,7 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         contactName: null,
         contactEmail: null,  // Email address if "Meeting with email@domain.com"
         alternateNames: [],  // Additional names to try (e.g., full name vs nickname)
+        firstNameOnly: null, // First name when we only have that (e.g., "Michelle" with company domain)
         meetingLink: null,
         duration: null,
         date: null,
@@ -965,6 +966,32 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
     if (subjectName && subjectName.includes('.') && !subjectName.includes(' ')) {
         result.company = subjectName;
         result.contactName = null; // Clear it, it's not a real name
+        
+        // When subject is a domain, look for a single first name in the body
+        // Fathom format: "Meeting with domain.com\nFirstName\nDate • duration"
+        // The first name appears on its own line right after the meeting header
+        const firstNamePattern = /^([A-Z][a-z]+)\s*$/m;
+        const bodyLines = body.split('\n').map(l => l.trim()).filter(l => l);
+        
+        // Look in the first few lines for a capitalized single name
+        for (let i = 0; i < Math.min(5, bodyLines.length); i++) {
+            const line = bodyLines[i];
+            // Skip lines that look like headers, dates, or the domain itself
+            if (line.toLowerCase().includes('meeting') || 
+                line.toLowerCase().includes('call') ||
+                line.includes(subjectName) ||
+                /\d{4}/.test(line) ||  // Has a year
+                /\d+\s*mins?/.test(line)) {  // Has duration
+                continue;
+            }
+            
+            const nameMatch = line.match(firstNamePattern);
+            if (nameMatch) {
+                result.firstNameOnly = nameMatch[1];
+                logger.info(`Found first name only in body: "${result.firstNameOnly}" (company: ${result.company})`);
+                break;
+            }
+        }
     }
     
     // Extract meeting link - be specific to avoid grabbing header/logo links
@@ -1379,6 +1406,97 @@ async function findLeadByName(client, contactName, company = null) {
 }
 
 /**
+ * Find lead by first name only + company domain
+ * Used when Fathom shows "Meeting with domain.com" and just a first name (e.g., "Michelle")
+ * @param {Object} client - Client object with airtableBaseId
+ * @param {string} firstName - First name to search for
+ * @param {string} domain - Company domain (e.g., "discoveryouredge.com.au")
+ * @returns {Promise<{lead: Object|null, allMatches: Array, matchType: string}>}
+ */
+async function findLeadByFirstNameAndDomain(client, firstName, domain) {
+    const result = { lead: null, allMatches: [], matchType: 'none' };
+    
+    if (!client.airtableBaseId) {
+        throw new Error(`Client ${client.clientId} has no Airtable base configured`);
+    }
+    
+    if (!firstName || firstName.trim().length < 2) {
+        logger.warn('First name too short for lead lookup');
+        return result;
+    }
+    
+    const clientBase = createBaseInstance(client.airtableBaseId);
+    const normalizedFirst = normalizeName(firstName);
+    
+    // Extract domain parts for matching
+    // "discoveryouredge.com.au" -> "discoveryouredge"
+    const domainName = domain.toLowerCase().replace(/\.[^.]+(\.[^.]+)?$/, ''); // Remove TLD(s)
+    
+    logger.info(`Searching for lead: firstName="${normalizedFirst}", domain="${domainName}"`);
+    
+    try {
+        // Search for matching first name
+        const filterFormula = `LOWER(SUBSTITUTE({First Name}, "-", " ")) = "${normalizedFirst}"`;
+        
+        let records = await clientBase('Leads').select({
+            filterByFormula: filterFormula,
+            maxRecords: 20
+        }).firstPage();
+        
+        if (!records || records.length === 0) {
+            logger.warn(`No leads found with first name "${firstName}"`);
+            return result;
+        }
+        
+        logger.info(`Found ${records.length} leads with first name "${firstName}", filtering by domain "${domainName}"`);
+        
+        // Filter by domain - check email and company fields
+        const domainMatches = records.filter(record => {
+            const email = (record.fields['Email'] || '').toLowerCase();
+            const company = (record.fields['Company'] || '').toLowerCase();
+            const linkedin = (record.fields['LinkedIn Profile URL'] || '').toLowerCase();
+            
+            return email.includes(domainName) || 
+                   company.includes(domainName) ||
+                   linkedin.includes(domainName);
+        });
+        
+        if (domainMatches.length === 0) {
+            logger.warn(`No leads with first name "${firstName}" match domain "${domainName}"`);
+            return result;
+        }
+        
+        // Map matches to lead objects
+        result.allMatches = domainMatches.map(record => ({
+            id: record.id,
+            firstName: record.fields['First Name'] || '',
+            lastName: record.fields['Last Name'] || '',
+            email: record.fields['Email'] || '',
+            company: record.fields['Company'] || '',
+            linkedinUrl: record.fields['LinkedIn Profile URL'] || '',
+            notes: record.fields['Notes'] || '',
+            followUpDate: record.fields['Follow-Up Date'] || null
+        }));
+        
+        if (domainMatches.length === 1) {
+            result.lead = result.allMatches[0];
+            result.matchType = 'unique';
+            logger.info(`Found unique lead ${result.lead.id}: ${result.lead.firstName} ${result.lead.lastName} (matched by first name + domain)`);
+            return result;
+        }
+        
+        // Multiple matches with same first name at same domain - ambiguous
+        result.matchType = 'ambiguous';
+        logger.warn(`Found ${domainMatches.length} leads with first name "${firstName}" at domain "${domainName}"`);
+        return result;
+        
+    } catch (error) {
+        logger.error(`Error searching for lead by first name + domain: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
  * Update lead with meeting notes (concise format with link)
  * @param {Object} client - Client object
  * @param {Object} lead - Lead object (with id, notes)
@@ -1514,7 +1632,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
         };
     }
     
-    if (!meetingData.contactName && !meetingData.contactEmail && !meetingData.company && meetingData.alternateNames.length === 0) {
+    if (!meetingData.contactName && !meetingData.contactEmail && !meetingData.company && !meetingData.firstNameOnly && meetingData.alternateNames.length === 0) {
         logger.warn('No contact info extracted from meeting email');
         return {
             success: false,
@@ -1593,6 +1711,34 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
                 }
             }
         }
+        
+        // PRIORITY 3: First name only + company domain search
+        // When we only have a first name (e.g., "Michelle") and a company domain (e.g., "discoveryouredge.com.au")
+        if (!lead && meetingData.firstNameOnly && meetingData.company) {
+            logger.info(`Trying first name + company domain search: "${meetingData.firstNameOnly}" at "${meetingData.company}"`);
+            
+            const searchResult = await findLeadByFirstNameAndDomain(client, meetingData.firstNameOnly, meetingData.company);
+            
+            if (searchResult.matchType === 'ambiguous') {
+                // Multiple leads match first name + domain
+                await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
+                return {
+                    success: false,
+                    error: 'multiple_leads',
+                    message: `Found ${searchResult.allMatches.length} leads named "${meetingData.firstNameOnly}" at ${meetingData.company}`,
+                    matches: searchResult.allMatches.map(l => ({
+                        id: l.id,
+                        name: `${l.firstName} ${l.lastName}`.trim(),
+                        company: l.company,
+                        email: l.email
+                    }))
+                };
+            }
+            
+            if (searchResult.matchType !== 'none') {
+                lead = searchResult.lead;
+                matchedBy = `first name + domain (${meetingData.firstNameOnly} at ${meetingData.company})`;
+            }
         
         // No match found by email or name
         if (!lead) {
@@ -1680,6 +1826,9 @@ async function sendMeetingLeadNotFoundNotification(toEmail, meetingData, provide
     }
     if (meetingData.contactName) {
         searchedNames.push(`Name: ${meetingData.contactName}`);
+    }
+    if (meetingData.firstNameOnly) {
+        searchedNames.push(`First name: ${meetingData.firstNameOnly}${meetingData.company ? ` (at ${meetingData.company})` : ''}`);
     }
     if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
         for (const altName of meetingData.alternateNames) {
