@@ -1525,6 +1525,83 @@ async function findLeadByFirstNameAndDomain(client, firstName, domain) {
 }
 
 /**
+ * Find lead by company domain only (fallback when no name is extracted)
+ * Used when Fathom shows "Meeting with domain.com" but we can't extract a name
+ * @param {Object} client - Client object with airtableBaseId
+ * @param {string} domain - Company domain (e.g., "timeandfocus.com.au")
+ * @returns {Promise<{lead: Object|null, allMatches: Array, matchType: string}>}
+ */
+async function findLeadByDomainOnly(client, domain) {
+    const result = { lead: null, allMatches: [], matchType: 'none' };
+    
+    if (!client.airtableBaseId) {
+        throw new Error(`Client ${client.clientId} has no Airtable base configured`);
+    }
+    
+    // Skip common personal email domains - too many matches
+    const personalDomains = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 
+                            'live.com', 'msn.com', 'aol.com', 'protonmail.com', 'mail.com'];
+    const domainLower = domain.toLowerCase();
+    if (personalDomains.some(pd => domainLower.includes(pd))) {
+        logger.info(`Skipping domain-only search for personal email domain: ${domain}`);
+        return result;
+    }
+    
+    const clientBase = createBaseInstance(client.airtableBaseId);
+    
+    // Extract domain name for matching (remove TLDs)
+    // "timeandfocus.com.au" -> "timeandfocus"
+    const domainName = domainLower.replace(/\.[^.]+(\.[^.]+)?$/, '');
+    
+    logger.info(`Searching for lead by domain only: "${domainName}" (from ${domain})`);
+    
+    try {
+        // Search for leads where email contains this domain
+        const filterFormula = `FIND("${domainName}", LOWER({Email})) > 0`;
+        
+        let records = await clientBase('Leads').select({
+            filterByFormula: filterFormula,
+            maxRecords: 10
+        }).firstPage();
+        
+        if (!records || records.length === 0) {
+            logger.warn(`No leads found with domain "${domainName}" in email`);
+            return result;
+        }
+        
+        logger.info(`Found ${records.length} leads with domain "${domainName}" in email`);
+        
+        // Map matches to lead objects
+        result.allMatches = records.map(record => ({
+            id: record.id,
+            firstName: record.fields['First Name'] || '',
+            lastName: record.fields['Last Name'] || '',
+            email: record.fields['Email'] || '',
+            company: record.fields['Company'] || '',
+            linkedinUrl: record.fields['LinkedIn Profile URL'] || '',
+            notes: record.fields['Notes'] || '',
+            followUpDate: record.fields['Follow-Up Date'] || null
+        }));
+        
+        if (records.length === 1) {
+            result.lead = result.allMatches[0];
+            result.matchType = 'unique';
+            logger.info(`Found unique lead ${result.lead.id}: ${result.lead.firstName} ${result.lead.lastName} (matched by domain only)`);
+            return result;
+        }
+        
+        // Multiple matches at same domain - ambiguous
+        result.matchType = 'ambiguous';
+        logger.warn(`Found ${records.length} leads at domain "${domainName}" - ambiguous`);
+        return result;
+        
+    } catch (error) {
+        logger.error(`Error searching for lead by domain only: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
  * Update lead with meeting notes (concise format with link)
  * @param {Object} client - Client object
  * @param {Object} lead - Lead object (with id, notes)
@@ -1769,6 +1846,35 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
             }
         }
         
+        // PRIORITY 4: Domain-only search (fallback when no name could be extracted)
+        // When we have a company domain but couldn't extract any name
+        if (!lead && meetingData.company && !meetingData.contactName && !meetingData.firstNameOnly) {
+            logger.info(`Trying domain-only search: "${meetingData.company}"`);
+            
+            const searchResult = await findLeadByDomainOnly(client, meetingData.company);
+            
+            if (searchResult.matchType === 'ambiguous') {
+                // Multiple leads at this domain
+                await sendMeetingMultipleLeadsNotification(client.clientEmailAddress, meetingData, provider, searchResult.allMatches);
+                return {
+                    success: false,
+                    error: 'multiple_leads',
+                    message: `Found ${searchResult.allMatches.length} leads at ${meetingData.company} - please specify which one`,
+                    matches: searchResult.allMatches.map(l => ({
+                        id: l.id,
+                        name: `${l.firstName} ${l.lastName}`.trim(),
+                        company: l.company,
+                        email: l.email
+                    }))
+                };
+            }
+            
+            if (searchResult.matchType !== 'none') {
+                lead = searchResult.lead;
+                matchedBy = `domain only (${meetingData.company})`;
+            }
+        }
+        
         // No match found by email or name
         if (!lead) {
             const searchedFor = meetingData.contactEmail 
@@ -1858,6 +1964,10 @@ async function sendMeetingLeadNotFoundNotification(toEmail, meetingData, provide
     }
     if (meetingData.firstNameOnly) {
         searchedNames.push(`First name: ${meetingData.firstNameOnly}${meetingData.company ? ` (at ${meetingData.company})` : ''}`);
+    }
+    // If we only have a domain (no name extracted), show that we searched by domain
+    if (meetingData.company && !meetingData.contactName && !meetingData.firstNameOnly && !meetingData.contactEmail) {
+        searchedNames.push(`Domain search: ${meetingData.company}`);
     }
     if (meetingData.alternateNames && meetingData.alternateNames.length > 0) {
         for (const altName of meetingData.alternateNames) {
