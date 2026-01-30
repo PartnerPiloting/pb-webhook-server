@@ -970,18 +970,35 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         // When subject is a domain, look for a single first name in the body
         // Fathom format: "Meeting with domain.com\nFirstName\nDate • duration"
         // The first name appears on its own line right after the meeting header
+        // For forwarded emails, we need to find the name AFTER the domain mention
         const firstNamePattern = /^([A-Z][a-z]+)\s*$/m;
         const bodyLines = body.split('\n').map(l => l.trim()).filter(l => l);
         
-        // Look in the first few lines for a capitalized single name
-        for (let i = 0; i < Math.min(5, bodyLines.length); i++) {
+        // Find where the domain is mentioned in the body (to handle forwarded emails)
+        let startIndex = 0;
+        for (let i = 0; i < bodyLines.length; i++) {
+            if (bodyLines[i].includes(subjectName) || 
+                bodyLines[i].toLowerCase().includes('meeting with')) {
+                startIndex = i + 1; // Start looking from the line AFTER the domain mention
+                logger.info(`Found domain/meeting at line ${i}, starting name search from line ${startIndex}`);
+                break;
+            }
+        }
+        
+        // Look in the next few lines after the domain for a capitalized single name
+        for (let i = startIndex; i < Math.min(startIndex + 5, bodyLines.length); i++) {
             const line = bodyLines[i];
             // Skip lines that look like headers, dates, or the domain itself
             if (line.toLowerCase().includes('meeting') || 
                 line.toLowerCase().includes('call') ||
                 line.includes(subjectName) ||
                 /\d{4}/.test(line) ||  // Has a year
-                /\d+\s*mins?/.test(line)) {  // Has duration
+                /\d+\s*mins?/.test(line) ||  // Has duration
+                line.startsWith('---') ||  // Forward separator
+                line.toLowerCase().startsWith('from:') ||
+                line.toLowerCase().startsWith('to:') ||
+                line.toLowerCase().startsWith('subject:') ||
+                line.toLowerCase().startsWith('date:')) {
                 continue;
             }
             
