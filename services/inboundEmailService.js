@@ -974,13 +974,24 @@ function parseMeetingNotetakerEmail(subject, bodyPlain, bodyHtml, provider) {
         const firstNamePattern = /^([A-Z][a-z]+)\s*$/m;
         const bodyLines = body.split('\n').map(l => l.trim()).filter(l => l);
         
-        // Find where the domain is mentioned in the body (to handle forwarded emails)
+        // Find where "Meeting with domain" appears in the body content (not the forwarded Subject: header)
+        // We need to find the ACTUAL Fathom content, not the forwarded email headers
         let startIndex = 0;
         for (let i = 0; i < bodyLines.length; i++) {
-            if (bodyLines[i].includes(subjectName) || 
-                bodyLines[i].toLowerCase().includes('meeting with')) {
-                startIndex = i + 1; // Start looking from the line AFTER the domain mention
-                logger.info(`Found domain/meeting at line ${i}, starting name search from line ${startIndex}`);
+            const line = bodyLines[i];
+            // Skip forwarded email header lines
+            if (line.toLowerCase().startsWith('subject:') ||
+                line.toLowerCase().startsWith('from:') ||
+                line.toLowerCase().startsWith('to:') ||
+                line.toLowerCase().startsWith('date:') ||
+                line.toLowerCase().startsWith('cc:') ||
+                line.startsWith('---')) {
+                continue;
+            }
+            // Look for the Fathom-style "Meeting with domain" line
+            if (line.toLowerCase().includes('meeting with') && line.includes(subjectName)) {
+                startIndex = i + 1; // Start looking from the line AFTER this
+                logger.info(`Found "Meeting with ${subjectName}" at line ${i}, starting name search from line ${startIndex}`);
                 break;
             }
         }
