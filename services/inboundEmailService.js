@@ -1739,6 +1739,7 @@ async function processMeetingNotetakerEmail(client, emailData, provider) {
                 lead = searchResult.lead;
                 matchedBy = `first name + domain (${meetingData.firstNameOnly} at ${meetingData.company})`;
             }
+        }
         
         // No match found by email or name
         if (!lead) {
