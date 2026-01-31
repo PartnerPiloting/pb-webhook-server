@@ -26,7 +26,7 @@ const StartHereContent: React.FC = () => {
   const [sectionLoading, setSectionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState<Record<string, boolean>>({});
-  const [activeSection, setActiveSection] = useState<string>('Regular Tasks'); // Default to Regular Tasks
+  const [activeSection, setActiveSection] = useState<string>('Getting Better Results'); // Default to Getting Better Results
   const [viewMode, setViewMode] = useState<'focused' | 'full'>('full'); // Track if showing focused topic view or full tree
   const searchParams = useSearchParams();
   // Map-based open state (reverted to stable approach)
