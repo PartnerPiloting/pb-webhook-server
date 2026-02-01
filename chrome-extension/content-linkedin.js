@@ -617,7 +617,10 @@
           .replace(/\s+/g, ' ')
           .replace(/View .+'s profile/i, '')
           .replace(/\(.*\)$/, '')  // Remove pronouns like (She/Her)
-          .replace(/\d{1,2}:\d{2}\s*[AP]M.*$/, '') // Remove timestamps
+          .replace(/\d{1,2}:\d{2}\s*[AP]M.*$/, '') // Remove timestamps like "9:32 AM"
+          .replace(/Mobile\s*[•·]\s*\d+[dhms]\s*ago.*$/i, '') // Remove "Mobile • 3d ago"
+          .replace(/\d+[dhms]\s*ago.*$/i, '') // Remove standalone "3d ago"
+          .replace(/[•·].*$/, '') // Remove anything after bullet point
           .trim();
         
         // Validate it looks like a name
@@ -647,6 +650,10 @@
           .replace(/\s+/g, ' ')
           .replace(/View .+'s profile/i, '')
           .replace(/\(.*\)$/, '')
+          .replace(/\d{1,2}:\d{2}\s*[AP]M.*$/, '') // Remove timestamps
+          .replace(/Mobile\s*[•·]\s*\d+[dhms]\s*ago.*$/i, '') // Remove "Mobile • 3d ago"
+          .replace(/\d+[dhms]\s*ago.*$/i, '') // Remove standalone "3d ago"
+          .replace(/[•·].*$/, '') // Remove anything after bullet point
           .trim();
         
         if (text && text.length >= 2 && text.length <= 60 && !text.includes('@')) {
@@ -705,8 +712,17 @@
       return senderFirstName !== clientFirstName && name.toLowerCase() !== clientName.toLowerCase();
     });
     
-    // Return first other person, or first sender if can't identify client
-    return otherPeople.length > 0 ? otherPeople[0] : Array.from(allSenders)[0];
+    // Return first other person found
+    // If no other people found (only client's messages in clipboard), return empty
+    // so that the visible header name will be used instead
+    if (otherPeople.length > 0) {
+      return otherPeople[0];
+    }
+    
+    // No other person found - this means clipboard only contains client's own messages
+    // Return empty string so the caller uses the header name instead
+    console.log('[NA Extension] Clipboard only contains client messages, will use header name');
+    return '';
   }
   
   // Actually save the conversation
