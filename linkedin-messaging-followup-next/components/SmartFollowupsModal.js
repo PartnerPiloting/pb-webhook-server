@@ -579,16 +579,45 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
                         </h3>
                         <p className="text-sm text-gray-500">
                           {selectedLead.status} • Score: {selectedLead.aiScore || 'N/A'}
+                          {selectedLead.company && ` • ${selectedLead.company}`}
                         </p>
                       </div>
-                      <button
-                        onClick={() => handleAnalyzeLead(selectedLead)}
-                        className="px-3 py-1.5 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
-                      >
-                        🤖 Analyze
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {selectedLead.linkedinProfileUrl && (
+                          <a
+                            href={selectedLead.linkedinProfileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Open LinkedIn Profile"
+                          >
+                            🔗 LinkedIn
+                          </a>
+                        )}
+                        <button
+                          onClick={() => handleAnalyzeLead(selectedLead)}
+                          className="px-3 py-1.5 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                        >
+                          🤖 Analyze
+                        </button>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Notes preview - collapsible */}
+                  {selectedLead.notes && (
+                    <details className="border-b border-gray-200">
+                      <summary className="px-4 py-2 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors text-sm font-medium text-amber-800 flex items-center gap-2">
+                        <span>📝 Notes</span>
+                        <span className="text-xs text-amber-600 font-normal">
+                          ({selectedLead.notes.split('\n').filter(l => l.trim()).length} lines)
+                        </span>
+                      </summary>
+                      <div className="p-4 bg-amber-50/50 max-h-48 overflow-y-auto">
+                        <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans">{selectedLead.notes}</pre>
+                      </div>
+                    </details>
+                  )}
 
                   {/* Analysis view */}
                   {analysisMode && analysis && (
