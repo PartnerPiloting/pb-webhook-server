@@ -1,5 +1,6 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/contextLogger');
+const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
 
 console.log('✅ linkedinRoutesWithAuth.js loaded - logger initialized:', typeof logger);
@@ -979,8 +980,10 @@ router.get('/leads/lookup', async (req, res) => {
     // If no matches by URL or email, or if it's a name search
     if (leads.length === 0 && !isLinkedInUrl && !isEmail) {
       lookupMethod = 'name';
+      // Strip professional credential suffixes before matching (e.g., "Carinne Bird, GAICD" -> "Carinne Bird")
+      const cleanedQuery = stripCredentialSuffixes(trimmedQuery);
       // Split into first/last name parts
-      const nameParts = trimmedQuery.split(/\s+/);
+      const nameParts = cleanedQuery.split(/\s+/);
       
       let filterFormula;
       if (nameParts.length >= 2) {
