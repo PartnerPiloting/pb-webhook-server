@@ -52,6 +52,7 @@ const {
   alertAdmin,
   isMissingCritical,
 } = require("../utils/appHelpers.js");
+const { stripCredentialSuffixes } = require("../utils/nameNormalizer.js");
 
 const __PUBLIC_BASE__ = process.env.API_PUBLIC_BASE_URL
   || process.env.NEXT_PUBLIC_API_BASE_URL
@@ -7696,7 +7697,9 @@ router.get("/api/calendar/lookup-lead", async (req, res) => {
     } else {
       // Name lookup
       lookupMethod = 'name';
-      const nameParts = query.split(/\s+/);
+      // Strip professional credential suffixes before matching (e.g., "Carinne Bird, GAICD" -> "Carinne Bird")
+      const cleanedQuery = stripCredentialSuffixes(query);
+      const nameParts = cleanedQuery.split(/\s+/);
       
       if (nameParts.length >= 2) {
         // First AND last name

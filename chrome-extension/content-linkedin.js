@@ -337,6 +337,29 @@
     }
   }
   
+  // Professional credential suffixes to strip from names (e.g., "Carinne Bird, GAICD" -> "Carinne Bird")
+  const CREDENTIAL_SUFFIXES = [
+    'GAICD', 'FAICD', 'MAICD', 'AAICD',
+    'PhD', 'DPhil', 'EdD', 'DBA', 'MBA', 'MPA', 'MSc', 'MA', 'MS', 'MEng', 'MFA',
+    'BSc', 'BA', 'BEng', 'BCom', 'BBA', 'LLB', 'LLM', 'JD', 'MD', 'DO',
+    'CPA', 'CA', 'CFA', 'CFP', 'FCPA', 'FCA', 'ACA', 'ACCA', 'CIMA', 'CMA',
+    'PMP', 'PRINCE2', 'CSM', 'PMI',
+    'CISSP', 'CISM', 'CISA', 'CCNA', 'CCNP', 'AWS', 'GCP', 'MCSE', 'ITIL',
+    'SHRM', 'PHR', 'SPHR', 'GPHR', 'CIPD',
+    'RN', 'NP', 'PA', 'FACS', 'FACP', 'FRCS',
+    'PE', 'CEng', 'CPEng', 'FIEAust', 'MIEAust',
+    'Esq', 'OAM', 'AM', 'AO', 'AC', 'OM', 'CH', 'CBE', 'OBE', 'MBE', 'KBE', 'DBE',
+    'FRSA', 'FRS', 'FIET', 'FBCS', 'FACS'
+  ];
+  const credentialPattern = new RegExp(`(?:,?\\s+(?:${CREDENTIAL_SUFFIXES.join('|')}))+\\s*$`, 'i');
+  
+  function stripCredentialSuffixes(name) {
+    if (!name || typeof name !== 'string') return name || '';
+    let cleaned = name.replace(credentialPattern, '').trim();
+    cleaned = cleaned.replace(/,\s*$/, '').trim();
+    return cleaned;
+  }
+  
   // Smart name comparison - handles variations like "duncanmurcott" vs "Duncan Murcott"
   function namesMatch(name1, name2) {
     if (!name1 || !name2) return false;
@@ -627,7 +650,7 @@
         if (text && text.length >= 2 && text.length <= 60 && !text.includes('@')) {
           const words = text.split(' ').filter(w => w.length > 0);
           if (words.length >= 1 && words.length <= 4) {
-            return text;
+            return stripCredentialSuffixes(text);
           }
         }
       }
@@ -659,7 +682,7 @@
         if (text && text.length >= 2 && text.length <= 60 && !text.includes('@')) {
           const words = text.split(' ').filter(w => w.length > 0);
           if (words.length >= 1 && words.length <= 4) {
-            return text;
+            return stripCredentialSuffixes(text);
           }
         }
       }
@@ -712,11 +735,11 @@
       return senderFirstName !== clientFirstName && name.toLowerCase() !== clientName.toLowerCase();
     });
     
-    // Return first other person found
+    // Return first other person found (with credentials stripped)
     // If no other people found (only client's messages in clipboard), return empty
     // so that the visible header name will be used instead
     if (otherPeople.length > 0) {
-      return otherPeople[0];
+      return stripCredentialSuffixes(otherPeople[0]);
     }
     
     // No other person found - this means clipboard only contains client's own messages
