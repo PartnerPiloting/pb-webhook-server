@@ -1517,6 +1517,60 @@ export const getSystemSettings = async () => {
   }
 };
 
+/**
+ * Get smart follow-ups - prioritized list of follow-ups with scoring
+ * @returns {Promise<{topPicks: Array, awaiting: Array}>}
+ */
+export const getSmartFollowups = async () => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.get('/leads/smart-followups', {
+      params: { testClient: clientId },
+      timeout: 30000
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Get smart follow-ups error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to load smart follow-ups');
+  }
+};
+
+/**
+ * Generate a follow-up message for a lead using AI
+ * @param {string} leadId - The lead's Airtable record ID
+ * @param {Object} options - Generation options
+ * @param {string} options.refinement - Optional refinement instruction
+ * @param {boolean} options.analyzeOnly - If true, return analysis instead of message
+ * @param {Object} options.context - Lead context for generation
+ * @returns {Promise<{message?: string, analysis?: string}>}
+ */
+export const generateFollowupMessage = async (leadId, options = {}) => {
+  try {
+    const clientId = getCurrentClientId();
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const response = await api.post('/leads/generate-followup-message', {
+      leadId,
+      ...options
+    }, {
+      params: { testClient: clientId },
+      timeout: 60000 // Longer timeout for AI generation
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Generate follow-up message error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to generate message');
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components

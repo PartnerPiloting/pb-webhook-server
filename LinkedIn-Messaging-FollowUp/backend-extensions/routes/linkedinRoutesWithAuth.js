@@ -1,7 +1,12 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/contextLogger');
 const { stripCredentialSuffixes } = require('../../../utils/nameNormalizer');
+const geminiConfig = require('../../../config/geminiClient');
 const logger = createLogger({ runId: 'SYSTEM', clientId: 'SYSTEM', operation: 'api' });
+
+// Gemini AI for message generation
+const vertexAIClient = geminiConfig ? geminiConfig.vertexAIClient : null;
+const geminiModelId = geminiConfig ? geminiConfig.geminiModelId : null;
 
 console.log('✅ linkedinRoutesWithAuth.js loaded - logger initialized:', typeof logger);
 
@@ -1917,6 +1922,259 @@ router.post('/client/verify-calendar', async (req, res) => {
   } catch (error) {
     logger.error('LinkedIn Routes: Error verifying calendar:', error);
     res.status(500).json({ error: 'Failed to verify calendar', details: error.message });
+  }
+});
+
+/**
+ * GET /api/linkedin/leads/smart-followups
+ * Get prioritized follow-ups with scoring for Smart Follow-ups feature
+ * Owner-only feature
+ */
+router.get('/leads/smart-followups', async (req, res) => {
+  logger.info('LinkedIn Routes: GET /leads/smart-followups called');
+  logger.info(`LinkedIn Routes: Authenticated client: ${req.client.clientName} (${req.client.clientId})`);
+  
+  try {
+    const airtableBase = await getAirtableBase(req);
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Get leads with Follow-Up Date set (including overdue dates)
+    const records = await airtableBase('Leads').select({
+      filterByFormula: `AND(
+        {Follow-Up Date} != '',
+        {Follow-Up Date} <= TODAY()
+      )`,
+      sort: [{ field: 'Follow-Up Date', direction: 'asc' }]
+    }).all();
+
+    // Transform and calculate priority scores
+    const leads = records.map(record => {
+      const followUpDate = record.fields['Follow-Up Date'];
+      const aiScore = parseFloat(record.fields['AI Score']) || 0;
+      const status = record.fields['Status'] || '';
+      const notes = record.fields['Notes'] || '';
+      const lastMessageDate = record.fields['Last Message Date'] || '';
+      
+      // Calculate days overdue
+      const followUpDateObj = new Date(followUpDate);
+      const daysOverdue = Math.max(0, Math.floor((today - followUpDateObj) / (1000 * 60 * 60 * 24)));
+      
+      // Calculate days since last contact
+      let daysSinceContact = 999;
+      if (lastMessageDate) {
+        const lastContactDate = new Date(lastMessageDate);
+        daysSinceContact = Math.floor((today - lastContactDate) / (1000 * 60 * 60 * 24));
+      }
+      
+      // Calculate priority score
+      // Higher score = higher priority
+      let priorityScore = 0;
+      
+      // AI Score contribution (0-40 points)
+      priorityScore += Math.min(40, aiScore * 0.4);
+      
+      // Status bonus
+      if (status === 'In Process') priorityScore += 20;
+      else if (status === 'On The Radar') priorityScore += 5;
+      else if (status === 'Engaged') priorityScore += 25;
+      
+      // Recency bonus (contacted recently = warmer)
+      if (daysSinceContact <= 7) priorityScore += 15;
+      else if (daysSinceContact <= 14) priorityScore += 10;
+      else if (daysSinceContact <= 30) priorityScore += 5;
+      
+      // Overdue penalty (capped)
+      priorityScore -= Math.min(20, daysOverdue * 2);
+      
+      // Tag bonuses
+      if (notes.includes('#hot')) priorityScore += 15;
+      if (notes.includes('#no-show') || notes.includes('#cancelled')) priorityScore += 10; // Re-engagement targets
+      if (notes.includes('#cold')) priorityScore -= 15;
+      if (notes.includes('#moving-on')) priorityScore -= 30;
+      
+      return {
+        id: record.id,
+        firstName: record.fields['First Name'] || '',
+        lastName: record.fields['Last Name'] || '',
+        linkedinProfileUrl: record.fields['LinkedIn Profile URL'] || '',
+        followUpDate: followUpDate,
+        aiScore: record.fields['AI Score'],
+        status: status,
+        lastMessageDate: lastMessageDate,
+        notes: notes,
+        linkedinMessages: record.fields['LinkedIn Messages'] || '',
+        email: record.fields['Email'] || '',
+        company: record.fields['Company Name'] || record.fields['Company'] || '',
+        title: record.fields['Job Title'] || record.fields['Headline'] || '',
+        daysOverdue: daysOverdue,
+        daysSinceContact: daysSinceContact,
+        priorityScore: Math.round(priorityScore)
+      };
+    });
+
+    // Sort by priority score (highest first)
+    leads.sort((a, b) => b.priorityScore - a.priorityScore);
+
+    // Separate awaiting response leads
+    // These are leads with a "📤 Sent" note in the last 14 days and no newer LinkedIn message
+    const awaiting = leads.filter(lead => {
+      const sentMatch = lead.notes.match(/📤 Sent.*?\| (\d{1,2}-\w{3}-\d{2,4})/);
+      if (!sentMatch) return false;
+      
+      // Parse the sent date
+      try {
+        const sentDateStr = sentMatch[1];
+        const sentDate = new Date(sentDateStr);
+        const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
+        
+        // Only include if sent within last 14 days
+        if (daysSinceSent > 14) return false;
+        
+        // Check if there's a newer LinkedIn message from them
+        // This is a simplified check - could be enhanced
+        if (lead.lastMessageDate) {
+          const lastMsgDate = new Date(lead.lastMessageDate);
+          if (lastMsgDate > sentDate) return false; // They responded
+        }
+        
+        return true;
+      } catch (e) {
+        return false;
+      }
+    });
+
+    // Remove awaiting leads from top picks
+    const topPicks = leads.filter(lead => !awaiting.includes(lead));
+
+    logger.info(`LinkedIn Routes: Smart follow-ups - ${topPicks.length} top picks, ${awaiting.length} awaiting`);
+    
+    res.json({
+      topPicks: topPicks.slice(0, 50), // Limit to top 50
+      awaiting: awaiting
+    });
+
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error in /leads/smart-followups:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch smart follow-ups',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/linkedin/leads/generate-followup-message
+ * Generate a personalized follow-up message using AI
+ */
+router.post('/leads/generate-followup-message', async (req, res) => {
+  logger.info('LinkedIn Routes: POST /leads/generate-followup-message called');
+  
+  try {
+    const { leadId, refinement, analyzeOnly, context } = req.body;
+    
+    if (!leadId) {
+      return res.status(400).json({ error: 'leadId is required' });
+    }
+    
+    if (!vertexAIClient || !geminiModelId) {
+      return res.status(503).json({ 
+        error: 'AI service unavailable',
+        message: 'Gemini AI is not configured'
+      });
+    }
+
+    // Get the generative model
+    const model = vertexAIClient.getGenerativeModel({ model: geminiModelId });
+    
+    // Build the prompt
+    let prompt;
+    
+    if (analyzeOnly) {
+      // Analysis prompt
+      prompt = `You are a sales coach analyzing a lead for follow-up strategy.
+
+Lead Information:
+- Name: ${context.name}
+- AI Score: ${context.score || 'N/A'} (higher is better fit)
+- Status: ${context.status}
+- Follow-up Date: ${context.followUpDate || 'Not set'}
+- Last Contact: ${context.lastMessageDate || 'Unknown'}
+- Tags: ${context.tags?.join(', ') || 'None'}
+
+Notes:
+${context.notes || 'No notes available'}
+
+Recent LinkedIn Conversation:
+${context.linkedinMessages ? context.linkedinMessages.slice(-2000) : 'No conversation history'}
+
+Provide a brief analysis (3-4 paragraphs) covering:
+1. 📊 Overview - Summarize what you know about this lead
+2. 🎯 My read - Your assessment of their interest level and any patterns you notice
+3. 💡 Recommendation - What action should be taken and why
+
+Be concise and actionable. If you notice patterns (e.g., multiple cancellations, going cold), mention them.`;
+      
+    } else {
+      // Message generation prompt
+      const basePrompt = `You are writing a LinkedIn follow-up message for a professional.
+
+Lead Information:
+- Name: ${context.name}
+- AI Score: ${context.score || 'N/A'}
+- Status: ${context.status}
+- Tags: ${context.tags?.join(', ') || 'None'}
+
+Notes:
+${context.notes ? context.notes.slice(-1500) : 'No notes available'}
+
+Recent LinkedIn Conversation:
+${context.linkedinMessages ? context.linkedinMessages.slice(-1500) : 'No conversation history'}
+
+Write a personalized LinkedIn follow-up message that:
+1. Is warm but professional
+2. References something specific from their notes or conversation if available
+3. Has a clear, low-friction call to action
+4. Is concise (2-4 sentences max)
+5. Feels personal, not templated
+6. Does NOT use cliché phrases like "I hope this finds you well"
+
+${context.tags?.includes('#no-show') ? 'Note: This person was a no-show for a meeting. Be gracious and offer to reschedule without guilt-tripping.' : ''}
+${context.tags?.includes('#cancelled') ? 'Note: This person cancelled a meeting. Acknowledge it lightly and offer to reconnect.' : ''}
+
+Write only the message, no subject line or signature needed. Start with "Hi ${context.name?.split(' ')[0] || 'there'},".`;
+
+      if (refinement) {
+        prompt = `${basePrompt}
+
+Previous message I wrote:
+${refinement.previousMessage || 'N/A'}
+
+User feedback: "${refinement}"
+
+Write an improved version incorporating this feedback.`;
+      } else {
+        prompt = basePrompt;
+      }
+    }
+
+    // Generate content
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    if (analyzeOnly) {
+      res.json({ analysis: text });
+    } else {
+      res.json({ message: text });
+    }
+
+  } catch (error) {
+    logger.error('LinkedIn Routes: Error generating follow-up message:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate message',
+      details: error.message 
+    });
   }
 });
 
