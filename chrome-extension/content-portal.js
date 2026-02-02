@@ -167,20 +167,6 @@
                          document.querySelector('input[placeholder*="URL"]') ||
                          document.querySelector('input[placeholder*="email"]');
       
-      // Look for the textarea for notes (Content field)
-      const textArea = document.querySelector('textarea[placeholder*="conversation"]') ||
-                       document.querySelector('textarea[placeholder*="Paste"]') ||
-                       document.querySelector('textarea');
-      
-      // Look for the LinkedIn section button - check multiple element types
-      // These buttons might be <button>, <div>, <span>, etc. styled as pills
-      const allClickables = document.querySelectorAll('button, [role="button"], div, span');
-      const linkedinButton = Array.from(allClickables).find(el => {
-        const text = el.textContent?.trim();
-        // Must be exactly "LinkedIn" or very short containing LinkedIn (not "Sales Nav" which contains "LinkedIn" substring issues)
-        return text === 'LinkedIn';
-      });
-      
       if (searchInput) {
         clearInterval(checkInterval);
         
@@ -192,150 +178,175 @@
           searchInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
         
-        // Step 2: Wait for React to settle after contact name input, THEN click LinkedIn button
-        setTimeout(() => {
-          // Helper function to find the LinkedIn button (specifically in the Source section, not Add Lead form)
-          const findLinkedInButton = () => {
-            // Look for buttons that are direct children of the Source section
-            // The main source buttons are in the left column and have specific styling
-            const allButtons = document.querySelectorAll('button');
-            
-            // Find buttons with exact text "LinkedIn" that are NOT inside a dropdown/form
-            for (const btn of allButtons) {
-              const text = btn.textContent?.trim();
-              // Match exact text and ensure it's a styled pill/tab button (has the right classes)
-              if (text === 'LinkedIn' && btn.className.includes('rounded')) {
-                // Extra check: make sure this isn't inside an absolutely positioned dropdown
-                const parent = btn.closest('.absolute');
-                if (!parent) {
-                  return btn;
-                }
-              }
-            }
-            
-            // Fallback: find any element with exact text "LinkedIn"
-            const allClickables = document.querySelectorAll('button, [role="button"]');
-            return Array.from(allClickables).find(el => el.textContent?.trim() === 'LinkedIn');
-          };
-          
-          // Helper function to check if LinkedIn is already selected
-          const isLinkedInSelected = () => {
-            const btn = findLinkedInButton();
-            if (!btn) return false;
-            // Check if button has the "selected" styling (bg-blue-600 text-white)
-            return btn.className.includes('bg-blue-600') || btn.className.includes('text-white');
-          };
-          
-          // Helper function to click LinkedIn button with proper React event
-          const clickLinkedInButton = () => {
-            const linkedinBtn = findLinkedInButton();
-            
-            if (linkedinBtn) {
-              console.log('[NA Extension] Found LinkedIn button, clicking...');
-              
-              // Focus first
-              linkedinBtn.focus();
-              
-              // Use a single, clean click with all the right properties for React
-              const clickEvent = new MouseEvent('click', {
-                view: window,
-                bubbles: true,
-                cancelable: true,
-                button: 0,
-                buttons: 1
-              });
-              linkedinBtn.dispatchEvent(clickEvent);
-              
-              return true;
-            }
-            console.log('[NA Extension] LinkedIn button not found');
-            return false;
-          };
-          
-          // Try clicking with retries until it works
-          let attempts = 0;
-          const maxAttempts = 10;
-          
-          const tryClickWithRetry = () => {
-            attempts++;
-            
-            if (isLinkedInSelected()) {
-              console.log('[NA Extension] LinkedIn is already selected, proceeding to fill textarea...');
-              fillTextareaAfterDelay();
-              return;
-            }
-            
-            if (attempts > maxAttempts) {
-              console.log('[NA Extension] Max attempts reached, trying to fill textarea anyway...');
-              fillTextareaAfterDelay();
-              return;
-            }
-            
-            console.log(`[NA Extension] Click attempt ${attempts}/${maxAttempts}...`);
-            clickLinkedInButton();
-            
-            // Wait and check if it worked
-            setTimeout(() => {
-              if (isLinkedInSelected()) {
-                console.log('[NA Extension] LinkedIn button now selected!');
-                fillTextareaAfterDelay();
-              } else {
-                // Try again
-                tryClickWithRetry();
-              }
-            }, 150);
-          };
-          
-          // Function to fill textarea after LinkedIn is selected
-          const fillTextareaAfterDelay = () => {
-            // Give React a moment to update the UI
-            setTimeout(() => {
-              const textarea = document.querySelector('textarea');
-              
-              if (textarea && data.conversationText) {
-                console.log('[NA Extension] Filling textarea with conversation...');
-                
-                // Use the native setter to bypass React's controlled input
-                const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
-                  window.HTMLTextAreaElement.prototype, 'value'
-                ).set;
-                nativeTextAreaValueSetter.call(textarea, data.conversationText);
-                
-                // Dispatch input event to trigger React's onChange
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                
-                // Also try dispatching React-style InputEvent
-                try {
-                  textarea.dispatchEvent(new InputEvent('input', {
-                    bubbles: true,
-                    cancelable: true,
-                    inputType: 'insertText',
-                    data: data.conversationText
-                  }));
-                } catch (e) {
-                  // InputEvent might not be supported in all browsers
-                }
-                
-                console.log('[NA Extension] Textarea filled successfully');
-              } else {
-                console.log('[NA Extension] Could not find textarea or no conversation text');
-              }
-              
-              showDataLoadedNotification(data.contactName);
-            }, 300);
-          };
-          
-          // Start the retry loop
-          tryClickWithRetry();
-          
-        }, 1000); // Wait for contact name input to settle (increased from 800ms)
+        // Step 2: Wait for the lead to be SELECTED (blue card appears)
+        // This is important because selectLead() clears the form, so we must wait for it to complete
+        console.log('[NA Extension] Search input filled, waiting for lead to be selected...');
+        waitForLeadSelection(data);
         
       } else if (attempts >= maxAttempts) {
         clearInterval(checkInterval);
         console.log('[NA Extension] Could not find Quick Update form fields');
       }
     }, 250);
+  }
+  
+  // Wait for lead to be selected (blue card visible) before filling the form
+  function waitForLeadSelection(data) {
+    let attempts = 0;
+    const maxAttempts = 40; // 10 seconds
+    
+    const checkInterval = setInterval(() => {
+      attempts++;
+      
+      // Look for the selected lead card (blue background with lead info)
+      // This appears after selectLead() is called and React has finished updating
+      const selectedLeadCard = document.querySelector('.bg-blue-50');
+      const hasLeadName = selectedLeadCard?.textContent?.includes(data.contactName?.split(' ')[0]);
+      
+      if (selectedLeadCard && hasLeadName) {
+        clearInterval(checkInterval);
+        console.log('[NA Extension] Lead selected, waiting for React to settle...');
+        
+        // Wait a bit longer for React to fully complete its state updates from selectLead()
+        setTimeout(() => {
+          console.log('[NA Extension] Now filling the form...');
+          fillFormAfterLeadSelected(data);
+        }, 500);
+        
+      } else if (attempts >= maxAttempts) {
+        clearInterval(checkInterval);
+        console.log('[NA Extension] Lead card not found, attempting to fill form anyway...');
+        // Try anyway - maybe the lead wasn't found or different layout
+        setTimeout(() => fillFormAfterLeadSelected(data), 300);
+      }
+    }, 250);
+  }
+  
+  // Fill the form after lead has been selected
+  function fillFormAfterLeadSelected(data) {
+    // Now we can safely click LinkedIn and fill the textarea
+    // because selectLead() has already finished clearing the form
+    
+    // Helper function to find the LinkedIn button (specifically in the Source section, not Add Lead form)
+    const findLinkedInButton = () => {
+      const allButtons = document.querySelectorAll('button');
+      
+      // Find buttons with exact text "LinkedIn" that are NOT inside a dropdown/form
+      for (const btn of allButtons) {
+        const text = btn.textContent?.trim();
+        if (text === 'LinkedIn' && btn.className.includes('rounded')) {
+          const parent = btn.closest('.absolute');
+          if (!parent) {
+            return btn;
+          }
+        }
+      }
+      
+      // Fallback: find any element with exact text "LinkedIn"
+      const allClickables = document.querySelectorAll('button, [role="button"]');
+      return Array.from(allClickables).find(el => el.textContent?.trim() === 'LinkedIn');
+    };
+    
+    // Helper function to check if LinkedIn is already selected
+    const isLinkedInSelected = () => {
+      const btn = findLinkedInButton();
+      if (!btn) return false;
+      return btn.className.includes('bg-blue-600') || btn.className.includes('text-white');
+    };
+    
+    // Helper function to click LinkedIn button with proper React event
+    const clickLinkedInButton = () => {
+      const linkedinBtn = findLinkedInButton();
+      
+      if (linkedinBtn) {
+        console.log('[NA Extension] Found LinkedIn button, clicking...');
+        linkedinBtn.focus();
+        
+        const clickEvent = new MouseEvent('click', {
+          view: window,
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          buttons: 1
+        });
+        linkedinBtn.dispatchEvent(clickEvent);
+        
+        return true;
+      }
+      console.log('[NA Extension] LinkedIn button not found');
+      return false;
+    };
+    
+    // Function to fill textarea after LinkedIn is selected
+    const fillTextarea = () => {
+      setTimeout(() => {
+        const textarea = document.querySelector('textarea');
+        
+        if (textarea && data.conversationText) {
+          console.log('[NA Extension] Filling textarea with conversation...');
+          
+          const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, 'value'
+          ).set;
+          nativeTextAreaValueSetter.call(textarea, data.conversationText);
+          
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          textarea.dispatchEvent(new Event('change', { bubbles: true }));
+          
+          try {
+            textarea.dispatchEvent(new InputEvent('input', {
+              bubbles: true,
+              cancelable: true,
+              inputType: 'insertText',
+              data: data.conversationText
+            }));
+          } catch (e) {
+            // InputEvent might not be supported in all browsers
+          }
+          
+          console.log('[NA Extension] Textarea filled successfully');
+        } else {
+          console.log('[NA Extension] Could not find textarea or no conversation text');
+        }
+        
+        showDataLoadedNotification(data.contactName);
+      }, 300);
+    };
+    
+    // Try clicking with retries until it works
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const tryClickWithRetry = () => {
+      attempts++;
+      
+      if (isLinkedInSelected()) {
+        console.log('[NA Extension] LinkedIn is already selected, proceeding to fill textarea...');
+        fillTextarea();
+        return;
+      }
+      
+      if (attempts > maxAttempts) {
+        console.log('[NA Extension] Max attempts reached, trying to fill textarea anyway...');
+        fillTextarea();
+        return;
+      }
+      
+      console.log(`[NA Extension] Click attempt ${attempts}/${maxAttempts}...`);
+      clickLinkedInButton();
+      
+      setTimeout(() => {
+        if (isLinkedInSelected()) {
+          console.log('[NA Extension] LinkedIn button now selected!');
+          fillTextarea();
+        } else {
+          tryClickWithRetry();
+        }
+      }, 150);
+    };
+    
+    // Start the retry loop
+    tryClickWithRetry();
   }
   
   // Show notification that data was loaded
