@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { getSmartFollowups, generateFollowupMessage, updateLead } from '../services/api';
+import { getFollowUps, generateFollowupMessage, updateLead } from '../services/api';
 import { getCurrentClientId } from '../utils/clientUtils';
 
 /**
  * SmartFollowupsModal - AI-powered follow-up prioritization and message generation
+ * 
+ * Uses existing getFollowUps() API and calculates priority scores client-side.
  * 
  * Features:
  * - Prioritized list of follow-ups based on AI Score, Status, Recency
@@ -15,6 +17,99 @@ import { getCurrentClientId } from '../utils/clientUtils';
  * - Mark as sent tracking
  * - Owner-only feature
  */
+
+// Calculate priority score for a lead
+const calculatePriorityScore = (lead) => {
+  const today = new Date();
+  let priorityScore = 0;
+  
+  // AI Score contribution (0-40 points)
+  const aiScore = parseFloat(lead['AI Score'] || lead.aiScore) || 0;
+  priorityScore += Math.min(40, aiScore * 0.4);
+  
+  // Status bonus
+  const status = lead['Status'] || lead.status || '';
+  if (status === 'In Process') priorityScore += 20;
+  else if (status === 'On The Radar') priorityScore += 5;
+  else if (status === 'Engaged') priorityScore += 25;
+  
+  // Recency bonus (contacted recently = warmer)
+  const lastMessageDate = lead['Last Message Date'] || lead.lastMessageDate;
+  if (lastMessageDate) {
+    const lastContact = new Date(lastMessageDate);
+    const daysSinceContact = Math.floor((today - lastContact) / (1000 * 60 * 60 * 24));
+    if (daysSinceContact <= 7) priorityScore += 15;
+    else if (daysSinceContact <= 14) priorityScore += 10;
+    else if (daysSinceContact <= 30) priorityScore += 5;
+  }
+  
+  // Overdue calculation
+  const followUpDate = lead['Follow-Up Date'] || lead.followUpDate;
+  let daysOverdue = 0;
+  if (followUpDate) {
+    const fupDate = new Date(followUpDate);
+    daysOverdue = Math.max(0, Math.floor((today - fupDate) / (1000 * 60 * 60 * 24)));
+    // Overdue penalty (capped)
+    priorityScore -= Math.min(20, daysOverdue * 2);
+  }
+  
+  // Tag bonuses from notes
+  const notes = lead['Notes'] || lead.notes || '';
+  if (notes.includes('#hot')) priorityScore += 15;
+  if (notes.includes('#no-show') || notes.includes('#cancelled')) priorityScore += 10; // Re-engagement targets
+  if (notes.includes('#cold')) priorityScore -= 15;
+  if (notes.includes('#moving-on')) priorityScore -= 30;
+  
+  return {
+    priorityScore: Math.round(priorityScore),
+    daysOverdue
+  };
+};
+
+// Extract tags from notes
+const extractTags = (notes) => {
+  if (!notes) return [];
+  const tagMatch = notes.match(/#[\w-]+/g);
+  return tagMatch || [];
+};
+
+// Check if lead is awaiting response (has sent marker, no reply)
+const isAwaitingResponse = (lead) => {
+  const notes = lead['Notes'] || lead.notes || '';
+  const sentMatch = notes.match(/📤 Sent.*?\| (\d{1,2}-\w{3}-\d{2,4})/);
+  if (!sentMatch) return false;
+  
+  try {
+    const sentDateStr = sentMatch[1];
+    // Parse date like "05-Feb-26" or "5-Feb-2026"
+    const parts = sentDateStr.match(/(\d{1,2})-(\w{3})-(\d{2,4})/);
+    if (!parts) return false;
+    
+    const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+    const day = parseInt(parts[1]);
+    const month = months[parts[2]];
+    let year = parseInt(parts[3]);
+    if (year < 100) year += 2000;
+    
+    const sentDate = new Date(year, month, day);
+    const today = new Date();
+    const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
+    
+    // Only include if sent within last 14 days
+    if (daysSinceSent > 14 || daysSinceSent < 0) return false;
+    
+    // Check if there's a newer LinkedIn message
+    const lastMsgDate = lead['Last Message Date'] || lead.lastMessageDate;
+    if (lastMsgDate) {
+      const lastMsg = new Date(lastMsgDate);
+      if (lastMsg > sentDate) return false; // They responded
+    }
+    
+    return { daysSinceSent };
+  } catch (e) {
+    return false;
+  }
+};
 
 const SmartFollowupsModal = ({ isOpen, onClose }) => {
   // State
@@ -50,16 +145,52 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
-  // Load prioritized follow-ups
+  // Load and prioritize follow-ups using existing API
   const loadFollowups = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getSmartFollowups();
-      setLeads(data.topPicks || []);
-      setAwaitingLeads(data.awaiting || []);
+      // Use existing getFollowUps API
+      const rawLeads = await getFollowUps();
+      
+      // Calculate priority scores and enrich data
+      const enrichedLeads = rawLeads.map(lead => {
+        const { priorityScore, daysOverdue } = calculatePriorityScore(lead);
+        const awaiting = isAwaitingResponse(lead);
+        return {
+          // Normalize field names
+          id: lead['Profile Key'] || lead.id,
+          firstName: lead['First Name'] || lead.firstName || '',
+          lastName: lead['Last Name'] || lead.lastName || '',
+          linkedinProfileUrl: lead['LinkedIn Profile URL'] || lead.linkedinProfileUrl || '',
+          followUpDate: lead['Follow-Up Date'] || lead.followUpDate || '',
+          aiScore: lead['AI Score'] || lead.aiScore,
+          status: lead['Status'] || lead.status || '',
+          lastMessageDate: lead['Last Message Date'] || lead.lastMessageDate || '',
+          notes: lead['Notes'] || lead.notes || '',
+          linkedinMessages: lead['LinkedIn Messages'] || lead.linkedinMessages || '',
+          email: lead['Email'] || lead.email || '',
+          company: lead['Company Name'] || lead.company || '',
+          title: lead['Job Title'] || lead.title || '',
+          priorityScore,
+          daysOverdue,
+          isAwaiting: !!awaiting,
+          daysSinceSent: awaiting ? awaiting.daysSinceSent : null
+        };
+      });
+      
+      // Separate awaiting response leads
+      const awaiting = enrichedLeads.filter(l => l.isAwaiting);
+      const topPicks = enrichedLeads.filter(l => !l.isAwaiting);
+      
+      // Sort by priority score (highest first)
+      topPicks.sort((a, b) => b.priorityScore - a.priorityScore);
+      awaiting.sort((a, b) => b.daysSinceSent - a.daysSinceSent); // Longest waiting first
+      
+      setLeads(topPicks.slice(0, 50)); // Limit to top 50
+      setAwaitingLeads(awaiting);
     } catch (err) {
-      console.error('Failed to load smart follow-ups:', err);
+      console.error('Failed to load follow-ups:', err);
       setError(err.message || 'Failed to load follow-ups');
     } finally {
       setIsLoading(false);
@@ -92,7 +223,14 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
       }
     } catch (err) {
       console.error('Failed to generate message:', err);
-      setError('Failed to generate message');
+      // Fallback: generate a simple template message
+      const firstName = lead.firstName || 'there';
+      const fallbackMessage = `Hi ${firstName},\n\nI wanted to follow up on our previous conversation. Would you have time for a quick chat this week?\n\nLooking forward to hearing from you.`;
+      setGeneratedMessage(fallbackMessage);
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'assistant', content: '(AI unavailable - using template message. You can edit it manually.)' }
+      ]);
     } finally {
       setIsGenerating(false);
     }
@@ -119,7 +257,7 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
       setAnalysis(result.analysis);
     } catch (err) {
       console.error('Failed to analyze lead:', err);
-      setError('Failed to analyze lead');
+      setAnalysis(`Unable to analyze automatically. Here's what I can see:\n\n• AI Score: ${lead.aiScore || 'N/A'}\n• Status: ${lead.status}\n• Days overdue: ${lead.daysOverdue}\n• Tags: ${extractTags(lead.notes).join(', ') || 'None'}`);
     } finally {
       setIsGenerating(false);
     }
@@ -150,7 +288,6 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
 
   // Extract date from chat message and set follow-up
   const handleSetFollowupFromChat = async (message) => {
-    // Simple date extraction - could be enhanced
     const dateMatch = message.match(/(\d+)\s*(day|week|month)s?/i);
     if (dateMatch) {
       const amount = parseInt(dateMatch[1]);
@@ -170,7 +307,6 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
           { role: 'user', content: message },
           { role: 'assistant', content: `Done! Follow-up date set to ${formattedDate}` }
         ]);
-        // Refresh the list
         loadFollowups();
       } catch (err) {
         setChatHistory(prev => [
@@ -244,7 +380,6 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
         setGeneratedMessage('');
       }
       
-      // Refresh list
       loadFollowups();
     } catch (err) {
       console.error('Failed to mark as sent:', err);
@@ -262,14 +397,7 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
     handleGenerateMessage(lead);
   };
 
-  // Extract tags from notes
-  const extractTags = (notes) => {
-    if (!notes) return [];
-    const tagMatch = notes.match(/#[\w-]+/g);
-    return tagMatch || [];
-  };
-
-  // Calculate priority score for display
+  // Calculate priority label for display
   const getPriorityLabel = (lead) => {
     if (lead.priorityScore >= 80) return { text: 'Hot', color: 'text-red-600 bg-red-50' };
     if (lead.priorityScore >= 60) return { text: 'Warm', color: 'text-orange-600 bg-orange-50' };
@@ -401,6 +529,11 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
                             {lead.daysOverdue > 0 && (
                               <span className="text-xs text-red-600">
                                 {lead.daysOverdue}d overdue
+                              </span>
+                            )}
+                            {lead.daysSinceSent && (
+                              <span className="text-xs text-orange-600">
+                                Sent {lead.daysSinceSent}d ago
                               </span>
                             )}
                           </div>
@@ -554,12 +687,13 @@ const SmartFollowupsModal = ({ isOpen, onClose }) => {
                       </button>
                       <button
                         onClick={() => {
-                          const nextIndex = leads.findIndex(l => l.id === selectedLead.id) + 1;
-                          if (nextIndex < leads.length) {
-                            selectLead(leads[nextIndex]);
+                          const currentList = activeTab === 'top-picks' ? leads : awaitingLeads;
+                          const nextIndex = currentList.findIndex(l => l.id === selectedLead.id) + 1;
+                          if (nextIndex < currentList.length) {
+                            selectLead(currentList[nextIndex]);
                           }
                         }}
-                        disabled={leads.findIndex(l => l.id === selectedLead.id) >= leads.length - 1}
+                        disabled={(activeTab === 'top-picks' ? leads : awaitingLeads).findIndex(l => l.id === selectedLead.id) >= (activeTab === 'top-picks' ? leads : awaitingLeads).length - 1}
                         className="px-3 py-1.5 text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Skip →
