@@ -1,0 +1,755 @@
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
+import Layout from '../../components/Layout';
+import { getFollowUps, generateFollowupMessage, updateLead } from '../../services/api';
+import { getCurrentClientId } from '../../utils/clientUtils';
+
+/**
+ * Smart Follow-ups Page - AI-powered follow-up prioritization and message generation
+ * 
+ * Full page view (not modal) for better workspace.
+ * Uses existing getFollowUps() API and calculates priority scores client-side.
+ */
+
+// Calculate priority score for a lead
+const calculatePriorityScore = (lead) => {
+  const today = new Date();
+  let priorityScore = 0;
+  
+  const aiScore = parseFloat(lead['AI Score'] || lead.aiScore) || 0;
+  priorityScore += Math.min(40, aiScore * 0.4);
+  
+  const status = lead['Status'] || lead.status || '';
+  if (status === 'In Process') priorityScore += 20;
+  else if (status === 'On The Radar') priorityScore += 5;
+  else if (status === 'Engaged') priorityScore += 25;
+  
+  const lastMessageDate = lead['Last Message Date'] || lead.lastMessageDate;
+  if (lastMessageDate) {
+    const lastContact = new Date(lastMessageDate);
+    const daysSinceContact = Math.floor((today - lastContact) / (1000 * 60 * 60 * 24));
+    if (daysSinceContact <= 7) priorityScore += 15;
+    else if (daysSinceContact <= 14) priorityScore += 10;
+    else if (daysSinceContact <= 30) priorityScore += 5;
+  }
+  
+  const followUpDate = lead['Follow-Up Date'] || lead.followUpDate;
+  let daysOverdue = 0;
+  if (followUpDate) {
+    const fupDate = new Date(followUpDate);
+    daysOverdue = Math.max(0, Math.floor((today - fupDate) / (1000 * 60 * 60 * 24)));
+    priorityScore -= Math.min(20, daysOverdue * 2);
+  }
+  
+  const notes = lead['Notes'] || lead.notes || '';
+  if (notes.includes('#hot')) priorityScore += 15;
+  if (notes.includes('#no-show') || notes.includes('#cancelled')) priorityScore += 10;
+  if (notes.includes('#cold')) priorityScore -= 15;
+  if (notes.includes('#moving-on')) priorityScore -= 30;
+  
+  return { priorityScore: Math.round(priorityScore), daysOverdue };
+};
+
+const extractTags = (notes) => {
+  if (!notes) return [];
+  const tagMatch = notes.match(/#[\w-]+/g);
+  return tagMatch || [];
+};
+
+const isAwaitingResponse = (lead) => {
+  const notes = lead['Notes'] || lead.notes || '';
+  const sentMatch = notes.match(/📤 Sent.*?\| (\d{1,2}-\w{3}-\d{2,4})/);
+  if (!sentMatch) return false;
+  
+  try {
+    const parts = sentMatch[1].match(/(\d{1,2})-(\w{3})-(\d{2,4})/);
+    if (!parts) return false;
+    
+    const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+    const day = parseInt(parts[1]);
+    const month = months[parts[2]];
+    let year = parseInt(parts[3]);
+    if (year < 100) year += 2000;
+    
+    const sentDate = new Date(year, month, day);
+    const today = new Date();
+    const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysSinceSent > 14 || daysSinceSent < 0) return false;
+    
+    const lastMsgDate = lead['Last Message Date'] || lead.lastMessageDate;
+    if (lastMsgDate) {
+      const lastMsg = new Date(lastMsgDate);
+      if (lastMsg > sentDate) return false;
+    }
+    
+    return { daysSinceSent };
+  } catch (e) {
+    return false;
+  }
+};
+
+export default function SmartFollowupsPage() {
+  const [activeTab, setActiveTab] = useState('top-picks');
+  const [leads, setLeads] = useState([]);
+  const [awaitingLeads, setAwaitingLeads] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [generatedMessage, setGeneratedMessage] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [actionMessage, setActionMessage] = useState(null);
+  
+  const chatInputRef = useRef(null);
+
+  // Check if owner
+  const isOwner = getCurrentClientId() === 'Guy-Wilson';
+
+  useEffect(() => {
+    if (isOwner) {
+      loadFollowups();
+    }
+  }, [isOwner]);
+
+  const loadFollowups = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const rawLeads = await getFollowUps();
+      
+      const enrichedLeads = rawLeads.map(lead => {
+        const { priorityScore, daysOverdue } = calculatePriorityScore(lead);
+        const awaiting = isAwaitingResponse(lead);
+        return {
+          id: lead['Profile Key'] || lead.id,
+          firstName: lead['First Name'] || lead.firstName || '',
+          lastName: lead['Last Name'] || lead.lastName || '',
+          linkedinProfileUrl: lead['LinkedIn Profile URL'] || lead.linkedinProfileUrl || '',
+          followUpDate: lead['Follow-Up Date'] || lead.followUpDate || '',
+          aiScore: lead['AI Score'] || lead.aiScore,
+          status: lead['Status'] || lead.status || '',
+          lastMessageDate: lead['Last Message Date'] || lead.lastMessageDate || '',
+          notes: lead['Notes'] || lead.notes || '',
+          linkedinMessages: lead['LinkedIn Messages'] || lead.linkedinMessages || '',
+          email: lead['Email'] || lead.email || '',
+          company: lead['Company Name'] || lead.company || '',
+          title: lead['Job Title'] || lead.title || '',
+          priorityScore,
+          daysOverdue,
+          isAwaiting: !!awaiting,
+          daysSinceSent: awaiting ? awaiting.daysSinceSent : null
+        };
+      });
+      
+      const awaiting = enrichedLeads.filter(l => l.isAwaiting);
+      const topPicks = enrichedLeads.filter(l => !l.isAwaiting);
+      
+      topPicks.sort((a, b) => b.priorityScore - a.priorityScore);
+      awaiting.sort((a, b) => b.daysSinceSent - a.daysSinceSent);
+      
+      setLeads(topPicks.slice(0, 50));
+      setAwaitingLeads(awaiting);
+    } catch (err) {
+      console.error('Failed to load follow-ups:', err);
+      setError(err.message || 'Failed to load follow-ups');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Select lead WITHOUT auto-generating message
+  const selectLead = (lead) => {
+    setSelectedLead(lead);
+    setGeneratedMessage('');
+    setChatHistory([]);
+    setAnalysis(null);
+    setActionMessage(null);
+  };
+
+  // Generate message on demand
+  const handleGenerateMessage = async (refinement = null) => {
+    if (!selectedLead) return;
+    setIsGenerating(true);
+    try {
+      const result = await generateFollowupMessage(selectedLead.id, {
+        refinement,
+        context: {
+          notes: selectedLead.notes,
+          linkedinMessages: selectedLead.linkedinMessages,
+          score: selectedLead.aiScore,
+          status: selectedLead.status,
+          name: `${selectedLead.firstName} ${selectedLead.lastName}`.trim(),
+          tags: extractTags(selectedLead.notes)
+        }
+      });
+      setGeneratedMessage(result.message);
+      
+      if (refinement) {
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'user', content: refinement },
+          { role: 'assistant', content: 'Updated the message based on your feedback.' }
+        ]);
+      }
+    } catch (err) {
+      console.error('Failed to generate message:', err);
+      const firstName = selectedLead.firstName || 'there';
+      const fallbackMessage = `Hi ${firstName},\n\nI wanted to follow up on our previous conversation. Would you have time for a quick chat this week?\n\nLooking forward to hearing from you.`;
+      setGeneratedMessage(fallbackMessage);
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'assistant', content: '(AI unavailable - using template message. You can edit it manually.)' }
+      ]);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAnalyzeLead = async () => {
+    if (!selectedLead) return;
+    setIsGenerating(true);
+    try {
+      const result = await generateFollowupMessage(selectedLead.id, {
+        analyzeOnly: true,
+        context: {
+          notes: selectedLead.notes,
+          linkedinMessages: selectedLead.linkedinMessages,
+          score: selectedLead.aiScore,
+          status: selectedLead.status,
+          name: `${selectedLead.firstName} ${selectedLead.lastName}`.trim(),
+          followUpDate: selectedLead.followUpDate,
+          lastMessageDate: selectedLead.lastMessageDate,
+          tags: extractTags(selectedLead.notes)
+        }
+      });
+      setAnalysis(result.analysis);
+    } catch (err) {
+      console.error('Failed to analyze lead:', err);
+      setAnalysis(`Unable to analyze automatically. Here's what I can see:\n\n• AI Score: ${selectedLead.aiScore || 'N/A'}\n• Status: ${selectedLead.status}\n• Days overdue: ${selectedLead.daysOverdue}\n• Tags: ${extractTags(selectedLead.notes).join(', ') || 'None'}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Cease follow-up - clear Follow-Up Date
+  const handleCeaseFollowup = async () => {
+    if (!selectedLead) return;
+    
+    try {
+      const existingNotes = selectedLead.notes || '';
+      const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
+      const ceaseNote = `\n\n## MANUAL\n#moving-on - Ceased follow-up\n[${dateStr}]`;
+      
+      await updateLead(selectedLead.id, { 
+        'Follow-Up Date': null,
+        'Notes': existingNotes + ceaseNote
+      });
+      
+      setActionMessage({ type: 'success', text: 'Follow-up ceased. Lead removed from queue.' });
+      
+      // Move to next lead
+      const currentList = activeTab === 'top-picks' ? leads : awaitingLeads;
+      const currentIndex = currentList.findIndex(l => l.id === selectedLead.id);
+      if (currentIndex < currentList.length - 1) {
+        selectLead(currentList[currentIndex + 1]);
+      } else {
+        setSelectedLead(null);
+      }
+      
+      loadFollowups();
+    } catch (err) {
+      console.error('Failed to cease follow-up:', err);
+      setActionMessage({ type: 'error', text: 'Failed to update lead.' });
+    }
+  };
+
+  const handleChatSubmit = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isGenerating) return;
+    
+    const input = chatInput.trim();
+    setChatInput('');
+    
+    if (input.toLowerCase().includes('set follow-up') || input.toLowerCase().includes('set followup')) {
+      handleSetFollowupFromChat(input);
+      return;
+    }
+    
+    if (input.toLowerCase().includes('add note') || input.toLowerCase().includes('add a note')) {
+      handleAddNoteFromChat(input);
+      return;
+    }
+    
+    await handleGenerateMessage(input);
+  };
+
+  const handleSetFollowupFromChat = async (message) => {
+    const dateMatch = message.match(/(\d+)\s*(day|week|month)s?/i);
+    if (dateMatch) {
+      const amount = parseInt(dateMatch[1]);
+      const unit = dateMatch[2].toLowerCase();
+      const date = new Date();
+      
+      if (unit === 'day') date.setDate(date.getDate() + amount);
+      else if (unit === 'week') date.setDate(date.getDate() + (amount * 7));
+      else if (unit === 'month') date.setMonth(date.getMonth() + amount);
+      
+      const formattedDate = date.toISOString().split('T')[0];
+      
+      try {
+        await updateLead(selectedLead.id, { 'Follow-Up Date': formattedDate });
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'user', content: message },
+          { role: 'assistant', content: `Done! Follow-up date set to ${formattedDate}` }
+        ]);
+        loadFollowups();
+      } catch (err) {
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'user', content: message },
+          { role: 'assistant', content: `Failed to update: ${err.message}` }
+        ]);
+      }
+    } else {
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'user', content: message },
+        { role: 'assistant', content: `Try "set follow-up to 2 weeks" or "set follow-up to 1 month"` }
+      ]);
+    }
+  };
+
+  const handleAddNoteFromChat = async (message) => {
+    const noteContent = message.replace(/add\s*(a\s*)?note:?\s*/i, '').trim();
+    if (noteContent) {
+      try {
+        const existingNotes = selectedLead.notes || '';
+        const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
+        const newNote = `\n\n## MANUAL\n${noteContent}\n[${dateStr}]`;
+        
+        await updateLead(selectedLead.id, { 'Notes': existingNotes + newNote });
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'user', content: message },
+          { role: 'assistant', content: `Note added.` }
+        ]);
+        // Refresh the selected lead's notes
+        setSelectedLead(prev => ({ ...prev, notes: existingNotes + newNote }));
+      } catch (err) {
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'user', content: message },
+          { role: 'assistant', content: `Failed: ${err.message}` }
+        ]);
+      }
+    }
+  };
+
+  const handleCopyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedMessage);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const handleMarkSent = async () => {
+    if (!selectedLead) return;
+    
+    try {
+      const existingNotes = selectedLead.notes || '';
+      const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
+      const sentNote = `\n\n📤 Sent follow-up via LinkedIn | ${dateStr}`;
+      
+      await updateLead(selectedLead.id, { 'Notes': existingNotes + sentNote });
+      
+      setActionMessage({ type: 'success', text: 'Marked as sent!' });
+      
+      const currentList = activeTab === 'top-picks' ? leads : awaitingLeads;
+      const currentIndex = currentList.findIndex(l => l.id === selectedLead.id);
+      if (currentIndex < currentList.length - 1) {
+        selectLead(currentList[currentIndex + 1]);
+      } else {
+        setSelectedLead(null);
+        setGeneratedMessage('');
+      }
+      
+      loadFollowups();
+    } catch (err) {
+      console.error('Failed to mark as sent:', err);
+      setActionMessage({ type: 'error', text: 'Failed to update.' });
+    }
+  };
+
+  const getPriorityLabel = (lead) => {
+    if (lead.priorityScore >= 80) return { text: 'Hot', color: 'text-red-600 bg-red-50' };
+    if (lead.priorityScore >= 60) return { text: 'Warm', color: 'text-orange-600 bg-orange-50' };
+    return { text: 'Normal', color: 'text-gray-600 bg-gray-50' };
+  };
+
+  const getTagBadges = (notes) => {
+    const tags = extractTags(notes);
+    const badgeMap = {
+      '#no-show': { text: 'No-show', color: 'bg-red-100 text-red-700' },
+      '#cancelled': { text: 'Cancelled', color: 'bg-yellow-100 text-yellow-700' },
+      '#rescheduled': { text: 'Rescheduled', color: 'bg-blue-100 text-blue-700' },
+      '#hot': { text: 'Hot', color: 'bg-red-100 text-red-700' },
+      '#cold': { text: 'Cold', color: 'bg-gray-100 text-gray-700' },
+      '#moving-on': { text: 'Moving on', color: 'bg-gray-100 text-gray-700' }
+    };
+    
+    return tags
+      .filter(tag => badgeMap[tag.toLowerCase()])
+      .map(tag => badgeMap[tag.toLowerCase()]);
+  };
+
+  // Access control
+  if (!isOwner) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
+            <p className="text-gray-500">This feature is only available to the account owner.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 220px)' }}>
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-semibold text-gray-900">🎯 Smart Follow-ups</h1>
+            
+            {/* Tabs */}
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setActiveTab('top-picks')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'top-picks'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Top Picks {leads.length > 0 && `(${leads.length})`}
+              </button>
+              <button
+                onClick={() => setActiveTab('awaiting')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === 'awaiting'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Awaiting Response {awaitingLeads.length > 0 && `(${awaitingLeads.length})`}
+              </button>
+            </div>
+          </div>
+          
+          <button
+            onClick={loadFollowups}
+            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            🔄 Refresh
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex h-full" style={{ height: 'calc(100% - 65px)' }}>
+          {/* Left panel - Lead list */}
+          <div className="w-1/4 border-r border-gray-200 overflow-y-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : error ? (
+              <div className="p-4 text-red-600">{error}</div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {(activeTab === 'top-picks' ? leads : awaitingLeads).map((lead, index) => (
+                  <div
+                    key={lead.id}
+                    onClick={() => selectLead(lead)}
+                    className={`p-3 cursor-pointer transition-colors ${
+                      selectedLead?.id === lead.id
+                        ? 'bg-blue-50 border-l-4 border-blue-500'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-400">#{index + 1}</span>
+                      <h3 className="font-medium text-gray-900 truncate text-sm">
+                        {lead.firstName} {lead.lastName}
+                      </h3>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${getPriorityLabel(lead).color}`}>
+                        {getPriorityLabel(lead).text}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {lead.aiScore || 'N/A'}
+                      </span>
+                      {lead.daysOverdue > 0 && (
+                        <span className="text-xs text-red-600">
+                          {lead.daysOverdue}d
+                        </span>
+                      )}
+                    </div>
+                    {getTagBadges(lead.notes).length > 0 && (
+                      <div className="mt-1 flex gap-1 flex-wrap">
+                        {getTagBadges(lead.notes).map((badge, i) => (
+                          <span key={i} className={`text-xs px-1 py-0.5 rounded ${badge.color}`}>
+                            {badge.text}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                
+                {(activeTab === 'top-picks' ? leads : awaitingLeads).length === 0 && (
+                  <div className="p-8 text-center text-gray-500 text-sm">
+                    {activeTab === 'top-picks' 
+                      ? 'No follow-ups due. Nice work!' 
+                      : 'No messages awaiting response.'}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right panel - Lead details & actions */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {selectedLead ? (
+              <>
+                {/* Lead header with actions */}
+                <div className="p-4 border-b border-gray-200 bg-white">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        {selectedLead.firstName} {selectedLead.lastName}
+                      </h2>
+                      <p className="text-sm text-gray-500">
+                        {selectedLead.status} • Score: {selectedLead.aiScore || 'N/A'}
+                        {selectedLead.company && ` • ${selectedLead.company}`}
+                        {selectedLead.daysOverdue > 0 && (
+                          <span className="text-red-600 ml-2">({selectedLead.daysOverdue}d overdue)</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedLead.linkedinProfileUrl && (
+                        <a
+                          href={selectedLead.linkedinProfileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                        >
+                          🔗 LinkedIn
+                        </a>
+                      )}
+                      <button
+                        onClick={handleAnalyzeLead}
+                        disabled={isGenerating}
+                        className="px-3 py-1.5 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        🤖 Analyze
+                      </button>
+                      <button
+                        onClick={handleCeaseFollowup}
+                        className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                        title="Remove from follow-up queue"
+                      >
+                        ⏹️ Cease Follow-up
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Action message */}
+                  {actionMessage && (
+                    <div className={`mt-2 text-sm px-3 py-1.5 rounded-lg ${
+                      actionMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                    }`}>
+                      {actionMessage.text}
+                    </div>
+                  )}
+                </div>
+
+                {/* Main content area - scrollable */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {/* Notes section - always visible */}
+                  <div className="bg-amber-50 rounded-lg border border-amber-200">
+                    <div className="px-4 py-2 border-b border-amber-200 flex items-center justify-between">
+                      <h3 className="font-medium text-amber-900">📝 Notes</h3>
+                      <span className="text-xs text-amber-600">
+                        {selectedLead.notes ? `${selectedLead.notes.split('\n').filter(l => l.trim()).length} lines` : 'No notes'}
+                      </span>
+                    </div>
+                    <div className="p-4 max-h-64 overflow-y-auto">
+                      {selectedLead.notes ? (
+                        <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{selectedLead.notes}</pre>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">No notes yet</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* AI Analysis - if generated */}
+                  {analysis && (
+                    <div className="bg-purple-50 rounded-lg border border-purple-200">
+                      <div className="px-4 py-2 border-b border-purple-200">
+                        <h3 className="font-medium text-purple-900">🤖 AI Analysis</h3>
+                      </div>
+                      <div className="p-4">
+                        <div className="text-sm text-purple-800 whitespace-pre-wrap">{analysis}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Message generation section */}
+                  <div className="bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                      <h3 className="font-medium text-gray-900">💬 Suggested Message</h3>
+                      {!generatedMessage && (
+                        <button
+                          onClick={() => handleGenerateMessage()}
+                          disabled={isGenerating}
+                          className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {isGenerating ? 'Generating...' : '✨ Generate Message'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      {isGenerating && !generatedMessage ? (
+                        <div className="flex items-center justify-center h-24">
+                          <div className="flex items-center gap-2 text-gray-500">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                            <span>Generating...</span>
+                          </div>
+                        </div>
+                      ) : generatedMessage ? (
+                        <>
+                          <div className="bg-white rounded-lg p-4 border border-gray-200 whitespace-pre-wrap text-gray-800">
+                            {generatedMessage}
+                          </div>
+                          
+                          {/* Chat history */}
+                          {chatHistory.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              {chatHistory.map((msg, i) => (
+                                <div
+                                  key={i}
+                                  className={`text-sm p-2 rounded-lg ${
+                                    msg.role === 'user'
+                                      ? 'bg-blue-100 text-blue-800 ml-8'
+                                      : 'bg-gray-100 text-gray-800 mr-8'
+                                  }`}
+                                >
+                                  {msg.content}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {/* Message actions */}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              onClick={handleCopyMessage}
+                              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                                copySuccess
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                            >
+                              {copySuccess ? '✓ Copied!' : '📋 Copy'}
+                            </button>
+                            <button
+                              onClick={handleMarkSent}
+                              className="px-3 py-1.5 text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded-lg transition-colors"
+                            >
+                              ✓ Mark Sent
+                            </button>
+                            <button
+                              onClick={() => handleGenerateMessage()}
+                              disabled={isGenerating}
+                              className="px-3 py-1.5 text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              🔄 Regenerate
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic text-center py-4">
+                          Review the notes above, then click "Generate Message" when ready
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chat input - fixed at bottom */}
+                <div className="p-4 border-t border-gray-200 bg-white">
+                  <form onSubmit={handleChatSubmit} className="flex gap-2">
+                    <input
+                      ref={chatInputRef}
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Refine message, 'set follow-up to 2 weeks', 'add note: xyz'..."
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      disabled={isGenerating}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isGenerating || !chatInput.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    >
+                      Send
+                    </button>
+                  </form>
+                  
+                  {/* Skip button */}
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      onClick={() => {
+                        const currentList = activeTab === 'top-picks' ? leads : awaitingLeads;
+                        const nextIndex = currentList.findIndex(l => l.id === selectedLead.id) + 1;
+                        if (nextIndex < currentList.length) {
+                          selectLead(currentList[nextIndex]);
+                        }
+                      }}
+                      disabled={(activeTab === 'top-picks' ? leads : awaitingLeads).findIndex(l => l.id === selectedLead.id) >= (activeTab === 'top-picks' ? leads : awaitingLeads).length - 1}
+                      className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      Skip to next →
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <div className="text-5xl mb-4">👈</div>
+                  <p className="text-lg">Select a lead to get started</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </Layout>
+  );
+}

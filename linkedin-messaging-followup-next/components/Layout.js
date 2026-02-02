@@ -10,9 +10,6 @@ import ClientCodeEntry from './ClientCodeEntry';
 // Lazy-load the help panel to keep initial bundle lean
 const ContextHelpPanel = dynamic(() => import('./ContextHelpPanel'), { ssr: false });
 
-// Lazy-load the Smart Follow-ups modal (Owner-only feature)
-const SmartFollowupsModal = dynamic(() => import('./SmartFollowupsModal'), { ssr: false });
-
 // Client initialization hook (encapsulated)
 const useClientInitialization = () => {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -95,7 +92,6 @@ const Layout = ({ children }) => {
   const [clientProfile, setClientProfile] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpAreaOverride, setHelpAreaOverride] = useState(null);
-  const [smartFollowupsOpen, setSmartFollowupsOpen] = useState(false);
   const { isInitialized, error } = useClientInitialization();
   
   // Get client param for Calendar Booking link
@@ -247,14 +243,14 @@ const Layout = ({ children }) => {
               
               {/* Smart Follow-ups - Owner only */}
               {getCurrentClientId() === 'Guy-Wilson' && (
-                <button
-                  onClick={() => setSmartFollowupsOpen(true)}
+                <Link
+                  href={buildAuthUrl('/smart-followups')}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
                   title="Smart Follow-ups - AI-powered prioritization"
                 >
                   <SparklesIcon className="h-5 w-5" />
                   <span className="hidden sm:inline">Smart Follow-ups</span>
-                </button>
+                </Link>
               )}
               
               {/* Owner Dashboard Link - only for Guy-Wilson */}
@@ -289,14 +285,6 @@ const Layout = ({ children }) => {
       {/* Context Help Panel */}
       {helpOpen && (
         <ContextHelpPanel area={helpAreaOverride || helpArea} isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
-      )}
-      
-      {/* Smart Follow-ups Modal - Owner only */}
-      {getCurrentClientId() === 'Guy-Wilson' && (
-        <SmartFollowupsModal 
-          isOpen={smartFollowupsOpen} 
-          onClose={() => setSmartFollowupsOpen(false)} 
-        />
       )}
     </div>
   );
