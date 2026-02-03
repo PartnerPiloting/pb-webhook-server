@@ -4,8 +4,8 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true
   },
-  // Only consider TS/TSX files for app/pages to avoid duplicate .js/.tsx route warnings
-  pageExtensions: ['ts', 'tsx']
+  // Allow both JS and TS page files
+  pageExtensions: ['js', 'jsx', 'ts', 'tsx']
 };
 
 module.exports = nextConfig; 
