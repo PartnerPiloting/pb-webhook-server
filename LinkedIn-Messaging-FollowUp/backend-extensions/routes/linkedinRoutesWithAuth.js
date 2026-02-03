@@ -1141,15 +1141,17 @@ router.post('/leads/generate-followup-message', async (req, res) => {
       return res.status(400).json({ error: 'context is required' });
     }
     
-    if (!vertexAIClient || !geminiModelId) {
+    // Use the pre-initialized model from geminiConfig (same pattern as calendar chat)
+    if (!geminiConfig || !geminiConfig.geminiModel) {
+      logger.error('LinkedIn Routes: Gemini model not available for message generation');
       return res.status(503).json({ 
         error: 'AI service unavailable',
         message: 'Gemini AI is not configured'
       });
     }
 
-    // Get the generative model
-    const model = vertexAIClient.getGenerativeModel({ model: geminiModelId });
+    // Use the pre-initialized model (matches working calendar-chat pattern)
+    const model = geminiConfig.geminiModel;
     
     // Build the prompt
     let prompt;
