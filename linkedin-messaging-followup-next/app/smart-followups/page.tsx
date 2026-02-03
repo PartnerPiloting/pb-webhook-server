@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
 import { getFollowUps, generateFollowupMessage, updateLead } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
@@ -90,7 +90,7 @@ const isAwaitingResponse = (lead) => {
   }
 };
 
-export default function SmartFollowupsPage() {
+function SmartFollowupsContent() {
   const [activeTab, setActiveTab] = useState('top-picks');
   const [leads, setLeads] = useState([]);
   const [awaitingLeads, setAwaitingLeads] = useState([]);
@@ -755,5 +755,18 @@ export default function SmartFollowupsPage() {
         </div>
       </div>
     </Layout>
+  );
+}
+
+// Wrap in Suspense because Layout uses useSearchParams
+export default function SmartFollowupsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-500">Loading Smart Follow-ups...</div>
+      </div>
+    }>
+      <SmartFollowupsContent />
+    </Suspense>
   );
 }
