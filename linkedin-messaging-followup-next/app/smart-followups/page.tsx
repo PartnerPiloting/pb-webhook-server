@@ -34,17 +34,30 @@ const calculatePriorityScore = (lead) => {
     else if (daysSinceContact <= 30) priorityScore += 5;
   }
   
+  const notes = lead['Notes'] || lead.notes || '';
+  const hasPromisedTag = notes.toLowerCase().includes('#promised');
+  
   const followUpDate = lead['Follow-Up Date'] || lead.followUpDate;
   let daysOverdue = 0;
   if (followUpDate) {
     const fupDate = new Date(followUpDate);
     daysOverdue = Math.max(0, Math.floor((today.getTime() - fupDate.getTime()) / (1000 * 60 * 60 * 24)));
-    priorityScore -= Math.min(20, daysOverdue * 2);
+    
+    // If #promised tag exists, overdue INCREASES priority (you made a commitment!)
+    // Otherwise, overdue decreases priority (going stale)
+    if (hasPromisedTag && daysOverdue > 0) {
+      priorityScore += Math.min(25, daysOverdue * 3); // +3 per day overdue, up to +25
+    } else {
+      priorityScore -= Math.min(20, daysOverdue * 2);
+    }
   }
   
-  const notes = lead['Notes'] || lead.notes || '';
+  // Tag-based scoring
+  if (notes.toLowerCase().includes('#warm-response')) priorityScore += 20;
+  if (hasPromisedTag) priorityScore += 25;
   if (notes.includes('#hot')) priorityScore += 15;
   if (notes.includes('#no-show') || notes.includes('#cancelled')) priorityScore += 10;
+  if (notes.toLowerCase().includes('#rescheduled')) priorityScore += 5;
   if (notes.includes('#cold')) priorityScore -= 15;
   if (notes.includes('#moving-on')) priorityScore -= 30;
   
@@ -114,6 +127,17 @@ function SmartFollowupsContent() {
     if (isOwner) {
       loadFollowups();
     }
+  }, [isOwner]);
+
+  // Auto-refresh when tab becomes visible (returning from LinkedIn or Quick Update)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isOwner) {
+        loadFollowups();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isOwner]);
 
   const loadFollowups = async () => {
@@ -365,6 +389,36 @@ function SmartFollowupsContent() {
     }
   };
 
+  // Quick reschedule - push follow-up date forward and move to next lead
+  const handleQuickReschedule = async (days: number) => {
+    if (!selectedLead) return;
+    
+    const newDate = new Date();
+    newDate.setDate(newDate.getDate() + days);
+    const formattedDate = newDate.toISOString().split('T')[0];
+    
+    try {
+      await updateLead(selectedLead.id, { 'Follow-Up Date': formattedDate });
+      
+      const weeksOrDays = days >= 7 ? `${Math.round(days / 7)} week${days >= 14 ? 's' : ''}` : `${days} days`;
+      setActionMessage({ type: 'success', text: `Rescheduled to ${formattedDate} (+${weeksOrDays})` });
+      
+      // Move to next lead
+      const currentList = activeTab === 'top-picks' ? leads : awaitingLeads;
+      const currentIndex = currentList.findIndex(l => l.id === selectedLead.id);
+      if (currentIndex < currentList.length - 1) {
+        selectLead(currentList[currentIndex + 1]);
+      } else {
+        setSelectedLead(null);
+      }
+      
+      loadFollowups();
+    } catch (err) {
+      console.error('Failed to reschedule:', err);
+      setActionMessage({ type: 'error', text: 'Failed to update follow-up date.' });
+    }
+  };
+
   const handleMarkSent = async () => {
     if (!selectedLead) return;
     
@@ -401,7 +455,9 @@ function SmartFollowupsContent() {
 
   const getTagBadges = (notes) => {
     const tags = extractTags(notes);
-    const badgeMap = {
+    const badgeMap: Record<string, { text: string; color: string }> = {
+      '#warm-response': { text: 'Warm', color: 'bg-green-100 text-green-700' },
+      '#promised': { text: 'Promised', color: 'bg-purple-100 text-purple-700' },
       '#no-show': { text: 'No-show', color: 'bg-red-100 text-red-700' },
       '#cancelled': { text: 'Cancelled', color: 'bg-yellow-100 text-yellow-700' },
       '#rescheduled': { text: 'Rescheduled', color: 'bg-blue-100 text-blue-700' },
@@ -589,6 +645,46 @@ function SmartFollowupsContent() {
                       {actionMessage.text}
                     </div>
                   )}
+                  
+                  {/* Quick reschedule buttons */}
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-gray-500 font-medium">Quick reschedule:</span>
+                    <button
+                      onClick={() => handleQuickReschedule(7)}
+                      className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                    >
+                      +1 week
+                    </button>
+                    <button
+                      onClick={() => handleQuickReschedule(14)}
+                      className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                    >
+                      +2 weeks
+                    </button>
+                    <button
+                      onClick={() => handleQuickReschedule(30)}
+                      className="px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                    >
+                      +1 month
+                    </button>
+                    <input
+                      type="date"
+                      className="px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const selectedDate = new Date(e.target.value);
+                          const today = new Date();
+                          const diffDays = Math.ceil((selectedDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                          if (diffDays > 0) {
+                            handleQuickReschedule(diffDays);
+                          }
+                          e.target.value = ''; // Reset the picker
+                        }
+                      }}
+                      min={new Date().toISOString().split('T')[0]}
+                      title="Pick a specific date"
+                    />
+                  </div>
                 </div>
 
                 {/* Main content area - scrollable */}
