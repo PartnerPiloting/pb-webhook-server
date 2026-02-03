@@ -77,7 +77,7 @@ const calculatePriorityScore = (lead: RawLead): { priorityScore: number; daysOve
   const today = new Date();
   let priorityScore = 0;
   
-  const aiScore = parseFloat(lead['AI Score'] || lead.aiScore) || 0;
+  const aiScore = parseFloat(String(lead['AI Score'] || lead.aiScore || '0')) || 0;
   priorityScore += Math.min(40, aiScore * 0.4);
   
   const status = lead['Status'] || lead.status || '';
