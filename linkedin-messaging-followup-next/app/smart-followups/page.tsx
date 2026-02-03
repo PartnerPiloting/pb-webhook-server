@@ -186,7 +186,7 @@ export default function SmartFollowupsPage() {
         const { priorityScore, daysOverdue } = calculatePriorityScore(lead);
         const awaiting = isAwaitingResponse(lead);
         return {
-          id: lead['Profile Key'] || lead.id,
+          id: lead['Profile Key'] || lead.id || '',
           firstName: lead['First Name'] || lead.firstName || '',
           lastName: lead['Last Name'] || lead.lastName || '',
           linkedinProfileUrl: lead['LinkedIn Profile URL'] || lead.linkedinProfileUrl || '',
@@ -210,13 +210,13 @@ export default function SmartFollowupsPage() {
       const topPicks = enrichedLeads.filter(l => !l.isAwaiting);
       
       topPicks.sort((a, b) => b.priorityScore - a.priorityScore);
-      awaiting.sort((a, b) => b.daysSinceSent - a.daysSinceSent);
+      awaiting.sort((a, b) => (b.daysSinceSent ?? 0) - (a.daysSinceSent ?? 0));
       
       setLeads(topPicks.slice(0, 50));
       setAwaitingLeads(awaiting);
     } catch (err) {
       console.error('Failed to load follow-ups:', err);
-      setError(err.message || 'Failed to load follow-ups');
+      setError(err instanceof Error ? err.message : 'Failed to load follow-ups');
     } finally {
       setIsLoading(false);
     }
@@ -349,6 +349,8 @@ export default function SmartFollowupsPage() {
   };
 
   const handleSetFollowupFromChat = async (message: string) => {
+    if (!selectedLead) return;
+    
     const dateMatch = message.match(/(\d+)\s*(day|week|month)s?/i);
     if (dateMatch) {
       const amount = parseInt(dateMatch[1]);
@@ -373,7 +375,7 @@ export default function SmartFollowupsPage() {
         setChatHistory(prev => [
           ...prev,
           { role: 'user', content: message },
-          { role: 'assistant', content: `Failed to update: ${err.message}` }
+          { role: 'assistant', content: `Failed to update: ${err instanceof Error ? err.message : 'Unknown error'}` }
         ]);
       }
     } else {
@@ -386,6 +388,8 @@ export default function SmartFollowupsPage() {
   };
 
   const handleAddNoteFromChat = async (message: string) => {
+    if (!selectedLead) return;
+    
     const noteContent = message.replace(/add\s*(a\s*)?note:?\s*/i, '').trim();
     if (noteContent) {
       try {
@@ -400,12 +404,12 @@ export default function SmartFollowupsPage() {
           { role: 'assistant', content: `Note added.` }
         ]);
         // Refresh the selected lead's notes
-        setSelectedLead(prev => ({ ...prev, notes: existingNotes + newNote }));
+        setSelectedLead(prev => prev ? { ...prev, notes: existingNotes + newNote } : null);
       } catch (err) {
         setChatHistory(prev => [
           ...prev,
           { role: 'user', content: message },
-          { role: 'assistant', content: `Failed: ${err.message}` }
+          { role: 'assistant', content: `Failed: ${err instanceof Error ? err.message : 'Unknown error'}` }
         ]);
       }
     }
@@ -457,7 +461,7 @@ export default function SmartFollowupsPage() {
 
   const getTagBadges = (notes: string): { text: string; color: string }[] => {
     const tags = extractTags(notes);
-    const badgeMap = {
+    const badgeMap: Record<string, { text: string; color: string }> = {
       '#no-show': { text: 'No-show', color: 'bg-red-100 text-red-700' },
       '#cancelled': { text: 'Cancelled', color: 'bg-yellow-100 text-yellow-700' },
       '#rescheduled': { text: 'Rescheduled', color: 'bg-blue-100 text-blue-700' },
