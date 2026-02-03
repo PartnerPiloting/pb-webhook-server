@@ -16,14 +16,20 @@ import { getCurrentClientId } from '../../utils/clientUtils';
 const parseLastMessageInfo = (notes: string, leadFirstName: string) => {
   if (!notes) return { lastMessageDate: null, userSentLast: false, daysSinceLastMessage: null };
   
+  // Only parse from the LinkedIn Messages section to avoid matching other dates
+  const linkedinSection = notes.match(/=== LINKEDIN MESSAGES ===[\s\S]*?(?====|$)/i);
+  const textToParse = linkedinSection ? linkedinSection[0] : notes;
+  
   // Match message format: DD-MM-YY H:MM AM/PM - Sender Name - Message
   // or: DD-MM-YY HH:MM AM/PM - Sender Name - Message  
   const messagePattern = /(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*([^-]+)\s*-/gi;
-  const matches = [...notes.matchAll(messagePattern)];
+  const matches = [...textToParse.matchAll(messagePattern)];
   
   if (matches.length === 0) return { lastMessageDate: null, userSentLast: false, daysSinceLastMessage: null };
   
-  // Find the most recent message by parsing all dates
+  const today = new Date();
+  
+  // Find the most recent PAST message by parsing all dates
   let latestDate: Date | null = null;
   let latestSender = '';
   
@@ -38,6 +44,10 @@ const parseLastMessageInfo = (notes: string, leadFirstName: string) => {
       if (year < 100) year += 2000;
       
       const msgDate = new Date(year, month, day);
+      
+      // Skip future dates (messages can't be from the future)
+      if (msgDate > today) continue;
+      
       if (!latestDate || msgDate > latestDate) {
         latestDate = msgDate;
         latestSender = sender.trim();
@@ -52,7 +62,6 @@ const parseLastMessageInfo = (notes: string, leadFirstName: string) => {
                        latestSender.toLowerCase().includes('wilson') ||
                        !latestSender.toLowerCase().includes(leadFirstName.toLowerCase());
   
-  const today = new Date();
   const daysSinceLastMessage = Math.floor((today.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24));
   
   return { lastMessageDate: latestDate, userSentLast, daysSinceLastMessage };
