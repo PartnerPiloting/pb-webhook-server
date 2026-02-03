@@ -1141,8 +1141,9 @@ router.post('/leads/generate-followup-message', async (req, res) => {
       return res.status(400).json({ error: 'context is required' });
     }
     
-    // Use the pre-initialized model from geminiConfig (same pattern as calendar chat)
-    if (!geminiConfig || !geminiConfig.geminiModel) {
+    // Import geminiConfig INSIDE the handler (exactly like calendar-chat does at line 6931)
+    const geminiConfigLocal = require('../../../config/geminiClient.js');
+    if (!geminiConfigLocal || !geminiConfigLocal.geminiModel) {
       logger.error('LinkedIn Routes: Gemini model not available for message generation');
       return res.status(503).json({ 
         error: 'AI service unavailable',
@@ -1151,7 +1152,7 @@ router.post('/leads/generate-followup-message', async (req, res) => {
     }
 
     // Use the pre-initialized model (matches working calendar-chat pattern)
-    const model = geminiConfig.geminiModel;
+    const model = geminiConfigLocal.geminiModel;
     
     // Build the prompt
     let prompt;
