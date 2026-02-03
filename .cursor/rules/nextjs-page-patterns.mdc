@@ -1,0 +1,50 @@
+---
+description: Next.js page patterns for this project - Suspense, TypeScript, file extensions
+globs: linkedin-messaging-followup-next/app/**/page.*
+alwaysApply: false
+---
+
+# Next.js Page Patterns
+
+## File Extensions
+
+- Use `.tsx` for pages (NOT `.js`)
+- `next.config.js` has `pageExtensions: ['ts', 'tsx']` - `.js` files are ignored
+- There are old duplicate `.js` files in the codebase - do NOT re-enable `.js` in pageExtensions
+
+## Suspense Wrapper Required
+
+The `Layout` component uses `useSearchParams()`, so ALL pages using Layout must wrap content in Suspense:
+
+```tsx
+// ❌ BAD - will fail during build
+export default function MyPage() {
+  return <Layout>...</Layout>;
+}
+
+// ✅ GOOD - matches quick-update and calendar-booking pattern
+function MyPageContent() {
+  // All logic here
+  return <Layout>...</Layout>;
+}
+
+export default function MyPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <MyPageContent />
+    </Suspense>
+  );
+}
+```
+
+## TypeScript
+
+- `typescript: { ignoreBuildErrors: true }` is set in next.config.js
+- This allows pages with incomplete types to compile
+- Vercel build is stricter than local linting - test patterns before pushing
+
+## Working Examples
+
+Copy patterns from these working pages:
+- `app/quick-update/page.tsx` - simple page with Suspense
+- `app/calendar-booking/page.tsx` - complex page with Suspense
