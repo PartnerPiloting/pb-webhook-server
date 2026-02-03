@@ -12,6 +12,52 @@ import { getCurrentClientId } from '../../utils/clientUtils';
  * Uses existing getFollowUps() API and calculates priority scores client-side.
  */
 
+// Parse LinkedIn messages to find last contact date and who sent it
+const parseLastMessageInfo = (notes: string, leadFirstName: string) => {
+  if (!notes) return { lastMessageDate: null, userSentLast: false, daysSinceLastMessage: null };
+  
+  // Match message format: DD-MM-YY H:MM AM/PM - Sender Name - Message
+  // or: DD-MM-YY HH:MM AM/PM - Sender Name - Message  
+  const messagePattern = /(\d{1,2}-\d{1,2}-\d{2,4})\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*([^-]+)\s*-/gi;
+  const matches = [...notes.matchAll(messagePattern)];
+  
+  if (matches.length === 0) return { lastMessageDate: null, userSentLast: false, daysSinceLastMessage: null };
+  
+  // Find the most recent message by parsing all dates
+  let latestDate: Date | null = null;
+  let latestSender = '';
+  
+  for (const match of matches) {
+    const [, dateStr, , sender] = match;
+    // Parse DD-MM-YY format
+    const dateParts = dateStr.split('-');
+    if (dateParts.length === 3) {
+      const day = parseInt(dateParts[0]);
+      const month = parseInt(dateParts[1]) - 1; // JS months are 0-indexed
+      let year = parseInt(dateParts[2]);
+      if (year < 100) year += 2000;
+      
+      const msgDate = new Date(year, month, day);
+      if (!latestDate || msgDate > latestDate) {
+        latestDate = msgDate;
+        latestSender = sender.trim();
+      }
+    }
+  }
+  
+  if (!latestDate) return { lastMessageDate: null, userSentLast: false, daysSinceLastMessage: null };
+  
+  // Check if user (Guy Wilson or similar) sent the last message
+  const userSentLast = latestSender.toLowerCase().includes('guy') || 
+                       latestSender.toLowerCase().includes('wilson') ||
+                       !latestSender.toLowerCase().includes(leadFirstName.toLowerCase());
+  
+  const today = new Date();
+  const daysSinceLastMessage = Math.floor((today.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  return { lastMessageDate: latestDate, userSentLast, daysSinceLastMessage };
+};
+
 // Calculate priority score for a lead
 const calculatePriorityScore = (lead) => {
   const today = new Date();
@@ -25,30 +71,58 @@ const calculatePriorityScore = (lead) => {
   else if (status === 'On The Radar') priorityScore += 5;
   else if (status === 'Engaged') priorityScore += 25;
   
-  const lastMessageDate = lead['Last Message Date'] || lead.lastMessageDate;
-  if (lastMessageDate) {
-    const lastContact = new Date(lastMessageDate);
-    const daysSinceContact = Math.floor((today.getTime() - lastContact.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysSinceContact <= 7) priorityScore += 15;
-    else if (daysSinceContact <= 14) priorityScore += 10;
-    else if (daysSinceContact <= 30) priorityScore += 5;
+  const notes = lead['Notes'] || lead.notes || '';
+  const firstName = lead['First Name'] || lead.firstName || '';
+  
+  // Parse actual conversation to find last contact
+  const { lastMessageDate: parsedLastMsg, userSentLast, daysSinceLastMessage } = parseLastMessageInfo(notes, firstName);
+  
+  // Use parsed date if available, otherwise fall back to field
+  const lastMessageDate = parsedLastMsg || (lead['Last Message Date'] || lead.lastMessageDate ? new Date(lead['Last Message Date'] || lead.lastMessageDate) : null);
+  const actualDaysSinceContact = daysSinceLastMessage ?? (lastMessageDate ? Math.floor((today.getTime() - lastMessageDate.getTime()) / (1000 * 60 * 60 * 24)) : null);
+  
+  // Recency scoring
+  if (actualDaysSinceContact !== null) {
+    if (actualDaysSinceContact <= 7) priorityScore += 15;
+    else if (actualDaysSinceContact <= 14) priorityScore += 10;
+    else if (actualDaysSinceContact <= 30) priorityScore += 5;
   }
   
-  const notes = lead['Notes'] || lead.notes || '';
+  // Who sent last message affects priority
+  // If user sent last, they're waiting for response - lower urgency to act
+  // If lead sent last, user needs to respond - higher urgency
+  if (userSentLast) {
+    priorityScore -= 10; // Waiting for their response
+  } else if (daysSinceLastMessage !== null && !userSentLast) {
+    priorityScore += 15; // They messaged, need to respond!
+  }
+  
   const hasPromisedTag = notes.toLowerCase().includes('#promised');
   
+  // Calculate overdue based on Follow-Up Date, but consider actual last contact
   const followUpDate = lead['Follow-Up Date'] || lead.followUpDate;
   let daysOverdue = 0;
+  let effectiveOverdue = 0; // For display - considers actual conversation
+  
   if (followUpDate) {
     const fupDate = new Date(followUpDate);
     daysOverdue = Math.max(0, Math.floor((today.getTime() - fupDate.getTime()) / (1000 * 60 * 60 * 24)));
     
+    // If there's been recent conversation AFTER the follow-up date, reduce effective overdue
+    if (parsedLastMsg && parsedLastMsg > fupDate) {
+      // Last contact was after follow-up date, so "overdue" is really since last contact
+      effectiveOverdue = daysSinceLastMessage || 0;
+    } else {
+      effectiveOverdue = daysOverdue;
+    }
+    
     // If #promised tag exists, overdue INCREASES priority (you made a commitment!)
     // Otherwise, overdue decreases priority (going stale)
-    if (hasPromisedTag && daysOverdue > 0) {
-      priorityScore += Math.min(25, daysOverdue * 3); // +3 per day overdue, up to +25
-    } else {
-      priorityScore -= Math.min(20, daysOverdue * 2);
+    if (hasPromisedTag && effectiveOverdue > 0) {
+      priorityScore += Math.min(25, effectiveOverdue * 3); // +3 per day overdue, up to +25
+    } else if (effectiveOverdue > 14) {
+      // Only penalize if actually stale (no recent contact)
+      priorityScore -= Math.min(20, effectiveOverdue * 2);
     }
   }
   
@@ -61,7 +135,13 @@ const calculatePriorityScore = (lead) => {
   if (notes.includes('#cold')) priorityScore -= 15;
   if (notes.includes('#moving-on')) priorityScore -= 30;
   
-  return { priorityScore: Math.round(priorityScore), daysOverdue };
+  return { 
+    priorityScore: Math.round(priorityScore), 
+    daysOverdue,
+    effectiveOverdue,
+    daysSinceLastMessage,
+    userSentLast
+  };
 };
 
 const extractTags = (notes) => {
@@ -147,7 +227,7 @@ function SmartFollowupsContent() {
       const rawLeads = await getFollowUps();
       
       const enrichedLeads = rawLeads.map((lead) => {
-        const { priorityScore, daysOverdue } = calculatePriorityScore(lead);
+        const { priorityScore, daysOverdue, effectiveOverdue, daysSinceLastMessage, userSentLast } = calculatePriorityScore(lead);
         const awaiting = isAwaitingResponse(lead);
         return {
           id: lead['Profile Key'] || lead.id || '',
@@ -165,8 +245,11 @@ function SmartFollowupsContent() {
           title: lead['Job Title'] || lead.title || '',
           priorityScore,
           daysOverdue,
-          isAwaiting: !!awaiting,
-          daysSinceSent: awaiting ? awaiting.daysSinceSent : null
+          effectiveOverdue: effectiveOverdue || daysOverdue,
+          daysSinceLastMessage,
+          userSentLast,
+          isAwaiting: !!awaiting || userSentLast, // Also mark as awaiting if user sent last message
+          daysSinceSent: awaiting ? awaiting.daysSinceSent : (userSentLast ? daysSinceLastMessage : null)
         };
       });
       
@@ -254,7 +337,10 @@ function SmartFollowupsContent() {
       setAnalysis(result.analysis);
     } catch (err) {
       console.error('Failed to analyze lead:', err);
-      setAnalysis(`Unable to analyze automatically. Here's what I can see:\n\n• AI Score: ${selectedLead.aiScore || 'N/A'}\n• Status: ${selectedLead.status}\n• Days overdue: ${selectedLead.daysOverdue}\n• Tags: ${extractTags(selectedLead.notes).join(', ') || 'None'}`);
+      const lastContactInfo = selectedLead.daysSinceLastMessage !== null 
+        ? `${selectedLead.daysSinceLastMessage} days ago (${selectedLead.userSentLast ? 'you sent last - awaiting response' : 'they sent last - you should respond'})`
+        : 'Unknown';
+      setAnalysis(`Unable to analyze automatically. Here's what I can see:\n\n• AI Score: ${selectedLead.aiScore || 'N/A'}\n• Status: ${selectedLead.status}\n• Last contact: ${lastContactInfo}\n• Follow-up was due: ${selectedLead.effectiveOverdue || 0} days ago\n• Tags: ${extractTags(selectedLead.notes).join(', ') || 'None'}`);
     } finally {
       setIsGenerating(false);
     }
@@ -419,34 +505,6 @@ function SmartFollowupsContent() {
     }
   };
 
-  const handleMarkSent = async () => {
-    if (!selectedLead) return;
-    
-    try {
-      const existingNotes = selectedLead.notes || '';
-      const dateStr = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit' });
-      const sentNote = `\n\n📤 Sent follow-up via LinkedIn | ${dateStr}`;
-      
-      await updateLead(selectedLead.id, { 'Notes': existingNotes + sentNote });
-      
-      setActionMessage({ type: 'success', text: 'Marked as sent!' });
-      
-      const currentList = activeTab === 'top-picks' ? leads : awaitingLeads;
-      const currentIndex = currentList.findIndex(l => l.id === selectedLead.id);
-      if (currentIndex < currentList.length - 1) {
-        selectLead(currentList[currentIndex + 1]);
-      } else {
-        setSelectedLead(null);
-        setGeneratedMessage('');
-      }
-      
-      loadFollowups();
-    } catch (err) {
-      console.error('Failed to mark as sent:', err);
-      setActionMessage({ type: 'error', text: 'Failed to update.' });
-    }
-  };
-
   const getPriorityLabel = (lead) => {
     if (lead.priorityScore >= 80) return { text: 'Hot', color: 'text-red-600 bg-red-50' };
     if (lead.priorityScore >= 60) return { text: 'Warm', color: 'text-orange-600 bg-orange-50' };
@@ -561,9 +619,15 @@ function SmartFollowupsContent() {
                       <span className="text-xs text-gray-500">
                         {lead.aiScore || 'N/A'}
                       </span>
-                      {lead.daysOverdue > 0 && (
+                      {/* Show last contact info - more useful than raw overdue */}
+                      {lead.daysSinceLastMessage !== null && (
+                        <span className={`text-xs ${lead.userSentLast ? 'text-blue-600' : 'text-orange-600'}`}>
+                          {lead.userSentLast ? '⏳' : '💬'} {lead.daysSinceLastMessage}d
+                        </span>
+                      )}
+                      {lead.effectiveOverdue > 7 && !lead.userSentLast && (
                         <span className="text-xs text-red-600">
-                          {lead.daysOverdue}d
+                          overdue
                         </span>
                       )}
                     </div>
@@ -604,8 +668,15 @@ function SmartFollowupsContent() {
                       <p className="text-sm text-gray-500">
                         {selectedLead.status} • Score: {selectedLead.aiScore || 'N/A'}
                         {selectedLead.company && ` • ${selectedLead.company}`}
-                        {selectedLead.daysOverdue > 0 && (
-                          <span className="text-red-600 ml-2">({selectedLead.daysOverdue}d overdue)</span>
+                        {selectedLead.daysSinceLastMessage !== null && (
+                          <span className={`ml-2 ${selectedLead.userSentLast ? 'text-blue-600' : 'text-orange-600'}`}>
+                            ({selectedLead.userSentLast 
+                              ? `⏳ You sent ${selectedLead.daysSinceLastMessage}d ago` 
+                              : `💬 They replied ${selectedLead.daysSinceLastMessage}d ago`})
+                          </span>
+                        )}
+                        {selectedLead.effectiveOverdue > 7 && !selectedLead.userSentLast && (
+                          <span className="text-red-600 ml-1">- needs response!</span>
                         )}
                       </p>
                     </div>
@@ -775,12 +846,6 @@ function SmartFollowupsContent() {
                               }`}
                             >
                               {copySuccess ? '✓ Copied!' : '📋 Copy'}
-                            </button>
-                            <button
-                              onClick={handleMarkSent}
-                              className="px-3 py-1.5 text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded-lg transition-colors"
-                            >
-                              ✓ Mark Sent
                             </button>
                             <button
                               onClick={() => handleGenerateMessage()}
