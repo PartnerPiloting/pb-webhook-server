@@ -1,0 +1,37 @@
+---
+description: Always check existing codebase patterns before creating new services, endpoints, or implementations
+alwaysApply: true
+---
+
+# Check Existing Patterns First
+
+Before creating anything new (services, endpoints, components, utilities), ALWAYS:
+
+1. **Search for similar functionality** - Ask "Does something like this already exist?"
+2. **Study working examples** - Find a similar feature that works and understand HOW it works
+3. **Copy the pattern** - Match the existing approach exactly before customizing
+
+## Examples of What to Check
+
+| Creating | Check First |
+|----------|-------------|
+| New API endpoint | How do existing endpoints in the same router handle auth, errors, AI? |
+| New page/component | How do similar pages handle Suspense, TypeScript, routing? |
+| AI/Gemini call | How do working AI features (like calendar-chat) initialize the model? |
+| Database/Airtable call | What patterns do existing queries use? |
+| New utility function | Does a utility already exist that does this or something similar? |
+
+## The Question to Ask
+
+Before writing new code, ask:
+
+> "Where else in this codebase is something similar already working, and how does it work?"
+
+Then search with Grep/Glob to find it, read it, and follow that pattern.
+
+## Why This Matters
+
+- Avoids reinventing the wheel
+- Prevents subtle bugs from using different patterns
+- Ensures consistency with what's already tested and deployed
+- Respects existing architectural decisions
