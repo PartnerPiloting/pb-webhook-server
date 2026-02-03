@@ -12,8 +12,68 @@ import { getCurrentClientId } from '../../utils/clientUtils';
  * Uses existing getFollowUps() API and calculates priority scores client-side.
  */
 
+// Type definitions
+interface RawLead {
+  'Profile Key'?: string;
+  id?: string;
+  'First Name'?: string;
+  firstName?: string;
+  'Last Name'?: string;
+  lastName?: string;
+  'LinkedIn Profile URL'?: string;
+  linkedinProfileUrl?: string;
+  'Follow-Up Date'?: string;
+  followUpDate?: string;
+  'AI Score'?: string | number;
+  aiScore?: string | number;
+  'Status'?: string;
+  status?: string;
+  'Last Message Date'?: string;
+  lastMessageDate?: string;
+  'Notes'?: string;
+  notes?: string;
+  'LinkedIn Messages'?: string;
+  linkedinMessages?: string;
+  'Email'?: string;
+  email?: string;
+  'Company Name'?: string;
+  company?: string;
+  'Job Title'?: string;
+  title?: string;
+}
+
+interface EnrichedLead {
+  id: string;
+  firstName: string;
+  lastName: string;
+  linkedinProfileUrl: string;
+  followUpDate: string;
+  aiScore: string | number | undefined;
+  status: string;
+  lastMessageDate: string;
+  notes: string;
+  linkedinMessages: string;
+  email: string;
+  company: string;
+  title: string;
+  priorityScore: number;
+  daysOverdue: number;
+  isAwaiting: boolean;
+  daysSinceSent: number | null;
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface ActionMessage {
+  type: 'success' | 'error';
+  text: string;
+}
+
 // Calculate priority score for a lead
-const calculatePriorityScore = (lead) => {
+const calculatePriorityScore = (lead: RawLead): { priorityScore: number; daysOverdue: number } => {
   const today = new Date();
   let priorityScore = 0;
   
@@ -28,7 +88,7 @@ const calculatePriorityScore = (lead) => {
   const lastMessageDate = lead['Last Message Date'] || lead.lastMessageDate;
   if (lastMessageDate) {
     const lastContact = new Date(lastMessageDate);
-    const daysSinceContact = Math.floor((today - lastContact) / (1000 * 60 * 60 * 24));
+    const daysSinceContact = Math.floor((today.getTime() - lastContact.getTime()) / (1000 * 60 * 60 * 24));
     if (daysSinceContact <= 7) priorityScore += 15;
     else if (daysSinceContact <= 14) priorityScore += 10;
     else if (daysSinceContact <= 30) priorityScore += 5;
@@ -38,7 +98,7 @@ const calculatePriorityScore = (lead) => {
   let daysOverdue = 0;
   if (followUpDate) {
     const fupDate = new Date(followUpDate);
-    daysOverdue = Math.max(0, Math.floor((today - fupDate) / (1000 * 60 * 60 * 24)));
+    daysOverdue = Math.max(0, Math.floor((today.getTime() - fupDate.getTime()) / (1000 * 60 * 60 * 24)));
     priorityScore -= Math.min(20, daysOverdue * 2);
   }
   
@@ -51,13 +111,13 @@ const calculatePriorityScore = (lead) => {
   return { priorityScore: Math.round(priorityScore), daysOverdue };
 };
 
-const extractTags = (notes) => {
+const extractTags = (notes: string | undefined): string[] => {
   if (!notes) return [];
   const tagMatch = notes.match(/#[\w-]+/g);
   return tagMatch || [];
 };
 
-const isAwaitingResponse = (lead) => {
+const isAwaitingResponse = (lead: RawLead): false | { daysSinceSent: number } => {
   const notes = lead['Notes'] || lead.notes || '';
   const sentMatch = notes.match(/📤 Sent.*?\| (\d{1,2}-\w{3}-\d{2,4})/);
   if (!sentMatch) return false;
@@ -66,22 +126,22 @@ const isAwaitingResponse = (lead) => {
     const parts = sentMatch[1].match(/(\d{1,2})-(\w{3})-(\d{2,4})/);
     if (!parts) return false;
     
-    const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+    const months: Record<string, number> = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
     const day = parseInt(parts[1]);
-    const month = months[parts[2]];
+    const month = months[parts[2]] ?? 0;
     let year = parseInt(parts[3]);
     if (year < 100) year += 2000;
     
     const sentDate = new Date(year, month, day);
     const today = new Date();
-    const daysSinceSent = Math.floor((today - sentDate) / (1000 * 60 * 60 * 24));
+    const daysSinceSent = Math.floor((today.getTime() - sentDate.getTime()) / (1000 * 60 * 60 * 24));
     
     if (daysSinceSent > 14 || daysSinceSent < 0) return false;
     
     const lastMsgDate = lead['Last Message Date'] || lead.lastMessageDate;
     if (lastMsgDate) {
       const lastMsg = new Date(lastMsgDate);
-      if (lastMsg > sentDate) return false;
+      if (lastMsg.getTime() > sentDate.getTime()) return false;
     }
     
     return { daysSinceSent };
@@ -91,21 +151,21 @@ const isAwaitingResponse = (lead) => {
 };
 
 export default function SmartFollowupsPage() {
-  const [activeTab, setActiveTab] = useState('top-picks');
-  const [leads, setLeads] = useState([]);
-  const [awaitingLeads, setAwaitingLeads] = useState([]);
+  const [activeTab, setActiveTab] = useState<'top-picks' | 'awaiting'>('top-picks');
+  const [leads, setLeads] = useState<EnrichedLead[]>([]);
+  const [awaitingLeads, setAwaitingLeads] = useState<EnrichedLead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedLead, setSelectedLead] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedLead, setSelectedLead] = useState<EnrichedLead | null>(null);
   const [generatedMessage, setGeneratedMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [chatHistory, setChatHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [analysis, setAnalysis] = useState(null);
-  const [actionMessage, setActionMessage] = useState(null);
+  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
   
-  const chatInputRef = useRef(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   // Check if owner
   const isOwner = getCurrentClientId() === 'Guy-Wilson';
@@ -120,9 +180,9 @@ export default function SmartFollowupsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const rawLeads = await getFollowUps();
+      const rawLeads: RawLead[] = await getFollowUps();
       
-      const enrichedLeads = rawLeads.map(lead => {
+      const enrichedLeads: EnrichedLead[] = rawLeads.map((lead: RawLead) => {
         const { priorityScore, daysOverdue } = calculatePriorityScore(lead);
         const awaiting = isAwaitingResponse(lead);
         return {
@@ -163,7 +223,7 @@ export default function SmartFollowupsPage() {
   };
 
   // Select lead WITHOUT auto-generating message
-  const selectLead = (lead) => {
+  const selectLead = (lead: EnrichedLead) => {
     setSelectedLead(lead);
     setGeneratedMessage('');
     setChatHistory([]);
@@ -172,7 +232,7 @@ export default function SmartFollowupsPage() {
   };
 
   // Generate message on demand
-  const handleGenerateMessage = async (refinement = null) => {
+  const handleGenerateMessage = async (refinement: string | null = null) => {
     if (!selectedLead) return;
     setIsGenerating(true);
     try {
@@ -268,7 +328,7 @@ export default function SmartFollowupsPage() {
     }
   };
 
-  const handleChatSubmit = async (e) => {
+  const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || isGenerating) return;
     
@@ -288,7 +348,7 @@ export default function SmartFollowupsPage() {
     await handleGenerateMessage(input);
   };
 
-  const handleSetFollowupFromChat = async (message) => {
+  const handleSetFollowupFromChat = async (message: string) => {
     const dateMatch = message.match(/(\d+)\s*(day|week|month)s?/i);
     if (dateMatch) {
       const amount = parseInt(dateMatch[1]);
@@ -325,7 +385,7 @@ export default function SmartFollowupsPage() {
     }
   };
 
-  const handleAddNoteFromChat = async (message) => {
+  const handleAddNoteFromChat = async (message: string) => {
     const noteContent = message.replace(/add\s*(a\s*)?note:?\s*/i, '').trim();
     if (noteContent) {
       try {
@@ -389,13 +449,13 @@ export default function SmartFollowupsPage() {
     }
   };
 
-  const getPriorityLabel = (lead) => {
+  const getPriorityLabel = (lead: EnrichedLead): { text: string; color: string } => {
     if (lead.priorityScore >= 80) return { text: 'Hot', color: 'text-red-600 bg-red-50' };
     if (lead.priorityScore >= 60) return { text: 'Warm', color: 'text-orange-600 bg-orange-50' };
     return { text: 'Normal', color: 'text-gray-600 bg-gray-50' };
   };
 
-  const getTagBadges = (notes) => {
+  const getTagBadges = (notes: string): { text: string; color: string }[] => {
     const tags = extractTags(notes);
     const badgeMap = {
       '#no-show': { text: 'No-show', color: 'bg-red-100 text-red-700' },
