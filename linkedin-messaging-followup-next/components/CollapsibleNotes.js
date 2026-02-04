@@ -172,15 +172,61 @@ function getSectionTitle(key) {
 
 /**
  * Extract the most recent date from section content
- * Looks for DD-MM-YY patterns
+ * Looks for various date patterns:
+ * - DD-MM-YY (LinkedIn/Email: "04-02-26 4:27 PM - Guy Wilson...")
+ * - YYYY-MM-DD (ISO format)
+ * - Month DD, YYYY (Meeting notes: "Feb 4, 2026" or "February 4, 2026")
+ * - DD Mon YY (e.g., "04 Feb 26")
  */
 function extractLastDate(lines) {
-  const datePattern = /^(\d{2}-\d{2}-\d{2})/;
+  // Pattern 1: DD-MM-YY at start of line (LinkedIn/Email)
+  const ddmmyyPattern = /^(\d{2}-\d{2}-\d{2})/;
+  // Pattern 2: YYYY-MM-DD anywhere in line
+  const isoPattern = /(\d{4}-\d{2}-\d{2})/;
+  // Pattern 3: Month DD, YYYY or Month D, YYYY (e.g., "February 4, 2026" or "Feb 4, 2026")
+  const monthDayYearPattern = /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4}|\d{2})/i;
+  // Pattern 4: DD Mon YY (e.g., "04 Feb 26")
+  const ddMonYYPattern = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})/i;
   
   for (const line of lines) {
-    const match = line.trim().match(datePattern);
+    const trimmed = line.trim();
+    
+    // Try DD-MM-YY first (most common for LinkedIn/Email)
+    let match = trimmed.match(ddmmyyPattern);
     if (match) {
       return match[1];
+    }
+    
+    // Try ISO format
+    match = trimmed.match(isoPattern);
+    if (match) {
+      // Convert YYYY-MM-DD to DD-MM-YY for display consistency
+      const [, y, m, d] = match[1].match(/(\d{4})-(\d{2})-(\d{2})/);
+      return `${d}-${m}-${y.slice(2)}`;
+    }
+    
+    // Try Month DD, YYYY format (common in meeting notes)
+    match = trimmed.match(monthDayYearPattern);
+    if (match) {
+      const monthMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', 
+                        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+      const month = monthMap[match[1].slice(0, 3).toLowerCase()];
+      const day = match[2].padStart(2, '0');
+      let year = match[3];
+      if (year.length === 4) year = year.slice(2);
+      return `${day}-${month}-${year}`;
+    }
+    
+    // Try DD Mon YY format
+    match = trimmed.match(ddMonYYPattern);
+    if (match) {
+      const monthMap = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', 
+                        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+      const day = match[1].padStart(2, '0');
+      const month = monthMap[match[2].toLowerCase()];
+      let year = match[3];
+      if (year.length === 4) year = year.slice(2);
+      return `${day}-${month}-${year}`;
     }
   }
   return null;
