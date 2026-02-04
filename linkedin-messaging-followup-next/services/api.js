@@ -453,9 +453,20 @@ export const createLead = async (leadData) => {
           value = null;
         }
         
-  backendData[backendField] = value;
+        backendData[backendField] = value;
       }
     });
+    
+    // Wrap initial notes with Manual Notes section header and timestamp
+    if (backendData['Notes'] && backendData['Notes'].trim()) {
+      const today = new Date();
+      const dateStr = today.toLocaleDateString('en-AU', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+      });
+      backendData['Notes'] = `=== MANUAL NOTES ===\n[${dateStr}] ${backendData['Notes'].trim()}`;
+    }
     
     const clientId = getCurrentClientId();
     if (!clientId) {
