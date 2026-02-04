@@ -7702,8 +7702,19 @@ Write an improved version incorporating this feedback.`;
     // Generate content using the pre-initialized model
     logger.info('Calling Gemini for smart follow-ups...');
     const result = await geminiConfig.geminiModel.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    
+    // Handle different response formats from Vertex AI SDK (same as calendar-chat)
+    let text;
+    if (result.response && typeof result.response.text === 'function') {
+      text = result.response.text();
+    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
+      text = result.response.candidates[0].content.parts[0].text;
+    } else if (typeof result.text === 'function') {
+      text = result.text();
+    } else {
+      logger.error('Unexpected Gemini response format:', JSON.stringify(result, null, 2));
+      throw new Error('Unexpected AI response format');
+    }
     
     logger.info(`Gemini response received (${text.length} chars)`);
 
