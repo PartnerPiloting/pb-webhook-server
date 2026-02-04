@@ -1519,6 +1519,7 @@ export const getSystemSettings = async () => {
 
 /**
  * Generate a follow-up message for a lead using AI
+ * Uses Next.js API proxy (same pattern as calendar-chat) for reliable backend communication
  * @param {string} leadId - The lead's Airtable record ID
  * @param {Object} options - Generation options
  * @param {string} options.refinement - Optional refinement instruction
@@ -1529,22 +1530,41 @@ export const getSystemSettings = async () => {
 export const generateFollowupMessage = async (leadId, options = {}) => {
   try {
     const clientId = getCurrentClientId();
+    const token = getCurrentPortalToken();
+    const devKey = getCurrentDevKey();
+    
     if (!clientId) {
       throw new Error('Client ID not available. Please ensure user is authenticated.');
     }
     
-    const response = await api.post('/leads/generate-followup-message', {
-      leadId,
-      ...options
-    }, {
-      params: { testClient: clientId },
-      timeout: 60000 // Longer timeout for AI generation
+    // Use Next.js API proxy (same pattern as calendar-chat which works)
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-client-id': clientId,
+    };
+    if (token) headers['x-portal-token'] = token;
+    if (devKey) headers['x-dev-key'] = devKey;
+    
+    const response = await fetch('/api/smart-followups/generate-message', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        leadId,
+        ...options
+      }),
     });
     
-    return response.data;
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('Generate follow-up message error:', data);
+      throw new Error(data.message || data.error || 'Failed to generate message');
+    }
+    
+    return data;
   } catch (error) {
-    console.error('Generate follow-up message error:', error.response?.data || error.message);
-    throw new Error(error.response?.data?.message || 'Failed to generate message');
+    console.error('Generate follow-up message error:', error.message);
+    throw error;
   }
 };
 
