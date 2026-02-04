@@ -7865,6 +7865,189 @@ Only output the JSON, nothing else.`;
 });
 
 // ============================================================================
+// SMART FOLLOW-UPS - BATCH TAG HISTORICAL LEADS
+// ============================================================================
+/**
+ * POST /api/smart-followups/batch-tag-leads
+ * One-off batch job to tag all leads with follow-up dates using AI
+ * Owner-only endpoint
+ */
+router.post("/api/smart-followups/batch-tag-leads", async (req, res) => {
+  const logger = createLogger({ runId: 'BATCH-TAG', clientId: req.headers['x-client-id'] || 'unknown', operation: 'batch-tag' });
+  
+  try {
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    const { mode = 'add', dryRun = false } = req.body;
+    // mode: 'add' (keep existing tags, add new) or 'replace' (fresh AI analysis)
+    // dryRun: if true, don't save, just return what would be tagged
+    
+    logger.info(`Batch tag request: mode=${mode}, dryRun=${dryRun}`);
+
+    // Get client's Airtable base
+    const { getClientBase } = require('../config/airtableClient.js');
+    const clientBase = await getClientBase(clientId);
+    
+    if (!clientBase) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    // Get Gemini model
+    const geminiConfig = require('../config/geminiClient.js');
+    if (!geminiConfig || !geminiConfig.geminiModel) {
+      return res.status(500).json({ error: 'AI service not available' });
+    }
+
+    // Fetch all leads with follow-up dates
+    const leads = [];
+    await clientBase('Leads').select({
+      filterByFormula: `NOT({Follow-Up Date} = '')`,
+      fields: ['First Name', 'Last Name', 'Notes', 'Follow-Up Date', 'LinkedIn Messages']
+    }).eachPage((records, fetchNextPage) => {
+      leads.push(...records);
+      fetchNextPage();
+    });
+
+    logger.info(`Found ${leads.length} leads with follow-up dates`);
+
+    if (leads.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'No leads with follow-up dates found',
+        processed: 0 
+      });
+    }
+
+    // Process each lead
+    const results = {
+      processed: 0,
+      tagged: 0,
+      skipped: 0,
+      errors: 0,
+      tagCounts: {},
+      details: []
+    };
+
+    const { getTags, setTags } = require('../utils/notesSectionManager.js');
+
+    for (const lead of leads) {
+      const leadName = `${lead.fields['First Name'] || ''} ${lead.fields['Last Name'] || ''}`.trim();
+      const notes = lead.fields['Notes'] || '';
+      const existingTags = getTags(notes);
+      
+      // Skip if already has tags and mode is 'add'
+      if (mode === 'add' && existingTags.length > 0) {
+        results.skipped++;
+        results.details.push({ name: leadName, status: 'skipped', reason: 'already has tags', existingTags });
+        continue;
+      }
+
+      try {
+        // Build AI prompt (same as detect-tags endpoint)
+        const prompt = `You are analyzing a sales lead's conversation to suggest status tags.
+
+Available tags:
+- #promised - Lead said they would get back/respond/follow up
+- #agreed-to-meet - Lead explicitly agreed to a meeting/call but time not confirmed
+- #no-show - Lead missed a scheduled appointment
+- #warm-response - Lead showed positive engagement/interest
+- #cold - Lead seems disengaged or not interested
+- #moving-on - Clear signals to stop following up
+
+Lead: ${leadName}
+
+Notes:
+${notes.slice(-3000)}
+
+Based on the content, which tags apply? Focus on the most recent interactions.
+
+Respond in JSON format only:
+{"suggestedTags": ["#tag1", "#tag2"], "reasoning": "brief explanation"}`;
+
+        const result = await geminiConfig.geminiModel.generateContent(prompt);
+        
+        let text;
+        if (result.response && typeof result.response.text === 'function') {
+          text = result.response.text();
+        } else if (result.response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          text = result.response.candidates[0].content.parts[0].text;
+        } else {
+          throw new Error('Unexpected AI response format');
+        }
+
+        // Parse response
+        let cleanedText = text.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
+        const parsed = JSON.parse(cleanedText);
+        
+        const validTags = ['#promised', '#agreed-to-meet', '#no-show', '#warm-response', '#cold', '#moving-on'];
+        const suggestedTags = (parsed.suggestedTags || []).filter(t => validTags.includes(t.toLowerCase()));
+
+        if (suggestedTags.length > 0) {
+          // Merge with existing tags if mode is 'add'
+          const finalTags = mode === 'add' 
+            ? [...new Set([...existingTags, ...suggestedTags])]
+            : suggestedTags;
+
+          if (!dryRun) {
+            // Update the lead
+            const updatedNotes = setTags(notes, finalTags);
+            await clientBase('Leads').update(lead.id, { 'Notes': updatedNotes });
+          }
+
+          results.tagged++;
+          suggestedTags.forEach(tag => {
+            results.tagCounts[tag] = (results.tagCounts[tag] || 0) + 1;
+          });
+          results.details.push({ 
+            name: leadName, 
+            status: 'tagged', 
+            tags: finalTags,
+            reasoning: parsed.reasoning 
+          });
+        } else {
+          results.skipped++;
+          results.details.push({ name: leadName, status: 'no-tags', reason: 'AI found no applicable tags' });
+        }
+
+        results.processed++;
+
+        // Small delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+      } catch (err) {
+        logger.error(`Error processing lead ${leadName}:`, err.message);
+        results.errors++;
+        results.details.push({ name: leadName, status: 'error', error: err.message });
+      }
+    }
+
+    logger.info(`Batch tag complete: ${results.tagged} tagged, ${results.skipped} skipped, ${results.errors} errors`);
+
+    res.json({
+      success: true,
+      dryRun,
+      mode,
+      summary: {
+        totalLeads: leads.length,
+        processed: results.processed,
+        tagged: results.tagged,
+        skipped: results.skipped,
+        errors: results.errors,
+        tagCounts: results.tagCounts
+      },
+      details: results.details
+    });
+
+  } catch (error) {
+    logger.error('Batch tag error:', error.message, error.stack);
+    res.status(500).json({ error: `Batch tagging failed: ${error.message}` });
+  }
+});
+
+// ============================================================================
 // CALENDAR - LOOKUP LEAD BY URL, EMAIL, OR NAME
 // ============================================================================
 /**

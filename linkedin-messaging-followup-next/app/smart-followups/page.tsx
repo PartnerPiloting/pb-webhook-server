@@ -207,6 +207,8 @@ function SmartFollowupsContent() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
+  const [isBatchTagging, setIsBatchTagging] = useState(false);
+  const [batchTagResult, setBatchTagResult] = useState(null);
   
   const chatInputRef = useRef(null);
   const analysisRef = useRef(null);
@@ -529,6 +531,43 @@ function SmartFollowupsContent() {
     return { text: 'Normal', color: 'text-gray-600 bg-gray-50' };
   };
 
+  // Batch tag historical leads
+  const handleBatchTag = async (dryRun = false) => {
+    setIsBatchTagging(true);
+    setBatchTagResult(null);
+    
+    try {
+      const clientId = localStorage.getItem('clientId');
+      const response = await fetch('/api/smart-followups/batch-tag-leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientId || '',
+        },
+        body: JSON.stringify({ mode: 'add', dryRun }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Batch tagging failed');
+      }
+      
+      setBatchTagResult(data);
+      
+      // Refresh the list if we actually tagged leads
+      if (!dryRun && data.summary?.tagged > 0) {
+        loadFollowups();
+      }
+      
+    } catch (err) {
+      console.error('Batch tag error:', err);
+      setBatchTagResult({ error: err.message });
+    } finally {
+      setIsBatchTagging(false);
+    }
+  };
+
   const getTagBadges = (notes) => {
     const tags = extractTags(notes);
     const badgeMap: Record<string, { text: string; color: string }> = {
@@ -596,13 +635,55 @@ function SmartFollowupsContent() {
             </div>
           </div>
           
-          <button
-            onClick={loadFollowups}
-            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            🔄 Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleBatchTag(false)}
+              disabled={isBatchTagging}
+              className="px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+              title="Run AI to tag all leads with follow-up dates"
+            >
+              {isBatchTagging ? '⏳ Tagging...' : '🏷️ Batch Tag'}
+            </button>
+            <button
+              onClick={loadFollowups}
+              className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              🔄 Refresh
+            </button>
+          </div>
         </div>
+        
+        {/* Batch Tag Result Banner */}
+        {batchTagResult && (
+          <div className={`px-6 py-3 border-b ${batchTagResult.error ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                {batchTagResult.error ? (
+                  <span className="text-red-700">❌ {batchTagResult.error}</span>
+                ) : (
+                  <div className="text-green-700">
+                    <span className="font-medium">✅ Batch tagging complete!</span>
+                    <span className="ml-2">
+                      {batchTagResult.summary?.tagged} tagged, {batchTagResult.summary?.skipped} skipped
+                      {batchTagResult.summary?.errors > 0 && `, ${batchTagResult.summary?.errors} errors`}
+                    </span>
+                    {batchTagResult.summary?.tagCounts && Object.keys(batchTagResult.summary.tagCounts).length > 0 && (
+                      <span className="ml-2 text-sm">
+                        ({Object.entries(batchTagResult.summary.tagCounts).map(([tag, count]) => `${tag}: ${count}`).join(', ')})
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => setBatchTagResult(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex h-full" style={{ height: 'calc(100% - 65px)' }}>
