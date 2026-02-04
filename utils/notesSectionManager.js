@@ -236,9 +236,11 @@ function getSectionsSummary(currentNotes) {
 
 /**
  * Parse formatted message lines back into structured data for sorting
- * Supports two formats:
+ * Supports multiple formats:
  * - Full message: DD-MM-YY HH:MM AM/PM - Sender - Message
  * - Manual note: DD-MM-YY: text
+ * - Meeting recorded: [Recorded DD/MM/YYYY, H:MM pm]
+ * - Meeting header: Title | Month DD, YYYY | Duration
  * @param {string} formattedContent - Formatted message lines
  * @returns {Array<{dateTime: Date, line: string}>} Parsed messages with sortable date
  */
@@ -250,11 +252,25 @@ function parseFormattedMessages(formattedContent) {
     const lines = formattedContent.trim().split('\n').filter(l => l.trim());
     const messages = [];
     
+    // Month name to number mapping
+    const monthMap = { 
+        jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, 
+        apr: 3, april: 3, may: 4, jun: 5, june: 5, 
+        jul: 6, july: 6, aug: 7, august: 7, sep: 8, september: 8, 
+        oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11 
+    };
+    
     // Pattern 1: DD-MM-YY HH:MM AM/PM - Sender - Message (full message format)
     const fullMessagePattern = /^(\d{2})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*.+\s*-\s*.+$/i;
     
     // Pattern 2: DD-MM-YY: text (manual note format)
     const manualNotePattern = /^(\d{2})-(\d{2})-(\d{2}):\s*.+$/i;
+    
+    // Pattern 3: [Recorded DD/MM/YYYY, H:MM am/pm] (Fathom meeting notes)
+    const recordedPattern = /\[Recorded\s+(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{1,2}):(\d{2})\s*(am|pm)?\]/i;
+    
+    // Pattern 4: Month DD, YYYY (meeting header like "January 27, 2026")
+    const monthDayYearPattern = /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})/i;
     
     for (const line of lines) {
         // Try full message format first
@@ -298,6 +314,43 @@ function parseFormattedMessages(formattedContent) {
                 parseInt(day, 10),
                 23, 59, 59  // End of day
             );
+            
+            messages.push({ dateTime, line: line.trim() });
+            continue;
+        }
+        
+        // Try Fathom recorded format: [Recorded DD/MM/YYYY, H:MM pm]
+        const recordedMatch = line.match(recordedPattern);
+        if (recordedMatch) {
+            const [, day, month, year, hour, minute, ampm] = recordedMatch;
+            
+            let hours = parseInt(hour, 10);
+            if (ampm) {
+                if (ampm.toLowerCase() === 'pm' && hours !== 12) hours += 12;
+                if (ampm.toLowerCase() === 'am' && hours === 12) hours = 0;
+            }
+            
+            const dateTime = new Date(
+                parseInt(year, 10),
+                parseInt(month, 10) - 1,
+                parseInt(day, 10),
+                hours,
+                parseInt(minute, 10)
+            );
+            
+            messages.push({ dateTime, line: line.trim() });
+            continue;
+        }
+        
+        // Try Month DD, YYYY format (meeting headers like "January 27, 2026")
+        const monthMatch = line.match(monthDayYearPattern);
+        if (monthMatch) {
+            const monthNum = monthMap[monthMatch[1].toLowerCase().slice(0, 3)];
+            const day = parseInt(monthMatch[2], 10);
+            const year = parseInt(monthMatch[3], 10);
+            
+            // Use start of day for meeting headers
+            const dateTime = new Date(year, monthNum, day, 0, 0, 0);
             
             messages.push({ dateTime, line: line.trim() });
             continue;
