@@ -2,16 +2,30 @@
  * Notes Section Manager
  * 
  * Manages sectioned notes in a lead's Notes field.
- * Sections are created dynamically at the top when first used.
+ * Tags appear at the very top, followed by sections.
  * Legacy notes remain at the bottom, untouched.
  * 
- * Section Order (when present):
- * 1. === LINKEDIN MESSAGES ===
- * 2. === MANUAL NOTES ===
- * 3. === SALES NAVIGATOR ===
- * 4. ─────────────────────────────── (separator)
- * 5. [OTHER - Legacy Notes] (unmarked original content)
+ * Format:
+ * Tags: #promised #warm-response
+ * 
+ * === LINKEDIN MESSAGES ===
+ * ...
+ * === MANUAL NOTES ===
+ * ...
+ * ─────────────────────────────── (separator)
+ * [Legacy Notes]
  */
+
+// Valid tags for lead status tracking
+const VALID_TAGS = [
+    '#promised',        // Lead said they'd get back
+    '#agreed-to-meet',  // Said yes to meeting, waiting on time confirmation
+    '#no-show',         // Missed scheduled appointment
+    '#warm-response',   // Positive engagement
+    '#cold',            // Disengaged/negative
+    '#moving-on',       // Done following up with this lead
+    '#draft-pending'    // System sent draft, waiting for user action
+];
 
 const SECTION_HEADERS = {
     linkedin: '=== LINKEDIN MESSAGES ===',
@@ -27,19 +41,114 @@ const LEGACY_SEPARATOR = '──────────────────
 const SECTION_ORDER = ['linkedin', 'manual', 'salesnav', 'email', 'meeting'];
 
 /**
+ * Parse tags from the start of notes
+ * Tags line format: "Tags: #tag1 #tag2 #tag3"
+ * @param {string} notes - Full notes content
+ * @returns {{ tags: string[], notesWithoutTags: string }} Parsed tags and remaining notes
+ */
+function parseTagsFromNotes(notes) {
+    if (!notes || typeof notes !== 'string') {
+        return { tags: [], notesWithoutTags: '' };
+    }
+    
+    const lines = notes.split('\n');
+    const firstLine = lines[0]?.trim() || '';
+    
+    // Check if first line is a Tags line
+    if (firstLine.toLowerCase().startsWith('tags:')) {
+        const tagsPart = firstLine.substring(5).trim(); // Remove "Tags:" prefix
+        const tags = tagsPart.split(/\s+/).filter(t => t.startsWith('#') && t.length > 1);
+        const notesWithoutTags = lines.slice(1).join('\n').trim();
+        return { tags, notesWithoutTags };
+    }
+    
+    return { tags: [], notesWithoutTags: notes };
+}
+
+/**
+ * Get tags from notes
+ * @param {string} notes - Full notes content
+ * @returns {string[]} Array of tags (e.g., ['#promised', '#warm-response'])
+ */
+function getTags(notes) {
+    const { tags } = parseTagsFromNotes(notes);
+    return tags;
+}
+
+/**
+ * Set tags in notes (replaces any existing tags)
+ * @param {string} notes - Current notes content
+ * @param {string[]} tags - Array of tags to set
+ * @returns {string} Updated notes with tags
+ */
+function setTags(notes, tags) {
+    const { notesWithoutTags } = parseTagsFromNotes(notes || '');
+    
+    // Filter to only valid tags
+    const validTags = tags.filter(t => VALID_TAGS.includes(t.toLowerCase()));
+    
+    if (validTags.length === 0) {
+        return notesWithoutTags;
+    }
+    
+    const tagsLine = `Tags: ${validTags.join(' ')}`;
+    return notesWithoutTags ? `${tagsLine}\n\n${notesWithoutTags}` : tagsLine;
+}
+
+/**
+ * Add a tag to notes (if not already present)
+ * @param {string} notes - Current notes content
+ * @param {string} tag - Tag to add (e.g., '#promised')
+ * @returns {string} Updated notes
+ */
+function addTag(notes, tag) {
+    const currentTags = getTags(notes);
+    if (!currentTags.includes(tag.toLowerCase())) {
+        return setTags(notes, [...currentTags, tag]);
+    }
+    return notes;
+}
+
+/**
+ * Remove a tag from notes
+ * @param {string} notes - Current notes content
+ * @param {string} tag - Tag to remove (e.g., '#promised')
+ * @returns {string} Updated notes
+ */
+function removeTag(notes, tag) {
+    const currentTags = getTags(notes);
+    const filtered = currentTags.filter(t => t.toLowerCase() !== tag.toLowerCase());
+    return setTags(notes, filtered);
+}
+
+/**
+ * Check if notes have a specific tag
+ * @param {string} notes - Notes content
+ * @param {string} tag - Tag to check for
+ * @returns {boolean}
+ */
+function hasTag(notes, tag) {
+    const tags = getTags(notes);
+    return tags.some(t => t.toLowerCase() === tag.toLowerCase());
+}
+
+/**
  * Parse existing notes into sections
  * @param {string} notes - Current notes content
- * @returns {Object} Parsed sections { linkedin, manual, salesnav, email, legacy }
+ * @returns {Object} Parsed sections { tags, linkedin, manual, salesnav, email, meeting, legacy }
  */
 function parseNotesIntoSections(notes) {
     if (!notes || typeof notes !== 'string') {
-        return { linkedin: '', manual: '', salesnav: '', email: '', meeting: '', legacy: '' };
+        return { tags: [], linkedin: '', manual: '', salesnav: '', email: '', meeting: '', legacy: '' };
     }
-
-    const sections = { linkedin: '', manual: '', salesnav: '', email: '', meeting: '', legacy: '' };
     
-    // Find each section's content
-    let remainingContent = notes;
+    // First extract tags
+    const { tags, notesWithoutTags } = parseTagsFromNotes(notes);
+
+    const sections = { tags, linkedin: '', manual: '', salesnav: '', email: '', meeting: '', legacy: '' };
+    
+    // Find each section's content (using notes without tags line)
+    let remainingContent = notesWithoutTags;
     
     // Extract each known section
     for (const [key, header] of Object.entries(SECTION_HEADERS)) {
@@ -89,15 +198,15 @@ function parseNotesIntoSections(notes) {
         
         // Content before first section header could be legacy
         if (earliestSectionIndex > 0) {
-            const beforeSections = notes.substring(0, earliestSectionIndex).trim();
+            const beforeSections = notesWithoutTags.substring(0, earliestSectionIndex).trim();
             if (beforeSections && !Object.values(SECTION_HEADERS).some(h => beforeSections.includes(h))) {
                 sections.legacy = beforeSections;
             }
         }
         
         // If no sections exist at all, everything is legacy
-        if (earliestSectionIndex === notes.length) {
-            sections.legacy = notes.trim();
+        if (earliestSectionIndex === notesWithoutTags.length) {
+            sections.legacy = notesWithoutTags.trim();
         }
     }
     
@@ -106,12 +215,17 @@ function parseNotesIntoSections(notes) {
 
 /**
  * Rebuild notes from sections
- * Sections appear at top in defined order, legacy at bottom
- * @param {Object} sections - { linkedin, manual, salesnav, legacy }
+ * Tags at very top, then sections in order, legacy at bottom
+ * @param {Object} sections - { tags, linkedin, manual, salesnav, email, meeting, legacy }
  * @returns {string} Rebuilt notes content
  */
 function rebuildNotesFromSections(sections) {
     const parts = [];
+    
+    // Add tags line at the very top (if any tags exist)
+    if (sections.tags && sections.tags.length > 0) {
+        parts.push(`Tags: ${sections.tags.join(' ')}`);
+    }
     
     // Add sections in order (only if they have content)
     for (const key of SECTION_ORDER) {
@@ -432,14 +546,25 @@ function addManualNote(currentNotes, noteText, date = new Date()) {
 }
 
 module.exports = {
+    // Constants
     SECTION_HEADERS,
     SECTION_ORDER,
     LEGACY_SEPARATOR,
+    VALID_TAGS,
+    // Section functions
     parseNotesIntoSections,
     rebuildNotesFromSections,
     updateSection,
     getSection,
     getSectionsSummary,
+    // Tag functions
+    parseTagsFromNotes,
+    getTags,
+    setTags,
+    addTag,
+    removeTag,
+    hasTag,
+    // Other utilities
     formatManualNoteDate,
     addManualNote,
     parseFormattedMessages,
