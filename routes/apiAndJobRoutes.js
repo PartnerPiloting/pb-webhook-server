@@ -7902,10 +7902,11 @@ router.post("/api/smart-followups/batch-tag-leads", async (req, res) => {
     }
 
     // Fetch all leads with follow-up dates
+    // Note: LinkedIn messages are contained within the Notes field (=== LINKEDIN MESSAGES === section)
     const leads = [];
     await clientBase('Leads').select({
       filterByFormula: `NOT({Follow-Up Date} = '')`,
-      fields: ['First Name', 'Last Name', 'Notes', 'Follow-Up Date', 'LinkedIn Messages']
+      fields: ['First Name', 'Last Name', 'Notes', 'Follow-Up Date']
     }).eachPage((records, fetchNextPage) => {
       leads.push(...records);
       fetchNextPage();
