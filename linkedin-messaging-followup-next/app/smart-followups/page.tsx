@@ -138,6 +138,7 @@ const calculatePriorityScore = (lead) => {
   // Tag-based scoring
   if (notes.toLowerCase().includes('#warm-response')) priorityScore += 20;
   if (hasPromisedTag) priorityScore += 25;
+  if (notes.toLowerCase().includes('#agreed-to-meet')) priorityScore += 25; // They said yes to meeting!
   if (notes.includes('#hot')) priorityScore += 15;
   if (notes.includes('#no-show') || notes.includes('#cancelled')) priorityScore += 10;
   if (notes.toLowerCase().includes('#rescheduled')) priorityScore += 5;
@@ -533,12 +534,14 @@ function SmartFollowupsContent() {
     const badgeMap: Record<string, { text: string; color: string }> = {
       '#warm-response': { text: 'Warm', color: 'bg-green-100 text-green-700' },
       '#promised': { text: 'Promised', color: 'bg-purple-100 text-purple-700' },
+      '#agreed-to-meet': { text: 'Agreed to Meet', color: 'bg-blue-100 text-blue-700' },
       '#no-show': { text: 'No-show', color: 'bg-red-100 text-red-700' },
       '#cancelled': { text: 'Cancelled', color: 'bg-yellow-100 text-yellow-700' },
       '#rescheduled': { text: 'Rescheduled', color: 'bg-blue-100 text-blue-700' },
       '#hot': { text: 'Hot', color: 'bg-red-100 text-red-700' },
       '#cold': { text: 'Cold', color: 'bg-gray-100 text-gray-700' },
-      '#moving-on': { text: 'Moving on', color: 'bg-gray-100 text-gray-700' }
+      '#moving-on': { text: 'Moving on', color: 'bg-gray-100 text-gray-700' },
+      '#draft-pending': { text: 'Draft Sent', color: 'bg-yellow-100 text-yellow-700' }
     };
     
     return tags

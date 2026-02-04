@@ -904,7 +904,7 @@ router.get('/leads/by-linkedin-url', async (req, res) => {
 // =========================================================================
 
 const { parseConversation } = require('../../../utils/messageParser');
-const { updateSection, getSectionsSummary, addManualNote } = require('../../../utils/notesSectionManager');
+const { updateSection, getSectionsSummary, addManualNote, setTags, getTags } = require('../../../utils/notesSectionManager');
 
 /**
  * GET /api/linkedin/leads/lookup
@@ -1683,7 +1683,7 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
   try {
     const airtableBase = await getAirtableBase(req);
     const leadId = req.params.id;
-    const { section, content, replaceNotes, followUpDate, email, phone, parseRaw = true } = req.body;
+    const { section, content, replaceNotes, followUpDate, email, phone, parseRaw = true, tags } = req.body;
     
     // If replaceNotes is provided, skip section validation (full replacement mode)
     if (replaceNotes !== undefined) {
@@ -1777,6 +1777,15 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
       updates['Phone'] = phone || '';
     }
     
+    // Handle tags if provided
+    if (tags && Array.isArray(tags)) {
+      // Get the current notes (either updated or original)
+      const notesToUpdate = updates['Notes'] || currentNotes;
+      // Apply tags to the notes
+      updates['Notes'] = setTags(notesToUpdate, tags);
+      logger.info(`LinkedIn Routes: Setting tags: ${tags.join(', ')}`);
+    }
+    
     // Only update if there are changes
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'No updates provided' });
@@ -1816,7 +1825,8 @@ router.patch('/leads/:id/quick-update', async (req, res) => {
         phone: updatedLead.fields['Phone'] || '',
         followUpDate: updatedLead.fields['Follow-Up Date'] || '',
         notes: updatedLead.fields['Notes'] || '',
-        notesSummary: getSectionsSummary(updatedLead.fields['Notes'] || '')
+        notesSummary: getSectionsSummary(updatedLead.fields['Notes'] || ''),
+        tags: getTags(updatedLead.fields['Notes'] || '')
       }
     });
     

@@ -7731,6 +7731,140 @@ Write an improved version incorporating this feedback.`;
 });
 
 // ============================================================================
+// SMART FOLLOW-UPS - AI TAG DETECTION
+// ============================================================================
+/**
+ * POST /api/smart-followups/detect-tags
+ * Analyze lead notes and suggest appropriate tags
+ * Same pattern as other smart-followups endpoints
+ */
+router.post("/api/smart-followups/detect-tags", async (req, res) => {
+  const logger = createLogger({ runId: 'SMART-FOLLOWUPS', clientId: req.headers['x-client-id'] || 'unknown', operation: 'detect-tags' });
+  
+  try {
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    const { notes, linkedinMessages, emailContent, leadName } = req.body;
+    
+    if (!notes && !linkedinMessages && !emailContent) {
+      return res.status(400).json({ error: 'At least one of notes, linkedinMessages, or emailContent is required' });
+    }
+    
+    logger.info(`Tag detection request for lead: ${leadName || 'unknown'}`);
+
+    // Get Gemini model from config
+    const geminiConfig = require('../config/geminiClient.js');
+    if (!geminiConfig || !geminiConfig.geminiModel) {
+      logger.error('Gemini model not available for tag detection');
+      return res.status(500).json({ error: 'AI service not available' });
+    }
+
+    // Build the prompt for tag detection
+    const prompt = `You are analyzing a sales lead's conversation to suggest status tags.
+
+Available tags and their meanings:
+- #promised - Lead said they would get back, respond, or follow up (e.g., "I'll get back to you Wednesday", "Let me check my calendar")
+- #agreed-to-meet - Lead explicitly agreed to a meeting/call but time not yet confirmed (e.g., "Yes, let's chat", "I'd be happy to meet")
+- #no-show - Lead missed a scheduled appointment (look for mentions of "didn't show", "missed the call", "no show")
+- #warm-response - Lead showed positive engagement, interest, or enthusiasm (e.g., friendly replies, asking questions, expressing interest)
+- #cold - Lead seems disengaged, giving short/dismissive responses, or explicitly not interested
+- #moving-on - Clear signals to stop following up (e.g., "not interested", "please stop contacting", unsubscribe requests)
+
+Lead: ${leadName || 'Unknown'}
+
+Manual Notes:
+${notes || 'None'}
+
+LinkedIn Messages (most recent first):
+${linkedinMessages ? linkedinMessages.slice(-2000) : 'None'}
+
+Email Content:
+${emailContent ? emailContent.slice(-1500) : 'None'}
+
+Based on the MOST RECENT interactions, which tags apply to this lead's CURRENT status?
+
+Important rules:
+1. Only suggest tags that clearly apply based on the evidence
+2. Focus on the MOST RECENT messages to determine current state
+3. A lead can have multiple tags (e.g., #agreed-to-meet AND #warm-response)
+4. If the user (Guy/the sender) sent the last message and is waiting, that alone doesn't warrant a tag
+5. Look for specific language that matches the tag definitions
+6. If there's a promise with a specific date/time mentioned, note that in your reasoning
+
+Respond in this exact JSON format:
+{
+  "suggestedTags": ["#tag1", "#tag2"],
+  "reasoning": "Brief explanation of why each tag was suggested",
+  "promiseDate": "If #promised tag and a specific date was mentioned, include it here (e.g., 'Wednesday', 'next week'), otherwise null"
+}
+
+Only output the JSON, nothing else.`;
+
+    // Generate content using the pre-initialized model
+    logger.info('Calling Gemini for tag detection...');
+    const result = await geminiConfig.geminiModel.generateContent(prompt);
+    
+    // Handle different response formats from Vertex AI SDK
+    let text;
+    if (result.response && typeof result.response.text === 'function') {
+      text = result.response.text();
+    } else if (result.response && result.response.candidates?.[0]?.content?.parts?.[0]?.text) {
+      text = result.response.candidates[0].content.parts[0].text;
+    } else if (typeof result.text === 'function') {
+      text = result.text();
+    } else {
+      logger.error('Unexpected Gemini response format:', JSON.stringify(result, null, 2));
+      throw new Error('Unexpected AI response format');
+    }
+    
+    logger.info(`Gemini tag detection response received (${text.length} chars)`);
+    
+    // Parse the JSON response
+    try {
+      // Clean up the response (remove markdown code blocks if present)
+      let cleanedText = text.trim();
+      if (cleanedText.startsWith('```json')) {
+        cleanedText = cleanedText.slice(7);
+      } else if (cleanedText.startsWith('```')) {
+        cleanedText = cleanedText.slice(3);
+      }
+      if (cleanedText.endsWith('```')) {
+        cleanedText = cleanedText.slice(0, -3);
+      }
+      cleanedText = cleanedText.trim();
+      
+      const parsed = JSON.parse(cleanedText);
+      
+      // Validate the response structure
+      const validTags = ['#promised', '#agreed-to-meet', '#no-show', '#warm-response', '#cold', '#moving-on'];
+      const filteredTags = (parsed.suggestedTags || []).filter(tag => validTags.includes(tag.toLowerCase()));
+      
+      res.json({
+        suggestedTags: filteredTags,
+        reasoning: parsed.reasoning || '',
+        promiseDate: parsed.promiseDate || null
+      });
+      
+    } catch (parseError) {
+      logger.error('Failed to parse Gemini response as JSON:', text);
+      // Return empty tags if parsing fails
+      res.json({
+        suggestedTags: [],
+        reasoning: 'Could not analyze - please set tags manually',
+        promiseDate: null
+      });
+    }
+
+  } catch (error) {
+    logger.error('Tag detection error:', error.message, error.stack);
+    res.status(500).json({ error: `Tag detection failed: ${error.message}` });
+  }
+});
+
+// ============================================================================
 // CALENDAR - LOOKUP LEAD BY URL, EMAIL, OR NAME
 // ============================================================================
 /**

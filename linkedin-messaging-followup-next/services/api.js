@@ -1568,6 +1568,57 @@ export const generateFollowupMessage = async (leadId, options = {}) => {
   }
 };
 
+/**
+ * Detect tags for a lead using AI analysis
+ * @param {Object} params - Parameters for tag detection
+ * @param {string} params.notes - Lead's manual notes
+ * @param {string} params.linkedinMessages - LinkedIn conversation content
+ * @param {string} params.emailContent - Email correspondence content
+ * @param {string} params.leadName - Name of the lead
+ * @returns {Promise<{suggestedTags: string[], reasoning: string, promiseDate: string|null}>}
+ */
+export const detectLeadTags = async ({ notes, linkedinMessages, emailContent, leadName }) => {
+  try {
+    const clientId = getCurrentClientId();
+    const token = getCurrentPortalToken();
+    const devKey = getCurrentDevKey();
+    
+    if (!clientId) {
+      throw new Error('Client ID not available. Please ensure user is authenticated.');
+    }
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-client-id': clientId,
+    };
+    if (token) headers['x-portal-token'] = token;
+    if (devKey) headers['x-dev-key'] = devKey;
+    
+    const response = await fetch('/api/smart-followups/detect-tags', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        notes,
+        linkedinMessages,
+        emailContent,
+        leadName
+      }),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('Detect tags error:', data);
+      throw new Error(data.message || data.error || 'Failed to detect tags');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Detect tags error:', error.message);
+    throw error;
+  }
+};
+
 export default api;
 
 // Export helper functions for use in components
