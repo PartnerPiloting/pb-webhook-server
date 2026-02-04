@@ -537,7 +537,7 @@ function SmartFollowupsContent() {
     setBatchTagResult(null);
     
     try {
-      const clientId = localStorage.getItem('clientId');
+      const clientId = getCurrentClientId();
       const response = await fetch('/api/smart-followups/batch-tag-leads', {
         method: 'POST',
         headers: {
