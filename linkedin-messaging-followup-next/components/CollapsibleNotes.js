@@ -172,8 +172,10 @@ function getSectionTitle(key) {
 
 /**
  * Extract the most recent date from section content
+ * Iterates from BOTTOM to TOP to find the newest entry (since new content is appended)
  * Looks for various date patterns:
  * - DD-MM-YY (LinkedIn/Email: "04-02-26 4:27 PM - Guy Wilson...")
+ * - DD/MM/YYYY (Fathom recorded: "[Recorded 04/02/2026, 9:09 pm]")
  * - YYYY-MM-DD (ISO format)
  * - Month DD, YYYY (Meeting notes: "Feb 4, 2026" or "February 4, 2026")
  * - DD Mon YY (e.g., "04 Feb 26")
@@ -181,15 +183,18 @@ function getSectionTitle(key) {
 function extractLastDate(lines) {
   // Pattern 1: DD-MM-YY at start of line (LinkedIn/Email)
   const ddmmyyPattern = /^(\d{2}-\d{2}-\d{2})/;
-  // Pattern 2: YYYY-MM-DD anywhere in line
-  const isoPattern = /(\d{4}-\d{2}-\d{2})/;
-  // Pattern 3: Month DD, YYYY or Month D, YYYY (e.g., "February 4, 2026" or "Feb 4, 2026")
+  // Pattern 2: DD/MM/YYYY anywhere (Fathom recorded dates)
+  const ddmmyyyySlashPattern = /(\d{2})\/(\d{2})\/(\d{4})/;
+  // Pattern 3: YYYY-MM-DD anywhere in line
+  const isoPattern = /(\d{4})-(\d{2})-(\d{2})/;
+  // Pattern 4: Month DD, YYYY or Month D, YYYY (e.g., "February 4, 2026" or "Feb 4, 2026")
   const monthDayYearPattern = /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4}|\d{2})/i;
-  // Pattern 4: DD Mon YY (e.g., "04 Feb 26")
+  // Pattern 5: DD Mon YY (e.g., "04 Feb 26")
   const ddMonYYPattern = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})/i;
   
-  for (const line of lines) {
-    const trimmed = line.trim();
+  // Iterate from bottom to top to find the most recent date
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i].trim();
     
     // Try DD-MM-YY first (most common for LinkedIn/Email)
     let match = trimmed.match(ddmmyyPattern);
@@ -197,12 +202,16 @@ function extractLastDate(lines) {
       return match[1];
     }
     
-    // Try ISO format
+    // Try DD/MM/YYYY (Fathom recorded dates like "[Recorded 04/02/2026, 9:09 pm]")
+    match = trimmed.match(ddmmyyyySlashPattern);
+    if (match) {
+      return `${match[1]}-${match[2]}-${match[3].slice(2)}`;
+    }
+    
+    // Try ISO format YYYY-MM-DD
     match = trimmed.match(isoPattern);
     if (match) {
-      // Convert YYYY-MM-DD to DD-MM-YY for display consistency
-      const [, y, m, d] = match[1].match(/(\d{4})-(\d{2})-(\d{2})/);
-      return `${d}-${m}-${y.slice(2)}`;
+      return `${match[3]}-${match[2]}-${match[1].slice(2)}`;
     }
     
     // Try Month DD, YYYY format (common in meeting notes)
