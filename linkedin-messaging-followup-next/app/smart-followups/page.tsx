@@ -208,6 +208,14 @@ function SmartFollowupsContent() {
   const [actionMessage, setActionMessage] = useState(null);
   
   const chatInputRef = useRef(null);
+  const analysisRef = useRef(null);
+  
+  // Auto-scroll to analysis when it appears
+  useEffect(() => {
+    if (analysis && analysisRef.current) {
+      analysisRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [analysis]);
 
   // Check if owner
   const isOwner = getCurrentClientId() === 'Guy-Wilson';
@@ -788,7 +796,7 @@ function SmartFollowupsContent() {
 
                   {/* AI Analysis - if generated */}
                   {analysis && (
-                    <div className="bg-purple-50 rounded-lg border border-purple-200">
+                    <div ref={analysisRef} className="bg-purple-50 rounded-lg border border-purple-200">
                       <div className="px-4 py-2 border-b border-purple-200">
                         <h3 className="font-medium text-purple-900">🤖 AI Analysis</h3>
                       </div>
