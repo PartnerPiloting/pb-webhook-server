@@ -991,10 +991,28 @@ router.get('/leads/lookup', async (req, res) => {
       const nameParts = cleanedQuery.split(/\s+/);
       
       let filterFormula;
-      if (nameParts.length >= 2) {
-        // Search for first AND last name
+      if (nameParts.length >= 3) {
+        // 3+ parts (e.g., "Srujan Kumar Chennupati") - try multiple strategies
+        // Strategy 1: First word + Last word (treats middle as middle name)
+        // Strategy 2: First word + all remaining (original behavior)
         const firstName = nameParts[0];
-        const lastName = nameParts.slice(1).join(' ');
+        const lastWord = nameParts[nameParts.length - 1];
+        const remainingWords = nameParts.slice(1).join(' ');
+        
+        filterFormula = `OR(
+          AND(
+            SEARCH("${firstName.toLowerCase()}", LOWER({First Name})),
+            SEARCH("${lastWord.toLowerCase()}", LOWER({Last Name}))
+          ),
+          AND(
+            SEARCH("${firstName.toLowerCase()}", LOWER({First Name})),
+            SEARCH("${remainingWords.toLowerCase()}", LOWER({Last Name}))
+          )
+        )`;
+      } else if (nameParts.length === 2) {
+        // Two parts - standard first/last name search
+        const firstName = nameParts[0];
+        const lastName = nameParts[1];
         filterFormula = `AND(
           SEARCH("${firstName.toLowerCase()}", LOWER({First Name})),
           SEARCH("${lastName.toLowerCase()}", LOWER({Last Name}))
