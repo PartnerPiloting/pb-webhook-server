@@ -1,0 +1,33 @@
+---
+description: Discuss and confirm approach with user before implementing fixes
+alwaysApply: true
+---
+
+# Discuss Before Fixing
+
+When a user reports an issue or problem, DO NOT immediately jump to implementing a fix.
+
+## Required Steps
+
+1. **Ask clarifying questions** - Make sure you understand the full picture
+2. **Confirm the root cause** - Verify your understanding of what's actually wrong
+3. **Propose the approach** - Explain what you plan to do and why
+4. **Get user agreement** - Wait for confirmation before implementing
+
+## Why This Matters
+
+- You often don't have the full context
+- The user may have additional information that changes the approach
+- Premature fixes can introduce new problems
+- The user may prefer a different solution
+
+## Example
+
+❌ **BAD**: User reports "Meeting notes don't show the date" → Immediately write code to fix it
+
+✅ **GOOD**: User reports "Meeting notes don't show the date" → Ask:
+- "What format do the Meeting notes use?"
+- "Should it show the most recent date or the first date?"
+- "Can you share an example of the content?"
+
+Then propose the fix and wait for agreement before implementing.
