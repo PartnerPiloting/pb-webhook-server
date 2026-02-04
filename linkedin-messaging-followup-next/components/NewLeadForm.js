@@ -22,6 +22,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
     viewInSalesNavigator: '',
     email: '',
     phone: '',
+    location: '',
     
     notes: '',
     followUpDate: '',
@@ -181,6 +182,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
         viewInSalesNavigator: '',
         email: '',
         phone: '',
+        location: '',
         
         notes: '',
         followUpDate: '',
@@ -225,6 +227,7 @@ const NewLeadForm = ({ onLeadCreated }) => {
       viewInSalesNavigator: '',
       email: '',
       phone: '',
+      location: '',
       
       notes: '',
       followUpDate: '',
@@ -445,6 +448,18 @@ const NewLeadForm = ({ onLeadCreated }) => {
               />
             </div>
 
+            <div className="flex">
+              <label className="w-32 text-sm font-medium text-gray-700 flex-shrink-0 py-2">
+                Location
+              </label>
+              <input
+                type="text"
+                value={formData.location}
+                onChange={(e) => handleChange('location', e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="e.g. Sydney, Australia"
+              />
+            </div>
             
           </div>
         </div>
