@@ -637,12 +637,20 @@ function SmartFollowupsContent() {
           
           <div className="flex items-center gap-2">
             <button
+              onClick={() => handleBatchTag(true)}
+              disabled={isBatchTagging}
+              className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+              title="Preview what tags would be applied (no changes made)"
+            >
+              {isBatchTagging ? '⏳ Checking...' : '👁️ Preview Tags'}
+            </button>
+            <button
               onClick={() => handleBatchTag(false)}
               disabled={isBatchTagging}
               className="px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
-              title="Run AI to tag all leads with follow-up dates"
+              title="Apply AI tags to all leads with follow-up dates"
             >
-              {isBatchTagging ? '⏳ Tagging...' : '🏷️ Batch Tag'}
+              {isBatchTagging ? '⏳ Tagging...' : '🏷️ Apply Tags'}
             </button>
             <button
               onClick={loadFollowups}
@@ -655,16 +663,18 @@ function SmartFollowupsContent() {
         
         {/* Batch Tag Result Banner */}
         {batchTagResult && (
-          <div className={`px-6 py-3 border-b ${batchTagResult.error ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+          <div className={`px-6 py-3 border-b ${batchTagResult.error ? 'bg-red-50 border-red-200' : batchTagResult.dryRun ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
             <div className="flex items-center justify-between">
               <div>
                 {batchTagResult.error ? (
                   <span className="text-red-700">❌ {batchTagResult.error}</span>
                 ) : (
-                  <div className="text-green-700">
-                    <span className="font-medium">✅ Batch tagging complete!</span>
+                  <div className={batchTagResult.dryRun ? 'text-blue-700' : 'text-green-700'}>
+                    <span className="font-medium">
+                      {batchTagResult.dryRun ? '👁️ Preview (no changes made)' : '✅ Tags applied!'}
+                    </span>
                     <span className="ml-2">
-                      {batchTagResult.summary?.tagged} tagged, {batchTagResult.summary?.skipped} skipped
+                      {batchTagResult.summary?.tagged} would be tagged, {batchTagResult.summary?.skipped} skipped
                       {batchTagResult.summary?.errors > 0 && `, ${batchTagResult.summary?.errors} errors`}
                     </span>
                     {batchTagResult.summary?.tagCounts && Object.keys(batchTagResult.summary.tagCounts).length > 0 && (
