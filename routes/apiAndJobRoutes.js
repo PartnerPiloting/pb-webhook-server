@@ -7600,6 +7600,126 @@ RESPOND WITH ONLY THIS JSON FORMAT (no markdown):
 });
 
 // ============================================================================
+// SMART FOLLOW-UPS - AI MESSAGE GENERATION AND ANALYSIS
+// ============================================================================
+/**
+ * POST /api/smart-followups/generate-message
+ * Generate a personalized follow-up message or analyze a lead using AI
+ * Same pattern as calendar-chat - no auth middleware, just x-client-id check
+ */
+router.post("/api/smart-followups/generate-message", async (req, res) => {
+  const logger = createLogger({ runId: 'SMART-FOLLOWUPS', clientId: req.headers['x-client-id'] || 'unknown', operation: 'generate-message' });
+  
+  try {
+    const clientId = req.headers['x-client-id'];
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID required' });
+    }
+
+    const { leadId, refinement, analyzeOnly, context } = req.body;
+    
+    if (!context) {
+      return res.status(400).json({ error: 'context is required' });
+    }
+    
+    logger.info(`Smart follow-ups ${analyzeOnly ? 'analysis' : 'message generation'} request for: ${context.name}`);
+
+    // Get Gemini model from config (same pattern as calendar-chat)
+    const geminiConfig = require('../config/geminiClient.js');
+    if (!geminiConfig || !geminiConfig.geminiModel) {
+      logger.error('Gemini model not available for message generation');
+      return res.status(500).json({ error: 'AI service not available' });
+    }
+
+    // Build the prompt
+    let prompt;
+    
+    if (analyzeOnly) {
+      // Analysis prompt
+      prompt = `You are a sales coach analyzing a lead for follow-up strategy.
+
+Lead Information:
+- Name: ${context.name}
+- AI Score: ${context.score || 'N/A'} (higher is better fit)
+- Status: ${context.status}
+- Follow-up Date: ${context.followUpDate || 'Not set'}
+- Last Contact: ${context.lastMessageDate || 'Unknown'}
+- Tags: ${context.tags?.join(', ') || 'None'}
+
+Notes:
+${context.notes || 'No notes available'}
+
+Recent LinkedIn Conversation:
+${context.linkedinMessages ? context.linkedinMessages.slice(-2000) : 'No conversation history'}
+
+Provide a brief analysis (3-4 paragraphs) covering:
+1. 📊 Overview - Summarize what you know about this lead
+2. 🎯 My read - Your assessment of their interest level and any patterns you notice
+3. 💡 Recommendation - What action should be taken and why
+
+Be concise and actionable. If you notice patterns (e.g., multiple cancellations, going cold), mention them.`;
+      
+    } else {
+      // Message generation prompt
+      const basePrompt = `You are writing a LinkedIn follow-up message for a professional.
+
+Lead Information:
+- Name: ${context.name}
+- AI Score: ${context.score || 'N/A'}
+- Status: ${context.status}
+- Tags: ${context.tags?.join(', ') || 'None'}
+
+Notes:
+${context.notes ? context.notes.slice(-1500) : 'No notes available'}
+
+Recent LinkedIn Conversation:
+${context.linkedinMessages ? context.linkedinMessages.slice(-1500) : 'No conversation history'}
+
+Write a personalized LinkedIn follow-up message that:
+1. Is warm but professional
+2. References something specific from their notes or conversation if available
+3. Has a clear, low-friction call to action
+4. Is concise (2-4 sentences max)
+5. Feels personal, not templated
+6. Does NOT use cliché phrases like "I hope this finds you well"
+
+${context.tags?.includes('#no-show') ? 'Note: This person was a no-show for a meeting. Be gracious and offer to reschedule without guilt-tripping.' : ''}
+${context.tags?.includes('#cancelled') ? 'Note: This person cancelled a meeting. Acknowledge it lightly and offer to reconnect.' : ''}
+
+Write only the message, no subject line or signature needed. Start with "Hi ${context.name?.split(' ')[0] || 'there'},".`;
+
+      if (refinement) {
+        prompt = `${basePrompt}
+
+User wants this change: "${refinement}"
+
+Write an improved version incorporating this feedback.`;
+      } else {
+        prompt = basePrompt;
+      }
+    }
+
+    // Generate content using the pre-initialized model
+    logger.info('Calling Gemini for smart follow-ups...');
+    const result = await geminiConfig.geminiModel.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+    
+    logger.info(`Gemini response received (${text.length} chars)`);
+
+    if (analyzeOnly) {
+      res.json({ analysis: text });
+    } else {
+      res.json({ message: text });
+    }
+
+  } catch (error) {
+    logger.error('Smart follow-ups error:', error.message, error.stack);
+    res.status(500).json({ error: `Message generation failed: ${error.message}` });
+  }
+});
+
+// ============================================================================
 // CALENDAR - LOOKUP LEAD BY URL, EMAIL, OR NAME
 // ============================================================================
 /**

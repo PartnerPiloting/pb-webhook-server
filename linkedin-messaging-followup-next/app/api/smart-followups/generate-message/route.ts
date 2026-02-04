@@ -7,13 +7,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    // Get auth headers from the request
+    // Get client ID from header (same pattern as calendar-chat)
     const clientId = request.headers.get('x-client-id');
-    const portalToken = request.headers.get('x-portal-token');
-    const devKey = request.headers.get('x-dev-key');
-    
-    if (!clientId && !portalToken) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!clientId) {
+      return NextResponse.json({ error: 'Client ID required' }, { status: 400 });
     }
 
     const body = await request.json();
@@ -21,22 +18,18 @@ export async function POST(request: Request) {
     // Get backend URL - same logic as calendar-chat
     const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
     const backendUrl = envUrl.replace('/api/linkedin', '') || 'https://pb-webhook-server.onrender.com';
-    const targetUrl = `${backendUrl}/api/linkedin/leads/generate-followup-message`;
+    // Use the new endpoint in apiAndJobRoutes.js (same file as calendar-chat, no auth middleware)
+    const targetUrl = `${backendUrl}/api/smart-followups/generate-message`;
     
     console.log(`[Smart Follow-ups Proxy] Calling: ${targetUrl}`);
 
-    // Build headers for backend request
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (clientId) headers['x-client-id'] = clientId;
-    if (portalToken) headers['x-portal-token'] = portalToken;
-    if (devKey) headers['x-dev-key'] = devKey;
-
-    // Forward request to backend
+    // Forward request to backend (same pattern as calendar-chat - just x-client-id)
     const response = await fetch(targetUrl, {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': clientId,
+      },
       body: JSON.stringify(body),
       cache: 'no-store',
     });
