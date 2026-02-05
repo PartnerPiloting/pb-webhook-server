@@ -172,7 +172,7 @@ function getSectionTitle(key) {
 
 /**
  * Extract the most recent date from section content
- * Iterates from BOTTOM to TOP to find the newest entry (since new content is appended)
+ * Iterates from TOP to BOTTOM to find the newest entry (LinkedIn/Email show newest first at top)
  * Looks for various date patterns:
  * - DD-MM-YY (LinkedIn/Email: "04-02-26 4:27 PM - Guy Wilson...")
  * - DD/MM/YYYY (Fathom recorded: "[Recorded 04/02/2026, 9:09 pm]")
@@ -192,8 +192,8 @@ function extractLastDate(lines) {
   // Pattern 5: DD Mon YY (e.g., "04 Feb 26")
   const ddMonYYPattern = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{2,4})/i;
   
-  // Iterate from bottom to top to find the most recent date
-  for (let i = lines.length - 1; i >= 0; i--) {
+  // Iterate from top to bottom to find the most recent date (newest entries are at top)
+  for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
     
     // Try DD-MM-YY first (most common for LinkedIn/Email)

@@ -7028,12 +7028,7 @@ router.post("/api/calendar/chat", async (req, res) => {
       });
     };
 
-    // Detect lead timezone from location
-    // If lead location is blank/unknown, assume same timezone as user (no conversion)
-    const leadLocationKnown = context.leadLocation && context.leadLocation.trim() !== '';
-    const leadTimezone = leadLocationKnown ? getTimezoneFromLocation(context.leadLocation) : yourTimezone;
-    
-    // Get client timezone and calendar email from Airtable
+    // Get client timezone and calendar email from Airtable FIRST (needed for lead timezone fallback)
     const getClientCalendarInfo = async () => {
       const lookupResponse = await fetch(
         `https://api.airtable.com/v0/${process.env.MASTER_CLIENTS_BASE_ID}/Clients?filterByFormula=LOWER({Client ID})=LOWER('${clientId}')&fields[]=Google Calendar Email&fields[]=Timezone`,
@@ -7066,6 +7061,11 @@ router.post("/api/calendar/chat", async (req, res) => {
     if (calendarError) {
       return res.status(401).json({ error: calendarError });
     }
+
+    // Detect lead timezone from location (now that yourTimezone is defined)
+    // If lead location is blank/unknown, assume same timezone as user (no conversion)
+    const leadLocationKnown = context.leadLocation && context.leadLocation.trim() !== '';
+    const leadTimezone = leadLocationKnown ? getTimezoneFromLocation(context.leadLocation) : yourTimezone;
 
     // Get today's date IN THE USER'S TIMEZONE (not server time)
     // This ensures "today" and "tomorrow" are correct for the user
