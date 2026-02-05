@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import Layout from '../../components/Layout';
-import { getFollowUps, generateFollowupMessage, updateLead, detectLeadTags } from '../../services/api';
+import { getFollowUps, generateFollowupMessage, updateLead } from '../../services/api';
 import { getCurrentClientId } from '../../utils/clientUtils';
 
 /**
@@ -106,8 +106,6 @@ const calculatePriorityScore = (lead) => {
     priorityScore += 15; // They messaged, need to respond!
   }
   
-  const hasPromisedTag = notes.toLowerCase().includes('#promised');
-  
   // Calculate overdue based on Follow-Up Date, but consider actual last contact
   const followUpDate = lead['Follow-Up Date'] || lead.followUpDate;
   let daysOverdue = 0;
@@ -125,32 +123,11 @@ const calculatePriorityScore = (lead) => {
       effectiveOverdue = daysOverdue;
     }
     
-    // Overdue logic - leads with automated tags are handled by cron job
-    // Other overdue leads get penalized if stale
+    // Penalize very stale leads
     if (effectiveOverdue > 14) {
-      // Only penalize if actually stale (no recent contact)
       priorityScore -= Math.min(20, effectiveOverdue * 2);
     }
   }
-  
-  // Tag-based scoring
-  // Automated tags (#promised, #agreed-to-meet, #no-show) get LOWER priority
-  // because the cron job will handle these automatically via email drafts
-  const hasAgreedToMeet = notes.toLowerCase().includes('#agreed-to-meet');
-  const hasNoShow = notes.includes('#no-show');
-  
-  if (hasPromisedTag || hasAgreedToMeet || hasNoShow) {
-    // These are handled by automation - push to bottom of list
-    priorityScore -= 50;
-  }
-  
-  // Other tags still affect priority normally
-  if (notes.toLowerCase().includes('#warm-response')) priorityScore += 20;
-  if (notes.includes('#hot')) priorityScore += 15;
-  if (notes.includes('#cancelled')) priorityScore += 10;
-  if (notes.toLowerCase().includes('#rescheduled')) priorityScore += 5;
-  if (notes.includes('#cold')) priorityScore -= 15;
-  if (notes.includes('#moving-on')) priorityScore -= 30;
   
   return { 
     priorityScore: Math.round(priorityScore), 
@@ -159,12 +136,6 @@ const calculatePriorityScore = (lead) => {
     daysSinceLastMessage,
     userSentLast
   };
-};
-
-const extractTags = (notes) => {
-  if (!notes) return [];
-  const tagMatch = notes.match(/#[\w-]+/g);
-  return tagMatch || [];
 };
 
 const isAwaitingResponse = (lead) => {
@@ -214,10 +185,6 @@ function SmartFollowupsContent() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
-  const [isBatchTagging, setIsBatchTagging] = useState(false);
-  const [batchTagResult, setBatchTagResult] = useState(null);
-  const [tagProgress, setTagProgress] = useState<{ current: number; total: number; name: string } | null>(null);
-  const [showTagDetails, setShowTagDetails] = useState(false);
   
   const chatInputRef = useRef(null);
   const analysisRef = useRef(null);
@@ -319,8 +286,7 @@ function SmartFollowupsContent() {
           linkedinMessages: selectedLead.linkedinMessages,
           score: selectedLead.aiScore,
           status: selectedLead.status,
-          name: `${selectedLead.firstName} ${selectedLead.lastName}`.trim(),
-          tags: extractTags(selectedLead.notes)
+          name: `${selectedLead.firstName} ${selectedLead.lastName}`.trim()
         }
       });
       setGeneratedMessage(result.message);
@@ -359,8 +325,7 @@ function SmartFollowupsContent() {
           status: selectedLead.status,
           name: `${selectedLead.firstName} ${selectedLead.lastName}`.trim(),
           followUpDate: selectedLead.followUpDate,
-          lastMessageDate: selectedLead.lastMessageDate,
-          tags: extractTags(selectedLead.notes)
+          lastMessageDate: selectedLead.lastMessageDate
         }
       });
       setAnalysis(result.analysis);
@@ -369,7 +334,7 @@ function SmartFollowupsContent() {
       const lastContactInfo = selectedLead.daysSinceLastMessage !== null 
         ? `${selectedLead.daysSinceLastMessage} days ago (${selectedLead.userSentLast ? 'you sent last - awaiting response' : 'they sent last - you should respond'})`
         : 'Unknown';
-      setAnalysis(`Unable to analyze automatically. Here's what I can see:\n\n• AI Score: ${selectedLead.aiScore || 'N/A'}\n• Status: ${selectedLead.status}\n• Last contact: ${lastContactInfo}\n• Follow-up was due: ${selectedLead.effectiveOverdue || 0} days ago\n• Tags: ${extractTags(selectedLead.notes).join(', ') || 'None'}`);
+      setAnalysis(`Unable to analyze automatically. Here's what I can see:\n\n• AI Score: ${selectedLead.aiScore || 'N/A'}\n• Status: ${selectedLead.status}\n• Last contact: ${lastContactInfo}\n• Follow-up was due: ${selectedLead.effectiveOverdue || 0} days ago`);
     } finally {
       setIsGenerating(false);
     }
@@ -540,148 +505,6 @@ function SmartFollowupsContent() {
     return { text: 'Normal', color: 'text-gray-600 bg-gray-50' };
   };
 
-  // Batch tag leads using frontend loop with progress
-  const handleBatchTag = async (dryRun = false) => {
-    // Get all leads from both tabs
-    const allLeads = [...leads, ...awaitingLeads];
-    
-    if (allLeads.length === 0) {
-      setBatchTagResult({ error: 'No leads to process' });
-      return;
-    }
-    
-    setIsBatchTagging(true);
-    setBatchTagResult(null);
-    setTagProgress({ current: 0, total: allLeads.length, name: '' });
-    
-    const results = {
-      processed: 0,
-      tagged: 0,
-      skipped: 0,
-      errors: 0,
-      tagCounts: {} as Record<string, number>,
-      details: [] as Array<{ name: string; status: string; tags?: string[]; reasoning?: string; error?: string }>
-    };
-    
-    try {
-      for (let i = 0; i < allLeads.length; i++) {
-        const lead = allLeads[i];
-        const leadName = `${lead.firstName} ${lead.lastName}`.trim();
-        
-        // Update progress
-        setTagProgress({ current: i + 1, total: allLeads.length, name: leadName });
-        
-        // Check if lead already has tags
-        const existingTags = extractTags(lead.notes || '');
-        if (existingTags.length > 0) {
-          results.skipped++;
-          results.details.push({ name: leadName, status: 'skipped' });
-          continue;
-        }
-        
-        try {
-          // Call detect-tags endpoint
-          const tagResult = await detectLeadTags({
-            notes: lead.notes || '',
-            linkedinMessages: lead.linkedinMessages || '',
-            emailContent: '',
-            leadName
-          });
-          
-          if (tagResult.suggestedTags && tagResult.suggestedTags.length > 0) {
-            if (!dryRun) {
-              // Apply tags by updating the lead
-              const currentNotes = lead.notes || '';
-              const tagsLine = `Tags: ${tagResult.suggestedTags.join(' ')}`;
-              const updatedNotes = currentNotes.startsWith('Tags:') 
-                ? currentNotes.replace(/^Tags:.*$/m, tagsLine)
-                : `${tagsLine}\n\n${currentNotes}`;
-              
-              await updateLead(lead.id, { notes: updatedNotes });
-            }
-            
-            results.tagged++;
-            tagResult.suggestedTags.forEach((tag: string) => {
-              results.tagCounts[tag] = (results.tagCounts[tag] || 0) + 1;
-            });
-            results.details.push({ 
-              name: leadName, 
-              status: 'tagged', 
-              tags: tagResult.suggestedTags,
-              reasoning: tagResult.reasoning || ''
-            });
-          } else {
-            results.skipped++;
-            results.details.push({ name: leadName, status: 'no-tags', reasoning: 'AI found no applicable tags' });
-          }
-          
-          results.processed++;
-          
-        } catch (err) {
-          console.error(`Error tagging ${leadName}:`, err);
-          results.errors++;
-          results.details.push({ name: leadName, status: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
-        }
-        
-        // Small delay between requests to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      setBatchTagResult({
-        success: true,
-        dryRun,
-        summary: {
-          totalLeads: allLeads.length,
-          processed: results.processed,
-          tagged: results.tagged,
-          skipped: results.skipped,
-          errors: results.errors,
-          tagCounts: results.tagCounts
-        },
-        details: results.details
-      });
-      
-      // Refresh the list if we actually tagged leads
-      if (!dryRun && results.tagged > 0) {
-        loadFollowups();
-      }
-      
-    } catch (err) {
-      console.error('Batch tag error:', err);
-      setBatchTagResult({ error: err instanceof Error ? err.message : 'Batch tagging failed' });
-    } finally {
-      setIsBatchTagging(false);
-      setTagProgress(null);
-    }
-  };
-
-  // Count untagged leads for button display
-  const allLeadsForTagging = [...leads, ...awaitingLeads];
-  const untaggedCount = allLeadsForTagging.filter(lead => {
-    const tags = extractTags(lead.notes || '');
-    return tags.length === 0;
-  }).length;
-
-  const getTagBadges = (notes) => {
-    const tags = extractTags(notes);
-    const badgeMap: Record<string, { text: string; color: string }> = {
-      '#warm-response': { text: 'Warm', color: 'bg-green-100 text-green-700' },
-      '#promised': { text: 'Promised', color: 'bg-purple-100 text-purple-700' },
-      '#agreed-to-meet': { text: 'Agreed to Meet', color: 'bg-blue-100 text-blue-700' },
-      '#no-show': { text: 'No-show', color: 'bg-red-100 text-red-700' },
-      '#cancelled': { text: 'Cancelled', color: 'bg-yellow-100 text-yellow-700' },
-      '#rescheduled': { text: 'Rescheduled', color: 'bg-blue-100 text-blue-700' },
-      '#hot': { text: 'Hot', color: 'bg-red-100 text-red-700' },
-      '#cold': { text: 'Cold', color: 'bg-gray-100 text-gray-700' },
-      '#moving-on': { text: 'Moving on', color: 'bg-gray-100 text-gray-700' },
-      '#draft-pending': { text: 'Draft Sent', color: 'bg-yellow-100 text-yellow-700' }
-    };
-    
-    return tags
-      .filter(tag => badgeMap[tag.toLowerCase()])
-      .map(tag => badgeMap[tag.toLowerCase()]);
-  };
-
   // Access control
   if (!isOwner) {
     return (
@@ -729,117 +552,13 @@ function SmartFollowupsContent() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            {untaggedCount > 0 ? (
-              <>
-                <button
-                  onClick={() => handleBatchTag(true)}
-                  disabled={isBatchTagging}
-                  className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                  title="Preview what tags would be applied (no changes made)"
-                >
-                  {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : `👁️ Preview ${untaggedCount}`}
-                </button>
-                <button
-                  onClick={() => handleBatchTag(false)}
-                  disabled={isBatchTagging}
-                  className="px-3 py-1.5 text-sm font-medium text-purple-600 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
-                  title={`Apply AI tags to ${untaggedCount} untagged leads`}
-                >
-                  {isBatchTagging && tagProgress ? `⏳ ${tagProgress.current}/${tagProgress.total}` : `🏷️ Tag ${untaggedCount} leads`}
-                </button>
-              </>
-            ) : (
-              <span className="px-3 py-1.5 text-sm font-medium text-gray-400">
-                ✓ All tagged
-              </span>
-            )}
-            <button
-              onClick={loadFollowups}
-              className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              🔄 Refresh
-            </button>
-          </div>
+          <button
+            onClick={loadFollowups}
+            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            🔄 Refresh
+          </button>
         </div>
-        
-        {/* Progress Banner */}
-        {tagProgress && (
-          <div className="px-6 py-3 border-b bg-blue-50 border-blue-200">
-            <div className="flex items-center">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
-              <span className="text-blue-700">
-                Processing {tagProgress.current} of {tagProgress.total}: <span className="font-medium">{tagProgress.name}</span>
-              </span>
-            </div>
-          </div>
-        )}
-        
-        {/* Batch Tag Result Banner */}
-        {batchTagResult && (
-          <div className={`border-b ${batchTagResult.error ? 'bg-red-50 border-red-200' : batchTagResult.dryRun ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
-            <div className="px-6 py-3 flex items-center justify-between">
-              <div>
-                {batchTagResult.error ? (
-                  <span className="text-red-700">❌ {batchTagResult.error}</span>
-                ) : (
-                  <div className={batchTagResult.dryRun ? 'text-blue-700' : 'text-green-700'}>
-                    <span className="font-medium">
-                      {batchTagResult.dryRun ? '👁️ Preview (no changes made)' : '✅ Tags applied!'}
-                    </span>
-                    <span className="ml-2">
-                      {batchTagResult.summary?.tagged} would be tagged, {batchTagResult.summary?.skipped} skipped
-                      {batchTagResult.summary?.errors > 0 && `, ${batchTagResult.summary?.errors} errors`}
-                    </span>
-                    {batchTagResult.summary?.tagCounts && Object.keys(batchTagResult.summary.tagCounts).length > 0 && (
-                      <span className="ml-2 text-sm">
-                        ({Object.entries(batchTagResult.summary.tagCounts).map(([tag, count]) => `${tag}: ${count}`).join(', ')})
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {batchTagResult.details && batchTagResult.details.length > 0 && (
-                  <button 
-                    onClick={() => setShowTagDetails(!showTagDetails)}
-                    className="text-sm underline hover:no-underline"
-                  >
-                    {showTagDetails ? 'Hide details' : 'Show details'}
-                  </button>
-                )}
-                <button 
-                  onClick={() => { setBatchTagResult(null); setShowTagDetails(false); }}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-            
-            {/* Details list */}
-            {showTagDetails && batchTagResult.details && (
-              <div className="px-6 py-3 border-t border-gray-200 bg-white max-h-64 overflow-y-auto">
-                <div className="space-y-2 text-sm">
-                  {batchTagResult.details
-                    .filter((d: { status: string }) => d.status === 'tagged')
-                    .map((detail: { name: string; tags?: string[]; reasoning?: string }, idx: number) => (
-                    <div key={idx} className="border-b border-gray-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{detail.name}</span>
-                        <span className="text-gray-400">→</span>
-                        <span className="text-purple-600">{detail.tags?.join(', ')}</span>
-                      </div>
-                      {detail.reasoning && (
-                        <div className="text-gray-500 text-xs mt-1 italic">"{detail.reasoning}"</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Content */}
         <div className="flex h-full" style={{ height: 'calc(100% - 65px)' }}>
@@ -888,15 +607,6 @@ function SmartFollowupsContent() {
                         </span>
                       )}
                     </div>
-                    {getTagBadges(lead.notes).length > 0 && (
-                      <div className="mt-1 flex gap-1 flex-wrap">
-                        {getTagBadges(lead.notes).map((badge, i) => (
-                          <span key={i} className={`text-xs px-1 py-0.5 rounded ${badge.color}`}>
-                            {badge.text}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ))}
                 

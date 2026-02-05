@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead, detectLeadTags } from '../services/api';
+import { lookupLead, quickUpdateLead, previewParse, getLeadNotesSummary, updateClientTimezone, createLead } from '../services/api';
 import { buildAuthUrl } from '../utils/clientUtils';
 import CollapsibleNotes from './CollapsibleNotes';
 
@@ -121,14 +121,6 @@ export default function QuickUpdateModal({
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
   const [error, setError] = useState(null);
-  
-  // Tag detection state
-  const [showTagConfirmation, setShowTagConfirmation] = useState(false);
-  const [suggestedTags, setSuggestedTags] = useState([]);
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [tagReasoning, setTagReasoning] = useState('');
-  const [isDetectingTags, setIsDetectingTags] = useState(false);
-  const [pendingUpdates, setPendingUpdates] = useState(null); // Store updates while confirming tags
   
   // Add Lead inline form state
   const [showAddLeadForm, setShowAddLeadForm] = useState(false);
@@ -630,55 +622,18 @@ export default function QuickUpdateModal({
       return;
     }
     
-    // If there's note content, detect tags first
-    if (noteContent.trim()) {
-      setIsDetectingTags(true);
-      try {
-        const tagResult = await detectLeadTags({
-          notes: selectedLead.notes || '',
-          linkedinMessages: noteContent.trim(),
-          emailContent: '',
-          leadName: `${selectedLead.firstName} ${selectedLead.lastName}`
-        });
-        
-        setSuggestedTags(tagResult.suggestedTags || []);
-        setSelectedTags(tagResult.suggestedTags || []); // Pre-select all suggested
-        setTagReasoning(tagResult.reasoning || '');
-        setPendingUpdates(updates);
-        setShowTagConfirmation(true);
-        setIsDetectingTags(false);
-        return; // Wait for user to confirm tags
-        
-      } catch (err) {
-        console.error('Tag detection failed, proceeding without tags:', err);
-        setIsDetectingTags(false);
-        // Continue with save even if tag detection fails
-      }
-    }
-    
-    // No note content or tag detection failed - save directly
-    await performSave(updates, []);
-  };
-  
-  // Perform the actual save with tags
-  const performSave = async (updates, tags) => {
+    // Save directly
     setIsSaving(true);
     setError(null);
     
     try {
-      // Add tags to updates if any selected
-      if (tags && tags.length > 0) {
-        updates.tags = tags;
-      }
-      
       const result = await quickUpdateLead(selectedLead.id, updates);
       
       setSaveSuccess({
         leadName: `${selectedLead.firstName} ${selectedLead.lastName}`,
         updatedFields: result.updatedFields,
         parsing: result.parsing,
-        noteUpdate: result.noteUpdate,
-        tags: tags.length > 0 ? tags : null
+        noteUpdate: result.noteUpdate
       });
       
       // Update local state with saved values (including notes for View Full Notes)
@@ -693,13 +648,6 @@ export default function QuickUpdateModal({
       setNoteContent('');
       setHasUnsavedChanges(false);
       
-      // Clear tag state
-      setShowTagConfirmation(false);
-      setSuggestedTags([]);
-      setSelectedTags([]);
-      setTagReasoning('');
-      setPendingUpdates(null);
-      
       // Clear success message after 3 seconds
       setTimeout(() => setSaveSuccess(null), 3000);
       
@@ -708,29 +656,6 @@ export default function QuickUpdateModal({
     } finally {
       setIsSaving(false);
     }
-  };
-  
-  // Handle tag confirmation
-  const handleConfirmTags = async () => {
-    if (pendingUpdates) {
-      await performSave(pendingUpdates, selectedTags);
-    }
-  };
-  
-  // Handle skipping tags
-  const handleSkipTags = async () => {
-    if (pendingUpdates) {
-      await performSave(pendingUpdates, []);
-    }
-  };
-  
-  // Toggle a tag selection
-  const toggleTag = (tag) => {
-    setSelectedTags(prev => 
-      prev.includes(tag) 
-        ? prev.filter(t => t !== tag)
-        : [...prev, tag]
-    );
   };
 
   const handleNew = () => {
@@ -1551,96 +1476,6 @@ export default function QuickUpdateModal({
                   className="px-4 py-2 text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
                 >
                   Discard & Continue
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Tag Confirmation Modal */}
-        {showTagConfirmation && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-2 flex items-center gap-2">
-                <span>🏷️</span> Suggested Tags
-              </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                AI analyzed the conversation and suggests these tags:
-              </p>
-              
-              {/* Tag selection */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                {suggestedTags.length > 0 ? (
-                  suggestedTags.map(tag => (
-                    <button
-                      key={tag}
-                      onClick={() => toggleTag(tag)}
-                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                        selectedTags.includes(tag)
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  ))
-                ) : (
-                  <span className="text-gray-500 italic">No tags suggested</span>
-                )}
-              </div>
-              
-              {/* Add manual tags */}
-              <div className="mb-4">
-                <p className="text-xs text-gray-500 mb-2">Add other tags:</p>
-                <div className="flex flex-wrap gap-1">
-                  {['#promised', '#agreed-to-meet', '#no-show', '#warm-response', '#cold', '#moving-on']
-                    .filter(tag => !suggestedTags.includes(tag))
-                    .map(tag => (
-                      <button
-                        key={tag}
-                        onClick={() => toggleTag(tag)}
-                        className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                          selectedTags.includes(tag)
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}
-                      >
-                        {tag}
-                      </button>
-                    ))
-                  }
-                </div>
-              </div>
-              
-              {/* AI Reasoning */}
-              {tagReasoning && (
-                <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm text-gray-600">
-                  <span className="font-medium">Why: </span>{tagReasoning}
-                </div>
-              )}
-              
-              {/* Actions */}
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={handleSkipTags}
-                  disabled={isSaving}
-                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Skip Tags
-                </button>
-                <button
-                  onClick={handleConfirmTags}
-                  disabled={isSaving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center gap-2"
-                >
-                  {isSaving ? (
-                    <>
-                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>Save with Tags ({selectedTags.length})</>
-                  )}
                 </button>
               </div>
             </div>
