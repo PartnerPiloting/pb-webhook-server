@@ -30,9 +30,21 @@ export async function POST(request: Request) {
       cache: 'no-store',
     });
 
-    const data = await response.json();
-    
     console.log(`[Batch Tag Proxy] Response status: ${response.status}`);
+
+    // Handle non-JSON responses gracefully
+    const responseText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error(`[Batch Tag Proxy] Non-JSON response:`, responseText.slice(0, 200));
+      return NextResponse.json({ 
+        error: 'Backend returned non-JSON response', 
+        details: responseText.slice(0, 200),
+        _debug: { targetUrl, status: response.status } 
+      }, { status: 500 });
+    }
 
     if (!response.ok) {
       console.error(`[Batch Tag Proxy] Error:`, data);
